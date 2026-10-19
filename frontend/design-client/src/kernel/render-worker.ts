@@ -29,6 +29,7 @@ import type { KernelOptions } from './client'
 import { TILE_SIDE, type RasterTile } from './tile-cache'
 import { imageCacheKey, readCachedImage, writeCachedImage } from './image-mip-cache'
 import { DecodedImageCache } from './decoded-image-cache'
+import { managedSceneImageLoader, SceneImageHydration, type ImageContext } from './scene-image-hydration'
 import { ExactTileCache, coordinateSlot } from './exact-tile-cache'
 import { tileComputationDependsOnCamera } from './tile-computation-key'
 import { recoverFailedTileRenderer } from './tile-failure'
@@ -152,81 +153,30 @@ async function engine() {
  * the store on disk, browsers in IndexedDB) and write back on miss, so a
  * reopened document skips re-decoding its imported bitmaps. */
 const diskImageCache = new DecodedImageCache()
-const imageCacheScope = (kernel: RenderKernel) => JSON.stringify([loadedDocumentId, kernel.color_settings()])
-function managedImageLoader(kernel: RenderKernel) {
-  return (uri: string, byte?: boolean, level = 0) => {
-    const scope = imageCacheScope(kernel)
-    diskImageCache.begin(scope)
-    if (level === 0 && diskImageCache.size) {
-      const hit = diskImageCache.get(scope, `${byte ? 'b' : 'f'}:${uri}`)
-      if (hit)
-        return byte
-          ? { width: hit.width, height: hit.height, pixels: new Float32Array(0), bytes: hit.data as Uint8Array }
-          : { width: hit.width, height: hit.height, pixels: hit.data as Float32Array }
-    }
-    const [width, height] = JSON.parse(
-      level > 0 ? kernel.image_info_at_level(uri, level) : kernel.image_info(uri),
-    ) as [number, number]
-    if (byte) {
-      const bytes = level > 0 ? kernel.image_rgba8_at_level(uri, level) : kernel.image_rgba8(uri)
-      if (level === 0) persistLevelZero(kernel, uri, true, width, height, bytes)
-      return { width, height, pixels: new Float32Array(0), bytes }
-    }
-    const pixels = level > 0 ? kernel.image_linear_at_level(uri, level) : kernel.image_linear(uri)
-    if (level === 0) persistLevelZero(kernel, uri, false, width, height, pixels)
-    return { width, height, pixels }
+const imagePersistence = { key: imageCacheKey, read: readCachedImage, write: writeCachedImage }
+let renderingImages: ImageContext | undefined
+const managedImageLoader = managedSceneImageLoader(diskImageCache, () => {
+  if (!renderingImages) throw Error('Image decoder has no render owner')
+  return renderingImages
+}, imagePersistence)
+/** Capture after ordered document synchronization. Same-id reopen, resources,
+ * lanes and color settings each own separate optional decode residency. */
+function sceneImageHydration(kernel: RenderKernel, current: () => boolean) {
+  const lane = activeLane, generation = documentGeneration, resources = resourceGeneration, promise = enginePromise
+  const context = { kernel, settings: kernel.color_settings(),
+    scope: JSON.stringify([lane, generation, resources, loadedDocumentId, kernel.color_settings()]) }
+  const ownerCurrent = () => activeLane === lane && documentGeneration === generation &&
+    resourceGeneration === resources && enginePromise === promise && kernel.color_settings() === context.settings
+  const hydration = new SceneImageHydration(diskImageCache, context, imagePersistence, ownerCurrent, current)
+  return async (scene: GpuScene, isCurrent = current) => {
+    await hydration.hydrate(scene, isCurrent)
+    // RenderWorkQueue owns the entire gpu.render promise. Its only priority
+    // yield is after completed tile delivery, so another lane cannot rebind
+    // this decoder while a GPU render is awaiting driver work.
+    renderingImages = { ...context, current: () => ownerCurrent() && isCurrent() }
   }
 }
-/** Decode-and-persist helper; fire-and-forget IndexedDB write. */
-function persistLevelZero(
-  kernel: RenderKernel,
-  uri: string,
-  byte: boolean,
-  width: number,
-  height: number,
-  data: Uint8Array | Float32Array,
-) {
-  diskImageCache.set(imageCacheScope(kernel), `${byte ? 'b' : 'f'}:${uri}`, { width, height, data })
-  void imageCacheKey(uri, byte ? 'byte' : 'linear', kernel.color_settings()).then((key) => {
-    if (key) writeCachedImage(key, { width, height, data })
-  })
-}
-/** Hydrate the in-memory map from the persistent store before a render batch
- * touches its assets. Misses simply fall through to the kernel decode. */
-async function warmImageCache(kernel: RenderKernel, doc: DesignDocument) {
-  const scope = imageCacheScope(kernel)
-  diskImageCache.begin(scope)
-  try {
-    const uris = new Set<string>()
-    const scan = (paints: unknown) => {
-      if (!Array.isArray(paints)) return
-      for (const p of paints)
-        if (p && typeof p === 'object' && (p as { kind?: string }).kind === 'image') {
-          const uri = (p as { image?: string }).image
-          if (typeof uri === 'string' && uri.length < 2_000_000) uris.add(uri)
-        }
-    }
-    for (const node of Object.values(doc.nodes ?? {})) {
-      scan(node.fills)
-      scan(node.strokes?.map((s) => s.paint))
-    }
-    if (!uris.size) return
-    const settings = kernel.color_settings()
-    // Hydration is optional. Read one decode at a time instead of cloning all
-    // document images concurrently before the resident budget can reject them.
-    for (const uri of uris) {
-      for (const variant of ['byte', 'linear'] as const) {
-        const key = await imageCacheKey(uri, variant, settings)
-        if (!key) return
-        const record = await readCachedImage(key)
-        if (record && (variant === 'byte' ? record.data instanceof Uint8Array : record.data instanceof Float32Array))
-          diskImageCache.set(scope, `${variant === 'byte' ? 'b' : 'f'}:${uri}`, record)
-      }
-    }
-  } catch {
-    /* The persistent cache is optional acceleration only. */
-  }
-}
+type HydrateSceneImages = ReturnType<typeof sceneImageHydration>
 // A message task yields to control messages without clamped per-tile timers.
 // The worker queue has one active render, so there is only one pending waiter.
 const previewTaskChannel = new MessageChannel()
@@ -319,8 +269,10 @@ function schedulePose(){
           translatePreviewScene({...session.scene,interactionWindow:window},session.document,document!)
         const translationMs=performance.now()-translationStarted,posePrepareMs=performance.now()-started
         if(!next){rebasePose(pose);break}
-        prepareDisplay()
         try{
+          const hydrateImages = sceneImageHydration(await engine(), () => poseSession === session && !session.stopped)
+          await hydrateImages(next)
+          prepareDisplay()
           const result=await gpu.render(next,false,true)
           if(!result.gpuTile)throw Error('Resident movement did not produce a GPU texture')
           if(poseSession!==session){gpu.driver.releasePresented?.([result.gpuTile]);continue}
@@ -541,9 +493,6 @@ self.onmessage = (e) => {
           loadedDocument = request.document
           compiledScene = undefined
           paintDamage = undefined
-          // Hydrate persistent decoded images for this document before any
-          // tile or frame render samples its assets.
-          await warmImageCache(kernel, interactionDocument)
         }
         loadedRevision = request.documentRevision
         // Publish only after successful kernel synchronization. A failed load
@@ -609,6 +558,7 @@ self.onmessage = (e) => {
       // Keep deltas for local edits; neither route changes the exact compiler.
       const incrementalScene = interactionNative && import.meta.env.VITE_DESIGN_SCENE_DELTA!=='0' &&
         !(interactionSelection || []).some((id: string) => interactionDocument?.pages.some(page => page.children.includes(id)))
+      const hydrateImages = sceneImageHydration(kernel, () => !(livePreview || tileViewport) || previewCurrent())
       const settingsJson = kernel.color_settings()
       const color: ColorSettings | undefined = JSON.parse(settingsJson) || undefined
       if (tileOwner !== undefined && (!tileOwner || typeof tileOwner !== 'object' ||
@@ -828,7 +778,7 @@ self.onmessage = (e) => {
                   settingsJson, TILE_SIDE + 2, crop, preparedScene,
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
                   prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
-                  () => generation === previewGenerations[channel] && (cameraFallback || current()))
+                  () => generation === previewGenerations[channel] && (cameraFallback || current()), hydrateImages)
                 undelivered = result
                 if (generation !== previewGenerations[channel]) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
@@ -938,12 +888,16 @@ self.onmessage = (e) => {
               // work through without interleaving command encoders.
               await yieldPreviewTask()
               await queue.yieldToHigherPriority(channel === 'interaction' ? 1 : 0)
+              // A canceled returning lane must not retire the interaction's
+              // current resources merely to restore an obsolete canvas owner.
+              if (generation !== previewGenerations[channel] ||
+                  (channel === 'canvas' && fillGeneration !== tileFillGeneration)) throw new Error('PREVIEW_CANCELLED')
               selectLane(channel)
-              if (preference !== requestPreference || referenceGpu !== wantsReference || solidBatchGpu !== wantsBatch) {
-                gpu?.dispose(); gpu = undefined; invalidateTileCache()
+              if (settingsJson !== colorKey || preference !== requestPreference || referenceGpu !== wantsReference || solidBatchGpu !== wantsBatch) {
+                gpu?.dispose(); gpu = undefined; invalidateTileCache(); unavailable.clear()
+                colorKey = settingsJson
                 preference = requestPreference; referenceGpu = wantsReference; solidBatchGpu = wantsBatch
               }
-              if (generation !== previewGenerations[channel]) throw new Error('PREVIEW_CANCELLED')
               } finally {
                 undelivered?.bitmap?.close()
                 if (undelivered?.gpuTile) gpu?.driver.releasePresented?.([undelivered.gpuTile])
@@ -995,7 +949,7 @@ self.onmessage = (e) => {
               backend,
               color,
               settingsJson,
-              256, undefined, undefined, false, undefined, false, false, false, undefined, previewCurrent,
+              256, undefined, undefined, false, undefined, false, false, false, undefined, previewCurrent, hydrateImages,
             )
             self.postMessage(
               { id: request.id, ...result, loadMs },
@@ -1075,7 +1029,7 @@ self.onmessage = (e) => {
                 !referenceGpu,
                 solidBatchGpu,
                 color,
-                managedImageLoader(kernel),
+                managedImageLoader,
                 executionPolicy.hdrCompositing && !!color,
                 floating,
                 !!executionPolicy?.imageMips,
@@ -1091,6 +1045,7 @@ self.onmessage = (e) => {
             }
           }
           if ((livePreview || tileViewport) && !previewCurrent()) throw Error('PREVIEW_CANCELLED')
+          await hydrateImages(scene!)
           prepareDisplay(!request.png && !request.readback)
           const t = performance.now(),
             result = await gpu.render(
@@ -1264,7 +1219,7 @@ self.onmessage = (e) => {
                 backend,
                 color,
                 settingsJson,
-                256, undefined, undefined, false, undefined, false, false, false, undefined, previewCurrent,
+                256, undefined, undefined, false, undefined, false, false, false, undefined, previewCurrent, hydrateImages,
               )
               self.postMessage(
                 { id: request.id, ...result, loadMs },
@@ -1361,6 +1316,7 @@ async function renderTiledPreview(
   canvasMath = false,
   onRegionComplete?: () => void,
   isCurrent?: () => boolean,
+  hydrateImages: HydrateSceneImages = sceneImageHydration(kernel, isCurrent ?? (() => true)),
 ) {
   const checkCurrent = () => {
     if (isCurrent && !isCurrent()) throw new Error('PREVIEW_CANCELLED')
@@ -1431,7 +1387,7 @@ async function renderTiledPreview(
           !referenceGpu,
           solidBatchGpu,
           color,
-          managedImageLoader(kernel),
+          managedImageLoader,
           managedOutput,
           scene.floatCompositing,
           !!executionPolicy?.imageMips,
@@ -1440,6 +1396,7 @@ async function renderTiledPreview(
         )
         if (gpu.driver.name !== 'webgpu') throw new Error('present fast path unavailable')
         checkCurrent()
+        await hydrateImages(scene, isCurrent)
         prepareDisplay()
         const result = await gpu.render(scene, false, true)
         presented = result.bitmap
@@ -1532,7 +1489,7 @@ async function renderTiledPreview(
           !referenceGpu,
           solidBatchGpu,
           color,
-          managedImageLoader(kernel),
+          managedImageLoader,
           managedOutput,
           floating,
           !!executionPolicy?.imageMips,
@@ -1542,6 +1499,7 @@ async function renderTiledPreview(
         // Assembly needs a bitmap per leaf, but the attached presenter and its
         // previous textures remain alive on this same device during the retry.
         checkCurrent()
+        await hydrateImages(scene, isCurrent)
         prepareDisplay(false)
         const result = await gpu.render(scene, !bitmapAssembly, bitmapAssembly)
         bitmap = result.bitmap

@@ -1,4 +1,5 @@
 import { canvasMarqueeSelection } from './canvas-selection-workflows'
+import { CanvasSceneSnapshots } from './canvas-scene-snapshots'
 import { StartupPreview } from './StartupPreview'
 import type { StartupPreview as StartupPixels, PreviewPixels } from './startup-preview'
 import { CanvasEditPreview, type RetainedMoveControl } from './CanvasEditPreview'
@@ -518,10 +519,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     marqueeHeld.current = false; setMarqueeKeyHeld(false)
   }, [editor, editor.sessionGeneration, state.page])
   const [panning, setPanning] = useState(false)
-  const entries = useMemo(
-    () => scene(state.doc, state.page),
-    [state.doc, state.page, geometryReady],
-  )
+  const sceneSnapshots = useRef<CanvasSceneSnapshots | null>(null)
+  sceneSnapshots.current ??= new CanvasSceneSnapshots()
+  const snapshots = sceneSnapshots.current
+  snapshots.begin(editor, editor.sessionGeneration, state.page, geometryReady)
+  const currentScene = snapshots.currentScene(state.doc, state.page)
+  const entries = currentScene.entries
   const lastOpenedSession = useRef(editor.sessionGeneration)
   useLayoutEffect(() => {
     const session = editor.sessionGeneration
@@ -567,14 +570,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     )
     if (next) editor.set({ view: next })
   }, [reveal, editor, entries, state.doc.id, state.page, state.selection, editor.sessionGeneration, size.width, size.height])
-  const index = useMemo(() => new SpatialIndex(entries), [entries])
+  const index = currentScene.index
   const displayedSnapshot = useMemo(() => presentationScopeMatches ? editPreviewVisible
     ? { ...presented!, document: state.doc, view: displayView, preview: true } : presented : null,
     [presentationScopeMatches, editPreviewVisible, presented, state.doc, displayView])
-  const displayedIndex = useMemo(() => displayedSnapshot
-    ? displayedSnapshot.document === state.doc && displayedSnapshot.pageId === state.page ? index
-      : new SpatialIndex(scene(displayedSnapshot.document, displayedSnapshot.pageId)) : null,
-  [displayedSnapshot?.document, displayedSnapshot?.pageId, state.doc, state.page, index, geometryReady])
+  const displayedIndex = snapshots.displayedScene(displayedSnapshot?.document, displayedSnapshot?.pageId)?.index ?? null
   const displayedHit = (point: Point, deep = false, eligible?: (node:DesignNode)=>boolean) => displayedSnapshot && displayedIndex
     ? editor.hit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot,eligible) : null
   const displayedHoverHit = (point: Point) => displayedSnapshot && displayedIndex
@@ -676,7 +676,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   },[state.doc,state.page,drawingPreview,utility.preview,textPreview,previewFonts])
   const exactOverlayMatches = editPreviewVisible || (presentationScopeMatches && presented.document === renderedDocument)
   const [refineDocument, setRefineDocument] = useState(renderedDocument)
-  const refineOverview = useMemo(() => unionBounds(scene(refineDocument, state.page).filter(entry => entry.depth === 0).map(entry => entry.bounds)), [refineDocument, state.page])
+  const refineOverview = snapshots.refineOverview(refineDocument, state.page)
   const editBaseDocument = useRef(renderedDocument)
   if (ownedDrag?.sourceDocument) editBaseDocument.current = ownedDrag.sourceDocument
   else if (!editPreviewVisible) editBaseDocument.current = renderedDocument
