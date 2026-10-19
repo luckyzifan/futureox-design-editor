@@ -1,0 +1,26 @@
+{
+  "source": "Figma Chrome UI; selection1xPNG; download Done, dedicated tab closed",
+  "metadataSha256": "c6e3ec70e012500085d0b445e3bf9c18ce1e38ad2b5895325cc36b3d410517b3",
+  "rows": [
+    {
+      "node": "182:3",
+      "name": "AlphaQA-texture-unclipped",
+      "sha256": "1a4a0438a4a1343a66221e15ac2c3e4f17a0c10a14baa434b1ee8fdb56cfd17f",
+      "downloadMtime": "2026-10-08T18:39:23.499446+00:00",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "node": "182:5",
+      "name": "AlphaQA-texture-size32",
+      "sha256": "7d8abfbc1d73940e4800a27461b93735f43067a4501445a08ccdeae94459215a",
+      "downloadMtime": "2026-10-08T18:40:22.066603+00:00",
+      "size": [
+        128,
+        128
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Forma-QA-MCP-layer-blur">
+<rect width="128" height="128" fill="white"/>
+<g id="effect target" filter="url(#filter0_f_4_5)">
+<rect x="32" y="32" width="64" height="48" fill="#4477DD"/>
+</g>
+</g>
+<defs>
+<filter id="filter0_f_4_5" x="28" y="28" width="72" height="56" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+<feGaussianBlur stdDeviation="2" result="effect1_foregroundBlur_4_5"/>
+</filter>
+</defs>
+</svg>

@@ -1,0 +1,18 @@
+{
+  "source": "Figma Chrome UI selection 1x PNG; download Done and dedicated tab closed",
+  "metadataSha256": "e6aab5b9db9167f14e1996f05404a25d72bb3ddc0b731647d52a5def1e7487ed",
+  "rows": [
+    {
+      "node": "179:3",
+      "name": "LutQA-rgb-forward-1024",
+      "sha256": "ee1c1636300fcc0e1ae75c264764bf0a7d0b4249ba0be4834a9fe63d7132cd4b",
+      "downloadMtime": "2026-10-08T18:33:02.340606+00:00"
+    },
+    {
+      "node": "179:4",
+      "name": "LutQA-rgb-reverse-1024",
+      "sha256": "7d7ce9206c4124095f38e5611453509ba0d63f93958ad5a3e896201ccbea2888",
+      "downloadMtime": "2026-10-08T18:33:33.637405+00:00"
+    }
+  ]
+}

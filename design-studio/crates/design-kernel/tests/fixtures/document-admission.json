@@ -1,0 +1,257 @@
+{
+  "base": {
+    "schemaVersion": 4,
+    "rasterProfile": "analytic",
+    "id": "30000000-0000-4000-8000-000000000001",
+    "name": "Admission fixture",
+    "pages": [
+      {
+        "id": "20000000-0000-4000-8000-000000000001",
+        "name": "Page",
+        "children": [
+          "10000000-0000-4000-8000-000000000001"
+        ],
+        "background": "#ffffff"
+      }
+    ],
+    "nodes": {
+      "10000000-0000-4000-8000-000000000001": {
+        "id": "10000000-0000-4000-8000-000000000001",
+        "name": "Shape",
+        "kind": "rectangle",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "width": 160,
+        "height": 120,
+        "children": [],
+        "visible": true,
+        "locked": false,
+        "opacity": 1,
+        "blend": "normal",
+        "fills": [
+          {
+            "id": "paint",
+            "kind": "solid",
+            "color": "#123456",
+            "opacity": 1,
+            "visible": true,
+            "angle": 90,
+            "stops": [
+              {
+                "offset": 0,
+                "color": "#123456"
+              },
+              {
+                "offset": 1,
+                "color": "#abcdef"
+              }
+            ],
+            "fit": "cover",
+            "blend": "normal"
+          }
+        ],
+        "strokes": [],
+        "effects": [],
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false,
+        "points": 6,
+        "innerRadius": 0.45,
+        "text": "A",
+        "fontSize": 28
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "valid authored document",
+      "accepted": true,
+      "patches": []
+    },
+    {
+      "name": "nonboolean visible",
+      "accepted": false,
+      "patches": [
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/visible",
+          "value": "yes"
+        }
+      ]
+    },
+    {
+      "name": "fractional point count",
+      "accepted": false,
+      "patches": [
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/points",
+          "value": 4.5
+        }
+      ]
+    },
+    {
+      "name": "unsafe rich text link",
+      "accepted": false,
+      "patches": [
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/textRuns",
+          "value": [
+            {
+              "start": 0,
+              "end": 1,
+              "link": "javascript:alert(1)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "negative paragraph spacing",
+      "accepted": false,
+      "patches": [
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/textStyle",
+          "value": {
+            "fontId": "default",
+            "fallbacks": [],
+            "weight": 400,
+            "lineHeight": 1.35,
+            "letterSpacing": 0,
+            "wrap": false,
+            "align": "start",
+            "direction": "auto",
+            "paragraphSpacing": -1
+          }
+        }
+      ]
+    },
+    {
+      "name": "unknown boolean operation",
+      "accepted": false,
+      "patches": [
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/booleanOperation",
+          "value": "xor"
+        }
+      ]
+    },
+    {
+      "name": "missing variable resource",
+      "accepted": false,
+      "patches": [
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/bindings",
+          "value": {
+            "opacity": "missing"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unknown paint fit",
+      "accepted": false,
+      "patches": [
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/fills/0/fit",
+          "value": "crop"
+        }
+      ]
+    },
+    {
+      "name": "singular paint transform",
+      "accepted": false,
+      "patches": [
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/fills/0/transform",
+          "value": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "old schema explicit mask",
+      "accepted": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 3
+        },
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/maskType",
+          "value": "luminance"
+        }
+      ]
+    },
+    {
+      "name": "valid legacy null mask",
+      "accepted": true,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 2
+        },
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/maskType",
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "valid rich text link",
+      "accepted": true,
+      "patches": [
+        {
+          "path": "/nodes/10000000-0000-4000-8000-000000000001/textRuns",
+          "value": [
+            {
+              "start": 0,
+              "end": 1,
+              "link": "https://example.test/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing prototype target",
+      "accepted": false,
+      "patches": [
+        {
+          "path": "/prototype",
+          "value": {
+            "interactions": {
+              "10000000-0000-4000-8000-000000000001": [
+                {
+                  "trigger": "click",
+                  "actions": [
+                    {
+                      "kind": "navigate",
+                      "target": "missing"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+import { expect, test } from 'vitest'
+import { moveCanvasFeedback } from './canvas-move-feedback'
+
+test('cached board movement translates its title and selection together without touching other titles', () => {
+  const element = (owner: string | null, transform = '') => ({ style: { transform },
+    getAttribute: () => owner }) as unknown as SVGElement
+  const selection = element(null), title = element('moving'), other = element('stationary')
+  const host = { querySelectorAll: () => [selection, title, other] } as unknown as ParentNode
+  const originals = new Map<SVGElement, string>()
+  moveCanvasFeedback(host, ['moving'], { x: 25.25, y: -17 }, originals)
+  expect(title.style.transform).toBe(selection.style.transform)
+  expect(title.style.transform).toBe('translate(25.25px,-17px)')
+  expect(other.style.transform).toBe('')
+  moveCanvasFeedback(host, ['moving'], { x: 40, y: 30 }, originals)
+  for (const [node, original] of originals) node.style.transform = original
+  expect(title.style.transform).toBe('')
+  expect(selection.style.transform).toBe('')
+})

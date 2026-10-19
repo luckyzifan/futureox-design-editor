@@ -1,0 +1,505 @@
+import {apply,matrixString} from './geometry'
+import { propertyUnits } from './property-units'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { DesignDocument, DesignNode, Matrix } from './model'
+import { replaceText, styleTextRange } from './text'
+import { kernelTextLayout } from './kernel/picking'
+import type { Editor } from './engine'
+import { registerPendingEdit, pendingEditsChanged } from './pending-edits'
+
+export function TextInput({
+  node,
+  editor,
+  onClose,
+  canvas = false,
+  style,
+}: {
+  node: DesignNode
+  editor: Editor
+  onClose?: () => void
+  canvas?: boolean
+  style?: React.CSSProperties
+}) {
+  const input = useRef<HTMLTextAreaElement>(null),
+    composing = useRef(false),
+    blurred = useRef(false),
+    done = useRef(false)
+  const session = useRef(editor.sessionGeneration)
+  const original = useRef(node.text),
+    value = useRef(node.text)
+  const finish = (cancel = false) => {
+    if (done.current) return true
+    if (composing.current) return false
+    done.current = true
+    if (!cancel && value.current !== original.current) {
+      if (editor.sessionGeneration !== session.current || editor.state.doc.nodes[node.id]?.text !== original.current) {
+        done.current = false
+        editor.notify('文字已被其他操作修改；输入仍保留在编辑框，请复制或按 Esc 取消')
+        return false
+      }
+      if (canvas) editor.update([node.id], (n) => replaceText(n, value.current), '编辑文字')
+      else editor.updateProperties([node.id], (n) => replaceText(n, value.current), '编辑文字')
+      if (editor.state.doc.nodes[node.id]?.text !== value.current) {
+        done.current = false
+        return false
+      }
+    }
+    original.current = value.current
+    pendingEditsChanged(editor)
+    onClose?.()
+    return true
+  }
+  const commit = useRef(finish)
+  commit.current = finish
+  useEffect(() => registerPendingEdit(editor, {
+    dirty: () => composing.current || value.current !== original.current,
+    commit: () => commit.current(),
+  }), [editor, node.id])
+  useEffect(() => {
+    if (!composing.current && value.current === original.current) {
+      original.current = node.text
+      value.current = node.text
+      if (input.current) input.current.value = node.text
+    }
+  }, [node.text])
+  useEffect(() => {
+    if (canvas) {
+      input.current?.focus()
+      input.current?.select()
+    }
+  }, [canvas])
+  return (
+    <textarea
+      ref={input}
+      aria-label={canvas ? '画布文字编辑' : '文字内容'}
+      className={canvas ? 'canvas-text-input' : undefined}
+      defaultValue={node.text}
+      spellCheck={false}
+      dir="auto"
+      style={style}
+      onFocus={() => {
+        done.current = false
+        blurred.current = false
+      }}
+      onChange={(e) => {
+        value.current = e.currentTarget.value
+        done.current = false
+        pendingEditsChanged(editor)
+      }}
+      onCompositionStart={() => {
+        done.current = false
+        composing.current = true
+        pendingEditsChanged(editor)
+      }}
+      onCompositionEnd={(e) => {
+        composing.current = false
+        value.current = e.currentTarget.value
+        pendingEditsChanged(editor)
+        if (blurred.current) finish()
+      }}
+      onBlur={() => {
+        blurred.current = true
+        finish()
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.nativeEvent.isComposing || composing.current) return
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          input.current!.value = original.current
+          value.current = original.current
+          finish(true)
+        }
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.preventDefault()
+          finish()
+          input.current?.blur()
+        }
+      }}
+    />
+  )
+}
+
+export function CanvasTextEditor({
+  onPreview,
+  document: _doc,
+  node,
+  editor,
+  matrix,
+  onClose,
+}: {
+  onPreview: (node:DesignNode|null)=>void
+  document: DesignDocument
+  node: DesignNode
+  editor: Editor
+  matrix: Matrix
+  onClose: () => void
+}) {
+  const [draft, setDraft] = useState(() => structuredClone(node)),
+    [selection, setSelection] = useState<[number, number]>([0, node.text.length]),
+    [error, setError] = useState('')
+  const input = useRef<HTMLTextAreaElement>(null),
+    root = useRef<HTMLDivElement>(null),
+    composing = useRef(false),
+    done = useRef(false),
+    original = useRef(node),
+    session = useRef(editor.sessionGeneration),
+    blurred = useRef(false),
+    anchor = useRef<number | null>(null),
+    latest = useRef(draft)
+  latest.current = draft
+  useLayoutEffect(()=>{onPreview(draft);return()=>onPreview(null)},[draft,onPreview])
+  let layout: ReturnType<typeof kernelTextLayout> | undefined
+  try {
+    layout = kernelTextLayout(draft)
+  } catch (e) {
+    if (!error) queueMicrotask(() => setError(String(e)))
+  }
+  useEffect(() => {
+    input.current?.focus()
+    input.current?.setSelectionRange(0, node.text.length)
+  }, [node.id])
+  const sync = () => {
+    if (input.current) setSelection([input.current.selectionStart, input.current.selectionEnd])
+  }
+  const select = (a: number, b = a) => {
+    input.current?.focus()
+    input.current?.setSelectionRange(Math.min(a, b), Math.max(a, b), a > b ? 'backward' : 'forward')
+    setSelection([Math.min(a, b), Math.max(a, b)])
+  }
+  const finish = (cancel = false) => {
+    if (done.current) return true
+    if (composing.current) return false
+    const changed = latest.current.text !== original.current.text || JSON.stringify(latest.current.textRuns) !== JSON.stringify(original.current.textRuns)
+    if (!cancel && changed) {
+      if (editor.sessionGeneration !== session.current || editor.state.doc.nodes[node.id] !== original.current) {
+        setError('图层已被修改，当前输入保留；请复制文字后取消')
+        return false
+      }
+      editor.update(
+        [node.id],
+        (n) => {
+          n.text = latest.current.text
+          n.textRuns = latest.current.textRuns
+        },
+        '编辑富文本',
+      )
+      if (editor.state.doc.nodes[node.id]?.text !== latest.current.text || JSON.stringify(editor.state.doc.nodes[node.id]?.textRuns) !== JSON.stringify(latest.current.textRuns)) return false
+    }
+    done.current = true
+    pendingEditsChanged(editor)
+    onClose()
+    return true
+  }
+  const commit = useRef(finish)
+  commit.current = finish
+  useEffect(() => registerPendingEdit(editor, {
+    dirty: () => !done.current && (composing.current || latest.current.text !== original.current.text || JSON.stringify(latest.current.textRuns) !== JSON.stringify(original.current.textRuns)),
+    commit: () => commit.current(),
+  }), [editor, node.id])
+  const change = (text: string) => {
+    const n = structuredClone(latest.current)
+    replaceText(n, text)
+    latest.current = n
+    setDraft(n)
+    pendingEditsChanged(editor)
+    setError('')
+    sync()
+  }
+  const style = (patch: Partial<import('./model').TextRun>) => {
+    try {
+      const n = structuredClone(latest.current)
+      styleTextRange(n, ...selection, patch)
+      latest.current = n
+      setDraft(n)
+      pendingEditsChanged(editor)
+      select(...selection)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+  const point = (offset: number) => {
+    const l =
+      layout?.lines.find((l) => l.start <= offset && offset <= l.end) || layout?.lines.at(-1)
+    const g = layout?.glyphs.find((g) => g.cluster === offset),
+      previous = layout?.glyphs.find((g) => g.clusterEnd === offset)
+    const flat={x:g?.x??(previous?previous.x+previous.advance:0),y:l?.y||0}
+    const pose=g?.pathTransform||previous?.pathTransform
+    return {...(pose?apply(pose,flat):flat),flat,height:l?.height||draft.fontSize*1.35,pose}
+
+  }
+  const hit = (event: React.PointerEvent) => {
+    const rect = root.current!.getBoundingClientRect()
+    // SVG screen CTM includes all surrounding editor offsets and rotation.
+    const svg = root.current!.querySelector('svg')!,
+      ctm = svg.getScreenCTM()
+    const p = ctm
+      ? new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse())
+      : { x: event.clientX - rect.x, y: event.clientY - rect.y }
+    const l = layout?.lines.reduce((best, l) =>
+      Math.abs(l.y + l.height / 2 - p.y) < Math.abs(best.y + best.height / 2 - p.y) ? l : best,
+    )
+    const candidates =
+      layout?.glyphs.filter((g) => !!draft.textPath || !l || (g.cluster >= l.start && g.cluster < l.end)) || []
+    let best = l?.start || 0,
+      distance = Infinity
+    for (const g of candidates)
+      for (const [x, index] of [
+        [g.x, g.cluster],
+        [g.x + g.advance, g.clusterEnd],
+      ])
+        {const target=g.pathTransform?apply(g.pathTransform,{x,y:g.y-g.size/2}):{x,y:p.y};const d=Math.hypot(target.x-p.x,target.y-p.y);if(d<distance){distance=d;best=index}}
+
+    return best
+  }
+  const navigate = (e: React.KeyboardEvent) => {
+    if (
+      !layout ||
+      e.metaKey ||
+      e.ctrlKey ||
+      e.altKey ||
+      !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)
+    )
+      return
+    e.preventDefault()
+    const backward = input.current?.selectionDirection === 'backward',
+      focus = backward ? selection[0] : selection[1],
+      anchor = backward ? selection[1] : selection[0]
+    const boundaries = [
+      ...new Set([
+        0,
+        draft.text.length,
+        ...Array.from(
+          new Intl.Segmenter('und', { granularity: 'grapheme' }).segment(draft.text),
+          (s) => s.index,
+        ),
+      ]),
+    ].sort((a, b) => a - b)
+    let next = focus
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (!e.shiftKey && selection[0] !== selection[1])
+        next = e.key === 'ArrowLeft' ? selection[0] : selection[1]
+      else {
+        const i = boundaries.indexOf(focus)
+        next =
+          boundaries[
+            Math.max(0, Math.min(boundaries.length - 1, i + (e.key === 'ArrowLeft' ? -1 : 1)))
+          ]
+      }
+    } else {
+      const i = Math.max(
+          0,
+          layout.lines.findIndex((l) => l.start <= focus && focus <= l.end),
+        ),
+        line =
+          layout.lines[
+            Math.max(
+              0,
+              Math.min(
+                layout.lines.length - 1,
+                i + (e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0),
+              ),
+            )
+          ]
+      if (e.key === 'Home') next = line.start
+      else if (e.key === 'End') next = line.end
+      else {
+        const x = point(focus).x
+        let distance = Infinity
+        for (const candidate of boundaries.filter((v) => v >= line.start && v <= line.end)) {
+          const d = Math.abs(point(candidate).x - x)
+          if (d < distance) {
+            distance = d
+            next = candidate
+          }
+        }
+      }
+    }
+    select(e.shiftKey ? anchor : next, next)
+  }
+  const caret = point(
+    input.current?.selectionDirection === 'backward' ? selection[0] : selection[1],
+  ),
+    fill = draft.fills[0]?.color || '#222222'
+  // The run covering the selection start feeds the toolbar defaults; runs
+  // without an explicit fontId/weight inherit the node's text style.
+  const activeRun = draft.textRuns?.find(
+    (r) => r.start <= selection[0] && selection[0] < Math.max(r.end, r.start + 1),
+  )
+  const runFontId = activeRun?.fontId ?? '',
+    runWeight = activeRun?.weight ?? draft.textStyle?.weight ?? 400
+  return (
+    <div
+      ref={root}
+      className="rich-text-editor"
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        transformOrigin: '0 0',
+        transform: `matrix(${matrix.join(',')})`,
+        width: draft.width,
+        minHeight: Math.max(draft.height, layout?.height || 0),
+        zIndex: 20,
+        background: 'transparent',
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      onFocus={() => { blurred.current = false }}
+      onBlur={(e) => {
+        if (!root.current?.contains(e.relatedTarget as Node)) { blurred.current = true; finish() }
+      }}
+    >
+      <div
+        className="rich-text-toolbar"
+        onPointerDown={(e) => {
+          if ((e.target as HTMLElement).tagName === 'BUTTON') e.preventDefault()
+        }}
+      >
+        <button type="button" title="下划线" onClick={() => style({ underline: true })}>
+          U̲
+        </button>
+        <button type="button" title="删除线" onClick={() => style({ strikethrough: true })}>
+          S̶
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            style({ underline: false, strikethrough: false, color: undefined, link: undefined })
+          }
+        >
+          清除装饰
+        </button>
+        <input
+          aria-label="选中文字颜色"
+          type="color"
+          defaultValue="#222222"
+          onChange={(e) => style({ color: e.target.value })}
+        />
+        <input
+          aria-label="选中文字字号"
+          type="number"
+          min={propertyUnits(editor.state.doc, node.id).style}
+          max={4096 * propertyUnits(editor.state.doc, node.id).style}
+          defaultValue={node.fontSize * propertyUnits(editor.state.doc, node.id).style}
+          onChange={(e) => {
+            if (e.target.value) style({ fontSize: Number(e.target.value) / propertyUnits(editor.state.doc, node.id).style })
+          }}
+        />
+        <select
+          aria-label="选中文字字体"
+          value={runFontId}
+          onChange={(e) => style({ fontId: e.target.value || undefined })}
+        >
+          <option value="">跟随文本样式</option>
+          <option value="default">Noto Sans SC（内置）</option>
+          {Object.entries(editor.state.doc.fonts || {}).map(([id, font]) => (
+            <option key={id} value={id}>
+              {font.family}
+            </option>
+          ))}
+        </select>
+        <input
+          aria-label="选中文字字重"
+          type="number"
+          min={1}
+          max={1000}
+          defaultValue={runWeight}
+          onChange={(e) => {
+            if (e.target.value) style({ weight: Math.min(1000, Math.max(1, Number(e.target.value))) })
+          }}
+        />
+        <input
+          aria-label="文字链接"
+          type="url"
+          placeholder="https://…"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const link = e.currentTarget.value
+              if (/^(https?:\/\/|mailto:)/.test(link)) style({ link })
+              else setError('请输入 HTTP(S) 或邮件链接')
+            }
+          }}
+        />
+        <button type="button" onClick={() => finish()}>
+          完成
+        </button>
+        <button type="button" onClick={() => finish(true)}>
+          取消
+        </button>
+      </div>
+      <svg
+        width={draft.width}
+        height={Math.max(draft.height, layout?.height || 0)}
+        style={{ overflow: 'visible', display: 'block', outline: '1px solid #7755dd' }}
+        onPointerDown={(e) => {
+          e.preventDefault()
+          const at = hit(e)
+          anchor.current = e.shiftKey ? selection[0] : at
+          select(anchor.current, at)
+          e.currentTarget.setPointerCapture(e.pointerId)
+        }}
+        onPointerMove={(e) => {
+          if (anchor.current !== null) select(anchor.current, hit(e))
+        }}
+        onPointerUp={() => {
+          anchor.current = null
+        }}
+      >
+        {layout?.glyphs
+          .filter((g) => g.cluster < selection[1] && g.clusterEnd > selection[0])
+          .map((g, i) => {
+            const p = point(g.cluster)
+            return (
+              <rect key={i} x={g.x} y={p.flat.y} width={g.advance} height={p.height} transform={g.pathTransform?matrixString(g.pathTransform):undefined} fill="#0d99ff" fillOpacity={.2} />
+            )
+          })}
+        {selection[0] === selection[1] && (
+          <rect x={caret.flat.x} y={caret.flat.y} width={1} height={caret.height} transform={caret.pose?matrixString(caret.pose):undefined} fill="#7755dd" />
+        )}
+      </svg>
+      <textarea
+        ref={input}
+        aria-label="画布文字编辑"
+        value={draft.text}
+        spellCheck={false}
+        style={{
+          position: 'absolute',
+          left: caret.x,
+          top: caret.y,
+          width: 1,
+          height: caret.height,
+          opacity: 0,
+          padding: 0,
+          border: 0,
+          resize: 'none',
+        }}
+        onChange={(e) => change(e.target.value)}
+        onSelect={sync}
+        onCompositionStart={() => {
+          composing.current = true
+          pendingEditsChanged(editor)
+        }}
+        onCompositionEnd={(e) => {
+          composing.current = false
+          change(e.currentTarget.value)
+          if (blurred.current) finish()
+        }}
+        onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing || composing.current) return
+          navigate(e)
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            finish(true)
+          }
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault()
+            finish()
+          }
+        }}
+      />
+      {error && <div role="alert">{error}</div>}
+    </div>
+  )
+}

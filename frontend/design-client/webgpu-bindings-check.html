@@ -1,0 +1,46 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>WebGPU shadow binding regression</title>
+<h1>WebGPU 阴影绑定回归</h1><p id="status">运行中</p><pre id="result"></pre>
+<script type="module">
+import { initializePicking } from '/src/kernel/picking.ts'
+import { blank, node, paint, effect } from '/src/model.ts'
+import { VectorEngine, color_encode_rgba8 } from '/src/generated/design-kernel/design_kernel.js'
+import { createGpu } from '/src/kernel/gpu/factory.ts'
+import { decodeScenePacket } from '/src/kernel/gpu/scene-packet.ts'
+const rows = []
+try {
+  await initializePicking()
+  const color = { documentSpace: 'srgb', referenceWhiteNits: 203, peakLuminanceNits: 1000 }
+  const renderer = await createGpu('webgpu', true, false, color)
+  const engine = new VectorEngine()
+  try {
+    for (const kind of ['rectangle', 'ellipse']) for (const shadowKind of ['shadow', 'inner-shadow']) {
+      const doc = blank(); doc.schemaVersion = 12; doc.colorManagement = color; doc.rasterProfile = 'figma'
+      const shape = node(kind, 16, 16, 32, 24); shape.radii = [6, 6, 6, 6]; shape.fills = [paint('#3975e8')]
+      const shadow = effect(shadowKind); shadow.radius = 4; shadow.x = 3; shadow.y = 2; shadow.opacity = .7
+      shape.effects = [shadow]; doc.nodes[shape.id] = shape; doc.pages[0].children = [shape.id]
+      engine.load_document(JSON.stringify(doc))
+      for (const preview of [true, false]) {
+        const options = JSON.stringify({ pageId: doc.pages[0].id, width: 64, height: 64,
+          view: { x: .25, y: .5, zoom: 1 }, rasterProfile: 'figma', interactiveEffects: preview })
+        const scene = decodeScenePacket(engine.compile_gpu_packet(options)); scene.displayFilters = preview
+        const output = await renderer.render(scene, true, false)
+        if (!output.linear?.length || !output.linear.every(Number.isFinite)) throw Error('Missing or nonfinite GPU pixels')
+        let max = 0, differing = 0
+        if (!preview) {
+          const gpu = color_encode_rgba8(output.linear, JSON.stringify(color)), cpu = engine.render_rgba(options)
+          if (gpu.length !== cpu.length) throw Error('Pixel length mismatch')
+          for (let i=0; i<gpu.length; i++) { max = Math.max(max, Math.abs(gpu[i]-cpu[i])); if (gpu[i]!==cpu[i]) differing++ }
+          if (max) throw Error(`${kind}/${shadowKind} differs from CPU: ${max}/${differing}`)
+        }
+        rows.push({ kind, shadowKind, preview, backend: output.backend,
+          comparison: preview ? null : { max, differing }, drawCalls: output.drawCalls })
+        document.getElementById('result').textContent = JSON.stringify(rows, null, 2)
+      }
+    }
+    document.getElementById('status').textContent = 'PASS: 8 WebGPU renders; 4 settled frames byte-identical to CPU'
+  } finally { renderer.dispose(); engine.free() }
+} catch (error) {
+  document.getElementById('status').textContent = 'FAIL: ' + String(error)
+  document.getElementById('result').textContent += '\n' + (error.stack || '')
+}
+</script>

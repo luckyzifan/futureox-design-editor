@@ -1,0 +1,125 @@
+{
+  "source": "Chrome UI export1xPNG; original and first/third Done observed, second completed Downloads row verified; all owned tabs closed",
+  "method": "Chrome UI selection export, PNG1x, SRGB; original PNG bytes copied without re-encoding.",
+  "baselineFile": "frontend/design-client/public/fidelity/optics-2026-10-08/OpticsQA-frost-1.5-1x.png",
+  "baselinePngSha256": "52835aa8cca4238adb750053c14d1e767a9e4155685850083ba236a890154e56",
+  "metadata": "testing/review/design-kernel-exact-2026-10-08/capture-extent-controls-2026-10-09/figma-parent-extent-controls.json",
+  "metadataSha256": "91a8cd417c02f051027ba5c41059d4ed50aadff984af984751d8f5afc4ae2086",
+  "frozenPredictions": [
+    {
+      "file": "testing/review/design-kernel-exact-2026-10-08/capture-extent-controls-2026-10-09/frozen-predictions.json",
+      "sha256": "2875ff3673299bd370296690a9c960f368635621bbdd71d0cb51263f183c1258",
+      "freezeMtimeNs": 1791498943769607705
+    },
+    {
+      "file": "testing/review/design-kernel-exact-2026-10-08/capture-extent-controls-2026-10-09/frozen-fused-predictions.json",
+      "sha256": "836748d6c13bc577100a8d4df9ea4e76406601935a0b6b73eb4147e18f87527f",
+      "freezeMtimeNs": 1791499710249339861
+    }
+  ],
+  "freezeBoundary": "Both prediction ledgers were frozen before the new official controls were exported; original immutable JSON bytes and SHA256 are preserved. File times are audit metadata, not independent timestamp authorities.",
+  "independentFullImageComparison": "testing/review/design-kernel-exact-2026-10-08/capture-extent-controls-2026-10-09/official-controls-independent-comparison.json",
+  "independentComparisonSha256": "6e75dbda19e44c7ed5d2d6c090d4ddbe9698404dc03aa5f8c705f9776f0c2a8f",
+  "rows": [
+    {
+      "name": "CaptureExtentQA-128",
+      "frameId": "215:2",
+      "pageId": "213:2",
+      "size": [
+        128,
+        128
+      ],
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5704
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "image": "frontend/design-client/public/fidelity/capture-extent-controls-2026-10-09/CaptureExtentQA-128.png",
+      "pngSha256": "52835aa8cca4238adb750053c14d1e767a9e4155685850083ba236a890154e56",
+      "rgbaSha256": "36529286f37db2b014f2393e8aa9bf47ce656e17052742ee4a677e70fd337bcf",
+      "topLeft128RgbaSha256": "36529286f37db2b014f2393e8aa9bf47ce656e17052742ee4a677e70fd337bcf",
+      "topLeft128VersusOriginal": {
+        "differentPixels": 0,
+        "differentBytes": 0,
+        "maximum": 0
+      },
+      "baselineFileBytesEqual": true,
+      "extensionIsOpaqueWhite": true,
+      "unchangedChildValuesSha256ExcludingIds": "ab466fd387cd3e522011958a1685f5a02e0da34203b880ed39b85ddd36bc8db1"
+    },
+    {
+      "name": "CaptureExtentQA-256x128",
+      "frameId": "215:38",
+      "pageId": "213:3",
+      "size": [
+        256,
+        128
+      ],
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5704
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "image": "frontend/design-client/public/fidelity/capture-extent-controls-2026-10-09/CaptureExtentQA-256x128.png",
+      "pngSha256": "a8e776b5b4730940ad7722f8e5548cfb19bb2a8749b91e29229240699c7bdd9c",
+      "rgbaSha256": "a4163f271e423a600654624fd92e29cba23333ada0aa0c6012225125f9f1bbd6",
+      "topLeft128RgbaSha256": "36529286f37db2b014f2393e8aa9bf47ce656e17052742ee4a677e70fd337bcf",
+      "topLeft128VersusOriginal": {
+        "differentPixels": 0,
+        "differentBytes": 0,
+        "maximum": 0
+      },
+      "baselineFileBytesEqual": false,
+      "extensionIsOpaqueWhite": true,
+      "unchangedChildValuesSha256ExcludingIds": "ab466fd387cd3e522011958a1685f5a02e0da34203b880ed39b85ddd36bc8db1"
+    },
+    {
+      "name": "CaptureExtentQA-256",
+      "frameId": "215:20",
+      "pageId": "213:4",
+      "size": [
+        256,
+        256
+      ],
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5704
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "image": "frontend/design-client/public/fidelity/capture-extent-controls-2026-10-09/CaptureExtentQA-256.png",
+      "pngSha256": "56b4d844689a5f9bae87d7b2b8bb683b7ff1636b48ce7768cebb0f72e1a576ac",
+      "rgbaSha256": "ca92901a9a162d3b6cb01a15135338d96ee3cbcf555875144a5cf011f88670d3",
+      "topLeft128RgbaSha256": "36529286f37db2b014f2393e8aa9bf47ce656e17052742ee4a677e70fd337bcf",
+      "topLeft128VersusOriginal": {
+        "differentPixels": 0,
+        "differentBytes": 0,
+        "maximum": 0
+      },
+      "baselineFileBytesEqual": false,
+      "extensionIsOpaqueWhite": true,
+      "unchangedChildValuesSha256ExcludingIds": "ab466fd387cd3e522011958a1685f5a02e0da34203b880ed39b85ddd36bc8db1"
+    }
+  ],
+  "countingPolicy": "Independent research controls only. These three images contribute zero cases to the72-case external acceptance score and zero cases to the completed internal gate."
+}

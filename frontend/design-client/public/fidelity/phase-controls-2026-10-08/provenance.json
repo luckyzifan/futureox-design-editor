@@ -1,0 +1,327 @@
+{
+  "source": "Actual Chrome Figma PNG 1x SRGB export via UI, 2026-10-08; original bytes retained",
+  "fileKey": "KawVhUXCap10WDTprxYEmu",
+  "rows": [
+    {
+      "name": "PhaseQA-main-513x257.png",
+      "nodeId": "136:2",
+      "size": [
+        513,
+        257
+      ],
+      "bytes": 88383,
+      "sha256": "ad94728d8e2cd47982fbb2ee88682b604cf0a5bc4506e88131587da66c31100b"
+    },
+    {
+      "name": "PhaseQA-offset-282x270.png",
+      "nodeId": "136:4",
+      "size": [
+        282,
+        270
+      ],
+      "bytes": 49648,
+      "sha256": "da0fca5a31b78321f2aa1891077ff0e1105ba415789903bbdceca70869ee1a5d"
+    },
+    {
+      "name": "PhaseQA-isolated-282x270.png",
+      "nodeId": "136:6",
+      "size": [
+        282,
+        270
+      ],
+      "bytes": 47946,
+      "sha256": "6bfc9cb388649e835ef60bfc3d24deec5585f9e69005acffc7c0975abc404cc2"
+    }
+  ],
+  "parameters": {
+    "createdNodeIds": [
+      "136:2",
+      "136:3",
+      "136:4",
+      "136:5",
+      "136:6",
+      "136:7",
+      "136:8"
+    ],
+    "mutatedNodeIds": [
+      "136:2",
+      "136:3",
+      "136:4",
+      "136:5",
+      "136:6",
+      "136:7",
+      "136:8"
+    ],
+    "records": [
+      {
+        "id": "136:2",
+        "name": "PhaseQA-main-513x257",
+        "width": 513,
+        "height": 257,
+        "absoluteTransform": [
+          [
+            1,
+            0,
+            26912
+          ],
+          [
+            0,
+            1,
+            96
+          ]
+        ],
+        "exportSettings": [
+          {
+            "format": "PNG",
+            "suffix": "",
+            "contentsOnly": true,
+            "colorProfile": "SRGB",
+            "constraint": {
+              "type": "SCALE",
+              "value": 1
+            }
+          }
+        ],
+        "children": [
+          {
+            "id": "136:3",
+            "name": "measured-gradient",
+            "type": "RECTANGLE",
+            "x": 0,
+            "y": 0,
+            "width": 513,
+            "height": 257,
+            "opacity": 1,
+            "blendMode": "PASS_THROUGH",
+            "fills": [
+              {
+                "type": "GRADIENT_LINEAR",
+                "visible": true,
+                "opacity": 1,
+                "blendMode": "NORMAL",
+                "gradientStops": [
+                  {
+                    "color": {
+                      "r": 0,
+                      "g": 0.46666666865348816,
+                      "b": 0.5,
+                      "a": 1
+                    },
+                    "position": 0,
+                    "boundVariables": {}
+                  },
+                  {
+                    "color": {
+                      "r": 1,
+                      "g": 0.46666666865348816,
+                      "b": 0.5,
+                      "a": 1
+                    },
+                    "position": 1,
+                    "boundVariables": {}
+                  }
+                ],
+                "gradientTransform": [
+                  [
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0
+                  ]
+                ]
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "136:4",
+        "name": "PhaseQA-offset-282x270",
+        "width": 282,
+        "height": 270,
+        "absoluteTransform": [
+          [
+            1,
+            0,
+            27489
+          ],
+          [
+            0,
+            1,
+            96
+          ]
+        ],
+        "exportSettings": [
+          {
+            "format": "PNG",
+            "suffix": "",
+            "contentsOnly": true,
+            "colorProfile": "SRGB",
+            "constraint": {
+              "type": "SCALE",
+              "value": 1
+            }
+          }
+        ],
+        "children": [
+          {
+            "id": "136:5",
+            "name": "measured-gradient",
+            "type": "RECTANGLE",
+            "x": 13,
+            "y": 7,
+            "width": 256,
+            "height": 256,
+            "opacity": 1,
+            "blendMode": "PASS_THROUGH",
+            "fills": [
+              {
+                "type": "GRADIENT_LINEAR",
+                "visible": true,
+                "opacity": 1,
+                "blendMode": "NORMAL",
+                "gradientStops": [
+                  {
+                    "color": {
+                      "r": 0,
+                      "g": 0.46666666865348816,
+                      "b": 0.5,
+                      "a": 1
+                    },
+                    "position": 0,
+                    "boundVariables": {}
+                  },
+                  {
+                    "color": {
+                      "r": 1,
+                      "g": 0.46666666865348816,
+                      "b": 0.5,
+                      "a": 1
+                    },
+                    "position": 1,
+                    "boundVariables": {}
+                  }
+                ],
+                "gradientTransform": [
+                  [
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0
+                  ]
+                ]
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "136:6",
+        "name": "PhaseQA-isolated-282x270",
+        "width": 282,
+        "height": 270,
+        "absoluteTransform": [
+          [
+            1,
+            0,
+            27835
+          ],
+          [
+            0,
+            1,
+            96
+          ]
+        ],
+        "exportSettings": [
+          {
+            "format": "PNG",
+            "suffix": "",
+            "contentsOnly": true,
+            "colorProfile": "SRGB",
+            "constraint": {
+              "type": "SCALE",
+              "value": 1
+            }
+          }
+        ],
+        "children": [
+          {
+            "id": "136:7",
+            "name": "isolated-group",
+            "type": "FRAME",
+            "x": 13,
+            "y": 7,
+            "width": 256,
+            "height": 256,
+            "opacity": 0.625,
+            "blendMode": "NORMAL",
+            "fills": [],
+            "children": [
+              {
+                "id": "136:8",
+                "name": "measured-gradient",
+                "type": "RECTANGLE",
+                "x": 0,
+                "y": 0,
+                "width": 256,
+                "height": 256,
+                "fills": [
+                  {
+                    "type": "GRADIENT_LINEAR",
+                    "visible": true,
+                    "opacity": 1,
+                    "blendMode": "NORMAL",
+                    "gradientStops": [
+                      {
+                        "color": {
+                          "r": 0,
+                          "g": 0.46666666865348816,
+                          "b": 0.5,
+                          "a": 1
+                        },
+                        "position": 0,
+                        "boundVariables": {}
+                      },
+                      {
+                        "color": {
+                          "r": 1,
+                          "g": 0.46666666865348816,
+                          "b": 0.5,
+                          "a": 1
+                        },
+                        "position": 1,
+                        "boundVariables": {}
+                      }
+                    ],
+                    "gradientTransform": [
+                      [
+                        1,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        1,
+                        0
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

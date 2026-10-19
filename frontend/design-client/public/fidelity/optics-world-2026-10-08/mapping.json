@@ -1,0 +1,1376 @@
+{
+  "scope": "Additional truthful world-space inputs. Original 72 inputs and reference PNGs are preserved; scores must be reported separately.",
+  "originalCasesSha256": "888c4806ea2110702ea165c09bc6e73a875d3c69081ac3623266e396fe553c50",
+  "worldMetadataSha256": "44faf15b15bb441f841bc06158d21a02ed866206fbe529ec13f428eb450a670f",
+  "cases": [
+    {
+      "id": "MaterialQA-glass-neutral",
+      "figmaNodeId": "62:3",
+      "originalInputSha256": "a07b2b5a2747039d40770b4742294643b37137d9b9ba6e8920974345d02fb7a5",
+      "restoredInputSha256": "760fbe582c19e15a81578d942aea1288a6faa0a78fd49fca36f832d135ce1983",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          96
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "91b40c104aa29a53c49cf8ab0d992c072bead36b454da65c20e02222aad98727"
+    },
+    {
+      "id": "MaterialQA-light-0",
+      "figmaNodeId": "62:5",
+      "originalInputSha256": "4c3ce6c76986a84087c8987e402513ae3c5e432b16f2efece1c1a70e8edb0e71",
+      "restoredInputSha256": "f4016fd0084c298599e7eeae6e193d0dedd9aaf958a2c376d82ca8889e5a1dea",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          248
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "8179e65d411b704005d272a5e6c697191e4f9ac4bc1993cd61c2cfef3685b526"
+    },
+    {
+      "id": "MaterialQA-light-90",
+      "figmaNodeId": "62:7",
+      "originalInputSha256": "e878b86f4ab5897607762365b1d54ace960fd3ea4b70e347c2a7442e9f8938dc",
+      "restoredInputSha256": "30720b5f875b004c92ae415f7720c3701fbce63ce74b4804551bde839fc3ccb7",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          400
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "08c505ff2af6b5fb1f5a8470a1925d0c7c113a074d24d1bfadb88810b96e0ae7"
+    },
+    {
+      "id": "MaterialQA-light-180",
+      "figmaNodeId": "62:9",
+      "originalInputSha256": "3fd3cd0a9a7a4af4efb2f5b30ba8389db7f3ff2e4e65294ba1bff4338d0aacf3",
+      "restoredInputSha256": "9007f66b8ba18c3bcc2427c343c316a24d1920d11289e9f71d2939fba509bf25",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          552
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "0da721f027967925eaaffe8d1304fda840ce7f93d88c60807c5236f5bfe3983c"
+    },
+    {
+      "id": "MaterialQA-light-270",
+      "figmaNodeId": "62:11",
+      "originalInputSha256": "a0b637e1edcae9e9f8ddc4286cbcb168e830d833a115f69c69efae4b26905764",
+      "restoredInputSha256": "191e8e08657f047327e72b1884b7a76fb74888e12a0c1ad9548718392633b7fc",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          704
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "dc1017d0643e7435f0dcf85828f5a9989eb25a6bb580f63fea5d61172b4da152"
+    },
+    {
+      "id": "MaterialQA-light-strong",
+      "figmaNodeId": "62:13",
+      "originalInputSha256": "21d9a357c7248fa11d456a9919a7e4abae2a3099b8d47eb80d1fbc50f151ae72",
+      "restoredInputSha256": "441dbff9f7b64c4fa989dc414b9839ee16c7635b3cbd8a9e66d66212655573f4",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          856
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "e7e368819c6173c0f6aac09f0215a79d16ad7f17fbd869740eec55b0762be3dd"
+    },
+    {
+      "id": "MaterialQA-depth-1",
+      "figmaNodeId": "62:15",
+      "originalInputSha256": "5c0bced9d8219265dc9eea55346d16921366125518fe45af8e2f85f6d9f8a259",
+      "restoredInputSha256": "895d489a2bc2e89ac7f139f811c942612575866c575cf1f8ec84a04d7b3b5d96",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          1008
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "7dded872404f7ad2ddf2f9e29c960079fe0904d404aa5a6b95c08b501539a88d"
+    },
+    {
+      "id": "MaterialQA-depth-8",
+      "figmaNodeId": "62:33",
+      "originalInputSha256": "489d674c13cea334f3b0814df3f100f28084f6393425d36dc7878418aaa20b8e",
+      "restoredInputSha256": "78c49038323f183a5d2e1a4ed2bfff69b14c533768a3cef6128ededa78c1f5a1",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          1160
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "a93a4c0f1f8d5a1448dd0de414ae427a3a9d098f9618cf048ce2d0ca506e2720"
+    },
+    {
+      "id": "MaterialQA-depth-24",
+      "figmaNodeId": "62:51",
+      "originalInputSha256": "7f830648ec4de2416daa1f2d9c0252963057fcb588c86f042b0343a95f21a7b4",
+      "restoredInputSha256": "8734cfce1cddff326d12b0191c65b64f3cda76ebf490653e0e7ad3dc59174a6b",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          1312
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "132ad53cb89cc50a2b406f5c3d4b653c5602a902defe09c78370daa309f5d239"
+    },
+    {
+      "id": "MaterialQA-refraction-1",
+      "figmaNodeId": "62:69",
+      "originalInputSha256": "f1c3d9971d217d3ad01e7c0140b2f830f12402aed272889d4d9c94c496764c3f",
+      "restoredInputSha256": "eba74ec0d3d78664702a3cb8b5ab73c23c4f08fbbef6b7547fa0d3ded578d376",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          1464
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "357029b24c57726c47ab8efd842bc6f2b878ef20f70867ad38a7d993f0176037"
+    },
+    {
+      "id": "MaterialQA-dispersion-half",
+      "figmaNodeId": "62:87",
+      "originalInputSha256": "2338dbbdf4af3fd91769775b3a92ba72c1638542f729392feb8a27a8adf4f8e9",
+      "restoredInputSha256": "8f54b50ae56f2aeba8853807cac174e813fb1aca3f113224ac17f690fc48fda2",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          1616
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "665ebed7d299c72210ed9cf8cdca2ef54e151c3381a367ac5a5aa82e5c513aea"
+    },
+    {
+      "id": "MaterialQA-dispersion-without-refraction",
+      "figmaNodeId": "62:105",
+      "originalInputSha256": "6f4be418cd15050dfd9d658120714d70aed4bb406a40a14aed759fa6162b93aa",
+      "restoredInputSha256": "0a01cecd6c8cba06db734db80262856c0fb91f7305c95fa96c3fc29b9eb571ea",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          1768
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "466fcbb177d35ed6fd0da63a0dca7dc5730f6c679357e833be4bbbbe42530df7"
+    },
+    {
+      "id": "MaterialQA-frost-quarter",
+      "figmaNodeId": "62:123",
+      "originalInputSha256": "7ce5383a7158b439d8d33c4752cdaa25b9b8d87cd9f804b0d3c7c5da04233c9b",
+      "restoredInputSha256": "11614b35b16b4f3cd2c8b13e4fdf0b59ad54861d9808a232385f274c738b3564",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          1920
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81"
+    },
+    {
+      "id": "MaterialQA-frost-1",
+      "figmaNodeId": "62:141",
+      "originalInputSha256": "8e8b36f4d0ac488c873576acfe813335da38df104c60e9058b1d990a6102baf4",
+      "restoredInputSha256": "c075f9c3e3e595d8c52617c040a7713635c47434a8c2906f9992cc1bd84931f0",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2072
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81"
+    },
+    {
+      "id": "MaterialQA-frost-4",
+      "figmaNodeId": "62:159",
+      "originalInputSha256": "28fc94cf4b3f35fc2d4eda1a569c4412ab8f73dda9d9eb4f3f361273a1e653ee",
+      "restoredInputSha256": "fcaa95813f6392ac64da8f3d49622fd58fdc3391cc038e1fbd9308ed76e3e8c1",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2224
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "eedf66dc5b26c5ba3a5e7b69c0cb39e8fdf52a73352316d240df7e915c20ec4d"
+    },
+    {
+      "id": "MaterialQA-texture-neutral",
+      "figmaNodeId": "62:177",
+      "originalInputSha256": "e9c3a390f88903e6b038311fe0c039e568e138dd1480ac9c307a3c807ddf1f43",
+      "restoredInputSha256": "27c7177ceac13c560d1c85042a9ef0c5080267970ae73f68c37dc307921b3979",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2376
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "b5b653225e69ee267cadb716dc89bb8b8ff68b08dc7fcde11e55f5592f4d296e"
+    },
+    {
+      "id": "MaterialQA-texture-size-1",
+      "figmaNodeId": "62:179",
+      "originalInputSha256": "e204172f6a303df24f03f92f1e72a1ca8d3fa7b0221b853016bb53bf0125e848",
+      "restoredInputSha256": "4bda88906829cefd1cf10437d033e2a38f2e2bdacde6752da94387ea23040da6",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2528
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "4bd4df00a99081e874ade019d4acc5ad29998f3f7f92638fa34bf58cc2757571"
+    },
+    {
+      "id": "MaterialQA-texture-size-8",
+      "figmaNodeId": "62:181",
+      "originalInputSha256": "f63b20edf5ff3c7e246f6fd05fdcdcc3ae5cc84fc199131ab3132c0dd054af0f",
+      "restoredInputSha256": "0ec57a000d4515f6ab55d24641009f1f11c79f005ecce70e6279757b9f678e5c",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2680
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "5da4bf45fef28bec03af4a723ebd987a34e152327c27c6232e7a878bce6d5a86"
+    },
+    {
+      "id": "MaterialQA-texture-unclipped",
+      "figmaNodeId": "62:183",
+      "originalInputSha256": "cbf4083141394fa12afbcea44618eff84d636831355542f4293321a6ad99252d",
+      "restoredInputSha256": "19e52ea2c298c74503f5378cb4b328c9d4cf58d8f0f3359e74f62f61192e6e9d",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2832
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "145540f3edc3d3458eefae916066d572b54064204054c2572c4dd291380290d4"
+    },
+    {
+      "id": "MaterialQA-texture-size-32",
+      "figmaNodeId": "62:185",
+      "originalInputSha256": "434f383520278bbd6c17e207a3bc55ebb769097fa64db3f1d67a233d991dca10",
+      "restoredInputSha256": "6d85cf12beb34025306a5d55447085f0a4d2c827c4b339edd43231fd436c46e0",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2984
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "39b5d9f70c0fd548e47c30154c7453740410abed64298f716efdeb1126509c64"
+    },
+    {
+      "id": "MaterialQA-texture-radius-4",
+      "figmaNodeId": "62:187",
+      "originalInputSha256": "32dd879b5287d62863d915364866a725a2b97088fd7704a6afc5f60470dc1f97",
+      "restoredInputSha256": "d8acaf07c7d3561654ffb465594868b6175d7201388cd056f346027b9b00ea05",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          3136
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "a3ecd7421dc1c38c39e509d0a40873ed7ec504437b058dfac21b558575460257"
+    },
+    {
+      "id": "MaterialQA-texture-anisotropic",
+      "figmaNodeId": "62:189",
+      "originalInputSha256": "06d54d0c3cab4ad1b614e15a89e6b99fc2ff0092f6794375b3e64c474e0c4de1",
+      "restoredInputSha256": "1acfd2f9a9f58163561327254ae4ce470793c82915d3bf9530ae023bc42c8150",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          3288
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "7c5da373b2e53c7199b5c57526cc3a342f57425daeb1fa20266f338293165bb5"
+    },
+    {
+      "id": "MaterialQA-texture-size-8-twin",
+      "figmaNodeId": "63:2",
+      "originalInputSha256": "73daf6f1e56d3c395723bdedffa4869222dca17f16c5843f5dc51a8cf0953753",
+      "restoredInputSha256": "14b48c4bc4de657d95e049d4e9d1d2ef9f8eee076bbebe536de0d0b2f3ded0c5",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          3440
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "referenceSha256Unchanged": "5da4bf45fef28bec03af4a723ebd987a34e152327c27c6232e7a878bce6d5a86"
+    },
+    {
+      "id": "OpticsQA-frost-0-1x",
+      "figmaNodeId": "99:3",
+      "originalInputSha256": "445173662edc2e489f0b5121f9689d945010ac68f0041b26c3d77b4838a5924b",
+      "restoredInputSha256": "9404af4ca74bc632dd1c73b029533411bb290950982ed88bbb6ba852782c8668",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5096
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "55ea372ba5e854b2d1023968d42abce1986741939c9595120ff7463f175bb324"
+    },
+    {
+      "id": "OpticsQA-frost-0.125-1x",
+      "figmaNodeId": "99:21",
+      "originalInputSha256": "6dd0cea1aac956e87b2da891c2566ac00e820f3564c53d0a4d72ca09eccdd150",
+      "restoredInputSha256": "d963035136efd1c216ae9e656e8bddcec2736ef94273e9cfdaf37295d34b98b9",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5248
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81"
+    },
+    {
+      "id": "OpticsQA-frost-0.5-1x",
+      "figmaNodeId": "99:39",
+      "originalInputSha256": "da85a1afd7e61aa18c3ae9a04c2781142b7668d2f95dae69855ff8fc97cfe717",
+      "restoredInputSha256": "2e1159887c523b9c85f94782a8474284bd0b6e18621906a7a317c0b4e1755e61",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5400
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81"
+    },
+    {
+      "id": "OpticsQA-frost-1-1x",
+      "figmaNodeId": "99:57",
+      "originalInputSha256": "f39467e6a4642605d0410de2e74c7dc3089ab25d91b10e05430bb8d121abddda",
+      "restoredInputSha256": "c934522ca455f492bd69c657b78bf759746199ce89c35caf51ec170815b8c11c",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5552
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81"
+    },
+    {
+      "id": "OpticsQA-frost-1.5-1x",
+      "figmaNodeId": "99:75",
+      "originalInputSha256": "35836dced665733c889b02d03364ad0af4afcd074df236868a6525124d2d009f",
+      "restoredInputSha256": "58e323dda87cb6f1fe149b1523519b100422ee616c785d5044301720f60f3ede",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5704
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "52835aa8cca4238adb750053c14d1e767a9e4155685850083ba236a890154e56"
+    },
+    {
+      "id": "OpticsQA-frost-1.99-1x",
+      "figmaNodeId": "99:93",
+      "originalInputSha256": "852fff0d0e08353a519cc5ef3819ff8691163d21ec9af7ce2ff46ae34b0aa1c1",
+      "restoredInputSha256": "89b95521322686e71d98a96f229b3930614d56f998e6f9189d589008c234557e",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5856
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "9ce71af70b369658486ec56d03f57aedc4c43ed4b00356077979a7ed1d6fe021"
+    },
+    {
+      "id": "OpticsQA-frost-2-1x",
+      "figmaNodeId": "99:111",
+      "originalInputSha256": "11ea3f6c5f85fb51bc54fd341507b42d11528afc9a9166e299d30eb9203cc707",
+      "restoredInputSha256": "58be41fe23aa80e509c2ea7053bd8c1fc2d4180592dfbfa96a24728efaf242ec",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          6008
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "fa68b15fe1916b4f48210bb49150a8fd3a8275a381f45ae9601be21e4797f91d"
+    },
+    {
+      "id": "OpticsQA-frost-2.01-1x",
+      "figmaNodeId": "99:129",
+      "originalInputSha256": "af5b5c44f2faf59d94e4d6609edaa6579724fe37f80f5e309d1019b53ff2d40f",
+      "restoredInputSha256": "e4479d87df9d094c953e69a49bd74571dd09c7284ccc11781e81c0731973ddb5",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          6160
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "fa68b15fe1916b4f48210bb49150a8fd3a8275a381f45ae9601be21e4797f91d"
+    },
+    {
+      "id": "OpticsQA-frost-3-1x",
+      "figmaNodeId": "99:147",
+      "originalInputSha256": "44f4a184f4a0ea131eb1a0dcb6e4b22b00db1c2c3e7cfbee60f5c46b178165fc",
+      "restoredInputSha256": "b644c3f574d99108296517e331ae071b01dd9cb9522735923382ca417604decb",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          6312
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "31809fb4f74774bd8695215e60a698d8d87f1e622132e116cf5b151d5797b1e7"
+    },
+    {
+      "id": "OpticsQA-frost-4-1x",
+      "figmaNodeId": "99:165",
+      "originalInputSha256": "5a538e2f104ceda0c16a3b58715f90a7a67ce62847971124d28629a122087fc3",
+      "restoredInputSha256": "00cc10d463d5b5a9be79b98e66ca7b5cf6de317e57f5ffee5a12c8c7f47eb2ad",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          6464
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "eedf66dc5b26c5ba3a5e7b69c0cb39e8fdf52a73352316d240df7e915c20ec4d"
+    },
+    {
+      "id": "OpticsQA-frost-0-2x",
+      "figmaNodeId": "99:183",
+      "originalInputSha256": "9d0594dfc0ad1e394e79e191331a912bf8352c3157a2ed4726e137748664851b",
+      "restoredInputSha256": "05a0a9b4954810a033c560b19ac68991c2f9b106b5e343e6f24a4e821133356e",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          6616
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "c1db12f5edbfb62b5f7caf3734400b116f2f8523c33dedcf6ba3da8cfec1b9a9"
+    },
+    {
+      "id": "OpticsQA-frost-0.125-2x",
+      "figmaNodeId": "99:201",
+      "originalInputSha256": "68e105f4c185a7756e7a865f90633718c55feebc09099d483d08ccf032c5043f",
+      "restoredInputSha256": "621e2a3e9d7aad2b0bda3c8650e240090d31d0f9a91f39edfb8257960a0a4e64",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          6768
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "4a7ad60652158eff88a560a43837d0b2a2f851b8d0bd95610d58d3f2628364aa"
+    },
+    {
+      "id": "OpticsQA-frost-0.5-2x",
+      "figmaNodeId": "99:219",
+      "originalInputSha256": "8e5df105e1105e4a7c5b9274031fc7a8fe017b57bc06172e6a0246be635227f2",
+      "restoredInputSha256": "c23d7610b0185b9d2dd03118932dec7c896ec69f75e35dd46689bc610eb82e43",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          6920
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "4a7ad60652158eff88a560a43837d0b2a2f851b8d0bd95610d58d3f2628364aa"
+    },
+    {
+      "id": "OpticsQA-frost-1-2x",
+      "figmaNodeId": "99:237",
+      "originalInputSha256": "519a25a40d5a26b48367b528c2114da9cacc46ec697c6b0a4158b59423c3b854",
+      "restoredInputSha256": "f635c2532e131989d60b511e47c31322a5606bca027507bd24ac141704443f7d",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          7072
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "4a7ad60652158eff88a560a43837d0b2a2f851b8d0bd95610d58d3f2628364aa"
+    },
+    {
+      "id": "OpticsQA-frost-1.5-2x",
+      "figmaNodeId": "99:255",
+      "originalInputSha256": "976188853a06f1d93a0e4b24cd1c94fd74e0e3e3d5fbbbf4b0a8beb2809603ad",
+      "restoredInputSha256": "58bcc1802e120957447d379918ee99b1f1d48ed9b9845516b4507c1a75613dd1",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          7224
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "0e36b4c19b962f0fc333c22affdc3cc8d24ea31e9268dea8cdc4d96634f02524"
+    },
+    {
+      "id": "OpticsQA-frost-1.99-2x",
+      "figmaNodeId": "99:273",
+      "originalInputSha256": "7f707b7da48dc1bd0953e528c8f9f6da15bfe4cca98dd5bfbf922297d0958d7d",
+      "restoredInputSha256": "3e9dc5f7ec4e997b84272810759aa30ec87feada358e826955bc0a4aeb077b0f",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          7376
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "efb19c44945538aec3bba27ceace4119634e0e93fcbcc95d72a8d0a068869f34"
+    },
+    {
+      "id": "OpticsQA-frost-2-2x",
+      "figmaNodeId": "99:291",
+      "originalInputSha256": "7fe67bcd0e1ae8802b9df009b101c502ee9b00cfa6efc5d59c9e76f872a01c92",
+      "restoredInputSha256": "cff971dcac89ee05f1b5cf8c475098214111d1bdeb8fd720a30c208ae892d390",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          7528
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "e01cc7a74166d75422f947c1edea488beb7ae28c7b577e4e6e553802403bbfb1"
+    },
+    {
+      "id": "OpticsQA-frost-2.01-2x",
+      "figmaNodeId": "99:309",
+      "originalInputSha256": "01b5fc5e951700a20771a1b7a58dd6655db4aee87caca4deacfc4579274972bd",
+      "restoredInputSha256": "b97e9dff37581abc7a191c8bea836ab13aa991e03338d48e7b814ee4826b3e99",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          7680
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "ba709e554e1d667cefe5231904ed21e77b7b4c836c462e62ffad296a57606246"
+    },
+    {
+      "id": "OpticsQA-frost-3-2x",
+      "figmaNodeId": "99:327",
+      "originalInputSha256": "b19fe10ec5ccb648d0ac694b4a6d49363c928f804f25f689977834d0f4342187",
+      "restoredInputSha256": "700c3111c432ba8f4d5b0411d468a17bee6ffecbc4b1cbd6f7b0d1eb41f40763",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          7832
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "d9f9c76d45f83a5b910aab05368985f1d43ea844b9024e90cd788b273fb336c7"
+    },
+    {
+      "id": "OpticsQA-frost-4-2x",
+      "figmaNodeId": "99:345",
+      "originalInputSha256": "bbf4fc56795ddfa8eadaea53d9d579e89223c2de0d0110f0d89502a0a6867804",
+      "restoredInputSha256": "9ae7f91dedcd8b530b1078622cdedd7ec994c87be1d1b981b1a3b93c8c6758c8",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          7984
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "1c46bca5fd9ff3bcf3a8bbb7b89b04eb22554f32451e5db4cb3045c5e5ef2834"
+    },
+    {
+      "id": "OpticsQA-frost-0-4x",
+      "figmaNodeId": "99:363",
+      "originalInputSha256": "7d36d8663acfd39c8c5975a6b4e471a6e1eaca00a3b320e720e7a836763ba72e",
+      "restoredInputSha256": "0a8aaa8894fbf3a60db64ae6f6cea1154680cf2609a56e79636f20ea45ba757b",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          8136
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "3dcf84f22502726fdbe9a4b40605594f45ea70b21c512916e169e9d27918cd06"
+    },
+    {
+      "id": "OpticsQA-frost-0.125-4x",
+      "figmaNodeId": "99:381",
+      "originalInputSha256": "28d34f81087e307ea696eb52b233672a078c873d4af6fb92ab299cf58a91703c",
+      "restoredInputSha256": "cf217b9640a273fbf4187b2e266cf5aead7d78ef627f072d26b61cc8440d6df3",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          8288
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "f96589a75dfcd87a4295fb07933c627cf4afe9ba88e57572ee52315e53b57eed"
+    },
+    {
+      "id": "OpticsQA-frost-0.5-4x",
+      "figmaNodeId": "99:399",
+      "originalInputSha256": "8a91fb37c22587c6f7dd4bf71ccb7285a0dee59d7a6c25a7d04cdf6349bb266a",
+      "restoredInputSha256": "2037448536fa7d078ac05cc7c838bce97d797f86e275fdf7436c6824a89338f6",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          8440
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "f96589a75dfcd87a4295fb07933c627cf4afe9ba88e57572ee52315e53b57eed"
+    },
+    {
+      "id": "OpticsQA-frost-1-4x",
+      "figmaNodeId": "99:417",
+      "originalInputSha256": "3a9948e64e6a0405892c5ff6323aef6e6d709322d7aeda9a9c476304576c5652",
+      "restoredInputSha256": "ea12f59605afbebddcf9e4966fee6d74f0a1eb933044387e8d28c8f9c48db303",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          8592
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "f96589a75dfcd87a4295fb07933c627cf4afe9ba88e57572ee52315e53b57eed"
+    },
+    {
+      "id": "OpticsQA-frost-1.5-4x",
+      "figmaNodeId": "99:435",
+      "originalInputSha256": "80a8dbea8e25c2428bfd3340365675d743789b3e13a87ba8c289d18b2a836e7d",
+      "restoredInputSha256": "8db24603796d1d3738916c06f00123c0e000ceaf81301bc23069470fa863c08c",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          8744
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "5208729b4bb3775358418fc74b8968e487175fd7cc37148d092dc1b74c713f14"
+    },
+    {
+      "id": "OpticsQA-frost-1.99-4x",
+      "figmaNodeId": "99:453",
+      "originalInputSha256": "b10bf148165a75bc22541d29d567f515f0ddf3e30f2a239fbf0f133f048d85fb",
+      "restoredInputSha256": "2b60351862deaddd442a04b00359b8c0bb9778cf1820e4ea1721270c830188ab",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          8896
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "c566482a3695657030c5866cab05eb2079189ca19ee5f4751fa726ef431eae46"
+    },
+    {
+      "id": "OpticsQA-frost-2-4x",
+      "figmaNodeId": "99:471",
+      "originalInputSha256": "06e66f3ca797932b9659f6a929faba4fb03470898af496fbffb2979405e7cf68",
+      "restoredInputSha256": "55cd12f46f10ebed919bc226dc51af92555912a28b3dc1b50f1ee2b959d6893f",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          9048
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "eb4f56983364b7f77e5065c948304b1878d1ffbd07142bc79f5bc31911e936ca"
+    },
+    {
+      "id": "OpticsQA-frost-2.01-4x",
+      "figmaNodeId": "99:489",
+      "originalInputSha256": "2640420bdeed0d229b7e7ee6d347261f3b734ab201360eeb5835cb4c1ba905a0",
+      "restoredInputSha256": "33e9dad42901c51793d3dfeee80a31df5b65f1038cef567539c23d893bab6a93",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          9200
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "ac977db9b63599c0c9d206721a205849f1dce96fc5cbb99872fd90269bbbc398"
+    },
+    {
+      "id": "OpticsQA-frost-3-4x",
+      "figmaNodeId": "99:507",
+      "originalInputSha256": "663f0398b9e2beb696b66ff18a264948b0e5e8a6005111c2bebf23854bca6b31",
+      "restoredInputSha256": "e8d4b8dfc3c091f1a7aaf409f6098e65b86c7ada80aade58087d2ccfe0126bab",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          9352
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "5535d0ea985fea0adb2403cdf629ea634969cb5fad79e4d9b4286b363d7eece7"
+    },
+    {
+      "id": "OpticsQA-frost-4-4x",
+      "figmaNodeId": "99:525",
+      "originalInputSha256": "a5493d60852f08a4722421109044d963da58b1f5049f668766e0302066f0a2d6",
+      "restoredInputSha256": "7efd35ed5db7906b903e28fbf162ff8f3189ab611e78e5aaf126e4d2e06b5770",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          9504
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "c213180e1c8c89b303973b2517d62f852e605fce0f260fe4d41eb4f91062d665"
+    },
+    {
+      "id": "OpticsQA-light-45-0-depth-8-1x",
+      "figmaNodeId": "99:543",
+      "originalInputSha256": "d4614faed3ccb5863a489658bba519e762aa693b177acb4657712ff8e466ad61",
+      "restoredInputSha256": "c753afc85ef37dfea038e924b2093f1adf60f0e9231d30c71d86e279ec67047e",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          9656
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "91b40c104aa29a53c49cf8ab0d992c072bead36b454da65c20e02222aad98727"
+    },
+    {
+      "id": "OpticsQA-light-45-0.25-depth-8-1x",
+      "figmaNodeId": "99:545",
+      "originalInputSha256": "382c5898c158c24479c8e83424065a5da3b38cfb94960d5f4f3773f0d4790342",
+      "restoredInputSha256": "ae470467648fd574d8eae52b4c1b61094a4b6aa9744f93fb76380aa53f09bde7",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          9808
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "7fab66adc888769f7f4d945e7c43c1083ee65ad78571eba0a00adad086b29deb"
+    },
+    {
+      "id": "OpticsQA-light-45-0.5-depth-8-1x",
+      "figmaNodeId": "99:547",
+      "originalInputSha256": "f2b8d1a3693ebba03d6c6de957fca25e51775a50b07f9f56a753575b3a4f35cb",
+      "restoredInputSha256": "dc2bf3bda6dd560b5ee8905baacb1eb2f6e77c57c053b8889ca95763ed6b0c8e",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          9960
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "6e67b295395fd2433e1be1bfc424c75eb71ac721a171aea53115d387482f170b"
+    },
+    {
+      "id": "OpticsQA-light-45-1-depth-8-1x",
+      "figmaNodeId": "99:549",
+      "originalInputSha256": "723d3c92afead33e97eb1e48d17243ff9eb70e49059b049505c670a09f23d404",
+      "restoredInputSha256": "e60e5c61229948009ec972253f84232e78257aafe0039f0722c6c8361de2239d",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          10112
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "e7e368819c6173c0f6aac09f0215a79d16ad7f17fbd869740eec55b0762be3dd"
+    },
+    {
+      "id": "OpticsQA-light-45-0-depth-8-2x",
+      "figmaNodeId": "99:551",
+      "originalInputSha256": "ef0f72c94e96089ca8e187f6e7b1419e7789dc26963ff8d0928f09f0ec41586f",
+      "restoredInputSha256": "a4c9f270a53a1bd777679b8cc6ba3da01f710564dc366d1baa6be2cba2af5f96",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          10264
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "a2ce7f86b3abb26644f7512b7d400ca975252ac6483ad3f02f7a3cb9a2305fdd"
+    },
+    {
+      "id": "OpticsQA-light-45-0.25-depth-8-2x",
+      "figmaNodeId": "99:553",
+      "originalInputSha256": "2ffb3ccda7642ac7e9053ba38d981ca3161438be7ed74ad17632f8c4113658b0",
+      "restoredInputSha256": "f7d4556012137551f91ca66cddb89dfaf7f1502881184fc89f5b36405400730c",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          10416
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "65fe7e80a300ce9ae2c44afad438a4723fd421b32a75294c6addfe92ca8ab125"
+    },
+    {
+      "id": "OpticsQA-light-45-0.5-depth-8-2x",
+      "figmaNodeId": "99:555",
+      "originalInputSha256": "f8ac4bb69cef0134a5bd64f5fc0a58d05bbf974e515806b12deebe8ed6cb0978",
+      "restoredInputSha256": "770f5a20108d893d538a893a0005204d22b94fb60ffc598d7853ba735b067f0e",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          10568
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "327b286f13b95b28059f8f660c810b646cc66020ffd7308c5109cf7bab603daa"
+    },
+    {
+      "id": "OpticsQA-light-45-1-depth-8-2x",
+      "figmaNodeId": "99:557",
+      "originalInputSha256": "ef0e16ac5ea198cba9a34d57b27a7796604892213fc9fee96d663da4bf08ccf6",
+      "restoredInputSha256": "487dd8fb08b3e9069c872dd34e6073fa2ef0128268eb2bc967e526e4aa526cec",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          10720
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "6afa1a631fe245554b71e5dbdf39f226d2a046f874088d91bb93662099c6a299"
+    },
+    {
+      "id": "OpticsQA-light-0-0.5-depth-1-1x",
+      "figmaNodeId": "99:559",
+      "originalInputSha256": "a7aa5904f5861aabf39f9e755326dbdccb806d808efe4aad0c0d40f0efa9fd16",
+      "restoredInputSha256": "734ff597c0f93a6437447280b26662537e3bf9468421b01471f57fdb6b015177",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          10872
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "aebb9e25145c7e915dce5c1f46ed35b17974f5fddea115f6c5d0baef4f228d33"
+    },
+    {
+      "id": "OpticsQA-light-0-0.5-depth-4-1x",
+      "figmaNodeId": "99:561",
+      "originalInputSha256": "d028e548c9ae895a060b1774c2703ca592789a337ed661030d042001cfc1b840",
+      "restoredInputSha256": "736088615c9dc36166f672897bdcfc5a4a7d1e474d2b959803e558cc5948ed25",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          11024
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "5a7805845f4393ad6a5948bc410c1ac974de890537ea093039ad86e95247b1ce"
+    },
+    {
+      "id": "OpticsQA-light-0-0.5-depth-16-1x",
+      "figmaNodeId": "99:563",
+      "originalInputSha256": "53141b416f4b7fd5db6cb87ec2d4b033a2bc07581b70834e3d70db78d9425494",
+      "restoredInputSha256": "6c4823d6a6a03b54df90c21875293b93e5d0d61a78ba7988b5cc3e241697bc3d",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          11176
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "referenceSha256Unchanged": "016e92a44ca8ac062f26ddf4545cec3fec382d1f650948e6d1af2fd95a114c20"
+    },
+    {
+      "id": "OpticsHoldout-light-30-0.75-depth-12-1x",
+      "figmaNodeId": "101:3",
+      "originalInputSha256": "8cbb7bb5433a4b8c52635557f4c2f4665ac3744e41efbe003ffe022aa030982a",
+      "restoredInputSha256": "9032c5e643a613a51f0ab904baf80bdd157469326f2ce36f311f74c802f487c9",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5096
+        ],
+        [
+          0,
+          1,
+          352
+        ]
+      ],
+      "referenceSha256Unchanged": "7b3b6cde7ad1d9befe7d1ed5d0cc796411a96233006adb34b7eb4b2c1223214e"
+    },
+    {
+      "id": "OpticsHoldout-light-135-0.75-depth-12-1x",
+      "figmaNodeId": "101:5",
+      "originalInputSha256": "63e85e1b91c34155a02af6cd94a68ee94d4dfe53017a015edc2ff99e3e4bea79",
+      "restoredInputSha256": "7992dd2a1a95d301cb95d2c799c220ca86d0c88125e12212f23166313851bd87",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5248
+        ],
+        [
+          0,
+          1,
+          352
+        ]
+      ],
+      "referenceSha256Unchanged": "414f25ff375e769e189c0222488da372f5b522106fdab019cff4763b55f36b46"
+    },
+    {
+      "id": "OpticsHoldout-light-225-0.75-depth-12-1x",
+      "figmaNodeId": "101:7",
+      "originalInputSha256": "2f072c2fb6742ed6d56312bab33477681a0662e8450cbdf6c544494d6cf5fcb4",
+      "restoredInputSha256": "a89c42ed484e607b1894a89f7351497356bd05a78c764f54ad9477ecd1309ea1",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5400
+        ],
+        [
+          0,
+          1,
+          352
+        ]
+      ],
+      "referenceSha256Unchanged": "75fa8676a65a5341f31309371923842ab4f4641091d49bb0f3dbc327cc3e8ad0"
+    },
+    {
+      "id": "OpticsHoldout-light-315-0.75-depth-12-1x",
+      "figmaNodeId": "101:9",
+      "originalInputSha256": "c036a2f5518786569cfe74ec7b01ed3eaed571adaeb7c32f7c720382c540750f",
+      "restoredInputSha256": "5b8463b7aa49258be1e994c5f2af159b96776fa97ea233248f2dc4bf5b53398c",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5552
+        ],
+        [
+          0,
+          1,
+          352
+        ]
+      ],
+      "referenceSha256Unchanged": "724c57c2ae39f17017983915f3d344c99371f4e1615a7dc24716b18d1da3f94c"
+    },
+    {
+      "id": "OpticsHoldout-light-30-0.75-depth-12-2x",
+      "figmaNodeId": "101:11",
+      "originalInputSha256": "31b2f64bb1a0b8e225c639f5ab04799b1966ab9946ddb382aa504ab35f174f19",
+      "restoredInputSha256": "efd79bdf179298deaddf593dce6408a27505e94d6376f48d4ce4343410a1e44e",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5704
+        ],
+        [
+          0,
+          1,
+          352
+        ]
+      ],
+      "referenceSha256Unchanged": "dbc252c348f7958a6cf8ac1fb811372e43137411d548d87dee64bd3581f0a5f8"
+    },
+    {
+      "id": "OpticsHoldout-light-135-0.75-depth-12-2x",
+      "figmaNodeId": "101:13",
+      "originalInputSha256": "0f0c7029e9155dcdccbea731d63585feb566fc2efc864701342463b5037d336d",
+      "restoredInputSha256": "ae9dff8cba134825b4759f1f36808d4da57aaa175432995a1598c221e4b7195d",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          5856
+        ],
+        [
+          0,
+          1,
+          352
+        ]
+      ],
+      "referenceSha256Unchanged": "f9c172d90113534e632bf85a6c3580060e61e16d9563034cb7e9f4d641534abb"
+    },
+    {
+      "id": "OpticsHoldout-light-225-0.75-depth-12-2x",
+      "figmaNodeId": "101:15",
+      "originalInputSha256": "8cc84623cc713815bfbacd145add02d6ab07a2b6d5629785773b92f2b5c454a7",
+      "restoredInputSha256": "f097d36bd77f88091fb1ed927ca9d6dddedd0eca12b67c76a8fa7f2a5c18cea6",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          6008
+        ],
+        [
+          0,
+          1,
+          352
+        ]
+      ],
+      "referenceSha256Unchanged": "969a416cfc5c20c2e3fd77d45f48b128ba857299774e2e4c81585d6db13ed73e"
+    },
+    {
+      "id": "OpticsHoldout-light-315-0.75-depth-12-2x",
+      "figmaNodeId": "101:17",
+      "originalInputSha256": "a6190b1e79b044223f978d356e873c9a6c361ce04fa875f33a31c7cf0433fc85",
+      "restoredInputSha256": "00082f1f30b3b0bc849c70530d95cb0ac279c76a3c64c9468d1fcd9b7a899d07",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          6160
+        ],
+        [
+          0,
+          1,
+          352
+        ]
+      ],
+      "referenceSha256Unchanged": "246ee920c0b2e97dc0cb6fa26f57feec36b08a1a503c46eb836bb2c701b47f9f"
+    }
+  ],
+  "sourceWorldReadback": "testing/fixtures/design/figma-optics-world-transforms-2026-10-08.json"
+}

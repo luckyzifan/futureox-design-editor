@@ -1,0 +1,14 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Forma-QA-MCP-backdrop-blur">
+<rect width="128" height="128" fill="white"/>
+<rect id="background stripe" width="16" height="128" fill="black"/>
+<rect id="background stripe_2" x="32" width="16" height="128" fill="black"/>
+<rect id="background stripe_3" x="64" width="16" height="128" fill="black"/>
+<rect id="background stripe_4" x="96" width="16" height="128" fill="black"/>
+<foreignObject x="12.125" y="12.125" width="104" height="104"><div xmlns="http://www.w3.org/1999/xhtml" style="backdrop-filter:blur(2px);clip-path:url(#bgblur_0_4_7_clip_path);height:100%;width:100%"></div></foreignObject><rect id="blurred surface" data-figma-bg-blur-radius="4" x="16.125" y="16.125" width="96" height="96" fill="white" fill-opacity="0.1"/>
+<rect id="foreground" x="52" y="52" width="24" height="24" fill="#DD4477"/>
+</g>
+<defs>
+<clipPath id="bgblur_0_4_7_clip_path" transform="translate(-12.125 -12.125)"><rect x="16.125" y="16.125" width="96" height="96"/>
+</clipPath></defs>
+</svg>

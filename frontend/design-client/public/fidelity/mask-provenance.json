@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-06",
+  "source": "Figma desktop native rectangle and alpha mask editing, manual 1x PNG export",
+  "file": "https://www.figma.com/design/KawVhUXCap10WDTprxYEmu/",
+  "frameNode": "1:2",
+  "maskNode": "1:3",
+  "contentNode": "1:4",
+  "size": [
+    128,
+    128
+  ],
+  "frame": {
+    "fill": "#ffffff",
+    "clip": true
+  },
+  "content": {
+    "x": 16,
+    "y": 16,
+    "width": 64,
+    "height": 64,
+    "fill": "#ff0000"
+  },
+  "mask": {
+    "type": "Alpha",
+    "fill": "#d9d9d9",
+    "opacity": 1,
+    "y": 16,
+    "width": 64,
+    "height": 64
+  },
+  "cases": {
+    "overlap": {
+      "x": 16,
+      "sha256": "3e4a83ec0df131ed5e0c6535e5d9faf017c8c816cb689b9844717d81ce930690"
+    },
+    "outside": {
+      "x": 1000,
+      "sha256": "244164c468425702d07d39808331ce13297c9f8a5cc2a5dce946cac7a9fa62ff"
+    }
+  }
+}

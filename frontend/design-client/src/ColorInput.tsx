@@ -1,0 +1,104 @@
+import { useContext, useEffect, useRef, useState } from 'react'
+import { Pipette } from 'lucide-react'
+import { DraftInput } from './DraftInput'
+import { validColor } from './color'
+import { PendingEditContext } from './pending-edit-context'
+import { commitPendingEdits } from './pending-edits'
+import { requestCanvasColor } from './canvas-color-picker'
+export function ColorInput({
+  value,
+  onChange,
+  label,
+}: {
+  value: string
+  onChange: (value: string) => void
+  label: string
+}) {
+  const editor = useContext(PendingEditContext),
+    current = useRef({ value, onChange }),
+    controller = useRef<AbortController | null>(null),
+    mounted = useRef(true),
+    [error, setError] = useState('')
+  current.current = { value, onChange }
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      controller.current?.abort()
+    }
+  }, [])
+  async function sample() {
+    if (editor && (editor.interactionActive || !commitPendingEdits(editor))) return
+    const EyeDropper = (
+      globalThis as unknown as {
+        EyeDropper?: new () => { open(options: { signal: AbortSignal }): Promise<{ sRGBHex: string }> }
+      }
+    ).EyeDropper
+    if (!editor && !EyeDropper) {
+      setError('此环境不支持屏幕吸管')
+      return
+    }
+    controller.current?.abort()
+    const owner = new AbortController()
+    controller.current = owner
+    const version = editor?.state.version,
+      session = editor?.sessionGeneration,
+      page = editor?.state.page,
+      selection = editor?.state.selection.join(','),
+      original = current.current.value
+    try {
+      setError('')
+      const result = editor ? await requestCanvasColor(editor,owner.signal) : await new EyeDropper!().open({ signal: owner.signal })
+      if (!mounted.current || owner.signal.aborted) return
+      if (
+        editor
+          ? editor.state.version !== version ||
+            editor.state.page !== page ||
+            editor.sessionGeneration !== session ||
+            editor.state.selection.join(',') !== selection
+          : current.current.value !== original
+      )
+        throw new Error('取样期间属性已变化，请重试')
+      if (!/^#[\da-f]{6}$/i.test(result.sRGBHex)) throw new Error('取样颜色无效')
+      current.current.onChange(result.sRGBHex)
+    } catch (e) {
+      if (!owner.signal.aborted && (e as Error).name !== 'AbortError' && mounted.current) setError(String(e))
+    } finally {
+      if (controller.current === owner) controller.current = null
+    }
+  }
+  const simple = /^#[0-9a-f]{6}$/i.test(value)
+  return (
+    <span
+      className="color-input"
+      onKeyDown={(e) => {
+        if (
+          e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey &&
+          e.key.toLowerCase() === 'c' &&
+          /Mac/.test(navigator.platform)
+        ) {
+          e.preventDefault()
+          e.stopPropagation()
+          void sample()
+        }
+      }}
+    >
+      {simple ? (
+        <input aria-label={label} type="color" value={value} onChange={(e) => onChange(e.target.value)} />
+      ) : (
+        <DraftInput
+          aria-label={label}
+          value={value}
+          onCommit={onChange}
+          validate={(color) => validColor(color, true)}
+        />
+      )}
+      <button type="button" aria-label={`吸取${label}`} title="从画布取样" onClick={() => void sample()}>
+        <Pipette size={13} />
+      </button>
+      {error && <span role="alert">{error}</span>}
+    </span>
+  )
+}

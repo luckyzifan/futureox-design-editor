@@ -1,0 +1,36 @@
+# Build artifacts
+**/target/
+**/node_modules/
+**/dist/
+**/release/
+**/test-results/
+**/playwright-report/
+
+# Generated kernel outputs (rebuilt via design-client `build:kernel`)
+/frontend/design-client/public/kernel/
+/frontend/design-client/src/generated/
+
+# Python
+**/__pycache__/
+**/*.pyc
+
+# Runtime
+**/*.log
+**/*.pid
+.DS_Store
+
+# Credentials and private configuration
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.template
+!**/.env.*.example
+!**/.env.*.template
+**/secrets/
+**/credentials.json
+**/credentials.local.*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.keystore

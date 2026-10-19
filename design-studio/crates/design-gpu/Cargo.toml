@@ -1,0 +1,30 @@
+[package]
+name = "futureox-design-gpu"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+hardware-tests = []
+
+[dependencies]
+futureox-design-kernel = { path = "../design-kernel" }
+wgpu.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+png.workspace = true
+half.workspace = true
+sha2.workspace = true
+base64.workspace = true
+
+[dev-dependencies]
+
+[[bench]]
+name = "tile_cache"
+harness = false
+
+[[bin]]
+name = "design-render"
+path = "src/main.rs"

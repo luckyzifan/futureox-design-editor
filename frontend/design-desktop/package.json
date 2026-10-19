@@ -1,0 +1,29 @@
+{
+  "name": "@futureox/design-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.mjs",
+  "description": "Offline futureox-desgin desktop editor with a Rust local backend",
+  "scripts": {
+    "dev": "bun run install:runtime && bun run build && bun run start",
+    "build": "node scripts/build.mjs",
+    "build:host": "node --check src/main.mjs && node --check src/preload.cjs && node --check src/security.mjs && node --check src/sidecar.mjs",
+    "start": "electron .",
+    "test": "node --test test/*.test.mjs",
+    "test:preparation": "node --test test/runtime/preparation-runtime.test.mjs",
+    "test:smoke": "node scripts/smoke.mjs",
+    "test:canvas-interaction": "node scripts/check-canvas-interaction.mjs",
+    "package:native": "bun run build && node scripts/package.mjs && bun run verify:package",
+    "install:runtime": "node node_modules/electron/install.js",
+    "verify:package": "node scripts/verify-package.mjs",
+    "package:exact": "bun run build && node scripts/package.mjs --exact && node scripts/verify-package.mjs --exact",
+    "package:preview": "bun run build && node scripts/package.mjs --preview && node scripts/verify-package.mjs --preview",
+    "package:local": "node scripts/build.mjs --release && node scripts/package.mjs --local && node scripts/verify-package.mjs --local",
+    "test:local-tools": "node scripts/check-local-tools.mjs"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "@electron/packager": "20.3.0"
+  }
+}

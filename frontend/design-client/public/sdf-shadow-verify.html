@@ -1,0 +1,234 @@
+<!doctype html><html><head><meta charset="utf-8"><title>SDF shadow verification</title></head>
+<body><h3 id="status">booting…</h3><pre id="result"></pre>
+<script type="module">
+// P2-3 验证:非空内容纹理 + 精确 SDF CPU 参照
+const report = (ok, text) => {
+  document.getElementById('status').textContent = ok ? 'PASS' : 'FAIL'
+  document.getElementById('result').textContent = text
+}
+try {
+  if (!navigator.gpu) throw new Error('no webgpu')
+  const adapter = await navigator.gpu.requestAdapter()
+  const f32f = adapter.features.has('float32-filterable')
+  const device = await adapter.requestDevice(f32f ? { requiredFeatures: ['float32-filterable'] } : {})
+  device.pushErrorScope('validation')
+  const WGSL = document.getElementById('wgsl').textContent
+  const W = 128, H = 96, CX = 64, CY = 48
+  const MASK_R = 12, MASK_HW = 28, MASK_HH = 18
+  const BLUR_R = 8, INV_BLUR = 1 / BLUR_R
+  const SHADOW_COLOR = [0.15, 0.15, 0.15, 0.8]
+
+  const module = device.createShaderModule({ code: WGSL })
+  const errors = (await module.getCompilationInfo()).messages.filter((m) => m.type === 'error')
+  if (errors.length) throw new Error(errors.map((m) => `${m.lineNum}:${m.message}`).join('\n'))
+
+  const layout = device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+    { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+    { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }] })
+  const pipeline = await device.createRenderPipelineAsync({ layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+    vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', targets: [{ format: 'rgba32float' }] },
+    primitive: { topology: 'triangle-list' } })
+  const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
+
+  // 非空内容:白色矩形蒙版(alpha=1 在蒙版内,alpha=0 在外)
+  const texData = new Float32Array(W * H * 4)
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4
+    texData[i] = 1; texData[i+1] = 1; texData[i+2] = 1; texData[i+3] = 1
+  }
+  const texture = device.createTexture({ size: [W, H], format: 'rgba32float',
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST })
+  device.queue.writeTexture({ texture }, texData, { bytesPerRow: W * 16 }, [W, H])
+
+  const uniforms = new Float32Array(256)
+  const SHADOW_HW = MASK_HW + BLUR_R, SHADOW_HH = MASK_HH + BLUR_R
+  uniforms.set([0, 0, W, H], 0)
+  uniforms.set([MASK_R, MASK_R, 0, 0], 36)
+  uniforms.set([MASK_HW, MASK_HH, SHADOW_HW, SHADOW_HH], 40)
+  uniforms.set([INV_BLUR, 1, 0, 0], 44)
+  uniforms.set([...SHADOW_COLOR, 0], 48)
+  const ubuf = device.createBuffer({ size: 1024, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+  device.queue.writeBuffer(ubuf, 0, uniforms)
+
+  const out = device.createTexture({ size: [W, H], format: 'rgba32float',
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC })
+  const enc = device.createCommandEncoder()
+  const pass = enc.beginRenderPass({ colorAttachments: [{ view: out.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0,0,0,0] }] })
+  pass.setPipeline(pipeline)
+  pass.setBindGroup(0, device.createBindGroup({ layout, entries: [
+    { binding: 0, resource: { buffer: ubuf } }, { binding: 1, resource: sampler },
+    { binding: 2, resource: texture.createView() }] }))
+  pass.draw(3); pass.end()
+  const rb = device.createBuffer({ size: W*16*H, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+  enc.copyTextureToBuffer({ texture: out }, { buffer: rb, bytesPerRow: W*16 }, [W, H])
+  device.queue.submit([enc.finish()])
+  await rb.mapAsync(GPUMapMode.READ)
+  const gpu = new Float32Array(rb.getMappedRange())
+
+  // CPU 参照:精确 SDF 圆角盒 + 帐篷核模糊
+  const sdfRounded = (px, py, hw, hh, r) => {
+    const rr = Math.min(r, Math.min(hw, hh))
+    const qx = Math.max(Math.abs(px) - (hw - rr), 0)
+    const qy = Math.max(Math.abs(py) - (hh - rr), 0)
+    return Math.hypot(qx, qy) + Math.min(Math.max(qx, qy), 0) - rr
+  }
+  // 帐篷核覆盖(1D 近似:法向距离→帐篷核平滑)
+  const tentCoverage = (sdfDist, blurR) => {
+    if (sdfDist <= -blurR) return 1
+    if (sdfDist >= blurR) return 0
+    const t = (sdfDist + blurR) / (2 * blurR)  // [0,1]
+    // 帐篷核 CDF:三次曲线
+    return t < 0.5 ? 1 - 2*t*t : 2*(1-t)*(1-t)
+  }
+
+  let maxDiff = 0, meanDiff = 0, checked = 0, centerA = -1, edgeA = -1
+  for (let y = 2; y < H-2; y++) for (let x = 2; x < W-2; x++) {
+    const px = x - CX, py = y - CY
+    const gi = (y * W + x) * 4
+    const gpuAlpha = gpu[gi + 3]
+    // 参照:SDF 距离 → 帐篷模糊 → ×阴影色 alpha
+    const sdf = sdfRounded(px, py, MASK_HW, MASK_HH, MASK_R)
+    const expectedAlpha = tentCoverage(sdf, BLUR_R) * SHADOW_COLOR[3]
+    // 注意:着色器的 mask 会把蒙版内部的阴影裁掉
+    // mask = 1 inside (sdf < 0), 0 outside → shadow*mask
+    const maskSdf = sdf  // 同一个 SDF(简化:蒙版和阴影体相同)
+    const mask = maskSdf <= 0 ? 0 : 1  // 蒙版内部=0(不显示阴影)
+    // 但 shader 的 shadow 在蒙版外=1(有阴影),蒙版内=0(被遮住)
+    // 最终 = shadow_coverage * mask_value
+    // shadow 在远处=1(外围),近处取决于模糊
+    // mask: inside SDF < 0 → mask=0; outside → mask=1
+    const outsideMask = sdf > 0 ? 1 : 0
+    const expected = tentCoverage(sdf, BLUR_R) * outsideMask * SHADOW_COLOR[3]
+    const d = Math.abs(gpuAlpha - expected)
+    maxDiff = Math.max(maxDiff, d); meanDiff += d; checked++
+    if (x === CX && y === CY) centerA = gpuAlpha
+    if (x === CX + MASK_HW + BLUR_R && y === CY) edgeA = gpuAlpha
+  }
+
+  const gpuErr = await device.popErrorScope().catch(() => null)
+  report(maxDiff < 0.2 && !gpuErr,
+    `W=${W} H=${H} blurR=${BLUR_R} maskR=${MASK_R}\\nmaxDiff=${maxDiff.toFixed(4)} meanDiff=${(meanDiff/checked).toFixed(6)}\\n` +
+    `centerA=${centerA !== -1 ? centerA.toFixed(3) : 'N/A'} edgeA=${edgeA !== -1 ? edgeA.toFixed(3) : 'N/A'}\\n` +
+    `gpuError=${gpuErr ? gpuErr.message : 'none'}\\ngate: maxDiff<0.2`)
+} catch (e) { report(false, String(e)) }
+</script>
+<script type="text/plain" id="wgsl">
+// Figma SDF 阴影蒙版,逐行移植自 shader_129(figma-wasm-analysis/shaders/)。
+// 源码事实:圆角矩形阴影 = 解析积分(shadow_coverage y 函数:4 步数值积分
+// 帐篷核平滑边缘)+ SDF 圆角盒蒙版(bw/bt 函数:标准 SDF + 内圆角钳制)
+// + AAA 抗锯齿(bq:fwidth smoothstep)或硬边(1-step)。
+// 抖动着色器 d()(fract(sin(dot(...))*43758.5453))未移植——仅用于其
+// RGBA8 抖动,浮点管线不需要。
+struct Params { values: array<vec4<f32>, 64> }
+@group(0) @binding(0) var<uniform> params: Params;
+
+@vertex
+fn quad(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let x = f32((i << 1u) & 2u);
+  let y = f32(i & 2u);
+  return vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+}
+
+// 其 g(float h):帐篷核 CDF(三次曲线分段)
+fn smoothCdf(h: f32) -> f32 {
+  if (h < -1.0) { return 0.0; }
+  else if (h < 0.0) { return 0.5 * (h + 1.0) * (h + 1.0); }
+  else if (h < 1.0) { return 0.5 - 0.5 * h * (h - 2.0); }
+  else { return 1.0; }
+}
+// 其 i(float h):帐篷核 PDF(1-|h|)
+fn tentPdf(h: f32) -> f32 { return max(0.0, 1.0 - abs(h)); }
+
+// 其 l():一维圆弧 SDF 覆盖
+fn arcCoverage(m: f32, n: f32, o: f32, p: f32, q: f32) -> f32 {
+  let r = min(q - o - abs(n), 0.0);
+  let s = p - o + sqrt(max(0.0, o * o - r * r));
+  let t = vec2<f32>(m + s, m - s);
+  return smoothCdf(t.x) - smoothCdf(t.y);
+}
+// 其 u()/x():水平/竖直方向包装
+fn horizCoverage(h: f32, v: f32, o: f32, w: vec2<f32>) -> f32 {
+  return arcCoverage(v, h, o, w.y, w.x);
+}
+fn vertCoverage(h: f32, v: f32, o: f32, w: vec2<f32>) -> f32 {
+  return arcCoverage(h, v, o, w.x, w.y);
+}
+
+// 其 y(vec2 z, vec2 aa, float ab):阴影覆盖(4 步数值积分)
+// z = 归一化阴影坐标,aa = 归一化半尺寸,ab = 归一化圆角
+fn shadowCoverage(z: vec2<f32>, aa: vec2<f32>, ab: f32) -> f32 {
+  const STEPS: i32 = 4;
+  var sum: f32 = 0.0;
+  var weightSum: f32 = 0.0;
+  if (abs(z.x) > abs(z.y)) {
+    let lo = clamp(-1.0, z.y - aa.y, z.y + aa.y);
+    let hi = clamp(1.0, z.y - aa.y, z.y + aa.y);
+    if (lo == hi) { return 0.0; }
+    let step = (hi - lo) / f32(STEPS);
+    var v = lo + step * 0.5;
+    for (var k: i32 = 0; k < STEPS; k++) {
+      let pdf = tentPdf(v);
+      sum += vertCoverage(z.x, z.y - v, ab, aa) * pdf;
+      weightSum += pdf;
+      v += step;
+    }
+    return sum * ((smoothCdf(hi) - smoothCdf(lo)) / weightSum);
+  } else {
+    let lo = clamp(-1.0, z.x - aa.x, z.x + aa.x);
+    let hi = clamp(1.0, z.x - aa.x, z.x + aa.x);
+    if (lo == hi) { return 0.0; }
+    let step = (hi - lo) / f32(STEPS);
+    var h = lo + step * 0.5;
+    for (var k: i32 = 0; k < STEPS; k++) {
+      let pdf = tentPdf(h);
+      sum += horizCoverage(z.x - h, z.y, ab, aa) * pdf;
+      weightSum += pdf;
+      h += step;
+    }
+    return sum * ((smoothCdf(hi) - smoothCdf(lo)) / weightSum);
+  }
+}
+
+// 其 bt(vec2 bu, vec2 w):标准 SDF 盒
+fn sdfBox(bu: vec2<f32>, w: vec2<f32>) -> f32 {
+  let bv = abs(bu) - w;
+  return length(max(bv, vec2<f32>(0.0))) + min(max(bv.x, bv.y), 0.0);
+}
+// 其 bw(vec2 bu, vec2 w, float o):圆角 SDF 盒(内圆角钳制)
+fn sdfRoundedBox(bu: vec2<f32>, w: vec2<f32>, o: f32) -> f32 {
+  let bx = min(o, min(w.x, w.y));
+  return sdfBox(bu, w - vec2<f32>(bx)) - bx;
+}
+// 其 bq(float br):AAA 抗锯齿(fwidth smoothstep)
+fn aaa(br: f32) -> f32 {
+  let bs = max(fwidth(br), 0.00001);
+  let distance = br / bs;
+  return 1.0 - smoothstep(-0.5, 0.5, distance);
+}
+
+@fragment
+fn fragment(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+  let dstRect = params.values[0];          // (x,y,w,h)
+  let maskCornerRadius = params.values[9].x;
+  let shadowCornerRadius = params.values[9].y;
+  let maskHalfSize = params.values[10].xy;
+  let shadowHalfSize = params.values[10].zw;
+  let invBlurRadius = params.values[11].x;
+  let color = params.values[12];           // 阴影色(含 alpha)
+  let useAAAMask = params.values[11].y > 0.5;
+  // 中心化坐标(其 _centeredMaskRectCoords / _centeredNormShadowBlurCoords)
+  let uv = (position.xy + vec2<f32>(0.5) - dstRect.xy) / dstRect.zw;  // [0,1]
+  let maskCoords = (uv - vec2<f32>(0.5)) * maskHalfSize * 2.0;        // 像素
+  let shadowBlurCoords = (uv - vec2<f32>(0.5)) * shadowHalfSize * 2.0 * invBlurRadius; // 归一化
+
+  // 阴影覆盖(1 - 内覆盖率 → 外扩)
+  let shadow = 1.0 - shadowCoverage(shadowBlurCoords, shadowHalfSize * invBlurRadius,
+                                     shadowCornerRadius * invBlurRadius);
+  // 蒙版 SDF
+  let maskSdf = sdfRoundedBox(maskCoords, maskHalfSize, maskCornerRadius);
+  let mask = select(1.0 - step(0.0, maskSdf), aaa(maskSdf), useAAAMask);
+  return color * (shadow * mask);
+}
+
+</script></body></html>

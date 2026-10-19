@@ -1,0 +1,377 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Figma blur verification</title></head>
+<body><h3 id="status">booting…</h3><pre id="result"></pre>
+<script type="module">
+// P2-1 验证页:真机 WebGPU 跑 Figma 成对采样帐篷模糊(逐行移植 shader_78),
+// 与 CPU 全帐篷(显式双线性采样,不成对)对照,输出有界差门禁读数。
+const report = (ok, text) => {
+  document.getElementById('status').textContent = ok ? 'PASS' : 'FAIL'
+  document.getElementById('result').textContent = text
+}
+try {
+  if (!navigator.gpu) throw new Error('no webgpu')
+  window.__gpuErrors = []
+  const origGetError = GPUDevice.prototype.popErrorScope
+  const adapter = await navigator.gpu.requestAdapter()
+  const float32Filterable = adapter.features.has('float32-filterable')
+  const device = await adapter.requestDevice(float32Filterable ? { requiredFeatures: ['float32-filterable'] } : {})
+  device.addEventListener?.('uncapturederror', (ev) => window.__gpuErrors.push(String(ev.error.message)))
+  device.pushErrorScope('validation')
+  const WGSL = document.getElementById('wgsl').textContent
+  const W = 96, H = 64, RADIUS = 4
+  const COUNT = Math.min(64, Math.max(1, RADIUS * Math.sqrt(6)))
+  const SPACING = RADIUS / COUNT
+  // 测试图案:阶跃边缘 + 斜渐变 + 孤立亮斑
+  const src = new Float32Array(W * H * 4)
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4
+    const edge = x < W / 2 ? 1 : 0.125
+    const grad = 0.5 + 0.5 * (x + y) / (W + H)
+    const spot = Math.hypot(x - 60, y - 20) < 6 ? 1 : 0
+    src[i] = edge * grad; src[i+1] = grad * 0.5 + spot * 0.3; src[i+2] = spot; src[i+3] = 1
+  }
+  const texture = device.createTexture({ size: [W, H], format: 'rgba32float',
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT })
+  device.queue.writeTexture({ texture }, src, { bytesPerRow: W * 16 }, [W, H])
+  const module = device.createShaderModule({ code: WGSL })
+  const layout = device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+    { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+    { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }] })
+  // 纯色探针:区分几何/绑定层(仍零=管线层)与采样数学(红=片段在跑)
+  const probeWgsl = WGSL.replace('return accumulator / weightSum;', 'return vec4f(0.0, 1.0, 0.0, 1.0);')
+  const probeModule = device.createShaderModule({ code: probeWgsl })
+  const probePipeline = device.createRenderPipeline({ layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+    vertex: { module: probeModule, entryPoint: 'quad' }, fragment: { module: probeModule, entryPoint: 'fragment', targets: [{ format: 'rgba32float' }] },
+    primitive: { topology: 'triangle-list' } })
+
+  const pipeline = device.createRenderPipeline({ layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+    vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', targets: [{ format: 'rgba32float' }] },
+    primitive: { topology: 'triangle-list' } })
+  const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
+
+  const uniforms = new Float32Array(256)
+  const probeTex = device.createTexture({ size: [16, 8], format: 'rgba32float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC })
+  const pub = device.createBuffer({ size: 16*8*16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+  uniforms.set([0,0,8,8],0); uniforms.set([0,0,8,8],4)
+  const pubuf = device.createBuffer({ size: 1024, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+  device.queue.writeBuffer(pubuf, 0, uniforms)
+  const pbind = device.createBindGroup({ layout, entries: [
+    { binding: 0, resource: { buffer: pubuf } }, { binding: 1, resource: sampler },
+    { binding: 2, resource: texture.createView() }] })
+  const penc = device.createCommandEncoder()
+  const ppass = penc.beginRenderPass({ colorAttachments: [{ view: probeTex.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0,0,0,0] }] })
+  ppass.setPipeline(probePipeline); ppass.setBindGroup(0, pbind); ppass.draw(3); ppass.end()
+  penc.copyTextureToBuffer({ texture: probeTex }, { buffer: pub, bytesPerRow: 16*16 }, [16, 8])
+  device.queue.submit([penc.finish()])
+  await pub.mapAsync(GPUMapMode.READ)
+  const probeOut = new Float32Array(pub.getMappedRange()).slice()
+  window.__probe = probeOut
+
+  const run = (horizontal, input) => {
+    const out = device.createTexture({ size: [W, H], format: 'rgba32float',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC })
+    uniforms.set([0, 0, W, H], 0)               // values[0] 目标矩形
+    uniforms.set([0, 0, W, H], 4)               // values[1] 源矩形
+    uniforms.set([RADIUS, horizontal ? 0 : 1, 0, 0], 36)  // values[9]
+    uniforms.set([COUNT, 0, 0, 0], 40)          // values[10] CPU 预计算 count
+    const ubuf = device.createBuffer({ size: 1024, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+    device.queue.writeBuffer(ubuf, 0, uniforms)
+    const bind = device.createBindGroup({ layout, entries: [
+      { binding: 0, resource: { buffer: ubuf } }, { binding: 1, resource: sampler },
+      { binding: 2, resource: input.createView() }] })
+    const enc = device.createCommandEncoder()
+    const pass = enc.beginRenderPass({ colorAttachments: [{ view: out.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0,0,0,0] }] })
+    pass.setPipeline(pipeline); pass.setBindGroup(0, bind); pass.draw(3); pass.end()
+    device.queue.submit([enc.finish()])
+    return out
+  }
+  let texH = run(true, texture)
+  // 分步定位:先读回水平 pass
+  const rbH = device.createBuffer({ size: W * H * 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+  const encH = device.createCommandEncoder()
+  encH.copyTextureToBuffer({ texture: texH }, { buffer: rbH, bytesPerRow: W * 16 }, [W, H])
+  device.queue.submit([encH.finish()])
+  await rbH.mapAsync(GPUMapMode.READ)
+  const hbuf = new Float32Array(rbH.getMappedRange()).slice()
+  window.__hpass = hbuf
+  let tex = run(false, texH)
+  const readback = new Float32Array(W * H * 4)
+  const rb = device.createBuffer({ size: W * H * 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+  const enc2 = device.createCommandEncoder()
+  enc2.copyTextureToBuffer({ texture: tex }, { buffer: rb, bytesPerRow: W * 16 }, [W, H])
+  device.queue.submit([enc2.finish()])
+  await rb.mapAsync(GPUMapMode.READ)
+  readback.set(new Float32Array(rb.getMappedRange()))
+  // CPU 参照:全帐篷(逐 tap,显式双线性),H 后 V
+  const bilinear = (data, px, py) => {
+    const x = Math.min(W - 1.001, Math.max(0, px - 0.5)), y = Math.min(H - 1.001, Math.max(0, py - 0.5))
+    const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0
+    const s = (xx, yy) => { const i = (yy * W + xx) * 4; return [data[i], data[i+1], data[i+2], data[i+3]] }
+    const a = s(x0, y0), b = s(Math.min(x0+1, W-1), y0), c = s(x0, Math.min(y0+1, H-1)), d = s(Math.min(x0+1, W-1), Math.min(y0+1, H-1))
+    return [0,1,2,3].map(k => a[k]*(1-fx)*(1-fy) + b[k]*fx*(1-fy) + c[k]*(1-fx)*fy + d[k]*fx*fy)
+  }
+  const tentPass = (data, horizontal) => {
+    const out = new Float32Array(W * H * 4)
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let acc = [0,0,0,0], wsum = 0
+      for (let k = -Math.ceil(COUNT); k <= Math.ceil(COUNT); k++) {
+        if (Math.abs(k) > COUNT) continue
+        const w = COUNT - Math.abs(k)
+        const px = horizontal ? x + k * SPACING + 0.5 : x + 0.5
+        const py = horizontal ? y + 0.5 : y + k * SPACING + 0.5
+        const v = bilinear(data, px, py)
+        acc = acc.map((a, i) => a + v[i] * w); wsum += w
+      }
+      const i = (y * W + x) * 4
+      out[i] = acc[0]/wsum; out[i+1] = acc[1]/wsum; out[i+2] = acc[2]/wsum; out[i+3] = acc[3]/wsum
+    }
+    return out
+  }
+  const cpu = tentPass(tentPass(src, true), false)
+  // 对照(GPU UV 原点差异:GPU uv 从 position+0.5 起,与 CPU 一致;跳过边缘 2px 避免 texel 边界歧义)
+  // 成对采样(Figma 源码语义)的验收:硬边缘处单次线性 fetch 与两次独立
+  // 双线性存在固有近似 → 门禁按三档:内部平滑区≈0、全图边缘有界、均值极小。
+  let maxDiff = 0, sumDiff = 0, n = 0, interiorMax = 0, edgeViolations = 0
+  const isEdgeNeighborhood = (x, y) => {
+    const e = 3
+    return (Math.abs(x - W/2) < e + COUNT) || (Math.hypot(x-60, y-20) < 6 + COUNT)
+  }
+  for (let y = 2; y < H-2; y++) for (let x = 2; x < W-2; x++) {
+    const i = (y * W + x) * 4
+    for (let k = 0; k < 4; k++) {
+      const d = Math.abs(readback[i+k] - cpu[i+k]); maxDiff = Math.max(maxDiff, d); sumDiff += d; n++
+      if (!isEdgeNeighborhood(x, y)) interiorMax = Math.max(interiorMax, d)
+      else if (d > 0.15) edgeViolations++
+    }
+  }
+  const dump = (x, y) => {
+    const i = (y * W + x) * 4
+    return `gpu=[${readback.slice(i, i+4).map(v=>v.toFixed(3))}] cpu=[${cpu.slice(i, i+4).map(v=>v.toFixed(3))}]`
+  }
+  // shader_118 阴影变体:alpha 标量成对模糊 + 打包阶梯输出
+  const SHADOW_WGSL = document.getElementById('shadow-wgsl').textContent
+  const shadowModule = device.createShaderModule({ code: SHADOW_WGSL })
+  const shadowPipeline = device.createRenderPipeline({ layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+    vertex: { module: shadowModule, entryPoint: 'quad' }, fragment: { module: shadowModule, entryPoint: 'fragment', targets: [{ format: 'rgba32float' }] },
+    primitive: { topology: 'triangle-list' } })
+  const shadowRun = (horizontal, input, inputIsPacked = 0) => {
+    const out = device.createTexture({ size: [W, H], format: 'rgba32float',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC })
+    uniforms.set([0,0,W,H],0); uniforms.set([0,0,W,H],4)
+    uniforms.set([RADIUS, horizontal?0:1, inputIsPacked, 0], 36)
+    uniforms.set([COUNT,0,0,0], 40)
+    const ubuf = device.createBuffer({ size: 1024, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+    device.queue.writeBuffer(ubuf, 0, uniforms)
+    const bind = device.createBindGroup({ layout, entries: [
+      { binding: 0, resource: { buffer: ubuf } }, { binding: 1, resource: sampler },
+      { binding: 2, resource: input.createView() }] })
+    const enc = device.createCommandEncoder()
+    const rp = enc.beginRenderPass({ colorAttachments: [{ view: out.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0,0,0,0] }] })
+    rp.setPipeline(shadowPipeline); rp.setBindGroup(0, bind); rp.draw(3); rp.end()
+    device.queue.submit([enc.finish()])
+    return out
+  }
+  // 域切换(其 inputIsPacked 设计):H 输出即打包域,V 以打包域读入
+  let shadowTex = shadowRun(true, texture, 0)
+  shadowTex = shadowRun(false, shadowTex, 1)
+  const srb = device.createBuffer({ size: W*H*16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+  const sEnc = device.createCommandEncoder()
+  sEnc.copyTextureToBuffer({ texture: shadowTex }, { buffer: srb, bytesPerRow: W*16 }, [W, H])
+  device.queue.submit([sEnc.finish()])
+  await srb.mapAsync(GPUMapMode.READ)
+  const shadowOut = new Float32Array(srb.getMappedRange()).slice()
+  // CPU 参照:alpha 帐篷双 pass,末 pass 输出打包阶梯
+  const tentAlpha = (data, horizontal) => {
+    const out = new Float32Array(W*H*4)
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let acc = 0, wsum = 0
+      for (let k = -Math.ceil(COUNT); k <= Math.ceil(COUNT); k++) {
+        if (Math.abs(k) > COUNT) continue
+        const w = COUNT - Math.abs(k)
+        const px = horizontal ? x + k*SPACING + 0.5 : x + 0.5
+        const py = horizontal ? y + 0.5 : y + k*SPACING + 0.5
+        acc += w * bilinear(data, px, py)[3]; wsum += w
+      }
+      const i = (y*W+x)*4
+      out[i]=acc/wsum; out[i+1]=acc/wsum; out[i+2]=acc/wsum; out[i+3]=1
+    }
+    return out
+  }
+  const pack4js = (b) => {
+    const f1 = Math.floor(b*255)/255, f2 = (b-f1)*255
+    const g = f1 + f2/255
+    const h = (b-g)*65025
+    const i1 = Math.floor(h*255)/255, i2 = (h-i1)*255
+    return [f1, f2, i1, i2]
+  }
+  const alphaH = tentAlpha(src, true)
+  let shadowMax = 0, shadowMean = 0, sn = 0
+  for (let y = 2; y < H-2; y++) for (let x = 2; x < W-2; x++) {
+    const i = (y*W+x)*4
+    // 竖直 pass 逐点算(仅 alpha),再打包对照
+    let acc = 0, wsum = 0
+    for (let k = -Math.ceil(COUNT); k <= Math.ceil(COUNT); k++) {
+      if (Math.abs(k) > COUNT) continue
+      const w = COUNT - Math.abs(k)
+      acc += w * bilinear(alphaH, x + 0.5, y + k*SPACING + 0.5)[0]; wsum += w
+    }
+    const packed = pack4js(acc / wsum)
+    for (let k = 0; k < 4; k++) {
+      const d = Math.abs(shadowOut[i+k] - packed[k])
+      shadowMax = Math.max(shadowMax, d); shadowMean += d; sn++
+    }
+  }
+  const shadowPass = shadowMax < 0.15 && (shadowMean/sn) < 0.01
+  window.__shadowDump = {
+    gpu: [shadowOut[(10*W+10)*4], shadowOut[(10*W+10)*4+1], shadowOut[(10*W+10)*4+2], shadowOut[(10*W+10)*4+3]],
+  }
+  const gpuErr = await device.popErrorScope().catch(() => null)
+  const pass = interiorMax < 0.001 && maxDiff < 0.15 && (sumDiff/n) < 0.01 && edgeViolations === 0
+  report(pass && shadowPass,
+    `float32Filterable=${float32Filterable}\ncount=${COUNT.toFixed(4)} spacing=${SPACING.toFixed(6)}\n` +
+    `maxDiff=${maxDiff.toFixed(6)} interiorMax=${interiorMax.toFixed(8)} meanDiff=${(sumDiff/n).toFixed(8)} edgeViolations=${edgeViolations}\ngate: interior<0.001 max<0.15 mean<0.01\n` +
+    `p(10,10) ${dump(10,10)}\np(48,32) ${dump(48,32)}\np(60,20) ${dump(60,20)}\n` +
+    `src(10,10)=${[src[(10*W+10)*4],src[(10*W+10)*4+1],src[(10*W+10)*4+2]].map(v=>v.toFixed(3))}\n` +
+    `gpuError=${gpuErr ? gpuErr.message : 'none'} uncaptured=${JSON.stringify(window.__gpuErrors)}\n` +
+    `shadow: max=${shadowMax.toFixed(4)} mean=${(shadowMean/sn).toFixed(6)} pass=${shadowPass} gpuDump=${JSON.stringify(window.__shadowDump.gpu)}\n` +
+    `hpass(10,10)=${[hbuf[(10*W+10)*4],hbuf[(10*W+10)*4+1],hbuf[(10*W+10)*4+3]].map(v=>v.toFixed(3))} nonzero=${hbuf.some(v=>v!==0)}\n` +
+    `probe(2,2)=${[probeOut[(2*16+2)*4],probeOut[(2*8+2)*4+1]].map(v=>v.toFixed(3))} probeNonzero=${probeOut.some(v=>v!==0)}`)
+} catch (e) { report(false, String(e)) }
+</script>
+<script type="text/plain" id="wgsl">
+// Figma 成对采样帐篷模糊,逐行移植自其 shader_78/147/156(figma-wasm-analysis/shaders/)。
+// 算法事实(源码):uniform 携 CPU 计算的 count 与 blurDelta;≤64 有界循环早退;
+// 帐篷权重解析(weight_k=count-k),无核纹理;相邻 tap 位置按权重插值,一次线性
+// fetch = 两次 tap 的加权平均(带宽减半)。
+// 绑定沿用驱动 Params 约定:values[9] = (radius, direction, clampEdges, hasKernel),
+// 矩形/尺寸取 values[0..1];count 由 CPU 按 count=radius·√6 夹 64 预计算写入 values[10]。
+struct Params { values: array<vec4<f32>, 64> }  // uniform 地址空间禁止未定尺寸数组(参照 displayFilter 同款定尺寸)
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var texSampler: sampler;
+@group(0) @binding(2) var texture0: texture_2d<f32>;
+
+@vertex
+fn quad(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let x = f32((i << 1u) & 2u);
+  let y = f32(i & 2u);
+  return vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+}
+
+const MAX_TAPS: i32 = 64;  // 其 const int a=64
+
+@fragment
+fn fragment(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+  let dstRect = params.values[0];  // 目标矩形(x, y, w, h,像素)
+  let srcRect = params.values[1]; // 源矩形(x, y, w, h)——尺寸与原点同 displayFilter 约定
+  let radius = params.values[9].x;
+  let horizontal = params.values[9].y < 0.5;
+  let count = params.values[10].x; // CPU 预计算:min(64, radius·√6)
+  // 其 blurDelta 契约:总跨度 = radius 纹素,count 个 tap 均布 → 步进 = radius/count 纹素
+  // (count=radius·√6 时为亚纹素步进 1/√6,成对插值因此成立;count 夹 64 后步进同步放大)
+  let spacing = radius / max(count, 1.0);
+  let delta = select(vec2<f32>(0.0, spacing / srcRect.z), vec2<f32>(spacing / srcRect.w, 0.0), horizontal);
+  // @builtin(position) 在片元阶段已是纹素中心(含 +0.5),不再额外加
+  let uv = (position.xy + dstRect.xy - srcRect.xy) / srcRect.zw;
+  var accumulator = textureSample(texture0, texSampler, uv) * count;
+  var weightSum = count;
+  var e: i32 = 1;
+  loop {
+    if (e >= MAX_TAPS) { break; }
+    if (f32(e) > count) { break; }                 // 其早退
+    let f = f32(e);
+    let g = min(f + 1.0, count);
+    let l = count - f;                             // 帐篷权重(k)
+    let m = count - g;                             // 帐篷权重(k+1)
+    let n = l + m;
+    // 成对采样(其 (h*l+j*m)/n 插值):一次线性 fetch 抵两次 tap
+    let minus = (uv - delta * f) * (l / n) + (uv - delta * g) * (m / n);
+    let plus = (uv + delta * f) * (l / n) + (uv + delta * g) * (m / n);
+    accumulator += n * (textureSample(texture0, texSampler, minus)
+      + textureSample(texture0, texSampler, plus));
+    weightSum += 2.0 * n;
+    e += 2;
+  }
+  return accumulator / weightSum;
+}
+
+</script><script type="text/plain" id="shadow-wgsl">
+// Figma 阴影模糊 pass,逐行移植自其 shader_118(figma-wasm-analysis/shaders/)。
+// 源码事实:阴影是单标量(alpha)的成对帐篷模糊;RGBA8 精度下标量经
+// 1/255 → 1/65025 → 1/16581375 三级阶梯打包进 vec4,unpack 是点积还原:
+//   vec2 pack(b): c=floor(b*255)/255; d=(b-c)*255 → (c,d)
+//   vec4 pack4(b): 两级嵌套 pack(残差放大 65025)
+//   float unpack(v) = dot(v, vec4(1, 1/255, 1/65025, 1/16581375))
+// 循环与 shader_78 完全同构(≤64 有界、count-k 帐篷、成对插值),
+// 差异仅在标量域 + 归一化除 max(t, 1e-20)。
+struct Params { values: array<vec4<f32>, 64> }
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var texSampler: sampler;
+@group(0) @binding(2) var texture0: texture_2d<f32>;
+
+@vertex
+fn quad(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let x = f32((i << 1u) & 2u);
+  let y = f32(i & 2u);
+  return vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+}
+
+// 其 vec2 a(float b):一级打包(高字节为分数,低字节为残差)
+fn pack2(b: f32) -> vec2<f32> {
+  let c = floor(b * 255.0) * (1.0 / 255.0);
+  let d = (b - c) * 255.0;
+  return vec2<f32>(c, d);
+}
+// 其 vec4 e(float b):两级嵌套,残差放大 65025 再打包
+fn pack4(b: f32) -> vec4<f32> {
+  let f = pack2(b);
+  let g = f.x + f.y * (1.0 / 255.0);
+  let h = (b - g) * 65025.0;
+  let i = pack2(h);
+  return vec4<f32>(f, i);
+}
+// 其 float k(vec4 l):点积还原(1/16581375 = 1/(255^3))
+fn unpack4(l: vec4<f32>) -> f32 {
+  return dot(l, vec4<f32>(1.0, 1.0 / 255.0, 1.0 / 65025.0, 1.0 / 16581375.0));
+}
+
+const MAX_TAPS: i32 = 64;
+
+fn sampleScalar(coord: vec2<f32>, inputIsPacked: bool) -> f32 {
+  let p = textureSample(texture0, texSampler, coord);
+  return select(clamp(p.a, 0.0, 1.0), unpack4(p), inputIsPacked);
+}
+
+@fragment
+fn fragment(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+  let dstRect = params.values[0];
+  let srcRect = params.values[1];
+  let radius = params.values[9].x;
+  let horizontal = params.values[9].y < 0.5;
+  let inputIsPacked = params.values[9].z > 0.5;  // 其 uniform int inputIsPacked
+  let count = params.values[10].x;
+  let spacing = radius / max(count, 1.0);
+  let delta = select(vec2<f32>(0.0, spacing / srcRect.w), vec2<f32>(spacing / srcRect.z, 0.0), horizontal);
+  let uv = (position.xy + dstRect.xy - srcRect.xy) / srcRect.zw;
+  // 其 n(vec2):标量样本(打包域 unpack / 非打包取 alpha 钳制)——无捕获闭包提升为函数,打包旗经全局传递
+  var s = sampleScalar(uv, inputIsPacked) * count;
+  var t = count;
+  var e: i32 = 1;
+  loop {
+    if (e >= MAX_TAPS) { break; }
+    if (f32(e) > count) { break; }
+    let v = f32(e);
+    let w = min(v + 1.0, count);
+    let ab = count - v;
+    let ac = count - w;
+    let ad = ab + ac;
+    let ae = (uv - delta * v) * (ab / ad) + (uv - delta * w) * (ac / ad);
+    let af = (uv + delta * v) * (ab / ad) + (uv + delta * w) * (ac / ad);
+    s += ad * (sampleScalar(ae, inputIsPacked) + sampleScalar(af, inputIsPacked));
+    t += 2.0 * ad;
+    e += 2;
+  }
+  // 其归一化:max(t, 1e-20) 防零;输出经 pack4 回打包域
+  return pack4(s / max(t, 1e-20));
+}
+
+</script></body></html>
