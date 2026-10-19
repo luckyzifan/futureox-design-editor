@@ -864,6 +864,15 @@ async function buildWindow() {
   for (const event of ['resize', 'move', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'])
     window.on(event, () => { clearTimeout(windowStateTimer); windowStateTimer = setTimeout(() => void saveWindowState(ownedWindow), 200) })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+  // Forward renderer console logs to terminal (for debugging)
+  window.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (message.includes('[imageLevel]') || message.includes('[Image Pixel Check]') || message.includes('GPU')) {
+      const levelName = ['', 'INFO', 'WARN', 'ERROR'][level] || 'LOG'
+      console.log(`[RENDERER ${levelName}] ${message}`)
+    }
+  })
+
   window.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown' || !(process.platform === 'darwin' ? input.meta : input.control)) return
     const key = input.key.toLowerCase()

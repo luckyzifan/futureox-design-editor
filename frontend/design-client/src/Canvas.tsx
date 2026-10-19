@@ -1847,6 +1847,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (!current()) return
         const image = await imageData(file, maxPixels)
         if (!current()) return
+        if (image.resized)
+          editor.notify(`图片超过 ${Math.floor(maxPixels / 1e4)} 万像素预算，已降采样至 ${image.width}×${image.height}`)
         const k = Math.min(1, 600 / image.width, 600 / image.height)
         const id = editor.add('rectangle', {
           ...p,

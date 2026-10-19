@@ -43,7 +43,7 @@ export async function readDesignFile(file:File, signal?:AbortSignal):Promise<imp
 export async function imageData(
   file: File,
   maxPixels = 16_777_216,
-): Promise<{ data: string; width: number; height: number }> {
+): Promise<{ data: string; width: number; height: number; resized?: boolean }> {
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024)
     throw new Error('请使用小于 8 MB 的 PNG、JPEG 或 WebP 图片')
   const data = await new Promise<string>((resolve, reject) => {
@@ -55,9 +55,30 @@ export async function imageData(
   const img = new Image()
   img.src = data
   await img.decode()
-  if (img.width * img.height > maxPixels)
-    throw new Error(`图片像素超过当前 ${Math.floor(maxPixels / 1e4)} 万像素预算`)
-  return { data, width: img.width, height: img.height }
+  if (img.width * img.height <= maxPixels) return { data, width: img.width, height: img.height }
+  // Import cap, Figma parity: an oversized asset joins the document at the
+  // largest dimensions that fit the resident decode budget (and an 8192 edge)
+  // instead of being rejected. The original file on disk is untouched, and
+  // assets within the budget keep their exact bytes.
+  const scale = Math.min(
+    Math.sqrt(maxPixels / (img.width * img.height)),
+    8192 / Math.max(img.width, img.height),
+  )
+  const width = Math.max(1, Math.floor(img.width * scale))
+  const height = Math.max(1, Math.floor(img.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')!
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+  context.drawImage(img, 0, 0, width, height)
+  let capped = canvas.toDataURL('image/png')
+  // A photographic PNG re-encode can exceed the kernel's 12 MB URI limit;
+  // WebP carries the same pixels well under it.
+  if (capped.length > 11 * 1024 * 1024) capped = canvas.toDataURL('image/webp', 0.92)
+  if (capped.length > 12 * 1024 * 1024) throw new Error('图片降采样后仍超过 12 MB 数据上限')
+  return { data: capped, width, height, resized: true }
 }
 export type RemoteDocument = {
   id: string
