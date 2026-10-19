@@ -1,11 +1,11 @@
 //! Interop with foreign design formats: Sketch `.sketch` (import + export)
 //! and Figma `.fig` (import via the bundled `fig2sketch` converter).
 //!
-//! The `.sketch` mapping follows the container and JSON schema recovered in
-//! `sketch-kernel-analysis/` (11-file-format.md): a zip holding `meta.json`,
-//! `document.json`, `user.json`, one `pages/<uuid>.json` per page and
-//! `images/<sha1>` blobs; layer trees keyed by `_class`; styles as fill /
-//! border / shadow part arrays. Unknown fields are ignored on import and
+//! The `.sketch` mapping follows the documented container and JSON schema:
+//! a zip holding `meta.json`, `document.json`, `user.json`, one
+//! `pages/<uuid>.json` per page and `images/<sha1>` blobs; layer trees
+//! keyed by `_class`; styles as fill / border / shadow part arrays.
+//! Unknown fields are ignored on import and
 //! omitted on export — Sketch itself defaults-absent fields, so a subset
 //! document opens cleanly.
 use crate::math::Transform;
@@ -117,7 +117,7 @@ pub fn is_sketch_file(bytes: &[u8]) -> bool {
 }
 
 /// A `.fig` bundle is a zip containing `canvas.fig` (Kiwi scene graph),
-/// as recovered from Sketch's bundled `fig2sketch` importer.
+/// as handled by Sketch's bundled `fig2sketch` importer.
 pub fn is_fig_file(bytes: &[u8]) -> bool {
     matches!(read_zip(bytes), Ok(files) if files.contains_key("canvas.fig"))
 }
@@ -207,12 +207,12 @@ fn gradient_stop_color(color: &Value) -> String {
 // ---------------------------------------------------------------------------
 // P0-4: MSAdaptableColor (05-style.md §3, 24-c1-c11-completion.md C9)
 //
-// Sketch 2023+ colors can adapt between light/dark appearances. The
-// reverse-engineering corpus recovered no independent resolvedColor symbol —
-// recoloring is driven by `updatableColors` on the layer/style — so the
+// Sketch 2023+ colors can adapt between light/dark appearances. There is
+// no independent resolvedColor symbol — recoloring is driven by
+// `updatableColors` on the layer/style — so the
 // kernel keeps both appearance values verbatim in bindings and feeds the
 // light (default appearance) value into the single-color paint/text paths.
-// The exact archived key set is not in the corpus, so detection accepts the
+// The exact archived key set is not documented, so detection accepts the
 // class marker plus the observed dual-value key pairs, and fidelity rides
 // the raw JSON rather than a re-derived structure.
 // ---------------------------------------------------------------------------
@@ -2018,7 +2018,7 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
         let overlay = payload.get("overlaySettings").is_some_and(|s| !s.is_null());
         if overlay {
             // MSImmutableFlowOverlaySettings position fields have no
-            // documented archived names in the reverse-engineering corpus.
+            // documented archived names.
             notes.push("flow-overlaySettings-position-unmapped".into());
         }
         let duration_ms = payload
@@ -2482,8 +2482,8 @@ fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> O
 }
 
 // ---------------------------------------------------------------------------
-// export-side gap closures (sketch-kernel-analysis/21 items, mapping tables
-// from 22-sketch-json-dictionary.md and the fig2sketch sketchformat dumps)
+// export-side gap closures (mapping tables from the Sketch JSON dictionary
+// and the fig2sketch sketchformat sources)
 // ---------------------------------------------------------------------------
 
 /// Kernel strokes/effects → Sketch border/shadow/blur parts. Shared by the
@@ -3620,9 +3620,9 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
                 flow.insert("animationType".into(), json!(-1));
                 flow.insert("maintainScrollPosition".into(), json!(false));
                 if action.kind == "overlay" {
-                    // The archived overlay position fields are not documented
-                    // in the reverse-engineering corpus; the class marker plus
-                    // the userInfo payload keep the intent identifiable.
+                    // The archived overlay position fields are not documented;
+                    // the class marker plus the userInfo payload keep the
+                    // intent identifiable.
                     flow.insert(
                         "overlaySettings".into(),
                         json!({"_class": "MSImmutableFlowOverlaySettings"}),
@@ -3883,7 +3883,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     // P0-4: color space. Sketch document.json colorSpace: 0 unmanaged,
     // 1 sRGB, 2 P3 — the kernel color_management maps onto the same three
     // states (linear variants and HDR luminances have no Sketch home and
-    // stay kernel-side; HDR is out of scope per ALGORITHMS.md).
+    // stay kernel-side; HDR is out of scope).
     let color_space = match doc.color_management.as_ref().map(|c| c.document_space) {
         Some(crate::color::ColorSpace::DisplayP3) => 2,
         Some(crate::color::ColorSpace::Srgb) => 1,

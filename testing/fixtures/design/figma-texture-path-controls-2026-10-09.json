@@ -1,0 +1,890 @@
+{
+  "fileKey": "KawVhUXCap10WDTprxYEmu",
+  "scope": "Same world transform/paint/TEXTURE controls for primitive path isolation. Original nodes unchanged.",
+  "original": {
+    "pages": [
+      {
+        "id": "0:1",
+        "name": "Page 1"
+      },
+      {
+        "id": "44:2",
+        "name": "Kernel comparison 2026-10-07"
+      },
+      {
+        "id": "52:2",
+        "name": "Kernel curves and filters 2026-10-07"
+      }
+    ],
+    "frame": {
+      "id": "62:183",
+      "name": "MaterialQA-texture-unclipped",
+      "parent": "62:2",
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2832
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "relativeTransform": [
+        [
+          1,
+          0,
+          2736
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "width": 128,
+      "height": 128,
+      "fills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "effects": [],
+      "opacity": 1,
+      "blendMode": "PASS_THROUGH",
+      "clipsContent": true
+    },
+    "children": [
+      {
+        "id": "62:184",
+        "type": "RECTANGLE",
+        "name": "textured",
+        "relativeTransform": [
+          [
+            1,
+            0,
+            20
+          ],
+          [
+            0,
+            1,
+            20
+          ]
+        ],
+        "absoluteTransform": [
+          [
+            1,
+            0,
+            2852
+          ],
+          [
+            0,
+            1,
+            340
+          ]
+        ],
+        "width": 88,
+        "height": 88,
+        "fills": [
+          {
+            "type": "GRADIENT_LINEAR",
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "NORMAL",
+            "gradientStops": [
+              {
+                "color": {
+                  "r": 0.2666666805744171,
+                  "g": 0.46666666865348816,
+                  "b": 0.8666666746139526,
+                  "a": 1
+                },
+                "position": 0,
+                "boundVariables": {}
+              },
+              {
+                "color": {
+                  "r": 0.8666666746139526,
+                  "g": 0.46666666865348816,
+                  "b": 0.2666666805744171,
+                  "a": 1
+                },
+                "position": 1,
+                "boundVariables": {}
+              }
+            ],
+            "gradientTransform": [
+              [
+                0.5,
+                0.5,
+                0
+              ],
+              [
+                -0.7071067690849304,
+                0.7071067690849304,
+                0.5
+              ]
+            ]
+          }
+        ],
+        "strokes": [],
+        "effects": [
+          {
+            "type": "TEXTURE",
+            "visible": true,
+            "radius": 2,
+            "boundVariables": {},
+            "noiseSize": 8,
+            "noiseSizeVector": {
+              "x": 8,
+              "y": 8
+            },
+            "clipToShape": false
+          }
+        ],
+        "opacity": 1,
+        "blendMode": "PASS_THROUGH"
+      }
+    ]
+  },
+  "pages": {
+    "createdNodeIds": [
+      "173:2",
+      "173:3",
+      "173:4"
+    ],
+    "pages": [
+      {
+        "id": "173:2",
+        "name": "Kernel texture path 2026-10-09 Rectangle",
+        "variant": "Rectangle"
+      },
+      {
+        "id": "173:3",
+        "name": "Kernel texture path 2026-10-09 Vector CW",
+        "variant": "Vector CW"
+      },
+      {
+        "id": "173:4",
+        "name": "Kernel texture path 2026-10-09 Vector CCW",
+        "variant": "Vector CCW"
+      }
+    ]
+  },
+  "controls": [
+    {
+      "createdNodeIds": [
+        "174:2",
+        "174:3"
+      ],
+      "mutatedNodeIds": [
+        "173:2"
+      ],
+      "pageId": "173:2",
+      "frame": {
+        "id": "174:2",
+        "name": "PathQA-unclipped-rectangle",
+        "width": 128,
+        "height": 128,
+        "absoluteTransform": [
+          [
+            1,
+            0,
+            2832
+          ],
+          [
+            0,
+            1,
+            320
+          ]
+        ],
+        "fills": [
+          {
+            "type": "SOLID",
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "NORMAL",
+            "color": {
+              "r": 1,
+              "g": 1,
+              "b": 1
+            },
+            "boundVariables": {}
+          }
+        ],
+        "clipsContent": true
+      },
+      "source": {
+        "id": "174:3",
+        "type": "RECTANGLE",
+        "width": 88,
+        "height": 88,
+        "relativeTransform": [
+          [
+            1,
+            0,
+            20
+          ],
+          [
+            0,
+            1,
+            20
+          ]
+        ],
+        "absoluteTransform": [
+          [
+            1,
+            0,
+            2852
+          ],
+          [
+            0,
+            1,
+            340
+          ]
+        ],
+        "absoluteRenderBounds": {
+          "x": 2850,
+          "y": 338,
+          "width": 92,
+          "height": 92
+        },
+        "fills": [
+          {
+            "type": "GRADIENT_LINEAR",
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "NORMAL",
+            "gradientStops": [
+              {
+                "color": {
+                  "r": 0.2666666805744171,
+                  "g": 0.46666666865348816,
+                  "b": 0.8666666746139526,
+                  "a": 1
+                },
+                "position": 0,
+                "boundVariables": {}
+              },
+              {
+                "color": {
+                  "r": 0.8666666746139526,
+                  "g": 0.46666666865348816,
+                  "b": 0.2666666805744171,
+                  "a": 1
+                },
+                "position": 1,
+                "boundVariables": {}
+              }
+            ],
+            "gradientTransform": [
+              [
+                0.5,
+                0.5,
+                0
+              ],
+              [
+                -0.7071067690849304,
+                0.7071067690849304,
+                0.5
+              ]
+            ]
+          }
+        ],
+        "effects": [
+          {
+            "type": "TEXTURE",
+            "visible": true,
+            "radius": 2,
+            "boundVariables": {},
+            "noiseSize": 8,
+            "noiseSizeVector": {
+              "x": 8,
+              "y": 8
+            },
+            "clipToShape": false
+          }
+        ],
+        "vectorPaths": null,
+        "vectorNetwork": null
+      }
+    },
+    {
+      "createdNodeIds": [
+        "174:4",
+        "174:5"
+      ],
+      "mutatedNodeIds": [
+        "173:3"
+      ],
+      "pageId": "173:3",
+      "frame": {
+        "id": "174:4",
+        "name": "PathQA-unclipped-vector-cw",
+        "width": 128,
+        "height": 128,
+        "absoluteTransform": [
+          [
+            1,
+            0,
+            2832
+          ],
+          [
+            0,
+            1,
+            320
+          ]
+        ],
+        "fills": [
+          {
+            "type": "SOLID",
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "NORMAL",
+            "color": {
+              "r": 1,
+              "g": 1,
+              "b": 1
+            },
+            "boundVariables": {}
+          }
+        ],
+        "clipsContent": true
+      },
+      "source": {
+        "id": "174:5",
+        "type": "VECTOR",
+        "width": 88,
+        "height": 88,
+        "relativeTransform": [
+          [
+            1,
+            0,
+            20
+          ],
+          [
+            0,
+            1,
+            20
+          ]
+        ],
+        "absoluteTransform": [
+          [
+            1,
+            0,
+            2852
+          ],
+          [
+            0,
+            1,
+            340
+          ]
+        ],
+        "absoluteRenderBounds": {
+          "x": 2850,
+          "y": 338,
+          "width": 92,
+          "height": 92
+        },
+        "fills": [
+          {
+            "type": "GRADIENT_LINEAR",
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "NORMAL",
+            "gradientStops": [
+              {
+                "color": {
+                  "r": 0.2666666805744171,
+                  "g": 0.46666666865348816,
+                  "b": 0.8666666746139526,
+                  "a": 1
+                },
+                "position": 0,
+                "boundVariables": {}
+              },
+              {
+                "color": {
+                  "r": 0.8666666746139526,
+                  "g": 0.46666666865348816,
+                  "b": 0.2666666805744171,
+                  "a": 1
+                },
+                "position": 1,
+                "boundVariables": {}
+              }
+            ],
+            "gradientTransform": [
+              [
+                0.5,
+                0.5,
+                0
+              ],
+              [
+                -0.7071067690849304,
+                0.7071067690849304,
+                0.5
+              ]
+            ]
+          }
+        ],
+        "effects": [
+          {
+            "type": "TEXTURE",
+            "visible": true,
+            "radius": 2,
+            "boundVariables": {},
+            "noiseSize": 8,
+            "noiseSizeVector": {
+              "x": 8,
+              "y": 8
+            },
+            "clipToShape": false
+          }
+        ],
+        "vectorPaths": [
+          {
+            "windingRule": "NONZERO",
+            "data": "M 0 0 L 88 0 L 88 88 L 0 88 L 0 0 Z"
+          }
+        ],
+        "vectorNetwork": {
+          "vertices": [
+            {
+              "x": 0,
+              "y": 0,
+              "strokeCap": "NONE",
+              "strokeJoin": "MITER",
+              "cornerRadius": 0,
+              "handleMirroring": "NONE"
+            },
+            {
+              "x": 88,
+              "y": 0,
+              "strokeCap": "NONE",
+              "strokeJoin": "MITER",
+              "cornerRadius": 0,
+              "handleMirroring": "NONE"
+            },
+            {
+              "x": 88,
+              "y": 88,
+              "strokeCap": "NONE",
+              "strokeJoin": "MITER",
+              "cornerRadius": 0,
+              "handleMirroring": "NONE"
+            },
+            {
+              "x": 0,
+              "y": 88,
+              "strokeCap": "NONE",
+              "strokeJoin": "MITER",
+              "cornerRadius": 0,
+              "handleMirroring": "NONE"
+            }
+          ],
+          "segments": [
+            {
+              "start": 0,
+              "end": 1,
+              "tangentStart": {
+                "x": 0,
+                "y": 0
+              },
+              "tangentEnd": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "start": 1,
+              "end": 2,
+              "tangentStart": {
+                "x": 0,
+                "y": 0
+              },
+              "tangentEnd": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "start": 2,
+              "end": 3,
+              "tangentStart": {
+                "x": 0,
+                "y": 0
+              },
+              "tangentEnd": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "start": 3,
+              "end": 0,
+              "tangentStart": {
+                "x": 0,
+                "y": 0
+              },
+              "tangentEnd": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          ],
+          "regions": [
+            {
+              "windingRule": "NONZERO",
+              "loops": [
+                [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              ],
+              "fillStyleId": "",
+              "fills": [
+                {
+                  "type": "GRADIENT_LINEAR",
+                  "visible": true,
+                  "opacity": 1,
+                  "blendMode": "NORMAL",
+                  "gradientStops": [
+                    {
+                      "color": {
+                        "r": 0.2666666805744171,
+                        "g": 0.46666666865348816,
+                        "b": 0.8666666746139526,
+                        "a": 1
+                      },
+                      "position": 0,
+                      "boundVariables": {}
+                    },
+                    {
+                      "color": {
+                        "r": 0.8666666746139526,
+                        "g": 0.46666666865348816,
+                        "b": 0.2666666805744171,
+                        "a": 1
+                      },
+                      "position": 1,
+                      "boundVariables": {}
+                    }
+                  ],
+                  "gradientTransform": [
+                    [
+                      0.5,
+                      0.5,
+                      0
+                    ],
+                    [
+                      -0.7071067690849304,
+                      0.7071067690849304,
+                      0.5
+                    ]
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "createdNodeIds": [
+        "174:6",
+        "174:7"
+      ],
+      "mutatedNodeIds": [
+        "173:4"
+      ],
+      "pageId": "173:4",
+      "frame": {
+        "id": "174:6",
+        "name": "PathQA-unclipped-vector-ccw",
+        "width": 128,
+        "height": 128,
+        "absoluteTransform": [
+          [
+            1,
+            0,
+            2832
+          ],
+          [
+            0,
+            1,
+            320
+          ]
+        ],
+        "fills": [
+          {
+            "type": "SOLID",
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "NORMAL",
+            "color": {
+              "r": 1,
+              "g": 1,
+              "b": 1
+            },
+            "boundVariables": {}
+          }
+        ],
+        "clipsContent": true
+      },
+      "source": {
+        "id": "174:7",
+        "type": "VECTOR",
+        "width": 88,
+        "height": 88,
+        "relativeTransform": [
+          [
+            1,
+            0,
+            20
+          ],
+          [
+            0,
+            1,
+            20
+          ]
+        ],
+        "absoluteTransform": [
+          [
+            1,
+            0,
+            2852
+          ],
+          [
+            0,
+            1,
+            340
+          ]
+        ],
+        "absoluteRenderBounds": {
+          "x": 2850,
+          "y": 338,
+          "width": 92,
+          "height": 92
+        },
+        "fills": [
+          {
+            "type": "GRADIENT_LINEAR",
+            "visible": true,
+            "opacity": 1,
+            "blendMode": "NORMAL",
+            "gradientStops": [
+              {
+                "color": {
+                  "r": 0.2666666805744171,
+                  "g": 0.46666666865348816,
+                  "b": 0.8666666746139526,
+                  "a": 1
+                },
+                "position": 0,
+                "boundVariables": {}
+              },
+              {
+                "color": {
+                  "r": 0.8666666746139526,
+                  "g": 0.46666666865348816,
+                  "b": 0.2666666805744171,
+                  "a": 1
+                },
+                "position": 1,
+                "boundVariables": {}
+              }
+            ],
+            "gradientTransform": [
+              [
+                0.5,
+                0.5,
+                0
+              ],
+              [
+                -0.7071067690849304,
+                0.7071067690849304,
+                0.5
+              ]
+            ]
+          }
+        ],
+        "effects": [
+          {
+            "type": "TEXTURE",
+            "visible": true,
+            "radius": 2,
+            "boundVariables": {},
+            "noiseSize": 8,
+            "noiseSizeVector": {
+              "x": 8,
+              "y": 8
+            },
+            "clipToShape": false
+          }
+        ],
+        "vectorPaths": [
+          {
+            "windingRule": "NONZERO",
+            "data": "M 0 0 L 0 88 L 88 88 L 88 0 L 0 0 Z"
+          }
+        ],
+        "vectorNetwork": {
+          "vertices": [
+            {
+              "x": 0,
+              "y": 0,
+              "strokeCap": "NONE",
+              "strokeJoin": "MITER",
+              "cornerRadius": 0,
+              "handleMirroring": "NONE"
+            },
+            {
+              "x": 0,
+              "y": 88,
+              "strokeCap": "NONE",
+              "strokeJoin": "MITER",
+              "cornerRadius": 0,
+              "handleMirroring": "NONE"
+            },
+            {
+              "x": 88,
+              "y": 88,
+              "strokeCap": "NONE",
+              "strokeJoin": "MITER",
+              "cornerRadius": 0,
+              "handleMirroring": "NONE"
+            },
+            {
+              "x": 88,
+              "y": 0,
+              "strokeCap": "NONE",
+              "strokeJoin": "MITER",
+              "cornerRadius": 0,
+              "handleMirroring": "NONE"
+            }
+          ],
+          "segments": [
+            {
+              "start": 0,
+              "end": 1,
+              "tangentStart": {
+                "x": 0,
+                "y": 0
+              },
+              "tangentEnd": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "start": 1,
+              "end": 2,
+              "tangentStart": {
+                "x": 0,
+                "y": 0
+              },
+              "tangentEnd": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "start": 2,
+              "end": 3,
+              "tangentStart": {
+                "x": 0,
+                "y": 0
+              },
+              "tangentEnd": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "start": 3,
+              "end": 0,
+              "tangentStart": {
+                "x": 0,
+                "y": 0
+              },
+              "tangentEnd": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          ],
+          "regions": [
+            {
+              "windingRule": "NONZERO",
+              "loops": [
+                [
+                  0,
+                  1,
+                  2,
+                  3
+                ]
+              ],
+              "fillStyleId": "",
+              "fills": [
+                {
+                  "type": "GRADIENT_LINEAR",
+                  "visible": true,
+                  "opacity": 1,
+                  "blendMode": "NORMAL",
+                  "gradientStops": [
+                    {
+                      "color": {
+                        "r": 0.2666666805744171,
+                        "g": 0.46666666865348816,
+                        "b": 0.8666666746139526,
+                        "a": 1
+                      },
+                      "position": 0,
+                      "boundVariables": {}
+                    },
+                    {
+                      "color": {
+                        "r": 0.8666666746139526,
+                        "g": 0.46666666865348816,
+                        "b": 0.2666666805744171,
+                        "a": 1
+                      },
+                      "position": 1,
+                      "boundVariables": {}
+                    }
+                  ],
+                  "gradientTransform": [
+                    [
+                      0.5,
+                      0.5,
+                      0
+                    ],
+                    [
+                      -0.7071067690849304,
+                      0.7071067690849304,
+                      0.5
+                    ]
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-//! The Figma-shape compositing ledger (recovered from its wasm func#36671):
+//! The Figma-shape compositing ledger:
 //! two pools — scene-compositing peak and tile residency — summed, `>> 20`
 //! for MB, f32 tile ratio; budget rejections stay observable as pressure
 //! events the way `clearErrorsAndCheckForOOM` surfaces OOM.

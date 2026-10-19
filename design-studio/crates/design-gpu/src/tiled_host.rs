@@ -1,7 +1,7 @@
 //! CPU-tiled frame host — the native consumer of the kernel's Sketch-parity
 //! tiled renderer (`Engine::update_tiled_frame`).
 //!
-//! Sketch's architecture (reverse-engineered `MSTiledRenderer`): content
+//! Sketch's architecture (`MSTiledRenderer`): content
 //! rasterises on the CPU into world-anchored tiles per zoom bucket, the GPU
 //! only composites. This host is the native entry for that pipeline: it
 //! drives the kernel renderer with the frame's `RenderOptions` plus patch

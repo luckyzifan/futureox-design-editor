@@ -303,7 +303,7 @@ pub struct Paint {
     /// identity so pre-schema-13 documents render unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adjust: Option<crate::image_adjust::ImageAdjust>,
-    /// Pattern tiling (shader_185) on image paints; absent keeps the
+    /// Pattern tiling on image paints; absent keeps the
     /// single-placement image semantics of pre-schema-14 documents.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tile: Option<crate::pattern_fill::PatternTile>,

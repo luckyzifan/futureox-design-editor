@@ -1,0 +1,1613 @@
+{
+  "createdNodeIds": [
+    "110:2",
+    "110:4",
+    "110:5",
+    "110:7",
+    "110:8",
+    "110:10",
+    "110:11",
+    "110:13",
+    "110:14",
+    "110:16"
+  ],
+  "removedNodeIds": [
+    "110:2",
+    "110:4",
+    "110:5",
+    "110:7",
+    "110:8",
+    "110:10",
+    "110:11",
+    "110:13",
+    "110:14",
+    "110:16"
+  ],
+  "mutatedNodeIds": [
+    "109:300",
+    "109:302",
+    "109:304",
+    "109:306",
+    "109:308"
+  ],
+  "paints": [
+    {
+      "frameId": "109:3",
+      "nodeId": "109:20",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:21",
+      "nodeId": "109:38",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:39",
+      "nodeId": "109:56",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:57",
+      "nodeId": "109:74",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:75",
+      "nodeId": "109:92",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:93",
+      "nodeId": "109:95",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:96",
+      "nodeId": "109:98",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:99",
+      "nodeId": "109:101",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:102",
+      "nodeId": "109:119",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:120",
+      "nodeId": "109:137",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:138",
+      "nodeId": "109:155",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:156",
+      "nodeId": "109:173",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:174",
+      "nodeId": "109:191",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:192",
+      "nodeId": "109:194",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:195",
+      "nodeId": "109:197",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:198",
+      "nodeId": "109:200",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:201",
+      "nodeId": "109:218",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:219",
+      "nodeId": "109:236",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:237",
+      "nodeId": "109:254",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:255",
+      "nodeId": "109:272",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:273",
+      "nodeId": "109:290",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:291",
+      "nodeId": "109:293",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:294",
+      "nodeId": "109:296",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:297",
+      "nodeId": "109:299",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:300",
+      "nodeId": "109:301",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:302",
+      "nodeId": "109:303",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:304",
+      "nodeId": "109:305",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:306",
+      "nodeId": "109:307",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0.501960813999176,
+            "g": 0.501960813999176,
+            "b": 0.501960813999176
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:308",
+      "nodeId": "109:309",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0.501960813999176,
+            "g": 0.501960813999176,
+            "b": 0.501960813999176
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:310",
+      "nodeId": "109:311",
+      "frameFills": [],
+      "nodeFills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "cornerRadius": 0,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:312",
+      "nodeId": "109:313",
+      "frameFills": [],
+      "nodeFills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "cornerRadius": 0,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:314",
+      "nodeId": "109:315",
+      "frameFills": [],
+      "nodeFills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "cornerRadius": 0,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:316",
+      "nodeId": "109:317",
+      "frameFills": [],
+      "nodeFills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              -1,
+              0,
+              1
+            ]
+          ]
+        }
+      ],
+      "cornerRadius": 0,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:318",
+      "nodeId": "109:319",
+      "frameFills": [],
+      "nodeFills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              -1,
+              0,
+              1
+            ]
+          ]
+        }
+      ],
+      "cornerRadius": 0,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:320",
+      "nodeId": "109:321",
+      "frameFills": [],
+      "nodeFills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              -1,
+              0,
+              1
+            ]
+          ]
+        }
+      ],
+      "cornerRadius": 0,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:322",
+      "nodeId": "109:323",
+      "frameFills": [],
+      "nodeFills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "cornerRadius": 0,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:324",
+      "nodeId": "109:325",
+      "frameFills": [],
+      "nodeFills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0.46666666865348816,
+                "b": 0.5,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 0.46666666865348816,
+                "b": 0.5,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "cornerRadius": 0,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:326",
+      "nodeId": "109:327",
+      "frameFills": [],
+      "nodeFills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0.46666666865348816,
+                "b": 0.5,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 0.46666666865348816,
+                "b": 0.5,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "cornerRadius": 0,
+      "cornerSmoothing": 0
+    },
+    {
+      "frameId": "109:328",
+      "nodeId": "109:345",
+      "frameFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0
+          },
+          "boundVariables": {}
+        }
+      ],
+      "nodeFills": [
+        {
+          "type": "SOLID",
+          "visible": true,
+          "opacity": 0.10000000149011612,
+          "blendMode": "NORMAL",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1
+          },
+          "boundVariables": {}
+        }
+      ],
+      "cornerRadius": 16,
+      "cornerSmoothing": 0
+    }
+  ],
+  "flattened": [
+    {
+      "sourceId": "109:301",
+      "paths": [
+        {
+          "windingRule": "NONZERO",
+          "data": "M 0 16.000001907348633 C 0 7.163446426391602 7.163444519042969 0 16 0 L 80 0 C 88.83655548095703 0 96 7.163444519042969 96 16 L 96 80 C 96 88.83655548095703 88.83655548095703 96 80 96 L 16.000001907348633 96 C 7.163446426391602 96 0 88.83655548095703 0 80 L 0 16.000001907348633 Z"
+        }
+      ],
+      "transform": [
+        [
+          1,
+          0,
+          -15096
+        ],
+        [
+          0,
+          1,
+          -80
+        ]
+      ],
+      "width": 96,
+      "height": 96
+    },
+    {
+      "sourceId": "109:303",
+      "paths": [
+        {
+          "windingRule": "NONZERO",
+          "data": "M 0 16.000001907348633 C 0 7.163446426391602 7.163444519042969 0 16 0 L 80 0 C 88.83655548095703 0 96 7.163444519042969 96 16 L 96 80 C 96 88.83655548095703 88.83655548095703 96 80 96 L 16.000001907348633 96 C 7.163446426391602 96 0 88.83655548095703 0 80 L 0 16.000001907348633 Z"
+        }
+      ],
+      "transform": [
+        [
+          1,
+          0,
+          -15247.875
+        ],
+        [
+          0,
+          1,
+          -80
+        ]
+      ],
+      "width": 96,
+      "height": 96
+    },
+    {
+      "sourceId": "109:305",
+      "paths": [
+        {
+          "windingRule": "NONZERO",
+          "data": "M 0 16.000001907348633 C 0 7.163446426391602 7.163444519042969 0 16 0 L 80 0 C 88.83655548095703 0 96 7.163444519042969 96 16 L 96 80 C 96 88.83655548095703 88.83655548095703 96 80 96 L 16.000001907348633 96 C 7.163446426391602 96 0 88.83655548095703 0 80 L 0 16.000001907348633 Z"
+        }
+      ],
+      "transform": [
+        [
+          1,
+          0,
+          -15400
+        ],
+        [
+          0,
+          1,
+          -80
+        ]
+      ],
+      "width": 96,
+      "height": 96
+    },
+    {
+      "sourceId": "109:307",
+      "paths": [
+        {
+          "windingRule": "NONZERO",
+          "data": "M 0 16.000001907348633 C 0 7.163446426391602 7.163444519042969 0 16 0 L 80 0 C 88.83655548095703 0 96 7.163444519042969 96 16 L 96 80 C 96 88.83655548095703 88.83655548095703 96 80 96 L 16.000001907348633 96 C 7.163446426391602 96 0 88.83655548095703 0 80 L 0 16.000001907348633 Z"
+        }
+      ],
+      "transform": [
+        [
+          1,
+          0,
+          -15552
+        ],
+        [
+          0,
+          1,
+          -80
+        ]
+      ],
+      "width": 96,
+      "height": 96
+    },
+    {
+      "sourceId": "109:309",
+      "paths": [
+        {
+          "windingRule": "NONZERO",
+          "data": "M 0 16.000001907348633 C 0 7.163446426391602 7.163444519042969 0 16 0 L 80 0 C 88.83655548095703 0 96 7.163444519042969 96 16 L 96 80 C 96 88.83655548095703 88.83655548095703 96 80 96 L 16.000001907348633 96 C 7.163446426391602 96 0 88.83655548095703 0 80 L 0 16.000001907348633 Z"
+        }
+      ],
+      "transform": [
+        [
+          1,
+          0,
+          -15704
+        ],
+        [
+          0,
+          1,
+          -80
+        ]
+      ],
+      "width": 96,
+      "height": 96
+    }
+  ]
+}

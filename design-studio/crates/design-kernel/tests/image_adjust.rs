@@ -1,8 +1,7 @@
 //! E3 image-adjust chain: identity invariance, per-axis direction, a numeric
-//! cross-check against a straight-line transcription of Figma's shader_62
-//! (≤ 1/255 per channel), serde defaults, document validation and the CPU
-//! sampler hook. Sources: figma-wasm-analysis/shaders/shader_62.glsl and
-//! shaders/wgsl_116.wgsl (imageColorAdjustPaint).
+//! cross-check against a straight-line transcription of Figma's image-adjust
+//! shader (≤ 1/255 per channel), serde defaults, document validation and the
+//! CPU sampler hook (GLSL and WGSL forms, `imageColorAdjustPaint`).
 use base64::Engine as _;
 use futureox_design_kernel::image_adjust::ImageAdjust;
 use futureox_design_kernel::math::{Point, Rect, Transform};
@@ -30,8 +29,8 @@ fn adjust(
     }
 }
 
-/// Independent straight-line transcription of shader_62's `ah()` (GLSL `b e
-/// w i o d`), written unrolled per channel and using GLSL's `mix(x,y,t) =
+/// Independent straight-line transcription of the reference `ah()` (GLSL `b
+/// e w i o d`), written unrolled per channel and using GLSL's `mix(x,y,t) =
 /// x*(1-t)+y*t` definition. Any factoring mistake in `image_adjust.rs`
 /// (operand order, matrix orientation, branch swap) shows up here.
 fn reference_ah(
@@ -294,7 +293,7 @@ fn ported_math_matches_shader62_reference_within_one_255th() {
         check(adjust(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0), threshold);
         check(adjust(-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0), threshold);
     }
-    eprintln!("shader_62 cross-check: {cases} pixels, worst |Δ| = {worst:.8}");
+    eprintln!("image-adjust cross-check: {cases} pixels, worst |Δ| = {worst:.8}");
     assert!(cases > 100_000);
 }
 

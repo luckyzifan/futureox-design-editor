@@ -102,8 +102,8 @@ pub struct GpuMemoryBreakdown {
     pub needs_free: bool,
     pub free_events: u32,
     pub rejections: u32,
-    /// Figma's five memory telemetry axes (proto_telemetry_axes offsets
-    /// 840..872), derived from our four buckets; mapping recorded in
+    /// Figma's five memory telemetry axes,
+    /// derived from our four buckets; mapping recorded in
     /// `render_telemetry::FigmaGpuMemoryAxes`.
     #[serde(flatten)]
     pub figma_axes: crate::render_telemetry::FigmaGpuMemoryAxes,
@@ -532,8 +532,8 @@ impl Engine {
     pub fn stats(&self) -> &Stats {
         &self.stats
     }
-    /// The compositing ledger in Figma's recovered shape (its wasm
-    /// `func#36671`): two pools — scene-compositing peak and tile residency —
+    /// The compositing ledger in Figma's shape: two pools —
+    /// scene-compositing peak and tile residency —
     /// summed, `>> 20` for MB, f32 tile ratio, plus OOM-style pressure
     /// events from budget rejections. Diagnostic only; admission stays the
     /// reserve/Drop contract.

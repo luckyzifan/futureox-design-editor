@@ -1,8 +1,8 @@
-/** Figma viewer mP, byte 1585531 in viewer-tile-scheduler.js.
- * Initial values publish immediately; a changed queued value restarts the
- * frame countdown. Repeating the queued value does not postpone publication.
- * In particular, queueing the committed value while another value is pending
- * still waits two frames, exactly as the captured implementation does. */
+/** Frame-debounced value, mirroring the Figma viewer tile scheduler's
+ * debounce class. Initial values publish immediately; a changed queued value
+ * restarts the frame countdown. Repeating the queued value does not postpone
+ * publication. In particular, queueing the committed value while another
+ * value is pending still waits two frames. */
 export class FrameDebouncedValue<T> {
   private current: { value: T } | null = null
   private queued: { value: T } | null = null

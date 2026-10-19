@@ -1,6 +1,6 @@
 import type { ImageAdjust } from '../../model'
 
-/** shader_62 / wgsl_116 `imageColorAdjustPaint` math, TS port of the kernel's
+/** `imageColorAdjustPaint` math, TS port of the kernel's
  * `image_adjust.rs` (f64 evaluation; deviation from the f32 shader is ~1e-6,
  * far below the 1/255 byte quantum the GPU path quantizes to).
  *

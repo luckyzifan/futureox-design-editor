@@ -1,7 +1,7 @@
 use futureox_design_kernel::blend::{self, Pixel};
 #[test]
-fn linear_burn_and_dodge_match_figma_shader_126() {
-    // Figma type 17/18(recovered from shader_126):
+fn linear_burn_and_dodge_match_figma_blend_table() {
+    // Figma blend types 17/18:
     // linear-burn = max(0, b+s-1); linear-dodge = min(1, b+s)
     let src = Pixel([0.5, 0.8, 0.3, 1.0]);
     let dst = Pixel([0.6, 0.4, 0.9, 1.0]);

@@ -1,0 +1,21 @@
+{
+  "scope": "All valid 8-bit premultiplied gray/alpha pairs via independent GLSL shader to RGBA8/F32 FBO; no PNG encoding",
+  "browser": "153.0.8010.12",
+  "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2 Pro, Unspecified Version)",
+  "probe": "frontend/design-client/scripts/check-alpha-shader.ts",
+  "rgbaSha256": "80c017e8fd0fb9d18cb70c862175a98b2d7bfa61dadd19285223eb3a8f592cff",
+  "numericSha256": "deda0bc9d643290e19face579e887f612305b3072a09c268c15829f4a39befa7",
+  "reciprocalUpBits": [
+    268451968,
+    2164260864,
+    8912896,
+    1208033408,
+    2148007936,
+    673856,
+    2214772736,
+    272670721
+  ],
+  "validPairs": 32896,
+  "maxReciprocalUlpCorrection": 1,
+  "claim": "Independent numeric-domain readback; no Figma image pixels used to generate arithmetic constants"
+}

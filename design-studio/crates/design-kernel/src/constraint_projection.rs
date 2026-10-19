@@ -1,7 +1,6 @@
 //! Constraint projection / normalization math.
 //!
-//! Function-level alignment with the reference engine's constraint solver
-//! (#28420 in `figma-wasm-analysis/LAYOUT-INTERNALS.md`, 2026-10-16 slice):
+//! Function-level alignment with the reference engine's constraint solver:
 //! unit-vector normalization with a zero-length guard, the 1e-6 collinearity
 //! test with its basis-pair swap, the degree-based significant-rotation
 //! check, proportional mapping against a source bounding box, and the

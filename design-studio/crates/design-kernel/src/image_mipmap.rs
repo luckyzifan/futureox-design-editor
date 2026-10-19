@@ -1,7 +1,6 @@
 //! Deterministic image mip chains, mirroring Sketch's offline
-//! `MSImageDataMipMap` box-filter pipeline (sketch-kernel-analysis
-//! `07-image-pipeline.md`): each level halves with a 2×2 box average and the
-//! chain stops once both extents reach one texel.
+//! `MSImageDataMipMap` box-filter pipeline: each level halves with a 2×2 box
+//! average and the chain stops once both extents reach one texel.
 //!
 //! Two averaging domains match the existing sampling contracts exactly:
 //! - SDR surfaces hold premultiplied, sRGB-encoded values quantized to the

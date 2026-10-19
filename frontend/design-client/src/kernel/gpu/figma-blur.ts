@@ -1,14 +1,14 @@
 /**
- * Figma 成对采样帐篷模糊(CPU 侧 uniform 计算,对应其 shader_78/147/156 契约)。
+ * Figma 成对采样帐篷模糊(CPU 侧 uniform 计算)。
  *
- * Figma 源码事实(figma-wasm-analysis/shaders/):
+ * 契约事实:
  * - CPU 只算两个 uniform:`count`(帐篷半径,tap 数)与 `blurDelta`(方向×间距);
  * - GPU 侧 ≤64 有界循环早退,权重解析给出(count-k),无核纹理;
  * - 相邻 tap 位置按权重插值 → 线性采样一次 fetch 精确等于两次 tap 的加权平均。
  *
  * `countForRadius` 的换算遵循帐篷核的方差匹配(σ² = count²/12 的离散帐篷),
  * 使交互档与 CPU 帐篷滤波的视觉半径一致;`blurDelta` = 方向单位向量 × 1/count,
- * 即相邻 tap 间距 = 1 纹素(其 shader_78 的采样几何)。
+ * 即相邻 tap 间距 = 1 纹素(成对采样的几何前提)。
  */
 export function figmaBlurUniforms(
   radiusPx: number,
@@ -35,7 +35,7 @@ export function figmaTentSample(
   count: number,
   tapIndex: number,
 ): number {
-  // 中心 + 两侧 [1, count] 的帐篷权重和(与 shader_78 的 d 累加一致)
+  // 中心 + 两侧 [1, count] 的帐篷权重和(与 GPU 侧的 d 累加一致)
   let weightSum = count
   let value = taps[tapIndex] * count
   for (let k = 1; k <= Math.floor(count); k++) {
@@ -48,7 +48,7 @@ export function figmaTentSample(
   return value / weightSum
 }
 
-/** Figma 的 RGBA8 标量打包阶梯(shader_118 逐行移植,测试用参照):
+/** Figma 的 RGBA8 标量打包阶梯(测试用参照):
  * pack 两级嵌套,unpack 是 1/255→1/65025→1/16581375 点积。 */
 export function figmaPack4(b: number): [number, number, number, number] {
   const pack2 = (v: number): [number, number] => {

@@ -39,8 +39,8 @@ export const blendModes = [
 ] as const
 export type Blend = (typeof blendModes)[number]
 export type NodeBlend = Blend | 'pass-through'
-/** Image paint adjustments, Figma imageColorAdjust uniforms (shader_62 /
- * wgsl_116 imageColorAdjustPaint): field names and order follow
+/** Image paint adjustments, Figma imageColorAdjust uniforms
+ * (imageColorAdjustPaint): field names and order follow
  * `struct UniformBlock{…globalTint,globalColor,globalShadows,globalHighlights,
  * globalExposure,globalTemperature,globalContrast,highlightShadowThreshold…}`.
  * All sliders span [-1,1]; the shader itself clamps globalColor to that range. */
@@ -53,7 +53,7 @@ export type ImageAdjust = {
   shadows: number
   color: number
   /** Lab-L midpoint split (value·100). Figma's uploaded default is not
-   * reverse-engineered; 0.5 (L=50) is our documented assumption. */
+   * observable; 0.5 (L=50) is our documented assumption. */
   highlightShadowThreshold?: number
 }
 export const defaultImageAdjust = (): ImageAdjust => ({
@@ -69,7 +69,7 @@ export const defaultImageAdjust = (): ImageAdjust => ({
 export const isIdentityImageAdjust = (a: ImageAdjust): boolean =>
   !a.exposure && !a.contrast && !a.temperature && !a.tint && !a.highlights && !a.shadows && !a.color
 /** Pattern tiling on image paints, Figma's pattern-fill shader pair
- * (shader_185.glsl fragment + shader_106.glsl vertex): `patternTileType`
+ * (fragment + vertex): `patternTileType`
  * 0 = regular grid, 1 = horizontal stagger (rows shifted half a tile along
  * x), 2 = vertical stagger (columns shifted half a tile along y). */
 export type PatternTileMode = 'none' | 'grid' | 'stagger_horizontal' | 'stagger_vertical'
@@ -590,7 +590,7 @@ export function hasImageAdjusts(d: Pick<DesignDocument,'nodes'|'animations'|'des
     !!d.animations?.some(c => c.tracks.some(t => t.keyframes.some(k => adjusted(k.value.fills) || adjusted(k.value.strokes.map((s: Stroke) => s.paint))))) ||
     Object.values(d.designSystem?.styles || {}).some(s => s.kind === 'paint' && Array.isArray(s.value) && adjusted(s.value))
 }
-/** Schema-14 authored pattern tiling (shader_185 pattern fill). */
+/** Schema-14 authored pattern tiling (pattern fill). */
 export function hasPatternTiles(d: Pick<DesignDocument,'nodes'|'animations'|'designSystem'>): boolean {
   const tiled = (paints: unknown) =>
     Array.isArray(paints) && paints.some((p: Paint) => p?.kind === 'image' && p.tile != null)

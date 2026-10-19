@@ -44,7 +44,7 @@ fn u(i:u32)->vec4<f32>{return params.values[i];}
  return sum;
 }`
 
-/** shader_78's adjacent-tap pairing applied to our existing integrated weights.
+/** Adjacent-tap pairing applied to our existing integrated weights.
  * No radius/count conversion or downsampling. Exact output stays separate. */
 export const pairedDisplayFilterWgsl = `
 struct Params {values:array<vec4<f32>,64>}

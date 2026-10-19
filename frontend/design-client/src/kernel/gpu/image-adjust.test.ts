@@ -61,7 +61,7 @@ test('axes move colors in their documented directions', () => {
 
 // Reference values dumped from the Rust kernel implementation
 // (design-kernel/src/image_adjust.rs, apply_srgb), itself cross-checked
-// against the transcribed shader_62 in tests/image_adjust.rs.
+// against the transcribed reference in tests/image_adjust.rs.
 const rustReference: [string, ImageAdjust, number[], number[]][] = [
   ['A', adjust({ exposure: 0.4 }), [0.2, 0.5, 0.8], [0.607320070, 0.814888835, 1.0]],
   ['A', adjust({ exposure: 0.4 }), [0.65, 0.3, 0.1], [0.977694094, 0.620798171, 0.467708737]],
