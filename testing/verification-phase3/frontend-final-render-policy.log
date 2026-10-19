@@ -1,0 +1,28 @@
+✔ exact desktop arithmetic is independent of same-device SDR presentation (0.98209ms)
+✔ HQ resolve and pixel-preview never consume an unconverted interaction window (0.134282ms)
+✔ native display arithmetic cannot leak into exact, HDR, software or desktop output (0.181564ms)
+✔ byte transport keeps explicitly transient filters while reference/export contracts remain exact (0.193461ms)
+✔ web canvas uses screen AA without mutating export, CPU, software or HDR profiles (0.177898ms)
+✔ canvas filters cannot affect exact reads, exports, pixel preview or desktop math (0.178729ms)
+✔ strict launch policy is an immutable value (0.39128ms)
+✔ strict policy overrides every persisted or per-render backend preference (0.765924ms)
+✔ CPU selection bypasses color presentation independently of launch policy (0.299531ms)
+✔ normal product auto remains GPU preferred in its established fallback order (0.316998ms)
+✔ PNG is CPU regardless of launch policy or preference (1.147129ms)
+✔ worker pins and freezes a copy rather than trusting mutable cloned data (0.363648ms)
+✔ worker preserves the desktop full-math contract and rejects changing it (0.186801ms)
+✔ worker rejects policy changes in either direction and never relaxes strict CPU (0.111668ms)
+✔ missing or malformed worker policy fails closed before rendering (0.286862ms)
+✔ policy has no imports or ambient capability access (0.524901ms)
+✔ presentation source has one guarded lazy presenter construction and closes bitmaps (0.496368ms)
+✔ worker source pins policy before commands and only loads drivers in the candidate loop (0.529648ms)
+✔ absent web host stays normal; a present malformed desktop host fails safely to CPU (0.097758ms)
+✔ managed document computation stays linear independently of the HDR display preference (0.107662ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 140.176136

@@ -1,0 +1,27 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> @futureox/design-client@0.1.0 test:render-diagnostics
+> node --test src/kernel/render-diagnostics.test.mjs
+
+✔ actual recorder is disabled by default and pause prevents new samples (1.89803ms)
+✔ zoom request, cache result, fresh pixels and failure retain exact scalars (1.022941ms)
+✔ ring stays bounded, reports dropped entries, and restart resets it (3.464612ms)
+✔ unknown keys, raw errors, document IDs and image payloads cannot enter exports (0.483378ms)
+✔ invalid numeric fields are omitted, zero timings and cache counts are preserved (0.284659ms)
+✔ snapshot and report cannot mutate retained samples (0.18611ms)
+✔ error classifier returns only bounded codes and handles non-errors (0.561966ms)
+✔ existing render profile controls both journals; restart/pause are shared (0.437519ms)
+✔ budget exports contain only validated scalar allocation facts, with recording still opt-in (0.401445ms)
+✔ budget validation rejects malformed bytes and omits unknown or invalid optional fields (0.490699ms)
+✔ only actual budget error records admit bytes; unrelated events and errors stay class-only (0.255475ms)
+✔ worker wrappers and structured clone retain safe summary without serializing stack or payload (0.385221ms)
+✔ cancellation, device loss and unrelated failures cannot inherit stale budget summaries (0.221314ms)
+✔ bounded budget records survive eviction without retaining mutable sources (0.220813ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 145.400594

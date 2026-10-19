@@ -1,5 +1,6 @@
 /// <reference types="@webgpu/types" />
-/** Exact integer-tent filtering with bounded GPU scratch. */
+/** Exact tent filtering, including fractional radii and cropped outputs,
+ * with bounded GPU scratch. Uncertified rows retain the scalar exact path. */
 export const PREFIX_SCRATCH_BYTES = 4 * 1024 * 1024
 const PREFIX_BYTES = 3275776,
   RESULT_BYTES = 901120,
@@ -167,10 +168,11 @@ export class TexturePrefix {
   ): boolean {
     if (
       kind !== 'tent' ||
-      !Number.isInteger(originalRadius) ||
+      !Number.isFinite(originalRadius) ||
       originalRadius < 1 ||
-      originalRadius > 512 ||
-      base[36] !== originalRadius ||
+      originalRadius > 2048 ||
+      base[36] !== Math.fround(originalRadius) ||
+      (!Number.isInteger(originalRadius) && originalRadius < 3) ||
       base[38] !== 0 ||
       base[242] !== 0 ||
       inputs.length < 3 ||
@@ -192,10 +194,9 @@ export class TexturePrefix {
       base[1] !== rect.y ||
       base[2] !== rect.w ||
       base[3] !== rect.h ||
-      base[4] !== rect.x ||
-      base[5] !== rect.y ||
-      base[6] !== rect.w ||
-      base[7] !== rect.h
+      !base.subarray(4, 8).every(Number.isSafeInteger) ||
+      rect.x < base[4] || rect.y < base[5] ||
+      rect.x + rect.w > base[4] + base[6] || rect.y + rect.h > base[5] + base[7]
     )
       return false
     if (
@@ -203,14 +204,15 @@ export class TexturePrefix {
       inputs[0]?.format !== 'rgba32float' ||
       target.width !== rect.w ||
       target.height !== rect.h ||
-      inputs[0].width !== rect.w ||
-      inputs[0].height !== rect.h ||
+      inputs[0].width !== base[6] ||
+      inputs[0].height !== base[7] ||
+      inputs[0].width > 16384 || inputs[0].height > 16384 ||
       inputs.includes(target)
     )
       return false
     const axis = base[37]
     if (axis !== 0 && axis !== 1) return false
-    const length = axis === 0 ? rect.w : rect.h,
+    const length = axis === 0 ? inputs[0].width : inputs[0].height,
       lineCount = axis === 0 ? rect.h : rect.w
     const bandSize = Math.min(
       Math.floor(PREFIX_BYTES / (32 * (length + 1))),
@@ -242,8 +244,12 @@ export class TexturePrefix {
     )
       return false
     const axis = base[37],
-      length = axis === 0 ? rect.w : rect.h,
+      length = axis === 0 ? inputs[0].width : inputs[0].height,
       lineCount = axis === 0 ? rect.h : rect.w
+    const outputLength = axis === 0 ? rect.w : rect.h
+    const offset = axis === 0 ? rect.x - base[4] : rect.y - base[5]
+    const crossOffset = axis === 0 ? rect.y - base[5] : rect.x - base[4]
+    const rational = !Number.isInteger(originalRadius) || originalRadius > 512
     const bandSize = Math.min(
       Math.floor(PREFIX_BYTES / (32 * (length + 1))),
       Math.floor(RESULT_BYTES / (8 * length)),
@@ -257,7 +263,8 @@ export class TexturePrefix {
         const count = Math.min(bandSize, lineCount - first)
         const u = base.slice()
         u.set([length, first, count, axis], 192)
-        u.set([channel, originalRadius, 0, 0], 196)
+        u.set([channel, rational ? Math.floor(originalRadius) - 1 : originalRadius, rational ? 1 : 0, 0], 196)
+        u.set([offset, outputLength, crossOffset, 0], 200)
         const group = this.device.createBindGroup({
           layout: this.sourceLayout,
           entries: [
@@ -274,13 +281,13 @@ export class TexturePrefix {
         scan.setPipeline(this.scan)
         scan.setBindGroup(0, group)
         scan.setBindGroup(1, this.scratchGroup)
-        scan.dispatchWorkgroups(Math.ceil(count / 64))
+        scan.dispatchWorkgroups(count)
         scan.end()
         const solve = encoder.beginComputePass()
         solve.setPipeline(this.solve)
         solve.setBindGroup(0, group)
         solve.setBindGroup(1, this.scratchGroup)
-        solve.dispatchWorkgroups(Math.ceil(length / 64), count)
+        solve.dispatchWorkgroups(Math.ceil(outputLength / 64), count)
         solve.end()
         const resolve = encoder.beginRenderPass({
           colorAttachments: [

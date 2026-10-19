@@ -1,0 +1,45 @@
+{
+  "outcome": "implemented and verified",
+  "production_changes": [
+    "On-screen fill order uses world-space distance to the viewport center, with stable input-order ties. Off-screen viewport-distance and row-order pacing remains unchanged.",
+    "ProgressiveSurface ranks the full eligible missing-tile queue by uncovered pixels before selecting the existing 4/32-tile batches. The submit-time residency/dedupe check and preparation guard remain intact."
+  ],
+  "files": [
+    "frontend/design-client/src/kernel/tile-scheduler.ts",
+    "frontend/design-client/src/kernel/ProgressiveSurface.tsx",
+    "frontend/design-client/src/kernel/tile-scheduler.test.ts",
+    "frontend/design-client/src/kernel/progressive-damage.test.tsx"
+  ],
+  "new_regression_cases": [
+    "Production center-out geometry is not reset to top-left row order; exact center-distance ties retain input order.",
+    "The final uncovered tile in a 36-tile plan advances to the first batch for both 4- and 32-tile batch sizes; all 36 tiles are submitted exactly once.",
+    "A lower-density preview covering the entire viewport and a frame without pixels both preserve center-first native scheduling.",
+    "Shared preparation viewport still covers the full visible plan, including transport gutters, after gap-first reordering.",
+    "One hundred superseding pan/resize updates keep only the latest successor and reuse the four in-flight tiles that become ready, yielding each of 36 tile keys exactly once."
+  ],
+  "verification": {
+    "focused": {
+      "passed": 60,
+      "files": 5,
+      "log": "viewport-priority-tests.log"
+    },
+    "default_wasm_initialized": {
+      "passed": 100,
+      "files": 11,
+      "log": "viewport-priority-default-tests.log"
+    },
+    "typescript": {
+      "passed": true,
+      "log": "viewport-priority-typecheck.log"
+    },
+    "diff_whitespace": {
+      "passed": true
+    }
+  },
+  "scope_limits": [
+    "Tests execute production scheduling and surface orchestration on CPU with controllable worker transport; default suites additionally initialize the existing production WASM planner.",
+    "No real GPU pixel, frame-rate, or GPU-residency measurement is claimed.",
+    "Product GPU defaults, tile identities, sampling phase, native render scale, visibility certification, masks/effect execution, off-screen pacing, and cancellation ownership are unchanged."
+  ],
+  "compatibility_note": "Existing scheduler assertions that explicitly pinned visible row order were updated for the intentional center-priority policy. Two low-zoom surface tests now assert the full tile set rather than unrelated row order; prefetch and cancellation checks are retained."
+}

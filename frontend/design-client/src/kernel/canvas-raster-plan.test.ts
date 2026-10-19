@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { canvasLodScale, canvasRasterPlan, canvasSamplingScale, motionRasterScale } from './canvas-raster-plan'
+import { canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale } from './canvas-raster-plan'
 import { planTiles, tilesCoverBounds } from './tile-cache'
 
 test('pans share canonical samples; fractional zoom uses the actual Figma density', () => {
@@ -90,4 +90,52 @@ test('active zoom admits sharp reusable density without waiting for the gesture 
 
 test('motion density headroom never raises the maximum display budget', () => {
   expect(motionRasterScale({ x: 0, y: 0, zoom: .51 }, 2, 3200, 2000)).toBe(1.02)
+})
+
+test('settled fractional pans choose the native device phase while motion stays reusable', () => {
+  for (const dpr of [1, 1.25, 2, 3]) for (const zoom of [1, 8, 32]) {
+    const view = { x: .1, y: -.375, zoom }
+    const moving = canvasRasterPlan(view, dpr, 800, 600, { exactPhase: false })
+    const settled = canvasRasterPlan(view, dpr, 800, 600, { exactPhase: true })
+    expect(moving.mode).toBe('density-cache')
+    expect(settled.mode).toBe('native')
+    expect(settled.phase).toEqual({ x: view.x * dpr - Math.floor(view.x * dpr),
+      y: view.y * dpr - Math.floor(view.y * dpr) })
+    const bounds = { x: -view.x / zoom, y: -view.y / zoom, width: 800 / zoom, height: 600 / zoom }
+    const exact = planTiles(bounds, settled.scale, 256, settled.phase)
+    const previous = planTiles(bounds, moving.scale, 256, moving.phase)
+    expect(exact.some(tile => previous.some(old => old.key === tile.key))).toBe(false)
+    for (const tile of exact) {
+      const x = tile.x - (tile.phaseX || 0) + view.x * dpr
+      const y = tile.y - (tile.phaseY || 0) + view.y * dpr
+      expect(x).toBeCloseTo(Math.round(x), 10)
+      expect(y).toBeCloseTo(Math.round(y), 10)
+    }
+  }
+})
+
+test('stable integer-device-pixel pans retain the world cache and repeated fractional plans are identical', () => {
+  for (const dpr of [1, 1.25, 2, 3]) {
+    const view = { x: 12 / dpr, y: -20 / dpr, zoom: 32 }
+    const a = canvasRasterPlan(view, dpr, 800, 600, { exactPhase: true })
+    const b = canvasRasterPlan({ ...view, x: 13 / dpr }, dpr, 800, 600, { exactPhase: true })
+    expect(a.mode).toBe('density-cache')
+    expect(b.camera).toEqual(a.camera)
+    const fractional = { ...view, x: .125 }
+    expect(canvasRasterPlan(fractional, dpr, 800, 600, { exactPhase: true }))
+      .toEqual(canvasRasterPlan(fractional, dpr, 800, 600, { exactPhase: true }))
+  }
+})
+
+
+test('phase readiness rejects full-density resampling and admits only matching native samples', () => {
+  for (const dpr of [1, 1.25, 2, 3]) {
+    const view = { x: .1, y: -.375, zoom: 32 }
+    const native = canvasRasterPlan(view, dpr, 800, 600, { exactPhase: true })
+    expect(canvasRasterPhaseMatches(view, dpr, native.scale, native.phase)).toBe(true)
+    expect(canvasRasterPhaseMatches(view, dpr, native.scale, { x: 0, y: 0 })).toBe(false)
+    expect(canvasRasterPhaseMatches(view, dpr, native.scale / 2, native.phase)).toBe(false)
+    expect(canvasRasterPhaseMatches(view, dpr, native.scale * 2, native.phase)).toBe(false)
+    expect(canvasRasterPhaseMatches({ ...view, x: 2 / dpr, y: -3 / dpr }, dpr, native.scale, { x: 0, y: 0 })).toBe(true)
+  }
 })

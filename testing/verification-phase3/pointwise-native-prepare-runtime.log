@@ -1,0 +1,11 @@
+✔ native host binary matches WASM packets, edits and pixels; queues and retires owned work (972.922358ms)
+✔ closing a native session rejects queued work and waits for its child to exit (67.662916ms)
+✔ missing native executable fails promptly and retires the host worker (58.467101ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1287.707844

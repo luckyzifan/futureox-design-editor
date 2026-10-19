@@ -83,12 +83,12 @@ test('moving all overlapping boards reuses full-density page pixels even with ba
   movement.bind()
   expect(
     movement.control.apply(doc, {
-      [a.id]: { transform: [1, 0, 0, 1, 10.25, 20.5] },
-      [b.id]: { transform: [1, 0, 0, 1, 110.25, 120.5] },
+      [a.id]: { transform: [1, 0, 0, 1, 10.5, 20.5] },
+      [b.id]: { transform: [1, 0, 0, 1, 110.5, 120.5] },
     }),
-  ).toEqual({ x: 10.25, y: 20.5 })
+  ).toEqual({ x: 10.5, y: 20.5 })
   expect(movement.items({ x: 0, y: 0, zoom: 1 })![0].tile).toBe(tile)
-  expect(movement.items({ x: 0, y: 0, zoom: 1 })![0].placement!.left).toBe(9.75)
+  expect(movement.items({ x: 0, y: 0, zoom: 1 })![0].placement!.left).toBe(10)
   movement.prepare(
     { ...props, active: true },
     doc.pages[0].id,
@@ -97,7 +97,7 @@ test('moving all overlapping boards reuses full-density page pixels even with ba
     doc,
     true,
   )
-  expect(movement.items({ x: 0, y: 0, zoom: 1 })![0].placement!.left).toBe(9.75)
+  expect(movement.items({ x: 0, y: 0, zoom: 1 })![0].placement!.left).toBe(10)
   expect(
     movement.control.apply(doc, {
       [a.id]: { transform: [1, 0, 0, 1, 10, 20] },
@@ -127,4 +127,47 @@ test('partial selections and screen-anchored backgrounds cannot reuse a translat
   expect(
     movement.prepare({ ...props, selection: [a.id, b.id] }, doc.pages[0].id, doc, [], doc, false),
   ).toBe(false)
+})
+
+
+test('fractional page pixels hand over before changing the accepted pose and cannot rebind stale pixels', () => {
+  const doc = blank(), root = node('frame', 0, 0, 10, 10)
+  doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
+  const props: InteractionProps = { document: doc, selection: [root.id], active: true, epoch: 1, control: { current: null }, onReady() {} }
+  const tile = { key: 'native32', serial: 1, gpuTile: 7, bytes: new Uint8Array(), x: 0, y: 0, width: 512, height: 512, zoom: 32 }
+  const items = [{ tile, active: true, layer: 0 }], fallback = vi.fn((_document: typeof doc, _patches: unknown, _displayed: typeof doc) => ({ x: .1, y: 0 }))
+  const movement = new PageTranslation(vi.fn(), fallback), view = { x: 0, y: 0, zoom: 32 }
+  movement.prepare(props, doc.pages[0].id, doc, items, doc, true)
+  movement.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, 1 / 32, 0] } })
+  const accepted = movement.items(view)![0].placement
+  movement.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, .1, 0] } })
+  expect(fallback).toHaveBeenCalledTimes(1)
+  expect(fallback.mock.calls[0][2].nodes[root.id].transform[4]).toBe(1 / 32)
+  expect(movement.items(view)![0].placement).toEqual(accepted)
+  expect(movement.handingOff).toBe(true)
+  expect(movement.prepare(props, doc.pages[0].id, doc, items, doc, true)).toBe(false)
+  movement.control.end({ ...doc, nodes: { ...doc.nodes, [root.id]: { ...root, transform: [1, 0, 0, 1, .1, 0] } } })
+  expect(movement.items(view)![0].placement).toEqual(accepted)
+})
+
+
+test('authored fractional translations cannot bypass page phase admission through prepare or end', () => {
+  const doc = blank(), root = node('frame', 0, 0, 10, 10)
+  doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
+  const props: InteractionProps = { document: doc, selection: [root.id], active: true, epoch: 1, control: { current: null }, onReady() {} }
+  const tile = { key: 'native32', serial: 1, bytes: new Uint8Array(), x: 0, y: 0, width: 512, height: 512, zoom: 32 }
+  const items = [{ tile, active: true, layer: 0 }]
+  const moved = { ...doc, nodes: { ...doc.nodes, [root.id]: { ...root, transform: [1, 0, 0, 1, .1, 0] as typeof root.transform } } }
+  const callback = vi.fn(() => ({ x: .1, y: 0 })), cold = new PageTranslation(vi.fn(), callback)
+  expect(cold.prepare({ ...props, document: moved }, doc.pages[0].id, doc, items, doc, true)).toBe(false)
+  expect(cold.handingOff).toBe(true)
+  expect(callback).toHaveBeenCalledTimes(1)
+  const warm = new PageTranslation(vi.fn(), callback)
+  warm.prepare(props, doc.pages[0].id, doc, items, doc, true)
+  warm.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, 1 / 32, 0] } })
+  const before = warm.items({ x: 0, y: 0, zoom: 32 })![0].placement
+  warm.control.end(moved)
+  expect(warm.handingOff).toBe(true)
+  expect(callback).toHaveBeenCalledTimes(2)
+  expect(warm.items({ x: 0, y: 0, zoom: 32 })![0].placement).toEqual(before)
 })

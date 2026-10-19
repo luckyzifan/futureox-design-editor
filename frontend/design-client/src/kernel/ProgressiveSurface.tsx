@@ -9,13 +9,15 @@ import type { BackendPreference } from './gpu/types'
 import type { ColorPresenter } from './color-presenter'
 import { TILE_SIDE, budgetTileLimit, displayTileBudget, tilesCoverBounds, type RasterTile } from './tile-cache'
 import { planTilesAligned, planTilesWithPrefetchRim, tilePrefetchRingsFromHost } from './tile-plan-aligned'
-import { canvasLodScale, canvasRasterPlan, canvasSamplingScale, motionRasterScale } from './canvas-raster-plan'
+import { canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale } from './canvas-raster-plan'
 import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
 import { tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
+import { useNavigationZoom } from './use-navigation-zoom'
+import { navigationPreviewDensity } from './navigation-zoom'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
 import { panPrefetch } from './pan-prefetch'
@@ -360,6 +362,8 @@ export function ProgressiveSurfaceImpl(
   const rasterOwner = useRef<object | null>(null)
   const fillOwner = useRef<{ contract: object; key: string } | null>(null)
   const previousFillView = useRef<SurfaceProps['view'] | undefined>(undefined)
+  const previewAdmission = useRef<{ contract?: object; key?: string; active: boolean }>({ active: false })
+  const startupPreviewAttempt = useRef<object | null>(null)
   const [owner] = useState(displayOwner)
   const [tiles, setTiles] = useState<Map<string, PaintedTile>>(() => new Map())
   const tileRef = useRef(tiles),
@@ -416,7 +420,7 @@ export function ProgressiveSurfaceImpl(
     const presented = !residentDisplay || !!plan && !!actual && !actual.interaction && actual.width===plan.width &&
       actual.height===plan.height && actual.dpr===plan.dpr && actual.view.x===plan.view.x && actual.view.y===plan.view.y &&
       actual.view.zoom===plan.view.zoom && [...plan.ids].every(key=>actual.ids.has(tileRef.current.get(key)?.gpuTile || -1))
-    if (!latestContext.current.paused && syncedDoc.current === doc && plan && plan.key === frameKey && plan.document === doc &&
+    if (!navigationZoom.active && !latestContext.current.paused && syncedDoc.current === doc && plan && plan.key === frameKey && plan.document === doc &&
         presented && plan.ids.size && [...plan.ids].every((key) => ready.current.has(key))) {
       if (navigationTiming.current.key === plan.key && navigationTiming.current.completeMs === undefined)
         navigationTiming.current.completeMs = performance.now() - navigationTiming.current.started
@@ -457,6 +461,10 @@ export function ProgressiveSurfaceImpl(
   // separate residents; a world key alone must not reuse another contract.
   const identity = JSON.stringify([doc.id, pageId, props.presentationEpoch || 0, backend,
     !!props.grid, !!props.checkerboard, props.pixelPreview || 0, rasterProfile, displayCapability, hdrCompositing])
+  const navigationZoom = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
+    !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing)
+  const latestNavigationZoom = useRef(navigationZoom)
+  latestNavigationZoom.current = navigationZoom
   const zooming=useZoomActivity(view.zoom,identity)
   const cameraMoving = useCameraActivity(view, identity)
   const motionPreview=residentDisplay&&zooming&&!props.interaction?.active&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&
@@ -502,6 +510,7 @@ export function ProgressiveSurfaceImpl(
     rasterProfile, pixelPreview: props.pixelPreview, checkerboard: props.checkerboard,
     grid: props.grid, hdr: hdrCompositing && !!doc.colorManagement,
     samplingScale: nativeSampling ? undefined : samplingScale,
+    exactPhase: !cameraMoving && !zooming,
   })
   const renderScale = rasterPlan.scale
   const renderCamera = rasterPlan.camera
@@ -536,11 +545,14 @@ export function ProgressiveSurfaceImpl(
     view.zoom,
     dpr,
     renderScale,
+    renderPhase.x,
+    renderPhase.y,
   ])
   if (navigationTiming.current.key !== frameKey)
     navigationTiming.current = { key: frameKey, started: performance.now() }
   const requestedView = props.requestedView || view
-  const complete = displayed?.key === frameKey && displayed.document === doc &&
+  const phaseExact = canvasRasterPhaseMatches(view, dpr, renderScale, renderPhase)
+  const complete = !navigationZoom.active && phaseExact && displayed?.key === frameKey && displayed.document === doc &&
     stableDensity === detailLevel &&
     syncedDoc.current === doc && view.x === requestedView.x &&
     view.y === requestedView.y && view.zoom === requestedView.zoom
@@ -665,7 +677,8 @@ export function ProgressiveSurfaceImpl(
     let cancelOverview: (() => void) | undefined
     // Panning within a density does not invalidate world pixels. Finish the
     // running batch; discard queued old plans and admit the latest view.
-    const fillKey = JSON.stringify([renderScale, renderCamera.x, renderCamera.y, width, height, dpr, !!props.paused])
+    const fillKey = navigationZoom.active ? `navigation-preview:${width}:${height}:${dpr}` :
+      JSON.stringify([renderScale, renderCamera.x, renderCamera.y, width, height, dpr, !!props.paused])
     if (fillOwner.current?.contract !== contract || fillOwner.current.key !== fillKey) {
       c.cancelTileFill()
       fillOwner.current = { contract, key: fillKey }
@@ -675,10 +688,12 @@ export function ProgressiveSurfaceImpl(
       c.cancelPreview()
       rasterOwner.current = contract
     }
+    if (previewAdmission.current.active && !navigationZoom.active) c.cancelPreview()
+    previewAdmission.current.active = navigationZoom.active
     desired.current = []
-    activePlan.current = null
+    if (!navigationZoom.active) activePlan.current = null
     setStats((s) => ({ ...s, complete: false }))
-    if (props.paused) return
+    if (props.paused || navigationZoom.suspended) return
     setFailure('')
     recordRenderDiagnostic({ kind: 'request', zoom: view.zoom, dpr,
       requestedDensity: view.zoom * dpr, sampledDensity: renderScale })
@@ -697,6 +712,13 @@ export function ProgressiveSurfaceImpl(
       latestContext.current.presentationEpoch === props.presentationEpoch &&
       latestContext.current.backend === backend
     const current = () => sameContent() && navigation.current === token
+    // A new document with no pixels gets one complete viewport preview before
+    // progressive detail. Revisited cameras and edits with retained coverage
+    // do not pay for a second full-scene render.
+    const needsStartupPreview = singleCanvas && !hdrCompositing && !props.grid && !props.checkerboard &&
+      !props.pixelPreview && !reusableFrame && startupPreviewAttempt.current !== contract &&
+      ![...tileRef.current.values()].some(tile => tile.document === doc && tile.revision === contract.revision &&
+        ready.current.has(tile.key) && tileIntersectsView(tile, requestedView, { width, height }))
     const render = (...args: Parameters<KernelClient['render']>) => mailbox.run(current, () => c.render(...args))
     const receive = (tile: TileResult) => {
       if (!sameContent()) {
@@ -892,8 +914,15 @@ export function ProgressiveSurfaceImpl(
           // Batch protocol/serialization overhead. The worker yields at every
           // completed tile for latest poses and cancellation of stale cameras.
           const batch = import.meta.env.VITE_DESIGN_TILE_BATCH === '1' ? 1 : cameraMoving && !zooming ? 4 : 32
-          for (let i = 0; i < tiles.length && current(); i += batch)
-            await submitChunk(tiles.slice(i, i + batch))
+          // Rank the full center-out queue before slicing: a visible hole in
+          // a later batch must beat already-covered center refinement. Keep
+          // the submit-time residency check for tiles delivered while waiting
+          // on the mailbox, and leave the shared prepare/halo extent intact.
+          const ordered = prioritizeUncoveredTiles(tiles,
+            [...tileRef.current.values()].filter(tile => tile.document === doc &&
+              tile.revision === contract.revision && ready.current.has(tile.key)), viewport)
+          for (let i = 0; i < ordered.length && current(); i += batch)
+            await submitChunk(ordered.slice(i, i + batch))
         },
         viewport,
         budget: tileFrameBudgetOptionsFromHost(),
@@ -941,8 +970,56 @@ export function ProgressiveSurfaceImpl(
       else { setFailure(String(error)); latestContext.current.onRenderFailure?.() }
     }
     let runAttempts = 0
+    let navigationRequest: string | undefined
     const run = async () => {
       try {
+        if (navigationZoom.active) {
+          // Filtered captures can be far more expensive than reprojecting an
+          // already complete view. While zooming, retain its real pixels when
+          // they cover the requested viewport; exact refinement still starts
+          // on the independent navigation-settled transition below. Exposed
+          // gaps keep the bounded preview path rather than showing holes.
+          const retained = filteredContent ? [...tileRef.current.values()].filter(tile =>
+            tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key)) : []
+          if (retained.length && tilesCoverBounds(retained, viewport)) {
+            if (previewAdmission.current.key !== 'covered-navigation') c.cancelPreview()
+            previewAdmission.current = { contract, key: 'covered-navigation', active: true }
+            return
+          }
+          // Continuous zoom owns a separate transient lane. Do not plan,
+          // compile or rasterize intermediate native-density tile levels.
+          const sample = navigationZoom.sample
+          if (!sample) return
+          navigationRequest = JSON.stringify([sample.sequence, width, height, dpr])
+          if (previewAdmission.current.contract === contract && previewAdmission.current.key === navigationRequest) return
+          previewAdmission.current = { contract, key: navigationRequest, active: true }
+          const ratio = navigationPreviewDensity(dpr, width, height), scale = sample.view.zoom * ratio
+          const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
+          const requested = () => sameContent() && latestNavigationZoom.current.active &&
+            latestNavigationZoom.current.sample?.sequence === sample.sequence &&
+            previewAdmission.current.contract === contract && previewAdmission.current.key === navigationRequest
+          activePlan.current = {
+            key: frameKey, revision: contract.revision, document: doc, view: { ...sample.view }, dpr, width, height,
+            rasterScale: scale, samplingDensity: ratio, samplingMode: 'native', pageId,
+            epoch: props.presentationEpoch || 0, grid: false, pixelPreview: props.pixelPreview,
+            rasterProfile: props.rasterProfile, managed: false, displayCapability, computeBackend: backend,
+            ids: new Set(), residents: new Map(),
+          }
+          const result = await mailbox.run(requested, () => c.render(doc, {
+            pageId, width: w, height: h,
+            view: { x: sample.view.x * ratio, y: sample.view.y * ratio, zoom: scale },
+            transparent: false, grid: false, rasterProfile, livePreview: true, renderIntent: 'preview',
+          }, false, backend, false))
+          if (!sameContent() || !latestNavigationZoom.current.active) {
+            result.bitmap?.close(); if (result.gpuTile) c.releasePresented([result.gpuTile]); return
+          }
+          syncedDoc.current = doc
+          receive({ key: `navigation-preview:${contract.revision}`, x: -sample.view.x * ratio,
+            y: -sample.view.y * ratio, width: w, height: h, zoom: scale, gutter: 0, viewportPreview: true,
+            bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile, backend: result.backend,
+            description: result.description || '', milliseconds: result.milliseconds, cached: false })
+          return
+        }
         // Planning now calls Rust on the main thread. Its module must be
         // initialized before the first blank frame, independently of the worker.
         await initializeKernelModule()
@@ -1002,6 +1079,30 @@ export function ProgressiveSurfaceImpl(
           }
           commitRef.current()
         }
+        if (needsStartupPreview) {
+          startupPreviewAttempt.current = contract
+          const ratio = navigationPreviewDensity(dpr, width, height), scale = view.zoom * ratio
+          const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
+          try {
+            const result = await render(doc, { pageId, width: w, height: h,
+              view: { x: view.x * ratio, y: view.y * ratio, zoom: scale },
+              transparent: false, grid: false, rasterProfile, livePreview: true, renderIntent: 'preview',
+            }, false, backend, false)
+            if (!sameContent()) {
+              result.bitmap?.close(); if (result.gpuTile) c.releasePresented([result.gpuTile]); return
+            }
+            receive({ key: `startup-preview:${contract.revision}`, x: -view.x * ratio, y: -view.y * ratio,
+              width: w, height: h, zoom: scale, gutter: 0, viewportPreview: true,
+              bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile, backend: result.backend,
+              description: result.description || '', milliseconds: result.milliseconds, cached: false })
+          } catch (error) {
+            if (/device lost|GPU device|has been lost|设备已丢失|recovery failed/i.test(String(error)) ||
+              !/PREVIEW_BUDGET|GPU.*(?:budget|预算)|Invalid GPU viewport|GPU 区域超过安全限制/i.test(String(error))) throw error
+            // The worker preserves existing residents on this optional failure.
+            // Keep the UI placeholder until the atomic exact frame is ready.
+          }
+          if (!current()) return
+        }
         // Existing same-revision pixels already follow the camera. Spend the
         // serialized render queue on native detail instead of a second blurry
         // full-screen sample; the overview below still supplies uncovered areas.
@@ -1010,7 +1111,7 @@ export function ProgressiveSurfaceImpl(
           tileIntersectsView(tile, requestedView, { width, height }))
         // Partial coverage still requests native tiles, with uncovered areas
         // first. A second full-scene preview must not delay that repair.
-        if(allowsReducedSampling(view.zoom)&&motionPreview&&!hasVisibleResidents&&!plan.every(tile=>tileRef.current.has(tile.key)&&ready.current.has(tile.key))){
+        if(!needsStartupPreview&&allowsReducedSampling(view.zoom)&&motionPreview&&!hasVisibleResidents&&!plan.every(tile=>tileRef.current.has(tile.key)&&ready.current.has(tile.key))){
           // This is a screen-space, full-viewport preview, not the page's
           // fixed-size overview. It remains transient until exact tiles land.
           const density=Math.min(dpr,1.5,Math.sqrt(2_097_152/Math.max(1,width*height)),4096/Math.max(width,height))
@@ -1191,6 +1292,12 @@ export function ProgressiveSurfaceImpl(
           }))
         }
       } catch (error) {
+        if (navigationRequest && previewAdmission.current.contract === contract && previewAdmission.current.key === navigationRequest)
+          previewAdmission.current.key = undefined
+        // A bounded navigation preview is optional. Preserve current resident
+        // pixels under pressure; only final exact refinement is authoritative.
+        if (navigationZoom.active && !/device lost|GPU device|has been lost|设备已丢失|recovery failed/i.test(String(error)) &&
+          /PREVIEW_BUDGET|GPU.*(?:budget|预算)|Invalid GPU viewport|GPU 区域超过安全限制/i.test(String(error))) return
         // Reclaim only history; the last displayed frame and incoming visible
         // tiles stay pinned. Retry once after React has presented/released the
         // retired handles, without increasing the device budget.
@@ -1241,6 +1348,15 @@ export function ProgressiveSurfaceImpl(
     displayRetry,
     dpr,
     stableDensity,
+    // Zoom may settle while panning stays active and density admission has
+    // already caught up. The final exact-scale plan still needs scheduling,
+    // including bitmap/WebGL paths whose motionPreview flag never changes.
+    renderScale,
+    renderPhase.x,
+    renderPhase.y,
+    navigationZoom.active,
+    navigationZoom.sample?.sequence,
+    navigationZoom.suspended,
     mailbox,
     props.overview?.x,
     props.overview?.y,
@@ -1264,7 +1380,10 @@ export function ProgressiveSurfaceImpl(
   // refinement may mix precision levels because every level owns the same doc.
   const fullPlanReady = currentPlan && !!plan?.ids.size && [...plan.ids].every(key=>ready.current.has(key)) && syncedDoc.current===doc
   const canRefine = !displayed || reusableFrame || fullPlanReady
+  const startupPreview = !displayed && visible.some(tile => tile.viewportPreview &&
+    tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key))
   const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile && canRefine && currentPlan &&
+    (!startupPreview || fullPlanReady) &&
     !!plan?.ids.has(tile.key) && ready.current.has(tile.key) &&
     (syncedDoc.current === doc || tile.document === doc)
   const coarseTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile && canRefine && !complete &&
@@ -1274,6 +1393,7 @@ export function ProgressiveSurfaceImpl(
   // Keep their real sampling keys: reprojection supplies temporary coverage,
   // while only a fully covered plan at or above screen density can publish a sharp frame.
   const cachedPreviewTile = (tile: PaintedTile) => !complete && canRefine &&
+    (!startupPreview || !plan?.ids.has(tile.key)) &&
     tileRef.current.get(tile.key) === tile && tile.document === doc &&
     tile.revision === contract.revision && ready.current.has(tile.key) &&
     !fineTile(tile) && !coarseTile(tile) && tileIntersectsView(tile, requestedView, { width, height })
@@ -1327,6 +1447,8 @@ export function ProgressiveSurfaceImpl(
         data-sampling-scale={displayed?.rasterScale ?? renderScale}
         data-sampling-density={displayed?.samplingDensity ?? rasterPlan.density}
         data-native-pixel-ready={String(complete && rasterPlan.mode === 'native')}
+        data-raster-phase-exact={String(phaseExact)}
+        data-startup-preview={String(startupPreview)}
         data-renderer={stats.actualBackend || 'initializing'}
         data-tile-count={tiles.size}
         data-cache-hits={stats.hits}
@@ -1377,6 +1499,8 @@ export function ProgressiveSurfaceImpl(
         data-motion-preview={String(motionPreview)}
         data-motion-raster-scale={renderScale}
         data-camera-moving={String(cameraMoving)}
+        data-navigation-zoom-active={String(navigationZoom.active)}
+        data-navigation-zoom-sequence={navigationZoom.sample?.sequence || 0}
         data-viewport-preview-tiles={visible.filter(tile=>tile.viewportPreview&&cachedPreviewTile(tile)).length}
         data-native-capture-tiles={visible.filter(tile=>tile.nativeCapture&&ready.current.has(tile.key)).length}
         data-display-mode={singleCanvas ? 'single-gpu-canvas' : 'managed-tiles'}
@@ -1398,7 +1522,7 @@ export function ProgressiveSurfaceImpl(
           // Upload/acknowledge tiles while hidden. The first visible canvas
           // must have a complete acknowledged viewport, including on a page
           // change. Later camera previews keep the previous complete frame.
-          visibility: props.visible === false || !displayed ? 'hidden' : 'visible',
+          visibility: props.visible === false || !displayed && cachedPreviewCount === 0 ? 'hidden' : 'visible',
           pointerEvents: 'none',
         }}
       >
@@ -1419,7 +1543,7 @@ export function ProgressiveSurfaceImpl(
           overlay={props.overlay}
           sourceDocument={doc} translationItems={visible.filter(tile=>syncedDoc.current===doc&&tile.revision===contract.revision&&ready.current.has(tile.key))
             .map(tile=>({tile,active:true,layer:0}))} allowPageTranslation={!props.grid&&!props.checkerboard&&!props.pixelPreview}
-          interaction={props.interaction} pageId={pageId} rasterProfile={rasterProfile} backend={backend}
+          interaction={navigationZoom.active ? undefined : props.interaction} pageId={pageId} rasterProfile={rasterProfile} backend={backend}
           settledDocument={fullPlanReady ? doc : undefined}
           onPresented={(frame,source)=>{
             if (renderDiagnostics.recording) {
@@ -1491,10 +1615,6 @@ export function ProgressiveSurfaceImpl(
           )
         })}
       </div>
-      {!displayed && !failure && !props.paused && props.visible !== false && <div
-        className="kernel-first-frame" role="status"
-        style={{position:'absolute',inset:0,display:'grid',placeItems:'center',pointerEvents:'none',fontSize:12,color:'#777c8e'}}
-      >正在绘制画布…</div>}
       {!props.paused && <div
         className={`kernel-status ${failure ? 'error' : ''}`}
         role="status"

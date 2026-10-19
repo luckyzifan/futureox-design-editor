@@ -166,6 +166,7 @@ struct CameraMetadata {
     padding: i32,
     backdrop_chain: bool,
     foreground_only: bool,
+    noise_guard: Option<i32>,
 }
 
 type ProgramShape = (usize, i32, i32, u32, u32, bool, bool);
@@ -620,10 +621,78 @@ fn opaque_frame_shadow_candidate(doc: &Document, n: &Node) -> bool {
 // Backdrop filters read outside a leaf, but their output is still clipped to
 // its shape. Only use this bound in a certified single-backdrop dependency tree.
 fn backdrop_output_bounds(n: &Node, p: &crate::geometry_snapshot::Prepared) -> Rect {
-    if n.children.is_empty() && !n.passes_backdrop() && n.effects.iter()
+    if n.render_children().is_empty() && !n.passes_backdrop() && n.effects.iter()
         .filter(|e| e.visible).all(|e| matches!(e.kind.as_str(), "glass" | "background-blur")) {
         p.bounds.expand(-p.halo)
     } else { p.bounds }
+}
+
+// Certify only a constant-coverage interior: no flattened edge may enter the
+// guarded rectangle. This also recognizes the empty interior of compound
+// shapes. The winding rule is exactly the compiler's fill rule.
+fn constant_fill_coverage(n: &Node, p: &crate::geometry_snapshot::Prepared, region: Rect) -> Option<bool> {
+    if p.fill.is_empty() || [region.x, region.y, region.right(), region.bottom()].iter().any(|v| i64::from(*v).abs() > 1_048_576) {
+        return None;
+    }
+    let r = region.expand(2);
+    for contour in p.fill.iter() {
+        if !contour.closed { return None; }
+        for (i, a) in contour.points.iter().enumerate() {
+            let b = contour.points[(i + 1) % contour.points.len()];
+            if !a.finite() || !b.finite() { return None; }
+            if a.x.min(b.x) <= f64::from(r.right()) && a.x.max(b.x) >= f64::from(r.x) &&
+                a.y.min(b.y) <= f64::from(r.bottom()) && a.y.max(b.y) >= f64::from(r.y) { return None; }
+        }
+    }
+    let winding = crate::path::winding(Point::new(f64::from(r.x) + f64::from(r.w) / 2.,
+        f64::from(r.y) + f64::from(r.h) / 2.), &p.fill);
+    Some(if n.kind == "text" || n.network.as_ref().is_some_and(|g| g.fill_rule == "nonzero") {
+        winding != 0
+    } else { winding % 2 != 0 })
+}
+
+fn irrelevant_backdrop(n: &Node, p: &crate::geometry_snapshot::Prepared, region: Rect, coherent: bool) -> bool {
+    if !n.render_children().is_empty() || n.passes_backdrop() || n.opacity != 1. || n.blend != "normal" || n.mask ||
+        n.effects.iter().any(|e| e.visible && e.kind != "background-blur") ||
+        n.fills.iter().any(|paint| paint.visible && paint.blend != "normal") ||
+        n.strokes.iter().any(|stroke| stroke.visible && stroke.paint.blend != "normal") { return false; }
+    let opaque_fill = n.fills.iter().any(|paint| paint.visible && paint.kind == "solid" &&
+        paint.opacity == 1. && paint.color.len() == 7 && paint.color.starts_with('#'));
+    // Coherent path coverage is binary in each sample plane. An opaque fill
+    // replaces every covered backdrop sample, including AA boundary samples;
+    // uncovered samples have zero backdrop coverage. Keep continuous-area
+    // and large-coordinate sampling on the guarded interior proof below.
+    if coherent && opaque_fill && [region.x, region.y, region.right(), region.bottom()].iter()
+        .all(|v| i64::from(*v).abs() <= 1_048_576) { return true; }
+    match constant_fill_coverage(n, p, region) {
+        Some(false) => true,
+        Some(true) => opaque_fill,
+        None => false,
+    }
+}
+
+// A backdrop elsewhere on the page does not make a foreground-only crop read
+// its siblings. Prove this for the actual dependency region, including every
+// ancestor's filter support, before using the existing branch-local compiler.
+// Keep arbitrary materials, passthrough effects and intersecting backdrops on
+// the conservative path. The prepared guard already covers these dependencies.
+fn foreground_region_supported(
+    doc: &Document,
+    id: &str,
+    region: Rect,
+    prepared: &HashMap<String, crate::geometry_snapshot::Prepared>,
+    coherent: bool,
+) -> bool {
+    let n = &doc.nodes[id];
+    let Some(p) = prepared.get(id) else { return true; };
+    if !n.visible || n.opacity <= 0. || backdrop_output_bounds(n, p).intersect(region).empty() { return true; }
+    if irrelevant_backdrop(n, p, region, coherent) { return true; }
+    if n.effects.iter().any(|e| e.visible &&
+        (!matches!(e.kind.as_str(), "blur" | "shadow" | "inner-shadow") || n.passes_backdrop())) {
+        return false;
+    }
+    let source = region.expand(halo(n, p.matrix).saturating_add(2));
+    n.render_children().iter().all(|child| foreground_region_supported(doc, child, source, prepared, coherent))
 }
 
 struct Compiler<'a> {
@@ -721,6 +790,9 @@ impl Compiler<'_> {
         // Borrowing one entry avoids cloning both per-node stroke vectors.
         let prepared_owner = Arc::clone(&self.prepared);
         let prepared = prepared_owner.get(id);
+        if requested.is_some_and(|region| prepared.is_some_and(|p| backdrop_output_bounds(n, p).intersect(region).empty())) {
+            return Ok(Rect::default());
+        }
         let matrix = prepared
             .as_ref()
             .map_or_else(|| parent.concat(n.transform), |p| p.matrix);
@@ -736,10 +808,13 @@ impl Compiler<'_> {
         // its last fractional tap. The general 2*radius halo also covers other
         // effects and remains unchanged for those paths. Limit this reduction
         // to foreground blur leaves with no other sampling stages.
-        let own_halo = if self.doc.color_management.is_some()
+        let omit_backdrop = requested.is_some_and(|region| prepared.is_some_and(|p|
+            irrelevant_backdrop(n, p, region, self.compatible && !self.interactive_effects)));
+        let own_halo = if omit_backdrop { 0 } else if self.doc.color_management.is_some()
             && self.profile != crate::fidelity::RasterProfile::Analytic
             && n.render_children().is_empty() && n.strokes.is_empty()
-            && n.effects.iter().filter(|e| e.visible).all(|e| e.kind == "blur" && e.gradient_blur.is_none())
+            && n.effects.iter().filter(|e| e.visible).all(|e| e.gradient_blur.is_none() &&
+                (e.kind == "blur" || e.kind == "shadow" && e.spread == 0. && e.x == 0. && e.y == 0.))
         {
             n.effects.iter().filter(|e| e.visible)
                 .map(|e| (e.blur_radius() * scale).ceil() as i32)
@@ -921,7 +996,8 @@ impl Compiler<'_> {
                 effects: n
                     .effects
                     .iter()
-                    .filter(|e| e.visible && !(opaque_coverage && e.kind == "shadow"))
+                    .filter(|e| e.visible && !(opaque_coverage && e.kind == "shadow") &&
+                        !(omit_backdrop && e.kind == "background-blur"))
                     .cloned()
                     .map(|mut e| {
                         // Normalize only the layer-blur activation here, before
@@ -1123,12 +1199,36 @@ impl Engine {
             cache.key.0 == self.geo_revision && cache.key.1 == options.page_id &&
                 cache.key.2 == (options.view.x, options.view.y, options.view.zoom) &&
                 cache.key.4 == compatible && cache.key.5 == options.animation
-        }).and_then(|cache| cache.metadata).unwrap_or_else(|| CameraMetadata {
-            padding: page.children.iter().map(|id| margin(doc, id, camera)).max().unwrap_or(0),
-            backdrop_chain: single_backdrop_support_chain(doc, &page.children),
-            foreground_only: doc.color_management.is_some() && doc.nodes.values().all(|n| {
-                n.effects.iter().all(|e| !e.visible || matches!(e.kind.as_str(), "blur" | "shadow" | "inner-shadow"))
-            }),
+        }).and_then(|cache| cache.metadata).unwrap_or_else(|| {
+            let padding = page.children.iter().map(|id| margin(doc, id, camera)).max().unwrap_or(0);
+            let noise_guard = doc.nodes.values().any(|n| n.effects.iter().any(|e| e.visible && e.kind == "noise"))
+                .then(|| {
+                    // A dependency path has at most one visit per node, each
+                    // adding two texels. A blur-only leaf's per-effect ceil
+                    // can exceed the general halo by at most its effect count.
+                    let extra = doc.nodes.len().saturating_mul(2).saturating_add(
+                        doc.nodes.values().map(|n| n.effects.len()).max().unwrap_or(0));
+                    padding.saturating_add(i32::try_from(extra).unwrap_or(i32::MAX))
+                });
+            CameraMetadata {
+                padding,
+                backdrop_chain: single_backdrop_support_chain(doc, &page.children),
+                foreground_only: doc.color_management.is_some() && doc.nodes.values().all(|n| {
+                    // Noise is pointwise, but changing a neighbouring filter's
+                    // crop must not change its sample phase. Newly admitted
+                    // noise scenes use only solid paints and integer-tap
+                    // filters. Fractional shadow offsets and origin-relative
+                    // gradient/image arithmetic retain the old route.
+                    let noise_phase_safe = noise_guard.is_none() ||
+                        n.fills.iter().all(|p| !p.visible || p.kind == "solid") &&
+                        n.strokes.iter().all(|s| !s.visible || s.width <= 0. || s.paint.kind == "solid") &&
+                        n.effects.iter().all(|e| !e.visible || e.gradient_blur.is_none() &&
+                            (!matches!(e.kind.as_str(), "shadow" | "inner-shadow") || e.x == 0. && e.y == 0.));
+                    noise_phase_safe && n.effects.iter().all(|e| !e.visible ||
+                        matches!(e.kind.as_str(), "blur" | "shadow" | "inner-shadow" | "noise"))
+                }),
+                noise_guard,
+            }
         });
         let padding = metadata.padding;
         // This is a geometry search guard, not an allocated surface. An
@@ -1137,7 +1237,16 @@ impl Engine {
         if padding > 16_000_000 {
             return Err("GPU effect support exceeds coordinate budget".into());
         }
-        let regional_foreground = viewport.is_some() && metadata.foreground_only;
+        let has_region = viewport.is_some();
+        let mut regional_foreground = viewport.is_some_and(|region| metadata.foreground_only &&
+            metadata.noise_guard.is_none_or(|guard| {
+                // Global pixel centres, their neighbouring taps, and the
+                // local-to-global addition must be exact binary32 values.
+                // Export doubles device coordinates; outside this certificate
+                // retain the old extents rather than change the noise hash.
+                [region.x, region.y, region.right(), region.bottom()].iter()
+                    .all(|v| i64::from(*v).abs() + i64::from(guard) <= 1_048_576)
+            }));
         let viewport = viewport.unwrap_or_else(|| Rect::new(0, 0, options.width, options.height));
         // Whole-frame exact desktop captures need the same bounded aggregate
         // allowance as regional captures. Admission depends on output extent,
@@ -1208,6 +1317,10 @@ impl Engine {
                     });
                 }
             }
+        }
+        if has_region && !regional_foreground && doc.color_management.is_some() && metadata.noise_guard.is_none() {
+            regional_foreground = page.children.iter().all(|id|
+                foreground_region_supported(doc, id, viewport, &prepared, crate::fidelity::coherent_samples(doc, options)));
         }
         let backdrop_chain = metadata.backdrop_chain;
         let extent = {

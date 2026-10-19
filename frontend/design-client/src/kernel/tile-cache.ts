@@ -136,14 +136,20 @@ export function planTiles(
     ![bounds.x, bounds.y, bounds.width, bounds.height, zoom, phase.x, phase.y].every(Number.isFinite) ||
     bounds.width < 0 ||
     bounds.height < 0 ||
-    zoom <= 0 || phase.x < 0 || phase.x >= 1 || phase.y < 0 || phase.y >= 1
+    zoom <= 0 || phase.x < 0 || phase.x >= 1 || phase.y < 0 || phase.y >= 1 ||
+    !Number.isSafeInteger(limit) || limit < 0
   )
     throw new Error('Invalid tile bounds')
   const x0 = Math.floor((bounds.x * zoom + phase.x) / TILE_SIDE),
     y0 = Math.floor((bounds.y * zoom + phase.y) / TILE_SIDE)
   const x1 = Math.ceil(((bounds.x + bounds.width) * zoom + phase.x) / TILE_SIDE),
     y1 = Math.ceil(((bounds.y + bounds.height) * zoom + phase.y) / TILE_SIDE)
-  if ((x1 - x0) * (y1 - y0) > limit) throw new Error('Visible tile budget exceeded')
+  // Match the production Rust planner's exact-coordinate domain. Finite
+  // inputs can overflow during multiplication; above 2^53, x++ can also stop
+  // progressing even when the apparent tile count is within the budget.
+  if (![x0, y0, x1, y1].every(n => Number.isFinite(n) && Math.abs(n) <= 0x7fffffff / TILE_SIDE))
+    throw new Error('Tile address exceeds exact coordinate range')
+  if ((x1 - x0) * (y1 - y0) > Math.min(limit, 65536)) throw new Error('Visible tile budget exceeded')
   const tiles: RasterTile[] = []
   for (let y = y0; y < y1; y++)
     for (let x = x0; x < x1; x++) {

@@ -17,7 +17,11 @@ struct AreaParams { values:array<vec4<f32>,64> }
 fn cvFetch(index:u32)->vec4<f32>{return curves[u32(params.values[9].x)+index];}
 fn cvSampleIndex()->i32{return i32(params.values[9].z);}
 @vertex fn areaQuad(@builtin(vertex_index) i:u32)->@builtin(position) vec4<f32>{let x=f32((i<<1u)&2u);let y=f32((i)&2u);return vec4<f32>(x*2.-1.,1.-y*2.,0.,1.);}
-@fragment fn areaFragment(@builtin(position) p:vec4<f32>)->@location(0) vec4<f32>{return vec4<f32>(areaCoverage(vec2<i32>(floor(p.xy))));}
+@fragment fn areaFragment(@builtin(position) p:vec4<f32>)->@location(0) vec4<f32>{
+ let pixel=vec2<i32>(floor(p.xy))+vec2<i32>(params.values[10].xy);
+ if(any(pixel<vec2<i32>(0))||any(pixel>=vec2<i32>(params.values[10].zw))){return vec4<f32>(0);}
+ return vec4<f32>(areaCoverage(pixel));
+}
 `
 
 export const areaShaderGlsl =

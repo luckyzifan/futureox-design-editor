@@ -1,0 +1,14 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> @futureox/design-client@0.1.0 test
+> vitest run src/kernel/gpu/renderer.test.ts src/kernel/preview-budget-recovery.test.ts src/kernel/tile-failure.test.ts
+
+
+ RUN  v5.0.1 <repo>/frontend/design-client
+
+
+ Test Files  3 passed (3)
+      Tests  49 passed (49)
+   Start at  19:04:52
+   Duration  4.86s (tests 85%, transform 13%, setup 1%, import 1%)
+

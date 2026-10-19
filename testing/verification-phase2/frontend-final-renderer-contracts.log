@@ -1,0 +1,40 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> @futureox/design-client@0.1.0 test:renderer-contracts
+> node --test src/kernel/gpu/renderer-regressions.test.mjs
+
+(node:3101) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 32x root movement preserves integer raster phase and rejects subpixel masks (2.374278ms)
+✔ 32x root patch session rejects fractional pose without changing its accepted snapshot (1.451868ms)
+✔ 32x rotated nested movement preserves integer raster phase and rejects subpixel masks (0.494135ms)
+✔ 32x nested patch session rejects fractional pose without changing its accepted snapshot (0.346291ms)
+✔ subpixel cached antialiasing differs from freshly evaluated coverage (0.320113ms)
+✔ translation batch rejects fractional deltas before mutating reusable node tables (0.237698ms)
+✔ integer delta cannot certify a raster already shifted to a fractional phase (0.168364ms)
+✔ integer translation keeps stationary clipped backdrop admission and rejects foreground/replay dependencies (0.332451ms)
+✔ compiled global-raster nodes survive zoom 2.99 with origin tiles (5.336111ms)
+✔ compiled global-raster nodes survive zoom 2.99 with translated tiles (0.738693ms)
+✔ compiled global-raster nodes survive zoom 3 with origin tiles (0.519983ms)
+✔ compiled global-raster nodes survive zoom 3 with translated tiles (0.516969ms)
+✔ compiled global-raster nodes survive zoom 32 with origin tiles (0.442437ms)
+✔ compiled global-raster nodes survive zoom 32 with translated tiles (0.315736ms)
+✔ compiled global-raster nodes survive zoom 64 with origin tiles (0.421084ms)
+✔ compiled global-raster nodes survive zoom 64 with translated tiles (0.433653ms)
+✔ image selection with mips disabled stays at level zero at every zoom (0.283387ms)
+✔ image admission preserves demanded source quality (mips=false, float=false) (0.941779ms)
+✔ image admission preserves demanded source quality (mips=false, float=true) (0.25223ms)
+✔ image admission preserves demanded source quality (mips=true, float=false) (0.123537ms)
+✔ image admission preserves demanded source quality (mips=true, float=true) (0.117427ms)
+✔ real paint preserves source fidelity under pressure (mips=false) (0.264498ms)
+✔ real paint preserves source fidelity under pressure (mips=true) (0.130587ms)
+✔ current image survives unrelated resource touches and is uploaded only once (0.330759ms)
+✔ atlas cleanup retains shared pages and retires each physical allocation once (0.659523ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 230.643676

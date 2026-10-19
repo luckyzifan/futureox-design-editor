@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:render-diagnostics": "node --test src/kernel/render-diagnostics.test.mjs",
-    "test:render-contracts": "node --test src/image-import.test.mjs src/kernel/canvas-effect-sampling.test.mjs src/kernel/render-diagnostics.test.mjs src/kernel/cpu-frame-contract.test.mjs",
+    "test:render-contracts": "node --test src/image-import.test.mjs src/kernel/canvas-effect-sampling.test.mjs src/kernel/render-diagnostics.test.mjs src/kernel/cpu-frame-contract.test.mjs src/kernel/use-zoom-activity.test.mjs src/retained-board-capture.test.mjs",
     "benchmark": "bun scripts/benchmark.ts",
     "lint": "biome lint src",
     "test:desktop-lifecycle": "bun scripts/check-desktop-lifecycle.ts",
@@ -44,7 +44,7 @@
     "test:kernel-live": "bun scripts/check-kernel-live.ts",
     "test:graph-history": "bun test src/kernel/op-sync-history.test.mjs",
     "test:render-alignment": "bun scripts/check-render-alignment.ts",
-    "test:renderer-contracts": "node --test src/kernel/gpu/renderer-regressions.test.mjs"
+    "test:renderer-contracts": "node --test src/kernel/gpu/renderer-regressions.test.mjs src/kernel/gpu/sample-effect-lifetime.test.mjs"
   },
   "dependencies": {
     "fflate": "0.8.3",

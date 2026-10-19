@@ -56,18 +56,14 @@ test('content changes, replay dependencies, and newly exposed clipped geometry r
   } finally { kernel.free() }
 })
 
-test('subpixel root movement remains continuous even below one preview pixel', () => {
+test('subpixel root movement regenerates coverage instead of filtering an old mask', () => {
   const { doc, a, kernel, compile } = fixture()
   try {
     const source = compile(doc)
     for (const dx of [.1, .2, .35, .7]) {
       const next = { ...doc, nodes: { ...doc.nodes, [a.id]: { ...a, transform: [1, 0, 0, 1, 20 + dx, 20] as typeof a.transform } } }
-      const moved = translatePreviewScene(source, doc, next)!
-      expect(moved.nodes[a.id].matrix[4]).toBeCloseTo(20 + dx, 10)
-      expect(moved.nodes[a.id].rect.x - source.nodes[a.id].rect.x).toBeCloseTo(dx, 10)
-      expect(moved.nodes[a.id].fill.area).toBe(source.nodes[a.id].fill.area)
-      expect(moved.nodes[a.id].fill.opaqueRect).toBeUndefined()
-      expect(moved.nodes[a.id].previewSource).toBe(source.nodes[a.id])
+      expect(translatePreviewScene(source, doc, next)).toBeNull()
+      expect(source.nodes[a.id].previewSource).toBeUndefined()
     }
   } finally { kernel.free() }
 })

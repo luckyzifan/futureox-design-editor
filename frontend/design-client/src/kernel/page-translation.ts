@@ -19,6 +19,7 @@ export class PageTranslation {
   private props?: InteractionProps
   private residents: CompositeTile[] = []
   private active = false
+  private phaseRevoked = false
   private offset = { x: 0, y: 0 }
   private epoch = -1
   private input = { sequence: 0, at: 0 }
@@ -38,7 +39,28 @@ export class PageTranslation {
   readonly lastSampleGroupHits = 0
   readonly sampleTrace: unknown[] = []
   readonly backgroundLinear = undefined
-  constructor(private changed: () => void) {}
+  constructor(private changed: () => void, private fractionalPose?: (
+    document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], displayed: DesignDocument,
+  ) => ReturnType<GpuMoveControl['apply']>) {}
+  get handingOff() { return this.phaseRevoked }
+  private reusableOffset(offset: { x: number; y: number }) {
+    return this.residents.length > 0 && this.residents.every(tile =>
+      [offset.x * tile.zoom, offset.y * tile.zoom].every(Number.isSafeInteger))
+  }
+  private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1]) {
+    this.phaseRevoked = true
+    return this.fractionalPose?.(document, patches, this.displayedDocument()) ?? null
+  }
+  private displayedDocument() {
+    const document = this.plan!.document
+    return { ...document, nodes: { ...document.nodes,
+      ...Object.fromEntries(this.plan!.ids.map(id => {
+        const node = document.nodes[id], transform = [...node.transform] as typeof node.transform
+        transform[4] += this.offset.x; transform[5] += this.offset.y
+        return [id, { ...node, transform }]
+      })),
+    } }
+  }
   private delta(document: DesignDocument) {
     if (!this.plan) return null
     if (document === this.plan.document) return { x: 0, y: 0 }
@@ -76,7 +98,11 @@ export class PageTranslation {
         if (offset && (Math.abs(next.x - offset.x) > 1e-7 || Math.abs(next.y - offset.y) > 1e-7)) return null
         offset = next
       }
-      if (!offset) return null
+      if (!offset || this.phaseRevoked) return null
+      // Identical geometry at a fractional device offset has different edge
+      // coverage. Integer translations retain the page fast path; otherwise
+      // hand the pose to native rasterization before moving any old pixels.
+      if (!this.reusableOffset(offset)) return this.rebase(document, patches)
       const id = this.plan.ids[0],
         before = document.nodes[id].transform,
         after = patches[id]?.transform || before
@@ -90,8 +116,9 @@ export class PageTranslation {
       return { x: after[4] - before[4], y: after[5] - before[5] }
     },
     end: (document) => {
-      if (!this.active) return
+      if (!this.active || this.phaseRevoked) return
       const offset = this.delta(document)
+      if (offset && !this.reusableOffset(offset)) { this.rebase(document, {}); return }
       this.active = !!offset && (offset.x !== 0 || offset.y !== 0)
       if (offset) this.offset = offset
       this.lastEnd = offset ? `${offset.x},${offset.y}` : 'content-changed'
@@ -106,6 +133,13 @@ export class PageTranslation {
     settled: DesignDocument | undefined,
     allowed: boolean,
   ) {
+    if (this.phaseRevoked) {
+      // React refreshes during imperative input still refer to the old
+      // authored document. Do not rebind its invalid pixel fast path.
+      if (this.plan && props?.epoch === this.epoch && source === this.plan.document &&
+          props?.selection.length === this.plan.ids.length && props.selection.every(id => this.plan!.ids.includes(id))) return false
+      this.clear()
+    }
     const document = this.active && this.plan ? this.plan.document : props?.document
     const page = document?.pages.find((page) => page.id === pageId)
     const roots = page?.children.filter((id) => document?.nodes[id]?.visible) || []
@@ -141,7 +175,10 @@ export class PageTranslation {
       this.checkedDocument = undefined
       this.board = all ? undefined : board
       this.residents = items.map((item) => item.tile)
-      this.offset = this.delta(props.document) || { x: 0, y: 0 }
+      const offset = this.delta(props.document) || { x: 0, y: 0 }
+      this.offset = { x: 0, y: 0 }
+      if (!this.reusableOffset(offset)) { this.rebase(props.document, {}); return false }
+      this.offset = offset
       this.active = props.active && (this.offset.x !== 0 || this.offset.y !== 0)
     }
     return !!this.plan && this.plan.document === source && this.residents.length > 0
@@ -215,6 +252,7 @@ export class PageTranslation {
     this.residents = []
     this.board = undefined
     this.active = false
+    this.phaseRevoked = false
     this.offset = { x: 0, y: 0 }
   }
 }

@@ -1,0 +1,68 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> @futureox/design-client@0.1.0 test:render-contracts
+> node --test src/image-import.test.mjs src/kernel/canvas-effect-sampling.test.mjs src/kernel/render-diagnostics.test.mjs src/kernel/cpu-frame-contract.test.mjs src/kernel/use-zoom-activity.test.mjs src/retained-board-capture.test.mjs
+
+✔ preserves exact original bytes and intrinsic dimensions without a canvas (3.385602ms)
+✔ PNG, JPEG and WebP retain their original encoded payload (0.632904ms)
+✔ accepts exact pixel limit and never marks an asset resized (0.756851ms)
+✔ rejects oversized assets instead of downsampling or lossy reencoding (0.974268ms)
+✔ honors smaller managed-image admission limits (0.664071ms)
+✔ rejects invalid budgets before browser decoding (0.9026ms)
+✔ rejects unsupported type and oversized encoded files (1.821164ms)
+✔ propagates read failure without logging source data (0.503859ms)
+✔ settles aborted reads (0.628477ms)
+✔ propagates decode failure without accepting an asset (0.501886ms)
+✔ rejects invalid decoded dimensions (0.270007ms)
+✔ rejects zero intrinsic size rather than using layout dimensions (0.339111ms)
+✔ rejects oversized data URIs without decoding or reencoding (0.345511ms)
+✔ other-page effects do not disable the current page reusable zoom density (1.554362ms)
+✔ detached effect definitions do not change page sampling (0.195495ms)
+✔ hidden nodes and the complete subtree of hidden ancestors do not change page sampling (0.33826ms)
+✔ each visible filtering effect in nested page content preserves native-density scheduling (0.270758ms)
+✔ disabled effects and unrelated material effects keep existing sampling eligibility (0.258319ms)
+✔ offscreen effects remain conservative because shadow and blur support can reach the viewport (0.175976ms)
+✔ unknown pages and missing child references are harmless (0.262185ms)
+✔ shared descendants and malformed cycles cannot cause unbounded traversal (0.183997ms)
+✔ visible instances retain exact scheduling even with no authored children (0.253412ms)
+✔ shared styles retain exact scheduling before kernel effect resolution (0.326832ms)
+✔ hidden instances and style references do not affect visible page content (0.189105ms)
+✔ integer analytic: routes original options to exact CPU renderer (1.097524ms)
+✔ page switch: routes original options to exact CPU renderer (0.172039ms)
+✔ fractional high zoom: routes original options to exact CPU renderer (0.15248ms)
+✔ animation and checkerboard: routes original options to exact CPU renderer (0.143075ms)
+✔ managed document: routes original options to exact CPU renderer (0.223947ms)
+✔ exact rendering failure is propagated, never hidden by cached pixels (0.537079ms)
+✔ actual recorder is disabled by default and pause prevents new samples (2.035718ms)
+✔ zoom request, cache result, fresh pixels and failure retain exact scalars (0.733135ms)
+✔ ring stays bounded, reports dropped entries, and restart resets it (3.17857ms)
+✔ unknown keys, raw errors, document IDs and image payloads cannot enter exports (0.559213ms)
+✔ invalid numeric fields are omitted, zero timings and cache counts are preserved (0.341465ms)
+✔ snapshot and report cannot mutate retained samples (0.247292ms)
+✔ error classifier returns only bounded codes and handles non-errors (0.563119ms)
+✔ existing render profile controls both journals; restart/pause are shared (0.566243ms)
+(node:3039) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ high-zoom changes remain active until two stable animation frames (1.81153ms)
+✔ returning to the committed zoom still waits for two stable frames (1.654713ms)
+✔ rapid high-zoom reversals never publish a false idle frame (0.666465ms)
+✔ returning a pan to its previous camera remains active until settled (0.426673ms)
+✔ new documents and backend owners discard pending activity immediately (0.5978ms)
+✔ unchanged renders do not postpone the settle countdown (0.420484ms)
+✔ retained drag capture preserves one axis-independent density at DPR 1 (1.079016ms)
+✔ retained drag capture preserves one axis-independent density at DPR 1.25 (0.174963ms)
+✔ retained drag capture preserves one axis-independent density at DPR 1.5 (0.151908ms)
+✔ retained drag capture preserves one axis-independent density at DPR 2 (0.111277ms)
+✔ retained drag capture preserves one axis-independent density at DPR 2.625 (0.219661ms)
+✔ retained drag capture preserves one axis-independent density at DPR 3 (0.139711ms)
+✔ fractional-layout capture no longer shrinks by a different amount on each axis (0.151969ms)
+✔ full-DPR over-budget or clipped captures decline instead of downsampling (0.149064ms)
+✔ capture copies the foreground crop 1:1 at integer physical coordinates (2.591615ms)
+ℹ tests 53
+ℹ suites 0
+ℹ pass 53
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 188.392276

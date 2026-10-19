@@ -1,0 +1,189 @@
+✔ local desktop defaults to optimized native products and records GPU sources (1.589595ms)
+✔ build provenance detects edited/deleted inputs while generated artifacts do not self-invalidate (74.743167ms)
+✔ build provenance detects vendored compiler source and manifest changes, excluding unrelated vendor files (68.425172ms)
+✔ Electron 44 clipboard write waits for atomic commit and propagates an async failure (3.015895ms)
+✔ clipboard only reads supported MIME data and preserves a private PNG instead of OS-converted pixels (0.991664ms)
+✔ clipboard rejects an oversized representation before materializing it (0.518371ms)
+✔ strict launch policy is configured before readiness and forwarded only from main argv (9.054784ms)
+✔ directory grants reject traversal, symlink files and replaced roots (18.677362ms)
+✔ bounded eviction protects the active root and fails explicitly without an evictable grant (32.652531ms)
+✔ installing a sidecar replaces its inode and preserves an existing open executable (12.539755ms)
+✔ native file formats select adapters inside the shared design kernel (1.591298ms)
+✔ inspection accepts only exact Sketch schema/owner and strips private backend payloads (1.137965ms)
+✔ first run under the new name carries durable stores forward and leaves caches behind (6.223267ms)
+✔ a live database in the new profile is never joined by a foreign WAL (0.565993ms)
+✔ the most recently active legacy profile wins when several exist (1.757538ms)
+✔ profiles without durable stores, markers in the target, and missing sources plan nothing (0.543829ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ desktop zoom shortcuts dispatch canvas commands and keep page zoom at one (41.826784ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ native modified clipboard shortcuts retain their meaning before menu dispatch (15.418933ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ Save As confirms the normalized existing .fd target and Cancel performs no write (12.701419ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ accepted active capability survives many cancelled renderer-open replacements (21.670533ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ recovery adoption works at full quota and retains source unless cleanup names approved token (14.484254ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ main rejects forged iframe sender and arbitrary path-bearing IPC before sidecar IO (44.448915ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ close replies are correlated and stale approvals never close a newer request (28.129685ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ only own-window known Blob exports reach a native save dialog, with byte bound (26.614462ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ stale native fallback response 0 cannot settle a newer close request (19.572832ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ stale native fallback response 1 cannot settle a newer close request (32.809157ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ mixed corrupt recovery remains visible with valid snapshot choice 0 (15.256899ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ mixed corrupt recovery remains visible with valid snapshot choice 1 (11.984839ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ mixed corrupt recovery remains visible with valid snapshot choice 2 (18.280264ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ native fallback only settles its live owning window (12.208806ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ current native fallback response 0 is honored (23.853852ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ current native fallback response 1 is honored (16.53229ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ catalog selection exposes opaque grant and replacement revokes document authority (14.639398ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ accepted catalog document keeps its root grant through sixteen later folder selections (21.340015ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ native clipboard keeps selected graph and readable text in one write (19.542466ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ workspace bridge rejects paths, invalid revisions and untrusted senders before IPC (15.235126ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ Finder files arriving before ready are bounded opaque reads and are consumed only after acceptance (12.245131ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ Finder queue retains only sixteen unique native files and reports overflow (20.884223ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ macOS close keeps backend alive and Dock activation restores geometry with one protocol/download registration (19.20016ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ CmdQ honors cancelled close and only stops backend after an approved later quit (17.747452ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ non-macOS last-window close still shuts down the owned backend (11.917527ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ native file received with no window survives reopening and invalid file never reaches backend (12.566705ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ display removal constrains a normal window to the remaining visible work area (10.441788ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ font listing is shared across repeated requests and invalidated by a changed source read (12.46345ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ native commands after last-window close wait for the new renderer handshake (14.649964ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ native Open while no window uses its own file dialog and the same acceptance queue (14.837396ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ invalid Finder input reports failure without blocking the next item, while backend failure preserves retry (8.896706ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ native PNG clipboard validates dimensions and bit depth before replacing clipboard contents (14.172204ms)
+原生渲染桥:design-render 未安装于 <REPO>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+Local presence lease will expire: Unexpected method workspace.leave
+✔ Sketch inspection uses only native selection and cannot replace the Forma canvas or leak paths (11.393588ms)
+✔ navigation and owner destruction retire native render children and pending frames (333.903777ms)
+✔ shutdown reaps a child which ignores graceful termination (2093.407017ms)
+✔ a failed child can be explicitly reloaded with window ownership preserved (177.367204ms)
+✔ overlapping frame, stats and load requests retain FIFO ownership (5.128708ms)
+✔ application error rejects only its request and advances the queue (1.489414ms)
+✔ queue count is bounded and stop cancels active and queued requests (7.960464ms)
+✔ timeout settles every request and retires the stalled child (22.045067ms)
+✔ malformed and unexpected completed replies fail closed (5.469416ms)
+✔ split UTF-8 replies are decoded only after the full line arrives (0.804442ms)
+✔ oversized output is rejected before concatenation or JSON parsing (2.993781ms)
+✔ stdin failure rejects all outstanding work (0.78313ms)
+✔ backpressure delays the next request even after its predecessor replies (0.845484ms)
+✔ exit waits for buffered stdout before settling the final response (0.578262ms)
+✔ preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or shell handle (4.52576ms)
+✔ preload request methods map only to the fixed desktop IPC allowlist (1.856838ms)
+✔ command subscription strips IPC event, rejects invalid payloads and removes its own listener (2.05073ms)
+✔ close subscription strips event, validates requests, and independently cleans up callbacks (1.704789ms)
+✔ subscriptions reject non-functions before registering any IPC listener (2.338203ms)
+✔ render policy is captured from trusted preload argv and deeply frozen (4.779753ms)
+✔ workspace, font and clipboard APIs are frozen fixed-method bridges (2.11677ms)
+✔ Sketch session preload is frozen and maps named methods without accepting open paths (2.9794ms)
+✔ local window API stays frozen and uses only three fixed IPC methods (1.55306ms)
+✔ native render API is frozen, maps the fixed native-render channels, and stats fail safe to null (1.697188ms)
+✔ FPR1 metadata and payload survive every split boundary, including UTF-8 and header fields (5.848302ms)
+✔ FPR1 float payload uses aligned owned storage even when wire bytes have an odd offset (1.439359ms)
+✔ FPR1 large fragmented payload never joins the full frame (8.693409ms)
+✔ FPR1 transfer owns exactly the payload and does not detach or expose a pooled source slab (0.55111ms)
+✔ FPR1 copied payloads stay independent across replies and source mutations (0.32473ms)
+✔ FPR1 metadata-only errors and empty binary values retain their wire types (0.32514ms)
+✔ FPR1 waits for incomplete headers, metadata and binary without decoding them (1.812902ms)
+✔ FPR1 rejects invalid and fragmented magic before any payload assembly (0.413603ms)
+✔ FPR1 rejects announced metadata/binary budgets using only the header (0.357969ms)
+✔ FPR1 retains the total received-byte budget (1.329543ms)
+✔ FPR1 rejects surplus bytes and concatenated replies instead of accepting out-of-order work (14.740962ms)
+✔ FPR1 rejects malformed JSON, sequence mismatches, unknown encodings and misaligned floats (0.459893ms)
+✔ desktop package staging includes the preparation worker and its frame decoder (168.98257ms)
+✔ local document codec roundtrips UTF-8 and rejects oversized/invalid input without poisoning later jobs (274.675441ms)
+✔ native document IPC validates the sender and retires codec workers on navigation (139.73163ms)
+✔ render checks require a named entry, explicit local inputs and an isolated unpackaged profile (1.824309ms)
+✔ validation resources and bounded reports stay inside the private result directory (44.114441ms)
+✔ protocol origin is parsed exactly, never prefix matched (1.180899ms)
+✔ only the exact live window top frame and document can invoke IPC (0.490659ms)
+✔ resource resolution rejects encoded traversal and symlink escapes (14.126115ms)
+✔ payload contracts reject arbitrary paths and bound UTF-8 document size (24.306755ms)
+✔ CSP denies remote code, frames, objects, forms and only permits WASM compile (0.568587ms)
+✔ backend errors preserve conflict status without leaking local paths (0.279861ms)
+✔ real owned child ignoring SIGTERM is terminated by bounded SIGKILL and reaped (1188.376111ms)
+✔ real stalled child times out, rejects pending work, refuses later work, and is reaped (1328.120531ms)
+✔ stdio RPC is bounded, shell-free and roundtrips a correlated response (108.354368ms)
+✔ malformed backend output fails closed and reaps child (2.599647ms)
+✔ failed spawn rejects outstanding work without unhandled error (1.739431ms)
+✔ request timeout never retries and escalates unresponsive child termination (1015.044056ms)
+✔ pending queue is bounded and all requests fail after backend loss (51.193438ms)
+✔ split frames are assembled and unknown IDs fail closed (1.001479ms)
+✔ aggregate bytes reject before transport and drain gates queued frames (0.67055ms)
+✔ graceful stop drains EOF and accepts committed response before close (0.920147ms)
+✔ large-result reservations prevent small open requests multiplying response memory (0.767777ms)
+✔ lost replies classify every native Sketch mutation as an uncertain outcome (3.436699ms)
+✔ real axis-aligned alpha-only gradients admit; stop/color/transform/fixed-program corruption fails closed (18.154194ms)
+✔ actual Rust rectangle/cubic scene admits; corrupted transport and stale ownership fail closed (12.557001ms)
+✔ native session bridge fences ownership and confirms discard after a lost rename reply (5.628661ms)
+✔ packaged WASM accepts canonical and Vite-hashed names only with exact source bytes (2.331183ms)
+✔ packaged WASM rejects missing, unrelated and ambiguous source mappings (1.190329ms)
+✔ disconnected screens and small displays retain a visible usable window (1.339228ms)
+✔ connected negative-coordinate screen and valid normal/maximized bounds are preserved (0.352331ms)
+✔ window preferences use bounded reads and atomic replacement without temporary leftovers (13.076443ms)
+ℹ tests 115
+ℹ suites 0
+ℹ pass 115
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2933.730969

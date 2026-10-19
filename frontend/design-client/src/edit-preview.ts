@@ -5,6 +5,9 @@ import { imageAdjustActive } from './kernel/gpu/image-adjust'
 /** Only the existing vector presentation's supported subset can supply live
  * editing pixels. Exact GPU/CPU output remains authoritative after settling. */
 export function supportsEditPreview(doc: DesignDocument, pageId?: string): boolean {
+  // Scene uses SVG's sRGB paint/filter/blend semantics and never applies the
+  // document's working-space/HDR policy. Keep managed edits on their renderer.
+  if (doc.colorManagement) return false
   // Only the displayed page can affect this preview. Hidden ancestors also
   // hide their descendants; unrelated pages must not disable a local gesture.
   const nodes: DesignDocument['nodes'][string][] = []

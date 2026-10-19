@@ -139,6 +139,7 @@ export class TileCompositor {
       const quality = presentationQuality(available, view, width, height, dpr)
       this.canvas.dataset.coverage = String(quality.coverage)
       this.canvas.dataset.sharpCoverage = String(quality.sharpCoverage)
+      this.canvas.dataset.nativePhaseCoverage = String(quality.nativePhaseCoverage)
       this.canvas.dataset.maxUpscale = quality.maxUpscale.toFixed(3)
     }
   }

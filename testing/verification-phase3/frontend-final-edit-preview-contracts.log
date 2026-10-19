@@ -1,0 +1,33 @@
+(node:3173) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ layout cleanup cannot hide a newly visible vector edit preview (3.000833ms)
+✔ exact-frame handover stays hidden after old visible-preview cleanup (0.514536ms)
+✔ repeated edit, cancel, and exact handovers do not leave a stale overlay (0.970613ms)
+✔ revoking unsupported preview cannot cover the underlying exact renderer (0.51746ms)
+✔ direct bitmap moves accept integer physical displacement and reject fractional displacement (1.644649ms)
+✔ fractional committed movement revokes captured preview while retaining vector fallback (0.899105ms)
+✔ DPR changes trigger recapture even when CSS viewport and camera are unchanged (0.952405ms)
+✔ camera or viewport changes revoke the old bitmap before replacement capture is available (0.69017ms)
+✔ managed documents cannot enter either unmanaged SVG or sRGB8 capture paths (0.841443ms)
+✔ 3000-node retained drag validates each immutable document once without cloning the node map per pointer (11.460728ms)
+✔ camera-only recaptures reuse the document plan and active edits do not warm unused plans (1.434742ms)
+✔ integer physical shifts preserve authored coordinates at fractional DPR and zoom (1.056562ms)
+✔ fractional physical shifts decline bitmap reuse without rounding the pointer (0.926792ms)
+✔ floating-point roundoff is allowed but genuine subpixel movement is not (0.306833ms)
+✔ invalid or unsafe movement cannot enter the retained pixel path (0.206681ms)
+✔ capture reuse requires the same camera, viewport, and full display density (0.197367ms)
+(node:3175) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ transform-only admission preserves exact offsets and rejects overlap, scaling, and nonfinite values (1.414112ms)
+✔ immutable source and transform-only pointer checks do not enumerate a 3000-node map (4.280161ms)
+✔ new snapshots revalidate all content and top-level rendering contracts (0.363658ms)
+✔ 3000-root capture warmup examines scene ancestry once per entry rather than roots × entries (14.376686ms)
+✔ one-pass root aggregation retains descendant shadows and isolation rejection (0.422056ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 230.725537

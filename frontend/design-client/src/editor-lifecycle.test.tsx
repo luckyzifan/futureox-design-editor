@@ -233,7 +233,7 @@ describe('modal keyboard and asynchronous insertion ownership', () => {
       const decoded = new Promise<void>((resolve) => { finish = resolve })
       const decode = vi.fn(() => decoded)
       vi.stubGlobal('FileReader', class { result = 'data:image/png;base64,AA=='; onload!: () => void; readAsDataURL() { this.onload() } })
-      vi.stubGlobal('Image', class { width = 100; height = 100; decode = decode })
+      vi.stubGlobal('Image', class { naturalWidth = 100; naturalHeight = 100; width = 1; height = 1; decode = decode })
       const dropping = tree.props.onDrop({ preventDefault() {}, clientX: 50, clientY: 50, dataTransfer: { getData: () => '', files: [{ name: 'drop.png', type: 'image/png', size: 1 }] } })
       await settle()
       expect(decode).toHaveBeenCalledOnce()
@@ -246,6 +246,10 @@ describe('modal keyboard and asynchronous insertion ownership', () => {
       if (boundary === 'unmount') h.unmount()
       finish(); await dropping
       expect(Object.keys(editor.state.doc.nodes)).toHaveLength(boundary === 'none' ? 1 : 0)
+      if (boundary === 'none') {
+        const inserted = Object.values(editor.state.doc.nodes)[0]
+        expect({ width: inserted.width, height: inserted.height }).toEqual({ width: 100, height: 100 })
+      }
     })
   }
 })
@@ -365,7 +369,7 @@ test('inspector image decode does not apply to a reloaded same-ID document', asy
   const paintTree = paint.render(() => element.type(element.props)); paint.effects()
   let finish!: () => void; const decoded = new Promise<void>((resolve) => { finish = resolve })
   vi.stubGlobal('FileReader', class { result = 'data:image/png;base64,AA=='; onload!: () => void; readAsDataURL() { this.onload() } })
-  vi.stubGlobal('Image', class { width = 100; height = 100; decode() { return decoded } })
+  vi.stubGlobal('Image', class { naturalWidth = 100; naturalHeight = 100; width = 1; height = 1; decode() { return decoded } })
   const importing = find(paintTree, (el) => el.type === 'input' && el.props.type === 'file').props.onChange({ target: { files: [{ name: 'image.png', type: 'image/png', size: 1 }] } })
   f.editor.load(structuredClone(f.editor.state.doc)); const before = f.editor.state.doc
   finish(); await importing

@@ -1,0 +1,410 @@
+{
+  "schema": 1,
+  "task": "117.sketch Electron settled 3200% clarity and zoom responsiveness",
+  "fixture": {
+    "name": "117.sketch",
+    "sha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70"
+  },
+  "build": {
+    "format": 1,
+    "builtAt": "2026-10-19T11:55:49.054Z",
+    "platform": "darwin",
+    "arch": "arm64",
+    "profile": "desktop-dev"
+  },
+  "runtime": {
+    "baseline-motion": {
+      "status": "passed",
+      "steps": [
+        {
+          "label": "initial",
+          "milliseconds": 3368,
+          "zoom": 0.40738813735691987,
+          "dpr": 2,
+          "sampledDensity": 0.8147762747138397,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        }
+      ],
+      "motion": {
+        "kind": "main-thread-rAF-during-real-wheel-input",
+        "frames": 245,
+        "p50": 8.300000000000182,
+        "p95": 9.300000000000182,
+        "max": 166.80000000000018,
+        "over33ms": 1,
+        "cameraLagFrames": 5
+      }
+    },
+    "fixed-motion-final": {
+      "status": "passed",
+      "steps": [
+        {
+          "label": "initial",
+          "milliseconds": 3395,
+          "zoom": 0.40738813735691987,
+          "dpr": 2,
+          "sampledDensity": 0.8147762747138397,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        },
+        {
+          "label": "motion-settled-3200",
+          "milliseconds": 7867,
+          "zoom": 32.0,
+          "dpr": 2,
+          "sampledDensity": 64.0,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        },
+        {
+          "label": "zoom-800",
+          "milliseconds": 3419,
+          "zoom": 8.0,
+          "dpr": 2,
+          "sampledDensity": 16.0,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        },
+        {
+          "label": "zoom-3200",
+          "milliseconds": 209,
+          "zoom": 32.0,
+          "dpr": 2,
+          "sampledDensity": 64.0,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        }
+      ],
+      "motion": {
+        "kind": "main-thread-rAF-during-real-wheel-input",
+        "frames": 251,
+        "p50": 8.300000000000182,
+        "p95": 9.300000000000182,
+        "max": 9.400000000000546,
+        "over33ms": 0,
+        "cameraLagFrames": 0
+      }
+    },
+    "title-final": {
+      "status": "passed",
+      "steps": [
+        {
+          "label": "initial",
+          "milliseconds": 3361,
+          "zoom": 0.40738813735691987,
+          "dpr": 2,
+          "sampledDensity": 0.8147762747138397,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        },
+        {
+          "label": "selection-fit",
+          "milliseconds": 7463,
+          "zoom": 1.4184782608695652,
+          "dpr": 2,
+          "sampledDensity": 2.8369565217391304,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        },
+        {
+          "label": "zoom-800",
+          "milliseconds": 5178,
+          "zoom": 8.0,
+          "dpr": 2,
+          "sampledDensity": 16.0,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        },
+        {
+          "label": "zoom-3200",
+          "milliseconds": 15916,
+          "zoom": 32.0,
+          "dpr": 2,
+          "sampledDensity": 64.0,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        }
+      ]
+    },
+    "text-final": {
+      "status": "passed",
+      "steps": [
+        {
+          "label": "initial",
+          "milliseconds": 3253,
+          "zoom": 0.40738813735691987,
+          "dpr": 2,
+          "sampledDensity": 0.8147762747138397,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        },
+        {
+          "label": "selection-fit",
+          "milliseconds": 38663,
+          "zoom": 5.425443458980043,
+          "dpr": 2,
+          "sampledDensity": 10.850886917960086,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        },
+        {
+          "label": "zoom-800",
+          "milliseconds": 3785,
+          "zoom": 8.0,
+          "dpr": 2,
+          "sampledDensity": 16.0,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        },
+        {
+          "label": "zoom-3200",
+          "milliseconds": 9936,
+          "zoom": 32.0,
+          "dpr": 2,
+          "sampledDensity": 64.0,
+          "detailReady": true,
+          "previewActive": false,
+          "status": [
+            "WebGPU · 清晰"
+          ]
+        }
+      ]
+    }
+  },
+  "gpuPixelComparisons": {
+    "filter-final-comparison": {
+      "status": "passed",
+      "comparedChannels": 768,
+      "rows": [
+        {
+          "radius": 48,
+          "axis": 0,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 48,
+          "axis": 1,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 48.25,
+          "axis": 0,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 48.25,
+          "axis": 1,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 306.0758972167969,
+          "axis": 0,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 306.0758972167969,
+          "axis": 1,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 512.125,
+          "axis": 0,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 512.125,
+          "axis": 1,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 1224.3035888671875,
+          "axis": 0,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 1224.3035888671875,
+          "axis": 1,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 2048,
+          "axis": 0,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        },
+        {
+          "radius": 2048,
+          "axis": 1,
+          "values": 64,
+          "mismatches": 0,
+          "acceptedLines": 8,
+          "declinedLines": 0,
+          "acceptedPixels": 24576
+        }
+      ]
+    },
+    "leaf-final-comparison": {
+      "status": "passed",
+      "rows": [
+        {
+          "kind": "blur",
+          "channels": 49152,
+          "mismatches": 0
+        },
+        {
+          "kind": "shadow",
+          "channels": 49152,
+          "mismatches": 0
+        },
+        {
+          "kind": "group-blur",
+          "channels": 49152,
+          "mismatches": 0
+        },
+        {
+          "kind": "group-shadow",
+          "channels": 49152,
+          "mismatches": 0
+        },
+        {
+          "kind": "background-blur",
+          "channels": 49152,
+          "mismatches": 0
+        },
+        {
+          "kind": "background-blur-edge",
+          "channels": 49152,
+          "mismatches": 0
+        }
+      ]
+    },
+    "117-image-pixel-comparison": {
+      "status": "passed",
+      "channels": 16384,
+      "mismatches": 0
+    }
+  },
+  "sourceSha256": {
+    "design-studio/crates/design-kernel/src/gpu.rs": "86cce7a877f1cc0957d74d8a2ed8956de6c0e79cb7e9029d00897e566fac7bdd",
+    "design-studio/crates/design-kernel/tests/gpu_regional_backdrop.rs": "77f158a4da4d4b2e07c82ec0421c1903aba03fad30cf2225dbe78e5246f6cc39",
+    "design-studio/crates/design-kernel/tests/gpu_tile_culling.rs": "1ebf379859aa5864f2b9560042b156bbb640fa59e67dea920f4afb3c9c44c13a",
+    "frontend/design-client/src/kernel/ProgressiveSurface.tsx": "02609b4d0e5980430cb83e17d689f8a0dc06dbf5ef38f1c7e59287aed38e5b84",
+    "frontend/design-client/src/kernel/progressive-damage.test.tsx": "d44d55fe3b59106db3d545bbe62d128b1e35e136781a6d0e4c41741d04a920a4",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "a967b8e59e5301cb389bff5691f455471c6ba0b87f9df8a751c13fa05690d601",
+    "frontend/design-client/src/kernel/gpu/webgpu.ts": "f15b4eea594254cf9c6aa5b896bc8d2f8417578cbe72616148e3d309c8c0c585",
+    "frontend/design-client/src/kernel/gpu/types.ts": "bbfcc3dcd9ba942297f89f168f8de43afd1da3b6bd611343bbcf7b87d41ff8e2",
+    "frontend/design-client/src/kernel/gpu/area-shader.ts": "119af509c5969f231aa2ba40b1b62d033f555252dd945156df74ceffb37eb35e",
+    "frontend/design-client/src/kernel/gpu/scene-index.ts": "fa325c420289dc2f15e1cb27776a2cefa315844c867e711255cf0a41d04ba168",
+    "frontend/design-client/src/kernel/gpu/texture-prefix.ts": "6031715ae1bb7b512a477beb55995693766d24d46ae2e7c56a39ae32b4fa88b3",
+    "frontend/design-client/src/kernel/gpu/texture-prefix.wgsl": "f86571541ca29e0024b5f3569fed69d905700fcbb12141d86e3ba564a0a2b2c1",
+    "frontend/design-client/src/kernel/gpu/prefix-int128.wgsl": "a989fa9d3c817505540f0d9a4f9bc85bb939f26e1df99a2806bf9eeda21bf649",
+    "frontend/design-client/src/kernel/gpu/large-filter-admission.test.ts": "0410413791f819963319ea2b25969705cb7b05a49c17735623da3364156b52b8",
+    "frontend/design-client/src/kernel/gpu/large-blur-probe.ts": "43436b168351c80d2fdf432623388e0395aa0f464670127469d07454c4cb3f25",
+    "frontend/design-desktop/scripts/check-high-zoom-sketch.mjs": "04c5469f029cbfc767a7667e95886f1264771c9f6edf90ff577044935df17e7c"
+  },
+  "scope": "Actual local Electron/WebGPU, DPR 2, original failing viewport plus numeric and shadowed title text. rAF is main-thread frame pacing, not input-to-photon measurement. Cold exact refinement remains progressive; no universal filter-size or cross-platform claim.",
+  "automatedChecks": {
+    "fullVitestCheckpoint": {
+      "passed": 1604,
+      "skipped": 1,
+      "failed": 0,
+      "scope": "Full suite checkpoint; the final navigation scheduling and grouped filter changes were then checked by the targeted suite, real-GPU pixel probes, and Electron acceptance."
+    },
+    "finalTargetedVitest": {
+      "passed": 67,
+      "failed": 0,
+      "files": 5
+    },
+    "finalRust": {
+      "passed": 31,
+      "failed": 0
+    },
+    "nodeRendererContracts": {
+      "passed": 55,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "diffCheck": "passed"
+  },
+  "status": "passed"
+}

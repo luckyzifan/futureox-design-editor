@@ -291,10 +291,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const mounted = useRef(true)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const [size, setSize] = useState({ width: 1000, height: 800 })
-  const startupDocument = useRef<import('./model').DesignDocument | undefined>(undefined)
+  // A saved preview may cover the untouched bootstrap document before restore,
+  // but an edit, navigation or replacement immediately ends that exception.
+  const startupOwner = useRef({ document: state.doc, pageId: state.page, session: editor.sessionGeneration })
+  const startupDocument = useRef<{ document: import('./model').DesignDocument; session: number; preview: StartupPixels } | undefined>(undefined)
   const [startupConsumed, setStartupConsumed] = useState(false)
   const sameStartup = startupPreview?.documentId === state.doc.id && startupPreview.pageId === state.page
-  if (sameStartup && !startupDocument.current) startupDocument.current = state.doc
+  if (sameStartup && !startupDocument.current) startupDocument.current = {
+    document: state.doc, session: editor.sessionGeneration, preview: startupPreview!,
+  }
   const exactCurrent = presentationScopeMatches && presented.document === state.doc && !presented.preview && !editPreviewVisible
   useEffect(() => {
     if (!exactCurrent || editor.historyBackend !== 'uninitialized') return
@@ -311,7 +316,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     return () => clearTimeout(timer)
   }, [exactCurrent, state.doc, editor, editor.sessionGeneration])
   useEffect(() => { if (sameStartup && exactCurrent) setStartupConsumed(true) }, [sameStartup, exactCurrent])
-  const showStartup = !!startupPreview && !startupConsumed && (loading || sameStartup && startupDocument.current === state.doc)
+  const untouchedStartup = state.doc === startupOwner.current.document && state.page === startupOwner.current.pageId &&
+    editor.sessionGeneration === startupOwner.current.session
+  const showStartup = !!startupPreview && !startupConsumed &&
+    (loading && untouchedStartup || sameStartup && startupDocument.current?.document === state.doc &&
+      startupDocument.current.session === editor.sessionGeneration && startupDocument.current.preview === startupPreview)
   useEffect(() => {
     if (loading || !onCapturePreview || !exactCurrent || state.grid || state.checkerboard || state.pixelPreview || editor.interactionActive) return
     let cancelled = false

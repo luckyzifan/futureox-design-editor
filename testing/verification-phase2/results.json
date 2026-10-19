@@ -1,0 +1,50 @@
+{
+  "base_commit": "d9a9038a2c015db0d1ee9a21734f9b906f4c2c49",
+  "scope": "second-round source validation; CPU/WASM and recording GPU contracts, product GPU default preserved",
+  "frontend": {
+    "vitest_files": 244,
+    "vitest_pass": 1593,
+    "vitest_skip": 1,
+    "vitest_fail": 0,
+    "typecheck": "pass",
+    "standalone_distinct_node_pass": 94,
+    "renderer_contracts_pass": 25,
+    "renderer_contracts_overlap_vitest": true,
+    "unique_frontend_pass": 1687,
+    "input_count": 659,
+    "before_after_identical": true,
+    "input_manifest_sha256": "d71c26e58b59b5d602226a3463462d1bb1ef818bb02645c6c112710f6789448a"
+  },
+  "desktop": {
+    "node_and_actual_native_cpu_bridge_pass": 118,
+    "fail": 0,
+    "skip": 0,
+    "actual_native_cpu_bridge_cases_included": 3
+  },
+  "rust": {
+    "targeted_cpu_pass": 76,
+    "fail": 0,
+    "build_script_python_pass": 6,
+    "native_synthetic_cases": 3,
+    "synthetic_nodes": [
+      3008,
+      3108,
+      3108
+    ]
+  },
+  "limits": [
+    "No GPU device/browser/Electron GUI pixel or FPS run",
+    "One private real117 import test skipped; two historical design-file-import cases return trivially without private fixtures",
+    "User-file 3200% freeze and reported arc artifact not reproduced by synthetic CPU fixtures",
+    "Native GPU crate compile incomplete/paused; no SIMD build or enabled-default claim",
+    "Counts across framework groups are not summed into a whole-product acceptance number"
+  ],
+  "logs": "Paths redacted, result counts unchanged; first-round testing/verification/results.json is historical",
+  "known_outside_final_matrix_failures": [
+    {
+      "file": "frontend/design-client/src/export-ownership.test.mjs",
+      "status": "earlier standalone Node source-extraction harness failure; not fixed or included in final default Vitest/selected Node matrix",
+      "reason": "test extractor assumes one import while ExportPanel has two"
+    }
+  ]
+}
