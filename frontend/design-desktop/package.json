@@ -6,7 +6,7 @@
   "main": "src/main.mjs",
   "description": "Offline futureox-desgin desktop editor with a Rust local backend",
   "scripts": {
-    "dev": "bun run install:runtime && bun run build && bun run start",
+    "dev": "bun run install:runtime && bun run build --fast && bun run start",
     "build": "node scripts/build.mjs",
     "build:host": "node --check src/main.mjs && node --check src/preload.cjs && node --check src/security.mjs && node --check src/sidecar.mjs",
     "start": "electron .",

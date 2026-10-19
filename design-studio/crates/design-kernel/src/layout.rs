@@ -126,11 +126,7 @@ impl Node {
                 || !valid(l.gap, 0., 1e5)
                 || !valid(l.line_gap, 0., 1e5)
                 || l.padding.iter().any(|v| !valid(*v, 0., 1e5))
-                || !(1..=64).contains(&l.columns)
-                || matches!(
-                    l.align,
-                    Align::SpaceAround | Align::SpaceBetween | Align::SpaceEvenly
-                ))
+                || !(1..=64).contains(&l.columns))
         {
             return Err("Invalid auto layout configuration".into());
         }
@@ -141,12 +137,6 @@ impl Node {
                 || !valid(s.max_height, s.min_height, 1e7)
                 || !(1..=64).contains(&s.column_span)
                 || !(1..=64).contains(&s.row_span)
-                || s.align_self.is_some_and(|a| {
-                    matches!(
-                        a,
-                        Align::SpaceAround | Align::SpaceBetween | Align::SpaceEvenly
-                    )
-                })
             {
                 return Err("Invalid sizing configuration".into());
             }

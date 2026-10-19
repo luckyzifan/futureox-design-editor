@@ -224,6 +224,74 @@ export default function App() {
     } catch (error) { if (request.isCurrent()) editor.notify(String(error)) }
     finally { request.finish() }
   }
+  async function importImageFiles(files: File[]) {
+    if (!ready || editor.interactionActive) { editor.notify('请结束当前操作后导入图片'); return }
+    if (!commitPendingEdits(editor)) return
+    try {
+      const images: { uri: string; width: number; height: number }[] = []
+      for (const file of files) {
+        const uri = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = () => reject(new Error(`读取图片失败: ${file.name}`))
+          reader.readAsDataURL(file)
+        })
+        // Get image dimensions
+        const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+          const img = new Image()
+          img.onload = () => resolve({ width: img.width, height: img.height })
+          img.onerror = () => reject(new Error(`解码图片失败: ${file.name}`))
+          img.src = uri
+        })
+        images.push({ uri, width: dims.width, height: dims.height })
+      }
+
+      // Place images at the current view center
+      const centerX = editor.state.view.x
+      const centerY = editor.state.view.y
+      const spacing = 20
+      let offsetY = centerY - (images.length * spacing) / 2
+
+      editor.change('导入图片', (doc) => {
+        for (const { uri, width, height } of images) {
+          const id = uid()
+          const node: any = {
+            id,
+            kind: 'rectangle',
+            name: `图片`,
+            visible: true,
+            opacity: 1,
+            blend: 'normal',
+            width,
+            height,
+            transform: [1, 0, 0, 1, centerX - width / 2, offsetY],
+            fills: [{
+              kind: 'image',
+              visible: true,
+              opacity: 1,
+              blend: 'normal',
+              color: '#ffffff',
+              image: uri,
+              fit: 'cover',
+              angle: 0,
+              stops: [],
+            }],
+            strokes: [],
+            effects: [],
+          }
+          doc.nodes[id] = node
+          const currentPage = doc.pages.find(p => p.id === editor.state.page)
+          if (currentPage) {
+            currentPage.children.push(id)
+          }
+          offsetY += height + spacing
+        }
+      })
+      editor.notify(`已导入 ${images.length} 张图片`)
+    } catch (error) {
+      editor.notify(`图片导入失败: ${String(error)}`)
+    }
+  }
   const switchLifetime = useRef(0)
   useEffect(() => {
     switchLifetime.current++
@@ -531,10 +599,16 @@ export default function App() {
       onDragOverCapture={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault()}}
       onDropCapture={e=>{
         const files=[...e.dataTransfer.files]
-        if(!files.some(f=>/\.(fd|json|svg|fig|sketch|pdf)$/i.test(f.name)))return
+        const designFiles=files.filter(f=>/\.(fd|json|svg|fig|sketch|pdf)$/i.test(f.name))
+        const imageFiles=files.filter(f=>/\.(png|jpe?g|webp)$/i.test(f.name))
+        if(!designFiles.length&&!imageFiles.length)return
         e.preventDefault();e.stopPropagation()
-        if(files.length!==1){editor.notify('请一次导入一个设计文件');return}
-        void importDesignFile(files[0])
+        if(designFiles.length>0){
+          if(designFiles.length!==1){editor.notify('请一次导入一个设计文件');return}
+          void importDesignFile(designFiles[0])
+        }else if(imageFiles.length>0){
+          void importImageFiles(imageFiles)
+        }
       }}
       onPointerDownCapture={(e) => {
         const target = e.target as Element
@@ -801,7 +875,7 @@ export default function App() {
       <input
         ref={file}
         type="file"
-        accept=".fd,.json,.svg,.fig,.sketch,.pdf"
+        accept=".fd,.json,.svg,.fig,.sketch,.pdf,.png,.jpg,.jpeg,.webp"
         hidden
         onChange={async (e) => {
           const f = e.currentTarget.files?.[0]

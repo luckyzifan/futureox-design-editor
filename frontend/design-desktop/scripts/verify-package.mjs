@@ -176,7 +176,8 @@ try {
     }
   }
   for (const name of [
-    'frontend/bun.lock',
+    'frontend/design-client/bun.lock',
+    'frontend/design-desktop/bun.lock',
     'frontend/design-desktop/package.json',
     'design-studio/Cargo.lock',
     'rust-toolchain.toml',
