@@ -1,81 +1,43 @@
-import { describe, it, expect } from 'vitest'
+import { test, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { VectorEngine } from '../generated/design-kernel/design_kernel'
+import { blank, defaultTextStyle, node, validateDocument } from '../model'
 
-describe('Text Justify Alignment', () => {
-  it('should accept justify as valid text alignment', () => {
-    const validAlignments = ['left', 'center', 'right', 'justify']
+// Real production admission and native-WASM shaping. No copied layout algorithm.
+test('justify is admitted as a text style and invalid alignment is rejected', () => {
+  const doc = blank(), text = node('text', 0, 0, 130, 200)
+  doc.schemaVersion = 4
+  text.text = 'one two three four five six seven eight'
+  text.textStyle = { ...defaultTextStyle(), align: 'justify' }
+  doc.nodes[text.id] = text; doc.pages[0].children.push(text.id)
+  expect(validateDocument(doc).nodes[text.id].textStyle?.align).toBe('justify')
+  const invalid = structuredClone(doc) as any
+  invalid.nodes[text.id].textStyle.align = 'not-an-alignment'
+  expect(() => validateDocument(invalid)).toThrow(/文字样式/)
+})
 
-    for (const align of validAlignments) {
-      expect(validAlignments).toContain(align)
-    }
-  })
-
-  it('should create text node with justify alignment', () => {
-    const textNode = {
-      id: 'text1',
-      kind: 'text' as const,
-      name: 'Text',
-      visible: true,
-      opacity: 1,
-      blend: 'normal' as const,
-      width: 200,
-      height: 100,
-      transform: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number],
-      text: 'This text should be justified across the full width of the text box.',
-      align: 'justify' as const,
-      valign: 'top' as const,
-      fontFamily: 'Inter',
-      fontSize: 16,
-      fontWeight: 400,
-      lineHeight: 1.5,
-      letterSpacing: 0,
-      fills: [{ kind: 'solid' as const, visible: true, opacity: 1, blend: 'normal' as const, color: '#000000', stops: [], angle: 0 }],
-      strokes: [],
-      effects: [],
-    }
-
-    expect(textNode.align).toBe('justify')
-  })
-
-  it('should validate justify alignment with auto-layout', () => {
-    // Testing that justify alignment doesn't conflict with layout validation
-    const autoLayoutNode = {
-      id: 'frame1',
-      kind: 'frame' as const,
-      name: 'Auto Layout',
-      visible: true,
-      opacity: 1,
-      blend: 'normal' as const,
-      width: 300,
-      height: 200,
-      transform: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number],
-      layout: {
-        mode: 'horizontal' as const,
-        gap: 12,
-        padding: [16, 16, 16, 16] as [number, number, number, number],
-        align: 'start' as const,     // Auto-layout cross-axis alignment
-        sizing: 'hug' as const,
-      },
-      fills: [],
-      strokes: [],
-      effects: [],
-      children: ['text1'],
-    }
-
-    // Auto-layout's `align` is for child positioning, not text alignment
-    expect(autoLayoutNode.layout.align).toBe('start')
-  })
-
-  it('should handle justify in text styles', () => {
-    const textStyle = {
-      name: 'Body Justified',
-      fontFamily: 'Inter',
-      fontSize: 16,
-      fontWeight: 400,
-      lineHeight: 1.5,
-      letterSpacing: 0,
-      align: 'justify' as const,
-    }
-
-    expect(textStyle.align).toBe('justify')
-  })
+test('real WASM justify expands wrapped lines and leaves the final paragraph line unchanged', () => {
+  const engine = new VectorEngine()
+  try {
+    engine.load_font(readFileSync(new URL('../../public/fonts/NotoSansSC.ttf', import.meta.url)))
+    const text = node('text', 0, 0, 130, 200)
+    text.text = 'one two three four five six seven eight nine ten'
+    text.fontSize = 16
+    text.textStyle = { ...defaultTextStyle(), wrap: true, align: 'start' }
+    const start = JSON.parse(engine.text_layout(JSON.stringify(text)))
+    text.textStyle.align = 'justify'
+    const justified = JSON.parse(engine.text_layout(JSON.stringify(text)))
+    expect(start.lines.length).toBeGreaterThan(1)
+    expect(start.glyphs.length).toBeGreaterThan(10)
+    expect(justified.lines).toEqual(start.lines)
+    const lineGlyphs = (layout: any, line: any) => layout.glyphs.filter((g: any) => g.cluster >= line.start && g.cluster < line.end)
+    const first = start.lines[0], last = start.lines.at(-1)
+    const before = lineGlyphs(start, first), after = lineGlyphs(justified, first)
+    expect(after.length).toBe(before.length)
+    expect(after.at(-1).x).toBeGreaterThan(before.at(-1).x)
+    expect(after.some((g: any, i: number) => g.advance > before[i].advance)).toBe(true)
+    expect(lineGlyphs(justified, last)).toEqual(lineGlyphs(start, last))
+    text.textStyle.align = 'start'
+    expect(JSON.parse(engine.text_layout(JSON.stringify(text)))).toEqual(start)
+  } finally { engine.free() }
 })

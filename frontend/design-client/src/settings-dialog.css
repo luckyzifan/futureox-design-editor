@@ -1,0 +1,46 @@
+.settings-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px; background: #15202b66; overscroll-behavior: contain; }
+.settings-dialog { display: flex; flex-direction: column; width: min(760px, 100%); max-height: min(720px, calc(100dvh - 48px)); min-height: 0; overflow: hidden; border: 1px solid var(--workspace-border); border-radius: 14px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 20px 70px #12213333; font-size: 13px; }
+.settings-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 16px; border-bottom: 1px solid var(--workspace-border); flex: none; }
+.settings-header h2 { margin: 0; font-size: 18px; }
+.settings-header p { margin: 8px 0 0; color: var(--workspace-muted); line-height: 1.6; }
+.settings-header > button { width: 34px; height: 34px; padding: 0; font-size: 23px; flex: none; border-radius: 7px; }
+.settings-dialog button:focus-visible, .settings-dialog input:focus-visible, .settings-dialog select:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 3px; }
+.settings-layout { display: grid; grid-template-columns: 148px minmax(0, 1fr); min-height: 0; flex: 1; overflow: hidden; }
+.settings-tabs { display: flex; flex-direction: column; gap: 4px; padding: 16px 10px; border-right: 1px solid var(--workspace-border); background: var(--workspace-field); overflow: auto; }
+.settings-tabs button { flex: none; min-height: 40px; padding: 8px 12px; justify-content: flex-start; border-radius: 7px; white-space: normal; text-align: left; }
+.settings-tabs button[aria-selected="true"] { background: var(--workspace-selected); color: var(--workspace-accent); font-weight: 600; }
+.settings-content { min-width: 0; min-height: 0; overflow: auto; padding: 20px 24px; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.settings-content h3 { margin: 0 0 14px; font-size: 14px; }
+.settings-content h3:not(:first-child) { margin-top: 28px; }
+.settings-content p { line-height: 1.7; overflow-wrap: anywhere; }
+.settings-content [hidden] { display: none !important; }
+.settings-dialog .keyboard-profile-settings { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0; border: 0; }
+.settings-dialog .keyboard-profile-settings select { min-height: 38px; width: 100%; padding: 7px 10px; border: 1px solid var(--workspace-border); border-radius: 6px; color: var(--workspace-text); background: var(--workspace-field); }
+.settings-dialog .keyboard-profile-settings small { line-height: 1.7; white-space: normal; color: var(--workspace-muted); }
+.settings-control { padding: 12px 0; border-bottom: 1px solid var(--workspace-border); }
+.settings-control:last-child { border: 0; }
+.settings-toggle { display: flex; align-items: center; gap: 10px; min-height: 32px; cursor: pointer; }
+.settings-toggle input { margin: 0; width: 17px; height: 17px; flex: none; accent-color: var(--workspace-accent); }
+.settings-help { font-size: 12px; color: var(--workspace-muted); margin: 6px 0 0; }
+.settings-control .settings-help { padding-left: 27px; }
+.settings-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px; border-top: 1px solid var(--workspace-border); flex: none; }
+.settings-status { flex: 1 1 220px; min-width: 0; font-size: 12px; line-height: 1.6; color: var(--workspace-muted); }
+.settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-actions button { min-height: 36px; padding: 8px 12px; border-radius: 6px; }
+@media (max-width: 560px) {
+  .settings-backdrop { padding: 12px; }
+  .settings-dialog { max-height: calc(100dvh - 24px); border-radius: 10px; }
+  .settings-header { padding: 16px; }
+  .settings-layout { display: flex; flex-direction: column; }
+  .settings-tabs { flex: none; flex-direction: row; padding: 8px; border-right: 0; border-bottom: 1px solid var(--workspace-border); }
+  .settings-tabs button { flex: 1 1 0; justify-content: center; padding: 8px 6px; text-align: center; }
+  .settings-content { padding: 16px; }
+  .settings-footer { padding: 12px 16px; }
+  .settings-actions { margin-left: auto; }
+}
+@media (max-height: 480px) {
+  .settings-backdrop { padding: 8px; }
+  .settings-dialog { max-height: calc(100dvh - 16px); }
+  .settings-header, .settings-footer { padding-top: 8px; padding-bottom: 8px; }
+  .settings-header p { margin-top: 4px; }
+}

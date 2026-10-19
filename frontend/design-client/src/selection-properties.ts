@@ -1,25 +1,26 @@
 import { defaultSizing, defaultTextStyle, type DesignDocument, type DesignNode, type Matrix } from './model'
 import { localBounds, parentBounds, rotationDegrees } from './canvas-view'
-import { propertyUnits } from './property-units'
+import { propertyUnits, type PropertyUnits } from './property-units'
 import { multiply } from './geometry'
 
 export function commonValue<T>(values: T[]): T | undefined {
   return values.length && values.every((value) => Object.is(value, values[0])) ? values[0] : undefined
 }
 export type SelectionMetric = 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity'
-export function selectionMetric(node: DesignNode, field: SelectionMetric, doc?: DesignDocument): number {
-  const units = doc ? propertyUnits(doc, node.id) : { parentX: 1, parentY: 1, width: 1, height: 1 }
-  if (field === 'x' || field === 'y') return parentBounds(node)[field] * (field === 'x' ? units.parentX : units.parentY)
+export function selectionMetric(node: DesignNode, field: SelectionMetric, doc?: DesignDocument, resolvedUnits?: PropertyUnits): number {
   if (field === 'rotation') return rotationDegrees(node)
   if (field === 'opacity') return node.opacity * 100
+  const units = resolvedUnits ?? (doc ? propertyUnits(doc, node.id) : { parentX: 1, parentY: 1, width: 1, height: 1 })
+  if (field === 'x' || field === 'y') return parentBounds(node)[field] * (field === 'x' ? units.parentX : units.parentY)
   const bounds = localBounds(node)
   return field === 'width'
     ? bounds.width * Math.hypot(node.transform[0], node.transform[1]) * units.width
     : bounds.height * Math.hypot(node.transform[2], node.transform[3]) * units.height
 }
-export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', value: number, doc?: DesignDocument) {
-  const units = doc ? propertyUnits(doc, node.id)[axis] : 1
-  const ratio = value / Math.max(1e-10, selectionMetric(node, axis, doc))
+export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', value: number, doc?: DesignDocument, resolvedUnits?: PropertyUnits) {
+  const nodeUnits = resolvedUnits ?? (doc ? propertyUnits(doc, node.id) : undefined)
+  const units = nodeUnits?.[axis] ?? 1
+  const ratio = value / Math.max(1e-10, selectionMetric(node, axis, doc, nodeUnits))
   if (!Number.isFinite(ratio) || ratio <= 0) throw new Error('图层尺寸必须为正数')
   const sx = axis === 'width' || node.constrainProportions ? ratio : 1
   const sy = axis === 'height' || node.constrainProportions ? ratio : 1

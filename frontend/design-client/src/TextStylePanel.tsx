@@ -52,7 +52,9 @@ export function TextStylePanel({
   node: DesignNode
   ids: string[]
 }) {
-  const { doc } = useSyncExternalStore(editor.subscribe, editor.snapshot)
+  // Match the Inspector's camera-independent, bounded preview cadence. A
+  // direct full-state subscription would rebuild these controls on every pan.
+  const { doc } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const units = propertyUnits(doc, node.id)
   const unmatchedFonts = unmatchedSketchFonts(doc, node)
   const [imports] = useState(() => new ImportOwner())

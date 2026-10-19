@@ -11,6 +11,7 @@ function failure(code, message) {
 export const MAX_PENDING_BYTES = 96 * 1024 * 1024
 // Reserve large result envelopes too; this is a wire/admission bound, not a JS RSS limit.
 const responseReservations = new Map([
+  ['automation.audit.list', 256 * 1024], ['automation.task.list', 512 * 1024],
   ['sketch.inspect',MAX_FRAME_BYTES],['sketch.session.preview',MAX_FRAME_BYTES],
   ['open', MAX_FRAME_BYTES],
   ['recovery.read', MAX_FRAME_BYTES],
@@ -25,7 +26,7 @@ const responseReservations = new Map([
   ['catalog.scan', 2 * 1024 * 1024],
 ])
 const responseReservation = (method) => responseReservations.get(method) || 4096
-const writeMethods = new Set(['sketch.session.resizeLegacyContainer', 'sketch.session.setTextOverride', 'sketch.session.setLeafFrame', 'sketch.session.saveAs', 'sketch.session.undo', 'sketch.session.redo', 'sketch.session.open', 'sketch.session.rename', 'sketch.session.close', 'save', 'recovery.write', 'recovery.remove', 'catalog.register', 'catalog.scan', 'workspace.commit', 'workspace.trash', 'workspace.restore'])
+const writeMethods = new Set(['automation.config.set', 'automation.audit.append', 'automation.task.put', 'sketch.session.resizeLegacyContainer', 'sketch.session.setTextOverride', 'sketch.session.setLeafFrame', 'sketch.session.saveAs', 'sketch.session.undo', 'sketch.session.redo', 'sketch.session.open', 'sketch.session.rename', 'sketch.session.close', 'save', 'recovery.write', 'recovery.remove', 'catalog.register', 'catalog.scan', 'workspace.commit', 'workspace.trash', 'workspace.restore'])
 
 export class Sidecar extends EventEmitter {
   constructor(executable, recoveryDir, { timeoutMs = 30_000, spawnProcess = spawn, catalogDb, workspaceDb, maxPendingBytes = MAX_PENDING_BYTES } = {}) {

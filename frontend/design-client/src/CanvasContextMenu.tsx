@@ -6,6 +6,9 @@ import type { Point } from './model'
 import { allParents } from './geometry'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { canvasMenuItems, clampContextMenu, lockedSelectionIds } from './canvas-menu-model'
+import { useShortcutProfile } from './shortcut-preference'
+import { shortcutPlatform } from './shortcut-profiles'
+import { desktopBridge } from './desktop'
 
 export type CanvasLayerCandidate = { id: string; name: string; locked: boolean }
 export type CanvasContextMenuProps = {
@@ -28,7 +31,8 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
   const [pages, setPages] = useState(false),[group,setGroup]=useState<string|null>(null)
   const groupName=(id:string)=>id==='copy-as'?'复制／粘贴为':'选择相同'
   const context = useRef({ session: editor.sessionGeneration, page: state.page, version: state.version, selection: state.selection.join('\n') })
-  const items = canvasMenuItems(editor), parents = allParents(state.doc)
+  const profile = useShortcutProfile()
+  const items = canvasMenuItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), parents = allParents(state.doc)
   const visible = candidates.filter((candidate) => {
     let id: string | undefined = candidate.id
     if (!state.doc.nodes[id]) return false
@@ -78,6 +82,8 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
     onContextMenu={(event) => { event.preventDefault(); event.stopPropagation() }}
     onKeyDown={(event) => {
       event.stopPropagation()
+      if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
+      if (event.repeat && ['Enter', ' ', 'Escape', 'Tab'].includes(event.key)) { event.preventDefault(); return }
       if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); restoreFocus.current = true; close.current(); return }
       if (event.key === 'ArrowLeft' && (layers || pages || group)) { event.preventDefault(); setLayers(false); setPages(false);setGroup(null); return }
       const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')]

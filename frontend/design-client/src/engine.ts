@@ -66,7 +66,7 @@ import {
   pointInContours,
 } from './geometry'
 import type { BooleanOp } from './vector'
-import { pathNetwork } from './import-svg'
+import { pathNetwork } from './path-network'
 import {
   kernelSvgPaths,
   kernelBounds,
@@ -137,7 +137,6 @@ export type EditorState = {
   snapPixels: boolean
   pixelGrid: boolean
   rulers?: boolean
-  minimap?: boolean
   pixelPreview: 0 | 1 | 2
   lastPixelPreview: 1 | 2
   message: string
@@ -156,6 +155,7 @@ export type EditorState = {
 }
 type History = { doc: DesignDocument; page: string; selection: string[]; label: string }
 class GeometryCancelled extends Error {}
+export type EditorEditEvent = { documentId: string; session: number; revision: number; source: 'user' | 'automation'; kind: 'edit' | 'undo' | 'redo'; summary: string }
 export class Editor {
   // Published documents are immutable snapshots. Keep topology and clip/mask
   // transforms with that snapshot, never with a mutable edit draft or a point.
@@ -228,6 +228,15 @@ export class Editor {
       renamingLayer: null,
       version: 0,
     }
+  }
+  private editListeners = new Set<(event: EditorEditEvent) => void>()
+  subscribeEdits = (fn: (event: EditorEditEvent) => void) => {
+    this.editListeners.add(fn)
+    return () => { this.editListeners.delete(fn) }
+  }
+  private publishEdit(kind: EditorEditEvent['kind'], summary: string, source: EditorEditEvent['source'] = 'user') {
+    const event: EditorEditEvent = { documentId: this.state.doc.id, session: this.sessionGeneration, revision: this.state.version, source, kind, summary: (source === 'automation' ? (kind === 'edit' ? 'API 文档修改' : kind === 'undo' ? 'API 撤销' : 'API 重做') : summary).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 200) || '编辑' }
+    for (const listener of this.editListeners) { try { listener({ ...event }) } catch { /* An audit sink must never undo or reject an editor commit. */ } }
   }
   subscribe = (fn: () => void) => {
     this.listeners.add(fn)
@@ -308,7 +317,7 @@ export class Editor {
   // ---- Coalesced camera writes -------------------------------------------
   // Wheel/trackpad streams exceed display rate and every editor.set re-renders
   // the whole canvas tree, so the camera parks one pending write per frame.
-  // Every reader — zoom buttons, keyboard commands, the minimap, reveal — must
+  // Every reader — zoom buttons, keyboard commands, reveal — must
   // see the same pending camera, or their writes race the rAF commit and get
   // silently rolled back. That is why the pending state lives on the editor
   // instead of one component.
@@ -389,6 +398,7 @@ export class Editor {
     fn: (d: DesignDocument) => void,
     selection?: string[],
     draftIds?: string[],
+    source: EditorEditEvent['source'] = 'user',
   ) {
     const before = this.history(label)
     const components = Object.values(before.doc.nodes).some(
@@ -457,22 +467,26 @@ export class Editor {
         if (n.pathOffset && n !== before.doc.nodes[n.id]) kernelBounds(n)
       validateStructure(resolved)
       validateDocument(resolved)
-      if (resolved === before.doc) return
+      if (resolved === before.doc) return { status: 'unchanged' as const, revision: this.state.version }
       if (this.transaction) {
         this.transaction.previewBase = resolved
         this.set({ doc: resolved, selection: selection ?? this.state.selection.filter(id => !!resolved.nodes[id]), message: label })
-        return
+        return { status: 'preview' as const, revision: this.state.version }
       }
       const committed = this.push(before, resolved)
-      if (!committed) return
+      if (!committed) return { status: 'unchanged' as const, revision: this.state.version }
       this.set({
         doc: committed.document,
         selection: selection ?? this.state.selection.filter((id) => !!committed.document.nodes[id]),
         version: this.state.version + 1,
         message: detached ? `${label}（相关实例已分离）` : label,
       })
+      this.publishEdit('edit', label, source)
+      return { status: 'committed' as const, revision: this.state.version }
     } catch (error) {
-      this.notify(error instanceof Error ? error.message : String(error))
+      const message = error instanceof Error ? error.message : String(error)
+      this.notify(message)
+      return { status: 'rejected' as const, revision: this.state.version, message }
     }
   }
   begin(label: string) {
@@ -520,9 +534,10 @@ export class Editor {
     try {
       const doc = shareDocument(before.doc, this.state.doc)
       const committed = doc !== before.doc ? this.push(before, doc) : undefined
-      if (committed)
+      if (committed) {
         this.set({ doc: committed.document, version: this.state.version + 1, message: before.label })
-      else if (doc !== this.state.doc) this.set({ doc })
+        this.publishEdit('edit', before.label)
+      } else if (doc !== this.state.doc) this.set({ doc })
     } catch (error) {
       this.set({ doc: before.doc, selection: before.selection, message: String(error) })
     }
@@ -534,7 +549,7 @@ export class Editor {
       this.set({ doc: h.doc, selection: h.selection })
     }
   }
-  undo() {
+  undo(source: EditorEditEvent['source'] = 'user') {
     this.repeatedDuplicate = null
     this.cancel()
     const h = this.undoStack.at(-1)
@@ -556,8 +571,9 @@ export class Editor {
       version: this.state.version + 1,
       message: `撤销：${h.label}`,
     })
+    this.publishEdit('undo', h.label, source)
   }
-  redo() {
+  redo(source: EditorEditEvent['source'] = 'user') {
     this.repeatedDuplicate = null
     this.cancel()
     const h = this.redoStack.at(-1)
@@ -579,6 +595,7 @@ export class Editor {
       version: this.state.version + 1,
       message: `重做：${h.label}`,
     })
+    this.publishEdit('redo', h.label, source)
   }
   load(value: unknown, preserveView=false) {
     if (this.disposed) return false
@@ -1581,7 +1598,7 @@ export class Editor {
     const frame = canvasDropFrame(doc, this.state.page, roots, point, force)
     const target = frame || this.state.page
     const relocating = preserveParent ? [] : roots.filter(id => {
-      const currentFrame = containingFrame(doc,id)
+      const currentFrame = containingFrame(doc,id,parents)
       return (frame ? currentFrame !== frame : !!currentFrame) && parents.get(id) !== target
     })
     const animated = new Set(doc.animations?.flatMap(c=>c.tracks.map(t=>t.nodeId)) || [])
@@ -1994,6 +2011,7 @@ export class Editor {
     this.geometryJob?.cancel()
     this.discardPendingView()
     this.listeners.clear()
+    this.editListeners.clear()
     this.revealRequest = null
     this.revealListeners.clear()
   }

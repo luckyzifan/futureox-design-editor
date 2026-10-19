@@ -235,11 +235,13 @@ try {
     await undo(before);passed('Option+Command copy/paste properties transfers appearance through the actual system clipboard without changing geometry')
   }
   {
-    const {doc,b}=make('Minimap navigation');doc.nodes[b.id].transform[4]=5000;await fresh(doc);await key(`${mod}+0`);await settle()
-    const before=await record(),v=await camera(),map=p.getByTestId('canvas-minimap');await expect(map).toBeVisible()
-    const box=(await map.boundingBox())!;await p.mouse.click(box.x+box.width*.8,box.y+box.height*.5)
+    const {doc,b}=make('Navigation without minimap');doc.nodes[b.id].transform[4]=5000;await fresh(doc);await key(`${mod}+0`);await settle()
+    const before=await record(),v=await camera();await expect(p.getByTestId('canvas-minimap')).toHaveCount(0)
+    const canvas=p.getByTestId('canvas'),box=(await canvas.boundingBox())!
+    await p.mouse.move(box.x+box.width/2,box.y+box.height/2);await p.mouse.wheel(120,80)
     await expect.poll(async()=>(await camera()).x).not.toBe(v.x);await unmodified(before)
-    passed('Minimap click navigates the real canvas camera without modifying the document or history')
+    await expect(p.getByText('显示缩略导航',{exact:true})).toHaveCount(0)
+    passed('Main canvas wheel navigation works without a minimap, preserves document and history, and exposes no minimap setting')
   }
   {
     const {doc,a}=make('Pointer release resize');await fresh(doc);await row(a.id).click();await settle()

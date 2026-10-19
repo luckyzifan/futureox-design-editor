@@ -14,9 +14,36 @@ contextBridge.exposeInMainWorld(
   'coreDesktop',
   Object.freeze({
     version: 1,
+    // Enabling always requires native confirmation; renderer requests cannot
+    // grant external access without that per-document approval.
+    automation: Object.freeze({
+      status: () => invoke('automation-status'),
+      config: () => invoke('automation-config'),
+      configure: value => invoke('automation-configure', value),
+      auditHistory: value => invoke('automation-audit-history', value),
+      storageStatus: () => invoke('automation-storage-status'),
+      enable: value => invoke('automation-enable', value),
+      disable: () => invoke('automation-disable'),
+      copyConnection: () => invoke('automation-copy-connection'),
+      onStatus: callback => subscribe('design-desktop:automation-status', callback,
+        value => value && typeof value.enabled === 'boolean'),
+      register: value => invoke('automation-register', value),
+      recordEdit: value => invoke('automation-record-edit', value),
+      respond: value => invoke('automation-response', value),
+      onRequest: callback => subscribe('design-desktop:automation-request', callback,
+        value => value && typeof value.requestId === 'string' && ['capabilities', 'execute'].includes(value.kind)),
+      onCancel: callback => subscribe('design-desktop:automation-cancel', callback,
+        value => value && typeof value.requestId === 'string'),
+    }),
     rendererReady: () => invoke('renderer-ready'),
     performTextCommand: (value) => invoke('text-command', value),
     fonts: Object.freeze({ list: () => invoke('fonts-list'), read: (value) => invoke('fonts-read', value) }),
+    workspaceRoot: Object.freeze({
+      status: () => invoke('workspace-root-status'),
+      select: () => invoke('workspace-root-select'),
+      useDefault: () => invoke('workspace-root-default'),
+      activate: value => invoke('workspace-root-activate', value),
+    }),
     workspace: Object.freeze({
       list: (value) => invoke('workspace-list', value),
       open: (value) => invoke('workspace-open', value),
@@ -96,7 +123,7 @@ contextBridge.exposeInMainWorld(
       ),
     onCommand: (callback) =>
       subscribe('design-desktop:command', callback, (value) =>
-        ['new', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection'].includes(value),
+        ['new', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
       ),
   }),
 )

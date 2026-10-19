@@ -106,7 +106,9 @@ test('production imports capture ownership before read/hash/verify and wire canc
   }
   const input = app.slice(app.indexOf('  async function importDesignFile('), app.indexOf('  const switchLifetime'))
   assert.ok(input.indexOf('const request = fileImports.begin(editor)') < input.indexOf('readDesignFile(f, request.signal)'))
-  assert.match(app, /accept="\.fd,\.json,\.svg,\.fig,\.sketch,\.pdf"/)
+  const accepted = app.match(/accept="([^"]*\.sketch[^"]*)"/)
+  assert.ok(accepted, 'design input must advertise Sketch and other import formats')
+  for (const format of ['.fd', '.json', '.svg', '.fig', '.sketch', '.pdf']) assert.ok(accepted[1].split(',').includes(format), format)
   assert.match(input, /switchDocument\(document, undefined, true, request\)/)
   assert.match(input, /request\.isLatest\(\) && editor\.state\.doc\.id === document\.id/)
   assert.match(app, /desktopSession\.replace\(document, adoption\.isCurrent\)/)
@@ -132,7 +134,7 @@ function switchHarness() {
   const current = editor(), fileImports = new ImportOwner(), changes = [], notices = []
   current.state.version = 0
   current.notify = message => notices.push(message)
-  current.load = document => { current.state = { doc: document, version: 0 }; current.sessionGeneration++; return true }
+  current.load = prepared => { current.state = { doc: prepared.snapshot(), version: 0 }; current.sessionGeneration++; return true }
   let cleanup
   const context = vm.createContext({
     editor: current, fileImports, desktopSession: undefined, ready: true,
@@ -140,7 +142,7 @@ function switchHarness() {
     useEffect: setup => { cleanup = setup() },
     commitPendingEdits: () => true, cancelPendingOperations: () => {}, hasPendingEdits: () => false,
     initializePicking: async () => {}, localOpen: async () => null,
-    prepareDocumentForEditing: document => document,
+    prepareDocument: document => ({ snapshot: () => document }),
     localSave: async document => ({ document, revision: 1 }), localSelect: async () => {},
     saver: { save: async () => {}, open: () => {} },
     uid: () => 'backup-id', copyName: name => name,
@@ -159,7 +161,7 @@ for (const invalidate of ['new selection', 'same-ID reopening']) {
     h.context.localSave = () => { entered.resolve(); return storage.promise }
     const request = h.fileImports.begin(h.current)
     const pending = h.switchDocument({ id: 'imported' }, undefined, false, request)
-    await entered.promise
+    await Promise.race([entered.promise, pending.then(() => { throw new Error('switch callback returned before expected storage boundary') })])
     if (invalidate === 'new selection') h.fileImports.invalidate()
     else h.current.sessionGeneration++
     storage.reject(new Error('old storage failure'))
@@ -186,11 +188,11 @@ test('actual cleanup fences old finally and catch from a remounted replacement o
     enteredB.resolve(); return storageB.promise
   }
   const a = h.switchDocument({ id: 'A' }, undefined, false, h.fileImports.begin(h.current))
-  await enteredA.promise
+  await Promise.race([enteredA.promise, a.then(() => { throw new Error('first switch returned before expected storage boundary') })])
   h.cleanup()
   h.setup()
   const b = h.switchDocument({ id: 'B' }, undefined, false, h.fileImports.begin(h.current))
-  await enteredB.promise
+  await Promise.race([enteredB.promise, b.then(() => { throw new Error('new switch returned before expected storage boundary') })])
   const operationB = h.context.switchGate.current
   storageA.reject(new Error('unmounted storage failure'))
   assert.equal(await a, false)
@@ -208,7 +210,7 @@ test('a busy rejected direct switch does not retire the already accepted request
   const h = switchHarness(), entered = deferred(), storage = deferred()
   h.context.localSave = () => { entered.resolve(); return storage.promise }
   const first = h.switchDocument({ id: 'accepted' }, undefined, false)
-  await entered.promise
+  await Promise.race([entered.promise, first.then(() => { throw new Error('switch returned before expected storage boundary') })])
   assert.equal(await h.switchDocument({ id: 'rejected' }, undefined, false), false)
   storage.resolve({ document: { id: 'accepted' }, revision: 1 })
   assert.equal(await first, true)

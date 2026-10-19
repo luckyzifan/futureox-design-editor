@@ -16,16 +16,28 @@ beforeAll(async () => {
   })
 })
 
-test('scratch: what survives detach inside a nested instance', () => {
+test('detaching a parent preserves nested instance appearance and undo restores component links', () => {
   const { doc, ids } = componentFixture()
-  const e = new Editor(doc)
-  const slotKey = e.state.doc.nodes[ids.slot].componentKey!
-  const before = originNode(e.state.doc, ids.a, slotKey)
-  console.log('generated slot before:', JSON.stringify({ instance: !!before.instance, origin: before.instanceOrigin }))
-  e.detachInstance(ids.a)
-  const after = e.state.doc.nodes[before.id]
-  console.log('generated slot after:', JSON.stringify({ exists: !!after, instance: !!after?.instance, origin: after?.instanceOrigin }))
-  const live = Object.values(e.state.doc.nodes).filter((n) => n.instance)
-  console.log('live instances after detach:', live.map((n) => n.id))
-  expect(true).toBe(true)
+  const editor = new Editor(doc)
+  try {
+    const slotKey = editor.state.doc.nodes[ids.slot].componentKey!
+    const slot = originNode(editor.state.doc, ids.a, slotKey)
+    const before = structuredClone(editor.state.doc)
+    expect(slot.instance).toBeDefined()
+    expect(slot.instanceOrigin?.owner).toBe(ids.a)
+    editor.detachInstance(ids.a)
+    expect(editor.state.doc.nodes[ids.a].instance).toBeUndefined()
+    expect(Object.values(editor.state.doc.nodes).filter(n => n.instanceOrigin?.owner === ids.a)).toHaveLength(0)
+    expect(editor.state.doc.nodes[ids.b].instance?.componentId).toBe(ids.button)
+    const descendants = (id: string): string[] => [id, ...editor.state.doc.nodes[id].children.flatMap(descendants)]
+    const detached = descendants(ids.a).map(id => editor.state.doc.nodes[id])
+    expect(detached.length).toBeGreaterThan(2)
+    expect(detached.some(n => n.kind === 'star')).toBe(true)
+    expect(detached.some(n => n.kind === 'text' && n.text === '继续')).toBe(true)
+    editor.undo()
+    expect(editor.state.doc).toEqual(before)
+    editor.redo()
+    expect(editor.state.doc.nodes[ids.a].instance).toBeUndefined()
+    expect(descendants(ids.a).map(id => editor.state.doc.nodes[id].kind)).toEqual(detached.map(n => n.kind))
+  } finally { editor.dispose() }
 })

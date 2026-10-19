@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { InitializationGate, readKernelAsset } from './initialization.ts'
+import { loadKernelResourcePair } from './kernel-resources.ts'
 
 function deferred() {
   let resolve, reject
@@ -130,14 +131,14 @@ test('font initialization timeout and late completion cannot replace a newer ini
   let requests = 0
   const context = vm.createContext({
     initialization: new InitializationGate(30, clock), ready: false, layoutEngine: undefined,
-    initializeKernelModule: async () => {},
+    initializeKernelModule: async () => {}, loadKernelResourcePair,
     readKernelAsset: () => { if (++requests === 1) { enteredA.resolve(); return a.promise }; enteredB.resolve(); return b.promise },
     VectorEngine: class { constructor() { engines.push(this) }; load_font(bytes) { this.bytes = bytes }; free() { this.freed = true } },
   })
   const initialize = vm.runInContext(`${callback}\ninitializePicking`, context)
-  const first = initialize(); await enteredA.promise
+  const first = initialize(); await Promise.race([enteredA.promise, first.then(() => { throw new Error('initialization returned before font request') })])
   clock.advance(31); await assert.rejects(first, /初始化超时/)
-  const next = initialize(); await enteredB.promise
+  const next = initialize(); await Promise.race([enteredB.promise, next.then(() => { throw new Error('retry returned before font request') })])
   a.resolve(new Uint8Array([1])); await a.promise; await Promise.resolve()
   assert.equal(engines.length, 0)
   b.resolve(new Uint8Array([2])); await next

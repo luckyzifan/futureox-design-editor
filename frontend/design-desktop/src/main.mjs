@@ -1,3 +1,5 @@
+import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
+import { registerAutomationBridge } from './automation-bridge.mjs'
 import { SketchSessionHost } from './sketch-session.mjs'
 import { readDesignClipboard, writeDesignClipboard } from './clipboard.mjs'
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem } from 'electron'
@@ -28,6 +30,7 @@ import { DirectoryGrants } from './directory-grants.mjs'
 import { fitWindowState, readWindowState, writeWindowState } from './window-state.mjs'
 import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legacy-user-data.mjs'
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
+import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 
 const smoke = process.argv.includes('--desktop-smoke')
 const cpuOnly = process.argv.includes('--core-cpu-only') || smoke
@@ -75,6 +78,7 @@ if(peerWindowId!==undefined){
   if(!/^[0-9a-f-]{36}$/.test(initialWorkspaceId||''))throw new Error('Invalid local document launch')
 }
 const localChildren=new Set()
+let pendingPeerLaunches = 0
 if (!smoke && !guiTest && !isolatedProfile && peerWindowId === undefined) {
   // 3917bba91 renamed the app (Forma* → futureox-desgin*), which re-homes every
   // durable store under the new productName. Carry the old profile's catalog,
@@ -125,10 +129,42 @@ const MIME = {
 }
 let window
 let backend
+let pendingWorkspaceRoot
+const workspaceRoots = new WorkspaceRoots({
+  profileRoot: app.getPath('userData'), dialog, getWindow: () => window,
+  canSwitch: () => peerWindowId === undefined && localChildren.size === 0 && pendingPeerLaunches === 0,
+  probe: async ({ recoveryDir, catalogDb, workspaceDb }) => {
+    const candidate = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb })
+    try {
+      const health = await candidate.request('health')
+      if (health.protocolVersion !== 1 || health.maxDocumentBytes !== MAX_DOCUMENT_BYTES) throw new Error('Backend protocol mismatch')
+      // Health alone succeeds when either SQLite store failed to open.
+      await candidate.request('workspace.list', {})
+      await candidate.request('catalog.list', {})
+    } finally {
+      if (!(await candidate.stop())) throw Object.assign(new Error('Candidate backend did not stop'), { code: 'WORKSPACE_ROOT_BUSY' })
+    }
+  },
+})
+const automationBridge = registerAutomationBridge({
+  ipcMain, getWindow: () => window, assertSender, dialog, clipboard,
+  storage: (method, params) => backend.request(method, params),
+  audit: entry => backend.request('automation.audit.append', {
+    event: entry.event === 'edit' ? 'edit' : entry.method === 'bridge.enable' ? 'grant' : entry.method === 'bridge.disable' ? 'revoke' : 'execute',
+    source: entry.source ?? 'automation', ...(entry.summary ? { summary: entry.summary } : {}),
+    method: entry.method, documentId: entry.documentId, session: entry.session, scope: entry.scope,
+    status: entry.status === 'ok' ? 'succeeded' : entry.code === 'CANCELLED' ? 'cancelled' : ['TIMEOUT', 'DISCONNECTED', 'SESSION_CLOSED'].includes(entry.code) ? 'unknown' : 'failed',
+    ...(entry.revision !== undefined ? { revision: entry.revision } : {}),
+    ...(entry.requestId ? { requestId: entry.requestId } : {}),
+    ...(entry.code ? { code: entry.code.toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 64) } : {}),
+    ...(entry.durationMs !== undefined ? { durationMs: entry.durationMs } : {}),
+  }),
+})
 const sketchSessions = new SketchSessionHost((method, params) => backend.request(method, params), dialog, () => window)
 let dirty = true
 let permitClose = false
 let closePending = false
+let closeFinalizing = false
 let closeRequestId
 let closeTimer
 let operationActive = false
@@ -292,6 +328,34 @@ function workspacePublic(result) {
   const { document, ...metadata } = result
   return { status: 'ok', ...metadata, ...(document ? { documentJson: JSON.stringify(document) } : {}) }
 }
+// Selection is an opaque native capability. A complete process restart is the
+// storage boundary; no live renderer or callback ever sees a swapped backend.
+const rootAction = action => async value => {
+  try { return await action(value) } catch (error) { return workspaceRootError(error) }
+}
+register('workspace-root-status', rootAction(value => {
+  if (value !== undefined) throw new Error('Unexpected arguments')
+  return workspaceRoots.status()
+}), false)
+register('workspace-root-select', rootAction(value => {
+  if (value !== undefined) throw new Error('Unexpected arguments')
+  if (closePending || quitRequested) throw Object.assign(new Error('Closing'), { code: 'BUSY' })
+  return workspaceRoots.stage()
+}))
+register('workspace-root-default', rootAction(value => {
+  if (value !== undefined) throw new Error('Unexpected arguments')
+  if (closePending || quitRequested) throw Object.assign(new Error('Closing'), { code: 'BUSY' })
+  return workspaceRoots.stage(true)
+}))
+register('workspace-root-activate', rootAction(async value => {
+  const request = record(value, ['selectionId'])
+  if (closePending || quitRequested || pendingWorkspaceRoot) throw Object.assign(new Error('Closing'), { code: 'BUSY' })
+  const root = await workspaceRoots.take(request.selectionId)
+  if (root.storagePath === workspaceRoots.current.storagePath) return { status: 'ok', restarting: false }
+  pendingWorkspaceRoot = root
+  window.close() // Existing renderer close handshake drains/asks about dirty edits.
+  return { status: 'ok', restarting: true }
+}))
 register('live-initial',()=>({status:'ok',documentId:initialWorkspaceId||null,sessionId:localSessionId}),false)
 register('live-observe',async value=>{
   const request=record(value,['documentId','pageId','view','cursor','selection','viewHash'])
@@ -304,14 +368,24 @@ register('live-observe',async value=>{
 },false)
 register('live-new-window',async value=>{
   const request=record(value,['id']);workspaceIdentity(request.id)
+  // All peer processes are direct children of the main host, so its close gate
+  // accounts for every launch it owns. A peer cannot create hidden descendants.
+  if (peerWindowId !== undefined || closePending || closeFinalizing || pendingWorkspaceRoot || quitRequested)
+    throw Object.assign(new Error('Window launch unavailable during workspace transition'), { code: 'BUSY' })
   if(localChildren.size>=8)throw new Error('请先关闭不再使用的本机窗口')
-  await backend.request('workspace.open',{id:request.id})
-  const id=randomUUID(),child=spawn(process.execPath,[...(app.isPackaged?[]:[app.getAppPath()]),`--local-peer=${id}`],{
-    detached:true,stdio:'ignore',env:{...process.env,FORMA_LOCAL_WORKSPACE_ROOT:workspaceRoot,FORMA_LOCAL_DOCUMENT_ID:request.id},
-  })
-  await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject)})
-  localChildren.add(child);child.once('exit',()=>localChildren.delete(child));child.unref()
-  return {status:'ok',windowId:id}
+  pendingPeerLaunches++
+  try {
+    await backend.request('workspace.open',{id:request.id})
+    if (closePending || closeFinalizing || pendingWorkspaceRoot || quitRequested) throw Object.assign(new Error('Closing'), { code: 'BUSY' })
+    const id=randomUUID(),child=spawn(process.execPath,[...(app.isPackaged?[]:[app.getAppPath()]),`--local-peer=${id}`],{
+      detached:true,stdio:'ignore',env:{...process.env,FORMA_LOCAL_WORKSPACE_ROOT:workspaceRoot,FORMA_LOCAL_DOCUMENT_ID:request.id},
+    })
+    // Track before waiting for spawn; a simultaneous native close cannot overlook it.
+    localChildren.add(child);child.once('exit',()=>localChildren.delete(child));child.once('error',()=>localChildren.delete(child))
+    await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject)})
+    child.unref()
+    return {status:'ok',windowId:id}
+  } finally { pendingPeerLaunches-- }
 })
 register('workspace-list', async (value) => {
   const r = value === undefined ? {} : record(value, ['includeDeleted'])
@@ -666,17 +740,48 @@ register(
   async (value) => {
     const answer = record(value, ['allow', 'requestId'])
     if (typeof answer.allow !== 'boolean') throw new Error('Invalid close response')
-    if (!closePending || answer.requestId !== closeRequestId) return { accepted: false }
+    if (!closePending || closeFinalizing || answer.requestId !== closeRequestId) return { accepted: false }
     clearTimeout(closeTimer)
-    closePending = false
-    if (answer.allow && await sketchSessions.beforeWindowClose()) {
-      permitClose = true
-      window.close()
-    } else quitRequested = false
-    return { accepted: true }
+    closeFinalizing = true
+    try {
+      if (answer.allow && await sketchSessions.beforeWindowClose()) {
+        if (!(await commitWorkspaceSwitch())) return { accepted: false }
+        permitClose = true
+        window.close()
+      } else {
+        pendingWorkspaceRoot = undefined
+        quitRequested = false
+        // A rejected Sketch/native approval must also thaw the renderer close fence.
+        return { accepted: !answer.allow }
+      }
+      return { accepted: true }
+    } finally { closePending = false; closeFinalizing = false }
   },
   false,
 )
+
+async function commitWorkspaceSwitch() {
+  if (!pendingWorkspaceRoot) return true
+  const target = pendingWorkspaceRoot
+  pendingWorkspaceRoot = undefined
+  try {
+    if (!workspaceRoots.canSwitch()) throw Object.assign(new Error('Other windows are open'), { code: 'WORKSPACE_ROOT_PEERS' })
+    await workspaceRoots.verify(target)
+    await workspaceRoots.probe(workspaceRoots.config(target))
+    await workspaceRoots.persist(target)
+    try { app.relaunch() }
+    catch {
+      await workspaceRoots.persist(workspaceRoots.current)
+      throw Object.assign(new Error('Relaunch unavailable'), { code: 'WORKSPACE_ROOT_RESTART' })
+    }
+    quitRequested = true
+    return true
+  } catch (error) {
+    quitRequested = false
+    await dialog.showMessageBox(window, { type: 'error', title: '工作区未切换', message: workspaceRootError(error).message, buttons: ['保留当前工作区'], noLink: true })
+    return false
+  }
+}
 
 async function closeFallback() {
   if (!closePending || !window || window.isDestroyed()) return
@@ -694,17 +799,20 @@ async function closeFallback() {
     noLink: true,
   })
   if (
-    !closePending ||
+    !closePending || closeFinalizing ||
     closeRequestId !== requestId ||
     window !== requestWindow ||
     requestWindow.isDestroyed()
   )
     return
-  closePending = false
-  if (answer.response === 1 && await sketchSessions.beforeWindowClose()) {
-    permitClose = true
-    window.close()
-  } else quitRequested = false
+  closeFinalizing = true
+  try {
+    if (answer.response === 1 && await sketchSessions.beforeWindowClose()) {
+      if (!(await commitWorkspaceSwitch())) return
+      permitClose = true
+      window.close()
+    } else { pendingWorkspaceRoot = undefined; quitRequested = false }
+  } finally { closePending = false; closeFinalizing = false }
 }
 
 async function createWindow() {
@@ -874,19 +982,20 @@ async function buildWindow() {
   })
 
   window.webContents.on('before-input-event', (event, input) => {
-    if (input.type !== 'keyDown' || !(process.platform === 'darwin' ? input.meta : input.control)) return
-    const key = input.key.toLowerCase()
-    if(input.alt){const propertyCommand=({KeyC:'copy-properties',KeyV:'paste-properties',KeyA:'select-matching'})[input.code];if(propertyCommand){event.preventDefault();sendCommand(propertyCommand)}return}
-    const command = { '=': 'zoomIn', '+': 'zoomIn', '-': 'zoomOut', '0': 'zoom100',
-      z: input.shift ? 'redo' : 'undo', c: input.shift ? 'copy-as-png' : 'copy', r: input.shift ? 'paste-to-replace' : undefined, x: 'cut', v: input.shift ? 'paste-in-place' : 'paste',
-      a: input.shift?'select-inverse':'select-all', d: 'duplicate', g: input.shift ? 'ungroup' : 'group' }[key]
-    if (command) { event.preventDefault(); sendCommand(command) }
+    forwardNativeEditorShortcut(event, input, {
+      platform: process.platform, sendCommand,
+      setIgnoreMenuShortcuts: (ignore) => ownedWindow.webContents.setIgnoreMenuShortcuts(ignore),
+    })
   })
   window.webContents.on('will-navigate', (event) => event.preventDefault())
   window.webContents.on('will-frame-navigate', (event) => event.preventDefault())
   window.webContents.on('will-redirect', (event) => event.preventDefault())
   window.webContents.on('will-attach-webview', (event) => event.preventDefault())
+  window.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) void automationBridge.close()
+  })
   window.webContents.on('render-process-gone', () => {
+    void automationBridge.close()
     dirty = true
   })
   window.once('ready-to-show', () => {
@@ -914,7 +1023,7 @@ async function buildWindow() {
     activeHandle = undefined
     grants.clear(); recoveryGrants.clear(); recoveredSources.clear()
     recoveryId = randomUUID()
-    windowCleanup = Promise.all([directoryGrants.clear(), closeNativeRender(), closeNativePreparation()])
+    windowCleanup = Promise.all([directoryGrants.clear(), closeNativeRender(), closeNativePreparation(), automationBridge.close()])
     if (process.platform !== 'darwin' || quitRequested) void shutdown()
   })
   Menu.setApplicationMenu(
@@ -953,7 +1062,8 @@ async function buildWindow() {
         { label: 'Copy as SVG', click: () => sendCommand('copy-as-svg') },
         { label: 'Paste', accelerator: 'CmdOrCtrl+V', click: () => sendCommand('paste') },
         { label: 'Paste to Replace', accelerator: 'CmdOrCtrl+Shift+R', click: () => sendCommand('paste-to-replace') },
-        { label: 'Paste in Place', accelerator: 'CmdOrCtrl+Shift+V', click: () => sendCommand('paste-in-place') },
+        { label: 'Paste Over Selection', accelerator: 'CmdOrCtrl+Shift+V', click: () => sendCommand('paste-over-selection') },
+        { label: 'Paste in Place', click: () => sendCommand('paste-in-place') },
         { label: 'Duplicate', accelerator: 'CmdOrCtrl+D', click: () => sendCommand('duplicate') },
         { type: 'separator' },
         { label:'Select Matching',accelerator:'CmdOrCtrl+Alt+A',click:()=>sendCommand('select-matching') },
@@ -980,6 +1090,7 @@ async function buildWindow() {
               }
             },
           }, { type: 'separator' }] : []),
+          { label: 'Center Selection', click: () => sendCommand('center-selection') },
           { label: 'Actual Size', accelerator: 'CmdOrCtrl+0', click: () => sendCommand('zoom100') },
           { label: 'Zoom In', accelerator: 'CmdOrCtrl+Plus', click: () => sendCommand('zoomIn') },
           { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: () => sendCommand('zoomOut') },
@@ -987,6 +1098,7 @@ async function buildWindow() {
           { role: 'togglefullscreen' },
         ],
       },
+      automationBridge.menu,
       ...(process.platform === 'darwin' ? [{ role: 'windowMenu' }] : []),
     ]),
   )
@@ -1014,9 +1126,18 @@ else {
   app
     .whenReady()
     .then(async () => {
-      const recoveryDir = path.join(app.getPath('userData'), 'recovery-v1')
+      if (peerWindowId === undefined) {
+        const selected = await workspaceRoots.startup({ isolated: smoke || guiTest || isolatedProfile || !!renderCheck })
+        if (!selected) { shutdownComplete = true; app.quit(); return }
+        workspaceRoot = selected.storagePath
+      } else {
+        // The spawning native host supplied this root. Peers cannot change it or
+        // persist the main profile's selection, and keep their own Electron profile.
+        workspaceRoots.current = { kind: 'peer', rootPath: path.basename(workspaceRoot) === '.futureox-workspace' ? path.dirname(workspaceRoot) : workspaceRoot, storagePath: workspaceRoot }
+      }
+      const { recoveryDir, catalogDb, workspaceDb } = workspaceRoots.config(workspaceRoots.current)
       await mkdir(recoveryDir, { recursive: true, mode: 0o700 })
-      backend = new Sidecar(executable, recoveryDir, { catalogDb: path.join(app.getPath('userData'), 'catalog-v1.sqlite3'), workspaceDb: path.join(workspaceRoot, 'workspace-v1.sqlite3') })
+      backend = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb })
       let startupError
       try {
         const health = await backend.request('health')
@@ -1055,6 +1176,7 @@ else {
 async function shutdown() {
   if (!shutdownPromise)
     shutdownPromise = (async () => {
+      await automationBridge.close()
       await windowStateWrites
       await windowCleanup
       await closeNativeRender()

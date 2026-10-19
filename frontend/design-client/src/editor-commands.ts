@@ -1,7 +1,7 @@
 import {PROPERTY_PREFIX,copyProperties,readProperties,pasteProperties,type PropertyKind} from './property-clipboard'
 import {activateTool} from './tool-activation'
 import { copySelectionAsset } from './clipboard-export'
-import { modalOwnsKeyboard } from './modal-keyboard'
+import { modalOwnsKeyboard, editableOwnsKeyboard } from './modal-keyboard'
 import type { Editor } from './engine'
 import { desktopBridge, type DesktopClipboard } from './desktop'
 import { commitPendingEdits } from './pending-edits'
@@ -10,13 +10,19 @@ import { lockedSelectionIds } from './canvas-menu-model'
 import { fitBounds, zoomAt, zoomStep } from './canvas-camera'
 import { unionBounds } from './geometry'
 import {querySelection,type SelectionQuery} from './selection-queries'
+import { dimensionNudgeCommands, isDimensionNudgeCommand, nudgeSelectionDimensions, selectAllCanvasIds, type DimensionNudgeCommand } from './canvas-workflow-shortcuts'
+import { activateDocumentFonts } from './kernel/picking'
+import { applyPasteOverPlan, planPasteOverSelection } from './paste-over-selection'
+import { shortcutPreference } from './shortcut-preference'
+import type { ShortcutProfile } from './shortcut-profiles'
 
 import { toolForCommand, unavailableReason, TOOL_COMMANDS } from './tool-registry'
 
 export type SetToolCommand = `set-tool-${string}`
-export type EditorCommand = 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'create-component' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'convert-vector'
-export const editorCommands: readonly EditorCommand[] = ['copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','convert-vector']
+export type EditorCommand = DimensionNudgeCommand | 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'create-component' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'center-selection' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'convert-vector'
+export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','convert-vector']
 const MAX_CLIPBOARD_BYTES = 32 * 1024 * 1024
+const copiedPackets = new WeakMap<Editor, string>()
 const TEXT_PREFIX = 'FORMA-NODES-V1\n'
 function assertSize(value: string) { if (new TextEncoder().encode(value).byteLength > MAX_CLIPBOARD_BYTES) throw new Error('剪贴板内容超过 32 MiB') }
 function packet(document: DesignDocument) { return JSON.stringify({ format:'forma-nodes', version:1, document, roots:document.pages[0].children }) }
@@ -30,8 +36,12 @@ async function readClipboard(): Promise<DesktopClipboard | null> {
   if (!navigator.clipboard?.readText) return null
   return { text: await navigator.clipboard.readText() }
 }
-export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: { worldPoint?: Point; pageId?: string } = {}): Promise<void> {
-  const editable = typeof document !== 'undefined' && document.activeElement?.closest('input,textarea,select,[contenteditable="true"]')
+export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: { worldPoint?: Point; pageId?: string; zoomAnchor?: Point; shortcutProfile?: ShortcutProfile } = {}): Promise<void> {
+  const active = typeof document === 'undefined' ? null : document.activeElement
+  const editable = editableOwnsKeyboard(active)
+  // Native menu accelerators arrive without a DOM KeyboardEvent. Preserve the
+  // focused text control and modal ownership at the shared command boundary too.
+  if ((editable && !['undo', 'redo', 'cut', 'copy', 'paste', 'paste-in-place', 'paste-over-selection', 'select-all'].includes(command)) || (!editable && modalOwnsKeyboard(active))) return
   if (typeof command === 'string' && command.startsWith('set-tool-')) {
     const tool = toolForCommand(command)
     if (tool) await activateTool(editor,tool as import('./engine').Tool)
@@ -44,7 +54,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
     }
     return
   }
-  const textCommand = command === 'select-all' ? 'selectAll' : command === 'paste-in-place' ? 'paste' : command
+  const textCommand = command === 'select-all' ? 'selectAll' : (command === 'paste-in-place' || command === 'paste-over-selection') ? 'paste' : command
   if (editable && ['undo','redo','cut','copy','paste','selectAll'].includes(textCommand)) {
     const native = desktopBridge()?.performTextCommand
     try {
@@ -53,14 +63,15 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
     } catch (error) { editor.notify(String(error)) }
     return
   }
-  if (modalOwnsKeyboard(typeof document === 'undefined' ? null : document.activeElement)) return
+  if (editor.state.busy) return
   if (editor.interactionActive) { editor.notify('请先结束拖动，或按 Esc 取消'); return }
   if (!commitPendingEdits(editor)) return
-  const epoch = editor.sessionGeneration, version = editor.state.version, page = editor.state.page, selection = editor.state.selection.join('\n')
-  const current = () => editor.sessionGeneration === epoch && editor.state.version === version && editor.state.page === page &&
+  const before = editor.state.doc, epoch = editor.sessionGeneration, version = editor.state.version, page = editor.state.page, selection = editor.state.selection.join('\n')
+  const current = () => editor.state.doc === before && !editor.state.busy && editor.sessionGeneration === epoch && editor.state.version === version && editor.state.page === page &&
     editor.state.selection.join('\n') === selection && !editor.interactionActive &&
-    (typeof document === 'undefined' || (!document.activeElement?.closest('input,textarea,select,[contenteditable="true"]') && !modalOwnsKeyboard(document.activeElement)))
+    (typeof document === 'undefined' || (!editableOwnsKeyboard(document.activeElement) && !modalOwnsKeyboard(document.activeElement)))
   try {
+    if (isDimensionNudgeCommand(command)) { nudgeSelectionDimensions(editor, command); return }
     if(['fill','stroke','effect','text','font','instance','properties','matching','inverse'].some(q=>command===`select-${q}`)){
       editor.select(querySelection(editor.state.doc,editor.state.page,editor.state.selection,command.slice(7) as SelectionQuery));return
     }
@@ -94,26 +105,31 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         const result = await native.write({ forma, text: editor.state.selection.map(id => { const n=editor.state.doc.nodes[id]; return n?.kind==='text'?n.text:n?.name||'' }).join('\n') })
         if (result.status !== 'ok') throw new Error(result.status === 'cancelled' ? '复制已取消' : result.message)
       } else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(TEXT_PREFIX + forma)
+      copiedPackets.set(editor, forma)
       if (command === 'cut') {
         if (!current()) throw new Error('复制期间选择已变化，原图层已保留')
         editor.remove()
       }
       return
     }
-    if (command === 'paste' || command === 'paste-to-replace' || command === 'paste-in-place' || command === 'paste-here') {
+    if (command === 'paste' || command === 'paste-to-replace' || command === 'paste-in-place' || command === 'paste-over-selection' || command === 'paste-here') {
       if (command === 'paste-here' && (!options.worldPoint || !Number.isFinite(options.worldPoint.x) || !Number.isFinite(options.worldPoint.y))) throw new Error('粘贴位置无效')
       const content = await readClipboard()
       if (!current()) throw new Error('读取剪贴板期间设计已变化，请重新粘贴')
+      let normalized: string | undefined
       if (content) {
-        if(content.text?.startsWith(PROPERTY_PREFIX)){applyProperties(content.text);return}
+        if(content.text?.startsWith(PROPERTY_PREFIX)){
+          if (command === 'paste-over-selection') throw Error('覆盖粘贴需要图层、图片或文字内容，不支持属性剪贴板')
+          applyProperties(content.text);return
+        }
         const encoded = content.forma || (content.text?.startsWith(TEXT_PREFIX) ? content.text.slice(TEXT_PREFIX.length) : undefined)
-        if (encoded) editor.importClipboard(encoded)
+        if (encoded) normalized = encoded
         else if (content.svg || /^\s*(?:<\?xml[^>]*>\s*)?<svg[\s>]/i.test(content.text || '')) {
           const { importSvg } = await import('./import-svg')
           const input = content.svg || content.text!; assertSize(input)
           if (!current()) return
           const imported = importSvg(input, '粘贴的矢量')
-          editor.importClipboard(packet(imported.document))
+          normalized = packet(imported.document)
         } else if (content.image) {
           assertSize(content.image)
           if (!/^data:image\/(png|jpeg|webp);base64,/.test(content.image)) throw new Error('剪贴板图片格式不支持')
@@ -122,15 +138,37 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
           if (image.naturalWidth * image.naturalHeight > 16_777_216) throw new Error('剪贴板图片像素过大')
           const doc = blank('粘贴的图片'), n = node('rectangle', 0, 0, image.naturalWidth, image.naturalHeight)
           n.fills = [{ ...paint(), kind:'image', image:content.image, fit:'cover' }]
-          doc.nodes[n.id] = n; doc.pages[0].children.push(n.id); editor.importClipboard(packet(doc))
+          doc.nodes[n.id] = n; doc.pages[0].children.push(n.id); normalized = packet(doc)
         } else if (content.text) {
           assertSize(content.text)
           const doc = blank('粘贴的文字'), n = node('text', 0, 0, 240, 32)
-          n.text = content.text; doc.nodes[n.id] = n; doc.pages[0].children.push(n.id); editor.importClipboard(packet(doc))
+          n.text = content.text; doc.nodes[n.id] = n; doc.pages[0].children.push(n.id); normalized = packet(doc)
         } else return
       }
+      if (command === 'paste-over-selection') {
+        normalized ??= content ? undefined : copiedPackets.get(editor)
+        if (!normalized) throw Error('剪贴板中没有可覆盖粘贴的图层；请先复制内容')
+        const plan = planPasteOverSelection(before, page, editor.state.selection, normalized, options.shortcutProfile ?? shortcutPreference.getSnapshot())
+        if (!current()) throw Error('读取剪贴板期间设计已变化，请重新粘贴')
+        try { editor.change('覆盖粘贴', draft => applyPasteOverPlan(draft, before, plan.document), plan.selection) }
+        finally { activateDocumentFonts(editor.state.doc) }
+        return
+      }
+      if (normalized) editor.importClipboard(normalized)
       if(command==='paste' || command==='paste-to-replace') editor.pasteToSelection(command==='paste-to-replace')
       else editor.paste(command === 'paste-in-place', command === 'paste-here' ? options.worldPoint : undefined)
+      return
+    }
+    if (command === 'center-selection') {
+      const selected = new Set(editor.state.selection)
+      const entries = editor.entries().filter(entry => selected.has(entry.id))
+      if (!entries.length) return
+      const box = unionBounds(entries.map(entry => entry.bounds))
+      if (![box.x, box.y, box.width, box.height].every(Number.isFinite)) return
+      const host = typeof document === 'undefined' ? null : document.querySelector('[data-testid=canvas]')
+      const width = host?.clientWidth || 800, height = host?.clientHeight || 600
+      const view = editor.flushPendingView()
+      editor.set({ view: { ...view, x: width / 2 - (box.x + box.width / 2) * view.zoom, y: height / 2 - (box.y + box.height / 2) * view.zoom } })
       return
     }
     if (command.startsWith('zoom-')) {
@@ -141,7 +179,10 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       if (command === 'zoom-fit' || command === 'zoom-selection') {
         const entries = editor.entries().filter(e => command === 'zoom-fit' ? e.depth === 0 : editor.state.selection.includes(e.id))
         if (entries.length) editor.set({ view: fitBounds(unionBounds(entries.map(e => e.bounds)), {width,height}) })
-      } else editor.set({ view: zoomAt(view, command === 'zoom-100' ? 1 : zoomStep(view.zoom, command === 'zoom-in' ? 1 : -1), {x:width/2,y:height/2}) })
+      } else {
+        const anchor = options.zoomAnchor && Number.isFinite(options.zoomAnchor.x) && Number.isFinite(options.zoomAnchor.y) ? options.zoomAnchor : { x: width / 2, y: height / 2 }
+        editor.set({ view: zoomAt(view, command === 'zoom-100' ? 1 : zoomStep(view.zoom, command === 'zoom-in' ? 1 : -1), anchor) })
+      }
       return
     }
     switch (command) {
@@ -183,7 +224,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         editor.transformSelection(horizontal ? [-1, 0, 0, 1, 2 * box.x + box.width, 0] : [1, 0, 0, -1, 0, 2 * box.y + box.height], horizontal ? '水平翻转' : '垂直翻转')
         break
       }
-      case 'select-all': editor.select(editor.state.doc.pages.find(p => p.id === editor.state.page)!.children.filter(id => !editor.state.doc.nodes[id].locked)); break
+      case 'select-all': editor.select(selectAllCanvasIds(editor.state.doc, editor.state.page, editor.state.selection, options.shortcutProfile ?? shortcutPreference.getSnapshot())); break
     }
   } catch (error) { editor.notify(error instanceof Error ? error.message : String(error)) }
 }

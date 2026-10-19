@@ -86,8 +86,11 @@ try {
   await dialog.getByLabel('集合名称').fill('QA theme'); await dialog.getByRole('button', { name: '新建集合', exact: true }).click()
   await dialog.getByRole('button', { name: '+ color', exact: true }).click()
   await dialog.getByLabel('变量名称', { exact: true }).fill('Accent')
+  await dialog.getByLabel('变量名称', { exact: true }).press('Enter')
   await dialog.getByLabel('Accent Light', { exact: true }).fill('#123456')
+  await dialog.getByLabel('Accent Light', { exact: true }).press('Enter')
   await dialog.getByLabel('Accent Dark', { exact: true }).fill('#654321')
+  await dialog.getByLabel('Accent Dark', { exact: true }).press('Enter')
   doc = await saved(d => Object.values(d.designSystem?.variables || {}).some((v: any) => v.name === 'Accent' && v.values.Dark === '#654321'))
   const [variableId] = Object.entries(doc.designSystem.variables).find(([, v]: any) => v.name === 'Accent')!
   await dialog.getByLabel('绑定变量', { exact: true }).selectOption(variableId)

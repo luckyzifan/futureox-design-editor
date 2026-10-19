@@ -32,7 +32,7 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
   }
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (event.key !== 'F6' || event.isComposing || event.altKey || event.metaKey || event.ctrlKey || blocked.current) return
+      if (event.key !== 'F6' || event.repeat || event.keyCode === 229 || event.isComposing || event.altKey || event.metaKey || event.ctrlKey || blocked.current) return
       const target = event.target as HTMLElement | null
       if (target?.closest('input,textarea,select,[contenteditable],[role="textbox"]') ||
           document.querySelector('[role="dialog"],[role="alertdialog"],[aria-modal="true"],[role="menu"]')) return
@@ -86,7 +86,8 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
     onBlurCapture={hide}
     onKeyDown={event => {
       event.stopPropagation()
-      if (event.nativeEvent.isComposing) return
+      if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
+      if (event.repeat && ['Enter', ' ', 'Escape'].includes(event.key)) { event.preventDefault(); return }
       const enabled = buttons()
       if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
         event.preventDefault()
@@ -184,6 +185,8 @@ export function ToolPopover({ label, children, open, onOpenChange, icon, primary
     return () => { document.removeEventListener('pointerdown', outside, true); window.removeEventListener('blur', blur) }
   }, [open])
   return <div ref={host} className="tool-popover" onKeyDown={(event) => {
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
+    if (event.repeat && ['Enter', ' ', 'Escape'].includes(event.key)) { event.preventDefault(); event.stopPropagation(); return }
     if (event.target === trigger.current && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
       event.preventDefault(); event.stopPropagation()
       firstFocus.current = event.key === 'ArrowUp' ? 'last' : 'first'
@@ -202,7 +205,8 @@ export function ToolPopover({ label, children, open, onOpenChange, icon, primary
       onPointerUp={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}
       onKeyDown={event => {
         event.stopPropagation()
-        if (event.nativeEvent.isComposing) return
+        if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
+      if (event.repeat && ['Enter', ' ', 'Escape'].includes(event.key)) { event.preventDefault(); return }
         if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); dismiss(true); return }
         const enabled = items()
         if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {

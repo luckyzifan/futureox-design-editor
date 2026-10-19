@@ -4,6 +4,7 @@
 //! this process's stdin. It must authorize paths through native file dialogs and
 //! expose opaque handles, never this path-based protocol, to renderer content.
 
+mod automation;
 pub mod catalog;
 mod font_collection;
 pub mod fonts;

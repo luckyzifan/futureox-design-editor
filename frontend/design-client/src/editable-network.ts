@@ -1,7 +1,7 @@
 import type { DesignNode, Network } from './model'
 import { toNetwork } from './geometry'
 import { kernelSvgPaths } from './kernel/picking'
-import { pathNetwork } from './import-svg'
+import { pathNetwork } from './path-network'
 
 /** Tangent-matched quarter-ellipse cubic control length. This editing draft is
  * an approximation; the unedited authored ellipse must keep its native Arc. */

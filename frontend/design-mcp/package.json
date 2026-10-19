@@ -1,0 +1,19 @@
+{
+  "name": "@futureox/design-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local stdio MCP adapter for the live Futureox Design operation API",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "futureox-design-mcp": "src/cli.mjs"
+  },
+  "scripts": {
+    "start": "node src/cli.mjs",
+    "test": "node --test test/artifacts-prompts.test.mjs test/framing.test.mjs test/operation-backend.test.mjs test/server.test.mjs test/cli.test.mjs test/socket-client.test.mjs",
+    "check": "node --check src/cli.mjs && node --check src/server.mjs && node --check src/framing.mjs && node --check src/socket-backend.mjs && node --check src/operation-backend.mjs && node --check src/artifacts.mjs && node --check src/prompts.mjs",
+    "test:integration": "node --test test/socket-integration.test.mjs"
+  }
+}

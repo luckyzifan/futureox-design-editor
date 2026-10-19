@@ -58,7 +58,7 @@ test('local save rejects invalid mask contracts before opening IndexedDB', async
   }
 })
 
-test('opening validates the incoming document before local publication or editing-session adoption', () => {
+test('source contract: opening prepares before local publication and adoption accepts only owned preparation', () => {
   const read = name => readFileSync(new URL(name, import.meta.url), 'utf8')
   const picking = read('./kernel/picking.ts')
   const preparation = picking.slice(picking.indexOf('export function prepareDocumentForEditing'), picking.indexOf('export function kernelLayout'))
@@ -68,11 +68,16 @@ test('opening validates the incoming document before local publication or editin
   assert.ok(preparation.indexOf('validateKernelDocument(JSON.stringify(prepared))') < preparation.indexOf('return prepared'))
   const app = read('./App.tsx')
   const opening = app.slice(app.indexOf('async function switchDocument('), app.indexOf('async function openLocalFiles('))
-  assert.ok(opening.indexOf('document = prepareDocumentForEditing(document)') >= 0)
-  assert.ok(opening.indexOf('document = prepareDocumentForEditing(document)') < opening.indexOf('await localSave(document,'))
+  const preparedAt = opening.indexOf('const prepared = prepareDocument(document)')
+  assert.ok(preparedAt >= 0, 'opening must prepare before persistence')
+  assert.ok(preparedAt < opening.indexOf('document = prepared.snapshot()'))
+  assert.ok(preparedAt < opening.indexOf('await localSave(document,'))
+  assert.match(opening, /editor\.load\(prepared\)/)
+  const preparationToken = read('./prepared-document.ts')
+  assert.match(preparationToken, /document: prepareDocumentForEditing\(value\)/)
+  assert.match(preparationToken, /const record = owned\.get\(value\)/)
   const engine = read('./engine.ts')
-  const adoption = engine.slice(engine.indexOf('  load(value: unknown)'), engine.indexOf('  load(value: unknown)') + 800)
-  assert.match(adoption, /const doc = prepareDocumentForEditing\(value\)/)
-  assert.ok(adoption.indexOf('prepareDocumentForEditing(value)') < adoption.indexOf('this.sessionEpoch++'))
-  assert.ok(adoption.indexOf('prepareDocumentForEditing(value)') < adoption.indexOf('this.set({'))
+  assert.match(engine, /takePreparedDocument\(value\) \|\| prepareDocumentForEditing\(value\)/)
+  // Behavioral aliasing, invalid-input and token-reuse checks run in
+  // prepared-document.test.ts against the actual WASM and Editor.
 })
