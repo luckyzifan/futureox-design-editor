@@ -72,6 +72,7 @@ pub struct NativeGpu {
     image_textures: std::cell::RefCell<HashMap<String, ResidentImage>>,
     image_texture_bytes: std::cell::Cell<u64>,
     image_generation: std::cell::Cell<u64>,
+    image_domain: Option<ImageDomain>,
     /// Four-bucket GPU memory ledger (Figma `CorePerfInfo` counters): fed
     /// at this device's resource construction/destruction points; hosts
     /// share the handle with the kernel `Engine` export. Clones share one
@@ -88,6 +89,14 @@ struct ResidentImage {
     height: u32,
     floating: bool,
     last_used: u64,
+}
+
+/// Image texels are a function of both the working color settings and the
+/// storage domain. A URI alone cannot identify those derived pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ImageDomain {
+    color: Option<futureox_design_kernel::color::ColorSettings>,
+    floating: bool,
 }
 
 /// Cap for device-resident decoded images; they share the frame surface
@@ -289,15 +298,33 @@ impl NativeGpu {
             image_textures: std::cell::RefCell::new(HashMap::new()),
             image_texture_bytes: std::cell::Cell::new(0),
             image_generation: std::cell::Cell::new(0),
+            image_domain: None,
             ledger: GpuMemoryLedger::default(),
         })
     }
     /// Install a shared ledger (typically `Engine::gpu_memory_ledger()`).
-    /// Install before the first compose/upload: frames already constructed
-    /// keep the previous handle, and persistent images uploaded before the
-    /// swap stay counted only on the old instance.
+    /// Transfer any existing resident image allocation to the new owner.
+    /// The mutable borrow prevents a live Frame from straddling this swap.
     pub fn set_memory_ledger(&mut self, ledger: GpuMemoryLedger) {
+        let bytes = self.image_texture_bytes.get();
+        if bytes > 0 {
+            self.ledger.free(GpuMemoryCategory::Texture, bytes);
+            ledger.alloc(GpuMemoryCategory::Texture, bytes);
+        }
         self.ledger = ledger;
+    }
+    /// Drop derived image residency when replacing a document. CPU decoded
+    /// images and GPU images share this lifetime boundary; evicting only GPU
+    /// textures otherwise leaves obsolete CPU images consuming decode budget.
+    pub fn clear_image_cache(&mut self) {
+        let bytes = self.image_texture_bytes.replace(0);
+        self.image_textures.get_mut().clear();
+        self.images.get_mut().clear();
+        self.image_generation.set(0);
+        self.image_domain = None;
+        if bytes > 0 {
+            self.ledger.free(GpuMemoryCategory::Texture, bytes);
+        }
     }
     /// The device's GPU memory ledger (four buckets, peaks, `needs_free`).
     pub fn memory_ledger(&self) -> &GpuMemoryLedger {
@@ -378,6 +405,14 @@ impl NativeGpu {
         }
         if scene.nodes.len() > 20_000 || scene.curves.len() > 2_000_000 {
             return Err("GPU scene work budget exceeded".into());
+        }
+        let domain = ImageDomain {
+            color: scene.color_management,
+            floating: scene.float_compositing,
+        };
+        if self.image_domain != Some(domain) {
+            self.clear_image_cache();
+            self.image_domain = Some(domain);
         }
         let mips = self.image_mips;
         let atlas = self.image_atlas;

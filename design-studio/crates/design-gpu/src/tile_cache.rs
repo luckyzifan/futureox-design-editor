@@ -134,6 +134,8 @@ fn f64_key(v: f64) -> [u8; 8] {
 /// Everything that can change every pixel at once. The viewport transform is
 /// compared bit-exactly so a camera nudge never borrows stale tiles.
 fn global_key(scene: &GpuScene) -> Result<Key, String> {
+    // Top-level painter order is not contained in any node's own command.
+    let roots = serde_json::to_vec(&scene.roots).map_err(|e| e.to_string())?;
     let managed = scene
         .color_management
         .as_ref()
@@ -141,7 +143,7 @@ fn global_key(scene: &GpuScene) -> Result<Key, String> {
         .transpose()?;
     let color: &[u8] = managed.as_deref().map_or(b"none", |s| s.as_bytes());
     Ok(digest(&[
-        b"global-v1",
+        b"global-v2",
         &scene.width.to_le_bytes(),
         &scene.height.to_le_bytes(),
         &scene.extent.x.to_le_bytes(),
@@ -153,6 +155,9 @@ fn global_key(scene: &GpuScene) -> Result<Key, String> {
         &f64_key(scene.view.zoom),
         scene.background.as_bytes(),
         &[u8::from(scene.transparent), u8::from(scene.grid)],
+        &[u8::from(scene.checkerboard)],
+        &scene.checkerboard_size.to_le_bytes(),
+        &roots,
         &[
             u8::from(scene.float_compositing),
             u8::from(scene.coherent_samples),
@@ -181,13 +186,13 @@ fn capture_rect(n: &GpuNode) -> Rect {
 }
 
 fn curve_slice(scene: &GpuScene, first: u32, count: u32) -> &[f32] {
-    let start = first as usize;
-    let end = start.saturating_add(count as usize);
-    if start <= end && end <= scene.curves.len() {
-        &scene.curves[start..end]
-    } else {
-        &[]
-    }
+    // GPU storage addresses count vec4 words; the backing Vec counts f32s.
+    let range = (first as usize).checked_mul(4).and_then(|start| {
+        (count as usize)
+            .checked_mul(4)
+            .and_then(|len| start.checked_add(len).map(|end| start..end))
+    });
+    range.and_then(|range| scene.curves.get(range)).unwrap_or(&[])
 }
 
 fn curves_bits(scene: &GpuScene, n: &GpuNode) -> Vec<u8> {
@@ -201,14 +206,15 @@ fn curves_bits(scene: &GpuScene, n: &GpuNode) -> Vec<u8> {
         push(area.first, area.count);
     }
     if let Some(analytic) = &n.fill.analytic {
-        push(analytic.first, analytic.count);
+        // Legacy analytic paths count segments, each occupying four vec4s.
+        push(analytic.first, analytic.count.saturating_mul(4));
     }
     for stroke in &n.strokes {
         if let Some(area) = &stroke.path.area {
             push(area.first, area.count);
         }
         if let Some(analytic) = &stroke.path.analytic {
-            push(analytic.first, analytic.count);
+            push(analytic.first, analytic.count.saturating_mul(4));
         }
     }
     bits
@@ -452,7 +458,13 @@ impl TileCache {
                 )?;
                 fresh.insert((tile.col, tile.row), presented);
             }
-            let assembled = self.assemble(&tiles, options.width, options.height, &fresh);
+            let assembled = self.assemble(
+                &tiles,
+                options.width,
+                options.height,
+                &fresh,
+                scene.color_management.is_some(),
+            );
             // Persist the freshly presented bytes under their new keys so the
             // next frame can replay them.
             for (tile, key) in &dirty {
@@ -529,8 +541,8 @@ impl TileCache {
         width: u32,
         height: u32,
         fresh: &TileFrames,
+        managed: bool,
     ) -> (Vec<u8>, Option<Vec<f32>>) {
-        let managed = fresh.values().any(|(_, linear)| linear.is_some());
         let mut rgba = vec![0u8; width as usize * height as usize * 4];
         let mut linear = managed.then(|| vec![0f32; width as usize * height as usize * 4]);
         for tile in tiles {
@@ -575,4 +587,100 @@ pub fn tile_influence(scene: &GpuScene, tile: Rect) -> Vec<String> {
         .into_iter()
         .map(str::to_owned)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn scene() -> GpuScene {
+        let mut engine = Engine::new();
+        engine
+            .load_document(&json!({
+                "schemaVersion": 1, "id": "cache-test", "name": "cache-test",
+                "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["a", "b"]}],
+                "nodes": {
+                    "a": {"id": "a", "kind": "rectangle", "width": 8, "height": 8,
+                        "fills": [{"kind": "solid", "color": "#ff0000"}]},
+                    "b": {"id": "b", "kind": "rectangle", "width": 8, "height": 8,
+                        "fills": [{"kind": "solid", "color": "#0000ff"}]}
+                }
+            }).to_string())
+            .unwrap();
+        let options = serde_json::from_value(json!({
+            "pageId": "p", "width": 16, "height": 16,
+            "view": {"x": 0, "y": 0, "zoom": 1}, "rasterProfile": "figmaSubpixel"
+        }))
+        .unwrap();
+        engine.compile_gpu(&options).unwrap()
+    }
+
+    #[test]
+    fn global_key_tracks_root_painter_order() {
+        let mut scene = scene();
+        let before = global_key(&scene).unwrap();
+        // Change only order: no incidental curve-buffer repacking can hide
+        // an omitted painter-order dependency in this regression.
+        scene.roots.swap(0, 1);
+        assert_ne!(before, global_key(&scene).unwrap());
+    }
+
+    #[test]
+    fn global_key_tracks_checkerboard_presence_and_size() {
+        let mut scene = scene();
+        scene.checkerboard = false;
+        let plain = global_key(&scene).unwrap();
+        scene.checkerboard = true;
+        let checkerboard = global_key(&scene).unwrap();
+        assert_ne!(plain, checkerboard);
+        scene.checkerboard_size += 1;
+        assert_ne!(checkerboard, global_key(&scene).unwrap());
+    }
+
+    #[test]
+    fn curve_slice_uses_vec4_addresses_and_checks_bounds() {
+        let mut scene = scene();
+        scene.curves = (0..20).map(|i| i as f32).collect();
+        assert_eq!(curve_slice(&scene, 1, 2), &scene.curves[4..12]);
+        assert!(curve_slice(&scene, 4, 2).is_empty());
+        assert!(curve_slice(&scene, u32::MAX, u32::MAX).is_empty());
+    }
+
+    #[test]
+    fn legacy_analytic_hash_includes_all_four_vec4s_per_segment() {
+        let mut scene = scene();
+        scene.curves = (0..20).map(|i| i as f32).collect();
+        let node = scene.nodes.get_mut("a").unwrap();
+        node.fill.area = None;
+        node.fill.analytic = Some(futureox_design_kernel::gpu::AnalyticPath {
+            first: 1, count: 1, bands: None,
+        });
+        let expected: Vec<u8> = scene.curves[4..20]
+            .iter().flat_map(|value| value.to_bits().to_le_bytes()).collect();
+        assert_eq!(curves_bits(&scene, &scene.nodes["a"]), expected);
+    }
+
+    #[test]
+    fn managed_all_hit_frame_preserves_cached_linear_values() {
+        let mut cache = TileCache::new();
+        let values = vec![2., -0.25, 0.5, 1.];
+        cache.entries.insert((0, 0), CachedTile {
+            key: [0; 32], rgba: vec![255, 0, 128, 255], linear: Some(values.clone()),
+        });
+        let (rgba, linear) = cache.assemble(&tiles_for(1, 1), 1, 1, &HashMap::new(), true);
+        assert_eq!(rgba, [255, 0, 128, 255]);
+        assert_eq!(linear, Some(values));
+    }
+
+    #[test]
+    fn unmanaged_all_hit_frame_does_not_invent_linear_output() {
+        let mut cache = TileCache::new();
+        cache.entries.insert((0, 0), CachedTile {
+            key: [0; 32], rgba: vec![1, 2, 3, 4], linear: None,
+        });
+        let (rgba, linear) = cache.assemble(&tiles_for(1, 1), 1, 1, &HashMap::new(), false);
+        assert_eq!(rgba, [1, 2, 3, 4]);
+        assert!(linear.is_none());
+    }
 }

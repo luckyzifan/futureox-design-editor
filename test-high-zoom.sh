@@ -1,128 +1,95 @@
-#!/bin/bash
-# Quick verification script for high-zoom implementation
+#!/usr/bin/env bash
+# Targeted unit verification only. Never installs dependencies or builds artifacts.
+set -uo pipefail
 
-set -e
+ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 2
+CLIENT="$ROOT/frontend/design-client"
+SUITE="high-zoom"
+TESTS=(
+  "src/kernel/gpu/renderer.test.ts"
+  "src/kernel/gpu/high-zoom.test.ts"
+)
 
-PROJECT_ROOT="/Users/Apple/project/design-kernel"
-CLIENT_DIR="$PROJECT_ROOT/frontend/design-client"
-DESKTOP_DIR="$PROJECT_ROOT/frontend/design-desktop"
+usage() {
+  printf 'Usage: %s [--list] [--log-dir DIRECTORY]\n' "$(basename "$0")"
+  printf '%s\n' \
+    "Runs only the $SUITE Vitest unit selection using already-prepared local dependencies." \
+    'Requires Node, local Vitest, generated kernel bindings/WASM, and the bundled test font.' \
+    'Does not install, compile the app/kernel, start a browser, or validate GPU pixels/FPS.' \
+    'Creates a unique log directory; all output and the actual failure status are retained.' \
+    'Missing prerequisites exit 2. Test failures preserve the test runner exit status.'
+}
 
-echo "========================================="
-echo "高倍率缩放实现验证脚本"
-echo "========================================="
-echo ""
-
-# Test 1: Unit tests
-echo "✓ 测试1: 运行单元测试"
-cd "$CLIENT_DIR"
-echo "  运行renderer测试..."
-npm test -- renderer.test.ts --run > /dev/null 2>&1 && echo "  ✓ renderer.test.ts 通过" || echo "  ✗ renderer.test.ts 失败"
-echo "  运行high-zoom测试..."
-npm test -- high-zoom.test.ts --run > /dev/null 2>&1 && echo "  ✓ high-zoom.test.ts 通过" || echo "  ✗ high-zoom.test.ts 失败"
-echo ""
-
-# Test 2: Check key implementations
-echo "✓ 测试2: 检查关键实现"
-
-# Check imageLevel function
-if grep -q "if (zoom >= 1.0) return 0" "$CLIENT_DIR/src/kernel/gpu/renderer.ts"; then
-    echo "  ✓ imageLevel: 放大时使用level 0"
-else
-    echo "  ✗ imageLevel: 缺少zoom检查"
+LOG_PARENT="${TMPDIR:-/tmp}"
+LIST_ONLY=0
+while (($#)); do
+  case "$1" in
+    --help|-h) usage; exit 0 ;;
+    --list) LIST_ONLY=1; shift ;;
+    --log-dir)
+      if (($# < 2)) || [[ -z "$2" ]]; then
+        printf 'ERROR: --log-dir requires a directory.\n' >&2
+        exit 2
+      fi
+      LOG_PARENT="$2"; shift 2 ;;
+    *) printf 'ERROR: unknown argument: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+if ((LIST_ONLY)); then
+  printf '%s\n' "Selected unit suite: $SUITE" "${TESTS[@]}"
+  exit 0
 fi
 
-# Check viewport culling
-if grep -q "getViewportRect()" "$CLIENT_DIR/src/kernel/gpu/renderer.ts"; then
-    echo "  ✓ 视口裁剪: getViewportRect已实现"
-else
-    echo "  ✗ 视口裁剪: 缺少实现"
+mkdir -p -- "$LOG_PARENT" || exit 2
+LOG_DIR="$(mktemp -d "${LOG_PARENT%/}/futureox-${SUITE}.XXXXXX")" || exit 2
+LOG="$LOG_DIR/result.log"
+printf 'Log: %s\n' "$LOG"
+
+run_suite() {
+  local missing=0 file status
+  printf 'Suite: %s\nRepository: %s\n' "$SUITE" "$ROOT"
+  printf 'Selected files (%d):\n' "${#TESTS[@]}"
+  printf '  %s\n' "${TESTS[@]}"
+  if ! command -v node >/dev/null 2>&1; then
+    printf 'ERROR: Node is not available.\n' >&2
+    missing=1
+  fi
+  for file in \
+    node_modules/vitest/vitest.mjs \
+    public/kernel/design_kernel_bg.wasm \
+    src/generated/design-kernel/design_kernel.js \
+    public/fonts/NotoSansSC.ttf \
+    "${TESTS[@]}"; do
+    if [[ ! -f "$CLIENT/$file" ]]; then
+      printf 'ERROR: missing prerequisite: %s\n' "$CLIENT/$file" >&2
+      missing=1
+    fi
+  done
+  if ((missing)); then
+    printf '%s\n' 'NOT RUN: prepare dependencies and kernel artifacts separately, then rerun.' >&2
+    return 2
+  fi
+  cd -- "$CLIENT" || return 2
+  printf 'Node: '; node --version || return 2
+  printf 'Running local Vitest; no package-manager install or build step.\n'
+  node ./node_modules/vitest/vitest.mjs run "${TESTS[@]}"
+  status=$?
+  if ((status)); then
+    printf 'FAILED: %s unit selection (runner exit %d).\n' "$SUITE" "$status" >&2
+  else
+    printf 'PASSED: selected %s unit suite only; see runner output for actual counts.\n' "$SUITE"
+  fi
+  return "$status"
+}
+
+run_suite 2>&1 | tee "$LOG"
+STATUSES=("${PIPESTATUS[@]}")
+if ((STATUSES[1] != 0)); then
+  printf 'ERROR: log write failed (tee exit %d).\n' "${STATUSES[1]}" >&2
 fi
-
-# Check Electron budget
-if grep -q "1024 \* 1024 \* 1024.*Electron" "$CLIENT_DIR/src/kernel/gpu/renderer.ts"; then
-    echo "  ✓ GPU内存: Electron使用1GB"
-else
-    echo "  ✗ GPU内存: Electron预算未设置"
+if ((STATUSES[0] != 0)); then
+  exit "${STATUSES[0]}"
 fi
-
-# Check admission fallback
-if grep -q "imageForAdmitted" "$CLIENT_DIR/src/kernel/gpu/renderer.ts"; then
-    echo "  ✓ Admission回退: imageForAdmitted已实现"
-else
-    echo "  ✗ Admission回退: 缺少实现"
+if ((STATUSES[1] != 0)); then
+  exit 2
 fi
-
-echo ""
-
-# Test 3: Build verification
-echo "✓ 测试3: 构建验证"
-cd "$CLIENT_DIR"
-echo "  构建frontend..."
-npm run build > /tmp/build-frontend.log 2>&1
-if [ $? -eq 0 ]; then
-    echo "  ✓ Frontend构建成功"
-else
-    echo "  ✗ Frontend构建失败"
-    tail -20 /tmp/build-frontend.log
-fi
-echo ""
-
-# Test 4: Check test files
-echo "✓ 测试4: 检查测试文件"
-if [ -f "$HOME/Downloads/111.sketch" ]; then
-    SIZE=$(ls -lh "$HOME/Downloads/111.sketch" | awk '{print $5}')
-    echo "  ✓ 找到大型Sketch文件: 111.sketch ($SIZE)"
-else
-    echo "  ⚠ 未找到111.sketch"
-fi
-
-if ls "$HOME/Downloads"/*.fig >/dev/null 2>&1; then
-    COUNT=$(ls "$HOME/Downloads"/*.fig | wc -l)
-    echo "  ✓ 找到Figma文件: $COUNT 个"
-else
-    echo "  ⚠ 未找到Figma文件"
-fi
-echo ""
-
-# Summary
-echo "========================================="
-echo "实现摘要"
-echo "========================================="
-echo ""
-echo "已实现功能:"
-echo "  1. ✓ 图片导入 (PNG/JPG/JPEG)"
-echo "  2. ✓ 文本justify布局"
-echo "  3. ✓ SVG导入增强 (渐变/文本/滤镜)"
-echo "  4. ✓ 组件属性 (number/variant)"
-echo "  5. ✓ 原型触发器 (drag/keyboard/media)"
-echo "  6. ✓ 高倍率缩放优化"
-echo "     - Mipmap选择: 放大时level 0"
-echo "     - 视口裁剪: 300%+启用"
-echo "     - GPU内存: Electron 1GB, Web 256MB"
-echo "     - Admission回退: level 0失败→level 1"
-echo ""
-echo "测试覆盖:"
-echo "  - renderer.test.ts: 35个测试"
-echo "  - high-zoom.test.ts: 8个测试"
-echo "  - 总计: 43个测试通过"
-echo ""
-echo "性能目标:"
-echo "  - 3200%放大: 不允许失真"
-echo "  - 平移帧率: 30-60fps"
-echo "  - 内存使用: Web ≤256MB, Electron ≤1GB"
-echo ""
-echo "========================================="
-echo "下一步: 手动测试"
-echo "========================================="
-echo ""
-echo "Web测试:"
-echo "  cd $CLIENT_DIR"
-echo "  npm run dev"
-echo "  打开浏览器: http://localhost:5173"
-echo ""
-echo "Electron测试:"
-echo "  cd $DESKTOP_DIR"
-echo "  npm run dev"
-echo ""
-echo "详细测试指南: TEST_HIGH_ZOOM.md"
-echo ""

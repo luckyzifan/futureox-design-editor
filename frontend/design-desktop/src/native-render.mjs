@@ -7,6 +7,10 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { MAX_FRAME_BYTES } from './security.mjs'
+
+export const NATIVE_RENDER_MAX_PENDING = 8
+export const NATIVE_RENDER_MAX_PENDING_BYTES = 96 * 1024 * 1024
 
 export function nativeRenderPaths(resourcesRoot) {
   return {
@@ -15,68 +19,115 @@ export function nativeRenderPaths(resourcesRoot) {
   }
 }
 
-class NativeRenderProcess {
-  constructor(binaryPath, fontPath, backend) {
+export class NativeRenderProcess {
+  constructor(binaryPath, fontPath, backend, { timeoutMs = 120_000, spawnProcess = spawn } = {}) {
     this.binaryPath = binaryPath
     this.fontPath = fontPath
     this.backend = backend
     this.proc = undefined
-    this.buffer = ''
+    this.spawn = spawnProcess
+    this.timeoutMs = timeoutMs
+    this.parts = []
+    this.bufferBytes = 0
     this.pending = undefined
+    this.queue = []
+    this.pendingBytes = 0
+    this.writeBlocked = false
+    this.closed = false
   }
 
   get available() {
-    return this.proc !== undefined && this.proc.exitCode === null
+    return !this.closed && this.proc !== undefined && this.proc.exitCode === null && this.proc.signalCode === null
   }
 
   spawnProcess() {
     const args = ['--serve', '--backend', this.backend]
     if (this.fontPath) args.push('--font', this.fontPath)
-    this.proc = spawn(this.binaryPath, args, { stdio: ['pipe', 'pipe', 'pipe'] })
-    this.proc.stdout.on('data', (chunk) => {
-      this.buffer += chunk.toString('utf-8')
-      const lines = this.buffer.split('\n')
-      this.buffer = lines.pop() || ''
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          this.dispatch(JSON.parse(line))
-        } catch { /* incomplete line */ }
+    this.proc = this.spawn(this.binaryPath, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    const fail = error => { void this.stop(error) }
+    this.proc.stdout.on('data', chunk => this.consume(chunk))
+    this.proc.stdout.on('error', fail)
+    // A full stderr pipe must never stall rendering. Do not expose document diagnostics.
+    this.proc.stderr.on('data', () => {})
+    this.proc.stderr.on('error', fail)
+    this.proc.stdin.on('error', fail)
+    this.proc.stdin.on('drain', () => { this.writeBlocked = false; this.flush() })
+    this.proc.on('error', fail)
+    // stdout can still contain the final reply after exit; settle only on close.
+    this.proc.on('close', () => fail(new Error('Native render process exited')))
+  }
+
+  consume(chunk) {
+    if (this.closed) return
+    let offset = 0
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf(10, offset)
+      const end = newline < 0 ? chunk.length : newline
+      const part = chunk.subarray(offset, end)
+      if (this.bufferBytes + part.length > MAX_FRAME_BYTES) {
+        void this.stop(new Error('Native render response exceeded limit')); return
       }
-    })
-    this.proc.on('error', (error) => {
-      this.pending?.reject(error)
-      this.pending = undefined
-    })
-    this.proc.on('exit', () => {
-      this.pending?.reject(new Error('Native render process exited'))
-      this.pending = undefined
-      this.proc = undefined
-    })
+      this.parts.push(part); this.bufferBytes += part.length
+      if (newline < 0) return
+      const line = Buffer.concat(this.parts, this.bufferBytes)
+      this.parts = []; this.bufferBytes = 0; offset = newline + 1
+      if (!line.length) continue
+      try { this.dispatch(JSON.parse(line.toString('utf8'))) }
+      catch { void this.stop(new Error('Malformed native render response')); return }
+      if (this.closed) return
+    }
+  }
+
+  settle(request, error, value) {
+    clearTimeout(request.timer)
+    this.pendingBytes -= request.bytes
+    if (error) request.reject(error)
+    else request.resolve(value)
+  }
+
+  flush() {
+    if (this.closed || this.pending || this.writeBlocked || !this.queue.length) return
+    const request = this.queue.shift()
+    this.pending = request
+    try {
+      this.writeBlocked = !this.proc.stdin.write(request.frame, error => {
+        if (error) void this.stop(error)
+      })
+    } catch (error) { void this.stop(error) }
   }
 
   dispatch(msg) {
     const pending = this.pending
-    if (!pending) return
-    if (msg.type === 'error') {
-      this.pending = undefined
-      pending.reject(new Error(msg.message || 'Native render error'))
-    } else if (msg.type === pending.kind) {
-      this.pending = undefined
-      pending.resolve(msg)
-    }
+    if (!pending || !msg || (msg.type !== 'error' && msg.type !== pending.kind))
+      throw new Error('Unexpected native render response')
+    this.pending = undefined
+    this.settle(pending, msg.type === 'error' ? new Error(msg.message || 'Native render error') : undefined, msg)
+    this.flush()
   }
 
   request(kind, msg) {
     if (!this.available) throw new Error('Native render process is not running')
+    if (this.queue.length + Number(!!this.pending) >= NATIVE_RENDER_MAX_PENDING)
+      return Promise.reject(new Error('Native render queue full'))
+    const frame = JSON.stringify(msg) + '\n'
+    const bytes = Buffer.byteLength(frame)
+    if (bytes - 1 > MAX_FRAME_BYTES || this.pendingBytes + bytes > NATIVE_RENDER_MAX_PENDING_BYTES)
+      return Promise.reject(new Error('Native render request byte budget exceeded'))
     return new Promise((resolve, reject) => {
-      this.pending = { resolve, reject, kind }
-      this.proc.stdin.write(JSON.stringify(msg) + '\n')
+      const timer = setTimeout(() => { void this.stop(new Error('Native render timed out')) }, this.timeoutMs)
+      this.pendingBytes += bytes
+      this.queue.push({ resolve, reject, kind, frame, bytes, timer })
+      this.flush()
     })
   }
 
   async load(documentJson) {
-    if (!this.available) this.spawnProcess()
+    if (this.closed) throw new Error('Native render bridge closed')
+    if (!this.available) {
+      // Do not replace an exited child until its stdout/close boundary settles.
+      if (this.proc) throw new Error('Native render process is exiting')
+      this.spawnProcess()
+    }
     await this.request('loaded', { cmd: 'load', document: documentJson })
   }
 
@@ -90,13 +141,16 @@ class NativeRenderProcess {
     return msg.stats || {}
   }
 
-  stop() {
+  stop(error = new Error('Bridge stopped')) {
     if (this.stopping) return this.stopping
+    this.closed = true
     const child = this.proc
     this.proc = undefined
-    this.buffer = ''
-    this.pending?.reject(new Error('Bridge stopped'))
+    this.parts = []; this.bufferBytes = 0
+    if (this.pending) this.settle(this.pending, error)
     this.pending = undefined
+    for (const request of this.queue) this.settle(request, error)
+    this.queue = []
     if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
     this.stopping = new Promise(resolve => {
       const force = setTimeout(() => child.kill('SIGKILL'), 2000)
@@ -160,6 +214,7 @@ export function registerNativeRender(ipcMain, { resourcesRoot, cpuOnly = false, 
     ipcMain.handle(`native-render:${name}`, async (event, ...args) => {
       try {
         assertSender?.(event)
+        if (bridge?.closed) void retire()
         observeOwner(event)
         return { ok: true, ...(await action(...args)) }
       } catch (error) {

@@ -25,7 +25,7 @@ const responseReservations = new Map([
   ['catalog.scan', 2 * 1024 * 1024],
 ])
 const responseReservation = (method) => responseReservations.get(method) || 4096
-const writeMethods = new Set(['sketch.session.setLeafFrame', 'sketch.session.saveAs', 'sketch.session.undo', 'sketch.session.redo', 'sketch.session.open', 'sketch.session.rename', 'sketch.session.close', 'save', 'recovery.write', 'recovery.remove', 'catalog.register', 'catalog.scan', 'workspace.commit', 'workspace.trash', 'workspace.restore'])
+const writeMethods = new Set(['sketch.session.resizeLegacyContainer', 'sketch.session.setTextOverride', 'sketch.session.setLeafFrame', 'sketch.session.saveAs', 'sketch.session.undo', 'sketch.session.redo', 'sketch.session.open', 'sketch.session.rename', 'sketch.session.close', 'save', 'recovery.write', 'recovery.remove', 'catalog.register', 'catalog.scan', 'workspace.commit', 'workspace.trash', 'workspace.restore'])
 
 export class Sidecar extends EventEmitter {
   constructor(executable, recoveryDir, { timeoutMs = 30_000, spawnProcess = spawn, catalogDb, workspaceDb, maxPendingBytes = MAX_PENDING_BYTES } = {}) {

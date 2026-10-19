@@ -4,11 +4,13 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'rea
 import type { SurfaceProps } from './Surface'
 import { KernelClient, renderExecutionPolicy, type TileDamage, type TileResult } from './client'
 import { paintDamageIntersects } from './paint-damage'
+import { recordRenderDiagnostic, renderDiagnosticError, renderDiagnostics } from './render-diagnostics'
 import type { BackendPreference } from './gpu/types'
 import type { ColorPresenter } from './color-presenter'
 import { TILE_SIDE, budgetTileLimit, displayTileBudget, tilesCoverBounds, type RasterTile } from './tile-cache'
 import { planTilesAligned, planTilesWithPrefetchRim, tilePrefetchRingsFromHost } from './tile-plan-aligned'
 import { canvasLodScale, canvasRasterPlan, canvasSamplingScale, motionRasterScale } from './canvas-raster-plan'
+import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
 import { tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
@@ -491,8 +493,7 @@ export function ProgressiveSurfaceImpl(
   // speculative larger density can cross the surface limit before the exact
   // requested density is even scheduled. Keep full screen density for these
   // documents, without oversampling a future camera that may never be used.
-  const filteredContent = useMemo(() => Object.values(doc.nodes).some(node =>
-    node.effects.some(fx => fx.visible && ['blur','background-blur','shadow','inner-shadow','glass'].includes(fx.kind))), [doc])
+  const filteredContent = useMemo(() => pageHasFilteredContent(doc, pageId), [doc.nodes, doc.pages, pageId])
   const samplingScale = nativeSampling || filteredContent ? detailLevel : zooming && !cameraDependent && singleCanvas
     ? motionRasterScale(view, dpr, width, height)
     : canvasSamplingScale(view, dpr, width, height, stableDensity, hdrCompositing && !!doc.colorManagement)
@@ -593,6 +594,7 @@ export function ProgressiveSurfaceImpl(
   }).current
   const errorHandler = useRef((id: string, serial: number, message: string) => {
     if (tileRef.current.get(id)?.serial !== serial) return
+    recordRenderDiagnostic({ kind: 'error', errorCode: renderDiagnosticError(message) })
     // Failed display payloads cannot be considered resident cache hits on a
     // subsequent request for the same camera. Unrelated old work cannot label
     // a newer completed frame as failed.
@@ -678,6 +680,8 @@ export function ProgressiveSurfaceImpl(
     setStats((s) => ({ ...s, complete: false }))
     if (props.paused) return
     setFailure('')
+    recordRenderDiagnostic({ kind: 'request', zoom: view.zoom, dpr,
+      requestedDensity: view.zoom * dpr, sampledDensity: renderScale })
     const viewport = {
       x: -view.x / view.zoom,
       y: -view.y / view.zoom,
@@ -701,6 +705,11 @@ export function ProgressiveSurfaceImpl(
         return
       }
       presentationOwnership.current.track(tile.gpuTile)
+      recordRenderDiagnostic({ kind: 'tile', zoom: view.zoom, dpr,
+        requestedDensity: view.zoom * dpr, sampledDensity: tile.zoom,
+        cacheHits: tile.cached ? 1 : 0, cacheMisses: tile.cached ? 0 : 1,
+        totalMs: tile.milliseconds, compileMs: tile.compileMs, graphMs: tile.graphMs,
+        finishMs: tile.finishMs, checkpointMs: tile.checkpointMs })
       if (import.meta.env.DEV) {
         rasterTrace.current.push({kind:tile.viewportPreview?'preview':tile.prefetch?'prefetch':'tile',scale:tile.zoom,cameraFallback:tile.cameraFallback,
           total:tile.milliseconds||0,compile:tile.compileMs||0,graph:tile.graphMs||0,finish:tile.finishMs||0,checkpoint:tile.checkpointMs||0})
@@ -782,6 +791,9 @@ export function ProgressiveSurfaceImpl(
         setTiles(touched)
       }
       const missing = plan.filter((t) => !isResident(t))
+      recordRenderDiagnostic({ kind: 'cache', zoom: view.zoom, dpr,
+        requestedDensity: view.zoom * dpr, sampledDensity: renderScale,
+        cacheHits: resident.length, cacheMisses: missing.length })
       const rimMissing = prefetch.rim.filter((t) => !isResident(t))
       const rimResident = prefetch.rim.length - rimMissing.length
       if (resident.length + rimResident)
@@ -920,7 +932,10 @@ export function ProgressiveSurfaceImpl(
       if (current() && bootstrapCoverage) await bootstrapCoverage()
     }
     const failed = (error: unknown) => {
-      if (!current() || String(error).includes('PREVIEW_CANCELLED')) return
+      if (!current()) return
+      recordRenderDiagnostic({ kind: 'error', zoom: view.zoom, dpr,
+        requestedDensity: view.zoom * dpr, errorCode: renderDiagnosticError(error) })
+      if (String(error).includes('PREVIEW_CANCELLED')) return
       if (backend === 'auto' && String(error).includes('PREVIEW_CPU_FALLBACK:'))
         props.onFallback(String(error))
       else { setFailure(String(error)); latestContext.current.onRenderFailure?.() }
@@ -1407,12 +1422,26 @@ export function ProgressiveSurfaceImpl(
           interaction={props.interaction} pageId={pageId} rasterProfile={rasterProfile} backend={backend}
           settledDocument={fullPlanReady ? doc : undefined}
           onPresented={(frame,source)=>{
+            if (renderDiagnostics.recording) {
+              const ids = new Set(frame.ids)
+              // These are acknowledged texture sampling densities, not a
+              // pixel-quality oracle. A received tile is not yet published.
+              const densities = [...tileRef.current.values()]
+                .filter(tile => tile.gpuTile !== undefined && ids.has(tile.gpuTile))
+                .map(tile => tile.zoom)
+              recordRenderDiagnostic({ kind: 'present', zoom: frame.view.zoom, dpr: frame.dpr,
+                requestedDensity: requestedView.zoom * dpr,
+                publishedDensity: densities.length ? Math.min(...densities) : undefined })
+            }
             acknowledged.current={...frame,ids:new Set(frame.ids)};commitRef.current()
             if(source)props.onPresentation?.(source)
           }}
           onReady={readyHandler} onGone={goneHandler} onError={errorHandler}
           onFailure={message => {
-            if (import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile') console.debug('DESIGN_PRESENTATION_FAILURE '+message)
+            const errorCode = renderDiagnosticError(message)
+            recordRenderDiagnostic({ kind: 'error', zoom: requestedView.zoom, dpr,
+              requestedDensity: requestedView.zoom * dpr, errorCode })
+            if (import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile') console.debug('DESIGN_PRESENTATION_FAILURE '+errorCode)
             setFailure(message); props.onRenderFailure?.();
             if (residentDisplay || backend === 'auto') props.onFallback(`PREVIEW_CPU_FALLBACK: ${message}`) }}
         /> })() : visible.map((tile) => {

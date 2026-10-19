@@ -43,3 +43,10 @@ test('shutdown reaps a child which ignores graceful termination',{skip:process.p
   const f=await fixture(t,true), pid=await f.load()
   await f.stop();await exited(pid)
 })
+test('a failed child can be explicitly reloaded with window ownership preserved',{skip:process.platform==='win32'},async t=>{
+  const f=await fixture(t), first=await f.load()
+  process.kill(first,'SIGTERM');await exited(first)
+  const second=await f.load();assert.notEqual(second,first)
+  f.sender.emit('destroyed')
+  await exited(second)
+})
