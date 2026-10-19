@@ -1,7 +1,7 @@
 //! CPU raster surfaces and the pool that recycles them.
 //!
-//! Sketch's `MSRasterSurface` (class-dump `SketchRendering_dump.txt` lines
-//! 1271–1294) is one object presenting three faces: an `IOSurface`, the
+//! Sketch's `MSRasterSurface` is one object presenting three faces: an
+//! `IOSurface`, the
 //! `CGContext` the CPU draws through, and the `MTLTexture` the compositor
 //! samples — zero-copy shared memory between CPU rasterisation and GPU
 //! composition. This module is the CPU half of that contract: a plain RGBA8

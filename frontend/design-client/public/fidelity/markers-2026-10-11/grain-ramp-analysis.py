@@ -3,7 +3,7 @@
 texture-ramps-2026-10-08 fixtures (256x256 Chrome 1x exports, x/y grayscale
 ramps, unclipped texture radius 64, noiseSize 8/16).
 
-Findings recorded 2026-10-11 (see grain-notes.md in this directory):
+Findings recorded 2026-10-11:
  1. displacement amplitude ~ +-0.44*radius (p95), independent of noiseSize;
  2. correlation length ~ noiseSize, no positive peaks at multiples (no tiling
     within 64px, unlike frost which tiles at 128px);

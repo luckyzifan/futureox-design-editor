@@ -280,7 +280,7 @@ pub(crate) fn over_mode(dst: Pixel, src: Pixel, mode: BlendMode) -> Pixel {
         BlendMode::Saturation => set_lum(set_sat(b, sat(s)), lum(b)),
         BlendMode::Color => set_lum(s, lum(b)),
         BlendMode::Luminosity => set_lum(b, lum(s)),
-        // Figma blend types 17/18 (recovered from its wasm shader_126):
+        // Figma blend types 17/18:
         // linear-burn = max(0, backdrop + source - 1) per channel in
         // premultiplied space; linear-dodge = min(1, backdrop + source).
         BlendMode::LinearBurn => [

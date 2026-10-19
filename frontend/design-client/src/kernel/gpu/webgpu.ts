@@ -85,7 +85,7 @@ export class WebGpuDriver implements Driver {
   readonly exactShadowOver = true
   private displayFilters = false
   private displayFilterPipeline?: GPURenderPipeline
-  /** Figma-faithful paired-tent blur (shader_78 port): needs hardware linear
+  /** Figma-faithful paired-tent blur: needs hardware linear
    * filtering, so it carries its own filterable bind layout beside the
    * unfilterable-float exact compositor layout. */
   private figmaBlur?: { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout; sampler: GPUSampler }
@@ -662,7 +662,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
           console.warn('Paired blur unavailable; using integrated tent filter', error)
         }
       }
-      // SDF shadow (shader_129): pure SDF math, reuses figmaBlur layout
+      // SDF shadow: pure SDF math, reuses figmaBlur layout
       if (experimentalEffects && !this.figmaSdfShadow && this.figmaBlur) {
         try {
           const module = this.device.createShaderModule({ code: figmaSdfShadowWgsl, label: 'Figma SDF shadow' })
@@ -676,7 +676,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
           })
         } catch { this.figmaSdfShadow = undefined }
       }
-      // Canvas chrome (shader_03): checkerboard/dot background
+      // Canvas chrome: checkerboard/dot background
       if (experimentalEffects && !this.figmaCanvasChrome && this.figmaBlur) {
         try {
           const module = this.device.createShaderModule({ code: figmaCanvasChromeWgsl, label: 'Figma canvas chrome' })
@@ -690,7 +690,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
           })
         } catch { this.figmaCanvasChrome = undefined }
       }
-      // Shadow blur (shader_118): scalar tent with packing ladder
+      // Shadow blur: scalar tent with packing ladder
       if (experimentalEffects && !this.figmaShadowBlur && this.figmaBlur) {
         try {
           const module = this.device.createShaderModule({ code: figmaShadowBlurWgsl, label: 'Figma shadow blur' })
@@ -1357,7 +1357,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       pass.setPipeline(this.pairedDisplay.pipeline); pass.setBindGroup(0, bind); pass.draw(3); pass.end()
       this.drawCalls++; this.pairedFilterPasses++; return
     }
-    // shader_78 consumes an explicit count/spacing contract. Its point-tent
+    // The paired blur consumes an explicit count/spacing contract. Its point-tent
     // kernel is not interchangeable with our integrated pixel-area weights.
     // Ordinary canvas filters retain those weights via displayFilterWgsl;
     // paired sampling requires an explicitly supplied count, never a guessed
@@ -1384,7 +1384,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       this.drawCalls++
       return
     }
-    // SDF shadow (shader_129): mode 6 + u[44]>0 = SDF params flag
+    // SDF shadow: mode 6 + u[44]>0 = SDF params flag
     if (this.figmaSdfShadow && u[16] === 6 && u[59] === 1 && !region) {
       const bind = this.device.createBindGroup({
         layout: this.figmaBlur!.layout,
@@ -1404,7 +1404,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       this.drawCalls++
       return
     }
-    // Canvas chrome (shader_03): mode 6 + u[48]>0 = checkerboardStyle
+    // Canvas chrome: mode 6 + u[48]>0 = checkerboardStyle
     if (this.figmaCanvasChrome && u[16] === 6 && u[60] === 1 && !region) {
       const bind = this.device.createBindGroup({
         layout: this.figmaBlur!.layout,
@@ -1424,7 +1424,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       this.drawCalls++
       return
     }
-    // Shadow blur (shader_118): displayFilter + mode 22 + shadow flag
+    // Shadow blur: displayFilter + mode 22 + shadow flag
     if (this.figmaShadowBlur && displayFilter && u[16] === 22 && u[45] > 0 && !region) {
       const bind = this.device.createBindGroup({
         layout: this.figmaBlur!.layout,

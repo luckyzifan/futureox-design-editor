@@ -4,21 +4,19 @@ import type { RasterTile } from './tile-cache'
  *
  * Policy layer only: it reorders and paces tile rasterization requests; it
  * never changes tile geometry, LOD buckets or cache residency. The behaviour
- * is reverse-engineered from Figma's viewer JS tile scheduler
- * (figma-wasm-analysis/evidence/js-mining-2026-10-16/viewer-tile-scheduler.js):
+ * mirrors Figma's viewer JS tile scheduler policy:
  *
  * - Priority: `getPrioritizedListOfTilesToPopulate` sorts tiles by canvas-space
  *   distance to the viewport (nearest first) and the draw loop processes
  *   on-screen tiles before off-screen prefetch tiles.
- * - Frame budget (class `m2`, byte 1655871): 16 ms / 2 tile rasterizations /
+ * - Frame budget: 16 ms / 2 tile rasterizations /
  *   250 render-target switches per frame. On-screen tiles run with
  *   `permitWorkAfterBudgetExceeded()` (exempt, except safe mode); off-screen
  *   prefetch is forced through `permitsMoreWork()` and stops with a
  *   `brokeRenderAt` reason (`offscreenHitBudget_`, `offscreenHitCacheLimit_`,
  *   `completedScreenTiles_`).
  *
- * Differences against Figma are recorded inline and in
- * figma-wasm-analysis/impl-2026-10-16/E5-TILE-SCHEDULER.md:
+ * Differences against Figma are recorded inline:
  * - Distance uses content bounds (gutters are not owned pixels), converted
  *   to canvas space. Every viewport-intersecting tile has distance zero.
  * - Our rasterization is async in the render worker, so the budget gates

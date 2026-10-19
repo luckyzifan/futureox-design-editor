@@ -1,12 +1,11 @@
 //! Deterministic Gabor-kernel displacement field for GRAIN-class textures.
-//! Port of the reverse-engineered reference generator (fidelity corpus
-//! markers-2026-10-11/gabor-generator.py, parameters in grain-notes.md):
+//! Reference generator (fidelity corpus markers-2026-10-11/gabor-generator.py):
 //! Hann-windowed kernels on a jittered half-size grid, uniform orientations,
 //! carrier wavelength 2.2 noise sizes, output displacement std = radius/4.
 //! Coordinates are normalized by the authored noise size, so the field scales
 //! exactly with noise_size. The deterministic constants are a kernel-local
-//! SplitMix64 hash; Figma's own generator constants remain unidentified, so
-//! this reproduces the statistical fingerprint, not Figma's bytes.
+//! SplitMix64 hash; this reproduces the statistical fingerprint of the
+//! reference textures, not any vendor's exact bytes.
 
 // Kernel grid spacing, carrier wavelength and envelope widths, in noise sizes.
 const SPACING: f64 = 0.5;
@@ -248,7 +247,7 @@ mod tests {
     fn radial_autocorrelation_matches_the_gabor_fingerprint() {
         let size = 128;
         let v = grid(size, 8., 64.);
-        // Fingerprint targets for noise size 8 (grain-notes.md / generator):
+        // Fingerprint targets for noise size 8 (reference generator):
         // smooth core, first zero crossing near 0.8-1.0 sizes, shallow
         // negative lobe near 1.25 sizes, no long-range correlation.
         let lags: Vec<f64> = (0..=16).map(|l| autocorrelation(&v, size, l, 0)).collect();

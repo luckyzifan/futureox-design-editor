@@ -1,26 +1,21 @@
 /**
  * JIT-style playback orchestration for the animation preview.
  *
- * Ported from the reverse-engineered Figma viewer Smart Animate JS
- * orchestration (`figma-wasm-analysis/evidence/js-mining-2026-10-16/
- * viewer-smart-animate-jit.js`, 2026-10-16 round; see GLUE-JS-MINING.md §3).
  * This module is the *orchestration layer* alignment only — gate ladder,
  * playback state machine, dt clamp, per-frame dirty invalidation and the
  * kernel bake contract. The kernel-level JIT track-group system (clone
  * carriers named `-JitAnimationClone-From/To`, `setupJitAnimationNode`'s
- * track-group construction, JIT-TRACK.md §4) is a recorded follow-up and is
+ * track-group construction) is a recorded follow-up and is
  * deliberately NOT pretended here.
  *
- * Spec anchors (viewer-e4fa8fc59235ee9e.min.js byte offsets in evidence):
- * - gate ladder `u_` @810119 / `uT` @810822, telemetry enums `ur`/`ui` @804124
- * - activation `materializeJitNavigateAnimationNode` @1229156
- *   (wasm returns `{timelineDefId, durationUs}`; `jitSourceCloneMode`
- *   `clone_free|clone_backed`)
- * - playback manager `hq` @1196586 / `computePlaybackTimeUs` @1202663
+ * Behavioral spec:
+ * - gate ladder + telemetry enums for fallback reasons
+ * - activation: wasm returns `{timelineDefId, durationUs}`;
+ *   `jitSourceCloneMode` `clone_free|clone_backed`
+ * - playback manager `computePlaybackTimeUs`
  *   (SCRUB/SETTLING math, wall-clock clamp)
- * - legacy tracker `me` @1521910 (`advanceToNextFrame` clamps dt to 1/30s)
- * - eased progress @1774571, transition end COMMIT/ABORT @1774836,
- *   per-frame `dirtyNode` @1778258
+ * - legacy tracker `advanceToNextFrame` clamps dt to 1/30s
+ * - eased progress, transition end COMMIT/ABORT, per-frame `dirtyNode`
  */
 import type { AnimationClip } from './animation'
 import type { DesignDocument } from './model'
@@ -31,7 +26,7 @@ import { createAnimationBakeSession, kernelBakeRevision } from './kernel/bake-se
 // ---------------------------------------------------------------------------
 
 /**
- * Figma's fallback-reason culture (telemetry fields `ur`/`ui` @804124):
+ * Figma's fallback-reason culture (telemetry fallback fields):
  * `outcome: completed|aborted|fallback` plus
  * `fallbackReason: jit_disabled|legacy_required|missing_source|
  *  missing_prototype_lib|materialization_failed`.
@@ -81,7 +76,7 @@ export type PlaybackGateInput = {
   clipId: string
   pageId: string
   /**
-   * `transitionOverridesEnabled` equivalent (`uT` @810822): a per-request
+   * `transitionOverridesEnabled` equivalent: a per-request
    * override that keeps the JIT track even when the default-on gate would
    * fall back to legacy. Real bit #3.
    */
@@ -111,7 +106,7 @@ export function clipHasMotion(clip: AnimationClip): boolean {
 }
 
 /**
- * The eligibility gate, rung by rung after Figma's `u_` @810119:
+ * The eligibility gate, rung by rung:
  * 1. action resolves a playable clip on this page (`ug` action predicate) —
  *    failure is `missing_source`;
  * 2. `disable_jit` → `jit_disabled`;
@@ -156,7 +151,7 @@ export function resolvePlaybackTrack(
 
 /**
  * Activation handle, shaped after the wasm entry's return value in
- * `materializeJitNavigateAnimationNode` @1229156: `{timelineDefId,
+ * `materializeJitNavigateAnimationNode`: `{timelineDefId,
  * durationUs}` plus the orchestration data the JS side derives from it.
  */
 export type KernelBakeHandle = {
@@ -167,7 +162,7 @@ export type KernelBakeHandle = {
   /** Track snapshot with keyframe times sorted once per bake. */
   tracks: ReadonlyArray<{ nodeId: string; keyframeTimesMs: readonly number[] }>
   /**
-   * `clone_free | clone_backed` @1229156. Ours is always `clone_free`: the
+   * `clone_free | clone_backed`. Ours is always `clone_free`: the
    * render path samples the live document through the kernel render contract
    * and never materializes clone carriers. `clone_backed` is the placeholder
    * for the kernel-level track-group follow-up.
@@ -235,7 +230,7 @@ export function createClipBakeSource(isKernelReady: () => boolean): AnimationBak
  * shape, same validation (delegated to the pure-TS source); when the kernel
  * session binding is live, the bake additionally materializes through the
  * kernel — one `bake` of the clip's page pair at the document's revision,
- * the `materializeJitNavigateAnimationNode` @1229156 analogue — which
+ * the `materializeJitNavigateAnimationNode` analogue — which
  * registers the pair in the kernel's in-flight mutex and warms the plan
  * cache (the cache entry outlives the immediately released guard). A
  * kernel-side failure (e.g. a `BakeConflict` against another live playback)
@@ -269,7 +264,7 @@ export function createKernelClipBakeSource(isKernelReady: () => boolean): Animat
 // ---------------------------------------------------------------------------
 
 /**
- * Accumulator for the per-frame `dirtyNode` contract (@1778258: object
+ * Accumulator for the per-frame `dirtyNode` contract (object
  * animations call `dirtinessTracker.dirtyNode(target)` every frame while in
  * progress). The playback marks its baked node set on every emitted frame;
  * damage consumers (tile/damage scheduling) drain the set when they repaint.
@@ -332,11 +327,11 @@ export type PlaybackTick = {
 
 /**
  * Figma's legacy (baked) tracker clamps each frame's dt to 1/30s
- * (`me.advanceToNextFrame` @1521910: `t = Math.min(t, 1/30)`) so a dropped
+ * (`advanceToNextFrame`: `t = Math.min(t, 1/30)`) so a dropped
  * frame cannot lunge the transition. The wall-clock/external path computes
  * absolute elapsed time instead of accumulating deltas, so it stays
  * unclamped (a hitch lands on the correct absolute time, clamped only to
- * [0, duration] the way `computePlaybackTimeUs` @1202663 does).
+ * [0, duration] the way `computePlaybackTimeUs` does).
  */
 export const LEGACY_DT_CLAMP_SECONDS = 1 / 30
 
@@ -347,7 +342,7 @@ export type AnimationPlaybackOptions = {
   /** Dirty targets, normally the bake handle's `nodeIds`. */
   dirtyNodeIds?: readonly string[]
   /**
-   * `easingFunction.get(rawProgress)` equivalent (@1774571). Null by
+   * `easingFunction.get(rawProgress)` equivalent. Null by
    * default: clip easing is applied inside the kernel sampler
    * (`sample_validated` runs `a.easing.sample(...)`), and the orchestrator
    * deliberately does not double-apply it. Injected only by consumers that

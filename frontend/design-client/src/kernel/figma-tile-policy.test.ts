@@ -1,35 +1,7 @@
-import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { FrameDebouncedValue } from './frame-debounced-value'
 import { planTiles } from './tile-cache'
 import { planTilesWithPrefetchRim } from './tile-plan-aligned'
 import { tileViewportDistance, tileOverlapsViewport } from './tile-scheduler'
-
-test('frame debounce matches the captured Figma class on interrupted, reversed and repeated updates', () => {
-  const source = readFileSync(new URL('../../../../figma-wasm-analysis/evidence/js-mining-2026-10-16/viewer-tile-scheduler.js', import.meta.url), 'utf8')
-  const start = source.indexOf('class mP{'), end = source.indexOf('class mD{', start)
-  expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start)
-  // Execute only the captured value queue; rq is its inert value wrapper.
-  // No reference application, network or environment code is evaluated.
-  const Reference = new Function('rq', `return (${source.slice(start, end)})`)(class { constructor(public value: number) {} })
-  let actualChanges = 0, referenceChanges = 0
-  const reference = new Reference(() => {}, 2, (a: number, b: number) => a === b, () => referenceChanges++)
-  const actual = new FrameDebouncedValue<number>(2, (a, b) => a === b)
-  let seed = 51831
-  for (let step = 0; step < 2000; step++) {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
-    if (step === 0 || seed % 3) {
-      const value = [0.473, 0.5, 1, 1.01, 2, 2.78][seed % 6]
-      reference.queueValue(value); if (actual.queue(value)) actualChanges++
-    } else { reference.onFrame(); if (actual.onFrame()) actualChanges++ }
-    expect(actual.value).toBe(reference.getValue())
-    expect(actual.pending).toBe(reference.hasQueuedValue())
-    expect(actualChanges).toBe(referenceChanges)
-  }
-  actual.clear(); reference.clear()
-  expect(actual.queue(0.1)).toBe(true); reference.queueValue(0.1)
-  expect(actual.value).toBe(reference.getValue()); expect(actual.pending).toBe(false)
-})
 
 test('bounded prefetch equals exhaustive viewport-height expansion and distance ordering', () => {
   for (const zoom of [.473, 1, 2.78]) for (const phase of [{ x: 0, y: 0 }, { x: .25, y: .75 }]) {

@@ -1,0 +1,630 @@
+{
+  "createdNodeIds": [
+    "63:2",
+    "63:3"
+  ],
+  "mutatedNodeIds": [
+    "62:2"
+  ],
+  "twin": {
+    "id": "63:2",
+    "name": "MaterialQA-texture-size-8-twin",
+    "sourceFrameId": "62:181"
+  },
+  "boards": [
+    {
+      "id": "62:2",
+      "name": "Kernel material probes 2026-10-07",
+      "x": 96,
+      "y": 320,
+      "width": 3472,
+      "height": 128,
+      "children": [
+        {
+          "id": "62:3",
+          "name": "MaterialQA-glass-neutral",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              96
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:5",
+          "name": "MaterialQA-light-0",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              248
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:7",
+          "name": "MaterialQA-light-90",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              400
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:9",
+          "name": "MaterialQA-light-180",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              552
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:11",
+          "name": "MaterialQA-light-270",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              704
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:13",
+          "name": "MaterialQA-light-strong",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              856
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:15",
+          "name": "MaterialQA-depth-1",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1008
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:33",
+          "name": "MaterialQA-depth-8",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1160
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:51",
+          "name": "MaterialQA-depth-24",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1312
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:69",
+          "name": "MaterialQA-refraction-1",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1464
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:87",
+          "name": "MaterialQA-dispersion-half",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1616
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:105",
+          "name": "MaterialQA-dispersion-without-refraction",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1768
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:123",
+          "name": "MaterialQA-frost-quarter",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1920
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:141",
+          "name": "MaterialQA-frost-1",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              2072
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:159",
+          "name": "MaterialQA-frost-4",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              2224
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:177",
+          "name": "MaterialQA-texture-neutral",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              2376
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:179",
+          "name": "MaterialQA-texture-size-1",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              2528
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:181",
+          "name": "MaterialQA-texture-size-8",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              2680
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:183",
+          "name": "MaterialQA-texture-unclipped",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              2832
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:185",
+          "name": "MaterialQA-texture-size-32",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              2984
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:187",
+          "name": "MaterialQA-texture-radius-4",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              3136
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:189",
+          "name": "MaterialQA-texture-anisotropic",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              3288
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "63:2",
+          "name": "MaterialQA-texture-size-8-twin",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              3440
+            ],
+            [
+              0,
+              1,
+              320
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        }
+      ]
+    },
+    {
+      "id": "62:191",
+      "name": "Kernel blur probes 2026-10-07",
+      "x": 96,
+      "y": 576,
+      "width": 1496,
+      "height": 128,
+      "children": [
+        {
+          "id": "62:192",
+          "name": "BlurQA-0",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              96
+            ],
+            [
+              0,
+              1,
+              576
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:194",
+          "name": "BlurQA-0p25",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              248
+            ],
+            [
+              0,
+              1,
+              576
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:196",
+          "name": "BlurQA-0p5",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              400
+            ],
+            [
+              0,
+              1,
+              576
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:198",
+          "name": "BlurQA-0p75",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              552
+            ],
+            [
+              0,
+              1,
+              576
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:200",
+          "name": "BlurQA-1",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              704
+            ],
+            [
+              0,
+              1,
+              576
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:202",
+          "name": "BlurQA-1p5",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              856
+            ],
+            [
+              0,
+              1,
+              576
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:204",
+          "name": "BlurQA-2p5",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1008
+            ],
+            [
+              0,
+              1,
+              576
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:206",
+          "name": "BlurQA-4",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1160
+            ],
+            [
+              0,
+              1,
+              576
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:208",
+          "name": "BlurQA-8",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1312
+            ],
+            [
+              0,
+              1,
+              576
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        },
+        {
+          "id": "62:210",
+          "name": "BlurQA-16",
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1464
+            ],
+            [
+              0,
+              1,
+              576
+            ]
+          ],
+          "width": 128,
+          "height": 128
+        }
+      ]
+    }
+  ]
+}

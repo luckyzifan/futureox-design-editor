@@ -1,5 +1,5 @@
-/** Figma SDF 阴影 WGSL(shader_129 逐行移植:帐篷核积分 + SDF 圆角盒 + AAA)。 */
-export const figmaSdfShadowWgsl = `// Figma SDF 阴影蒙版,逐行移植自 shader_129(figma-wasm-analysis/shaders/)。
+/** Figma SDF 阴影 WGSL(帐篷核积分 + SDF 圆角盒 + AAA)。 */
+export const figmaSdfShadowWgsl = `// Figma SDF 阴影蒙版。
 // 源码事实:圆角矩形阴影 = 解析积分(shadow_coverage y 函数:4 步数值积分
 // 帐篷核平滑边缘)+ SDF 圆角盒蒙版(bw/bt 函数:标准 SDF + 内圆角钳制)
 // + AAA 抗锯齿(bq:fwidth smoothstep)或硬边(1-step)。

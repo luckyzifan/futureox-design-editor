@@ -37,8 +37,7 @@ pub struct Action {
     /// nine-grid + MANUAL with a relative offset).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub overlay_position: Option<OverlayPosition>,
-    // --- Recovered Figma action-schema fields (figma-wasm-analysis/
-    // FULL-RE.md §六; the wasm reader is #10819 per JIT-TRACK.md §七).
+    // --- Figma action-schema passthrough fields.
     // Every field below is schema passthrough only: it is persisted and
     // shape-validated, but no runtime semantics consume it yet. ---
 
@@ -178,8 +177,8 @@ pub fn valid_easing(curve: &str) -> bool {
     matches!(
         curve,
         "linear" | "ease-in" | "ease-out" | "ease-in-out" | "spring"
-            // Figma's 21 named easing presets (recovered from its JS
-            // easing module: 7 families × in/out/inOut variants).
+            // Figma's 21 named easing presets (7 families × in/out/inOut
+            // variants).
             | "ease-in-sine" | "ease-out-sine" | "ease-in-out-sine"
             | "ease-in-quad" | "ease-out-quad" | "ease-in-out-quad"
             | "ease-in-cubic" | "ease-out-cubic" | "ease-in-out-cubic"
@@ -206,10 +205,10 @@ pub fn valid_overlay_origin(origin: &str) -> bool {
             | "manual"
     )
 }
-/// `mediaAction` value set. The wasm corpus recovers the field name only
-/// (FULL-RE.md §六), not the membership; this closed set follows the
-/// publicly known fig-kiwi action schema. Conservative by design — if a
-/// recovered value set disagrees, widen here and nowhere else.
+/// `mediaAction` value set. The field name comes from the fig-kiwi action
+/// schema, whose membership is not public; this closed set follows the
+/// publicly known values. Conservative by design — if a wider value set is
+/// confirmed, widen here and nowhere else.
 pub fn valid_media_action(action: &str) -> bool {
     matches!(
         action,

@@ -1,5 +1,5 @@
 //! Integration tests for the Sketch rich-text attribute keys
-//! (sketch-kernel-analysis/22-sketch-json-dictionary.md §4, P0-2): the 8-key
+//! (Sketch JSON dictionary §4, P0-2): the 8-key
 //! run attribute set plus the layer-level `textBehaviour` /
 //! `lineSpacingBehaviour`, including the bindings round-trip for the keys the
 //! kernel TextStyle cannot model.

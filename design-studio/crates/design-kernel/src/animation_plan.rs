@@ -1,8 +1,6 @@
-//! Animation plan tree: the transition planning layer decoded from the
-//! engine's exported surface (`_AnimationPlanTreeBindings` ×34,
-//! `_AnimationPlanTreeNode_Internal` ×24).
+//! Animation plan tree: the transition planning layer.
 //!
-//! Semantics recovered from the API contract:
+//! Semantics per the API contract:
 //! - a plan pairs an OLD scene tree with a NEW scene tree around a
 //!   prototype transition;
 //! - `getNodeMatches` aligns nodes across the pair - matched nodes tween

@@ -1497,8 +1497,8 @@ mod wasm {
             };
             parse().map_err(|e| JsValue::from_str(&e))
         }
-        /// The Figma-shape compositing ledger (its recovered wasm
-        /// `func#36671`): scene-compositing peak + tile residency summed,
+        /// The Figma-shape compositing ledger: scene-compositing peak +
+        /// tile residency summed,
         /// `>> 20` for MB, f32 tile ratio, OOM-style pressure events from
         /// budget rejections. Diagnostic only — admission stays the
         /// reserve/Drop contract.

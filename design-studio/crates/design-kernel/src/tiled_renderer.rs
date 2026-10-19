@@ -1,8 +1,7 @@
 //! The tiled renderer — CPU rasterisation orchestration with GPU-compositor
 //! consumption, mirroring Sketch's `MSTiledRenderer`.
 //!
-//! The reverse-engineered contract (class-dump `SketchRendering_dump.txt`
-//! lines 1481–1562) this module reproduces:
+//! The `MSTiledRenderer` contract this module reproduces:
 //!
 //! * `updateWithInstruction:synchronously:hasUserFocus:` — the only entry
 //!   point; [`TiledRenderer::update_with_instruction`] with the frame's
@@ -13,7 +12,7 @@
 //! * `_doParallelRasterisationOfScene:inRects:…tiles:` — visible, missing or
 //!   dirty tiles rasterise in parallel on isolated per-worker rasterizers,
 //!   gated by the `rasterizeConcurrently` / `singleThreadedContentRendering`
-//!   feature flags (`SketchFeatureFlags_dump.txt` lines 47–68). Tile bytes
+//!   feature flags. Tile bytes
 //!   are identical to sequential rasterisation because each tile is a pure
 //!   function of the prepared scene and the tile rectangle.
 //! * `waitForContentRenderSemaphore:status:synchronous:frameStartTime:
@@ -42,8 +41,8 @@ use std::collections::HashMap;
 type RasterisedTiles = Vec<([i32; 2], Vec<u8>)>;
 
 /// Fixed capabilities mirroring the remaining Sketch feature flags —
-/// `coreTextRendering` and `gpuOverlay` in `SketchFeatureFlags_dump.txt`
-/// (lines 53, 68). This kernel always shapes text on the CPU
+/// `coreTextRendering` and `gpuOverlay`. This kernel always shapes text on
+/// the CPU
 /// (rustybuzz/ttf-parser paths) and renders no overlay content itself, so
 /// both are constants, not knobs: the host owns overlay drawing exactly as
 /// Sketch's `MSOverlayRenderer` sits beside the tiled content renderer.
@@ -1010,8 +1009,7 @@ impl TiledRenderer {
 
     /// Bytes of every resident tile surface across levels — the tile pool of
     /// the engine compositing ledger (Figma's `%d MB Rendered Tile VRAM`
-    /// counterpart, recovered from its wasm: pool sums, `>>20` for MB, f32
-    /// ratio against the total).
+    /// counterpart: pool sums, `>>20` for MB, f32 ratio against the total).
     pub fn resident_bytes(&self) -> usize {
         self.levels
             .iter()

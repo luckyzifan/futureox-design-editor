@@ -2,38 +2,30 @@
 //! result cache.
 //!
 //! This is the kernel's minimal closed loop of the engine's *baked* Smart
-//! Animate track, recovered instruction-level from `proto_engine.wasm`
-//! (figma-wasm-analysis/BAKE-ALGORITHM.md, 2026-10-16 round):
+//! Animate track:
 //!
-//! - **In-flight exclusion** (`#25970` bake acquire @`147730a-14773d2`,
-//!   `#25966` cleanupBaked release @`14756a9-147574b`): bakes are mutually
+//! - **In-flight exclusion** (bake acquire / release): bakes are mutually
 //!   exclusive per frame pair. A new bake scans the in-flight set and
 //!   conflicts when *any* endpoint of the new pair equals *any* endpoint of
 //!   an in-flight pair — a 4-way comparison over `(frameId, generation)`
 //!   references (the engine packs them into one i64; see `SaFrameRef` for
-//!   our adaptation). A conflict returns a structured error value — the
-//!   `#899(kind=2, tag="bake", source file, line, message)` constructor with
-//!   `FGSmartAnimateTransitionBake.cpp:189` and the message *"A bake in
-//!   flight already uses the start or destination frame"* — never a panic.
-//!   Acquire and release are symmetric; here `SaBakeGuard`'s `Drop` is the
-//!   `cleanupBaked` counterpart.
-//! - **Result cache** (`#25962` computeSmartAnimateTrackGroups): baked plans
-//!   live in named slots (prefix `$$SMART_TRACK_GROUP_CACHE$$:`) validated by
-//!   a 12-byte `{lo, hi, flag}` version triple compared for equality — a
-//!   light version check, deliberately not a content hash; a mismatch
-//!   invalidates the slot and the plan is rebuilt.
+//!   our adaptation). A conflict returns a structured error value with the
+//!   message *"A bake in flight already uses the start or destination
+//!   frame"* — never a panic. Acquire and release are symmetric; here
+//!   `SaBakeGuard`'s `Drop` is the release counterpart.
+//! - **Result cache** (computeSmartAnimateTrackGroups): baked plans are
+//!   cached per frame pair and validated by a 12-byte `{lo, hi, flag}`
+//!   version triple compared for equality — a light version check,
+//!   deliberately not a content hash; a mismatch invalidates the entry and
+//!   the plan is rebuilt.
 //!
-//! Honest adaptations (detailed in
-//! `figma-wasm-analysis/impl-2026-10-16/E1-SMART-ANIMATE-CACHE.md`):
+//! Adaptations:
 //! - frames here are string node ids and the "generation" is the
 //!   caller-supplied document revision (the editing layer's monotonic
 //!   counter), so references stay `(id, generation)` pairs compared on both
 //!   halves but cannot pack into a single `i64` the way u32 ids do;
-//! - the cache key is an explicit typed tuple rather than a prefixed string
-//!   slot, and values are strong `Arc` handles rather than `(gen:idx)` weak
-//!   handles with 1024-mod settlement — that settlement mechanism was not
-//!   reverse-engineered and is intentionally NOT implemented (capacity here
-//!   is a plain bound with FIFO eviction).
+//! - the cache key is an explicit typed tuple, and values are strong `Arc`
+//!   handles with a plain bound and FIFO eviction.
 use crate::animation_plan::PlanTree;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -58,7 +50,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 /// A frame reference participating in a bake: node id plus edit generation.
 ///
 /// The engine's counterpart packs `(frameId:u32, generation:u32)` into one
-/// `i64` (BAKE-ALGORITHM.md §5.1); comparison semantics are identical here —
+/// `i64`; comparison semantics are identical here —
 /// both halves must match — but our frame ids are arbitrary-length strings,
 /// so no i64 packing exists. A revision bump on the document stands in for
 /// the engine's per-frame generation counter.
@@ -177,7 +169,7 @@ impl Drop for SaBakeGuard {
 
 /// The in-flight bake registry: a shared set of frame pairs being baked.
 ///
-/// Mirrors the engine's global in-flight list (BAKE-ALGORITHM.md §5): a new
+/// Mirrors the engine's global in-flight list: a new
 /// bake conflicts when any of its two endpoints matches any endpoint of an
 /// in-flight bake. Cloning shares the same underlying set, so a host can
 /// hand the registry to several preview surfaces and they exclude each other
@@ -276,9 +268,9 @@ impl SaPlanCacheKey {
 }
 
 /// The 12-byte `{lo, hi, flag}` version triple the engine compares for
-/// equality to validate a cached track group (BAKE-ALGORITHM.md §4:
-/// `[ctx+144..152]` vs `[ctx+576..584]`; equal = hit, unequal = invalidate
-/// and rebuild). This is a *light version check, not a content hash*.
+/// equality to validate a cached track group (equal = hit, unequal =
+/// invalidate and rebuild). This is a *light version check, not a content
+/// hash*.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SaVersionTriple {
     pub lo: u32,
@@ -333,9 +325,7 @@ struct SaPlanCacheState {
 /// Default slot bound. A prototype transition touches one frame pair at a
 /// time and a preview alternates among a handful, while each cached plan is
 /// O(subtree node count) — a small entry bound caps worst-case memory
-/// without touching realistic hit rates. The engine's real bound is its
-/// weak-handle/1024-mod settlement, which is not reverse-engineered and is
-/// deliberately not imitated (recorded as unaligned).
+/// without touching realistic hit rates.
 pub const DEFAULT_SA_PLAN_CACHE_CAPACITY: usize = 16;
 
 /// The baked-plan result cache: named frame-pair slots validated by version

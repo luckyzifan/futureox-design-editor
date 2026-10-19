@@ -1,19 +1,15 @@
-//! Pattern (tiled) image fills, ported from Figma's pattern-fill shader.
+//! Pattern (tiled) image fills, following Figma's pattern-fill semantics.
 //!
-//! Sources (reverse-engineered, kept honest by tests):
-//! - `figma-wasm-analysis/shaders/shader_185.glsl` — the fragment shader.
-//!   Its minified single-line source names uniforms
-//!   `patternTexSizePixels / patternBoundsOffsetPixels / tileSizePixels /
-//!   fillSizePixels / offsetPixels / patternTileType` and locals `a b c d e f
-//!   g h i j`; the chain is quoted line by line below.
-//! - `figma-wasm-analysis/shaders/shader_106.glsl` — the paired vertex
-//!   shader, which fixes the input coordinate's space:
-//!   `_coord2 = (paintTransform * vec3(position2, 1)).xy`, i.e. the fragment
-//!   chain starts from the **paint-transformed local coordinate**, exactly
-//!   where this port composes `Paint.transform` before tiling.
+//! Uniform vocabulary (kept honest by tests):
+//! `patternTexSizePixels / patternBoundsOffsetPixels / tileSizePixels /
+//! fillSizePixels / offsetPixels / patternTileType`. The fragment chain
+//! starts from the **paint-transformed local coordinate**
+//! (`_coord2 = (paintTransform * vec3(position2, 1)).xy`), exactly where
+//! this port composes `Paint.transform` before tiling; the math is quoted
+//! line by line below.
 //!
-//! Uniform semantics (SHADER-CATALOG.md "pattern-fill", 4 shaders in the
-//! family): `patternTileType` 0 = regular grid, 1 = horizontal stagger
+//! Uniform semantics (pattern-fill family, 4 shaders in the family):
+//! `patternTileType` 0 = regular grid, 1 = horizontal stagger
 //! (alternate rows shifted half a tile along x), 2 = vertical stagger
 //! (alternate columns shifted half a tile along y); `offsetPixels` /
 //! `patternBoundsOffsetPixels` are two opposite-sign pre-repeat translations;
@@ -116,7 +112,7 @@ impl PatternTile {
     }
 }
 
-/// shader_185's fragment chain, source order preserved. Deobfuscated GLSL:
+/// The pattern-fill fragment chain, source order preserved. Expanded GLSL:
 ///
 /// ```glsl
 /// float d = fillSizePixels.x / patternTexSizePixels.x;   // per-axis scale
@@ -134,7 +130,7 @@ impl PatternTile {
 /// ```
 ///
 /// `point` is the paint-space local pixel (post `Paint.transform`, the
-/// shader_106 `_coord2` role); `size` is the resolved cell period; the
+/// vertex-shader `_coord2` role); `size` is the resolved cell period; the
 /// return value is the texture UV in `[0,1)²` (`fract(g)` with `i = 1`, so
 /// the caller's half-texel bilinear clamp implements `j`).
 pub fn tile_uv(pattern: &PatternTile, point: Point, size: [f64; 2]) -> Point {

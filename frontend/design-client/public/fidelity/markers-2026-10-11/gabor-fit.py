@@ -10,7 +10,7 @@ Stage 3: coefficient statistics (amplitude/orientation distribution).
 Stage 4: synthesize the ramp image from fitted coefficients and compare bytes
          with the real Figma export.
 
-Results 2026-10-11 (see grain-notes.md):
+Results 2026-10-11:
  - held-out R2 0.92-0.94 (Gabor) vs 0.23 (lattice baseline); full-fit R2 0.988,
    residual 1.67-1.75 px on all four datasets (x/y channels x noiseSize 8/16
    with sigma and carrier scaled exactly 2x for size 16);

@@ -1,9 +1,8 @@
 //! E4 pattern-fill chain: identity invariance, grid periodicity, the seam
 //! half-texel guard, negative-coordinate wrapping, stagger parity, a numeric
-//! cross-check against a straight-line transcription of Figma's shader_185,
-//! serde defaults and document validation. Sources:
-//! figma-wasm-analysis/shaders/shader_185.glsl (fragment) and
-//! shader_106.glsl (vertex, fixes `_coord2`'s paint space).
+//! cross-check against a straight-line transcription of Figma's pattern-fill
+//! shader (fragment chain plus the vertex shader that fixes `_coord2`'s
+//! paint space), serde defaults and document validation.
 use base64::Engine as _;
 use futureox_design_kernel::math::{Point, Rect, Transform};
 use futureox_design_kernel::paint::{Images, Sampler};
@@ -123,7 +122,7 @@ fn negative_coordinates_wrap_forward() {
 
 #[test]
 fn seam_samples_clamp_to_the_half_texel_guard() {
-    // shader_185's `min(g*i, j)` with i = 1 caps the phase a half texel
+    // The shader's `min(g*i, j)` with i = 1 caps the phase a half texel
     // below the wrap seam (j = 1 - 0.5/texSize). Our clamp(0.5, n-0.5) in
     // texel space is the same guard: with an awkward 3.7px period the
     // pixel-centre phase at x=3.5 maps to texel 7.5676 and must be capped
@@ -225,7 +224,7 @@ fn offset_moves_the_pattern_origin_and_stagger_parity() {
     }
 }
 
-/// Independent straight-line transcription of shader_185's main(), kept in
+/// Independent straight-line transcription of the pattern-fill main(), kept in
 /// the minified source's own shape (separate d/e scales, explicit f/h
 /// vectors, GLSL mod/step written from their definitions). Any factoring
 /// mistake in `pattern_fill::tile_uv` shows up here.

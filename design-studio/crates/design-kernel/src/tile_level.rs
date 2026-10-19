@@ -1,7 +1,7 @@
 //! Per-scale tile residency — the mip level that owns rendered content.
 //!
-//! Sketch's `MSTileMipLevel` (class-dump `SketchRendering_dump.txt` lines
-//! 359–388) is one scale bucket of `MSTile`s plus its *own* dirty region:
+//! Sketch's `MSTileMipLevel` is one scale bucket of `MSTile`s plus its
+//! *own* dirty region:
 //! `enqueueRenderableTilesForVisibleRect:` queues only visible tiles that are
 //! missing or dirty, `countExistingTilesForVisibleRect:` reports coverage,
 //! `subtractDirtyRect:` retires damage after an upload, `findWritableTileAt:`

@@ -1,6 +1,6 @@
 //! Smart Animate bake-track kernel tests: in-flight mutual exclusion, the
 //! baked-plan result cache, and their wiring into the PlanTree entry points
-//! (spec: figma-wasm-analysis/BAKE-ALGORITHM.md §4/§5).
+//! (bake algorithm spec §4/§5).
 use futureox_design_kernel::animation_bake::{
     BakeConflict, SaBakeCacheStats, SaBakeContext, SaBakeRegistry, SaBakeSession, SaPlanCache,
     SaPlanCacheKey, SaVersionTriple,

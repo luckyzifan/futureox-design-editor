@@ -1,4 +1,4 @@
-// Figma 成对采样帐篷模糊,逐行移植自其 shader_78/147/156(figma-wasm-analysis/shaders/)。
+// Figma 成对采样帐篷模糊。
 // 算法事实(源码):uniform 携 CPU 计算的 count 与 blurDelta;≤64 有界循环早退;
 // 帐篷权重解析(weight_k=count-k),无核纹理;相邻 tap 位置按权重插值,一次线性
 // fetch = 两次 tap 的加权平均(带宽减半)。
@@ -31,7 +31,7 @@ fn fragment(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   let delta = select(vec2<f32>(0.0, spacing / srcRect.w), vec2<f32>(spacing / srcRect.z, 0.0), horizontal);
   // @builtin(position) 在片元阶段已是纹素中心(含 +0.5),不再额外加
   let uv = (position.xy + dstRect.xy - srcRect.xy) / srcRect.zw;
-  // 渐变模糊变体(shader_76 语义):采样位置逐 tap 钳制到 blurClamp 矩形,
+  // 渐变模糊变体:采样位置逐 tap 钳制到 blurClamp 矩形,
   // 防止渐变方向上的采样跨界取色;values[11].x 为启用旗,values[12] 为钳制矩形。
   let clampEnabled = params.values[11].x > 0.5;
   let blurClamp = params.values[12];

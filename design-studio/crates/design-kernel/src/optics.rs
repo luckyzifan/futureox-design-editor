@@ -135,8 +135,8 @@ impl Geometry {
     ) -> Result<Self, String> {
         shape.validate()?;
         let rotation = (matrix.0[1] as f32).atan2(matrix.0[0] as f32);
-        // Read the hexadecimal binary64 constant, not the shortened decimal
-        // printed by a decompiler: it is standard binary64 pi.
+        // Read the hexadecimal binary64 constant, not a shortened decimal:
+        // it is standard binary64 pi.
         let authored = (f64::from(glass.light_angle.rem_euclid(360.) as f32) * std::f64::consts::PI
             / 180.) as f32;
         let angle = authored - rotation + std::f32::consts::FRAC_PI_2;

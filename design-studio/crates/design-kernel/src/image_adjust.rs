@@ -1,15 +1,12 @@
 //! Image paint adjustments (exposure/contrast/temperature/tint/highlights/
-//! shadows/color), ported line by line from Figma's image-adjust shader.
+//! shadows/color), a line-by-line port of Figma's image-adjust math
+//! (kept in sync by tests).
 //!
-//! Sources (both reverse-engineered, kept in sync by tests):
-//! - `figma-wasm-analysis/shaders/shader_62.glsl` — GLSL form. The minified
-//!   single-line source names its helpers `b d e i o s w ah`; `ah` is the
-//!   pipeline `srgb→linear → highlight/shadow delta → Lab(temp,tint,contrast)
-//!   → exposure(+delta) → saturation → linear→srgb`.
-//! - `figma-wasm-analysis/shaders/wgsl_116.wgsl` — WGSL form
-//!   (`imageColorAdjustPaint`), same math as `hb/hf/hj/ht/iv/jl/jr/ln`.
-//!   The engine injects `precision highp` on the GLSL side, so f32 here is
-//!   the numeric contract (SHADER-TRIGGERS.md; no precision-tier tolerance).
+//! Pipeline: `srgb→linear → highlight/shadow delta → Lab(temp,tint,contrast)
+//! → exposure(+delta) → saturation → linear→srgb`, identical in the GLSL and
+//! WGSL forms (`imageColorAdjustPaint`). The GLSL side runs `precision
+//! highp`, so f32 here is the numeric contract (no precision-tier
+//! tolerance).
 //!
 //! Adjustments operate on straight (unpremultiplied) RGB in [0,1]. SDR
 //! documents store image texels as sRGB bytes, exactly the shader's texture
@@ -188,8 +185,8 @@ fn apply_core(c: [f32; 3], adjust: &ImageAdjust) -> [f32; 3] {
 }
 
 /// Authored image adjustments on an image paint. Field names and order follow
-/// the Figma uniform block (GPU-SUBSYSTEM.md / wgsl_116.wgsl
-/// `struct UniformBlock{… globalTint, globalColor, globalShadows,
+/// the Figma uniform block
+/// (`struct UniformBlock{… globalTint, globalColor, globalShadows,
 /// globalHighlights, globalExposure, globalTemperature, globalContrast,
 /// highlightShadowThreshold …}`); all sliders span [-1, 1].
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -217,8 +214,8 @@ pub struct ImageAdjust {
     #[serde(default)]
     pub color: f64,
     /// `highlightShadowThreshold`: mid-gray split (Lab L = value·100). The
-    /// CPU-side default Figma uploads is not reverse-engineered; 0.5 (L=50)
-    /// is our documented assumption and the fixed UI value.
+    /// CPU-side default is not observable; 0.5 (L=50) is our documented
+    /// assumption and the fixed UI value.
     #[serde(default = "mid_threshold")]
     pub highlight_shadow_threshold: f64,
 }
@@ -260,7 +257,7 @@ impl ImageAdjust {
             && self.highlight_shadow_threshold.is_finite()
             && (0.0..=1.0).contains(&self.highlight_shadow_threshold)
     }
-    /// Full shader_62 `ah` pipeline for sRGB-encoded input (SDR byte texels):
+    /// Full image-adjust `ah` pipeline for sRGB-encoded input (SDR byte texels):
     /// gamma 2.2 bookends around the linear core.
     pub fn apply_srgb(&self, rgb: [f32; 3]) -> [f32; 3] {
         if self.is_identity() {

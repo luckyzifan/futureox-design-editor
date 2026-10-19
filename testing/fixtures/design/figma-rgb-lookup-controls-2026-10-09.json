@@ -1,0 +1,157 @@
+{
+  "fileKey": "KawVhUXCap10WDTprxYEmu",
+  "createdNodeIds": [
+    "179:3",
+    "179:4"
+  ],
+  "mutatedNodeIds": [
+    "179:2"
+  ],
+  "pageId": "179:2",
+  "controls": [
+    {
+      "id": "179:3",
+      "name": "LutQA-rgb-forward-1024",
+      "width": 1024,
+      "height": 16,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2832
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "fills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0.2666666805744171,
+                "g": 0.46666666865348816,
+                "b": 0.8666666746139526,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 0.8666666746139526,
+                "g": 0.46666666865348816,
+                "b": 0.2666666805744171,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "exportSettings": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "DOCUMENT",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "179:4",
+      "name": "LutQA-rgb-reverse-1024",
+      "width": 1024,
+      "height": 16,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2832
+        ],
+        [
+          0,
+          1,
+          400
+        ]
+      ],
+      "fills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0.8666666746139526,
+                "g": 0.46666666865348816,
+                "b": 0.2666666805744171,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 0.2666666805744171,
+                "g": 0.46666666865348816,
+                "b": 0.8666666746139526,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "exportSettings": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "DOCUMENT",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ]
+    }
+  ]
+}

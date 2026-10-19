@@ -1,8 +1,8 @@
 //! Render instruction: the value object that decides whether the tiled
 //! renderer does any work at all.
 //!
-//! Sketch's `MSRenderInstruction` (class-dump `SketchRendering_dump.txt`
-//! lines 1159–1219) carries the layer ancestry, rendering parameters, colour
+//! Sketch's `MSRenderInstruction` carries the layer ancestry, rendering
+//! parameters, colour
 //! space and overlay state, and answers `isEqualToRenderInstruction:` /
 //! `traitsDifferingWithInstruction:`. `MSTiledRenderer` keeps the last
 //! rendered and composited instructions and skips rasterisation while they
