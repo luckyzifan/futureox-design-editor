@@ -2,7 +2,7 @@ import type {DesignDocument,Point,RulerGuide} from './model'
 import {apply,worldMatrix,allParents,scene,type SceneEntry} from './geometry'
 export type WorldGuide={owner:string;guide:RulerGuide;from:Point;to:Point;page:boolean;editable:boolean}
 export function guideOwner(doc:DesignDocument,id:string){return doc.nodes[id]||doc.pages.find(p=>p.id===id)}
-export function worldGuides(doc:DesignDocument,page:string,entries:SceneEntry[]=scene(doc,page)):WorldGuide[]{
+export function worldGuides(doc:DesignDocument,page:string,entries:readonly SceneEntry[]=scene(doc,page)):WorldGuide[]{
   const result:WorldGuide[]=[],p=doc.pages.find(p=>p.id===page),parents=allParents(doc)
   for(const guide of p?.guides||[])result.push({owner:page,guide,from:guide.axis==='x'?{x:guide.position,y:0}:{x:0,y:guide.position},to:guide.axis==='x'?{x:guide.position,y:1}:{x:1,y:guide.position},page:true,editable:true})
   for(const entry of entries){const n=doc.nodes[entry.id];if(!n.guides?.length)continue
