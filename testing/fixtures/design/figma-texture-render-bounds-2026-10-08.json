@@ -1,0 +1,175 @@
+{
+  "fileKey": "KawVhUXCap10WDTprxYEmu",
+  "pageId": "52:2",
+  "nodes": [
+    {
+      "id": "62:183",
+      "name": "MaterialQA-texture-unclipped",
+      "type": "FRAME",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2832
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "absoluteBoundingBox": {
+        "x": 2832,
+        "y": 320,
+        "width": 128,
+        "height": 128
+      },
+      "absoluteRenderBounds": {
+        "x": 2832,
+        "y": 320,
+        "width": 128,
+        "height": 128
+      },
+      "visible": true,
+      "opacity": 1,
+      "clipsContent": true,
+      "effects": [],
+      "children": [
+        {
+          "id": "62:184",
+          "name": "textured",
+          "type": "RECTANGLE",
+          "width": 88,
+          "height": 88,
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              2852
+            ],
+            [
+              0,
+              1,
+              340
+            ]
+          ],
+          "absoluteBoundingBox": {
+            "x": 2852,
+            "y": 340,
+            "width": 88,
+            "height": 88
+          },
+          "absoluteRenderBounds": {
+            "x": 2850,
+            "y": 338,
+            "width": 92,
+            "height": 92
+          },
+          "visible": true,
+          "opacity": 1,
+          "effects": [
+            {
+              "type": "TEXTURE",
+              "visible": true,
+              "radius": 2,
+              "boundVariables": {},
+              "noiseSize": 8,
+              "noiseSizeVector": {
+                "x": 8,
+                "y": 8
+              },
+              "clipToShape": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "62:181",
+      "name": "MaterialQA-texture-size-8",
+      "type": "FRAME",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          2680
+        ],
+        [
+          0,
+          1,
+          320
+        ]
+      ],
+      "absoluteBoundingBox": {
+        "x": 2680,
+        "y": 320,
+        "width": 128,
+        "height": 128
+      },
+      "absoluteRenderBounds": {
+        "x": 2680,
+        "y": 320,
+        "width": 128,
+        "height": 128
+      },
+      "visible": true,
+      "opacity": 1,
+      "clipsContent": true,
+      "effects": [],
+      "children": [
+        {
+          "id": "62:182",
+          "name": "textured",
+          "type": "RECTANGLE",
+          "width": 88,
+          "height": 88,
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              2700
+            ],
+            [
+              0,
+              1,
+              340
+            ]
+          ],
+          "absoluteBoundingBox": {
+            "x": 2700,
+            "y": 340,
+            "width": 88,
+            "height": 88
+          },
+          "absoluteRenderBounds": {
+            "x": 2700,
+            "y": 340,
+            "width": 88,
+            "height": 88
+          },
+          "visible": true,
+          "opacity": 1,
+          "effects": [
+            {
+              "type": "TEXTURE",
+              "visible": true,
+              "radius": 2,
+              "boundVariables": {},
+              "noiseSize": 8,
+              "noiseSizeVector": {
+                "x": 8,
+                "y": 8
+              },
+              "clipToShape": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "provenance": "Read-only official Figma Plugin API absoluteRenderBounds and absoluteBoundingBox. Original reference pixels are unchanged."
+}

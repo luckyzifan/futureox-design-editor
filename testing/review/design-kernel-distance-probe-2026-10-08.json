@@ -1,0 +1,35 @@
+{
+  "maskSha256": "91e75859ba97c92d63e5708c95bf3ac140f435ddff817018694f4530975d325b",
+  "size": [
+    256,
+    256
+  ],
+  "steps": [
+    128,
+    64,
+    32,
+    16,
+    8,
+    4,
+    2,
+    1
+  ],
+  "threshold": "alpha > 127",
+  "gridSquaredDistanceMismatches": 23,
+  "gridDistanceMaximumError": 0.2169851944677852,
+  "mismatchesWithinTwoPixelsOfGridEdge": 0,
+  "scope": "Independent replay on this raster mask only; not GPU stage readback or arbitrary-shape proof.",
+  "continuousBoundary": {
+    "roundedRect": [
+      32.0,
+      32.0,
+      192.0,
+      192.0,
+      32.0
+    ],
+    "bandPixels": 10608,
+    "gridMinusHalfMaximumError": 0.4919344346234702,
+    "gridMinusHalfMeanError": 0.033241323348412524,
+    "boundary": "16 device-pixel interior band; subtracting half a grid pixel does not recover a continuous curved boundary."
+  }
+}

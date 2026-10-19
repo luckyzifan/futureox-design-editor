@@ -371,8 +371,8 @@ fn fill_sizes(
 /// registers ~20 named assertions whose full list was not recovered; only
 /// the invariants that hold by this engine's own semantics are enforced
 /// here (child order stability across a solve, finite non-negative
-/// container and child geometry). The unrecovered remainder is recorded in
-/// figma-wasm-analysis/impl-2026-10-16/G1-LAYOUT-ALIGN.md, not guessed at.
+/// container and child geometry). The unrecovered remainder is deliberately
+/// left unimplemented, not guessed at.
 fn enforce_stack_layout_invariants(
     doc: &Document,
     frame: &str,

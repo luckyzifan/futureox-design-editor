@@ -1,7 +1,7 @@
 /**
  * GPU 描边计算管线 - 完整实现
  *
- * 基于 Figma GpuStrokeBatcher 逆向分析：
+ * 对标 Figma GpuStrokeBatcher 语义：
  * - eulerStrokeFill: 欧拉法描边扩展
  * - countsPrefixSum: GPU 并行前缀和
  * - strokeOffsetDeltas: 描边偏移增量计算

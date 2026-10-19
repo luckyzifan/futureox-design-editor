@@ -1,8 +1,6 @@
 //! Legacy native Sketch parent-resize proposals, without a foreign layout model.
 //!
-//! Evidence: sketch-kernel-analysis/dumps/full/BCFoundation/_SwiftFree.txt,
-//! ConstrainedRect initializer @0x45788 and Constraint1D.minSizeable @0x278c8;
-//! _c_functions.txt, dimension resize @0x45c98..0x45e68. Set bits mean FLEXIBLE:
+//! Set bits mean FLEXIBLE:
 //! 4 = leading margin, 2 = size, 1 = trailing margin (Y uses the next three bits).
 //! This bounded subset excludes degenerate/outside/overconstrained rectangles
 //! rather than guessing native minimum-size, migration or transformed-layout rules.

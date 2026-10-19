@@ -1,0 +1,238 @@
+{
+  "startedDate": "2026-10-15",
+  "completedDate": "2026-10-16",
+  "timezone": "Asia/Shanghai",
+  "head": "adb502d9675f2f6b049f3a7e208d441228941612",
+  "scope": "Repair the scoped 117 dragging, resize/text editing, layer tree and Inspector workflows; no claim of full Figma parity",
+  "source": [
+    {
+      "path": "frontend/design-client/src/AlignmentControls.tsx",
+      "sha256": "140879f94ba28313746bc48fd7a3d690f84462c5360ba8a978ec73412b63a097"
+    },
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "sha256": "95324eec7cff7348a891adcd21e6176bf8d10c5c4164f55423e64fb317cdfcac"
+    },
+    {
+      "path": "frontend/design-client/src/CanvasEditPreview.tsx",
+      "sha256": "1e47f966d48fdcbdbc419e9e7db3b19bbd95336d16300c2ae1d63bdef1888d25"
+    },
+    {
+      "path": "frontend/design-client/src/edit-preview.ts",
+      "sha256": "03f179c3c8b432dbeca391cdbbef0b155f92961f37bf7b82826cc751bd486bcc"
+    },
+    {
+      "path": "frontend/design-client/src/engine.ts",
+      "sha256": "1d769a8ac1aaef875e975dc9247e862b41fd945996b46f4b39a9ef69434c8fa3"
+    },
+    {
+      "path": "frontend/design-client/src/fields.tsx",
+      "sha256": "87006e71f7de32d19b7fd6fceb8fad7f2ead7d5d7c56586b9e4fd6aa8f4a67f4"
+    },
+    {
+      "path": "frontend/design-client/src/Inspector.tsx",
+      "sha256": "b8e63d0f5034a400d561725ddb4ca1c1439c6a92754dd6f90d0a2ee32da7a6a0"
+    },
+    {
+      "path": "frontend/design-client/src/interaction-repair.test.ts",
+      "sha256": "3517fa5d848c5f5e9b7f22db857f1060319ab3f4d2a93675ce71de574f066560"
+    },
+    {
+      "path": "frontend/design-client/src/Layers.tsx",
+      "sha256": "d0539e8e3b024b3e7c904bdc516023615e71a1a2324faeaaebfeb249eb00b4cc"
+    },
+    {
+      "path": "frontend/design-client/src/layer-tree.ts",
+      "sha256": "ea83b9580cdefdd5a4ae10a51b2353a08bb329757eeb13cfaa51724f27dea18b"
+    },
+    {
+      "path": "frontend/design-client/src/MultiSelectionInspector.tsx",
+      "sha256": "4f8fad145775d9ed52183cf232b2b58e09d2571e85cd931e8368ca1a47465f77"
+    },
+    {
+      "path": "frontend/design-client/src/MultiStylePanel.tsx",
+      "sha256": "30e8c95595d44ec3ea9ef25698f955b6ae1d4cf7ee86c65bba1fe25b6f4d376e"
+    },
+    {
+      "path": "frontend/design-client/src/Renderer.tsx",
+      "sha256": "3df4f32dbb594d193ea2f66b542617912ecefe0bfb46c0b3bab95a193572bc9f"
+    },
+    {
+      "path": "frontend/design-client/src/selection-hierarchy.ts",
+      "sha256": "0233b88cfe2d86f77bd33866d675285757d1472e8b6ca3dd39a0ecabb22bb745"
+    },
+    {
+      "path": "frontend/design-client/src/selection-properties.ts",
+      "sha256": "6c3d140146163fbf47e06cb054485ab6e847ea9b206150ff7bc8a5d4b3f585d9"
+    },
+    {
+      "path": "frontend/design-client/src/selection-properties.test.ts",
+      "sha256": "6c0dddfa3788c067626115756920b62c810a7ea8f908f2c483098004747dcddf"
+    },
+    {
+      "path": "frontend/design-client/src/style-stack.ts",
+      "sha256": "a23f6b11388958ce3ed16d428e7d3e52c091132bee56c6b14b536911145c35cd"
+    },
+    {
+      "path": "frontend/design-client/src/styles.css",
+      "sha256": "1f4bd65c5fa74ac7b236b3b8749def48c093f40d7cfbb3ddaf97d055cbb5a82d"
+    },
+    {
+      "path": "frontend/design-client/src/TextStylePanel.tsx",
+      "sha256": "5ef2e900f5ba4e026770b93e3e9b995f02fdcbdc280343e06f8d6f5c939d2a98"
+    },
+    {
+      "path": "frontend/design-client/src/workspace-ui.test.tsx",
+      "sha256": "0f0a854c2d31bd468eae3bf536f001b9de41610e635f0519eee99155d38d1045"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/Surface.tsx",
+      "sha256": "9d80e8b7bb265c0e41a08a31dc60de324a25641e37b65183fea00da8ff906f25"
+    }
+  ],
+  "fixture": {
+    "name": "117.sketch",
+    "sha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+    "unchangedFromAudit": true,
+    "nodes": 752
+  },
+  "correctedProbe": {
+    "entry": "import_sketch_json + UUID + prepareDocumentForEditing + Editor.updateProperties",
+    "baseline": {
+      "propertyWidth": 476.0001220703124,
+      "worldWidth": 238.00006103515625
+    },
+    "fixed": {
+      "propertyWidth": 476.0001220703124,
+      "worldWidth": 476.0001220703125
+    },
+    "privateEvidenceDirectory": ".local/design-117-repair-20261015"
+  },
+  "actualBrowser": {
+    "environment": "macOS, in-app browser, WebGPU, temporary 1440x960 desktop viewport, DPR 2",
+    "steps": [
+      {
+        "step": "fresh import original Sketch",
+        "result": "752 nodes, WebGPU clear"
+      },
+      {
+        "step": "drag group 51 on canvas and undo",
+        "result": "content and selection moved together; position fields changed; undo restored starting placement"
+      },
+      {
+        "step": "Inspector group width 238 to 476",
+        "result": "actual whole card and selection expanded"
+      },
+      {
+        "step": "edit text and resize box",
+        "result": "edited text, W100 fixed, font40; actual right-handle drag to W200 kept font40 and reflowed"
+      },
+      {
+        "step": "search 238,256",
+        "result": "117, group51 and target all retained in layer tree"
+      },
+      {
+        "step": "Meta-select two text layers, edit fill",
+        "result": "both final WebGPU numbers visibly green #00ff00 after removing imported run-color overrides"
+      },
+      {
+        "step": "duplicate group and undo",
+        "result": "two group51 rows then one after single undo"
+      },
+      {
+        "step": "drag text above sibling in layer tree",
+        "result": "238,256 moved above title; x44.34/y13 preserved; single undo restored order"
+      },
+      {
+        "step": "align single text to parent center",
+        "result": "x46.8400305175781"
+      },
+      {
+        "step": "hide and show text from layer tree",
+        "result": "hidden-selection message shown; text restored on show"
+      },
+      {
+        "step": "Scale tool multiplier 2x and undo",
+        "result": "476.0001220703124 x 236.0001220703124, enlarged glyphs; undo restored 238.0000610351562 x 118.0000610351562"
+      },
+      {
+        "step": "save fd download and reopen through file chooser",
+        "result": "name, #00ff00 color, x46.8400305175781 and visible final WebGPU retained"
+      }
+    ],
+    "savedFile": {
+      "name": "117 · 交互修复验收.fd",
+      "sha256": "745e3a2745cb7249097004c64ab597f1610be2442f8ffc626957b83220c1cfcc",
+      "bytes": 4464849
+    },
+    "errors": [],
+    "screenshot": ".local/design-117-repair-20261015/117-verified.jpg",
+    "temporaryViewportRestored": true
+  },
+  "timing": {
+    "latestObservedExactRequestMs": 1400.6,
+    "latestCompileMs": 88.9,
+    "latestGraphMs": 1310.5,
+    "browserInputPhaseMs": {
+      "prepare": 1.7,
+      "layout": 0.7,
+      "publish": 0.1
+    },
+    "previewDomSamplesMs": [
+      139.8,
+      58.4,
+      47,
+      56.3,
+      55.8,
+      46.8,
+      87.8,
+      47,
+      176.3
+    ],
+    "lastRafMs": 720.7,
+    "limitations": "DOM and rAF samples are not hardware presentation timestamps or FPS. Some earlier runs were hidden and are excluded. Cold/changed/warm cameras differ, so 9.72s and 1.40s are not an A/B comparison. This does not prove stable 60fps."
+  },
+  "checks": {
+    "typescript": "exit 0",
+    "vitest": {
+      "files": 149,
+      "tests": 1068,
+      "exitCode": 0
+    },
+    "build": "current WASM + tsc + Vite, exit 0",
+    "foundation": "exit 0",
+    "lint": {
+      "exitCode": 0,
+      "warnings": 1844,
+      "infos": 42
+    },
+    "manual": "actual browser actions and screenshots, not substituted by unit results",
+    "finalFocused": {
+      "files": 4,
+      "tests": 25,
+      "exitCode": 0,
+      "purpose": "after removing unused imports"
+    },
+    "finalProductionBuild": "Vite current sources, exit 0"
+  },
+  "boundaries": [
+    "Transient browser vector preview is not exact export; full GPU/CPU final output retained.",
+    "Independent movement excludes clipping/masks/backdrop/mixing/structure dependencies.",
+    "Unsupported preview effects/fills or >5000 nodes retain the precise path.",
+    "No push/deploy, no new Electron package, other OS and external full Figma parity unverified."
+  ],
+  "documentation": [
+    {
+      "path": "docs/architecture/design-canvas-interaction-parity.md",
+      "sha256": "d393b091ea18a9d72c2c9faadecc5f9a2507068251cf47100b13b783b0f80bed",
+      "status": "已核对",
+      "scope": "current repair section and links; historical claims not re-certified"
+    },
+    {
+      "path": "testing/e2e/README.md",
+      "sha256": "bccb6b50716ae8383f265a071b3cac5765e4262c9020c76601d00b9cd6dde4e9",
+      "status": "已核对",
+      "scope": "current repair section and links; historical claims not re-certified"
+    }
+  ]
+}

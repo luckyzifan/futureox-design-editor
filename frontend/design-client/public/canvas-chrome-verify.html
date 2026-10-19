@@ -51,7 +51,7 @@ try {
   device.queue.submit([enc.finish()])
   await rb.mapAsync(GPUMapMode.READ)
   const gpuBytes = new Uint8Array(rb.getMappedRange())
-  // CPU 参照(内核 checkerboard 语义,shader_03 移植对照):
+  // CPU 参照(内核 checkerboard 语义对照):
   // 棋盘 = fract(world*scale)-0.5 的叉积符号切换双色,world=设备像素(如 zoom=1)
   let maxDiff = 0, checked = 0
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -74,8 +74,8 @@ try {
 } catch (e) { report(false, String(e)) }
 </script>
 <script type="text/plain" id="wgsl">
-// Figma 画布镶边着色器,逐行移植自其 shader_03(figma-wasm-analysis/shaders/)。
-// 源码事实:checkerboardStyle 四档(0=无,1=亮棋盘,2=暗棋盘,3=点背景);
+// Figma 画布镶边着色器。
+// 算法事实:checkerboardStyle 四档(0=无,1=亮棋盘,2=暗棋盘,3=点背景);
 // 棋盘两色是 1.0/0.95(亮)与 0.12/0.17(暗),按 fract(c*scale)-0.5 的叉积符号切换;
 // 点背景的网格大小随 zoomScale 指数降档(32×16→16×16→…→1×16,基 16px);
 // 网格线是亚像素十字线(a() 函数:粗细 <1px 的两条细线,亮度反演保护暗背景)。

@@ -1,13 +1,12 @@
-//! Native Figma `.fig` import — a Rust port of Sketch's bundled
-//! `fig2sketch` reader stack (`figformat` package, reverse-engineered from
-//! the shipped PyInstaller bundle; see `sketch-kernel-analysis/17` and
-//! `dumps/fig-dis/`).
+//! Native Figma `.fig` import — a Rust reader for the `.fig` container,
+//! following the semantics of the public `fig2sketch`/`figformat` reader
+//! stack.
 //!
 //! Pipeline: `.fig` zip → `canvas.fig` (self-describing Kiwi binary:
 //! "fig-kiwi" magic + versioned schema + zlib/zstd payload) → `NODE_CHANGES`
 //! message → parent/child tree assembly → kernel [`Document`].
 //!
-//! Kiwi wire format (recovered from `figformat/kiwi.py` bytecode):
+//! Kiwi wire format:
 //! - varint: 7-bit little-endian groups; int = zigzag
 //! - string: NUL-terminated UTF-8; float: 0x00 → 0.0 else 4-byte LE f32
 //! - schema: uvarint type count; per type { nstr name, byte kind,
@@ -322,7 +321,7 @@ pub fn read_fig(bytes: &[u8]) -> Result<(Value, BTreeMap<String, Vec<u8>>, Vec<V
     Ok((tree, images, kiwi_blobs))
 }
 
-/// Decode a Figma vector-network blob (layout recovered from
+/// Decode a Figma vector-network blob (layout per
 /// `figformat/vector_network.py`): header {u32 vertices, u32 segments,
 /// u32 regions}; per vertex {u32 style, f32 x, f32 y}; per segment
 /// {u32 v1, u32 rest, f32×2 t1, u32 v2, f32×2 t2}; regions {u32×2 header,
@@ -423,10 +422,8 @@ fn decode_vector_network(net: &[u8], scale: (f64, f64)) -> Result<crate::scene::
 // ---------------------------------------------------------------------------
 //
 // Field names and enum members below come from the schema embedded in each
-// canvas.fig (cross-checked against fig-kiwi v48/v106 dumps and the
-// authoritative fig.kiwi text schema; see sketch-kernel-analysis/dumps and
-// dumps/fig-dis). Semantic reference: frontend/design-client/src/import-fig.ts
-// and sketch-kernel-analysis/17-fig2sketch.md §converter_layout.
+// canvas.fig (fig-kiwi v48/v106). Semantic reference:
+// frontend/design-client/src/import-fig.ts.
 
 use crate::layout::{Align, Anchor, Constraints, Flow, Layout, SizeMode, Sizing};
 
@@ -444,8 +441,7 @@ fn bool_of(v: &Value, key: &str) -> Option<bool> {
 
 /// Node types with a lossless (or explicitly partial) kernel mapping.
 ///
-/// Everything else is *rejected* by name — never silently coerced to a group
-/// (design-studio/ALGORITHMS.md ledger: 不将未知 NodeType 静默转 group).
+/// Everything else is *rejected* by name — never silently coerced to a group.
 const KNOWN_KINDS: &[(&str, &str)] = &[
     ("FRAME", "frame"),
     ("GROUP", "group"),
@@ -741,17 +737,17 @@ impl FigImporter {
                     Some("FILL") => "stretch".into(),
                     Some("FIT") => "contain".into(),
                     Some("TILE") => {
-                        // TILE renders through Figma's pattern pipeline
-                        // (shader_185). The reverse-engineered kiwi `Paint`
-                        // (field table below) carries NO tiling parameters —
-                        // no patternTileType / tile size / offset fields
-                        // exist in it — so those are recorded as not
-                        // implemented and only the base behavior is mapped:
-                        // a regular grid at the image's native size with
-                        // zero offset. Figma-side stagger settings cannot be
-                        // recovered from this input; deliberately not guessed.
+                        // TILE renders through the pattern-fill pipeline.
+                        // The kiwi `Paint` (field table below) carries NO
+                        // tiling parameters — no patternTileType / tile
+                        // size / offset fields exist in it — so those are
+                        // recorded as unsupported and only the base behavior
+                        // is mapped: a regular grid at the image's native
+                        // size with zero offset. Figma-side stagger settings
+                        // cannot be recovered from this input; deliberately
+                        // not guessed.
                         untranslated.push(
-                            "imageScaleMode=TILE(平铺参数未逆向:按规则平铺+原始尺寸导入)".into(),
+                            "imageScaleMode=TILE(平铺参数不支持:按规则平铺+原始尺寸导入)".into(),
                         );
                         paint.tile = Some(crate::pattern_fill::PatternTile::native());
                         "cover".into()
@@ -4098,14 +4094,14 @@ mod tests {
                 .get("figUntranslated")
                 .expect("tile mode reported");
             assert!(note.contains("imageScaleMode=TILE"), "{note}");
-            // TILE maps to the shader_185 grid at the image's native size;
+            // TILE maps to the pattern-fill grid at the image's native size;
             // kiwi-side stagger/size/offset parameters do not exist in the
-            // reverse-engineered Paint table, so only the base behavior maps.
+            // Paint table, so only the base behavior maps.
             let tile = node_of(&doc, 1, 4).fills[0].tile.as_ref().expect("grid tile");
             assert_eq!(tile.mode, "grid");
             assert_eq!(tile.size, [0., 0.], "0 = native patternTexSizePixels");
             assert_eq!(tile.offset, [0., 0.]);
-            assert!(note.contains("未逆向"), "{note}");
+            assert!(note.contains("不支持"), "{note}");
             // EMOJI paint must not masquerade as a solid fill
             assert!(node_of(&doc, 1, 5).fills.is_empty());
             let note = node_of(&doc, 1, 5)

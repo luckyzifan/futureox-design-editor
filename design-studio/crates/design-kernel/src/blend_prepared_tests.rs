@@ -74,7 +74,7 @@ fn legacy_over(dst: Pixel, src: Pixel, mode: &str) -> Pixel {
         "saturation" => set_lum(set_sat(b, sat(s)), lum(b)),
         "color" => set_lum(s, lum(b)),
         "luminosity" => set_lum(b, lum(s)),
-        // Figma blend types 17/18 (recovered from its wasm shader_126):
+        // Figma blend types 17/18:
         // linear-burn = max(0, backdrop + source - 1) per channel in
         // premultiplied space; linear-dodge = min(1, backdrop + source).
         "linear-burn" => [

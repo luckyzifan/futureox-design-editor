@@ -1,9 +1,9 @@
 /** Persistent decoded-image cache (Sketch's MSImageDataMipMap disk cache
- * equivalent, `07-image-pipeline.md` §3). Level-0 decodes are frozen kernel
+ * equivalent). Level-0 decodes are frozen kernel
  * outputs — residency only, never a different value — so this store may
  * serve bytes that an earlier session produced with the same kernel.
  *
- * Key binding mirrors the reverse-engineered validation (colorspace/bpp/ICC
+ * Key binding mirrors the reference validation (colorspace/bpp/ICC
  * checks): the fingerprint covers the asset bytes, the decode variant
  * (premultiplied RGBA8 vs managed linear float), the engine color settings
  * at decode time, and the kernel build (wasm digest) — any of those changing

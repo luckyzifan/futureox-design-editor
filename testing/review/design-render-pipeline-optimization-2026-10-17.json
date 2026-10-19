@@ -1,0 +1,504 @@
+{
+  "date": "2026-10-17",
+  "recordedAt": "2026-10-17T15:45:56.101860+00:00",
+  "head": "7defe35b4ae64ee837bfee84b2e11e94702df543",
+  "scope": "CPU/GPU 流水重叠、重复绘制/参数上传、常驻编译场景索引、确定性编译包复用。HDR 排除。当前更改未提交。",
+  "sourceHashes": {
+    "frontend/design-client/src/kernel/prepare-ahead.ts": "75bb32265dee69b61dc282cb8717aea0301cd40d839cea50d7d5bf668848eef4",
+    "frontend/design-client/src/kernel/compiled-packet-cache.ts": "54b798956a20db9725710947a711b29841694fca4d9b64cf06a7b2971a50e081",
+    "frontend/design-client/src/kernel/render-kernel.ts": "edc961ccf6404af418a36b1172fce33f6886983634635be3faa3bee8ed6db96e",
+    "frontend/design-client/src/kernel/render-worker.ts": "121af47141ccf30e1fff14b7b00df368ec5fbff5a8433955a8c1cf88a44f52e4",
+    "frontend/design-client/src/kernel/gpu/scene-index.ts": "35bce63c0bc37415d66b3722bbf52b428f01c99c5dda98acf4c7ea17f1f62c57",
+    "frontend/design-client/src/kernel/gpu/translated-scene.ts": "84e68623b0b19d16f545434e76531035b4498b41dbaed05474d8897f410ebdc5",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "f5460040408d52f70cc5458b1d937af47966827930c37bd2a7769ad92bc843db",
+    "frontend/design-client/src/kernel/gpu/resident-pose-frame.ts": "7955f1eb38bd4a7acba85ecda284bf33ae275238b579f243094090098d9365d6",
+    "frontend/design-client/src/kernel/ProgressiveSurface.tsx": "22ef6a5521b260172d5d2989330d7bcdaa27c3b824ddeffe0dc0bc5a42da51ca",
+    "frontend/design-client/src/kernel/client.ts": "c2590a5b25a5cb6bad5075c02eeb594d12e89ed027c8b6fac4a254a8f7125b99",
+    "frontend/design-client/src/kernel/interaction-renderer.ts": "3530e4554f8cba41090b3e60888173923d4289f434706f5c45c63875cd99e2b0",
+    "frontend/design-client/src/kernel/prepare-ahead.test.ts": "6762d0adcc7a1bb7680d7c2cab3be4aafa569d90c543311537af831df8fafe6c",
+    "frontend/design-client/src/kernel/compiled-packet-cache.test.ts": "47d3920bd4e056d0e1a269b2270b91848f72a2710798e4a2512614916d71c962",
+    "frontend/design-client/src/kernel/render-kernel.test.ts": "aee7911e9c6dfd256060c33d13b863f8de05c569d75f83075d43537802bf1b47",
+    "frontend/design-client/src/kernel/gpu/resident-pose-frame.test.ts": "8f21706f6646c2c8e2a16f69e1792a13c1e3084458ce09fcb963144f7c481fc4",
+    "frontend/design-client/src/kernel/gpu/renderer.test.ts": "449f09e7c04ffddb1da15f09bce31ae44c3dce44d225d1646a97a9d037402f5e",
+    "frontend/design-client/src/kernel/gpu/translated-scene.test.ts": "6be8d309aba3f9f5724abef1855f2f432bf7ee7e9fcbdce9e271806d6b5f1e1a",
+    "frontend/design-client/src/kernel/gpu/parameter-cache-check.ts": "56e9623916a59c7b907cbbe46ef161674ff8cc3769e9eabeb5990e61b7fbe629",
+    "frontend/design-client/src/canvas-alignment-check.tsx": "ef448c1bd17b221a67f634d6198ba75a86c3bee2db93192da204d9fc24542fc0",
+    "frontend/design-client/src/kernel/interaction-surface-check.tsx": "94db8c73b9d4dc73e816dc3fa94a51c22c2a82fe7b03161cc4ff9da5fe9d4c76",
+    "frontend/design-client/parameter-cache-check.html": "0db5e5d271dd43a6251ca5b980711db4871e87cb0915b79fddf186714e497337"
+  },
+  "batches": [
+    {
+      "name": "CPU/GPU overlap",
+      "implemented": [
+        "独立 CPU 准备线程上最多一个提前编译任务；GPU 保持单编码器顺序",
+        "请求代次检查、错误延迟到消费点、取消 drain；文档更新有序",
+        "区分 CPU 工作时间、暴露等待和流水墙钟时间"
+      ],
+      "measurement": "双画板最后一批可见瓦片编译等待 35.7 -> 2.4 ms；18 次提前准备。该轮整批墙钟 343.7 -> 359.5 ms，未观察到稳定端到端下降，不能用等待下降冒充整体加速。"
+    },
+    {
+      "name": "Repeated drawing and coordinate uploads",
+      "implemented": [
+        "驻留根贡献使用既有区域 blend 更新，保留原合成顺序",
+        "图片、渐变字段和 LUT 通过完整参数键跨帧驻留，共用 32 MiB/64 条预算与 GPU 完成生命周期",
+        "完整背景前缀缓存保留为 VITE_DESIGN_RETAIN_PREFIX=1 实验项，默认关闭"
+      ],
+      "measurement": "双画板累计 pass 像素中位 40150982 -> 38462874；总样本耗时中位 31.4 -> 30.7 ms，改善有限且可能受系统噪声影响。6 组参数缓存对照字节一致；4 组实际字段路径复用 4 个字段且再次上传为 0。",
+      "rejectedOptimization": "前缀缓存试验减少像素，但增大驻留/复制成本。三画板样本总时长中位 29.9 -> 30.8 ms，未纳入默认路径。"
+    },
+    {
+      "name": "Resident scene index",
+      "implemented": [
+        "编译场景复用 parents/root ownership/source identities/image references/effect capabilities",
+        "经验证的纯平移继承同一索引；新编译场景另建索引",
+        "不以哈希表遍历顺序决定 painter order"
+      ],
+      "boundary": "这是 JS 编译场景的派生索引，不是完整 Rust 节点 arena 迁移；Document.nodes 仍保留原格式。单独端到端收益尚未隔离测量。"
+    },
+    {
+      "name": "Compiled packet reuse",
+      "implemented": [
+        "每个准备通道最多 32 MiB/128 项，单包最多 4 MiB",
+        "使用完整编译输入键，不使用近似哈希证明等价",
+        "独立持有包字节；load/patch 使缓存失效；异步过期结果不写回缓存"
+      ],
+      "measurement": {
+        "compiledPacketBytes": 27012106,
+        "compiledPacketHits": 2,
+        "overlappedPreparations": 37,
+        "pipelineWallMs": 2.5,
+        "preparationWaitMs": 0.3,
+        "source": "DOM .kernel-tiles after coldwide regression via CUA"
+      },
+      "boundary": "复用相同编译请求，尚不是跨倍率通用几何程序或完全常驻的 GPU 场景包。"
+    },
+    {
+      "name": "Release-commit scheduling correction",
+      "evidence": "commit-race-evidence.json: GPU pose 181、UI frame 179；文档/相机/归属/整数位移其余条件均通过。",
+      "implemented": [
+        "在 canvas 同步完成后先让最终高优先级姿态任务完成",
+        "旧 UI 显示消息引用当前驻留纹理时，保留该纹理最新已完成姿态与裁剪窗口",
+        "不同归属、不同纹理和较新输入不覆盖；复用 admission 未放宽"
+      ],
+      "measurement": "同一双画板松手约 249.8 ms，使用 retainedCommit；调试期间曾出现 494-579 ms 整组重画，最终消除该复用标记竞态。"
+    }
+  ],
+  "realDocumentComparisons": {
+    "baselineDouble": {
+      "status": "passed",
+      "samples": 47,
+      "median": {
+        "total": 31.40000000037253,
+        "graph": 1.800000000745058,
+        "finish": 15.900000000372529,
+        "passPixels": 40150982,
+        "textureBytes": 448356756,
+        "prefixHits": 0,
+        "fieldHits": 0
+      },
+      "blank": 0,
+      "pixelChecks": 30,
+      "commitMs": 284.19999999925494,
+      "retainedCommit": "true",
+      "oracle": {
+        "max": 0,
+        "rms": 0,
+        "changedFraction": 0
+      },
+      "visibleBatch": {
+        "pipelineWallMs": "343.70",
+        "preparationWaitMs": "35.70",
+        "overlappedPreparations": "0",
+        "compiledPacketHits": "0",
+        "compiledPacketBytes": "0"
+      }
+    },
+    "finalDouble": {
+      "status": "passed",
+      "samples": 50,
+      "median": {
+        "total": 30.700000000186265,
+        "graph": 1.7999999998137355,
+        "finish": 15.549999999813735,
+        "passPixels": 38462874.0,
+        "textureBytes": 426933056.0,
+        "prefixHits": 0.0,
+        "fieldHits": 0.0
+      },
+      "blank": 0,
+      "pixelChecks": 30,
+      "commitMs": 249.7999999988824,
+      "retainedCommit": "true",
+      "oracle": {
+        "max": 0,
+        "rms": 0,
+        "changedFraction": 0
+      },
+      "visibleBatch": {
+        "pipelineWallMs": "359.50",
+        "preparationWaitMs": "2.40",
+        "overlappedPreparations": "18",
+        "compiledPacketHits": "0",
+        "compiledPacketBytes": "11872754"
+      }
+    },
+    "baselineTriple": {
+      "status": "passed",
+      "samples": 49,
+      "median": {
+        "total": 29.90000000037253,
+        "graph": 0.599999999627471,
+        "finish": 15.5,
+        "passPixels": 40075566,
+        "textureBytes": 517044288,
+        "prefixHits": 0,
+        "fieldHits": 0
+      },
+      "blank": 0,
+      "pixelChecks": 30,
+      "commitMs": 288.7999999988824,
+      "retainedCommit": "true",
+      "oracle": {
+        "max": 0,
+        "rms": 0,
+        "changedFraction": 0
+      },
+      "visibleBatch": {
+        "pipelineWallMs": "489.00",
+        "preparationWaitMs": "48.50",
+        "overlappedPreparations": "0",
+        "compiledPacketHits": "0",
+        "compiledPacketBytes": "0"
+      }
+    },
+    "experimentalTriplePrefix": {
+      "status": "passed",
+      "samples": 47,
+      "median": {
+        "total": 30.799999998882413,
+        "graph": 0.6000000014901161,
+        "finish": 16.300000000745058,
+        "passPixels": 38555657,
+        "textureBytes": 535566364,
+        "prefixHits": 1,
+        "fieldHits": 0
+      },
+      "blank": 0,
+      "pixelChecks": 30,
+      "commitMs": 264.90000000037253,
+      "retainedCommit": "true",
+      "oracle": {
+        "max": 0,
+        "rms": 0,
+        "changedFraction": 0
+      },
+      "visibleBatch": {
+        "pipelineWallMs": "433.70",
+        "preparationWaitMs": "2.20",
+        "overlappedPreparations": "18",
+        "compiledPacketHits": "0",
+        "compiledPacketBytes": "15669590"
+      }
+    }
+  },
+  "pixelAlignment": {
+    "status": "passed",
+    "instrumentation": "整张 Canvas 像素回读用于正确性；其帧耗时不代表正常交互性能。",
+    "stages": [
+      {
+        "name": "fixture",
+        "nodes": 19950,
+        "board": "08_E-Mail_Inbox",
+        "dpr": 2
+      },
+      {
+        "name": "wheel pan alignment",
+        "maxError": 0.00022086793464926542,
+        "p95Error": 0.00021980267831187917,
+        "frameP95": 91.60000000000036,
+        "displayedAgeP95": 128.80000000074506,
+        "pixelChecks": 30,
+        "missingMarker": 0,
+        "pixelErrorMax": 0.15804321379012606,
+        "pixelErrorP95": 0.15804321379012606,
+        "gpuOutlineErrorMax": 0.25,
+        "gpuOutlineErrorP95": 0.25
+      },
+      {
+        "name": "pinch zoom alignment",
+        "maxError": 0.0007255040614884619,
+        "p95Error": 0.000519552191422178,
+        "frameP95": 125.89999999999782,
+        "displayedAgeP95": 194.40000000037253,
+        "pixelChecks": 30,
+        "missingMarker": 0,
+        "pixelErrorMax": 0.27368992036048423,
+        "pixelErrorP95": 0.27368992036048423,
+        "gpuOutlineErrorMax": 0.3535533905932738,
+        "gpuOutlineErrorP95": 0.25
+      },
+      {
+        "name": "real Canvas content-only picker and startup snapshot",
+        "picked": "#ff00ff",
+        "sampleRetries": 2,
+        "ownerMatches": true
+      }
+    ]
+  },
+  "coldZoom": {
+    "status": "passed",
+    "initial": {
+      "name": "initial",
+      "ms": 5522.5,
+      "firstPixelsMs": 2180.800000000745,
+      "firstSharpPixelsMs": 2180.800000000745,
+      "fullCoverageMs": 5231.0999999996275,
+      "ready": true,
+      "zoom": 0.8,
+      "presentedZoom": 0.8,
+      "contentCoverage": 1,
+      "sharpContent": 1,
+      "coverage": 1,
+      "sharp": 1,
+      "upscale": 1,
+      "rendered": 22,
+      "previews": 0,
+      "nodes": 19949
+    },
+    "gestures": [
+      {
+        "name": "cold wide zoom out .8 to .025",
+        "gestureMs": 197.7999999988824,
+        "settleMs": 2091.2000000011176,
+        "newTiles": 20,
+        "final": {
+          "ready": true,
+          "zoom": 0.025,
+          "presentedZoom": 0.025,
+          "contentCoverage": 1,
+          "sharpContent": 1,
+          "coverage": 1,
+          "sharp": 1,
+          "upscale": 1,
+          "rendered": 42,
+          "previews": 0
+        },
+        "samples": 24,
+        "minSampledContentCoverage": 1,
+        "minNativeSharpContent": 0.08333333333333333
+      },
+      {
+        "name": "cold zoom to .8",
+        "gestureMs": 200.19999999925494,
+        "settleMs": 24.199999999254942,
+        "newTiles": 9,
+        "final": {
+          "ready": true,
+          "zoom": 0.8,
+          "presentedZoom": 0.8,
+          "contentCoverage": 1,
+          "sharpContent": 1,
+          "coverage": 1,
+          "sharp": 1,
+          "upscale": 1,
+          "rendered": 51,
+          "previews": 0
+        },
+        "samples": 24,
+        "minSampledContentCoverage": 1,
+        "minNativeSharpContent": 0.08333333333333333
+      },
+      {
+        "name": "rapid .8 to .15 to .8",
+        "gestureMs": 399.19999999925494,
+        "settleMs": 8.200000001117587,
+        "newTiles": 36,
+        "final": {
+          "ready": true,
+          "zoom": 0.8,
+          "presentedZoom": 0.8,
+          "contentCoverage": 1,
+          "sharpContent": 1,
+          "coverage": 1,
+          "sharp": 1,
+          "upscale": 1,
+          "rendered": 87,
+          "previews": 0
+        },
+        "samples": 48,
+        "minSampledContentCoverage": 1,
+        "minNativeSharpContent": 0.28
+      },
+      {
+        "name": "rapid revisit .8 to .3 to .8",
+        "gestureMs": 399.90000000037253,
+        "settleMs": 24.399999998509884,
+        "newTiles": 17,
+        "final": {
+          "ready": true,
+          "zoom": 0.8,
+          "presentedZoom": 0.8,
+          "contentCoverage": 1,
+          "sharpContent": 1,
+          "coverage": 1,
+          "sharp": 1,
+          "upscale": 1,
+          "rendered": 104,
+          "previews": 0
+        },
+        "samples": 48,
+        "minSampledContentCoverage": 1,
+        "minNativeSharpContent": 0.48
+      },
+      {
+        "name": "rapid direction reversals",
+        "gestureMs": 298.8999999985099,
+        "settleMs": 8.300000000745058,
+        "newTiles": 8,
+        "final": {
+          "ready": true,
+          "zoom": 0.8,
+          "presentedZoom": 0.8,
+          "contentCoverage": 1,
+          "sharpContent": 1,
+          "coverage": 1,
+          "sharp": 1,
+          "upscale": 1,
+          "rendered": 112,
+          "previews": 0
+        },
+        "samples": 36,
+        "minSampledContentCoverage": 1,
+        "minNativeSharpContent": 0
+      },
+      {
+        "name": "1000 percent zoom and return",
+        "gestureMs": 398.8999999985099,
+        "settleMs": 24.800000000745058,
+        "newTiles": 79,
+        "final": {
+          "ready": true,
+          "zoom": 0.8,
+          "presentedZoom": 0.8,
+          "contentCoverage": 1,
+          "sharpContent": 1,
+          "coverage": 1,
+          "sharp": 1,
+          "upscale": 1,
+          "rendered": 191,
+          "previews": 0
+        },
+        "samples": 48,
+        "minSampledContentCoverage": 1,
+        "minNativeSharpContent": 0
+      },
+      {
+        "name": "raster trace"
+      }
+    ]
+  },
+  "validation": {
+    "frontend": "194 files; 1297 passed; 1 skipped; final-tests.log",
+    "kernel": "22 passed: coverage64 (1), gpu_tile_culling (9), software_raster (8), text_face_reuse (4); pixel-contract-tests.log",
+    "gpuSeams": {
+      "cases": 334,
+      "failures": 0,
+      "file": "final-seams.json"
+    },
+    "parameterFields": {
+      "status": "passed",
+      "cases": [
+        {
+          "managed": false,
+          "kind": "image",
+          "builds": 4,
+          "hits": 4,
+          "uploads": 0,
+          "differentBytes": 0,
+          "freshDifferentBytes": 0
+        },
+        {
+          "managed": false,
+          "kind": "linear",
+          "builds": 0,
+          "hits": 0,
+          "uploads": 0,
+          "differentBytes": 0,
+          "freshDifferentBytes": 0
+        },
+        {
+          "managed": false,
+          "kind": "radial",
+          "builds": 0,
+          "hits": 0,
+          "uploads": 0,
+          "differentBytes": 0,
+          "freshDifferentBytes": 0
+        },
+        {
+          "managed": true,
+          "kind": "image",
+          "builds": 4,
+          "hits": 4,
+          "uploads": 0,
+          "differentBytes": 0,
+          "freshDifferentBytes": 0
+        },
+        {
+          "managed": true,
+          "kind": "linear",
+          "builds": 4,
+          "hits": 4,
+          "uploads": 0,
+          "differentBytes": 0,
+          "freshDifferentBytes": 0
+        },
+        {
+          "managed": true,
+          "kind": "radial",
+          "builds": 4,
+          "hits": 4,
+          "uploads": 0,
+          "differentBytes": 0,
+          "freshDifferentBytes": 0
+        }
+      ]
+    },
+    "realSketch": {
+      "status": "passed",
+      "stages": [
+        {
+          "name": "hover text without layers panel",
+          "nodes": 753,
+          "target": "F2742E35-086B-4CCD-A6C8-3DA152D61C7D",
+          "text": "系统名称系统名称系统名称",
+          "hover": "F2742E35-086B-4CCD-A6C8-3DA152D61C7D",
+          "outline": true,
+          "visible": true,
+          "selection": []
+        },
+        {
+          "name": "double click text directly",
+          "editing": true,
+          "selection": [
+            "F2742E35-086B-4CCD-A6C8-3DA152D61C7D"
+          ]
+        }
+      ]
+    },
+    "build": "deliverable-build.log: WASM, TypeScript, Vite success; existing chunk-size and mixed dynamic/static import warnings remain",
+    "foundation": "foundation.log: passed"
+  },
+  "remaining": [
+    "大范围冷缩放仍约 2.09 秒补齐高清；首次可见像素约 2.18 秒，完整首屏约 5.52 秒。",
+    "快速跨倍率时内容覆盖采样为 1，但原生密度覆盖可暂时为 0；不能承诺每帧原生清晰。",
+    "复杂背景模糊与混合的热拖动仍约 30 ms/次，未达到稳定 60 fps。",
+    "前缀背景缓存默认关闭；需要收益选择器或更小缓存范围后再推进。",
+    "WebAssembly SIMD、Rayon、多分配器/激进 wasm-opt、Rust 全节点 arena 未启用，本轮未改变浮点/整数光栅规则。",
+    "未验证 HDR 或 Electron。"
+  ],
+  "evidenceDirectory": "/Users/Apple/project/core/.local/design-pipeline-20261017",
+  "screenshot": "/Users/Apple/project/core/.local/design-pipeline-20261017/final-canvas.png",
+  "runningApplication": "http://127.0.0.1:1430/",
+  "interpretation": "均为同机样本，不是跨设备性能承诺。finish 含同步等待，不是 GPU timestamp 独立耗时。已记录失败试验和修复过程，不把像素正确性通过表述为全场景无 bug。"
+}

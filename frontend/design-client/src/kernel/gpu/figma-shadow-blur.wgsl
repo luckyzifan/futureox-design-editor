@@ -1,10 +1,10 @@
-// Figma 阴影模糊 pass,逐行移植自其 shader_118(figma-wasm-analysis/shaders/)。
-// 源码事实:阴影是单标量(alpha)的成对帐篷模糊;RGBA8 精度下标量经
+// Figma 阴影模糊 pass。
+// 算法事实:阴影是单标量(alpha)的成对帐篷模糊;RGBA8 精度下标量经
 // 1/255 → 1/65025 → 1/16581375 三级阶梯打包进 vec4,unpack 是点积还原:
 //   vec2 pack(b): c=floor(b*255)/255; d=(b-c)*255 → (c,d)
 //   vec4 pack4(b): 两级嵌套 pack(残差放大 65025)
 //   float unpack(v) = dot(v, vec4(1, 1/255, 1/65025, 1/16581375))
-// 循环与 shader_78 完全同构(≤64 有界、count-k 帐篷、成对插值),
+// 循环与主模糊完全同构(≤64 有界、count-k 帐篷、成对插值),
 // 差异仅在标量域 + 归一化除 max(t, 1e-20)。
 struct Params { values: array<vec4<f32>, 64> }
 @group(0) @binding(0) var<uniform> params: Params;

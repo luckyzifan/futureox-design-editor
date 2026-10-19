@@ -92,8 +92,8 @@ fn positive(value: f32) -> Result<f32, CapturePlanError> {
 /// The shift itself rounds to binary32 before truncation. This must not be
 /// replaced by `round()`, whose behavior next to a half-integer can differ.
 fn shift_then_truncate(value: f32) -> f32 {
-    // This is the predecessor of 0.5, not the rounded decimal printed by a
-    // decompiler. Adding exact 0.5 incorrectly increments large odd integers.
+    // This is the predecessor of 0.5, not the rounded decimal 0.5 itself.
+    // Adding exact 0.5 incorrectly increments large odd integers.
     let bias = f32::from_bits(0x3eff_ffff);
     add(value, bias.copysign(value)).trunc()
 }

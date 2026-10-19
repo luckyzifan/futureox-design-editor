@@ -1,0 +1,3586 @@
+{
+  "date": "2026-10-07",
+  "recordedAt": "2026-10-07T07:47:02.180617+00:00",
+  "status": "two_local_correctness_fixes_verified_full_precision_and_figma_acceptance_failed",
+  "fullAcceptancePassed": false,
+  "figmaAcceptancePassed": false,
+  "baseCommit": "73bdf8bc670c9da726d88f417e1bf6966bd4f03d",
+  "workingTree": "Uncommitted; source hashes below bind the evidence. No push, merge or deployment.",
+  "platform": "macOS-26.3-arm64-arm-64bit-Mach-O",
+  "evidenceDirectory": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513",
+  "previousEvidence": "testing/review/design-kernel-sampling-2026-10-07.json",
+  "scope": {
+    "included": [
+      "closed stroke seam joins",
+      "stable subpixel integrated-tent side coefficients",
+      "real Figma Chrome exports and current five-build readbacks",
+      "local exact precision regressions"
+    ],
+    "excluded": [
+      "non-design user edits",
+      "production deployment",
+      "full Figma feature parity certification",
+      "general fonts/business-page fidelity certification"
+    ]
+  },
+  "figma": {
+    "file": "https://www.figma.com/design/KawVhUXCap10WDTprxYEmu/?node-id=44-3",
+    "createdPage": "44:2",
+    "createdBoard": "44:3",
+    "createdNodes": [
+      "44:2",
+      "44:3",
+      "44:4",
+      "44:5",
+      "44:6",
+      "44:7",
+      "44:8",
+      "44:9",
+      "44:10",
+      "44:11",
+      "44:12",
+      "44:13",
+      "44:14",
+      "44:15",
+      "44:16",
+      "44:17",
+      "44:18",
+      "44:19",
+      "44:20",
+      "44:21",
+      "44:22",
+      "44:23",
+      "44:24",
+      "44:25",
+      "44:26",
+      "44:27",
+      "44:28",
+      "44:29",
+      "44:30",
+      "44:31",
+      "44:32",
+      "44:33",
+      "44:34",
+      "44:35",
+      "44:36",
+      "44:37",
+      "44:38",
+      "44:39",
+      "44:40",
+      "44:41",
+      "44:42",
+      "44:43",
+      "44:44",
+      "44:45",
+      "44:46",
+      "44:47",
+      "44:48",
+      "44:49",
+      "44:50",
+      "44:51"
+    ],
+    "existingNodesModified": false,
+    "documentPageListChanged": true,
+    "references": "frontend/design-client/public/fidelity/browser-2026-10-07",
+    "exportChannel": "real Chrome UI Export 16 layers; downloaded ZIP; MCP only for node construction and parameter readback",
+    "exportArchiveSha256": "0a9503f25da071b651063f70d6855646850c1edad26abf3397b8ffeea23ffc29",
+    "dimensions": [
+      128,
+      128
+    ],
+    "scale": 1,
+    "colorProfile": "sRGB",
+    "normalization": "Kernel width/height, transforms, node/paint opacity, radii and smoothing use actual Figma readback values; required kernel effect color fields supplied explicitly.",
+    "summary": [
+      {
+        "profile": "analytic",
+        "strictCommonParameterCases": 14,
+        "wasmCpuByteExactToFigma": 3,
+        "internalPairComparisons": 64,
+        "internalFailedOrMissing": 40
+      },
+      {
+        "profile": "figma",
+        "strictCommonParameterCases": 14,
+        "wasmCpuByteExactToFigma": 1,
+        "internalPairComparisons": 64,
+        "internalFailedOrMissing": 0
+      },
+      {
+        "profile": "figmaSubpixel",
+        "strictCommonParameterCases": 14,
+        "wasmCpuByteExactToFigma": 1,
+        "internalPairComparisons": 64,
+        "internalFailedOrMissing": 0
+      }
+    ],
+    "commonParameterCases": 14,
+    "approximateOnly": [
+      "glass-full",
+      "texture"
+    ],
+    "coverageWarning": "These denominators describe this finite controlled corpus, not Figma feature completion or all user designs.",
+    "figmaProfilePerCase": [
+      {
+        "case": "integer-rectangle",
+        "index": 0,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 0,
+        "differentPixels": 0,
+        "maximum": 0,
+        "meanAbsoluteError": 0.0,
+        "sha256": "2f060b8795424cdab570140af28ae6ca17e670697197c8c04ca3426acab6123a"
+      },
+      {
+        "case": "fractional-rectangle",
+        "index": 1,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 3,
+        "differentPixels": 1,
+        "maximum": 1,
+        "meanAbsoluteError": 4.57763671875e-05,
+        "sha256": "8d5e13a82d9936506e504ca06e405040721ecadb6e18b31033011ac0941b31eb"
+      },
+      {
+        "case": "ellipse",
+        "index": 2,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 153,
+        "differentPixels": 126,
+        "maximum": 1,
+        "meanAbsoluteError": 0.0023345947265625,
+        "sha256": "a518def75bbf0c4416f3dcb4f9b52af44ebd6aca2065a88d9850e0910f8642e6"
+      },
+      {
+        "case": "rotated-rectangle",
+        "index": 3,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 111,
+        "differentPixels": 100,
+        "maximum": 1,
+        "meanAbsoluteError": 0.0016937255859375,
+        "sha256": "53ef042170673423c09fc2973f49bba11bb21ebbefe53d9caeb96771eca4440a"
+      },
+      {
+        "case": "smooth-corner",
+        "index": 4,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 973,
+        "differentPixels": 384,
+        "maximum": 187,
+        "meanAbsoluteError": 0.8073883056640625,
+        "sha256": "5f6812802b179bb64e27d9c3a368900cfdd274b3e51432c4de735205b5d8abb9"
+      },
+      {
+        "case": "linear-gradient",
+        "index": 5,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 10944,
+        "differentPixels": 3648,
+        "maximum": 1,
+        "meanAbsoluteError": 0.1669921875,
+        "sha256": "a9037a5e9914fbb25e15528d5e038e16407316ca13b92fc9e8eb6eda50aab23d"
+      },
+      {
+        "case": "multiply-opacity",
+        "index": 6,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 382,
+        "differentPixels": 287,
+        "maximum": 1,
+        "meanAbsoluteError": 0.005828857421875,
+        "sha256": "97aa7d7a7ba8d3fe7c1d2be7acb1f417c5142c9da34d81a84cb9717c0f00b1c0"
+      },
+      {
+        "case": "outside-stroke",
+        "index": 7,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 428,
+        "differentPixels": 294,
+        "maximum": 1,
+        "meanAbsoluteError": 0.00653076171875,
+        "sha256": "5e76e07f6be6346b48959231037be53414fc1203f71d499e503c15541a5dd8ad"
+      },
+      {
+        "case": "blur-small",
+        "index": 8,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 1336,
+        "differentPixels": 448,
+        "maximum": 15,
+        "meanAbsoluteError": 0.0924072265625,
+        "sha256": "e853577b006046232b2792f119e68c567223ad0636d35eccb900b9e1276bdbd5"
+      },
+      {
+        "case": "layer-blur",
+        "index": 9,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 3111,
+        "differentPixels": 1969,
+        "maximum": 1,
+        "meanAbsoluteError": 0.0474700927734375,
+        "sha256": "d7a348606cd25e7316687909424c3ead2a34ec393fbeb075342603b5bb340a5c"
+      },
+      {
+        "case": "shadow",
+        "index": 10,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 1833,
+        "differentPixels": 611,
+        "maximum": 2,
+        "meanAbsoluteError": 0.0282440185546875,
+        "sha256": "75954989dfe36f949b704f44c6523a591d9ecaa4d71d9195700fa3cb08d4cb5b"
+      },
+      {
+        "case": "backdrop-blur",
+        "index": 11,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 11661,
+        "differentPixels": 3887,
+        "maximum": 7,
+        "meanAbsoluteError": 0.2422027587890625,
+        "sha256": "e1c0aefeacaea1f54e58f0fea36ce2fe7f0c75aa4882a1e6f517764c5185bd3e"
+      },
+      {
+        "case": "alpha-mask",
+        "index": 12,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 8192,
+        "differentPixels": 4096,
+        "maximum": 1,
+        "meanAbsoluteError": 0.125,
+        "sha256": "84f9e19b9ea0fb281ee63e43c42f1f5275729c0e7a03f604a392897122bc549d"
+      },
+      {
+        "case": "glass-frost-only",
+        "index": 13,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": true,
+        "differentBytes": 9129,
+        "differentPixels": 3043,
+        "maximum": 3,
+        "meanAbsoluteError": 0.225311279296875,
+        "sha256": "e50177d65defc803eb2f0f9b1479c07816374b807479ed79e3ceb7ea911ffad3"
+      },
+      {
+        "case": "glass-full",
+        "index": 14,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": false,
+        "differentBytes": 10351,
+        "differentPixels": 3451,
+        "maximum": 56,
+        "meanAbsoluteError": 0.9531707763671875,
+        "sha256": "5ada839538a3540186bc6024f631acfdbfe27289c740364382e51b30dcca03d8"
+      },
+      {
+        "case": "texture",
+        "index": 15,
+        "profile": "figma",
+        "backend": "cpu",
+        "strictComparable": false,
+        "differentBytes": 13910,
+        "differentPixels": 7152,
+        "maximum": 185,
+        "meanAbsoluteError": 2.1641845703125,
+        "sha256": "5861e951fd0e2fe5e3f4ccfdd7fe731bde9ab89af79e7a245528a3b78eecf940"
+      }
+    ],
+    "exportChannelDifferences": [
+      {
+        "case": "shadow",
+        "browserSha256": "40ba48ba82e2796732fb201e8609de3071879df1613a8d5cf58a24db139c22f9",
+        "mcpSha256": "ae83332450492042e37962c0f61da10f81704b7db1c6ffe288cd3f8cc93bf97c",
+        "differentBytes": 1812,
+        "maximum": 3
+      },
+      {
+        "case": "layer-blur",
+        "browserSha256": "cb58bf174ad8f0d17366ef3ea4074cbd8e9def0ea17e59dbc473366cfc17a60e",
+        "mcpSha256": "67503fa0a145fcce1fe5abfb201576da87d0aaa04f8693eacef1d5060c89b47c",
+        "differentBytes": 6241,
+        "maximum": 2
+      },
+      {
+        "case": "backdrop-blur",
+        "browserSha256": "1a957889f9e36d8410e01c4c6314d1ba487e43cd68fd12bb24ff4ea0f4eab72e",
+        "mcpSha256": "a1f7c04947e0dfcda6304f9db0afc09267f6c139ae3c4fee2281c81e614dc94c",
+        "differentBytes": 12633,
+        "maximum": 3
+      },
+      {
+        "case": "mask-half-overlap",
+        "browserSha256": "419ce30069b02053557e5a740cd86e264c96facca215095f2d012ef2a2598c06",
+        "mcpSha256": "0ca5df99aa33e09635247e9e0f85abb78030762e7c3727abe960a985da936c19",
+        "differentBytes": 8192,
+        "maximum": 1
+      }
+    ],
+    "layerBlurBrowserMatchesHistoricalBrowserReference": true,
+    "channelDifferenceCause": "Not established; never replace browser references with MCP renderings.",
+    "report": "testing/review/design-kernel-figma-2026-10-07/index.html",
+    "data": "testing/review/design-kernel-figma-2026-10-07/results.json",
+    "image": "testing/review/design-kernel-figma-2026-10-07/figma-summary.png"
+  },
+  "fixes": [
+    {
+      "problem": "Repeated closing endpoint leaves the uniform closed-stroke seam with a zero-length neighbor, suppressing the join.",
+      "change": "Normalize repeated closed endpoint before constructing quads and miter/round/bevel joins; same rule as variable-width route.",
+      "regression": "Cyclic start vertices, reverse winding, explicit repeat twice, three joins, uniform and variable width; all four rectangle corners in three CPU profiles.",
+      "before": {
+        "log": "stroke-before.log",
+        "exit": 101,
+        "seamRegressionFailed": true
+      },
+      "figmaOutsideStrokeBefore": {
+        "differentBytes": 532,
+        "maximum": 187
+      },
+      "figmaOutsideStrokeAfter": {
+        "differentBytes": 428,
+        "differentPixels": 294,
+        "maximum": 1
+      },
+      "remaining": "The 1/255 external differences still fail acceptance."
+    },
+    {
+      "problem": "Cubic boundary formula loses small nonzero radii through cancellation and squared/cubed underflow; can yield NaN.",
+      "change": "For 0<r<=1 use center 1-r/3, adjacent coefficient r/6 and zero outside support; GPU side division uses divideRN.",
+      "independentDerivation": "integral from 0 to r of t*(r-t)/r^2 dt = r/6",
+      "cpuBefore": {
+        "log": "blur-before.log",
+        "exit": 101,
+        "newRegressionsFailed": 2
+      },
+      "nativeGpuBefore": {
+        "log": "coefficients-gpu-before.log",
+        "exit": 101,
+        "newVectors": 1044,
+        "bitDifferences": 777,
+        "includedNaN": true
+      },
+      "after": "All 1044 new side/support coefficient vectors match exact Fraction/RNE on CPU, native GPU, WebGPU and WebGL2.",
+      "remaining": "Does not establish correctly rounded general filter accumulation, center coefficient equivalence, or Figma blur matching."
+    }
+  ],
+  "checks": {
+    "kernelServer": {
+      "command": "cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel -p futureox-design-server --no-fail-fast -- --test-threads=2",
+      "exit": 0,
+      "passed": 320,
+      "failed": 0,
+      "ignored": 0,
+      "log": "kernel-server.log"
+    },
+    "focused": {
+      "exit": 0,
+      "passed": 37,
+      "failed": 0,
+      "ignored": 0,
+      "log": "focused-after.log"
+    },
+    "frontend": {
+      "command": "bun run test",
+      "cwd": "frontend/design-client",
+      "exit": 0,
+      "passed": 202,
+      "failed": 0,
+      "files": 36,
+      "log": "frontend-tests.log"
+    },
+    "build": {
+      "exit": 0,
+      "logs": [
+        "native-build.log",
+        "frontend-build.log"
+      ]
+    },
+    "clippy": {
+      "exit": 0,
+      "log": "clippy.log"
+    },
+    "format": {
+      "exit": 0,
+      "command": "cargo fmt --all --manifest-path design-studio/Cargo.toml --check"
+    },
+    "lint": {
+      "exit": 0,
+      "warnings": 633,
+      "infos": 15,
+      "log": "frontend-lint.log",
+      "note": "Existing lint warnings remain; no autofix applied."
+    },
+    "foundation": {
+      "exit": 0,
+      "log": "foundation.log"
+    },
+    "arithmeticVectors": 66958,
+    "samplingVectors": 7008,
+    "figmaBrowserRun": {
+      "exit": 1,
+      "checks": 48,
+      "failed": 12,
+      "numericFailures": 0,
+      "log": "browser-after.log",
+      "failures": "All twelve scene failures are analytic; fine profiles have zero differences."
+    },
+    "figmaFiveBuildComparison": {
+      "exit": 1,
+      "log": "comparison.log",
+      "reason": "External strict differences and analytic native unsupported/internal browser differences."
+    },
+    "precisionGate": {
+      "profiles": [
+        "analytic",
+        "figma",
+        "figmaSubpixel"
+      ],
+      "stages": [
+        "native",
+        "browser"
+      ],
+      "passed": false,
+      "fullAcceptancePassed": false,
+      "corpusSha256": "6fb23baf460bdca7b40583fd896ff20502a3b72c4abdf300c08a4553cc1cd44d",
+      "arithmeticSha256": "238985a6c352d3e758a3a9516bab62f901b623da227dbb0c2f930564ac9780a9",
+      "samplingSha256": "8f7a84422d94e1b55afbc63749fcceefb4bebae1bbc9aada1ca2297f83bd2856",
+      "checks": [
+        {
+          "stage": "oracle",
+          "command": [
+            "python3",
+            "design-studio/scripts/generate-precision-vectors.py",
+            "--check"
+          ],
+          "exit": 0,
+          "seconds": 0.986,
+          "log": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/oracle.log"
+        },
+        {
+          "stage": "sampling-oracle",
+          "command": [
+            "python3",
+            "design-studio/scripts/generate-sampling-vectors.py",
+            "--check"
+          ],
+          "exit": 0,
+          "seconds": 0.295,
+          "log": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/sampling-oracle.log"
+        },
+        {
+          "stage": "arithmetic",
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "--manifest-path",
+            "design-studio/Cargo.toml",
+            "-p",
+            "futureox-design-gpu",
+            "--features",
+            "hardware-tests",
+            "--test",
+            "arithmetic",
+            "--test",
+            "sampling",
+            "--",
+            "--test-threads=1",
+            "--nocapture"
+          ],
+          "exit": 0,
+          "seconds": 6.184,
+          "log": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/arithmetic.log"
+        },
+        {
+          "stage": "native",
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "--manifest-path",
+            "design-studio/Cargo.toml",
+            "-p",
+            "futureox-design-gpu",
+            "--features",
+            "hardware-tests",
+            "--test",
+            "native",
+            "--",
+            "--test-threads=1",
+            "--nocapture"
+          ],
+          "exit": 101,
+          "seconds": 113.325,
+          "log": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/native.log"
+        },
+        {
+          "stage": "build",
+          "command": [
+            "bun",
+            "run",
+            "build"
+          ],
+          "exit": 0,
+          "seconds": 2.647,
+          "log": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/build.log"
+        },
+        {
+          "stage": "browser",
+          "command": [
+            "bun",
+            "scripts/check-gpu-parity.ts"
+          ],
+          "exit": 1,
+          "seconds": 60.189,
+          "log": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/browser.log"
+        },
+        {
+          "stage": "cross",
+          "command": [
+            "python3",
+            "design-studio/scripts/compare-precision-readbacks.py",
+            "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after",
+            "--profiles",
+            "analytic,figma,figmaSubpixel"
+          ],
+          "exit": 1,
+          "seconds": 4.301,
+          "log": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/cross.log"
+        }
+      ],
+      "scope": "Exact RGBA8 and managed binary32 bit comparisons on all requested profiles; independent arithmetic oracle. Missing backends fail. External Figma PNG similarity remains separate."
+    },
+    "gateStageBoundary": "Kernel/server and frontend tests ran separately on this same source; native,browser gate ran all 147 scenes across all three profiles. No gate result marked complete.",
+    "nativeSceneTests": {
+      "passed": 8,
+      "failed": 3,
+      "ignored": 0,
+      "log": "precision-after/native.log"
+    },
+    "nativeSharedCorpus": {
+      "failures": [
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 0,
+          "name": "屏外蒙版 normal 可见",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 1,
+          "name": "屏外蒙版 normal 隐藏",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 2,
+          "name": "屏外蒙版 pass-through 可见",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 3,
+          "name": "屏外蒙版 pass-through 隐藏",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 4,
+          "name": "填充、贝塞尔、凹形与描边",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 5,
+          "name": "嵌套变换、裁剪、蒙版与透明度",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 6,
+          "name": "布尔孔洞、分叉网络与曲线",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 7,
+          "name": "16 种混合模式",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 8,
+          "name": "阴影、内阴影、模糊与噪声纹理",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 9,
+          "name": "背景模糊与玻璃折射",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 10,
+          "name": "透明画布与多重填充",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 11,
+          "name": "图片方向、透明采样与缩放模式",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 12,
+          "name": "Forma · 探索画布",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 13,
+          "name": "重复几何、不同亚像素位置与裁剪",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 14,
+          "name": "透明叠加顺序与背景效果屏障",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 15,
+          "name": "可变宽度 · 自研矢量内核",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 16,
+          "name": "自研铅笔 · 贝塞尔与笔压",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 17,
+          "name": "单描边合批、透明重叠与裁剪边界",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 18,
+          "name": "嵌套组效果与共享模糊表面",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 19,
+          "name": "先完成模糊再执行父框裁剪",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 20,
+          "name": "带模糊的蒙版与子图层效果",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 21,
+          "name": "Core-QA-pass-through",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 22,
+          "name": "Core-QA-pass-through-opacity",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 23,
+          "name": "Core-QA-isolated-opacity",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 24,
+          "name": "Core-QA-pass-through-blur",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 25,
+          "name": "批量：重叠顺序、曲线与父级裁剪",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 26,
+          "name": "批量：滤镜屏障与参数缓冲换批",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 27,
+          "name": "批量：复杂路径分带与填充规则",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 28,
+          "name": "透明背景穿透组、嵌套蒙版与裁剪",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 29,
+          "name": "精度：斜边采样与退化自交",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 30,
+          "name": "精度：背景效果透明度取整",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 31,
+          "name": "精度：渐变半字节与批次切换",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 32,
+          "name": "精度：1×像素预览",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 33,
+          "name": "精度：2×像素预览",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 34,
+          "name": "deterministic-0",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 35,
+          "name": "deterministic-1",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 36,
+          "name": "deterministic-2",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 37,
+          "name": "deterministic-3",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 38,
+          "name": "deterministic-4",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 39,
+          "name": "deterministic-5",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 40,
+          "name": "deterministic-6",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 41,
+          "name": "deterministic-7",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 42,
+          "name": "deterministic-8",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 43,
+          "name": "deterministic-9",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 44,
+          "name": "deterministic-10",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 45,
+          "name": "deterministic-11",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 46,
+          "name": "deterministic-12",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 47,
+          "name": "deterministic-13",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 48,
+          "name": "deterministic-14",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 49,
+          "name": "deterministic-15",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 50,
+          "name": "deterministic-16",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 51,
+          "name": "deterministic-17",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 52,
+          "name": "deterministic-18",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 53,
+          "name": "deterministic-19",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 54,
+          "name": "deterministic-20",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 55,
+          "name": "deterministic-21",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 56,
+          "name": "deterministic-22",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 57,
+          "name": "deterministic-23",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 58,
+          "name": "deterministic-24",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 59,
+          "name": "deterministic-25",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 60,
+          "name": "deterministic-26",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 61,
+          "name": "deterministic-27",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 62,
+          "name": "deterministic-28",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 63,
+          "name": "deterministic-29",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 64,
+          "name": "deterministic-30",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 65,
+          "name": "deterministic-31",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 66,
+          "name": "deterministic-32",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 67,
+          "name": "deterministic-33",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 68,
+          "name": "deterministic-34",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 69,
+          "name": "deterministic-35",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 70,
+          "name": "deterministic-36",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 71,
+          "name": "deterministic-37",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 72,
+          "name": "deterministic-38",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 73,
+          "name": "deterministic-39",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 74,
+          "name": "High zoom smooth 20/1",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 75,
+          "name": "High zoom smooth 2000/32",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 76,
+          "name": "SDR glass materialization contract",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 77,
+          "name": "Animation shadow 0ms",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 78,
+          "name": "Animation shadow 125ms",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 79,
+          "name": "Animation shadow 300ms",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 80,
+          "name": "Animation shadow 600ms",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 81,
+          "name": "Animation shadow 900ms",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 82,
+          "name": "Animation shadow 1200ms",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 83,
+          "name": "Animation shadow 1800ms",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 84,
+          "name": "Animation shadow 2400ms",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 85,
+          "name": "Coloured alpha mask / pass-through=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 86,
+          "name": "Coloured alpha mask / pass-through=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 87,
+          "name": "Coloured luminance mask / pass-through=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 88,
+          "name": "Coloured luminance mask / pass-through=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 89,
+          "name": "Stroke samples butt miter profile=False dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 90,
+          "name": "Stroke samples butt miter profile=False dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 91,
+          "name": "Stroke samples butt miter profile=True dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 92,
+          "name": "Stroke samples butt miter profile=True dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 93,
+          "name": "Stroke samples butt bevel profile=False dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 94,
+          "name": "Stroke samples butt bevel profile=False dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 95,
+          "name": "Stroke samples butt bevel profile=True dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 96,
+          "name": "Stroke samples butt bevel profile=True dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 97,
+          "name": "Stroke samples butt round profile=False dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 98,
+          "name": "Stroke samples butt round profile=False dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 99,
+          "name": "Stroke samples butt round profile=True dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 100,
+          "name": "Stroke samples butt round profile=True dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 101,
+          "name": "Stroke samples square miter profile=False dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 102,
+          "name": "Stroke samples square miter profile=False dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 103,
+          "name": "Stroke samples square miter profile=True dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 104,
+          "name": "Stroke samples square miter profile=True dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 105,
+          "name": "Stroke samples square bevel profile=False dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 106,
+          "name": "Stroke samples square bevel profile=False dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 107,
+          "name": "Stroke samples square bevel profile=True dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 108,
+          "name": "Stroke samples square bevel profile=True dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 109,
+          "name": "Stroke samples square round profile=False dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 110,
+          "name": "Stroke samples square round profile=False dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 111,
+          "name": "Stroke samples square round profile=True dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 112,
+          "name": "Stroke samples square round profile=True dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 113,
+          "name": "Stroke samples round miter profile=False dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 114,
+          "name": "Stroke samples round miter profile=False dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 115,
+          "name": "Stroke samples round miter profile=True dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 116,
+          "name": "Stroke samples round miter profile=True dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 117,
+          "name": "Stroke samples round bevel profile=False dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 118,
+          "name": "Stroke samples round bevel profile=False dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 119,
+          "name": "Stroke samples round bevel profile=True dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 120,
+          "name": "Stroke samples round bevel profile=True dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 121,
+          "name": "Stroke samples round round profile=False dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 122,
+          "name": "Stroke samples round round profile=False dash=True",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 123,
+          "name": "Stroke samples round round profile=True dash=False",
+          "profile": "analytic"
+        },
+        {
+          "backendError": "Native GPU currently requires the figma or figmaSubpixel sampling profile",
+          "index": 124,
+          "name": "Stroke samples round round profile=True dash=True",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 125,
+          "name": "Managed precision dyadic",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 126,
+          "name": "Managed precision srgb",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 127,
+          "name": "Managed precision gradient",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 128,
+          "name": "Managed precision blur",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 129,
+          "name": "Managed precision noise",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 130,
+          "name": "Managed precision glass",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 131,
+          "name": "Managed tagged image p3-red-icc.png scale 4",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 132,
+          "name": "Managed tagged image p3-red-icc.png scale 32",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 133,
+          "name": "Managed tagged image p3-red-icc.png scale 37.5",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 134,
+          "name": "Managed tagged image pq-highlights.png scale 4",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 135,
+          "name": "Managed tagged image pq-highlights.png scale 32",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 136,
+          "name": "Managed tagged image pq-highlights.png scale 37.5",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 137,
+          "name": "Managed tagged image hlg-highlights.png scale 4",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 138,
+          "name": "Managed tagged image hlg-highlights.png scale 32",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 139,
+          "name": "Managed tagged image hlg-highlights.png scale 37.5",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 140,
+          "name": "Managed rotated texture none",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 141,
+          "name": "Managed rotated texture zero-amount",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 142,
+          "name": "Managed rotated texture zero-opacity",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 143,
+          "name": "Managed rotated texture displacement",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 144,
+          "name": "Managed rotated backdrop neutral-glass",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 145,
+          "name": "Managed rotated backdrop neutral-glass-before-active-glass",
+          "profile": "analytic"
+        },
+        {
+          "compileError": "Managed color requires figma or figmaSubpixel coverage",
+          "index": 146,
+          "name": "Managed rotated backdrop zero-blur-before-active-glass",
+          "profile": "analytic"
+        },
+        {
+          "differentFloatWords": 425,
+          "index": 128,
+          "name": "Managed precision blur",
+          "profile": "figma"
+        },
+        {
+          "differentFloatWords": 202,
+          "index": 130,
+          "name": "Managed precision glass",
+          "profile": "figma"
+        },
+        {
+          "differentFloatWords": 131,
+          "index": 143,
+          "name": "Managed rotated texture displacement",
+          "profile": "figma"
+        },
+        {
+          "differentFloatWords": 1785,
+          "index": 128,
+          "name": "Managed precision blur",
+          "profile": "figmaSubpixel"
+        },
+        {
+          "differentBytes": 2,
+          "index": 128,
+          "name": "Managed precision blur",
+          "profile": "figmaSubpixel"
+        },
+        {
+          "differentFloatWords": 182,
+          "index": 130,
+          "name": "Managed precision glass",
+          "profile": "figmaSubpixel"
+        },
+        {
+          "differentFloatWords": 166,
+          "index": 143,
+          "name": "Managed rotated texture displacement",
+          "profile": "figmaSubpixel"
+        }
+      ],
+      "hardware": {
+        "backend": "Metal",
+        "device_type": "IntegratedGpu",
+        "name": "Apple M2 Pro"
+      },
+      "inputs": 147,
+      "profiles": "analytic,figma,figmaSubpixel",
+      "scope": "RGBA8 bytes and managed binary32 bits; zero tolerance"
+    },
+    "browserSharedCorpus": {
+      "checks": 441,
+      "failures": 138,
+      "numericFailures": 0,
+      "profiles": [
+        {
+          "profile": "analytic",
+          "checks": 147,
+          "failures": 132
+        },
+        {
+          "profile": "figma",
+          "checks": 147,
+          "failures": 3
+        },
+        {
+          "profile": "figmaSubpixel",
+          "checks": 147,
+          "failures": 3
+        }
+      ],
+      "fineFailures": [
+        {
+          "name": "Managed precision blur",
+          "index": 128,
+          "profile": "figma",
+          "comparisons": [
+            {
+              "backend": "webgpu",
+              "maximum": 0,
+              "differentBytes": 0,
+              "differentPixels": 0
+            },
+            {
+              "backend": "webgl2",
+              "maximum": 0,
+              "differentBytes": 0,
+              "differentPixels": 0
+            }
+          ],
+          "linearComparisons": [
+            {
+              "backend": "webgpu",
+              "differentBytes": 439
+            },
+            {
+              "backend": "webgl2",
+              "differentBytes": 439
+            }
+          ],
+          "errors": [],
+          "failed": true,
+          "directory": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/browser/figma-128",
+          "renders": [
+            {
+              "backend": "cpu",
+              "drawCalls": 0,
+              "milliseconds": 2.5,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float"
+            },
+            {
+              "backend": "webgpu",
+              "drawCalls": 42,
+              "milliseconds": 40.89999997615814,
+              "compileMs": 0.800000011920929,
+              "intermediateFormat": "rgba32float",
+              "description": "metal-3"
+            },
+            {
+              "backend": "webgl2",
+              "drawCalls": 42,
+              "milliseconds": 53.09999996423721,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float",
+              "description": "WebKit WebGL"
+            }
+          ]
+        },
+        {
+          "name": "Managed precision glass",
+          "index": 130,
+          "profile": "figma",
+          "comparisons": [
+            {
+              "backend": "webgpu",
+              "maximum": 0,
+              "differentBytes": 0,
+              "differentPixels": 0
+            },
+            {
+              "backend": "webgl2",
+              "maximum": 0,
+              "differentBytes": 0,
+              "differentPixels": 0
+            }
+          ],
+          "linearComparisons": [
+            {
+              "backend": "webgpu",
+              "differentBytes": 205
+            },
+            {
+              "backend": "webgl2",
+              "differentBytes": 205
+            }
+          ],
+          "errors": [],
+          "failed": true,
+          "directory": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/browser/figma-130",
+          "renders": [
+            {
+              "backend": "cpu",
+              "drawCalls": 0,
+              "milliseconds": 5.700000047683716,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float"
+            },
+            {
+              "backend": "webgpu",
+              "drawCalls": 59,
+              "milliseconds": 45.299999952316284,
+              "compileMs": 0.7999999523162842,
+              "intermediateFormat": "rgba32float",
+              "description": "metal-3"
+            },
+            {
+              "backend": "webgl2",
+              "drawCalls": 59,
+              "milliseconds": 52.30000001192093,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float",
+              "description": "WebKit WebGL"
+            }
+          ]
+        },
+        {
+          "name": "Managed rotated texture displacement",
+          "index": 143,
+          "profile": "figma",
+          "comparisons": [
+            {
+              "backend": "webgpu",
+              "maximum": 0,
+              "differentBytes": 0,
+              "differentPixels": 0
+            },
+            {
+              "backend": "webgl2",
+              "maximum": 0,
+              "differentBytes": 0,
+              "differentPixels": 0
+            }
+          ],
+          "linearComparisons": [
+            {
+              "backend": "webgpu",
+              "differentBytes": 137
+            },
+            {
+              "backend": "webgl2",
+              "differentBytes": 137
+            }
+          ],
+          "errors": [],
+          "failed": true,
+          "directory": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/browser/figma-143",
+          "renders": [
+            {
+              "backend": "cpu",
+              "drawCalls": 0,
+              "milliseconds": 2.899999976158142,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float"
+            },
+            {
+              "backend": "webgpu",
+              "drawCalls": 44,
+              "milliseconds": 68.80000001192093,
+              "compileMs": 0.8999999761581421,
+              "intermediateFormat": "rgba32float",
+              "description": "metal-3"
+            },
+            {
+              "backend": "webgl2",
+              "drawCalls": 44,
+              "milliseconds": 58.69999998807907,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float",
+              "description": "WebKit WebGL"
+            }
+          ]
+        },
+        {
+          "name": "Managed precision blur",
+          "index": 128,
+          "profile": "figmaSubpixel",
+          "comparisons": [
+            {
+              "backend": "webgpu",
+              "maximum": 1,
+              "differentBytes": 2,
+              "differentPixels": 2
+            },
+            {
+              "backend": "webgl2",
+              "maximum": 1,
+              "differentBytes": 2,
+              "differentPixels": 2
+            }
+          ],
+          "linearComparisons": [
+            {
+              "backend": "webgpu",
+              "differentBytes": 3354
+            },
+            {
+              "backend": "webgl2",
+              "differentBytes": 3354
+            }
+          ],
+          "errors": [],
+          "failed": true,
+          "directory": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/browser/figmaSubpixel-128",
+          "renders": [
+            {
+              "backend": "cpu",
+              "drawCalls": 0,
+              "milliseconds": 1.899999976158142,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float"
+            },
+            {
+              "backend": "webgpu",
+              "drawCalls": 42,
+              "milliseconds": 24.5,
+              "compileMs": 0.5,
+              "intermediateFormat": "rgba32float",
+              "description": "metal-3"
+            },
+            {
+              "backend": "webgl2",
+              "drawCalls": 42,
+              "milliseconds": 45,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float",
+              "description": "WebKit WebGL"
+            }
+          ]
+        },
+        {
+          "name": "Managed precision glass",
+          "index": 130,
+          "profile": "figmaSubpixel",
+          "comparisons": [
+            {
+              "backend": "webgpu",
+              "maximum": 0,
+              "differentBytes": 0,
+              "differentPixels": 0
+            },
+            {
+              "backend": "webgl2",
+              "maximum": 0,
+              "differentBytes": 0,
+              "differentPixels": 0
+            }
+          ],
+          "linearComparisons": [
+            {
+              "backend": "webgpu",
+              "differentBytes": 184
+            },
+            {
+              "backend": "webgl2",
+              "differentBytes": 184
+            }
+          ],
+          "errors": [],
+          "failed": true,
+          "directory": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/browser/figmaSubpixel-130",
+          "renders": [
+            {
+              "backend": "cpu",
+              "drawCalls": 0,
+              "milliseconds": 2.199999988079071,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float"
+            },
+            {
+              "backend": "webgpu",
+              "drawCalls": 59,
+              "milliseconds": 25.19999998807907,
+              "compileMs": 0.5,
+              "intermediateFormat": "rgba32float",
+              "description": "metal-3"
+            },
+            {
+              "backend": "webgl2",
+              "drawCalls": 59,
+              "milliseconds": 45.10000002384186,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float",
+              "description": "WebKit WebGL"
+            }
+          ]
+        },
+        {
+          "name": "Managed rotated texture displacement",
+          "index": 143,
+          "profile": "figmaSubpixel",
+          "comparisons": [
+            {
+              "backend": "webgpu",
+              "maximum": 0,
+              "differentBytes": 0,
+              "differentPixels": 0
+            },
+            {
+              "backend": "webgl2",
+              "maximum": 0,
+              "differentBytes": 0,
+              "differentPixels": 0
+            }
+          ],
+          "linearComparisons": [
+            {
+              "backend": "webgpu",
+              "differentBytes": 183
+            },
+            {
+              "backend": "webgl2",
+              "differentBytes": 183
+            }
+          ],
+          "errors": [],
+          "failed": true,
+          "directory": "/Users/Apple/project/core/.local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/precision-after/browser/figmaSubpixel-143",
+          "renders": [
+            {
+              "backend": "cpu",
+              "drawCalls": 0,
+              "milliseconds": 1.800000011920929,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float"
+            },
+            {
+              "backend": "webgpu",
+              "drawCalls": 44,
+              "milliseconds": 19.69999998807907,
+              "compileMs": 0.5,
+              "intermediateFormat": "rgba32float",
+              "description": "metal-3"
+            },
+            {
+              "backend": "webgl2",
+              "drawCalls": 44,
+              "milliseconds": 43.80000001192093,
+              "compileMs": 0,
+              "intermediateFormat": "rgba32float",
+              "description": "WebKit WebGL"
+            }
+          ]
+        }
+      ]
+    },
+    "crossBuilds": {
+      "checks": 507,
+      "failures": 176,
+      "scope": "Five actual readbacks: native CPU, native GPU, WASM CPU, WebGPU, WebGL2"
+    }
+  },
+  "performance": {
+    "method": "CLI release build; three sequential repeats per 128x128 frame, includes first-use/driver overhead; diagnostic observations, not a controlled before/after benchmark.",
+    "nativeDevice": "Apple M2 Pro Metal",
+    "samples": [
+      {
+        "profile": "figma",
+        "caseIndex": 7,
+        "backend": "rust-cpu",
+        "timingsMs": [
+          8.043291,
+          5.092542,
+          4.952959
+        ],
+        "compileMs": 4.2e-05,
+        "peakTextureBytes": null,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figma-7-rust-cpu.log"
+      },
+      {
+        "profile": "figma",
+        "caseIndex": 7,
+        "backend": "native",
+        "timingsMs": [
+          57.974458999999996,
+          46.538917,
+          13.70725
+        ],
+        "compileMs": 0.060291000000000004,
+        "peakTextureBytes": 4851828,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figma-7-native.log"
+      },
+      {
+        "profile": "figma",
+        "caseIndex": 8,
+        "backend": "rust-cpu",
+        "timingsMs": [
+          12.385916,
+          9.878207999999999,
+          9.804209
+        ],
+        "compileMs": 4.2e-05,
+        "peakTextureBytes": null,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figma-8-rust-cpu.log"
+      },
+      {
+        "profile": "figma",
+        "caseIndex": 8,
+        "backend": "native",
+        "timingsMs": [
+          43.627125,
+          7.891749999999999,
+          17.151625
+        ],
+        "compileMs": 0.085084,
+        "peakTextureBytes": 3380188,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figma-8-native.log"
+      },
+      {
+        "profile": "figma",
+        "caseIndex": 9,
+        "backend": "rust-cpu",
+        "timingsMs": [
+          5.784125,
+          5.382917,
+          5.466
+        ],
+        "compileMs": 4.2e-05,
+        "peakTextureBytes": null,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figma-9-rust-cpu.log"
+      },
+      {
+        "profile": "figma",
+        "caseIndex": 9,
+        "backend": "native",
+        "timingsMs": [
+          24.361792,
+          9.447375,
+          9.351833000000001
+        ],
+        "compileMs": 0.034292,
+        "peakTextureBytes": 3873988,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figma-9-native.log"
+      },
+      {
+        "profile": "figma",
+        "caseIndex": 14,
+        "backend": "rust-cpu",
+        "timingsMs": [
+          32.611291,
+          30.724167,
+          30.149208
+        ],
+        "compileMs": 0.0,
+        "peakTextureBytes": null,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figma-14-rust-cpu.log"
+      },
+      {
+        "profile": "figma",
+        "caseIndex": 14,
+        "backend": "native",
+        "timingsMs": [
+          42.894915999999995,
+          17.735875,
+          16.756833
+        ],
+        "compileMs": 0.182458,
+        "peakTextureBytes": 7111684,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figma-14-native.log"
+      },
+      {
+        "profile": "figma",
+        "caseIndex": 15,
+        "backend": "rust-cpu",
+        "timingsMs": [
+          11.2675,
+          10.430208,
+          9.723084
+        ],
+        "compileMs": 4.2e-05,
+        "peakTextureBytes": null,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figma-15-rust-cpu.log"
+      },
+      {
+        "profile": "figma",
+        "caseIndex": 15,
+        "backend": "native",
+        "timingsMs": [
+          27.0385,
+          10.935834,
+          7.204791
+        ],
+        "compileMs": 0.042125,
+        "peakTextureBytes": 4810564,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figma-15-native.log"
+      },
+      {
+        "profile": "figmaSubpixel",
+        "caseIndex": 7,
+        "backend": "rust-cpu",
+        "timingsMs": [
+          1.6108749999999998,
+          1.615125,
+          1.536333
+        ],
+        "compileMs": 0.0,
+        "peakTextureBytes": null,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figmaSubpixel-7-rust-cpu.log"
+      },
+      {
+        "profile": "figmaSubpixel",
+        "caseIndex": 7,
+        "backend": "native",
+        "timingsMs": [
+          199.922541,
+          210.714083,
+          27.174875
+        ],
+        "compileMs": 0.063833,
+        "peakTextureBytes": 1197568,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figmaSubpixel-7-native.log"
+      },
+      {
+        "profile": "figmaSubpixel",
+        "caseIndex": 8,
+        "backend": "rust-cpu",
+        "timingsMs": [
+          1.601542,
+          1.39975,
+          1.260375
+        ],
+        "compileMs": 4.2e-05,
+        "peakTextureBytes": null,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figmaSubpixel-8-rust-cpu.log"
+      },
+      {
+        "profile": "figmaSubpixel",
+        "caseIndex": 8,
+        "backend": "native",
+        "timingsMs": [
+          22.62675,
+          9.068290999999999,
+          8.981958
+        ],
+        "compileMs": 0.031917,
+        "peakTextureBytes": 900188,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figmaSubpixel-8-native.log"
+      },
+      {
+        "profile": "figmaSubpixel",
+        "caseIndex": 9,
+        "backend": "rust-cpu",
+        "timingsMs": [
+          1.666125,
+          1.39575,
+          1.3939169999999999
+        ],
+        "compileMs": 0.0,
+        "peakTextureBytes": null,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figmaSubpixel-9-rust-cpu.log"
+      },
+      {
+        "profile": "figmaSubpixel",
+        "caseIndex": 9,
+        "backend": "native",
+        "timingsMs": [
+          29.967750000000002,
+          11.114959,
+          8.811
+        ],
+        "compileMs": 0.032375,
+        "peakTextureBytes": 1102788,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figmaSubpixel-9-native.log"
+      },
+      {
+        "profile": "figmaSubpixel",
+        "caseIndex": 14,
+        "backend": "rust-cpu",
+        "timingsMs": [
+          8.291458,
+          7.629292,
+          7.700709
+        ],
+        "compileMs": 0.0,
+        "peakTextureBytes": null,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figmaSubpixel-14-rust-cpu.log"
+      },
+      {
+        "profile": "figmaSubpixel",
+        "caseIndex": 14,
+        "backend": "native",
+        "timingsMs": [
+          39.407375,
+          16.791875,
+          16.512625
+        ],
+        "compileMs": 0.105375,
+        "peakTextureBytes": 1848324,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figmaSubpixel-14-native.log"
+      },
+      {
+        "profile": "figmaSubpixel",
+        "caseIndex": 15,
+        "backend": "rust-cpu",
+        "timingsMs": [
+          3.042167,
+          2.866333,
+          2.7382079999999998
+        ],
+        "compileMs": 0.0,
+        "peakTextureBytes": null,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figmaSubpixel-15-rust-cpu.log"
+      },
+      {
+        "profile": "figmaSubpixel",
+        "caseIndex": 15,
+        "backend": "native",
+        "timingsMs": [
+          27.372,
+          10.828917,
+          8.862666
+        ],
+        "compileMs": 0.028541999999999998,
+        "peakTextureBytes": 1334852,
+        "log": ".local/design-validation/figma-live-788c505e-de6f-4bff-9787-24686679b513/comparison/native/figmaSubpixel-15-native.log"
+      }
+    ],
+    "claim": "No general speedup or full-frame performance guarantee."
+  },
+  "remaining": [
+    "analytic CPU/GPU coverage/composition graph and missing native support",
+    "HDR blur coefficient and reduction precision",
+    "non-neutral glass distance/gradient/refraction/filter numerics",
+    "nonzero texture lattice/affine-coordinate precision",
+    "Figma smoothing model",
+    "Figma byte rounding and effect fidelity",
+    "Figma independent glass/texture/progressive-blur parameter support"
+  ],
+  "next": [
+    "Keep internal bitwise gate first; unify filter radius/coefficients and correctly-rounded reductions with independent oracle.",
+    "Define and test texture lattice and transformed sampling coordinates before replacing arithmetic.",
+    "Sweep real-browser Figma blur radii and read vector contours for smoothing before selecting a matching algorithm.",
+    "Extend effect schema only with explicit semantics and same-input cross-backend fixtures; do not relabel approximate mappings as parity."
+  ],
+  "references": [
+    {
+      "title": "SVG 2 closepath joins",
+      "url": "https://www.w3.org/TR/SVG2/paths.html#PathDataClosePath"
+    },
+    {
+      "title": "Figma smoothing rationale",
+      "url": "https://www.figma.com/blog/desperately-seeking-squircles/"
+    },
+    {
+      "title": "Figma effect parameter contracts",
+      "url": "https://developers.figma.com/docs/plugins/api/Effect/"
+    }
+  ],
+  "sourceSnapshots": [
+    {
+      "path": "design-studio/crates/design-kernel/src/stroke.rs",
+      "sha256": "4c4662ea1038b1365ea484c6955adddcb43f53ae7bebe8b717e3a3c0e6d45894"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/effects.rs",
+      "sha256": "a1e6c6f045eddb783ff95fbdba0c10ed4914236efd51d6f3845d7bfd7cbd4cab"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/shaders/vector.wgsl",
+      "sha256": "7814da820d8bec23f53c062a2560f9d38dcf8d7d6e752bb49baa68d70fe9457e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/vector.glsl",
+      "sha256": "3b3591b1052a934ee059b016dbf35fb61651a0427f23579eba87f475c24c23d2"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/stroke_normalization.rs",
+      "sha256": "40e554b3f5b8888e8ce11c2e154dc9645516ea2f233d30a574c470054f971d13"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/blur.rs",
+      "sha256": "62e7908d996d56cae94b7f927c534ab0b55494e5d23da2e5b76a8e6dd253c253"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/arithmetic.rs",
+      "sha256": "53eb8891a095207330425c0462d1eeecd8257e148290e1ddb93e9f7842cc89c5"
+    },
+    {
+      "path": "design-studio/crates/design-gpu/tests/arithmetic.rs",
+      "sha256": "30003c8203ad8abf4124fbce6a0d8c2f6548091a60eed86fb02f9f1e8fc956ac"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/arithmetic-probe.ts",
+      "sha256": "c071fd8c8a25ffccd4131bed174ea0d8de6fc265f4c8e80b93f22e3a1cb019fd"
+    },
+    {
+      "path": "design-studio/scripts/generate-precision-vectors.py",
+      "sha256": "68a926ab879d4ae00cf39c2e93fa138db688c2812104cf61d48873d72db2c182"
+    },
+    {
+      "path": "testing/fixtures/design/arithmetic-vectors.json",
+      "sha256": "238985a6c352d3e758a3a9516bab62f901b623da227dbb0c2f930564ac9780a9"
+    },
+    {
+      "path": "design-studio/scripts/compare-figma.py",
+      "sha256": "c65ec638a64707c2815f3be34154b4356b0b39c15d65681027d05bbb70e57d95"
+    },
+    {
+      "path": "frontend/design-client/scripts/check-gpu-parity.ts",
+      "sha256": "f76dce60bb14add33e48169c111e2991d8783bc7b08cb7bdede81e4b62f66bfb"
+    },
+    {
+      "path": "design-studio/scripts/check-precision.py",
+      "sha256": "f6de54a3c4870e4a22fb0cccfd6249b8d1acbeedd8d3bc446ac84ae40ee63ddd"
+    },
+    {
+      "path": "design-studio/scripts/compare-precision-readbacks.py",
+      "sha256": "96c03f5c3b42adc46a1dd6de17877a7b1731b4717cf123e94a2b2b1f8f9320e4"
+    },
+    {
+      "path": "testing/fixtures/design/precision-corpus.json",
+      "sha256": "6fb23baf460bdca7b40583fd896ff20502a3b72c4abdf300c08a4553cc1cd44d"
+    },
+    {
+      "path": "testing/fixtures/design/sampling-vectors.json",
+      "sha256": "8f7a84422d94e1b55afbc63749fcceefb4bebae1bbc9aada1ca2297f83bd2856"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/path.rs",
+      "sha256": "250aff63fdbafcc41e5a4caa8e7e5cf388b9b4f31517fdab692615c8911d3359"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/scene.rs",
+      "sha256": "69047022cd3821c9ff4fb20d3a8c52d0a24e3d13770505f5af2857a4d28da51a"
+    },
+    {
+      "path": "design-studio/crates/design-gpu/src/main.rs",
+      "sha256": "33e2931494068ca97cc7d7098629b5dd6622b6d76339364164dfb85b85d4075a"
+    }
+  ],
+  "documentCoverage": [
+    {
+      "path": "docs/README.md",
+      "sha256": "6588d7509e531fd9b02bf7133b876f0e2d3b134a52430742c396092c60cd07da",
+      "status": "部分核对",
+      "scope": "Only this iteration sections/index links; historical and unrelated sections are not re-certified."
+    },
+    {
+      "path": "docs/architecture/design-editor.md",
+      "sha256": "5b91ed427a49fb9747c9907900aa3e5eb53567d1d9afec44b5e598651028325b",
+      "status": "部分核对",
+      "scope": "Only this iteration sections/index links; historical and unrelated sections are not re-certified."
+    },
+    {
+      "path": "docs/architecture/design-kernel-hard-problems.md",
+      "sha256": "3df7acad4431bf37ef74def2d315f1627e7ae9f1b3f1cf504f8f66a4ab1cf0e4",
+      "status": "部分核对",
+      "scope": "Only this iteration sections/index links; historical and unrelated sections are not re-certified."
+    }
+  ],
+  "buildHashes": [
+    {
+      "path": "design-studio/target/release/design-render",
+      "sha256": "8c9ec7025b86d83c9f4f48c273aa8555dd4dc8564106995ea008099675c73c7e"
+    },
+    {
+      "path": "frontend/design-client/public/kernel/design_kernel_bg.wasm",
+      "sha256": "d1057fecf053ffbfc541cc8be8ea90d1ec1f5c8a66dbbb26ccaa922ebd74f5c7"
+    }
+  ],
+  "artifactHashes": [
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/export-channels/backdrop-blur-browser.png",
+      "sha256": "1a957889f9e36d8410e01c4c6314d1ba487e43cd68fd12bb24ff4ea0f4eab72e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/export-channels/backdrop-blur-mcp.png",
+      "sha256": "a1f7c04947e0dfcda6304f9db0afc09267f6c139ae3c4fee2281c81e614dc94c"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/export-channels/layer-blur-browser.png",
+      "sha256": "cb58bf174ad8f0d17366ef3ea4074cbd8e9def0ea17e59dbc473366cfc17a60e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/export-channels/layer-blur-mcp.png",
+      "sha256": "67503fa0a145fcce1fe5abfb201576da87d0aaa04f8693eacef1d5060c89b47c"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/export-channels/mask-half-overlap-browser.png",
+      "sha256": "419ce30069b02053557e5a740cd86e264c96facca215095f2d012ef2a2598c06"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/export-channels/mask-half-overlap-mcp.png",
+      "sha256": "0ca5df99aa33e09635247e9e0f85abb78030762e7c3727abe960a985da936c19"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/export-channels/shadow-browser.png",
+      "sha256": "40ba48ba82e2796732fb201e8609de3071879df1613a8d5cf58a24db139c22f9"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/export-channels/shadow-mcp.png",
+      "sha256": "ae83332450492042e37962c0f61da10f81704b7db1c6ffe288cd3f8cc93bf97c"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/figma-comparison.png",
+      "sha256": "c302c4def5bfd964c3a7dbf118a4e9b7da52a12e71580dce2ca8471effb5d126"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/figma-summary.png",
+      "sha256": "9652eb28665a8801daecec7d1d4f3e01f5438a8c527b78c4e9969b2bb0a32bb6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-analytic-cpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-analytic-diff.png",
+      "sha256": "dbd8e6235a1dba90a6d5e5199db421b6e9f037d56643d2ddec01b18afb7ae64a"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-analytic-rust-cpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-analytic-webgl2.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-analytic-webgpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figma-cpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figma-diff.png",
+      "sha256": "dbd8e6235a1dba90a6d5e5199db421b6e9f037d56643d2ddec01b18afb7ae64a"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figma-native.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figma-rust-cpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figma-webgl2.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figma-webgpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figma.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figmaSubpixel-cpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figmaSubpixel-diff.png",
+      "sha256": "dbd8e6235a1dba90a6d5e5199db421b6e9f037d56643d2ddec01b18afb7ae64a"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figmaSubpixel-native.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figmaSubpixel-rust-cpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figmaSubpixel-webgl2.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/0-figmaSubpixel-webgpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-analytic-cpu.png",
+      "sha256": "1ab75d8624b47a7e844832964f42928a8d956f4054fc9149a07657170d5ab6d1"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-analytic-diff.png",
+      "sha256": "fa8af231614a15a623ecb065972b88d2ede2e362932ab0467f331900b044b34b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-analytic-rust-cpu.png",
+      "sha256": "1ab75d8624b47a7e844832964f42928a8d956f4054fc9149a07657170d5ab6d1"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-analytic-webgl2.png",
+      "sha256": "1ab75d8624b47a7e844832964f42928a8d956f4054fc9149a07657170d5ab6d1"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-analytic-webgpu.png",
+      "sha256": "1ab75d8624b47a7e844832964f42928a8d956f4054fc9149a07657170d5ab6d1"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figma-cpu.png",
+      "sha256": "d07f9463fd9aafe549fcd247c2bfc95895be456a7cac454828dec18c4b31ebd3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figma-diff.png",
+      "sha256": "a194e87dc81e781aac8b70de2ef6a683a043b10f2f7867626b7b5182cd809a90"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figma-native.png",
+      "sha256": "d07f9463fd9aafe549fcd247c2bfc95895be456a7cac454828dec18c4b31ebd3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figma-rust-cpu.png",
+      "sha256": "d07f9463fd9aafe549fcd247c2bfc95895be456a7cac454828dec18c4b31ebd3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figma-webgl2.png",
+      "sha256": "d07f9463fd9aafe549fcd247c2bfc95895be456a7cac454828dec18c4b31ebd3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figma-webgpu.png",
+      "sha256": "d07f9463fd9aafe549fcd247c2bfc95895be456a7cac454828dec18c4b31ebd3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figma.png",
+      "sha256": "04af393e27520d87b6597339156c15e7dad4d988742e364e8da899b74e74bfaf"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figmaSubpixel-cpu.png",
+      "sha256": "30be71b1148d83839d7504c88e28159006ff15ad3887b38e3ddef206838baa10"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figmaSubpixel-diff.png",
+      "sha256": "b6f3ec016c059728352cc301d8ba576bd0e01335a44dd14998dfaa3803a2ff71"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figmaSubpixel-native.png",
+      "sha256": "30be71b1148d83839d7504c88e28159006ff15ad3887b38e3ddef206838baa10"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figmaSubpixel-rust-cpu.png",
+      "sha256": "30be71b1148d83839d7504c88e28159006ff15ad3887b38e3ddef206838baa10"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figmaSubpixel-webgl2.png",
+      "sha256": "30be71b1148d83839d7504c88e28159006ff15ad3887b38e3ddef206838baa10"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/1-figmaSubpixel-webgpu.png",
+      "sha256": "30be71b1148d83839d7504c88e28159006ff15ad3887b38e3ddef206838baa10"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-analytic-cpu.png",
+      "sha256": "394af9429260fbe6b75d74e78e3cd5c10b9b316789af5824100dd02c598a5cba"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-analytic-diff.png",
+      "sha256": "2cd97c972bc7b255c1cdad7dfc7f5747a316f7e09be740152abfed04cd23781c"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-analytic-rust-cpu.png",
+      "sha256": "394af9429260fbe6b75d74e78e3cd5c10b9b316789af5824100dd02c598a5cba"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-analytic-webgl2.png",
+      "sha256": "919419ba4217b7f81613e6b256240e01423fb426af39f91670554b5ec7889101"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-analytic-webgpu.png",
+      "sha256": "919419ba4217b7f81613e6b256240e01423fb426af39f91670554b5ec7889101"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figma-cpu.png",
+      "sha256": "c1df7191dc4164677f2f19e64f7e0f684f064038e2635f95c61837b6f515b02e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figma-diff.png",
+      "sha256": "6f3e81611cbcb9116a4945d0500e6bdc03934cd9b458a488790f00ac86f7c248"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figma-native.png",
+      "sha256": "c1df7191dc4164677f2f19e64f7e0f684f064038e2635f95c61837b6f515b02e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figma-rust-cpu.png",
+      "sha256": "c1df7191dc4164677f2f19e64f7e0f684f064038e2635f95c61837b6f515b02e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figma-webgl2.png",
+      "sha256": "c1df7191dc4164677f2f19e64f7e0f684f064038e2635f95c61837b6f515b02e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figma-webgpu.png",
+      "sha256": "c1df7191dc4164677f2f19e64f7e0f684f064038e2635f95c61837b6f515b02e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figma.png",
+      "sha256": "60aac625565e9d6803394158cc7283331894bafdf3c6afdb259d23978f6e75bc"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figmaSubpixel-cpu.png",
+      "sha256": "fa64e0c88697ad03fff49b5d753d025d398ca850ffdcfa1700c5c8dfd44ab2cc"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figmaSubpixel-diff.png",
+      "sha256": "5a8f0d7cf9f49163562035478e7e41dc902ef3722477f0bb58272e44b140bcb4"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figmaSubpixel-native.png",
+      "sha256": "fa64e0c88697ad03fff49b5d753d025d398ca850ffdcfa1700c5c8dfd44ab2cc"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figmaSubpixel-rust-cpu.png",
+      "sha256": "fa64e0c88697ad03fff49b5d753d025d398ca850ffdcfa1700c5c8dfd44ab2cc"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figmaSubpixel-webgl2.png",
+      "sha256": "fa64e0c88697ad03fff49b5d753d025d398ca850ffdcfa1700c5c8dfd44ab2cc"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/10-figmaSubpixel-webgpu.png",
+      "sha256": "fa64e0c88697ad03fff49b5d753d025d398ca850ffdcfa1700c5c8dfd44ab2cc"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-analytic-cpu.png",
+      "sha256": "8fcada1ba033d5378420f446a8c03f4273dcce97f75b18f6aecbdb1fa2a00ff8"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-analytic-diff.png",
+      "sha256": "d0975b49429b2436c67ceb70e311f34b073ab20459fab66e0e70a047579a57c0"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-analytic-rust-cpu.png",
+      "sha256": "8fcada1ba033d5378420f446a8c03f4273dcce97f75b18f6aecbdb1fa2a00ff8"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-analytic-webgl2.png",
+      "sha256": "3cd29417e2648ab8a21572888f8417de2f6c6714589f6c0a434c82885211b8a2"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-analytic-webgpu.png",
+      "sha256": "3cd29417e2648ab8a21572888f8417de2f6c6714589f6c0a434c82885211b8a2"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figma-cpu.png",
+      "sha256": "f889a324b84a2ee164a5ee408b3b6c79e8768dee63a43ed173286ab0355a46b1"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figma-diff.png",
+      "sha256": "9162153faba34057b27f57cbd6fecfee7dbaf89077b6b0dd7d0cf95b144eef39"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figma-native.png",
+      "sha256": "f889a324b84a2ee164a5ee408b3b6c79e8768dee63a43ed173286ab0355a46b1"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figma-rust-cpu.png",
+      "sha256": "f889a324b84a2ee164a5ee408b3b6c79e8768dee63a43ed173286ab0355a46b1"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figma-webgl2.png",
+      "sha256": "f889a324b84a2ee164a5ee408b3b6c79e8768dee63a43ed173286ab0355a46b1"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figma-webgpu.png",
+      "sha256": "f889a324b84a2ee164a5ee408b3b6c79e8768dee63a43ed173286ab0355a46b1"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figma.png",
+      "sha256": "16556a1fe645e9512dfa16b0f138a2c92ce522cb1a0cada315e3086673b95885"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figmaSubpixel-cpu.png",
+      "sha256": "84199208862bc850d9e04cdf0db043c7b89dfb52bf48c3b706fba25ce4aaabda"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figmaSubpixel-diff.png",
+      "sha256": "c538c518b4cbf3d2fc6dc43df1126f347dc86355fc6016460d48b6f093e2667f"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figmaSubpixel-native.png",
+      "sha256": "84199208862bc850d9e04cdf0db043c7b89dfb52bf48c3b706fba25ce4aaabda"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figmaSubpixel-rust-cpu.png",
+      "sha256": "84199208862bc850d9e04cdf0db043c7b89dfb52bf48c3b706fba25ce4aaabda"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figmaSubpixel-webgl2.png",
+      "sha256": "84199208862bc850d9e04cdf0db043c7b89dfb52bf48c3b706fba25ce4aaabda"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/11-figmaSubpixel-webgpu.png",
+      "sha256": "84199208862bc850d9e04cdf0db043c7b89dfb52bf48c3b706fba25ce4aaabda"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-analytic-cpu.png",
+      "sha256": "ed2182ef1ab121c0c79ed45eb7ef7e927b470090500ecb2d117bb53c58d35474"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-analytic-diff.png",
+      "sha256": "dbd8e6235a1dba90a6d5e5199db421b6e9f037d56643d2ddec01b18afb7ae64a"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-analytic-rust-cpu.png",
+      "sha256": "ed2182ef1ab121c0c79ed45eb7ef7e927b470090500ecb2d117bb53c58d35474"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-analytic-webgl2.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-analytic-webgpu.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figma-cpu.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figma-diff.png",
+      "sha256": "e6c211eec019c329c4e9bb7952fe17198d75f6a2452d124de78be3512efe6674"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figma-native.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figma-rust-cpu.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figma-webgl2.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figma-webgpu.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figma.png",
+      "sha256": "ed2182ef1ab121c0c79ed45eb7ef7e927b470090500ecb2d117bb53c58d35474"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figmaSubpixel-cpu.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figmaSubpixel-diff.png",
+      "sha256": "e6c211eec019c329c4e9bb7952fe17198d75f6a2452d124de78be3512efe6674"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figmaSubpixel-native.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figmaSubpixel-rust-cpu.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figmaSubpixel-webgl2.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/12-figmaSubpixel-webgpu.png",
+      "sha256": "20f4f2e1da37f081d856e1e0104090932a5e2f5854bccb7ce43e42302e5ca634"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-analytic-cpu.png",
+      "sha256": "60cd1f7ae76671706ff47e3cda3c129c40a05f1b81bcc2e26f4383a56b347de3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-analytic-diff.png",
+      "sha256": "758604932092f3a11a2bd9c5c277b9cbca13648560772ca1e68c3dde260f29e0"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-analytic-rust-cpu.png",
+      "sha256": "60cd1f7ae76671706ff47e3cda3c129c40a05f1b81bcc2e26f4383a56b347de3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-analytic-webgl2.png",
+      "sha256": "cbceea27bee107c8ddc8a6682cb1d6a816854329d62e2049029f2df9e9792c60"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-analytic-webgpu.png",
+      "sha256": "cbceea27bee107c8ddc8a6682cb1d6a816854329d62e2049029f2df9e9792c60"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figma-cpu.png",
+      "sha256": "9c81348aa6741f7a76fe2a84ca9fb586d480c1a36ed1c20250e8dcf02b85220b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figma-diff.png",
+      "sha256": "b6f2617e06d05a587128a9843a7df8dcc1748ef5b5a26d9b82d114b0262bdcb3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figma-native.png",
+      "sha256": "9c81348aa6741f7a76fe2a84ca9fb586d480c1a36ed1c20250e8dcf02b85220b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figma-rust-cpu.png",
+      "sha256": "9c81348aa6741f7a76fe2a84ca9fb586d480c1a36ed1c20250e8dcf02b85220b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figma-webgl2.png",
+      "sha256": "9c81348aa6741f7a76fe2a84ca9fb586d480c1a36ed1c20250e8dcf02b85220b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figma-webgpu.png",
+      "sha256": "9c81348aa6741f7a76fe2a84ca9fb586d480c1a36ed1c20250e8dcf02b85220b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figma.png",
+      "sha256": "9e4c0aa9f8c33b01d6885c606c33d3426af1f1e6b54919ebfce5c5731f2ef101"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figmaSubpixel-cpu.png",
+      "sha256": "12b0735fc4e4b8975bd2763640d2f0ae54dcb3a5e035c0599a3be02eb980260e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figmaSubpixel-diff.png",
+      "sha256": "2a35d3b13993c40f3b15ba24715d2f96f6abff3fc7c65c7f640892be491260b3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figmaSubpixel-native.png",
+      "sha256": "12b0735fc4e4b8975bd2763640d2f0ae54dcb3a5e035c0599a3be02eb980260e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figmaSubpixel-rust-cpu.png",
+      "sha256": "12b0735fc4e4b8975bd2763640d2f0ae54dcb3a5e035c0599a3be02eb980260e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figmaSubpixel-webgl2.png",
+      "sha256": "12b0735fc4e4b8975bd2763640d2f0ae54dcb3a5e035c0599a3be02eb980260e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/13-figmaSubpixel-webgpu.png",
+      "sha256": "12b0735fc4e4b8975bd2763640d2f0ae54dcb3a5e035c0599a3be02eb980260e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-analytic-cpu.png",
+      "sha256": "8c29d19deb939464b7f079f555059f9ce59f0c45c12893e3aa614613eaeaa6e2"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-analytic-diff.png",
+      "sha256": "e570e8cf5611fc7cebe192c76c932a2408470544d3e49dbf0587393d3959a126"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-analytic-rust-cpu.png",
+      "sha256": "8c29d19deb939464b7f079f555059f9ce59f0c45c12893e3aa614613eaeaa6e2"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-analytic-webgl2.png",
+      "sha256": "00e45527bea51767dcd19407cf4920f9b2196ecc081f476bc687606f1a91ab0d"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-analytic-webgpu.png",
+      "sha256": "00e45527bea51767dcd19407cf4920f9b2196ecc081f476bc687606f1a91ab0d"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figma-cpu.png",
+      "sha256": "cdd248654fc103b2388fa6567b26a11929e817a29978f1c4bfec74a8bdca9251"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figma-diff.png",
+      "sha256": "f2a37e787fc3aeb8d96cfefff95c57db20beefbf90e43f971d3e14d3a362dd48"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figma-native.png",
+      "sha256": "cdd248654fc103b2388fa6567b26a11929e817a29978f1c4bfec74a8bdca9251"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figma-rust-cpu.png",
+      "sha256": "cdd248654fc103b2388fa6567b26a11929e817a29978f1c4bfec74a8bdca9251"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figma-webgl2.png",
+      "sha256": "cdd248654fc103b2388fa6567b26a11929e817a29978f1c4bfec74a8bdca9251"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figma-webgpu.png",
+      "sha256": "cdd248654fc103b2388fa6567b26a11929e817a29978f1c4bfec74a8bdca9251"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figma.png",
+      "sha256": "5d8c673a20a9af1b462c5d87833678c1abccb676dfd58d8fa17f9262efce7df1"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figmaSubpixel-cpu.png",
+      "sha256": "759b9aa3ecd400d9bc0def7a73416e78758c530d14776b6a9e13e785bd245da9"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figmaSubpixel-diff.png",
+      "sha256": "e5f78bc9e9c7507fa15e0d51d9acff653caa90c13a4c8ea2e1ac545fde4466a3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figmaSubpixel-native.png",
+      "sha256": "759b9aa3ecd400d9bc0def7a73416e78758c530d14776b6a9e13e785bd245da9"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figmaSubpixel-rust-cpu.png",
+      "sha256": "759b9aa3ecd400d9bc0def7a73416e78758c530d14776b6a9e13e785bd245da9"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figmaSubpixel-webgl2.png",
+      "sha256": "759b9aa3ecd400d9bc0def7a73416e78758c530d14776b6a9e13e785bd245da9"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/14-figmaSubpixel-webgpu.png",
+      "sha256": "759b9aa3ecd400d9bc0def7a73416e78758c530d14776b6a9e13e785bd245da9"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-analytic-cpu.png",
+      "sha256": "983efb025e0c385171d258816f8cb1484d7ed53de61077ab1a515df801d7c71f"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-analytic-diff.png",
+      "sha256": "7f41968b6116eade244b4fd16cce83c264b3bbee1f97a0c671d2f01ae3f73cad"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-analytic-rust-cpu.png",
+      "sha256": "983efb025e0c385171d258816f8cb1484d7ed53de61077ab1a515df801d7c71f"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-analytic-webgl2.png",
+      "sha256": "07546344f7fc16bdf74beded2cadc77fcd5833a977c4bced35eac50511d170a5"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-analytic-webgpu.png",
+      "sha256": "07546344f7fc16bdf74beded2cadc77fcd5833a977c4bced35eac50511d170a5"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figma-cpu.png",
+      "sha256": "198e7e8ae78bdf267f85866cb648e3d83ec0abf88b13b393bf21d1f7179fee32"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figma-diff.png",
+      "sha256": "2c1d902770e1eeddd203781697cab8c623b72e41ddbba58dfe21b3e1c9bd0a4b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figma-native.png",
+      "sha256": "198e7e8ae78bdf267f85866cb648e3d83ec0abf88b13b393bf21d1f7179fee32"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figma-rust-cpu.png",
+      "sha256": "198e7e8ae78bdf267f85866cb648e3d83ec0abf88b13b393bf21d1f7179fee32"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figma-webgl2.png",
+      "sha256": "198e7e8ae78bdf267f85866cb648e3d83ec0abf88b13b393bf21d1f7179fee32"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figma-webgpu.png",
+      "sha256": "198e7e8ae78bdf267f85866cb648e3d83ec0abf88b13b393bf21d1f7179fee32"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figma.png",
+      "sha256": "3cb6257ef43008b6bcae8576dfac2237b27634368ae1f04b016d4d7d43770437"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figmaSubpixel-cpu.png",
+      "sha256": "8bb81a1f89ee4041570b718e6ee45c9596bae6cf16db680167fb50ecb09bb774"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figmaSubpixel-diff.png",
+      "sha256": "b7751b8d051f871ecdbcd157d2667f7c5d870a12c6a59f9287fb20a11369b7ec"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figmaSubpixel-native.png",
+      "sha256": "8bb81a1f89ee4041570b718e6ee45c9596bae6cf16db680167fb50ecb09bb774"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figmaSubpixel-rust-cpu.png",
+      "sha256": "8bb81a1f89ee4041570b718e6ee45c9596bae6cf16db680167fb50ecb09bb774"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figmaSubpixel-webgl2.png",
+      "sha256": "8bb81a1f89ee4041570b718e6ee45c9596bae6cf16db680167fb50ecb09bb774"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/15-figmaSubpixel-webgpu.png",
+      "sha256": "8bb81a1f89ee4041570b718e6ee45c9596bae6cf16db680167fb50ecb09bb774"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-analytic-cpu.png",
+      "sha256": "2c44ee87cd6924e10b06eca99e4bdf6eb0409c9e33674fbb52e8854a23fae980"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-analytic-diff.png",
+      "sha256": "2f84291d73a38c6b1dc92e5e53182227de72a43fcf33bc6d84a62bacd261b642"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-analytic-rust-cpu.png",
+      "sha256": "2c44ee87cd6924e10b06eca99e4bdf6eb0409c9e33674fbb52e8854a23fae980"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-analytic-webgl2.png",
+      "sha256": "15e764d6297fa423e9ff7c6205b5a01f88201dc59d0f60574949868fccfa12fd"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-analytic-webgpu.png",
+      "sha256": "15e764d6297fa423e9ff7c6205b5a01f88201dc59d0f60574949868fccfa12fd"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figma-cpu.png",
+      "sha256": "9d4b326a3056043a249874ccb260e1bb7b75b88c3b596f6e0011ee1085ffe092"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figma-diff.png",
+      "sha256": "b176d200efeca61aca80d995ebcc9e07e90bfa9810b55f8a65d726a5ad4b922c"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figma-native.png",
+      "sha256": "9d4b326a3056043a249874ccb260e1bb7b75b88c3b596f6e0011ee1085ffe092"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figma-rust-cpu.png",
+      "sha256": "9d4b326a3056043a249874ccb260e1bb7b75b88c3b596f6e0011ee1085ffe092"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figma-webgl2.png",
+      "sha256": "9d4b326a3056043a249874ccb260e1bb7b75b88c3b596f6e0011ee1085ffe092"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figma-webgpu.png",
+      "sha256": "9d4b326a3056043a249874ccb260e1bb7b75b88c3b596f6e0011ee1085ffe092"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figma.png",
+      "sha256": "1c6edec601fff0e208cedd60a374cab7e919a662f48253b9c91de3c059356647"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figmaSubpixel-cpu.png",
+      "sha256": "d7998fdd935a8bf03bfad757bebd99ad79038c0bd81a35150d332a90704c9610"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figmaSubpixel-diff.png",
+      "sha256": "1345fc3518cc391f338f2df014e1863b5d0cea62b57563caff8ba4cf4030cd34"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figmaSubpixel-native.png",
+      "sha256": "d7998fdd935a8bf03bfad757bebd99ad79038c0bd81a35150d332a90704c9610"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figmaSubpixel-rust-cpu.png",
+      "sha256": "d7998fdd935a8bf03bfad757bebd99ad79038c0bd81a35150d332a90704c9610"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figmaSubpixel-webgl2.png",
+      "sha256": "d7998fdd935a8bf03bfad757bebd99ad79038c0bd81a35150d332a90704c9610"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/2-figmaSubpixel-webgpu.png",
+      "sha256": "d7998fdd935a8bf03bfad757bebd99ad79038c0bd81a35150d332a90704c9610"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-analytic-cpu.png",
+      "sha256": "c016cf8f15c0e2512c7a558980495b557831a72070fed0fb8e281d1f69ac80c7"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-analytic-diff.png",
+      "sha256": "5934acde10fb6c3fa4207ee9182450bc82811928146b063d916bd1064108e0aa"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-analytic-rust-cpu.png",
+      "sha256": "c016cf8f15c0e2512c7a558980495b557831a72070fed0fb8e281d1f69ac80c7"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-analytic-webgl2.png",
+      "sha256": "b181b5c8695bdeff6a7951d3b9d0d0fcd084ccf900c88216f98b05920b2180d8"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-analytic-webgpu.png",
+      "sha256": "b181b5c8695bdeff6a7951d3b9d0d0fcd084ccf900c88216f98b05920b2180d8"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figma-cpu.png",
+      "sha256": "43bdbf21e889171073857b936aab2c0057c92df18442c06332db291bd04aef2e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figma-diff.png",
+      "sha256": "938a3e9dfc3ab29e4e80a8f78f4e5643be8a53f77ddb6cec8b3a9cdb7fbc7a0e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figma-native.png",
+      "sha256": "43bdbf21e889171073857b936aab2c0057c92df18442c06332db291bd04aef2e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figma-rust-cpu.png",
+      "sha256": "43bdbf21e889171073857b936aab2c0057c92df18442c06332db291bd04aef2e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figma-webgl2.png",
+      "sha256": "43bdbf21e889171073857b936aab2c0057c92df18442c06332db291bd04aef2e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figma-webgpu.png",
+      "sha256": "43bdbf21e889171073857b936aab2c0057c92df18442c06332db291bd04aef2e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figma.png",
+      "sha256": "7b8669dd0973c06aed2ce529c076125c51acb755c82c157a1050f05732501d3f"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figmaSubpixel-cpu.png",
+      "sha256": "65812161d8336beda51d89fde3da60ad16974485fac164ef32090c63b07defd6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figmaSubpixel-diff.png",
+      "sha256": "1f8ef72b21d0dfc102d1cb08b789ab186b2e7914a7d5db6b36b531b7ad6b100e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figmaSubpixel-native.png",
+      "sha256": "65812161d8336beda51d89fde3da60ad16974485fac164ef32090c63b07defd6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figmaSubpixel-rust-cpu.png",
+      "sha256": "65812161d8336beda51d89fde3da60ad16974485fac164ef32090c63b07defd6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figmaSubpixel-webgl2.png",
+      "sha256": "65812161d8336beda51d89fde3da60ad16974485fac164ef32090c63b07defd6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/3-figmaSubpixel-webgpu.png",
+      "sha256": "65812161d8336beda51d89fde3da60ad16974485fac164ef32090c63b07defd6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-analytic-cpu.png",
+      "sha256": "f44fd846e43748dcce09dd7a55a8a6064081cd67d6d9c6af63d7eed05f7bfe97"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-analytic-diff.png",
+      "sha256": "5458881529d1a33f4864a1b14388900f393724b7f967670eb42b731667abd8c8"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-analytic-rust-cpu.png",
+      "sha256": "f44fd846e43748dcce09dd7a55a8a6064081cd67d6d9c6af63d7eed05f7bfe97"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-analytic-webgl2.png",
+      "sha256": "b17c36bf734bd7c058e350408a8c3d3d071c461172b3d0bc779df76e8eddfa39"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-analytic-webgpu.png",
+      "sha256": "b17c36bf734bd7c058e350408a8c3d3d071c461172b3d0bc779df76e8eddfa39"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figma-cpu.png",
+      "sha256": "7ccdb16d614e88dd93986b44bd9ed7be6937d8868bd5bba18417c228194c66e4"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figma-diff.png",
+      "sha256": "a257222f454859a41b212cc8dba3720e0c4bc83e8b5f6729aec0b9412ee451d0"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figma-native.png",
+      "sha256": "7ccdb16d614e88dd93986b44bd9ed7be6937d8868bd5bba18417c228194c66e4"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figma-rust-cpu.png",
+      "sha256": "7ccdb16d614e88dd93986b44bd9ed7be6937d8868bd5bba18417c228194c66e4"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figma-webgl2.png",
+      "sha256": "7ccdb16d614e88dd93986b44bd9ed7be6937d8868bd5bba18417c228194c66e4"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figma-webgpu.png",
+      "sha256": "7ccdb16d614e88dd93986b44bd9ed7be6937d8868bd5bba18417c228194c66e4"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figma.png",
+      "sha256": "28aa2c0d5b8ab47a6635c88b647ec8a938694f5863526ca4134ebd35cc413d96"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figmaSubpixel-cpu.png",
+      "sha256": "9470e0d56c6ff32b59c20bd116b086fcdbb9ab510241cd2c030bea9a62eb8784"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figmaSubpixel-diff.png",
+      "sha256": "f533dd203986371061265074b63f272f6d6cc8513132c9d59557b91aea7d910a"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figmaSubpixel-native.png",
+      "sha256": "9470e0d56c6ff32b59c20bd116b086fcdbb9ab510241cd2c030bea9a62eb8784"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figmaSubpixel-rust-cpu.png",
+      "sha256": "9470e0d56c6ff32b59c20bd116b086fcdbb9ab510241cd2c030bea9a62eb8784"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figmaSubpixel-webgl2.png",
+      "sha256": "9470e0d56c6ff32b59c20bd116b086fcdbb9ab510241cd2c030bea9a62eb8784"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/4-figmaSubpixel-webgpu.png",
+      "sha256": "9470e0d56c6ff32b59c20bd116b086fcdbb9ab510241cd2c030bea9a62eb8784"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-analytic-cpu.png",
+      "sha256": "2c03750b519f2682d3cdb0aca6fa85f97ac443f4350fa68986a4b33175773616"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-analytic-diff.png",
+      "sha256": "ac49d03bf81fea41c41e8034536a3760102d64240d524bf522233beb40a327b8"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-analytic-rust-cpu.png",
+      "sha256": "2c03750b519f2682d3cdb0aca6fa85f97ac443f4350fa68986a4b33175773616"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-analytic-webgl2.png",
+      "sha256": "2c03750b519f2682d3cdb0aca6fa85f97ac443f4350fa68986a4b33175773616"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-analytic-webgpu.png",
+      "sha256": "2c03750b519f2682d3cdb0aca6fa85f97ac443f4350fa68986a4b33175773616"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figma-cpu.png",
+      "sha256": "66f9237eba146b641e5a4c132a3f13c788abaddb57e3146b35be02caf1d12f6f"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figma-diff.png",
+      "sha256": "e218e9732a150a2ef19b0cb05ec1777c1990125a59bcd431920ad12870bf04fa"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figma-native.png",
+      "sha256": "66f9237eba146b641e5a4c132a3f13c788abaddb57e3146b35be02caf1d12f6f"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figma-rust-cpu.png",
+      "sha256": "66f9237eba146b641e5a4c132a3f13c788abaddb57e3146b35be02caf1d12f6f"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figma-webgl2.png",
+      "sha256": "66f9237eba146b641e5a4c132a3f13c788abaddb57e3146b35be02caf1d12f6f"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figma-webgpu.png",
+      "sha256": "66f9237eba146b641e5a4c132a3f13c788abaddb57e3146b35be02caf1d12f6f"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figma.png",
+      "sha256": "06a9bc5f9076056a34dc09eacf64f90576f1e064c50d39f344720bc75806ceed"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figmaSubpixel-cpu.png",
+      "sha256": "950dac474fc2ab1360b7e6b671ec8ca089b7189a664d2a016a9f78c7b1dc2098"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figmaSubpixel-diff.png",
+      "sha256": "8ea6e05cd5aae3b0f3e70ad4e9634c5a63365e023080fcdf44fb4292b9f98b53"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figmaSubpixel-native.png",
+      "sha256": "950dac474fc2ab1360b7e6b671ec8ca089b7189a664d2a016a9f78c7b1dc2098"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figmaSubpixel-rust-cpu.png",
+      "sha256": "950dac474fc2ab1360b7e6b671ec8ca089b7189a664d2a016a9f78c7b1dc2098"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figmaSubpixel-webgl2.png",
+      "sha256": "950dac474fc2ab1360b7e6b671ec8ca089b7189a664d2a016a9f78c7b1dc2098"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/5-figmaSubpixel-webgpu.png",
+      "sha256": "950dac474fc2ab1360b7e6b671ec8ca089b7189a664d2a016a9f78c7b1dc2098"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-analytic-cpu.png",
+      "sha256": "5d23ad4bc5f0797a8451b00d0e61d29337c564f82a2be30b71a98895d2e72761"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-analytic-diff.png",
+      "sha256": "c677440d7037dc010e7e1d94c6ce07b13606773efc1dc3ccc65171e6d38039c5"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-analytic-rust-cpu.png",
+      "sha256": "5d23ad4bc5f0797a8451b00d0e61d29337c564f82a2be30b71a98895d2e72761"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-analytic-webgl2.png",
+      "sha256": "85b918b67ea3f095000da44c0b40972937438b5bb1cd13c4343fe6ba8be91967"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-analytic-webgpu.png",
+      "sha256": "85b918b67ea3f095000da44c0b40972937438b5bb1cd13c4343fe6ba8be91967"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figma-cpu.png",
+      "sha256": "87cd63bfeed83cd9f3a9f47090a7d3b16bb66625a18f6a0104019eb338ab2f67"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figma-diff.png",
+      "sha256": "b4ce5365f8fde8d848697f1f784ee3aad16bba2ed78d5c2e4a9d0c40d8277d4f"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figma-native.png",
+      "sha256": "87cd63bfeed83cd9f3a9f47090a7d3b16bb66625a18f6a0104019eb338ab2f67"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figma-rust-cpu.png",
+      "sha256": "87cd63bfeed83cd9f3a9f47090a7d3b16bb66625a18f6a0104019eb338ab2f67"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figma-webgl2.png",
+      "sha256": "87cd63bfeed83cd9f3a9f47090a7d3b16bb66625a18f6a0104019eb338ab2f67"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figma-webgpu.png",
+      "sha256": "87cd63bfeed83cd9f3a9f47090a7d3b16bb66625a18f6a0104019eb338ab2f67"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figma.png",
+      "sha256": "6e4789af19b751b28dc46aa1a4b363f59c1d76a07d0b2cd9bf67937d43687797"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figmaSubpixel-cpu.png",
+      "sha256": "1a4309a7c7cd5a2b5b239434e34e40345d14440a63b5f18cb4443911dd4a868d"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figmaSubpixel-diff.png",
+      "sha256": "aae65b29d9b8ed917c74c0efdfaff54f89c31f67f2201da8dadbf712d1794209"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figmaSubpixel-native.png",
+      "sha256": "1a4309a7c7cd5a2b5b239434e34e40345d14440a63b5f18cb4443911dd4a868d"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figmaSubpixel-rust-cpu.png",
+      "sha256": "1a4309a7c7cd5a2b5b239434e34e40345d14440a63b5f18cb4443911dd4a868d"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figmaSubpixel-webgl2.png",
+      "sha256": "1a4309a7c7cd5a2b5b239434e34e40345d14440a63b5f18cb4443911dd4a868d"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/6-figmaSubpixel-webgpu.png",
+      "sha256": "1a4309a7c7cd5a2b5b239434e34e40345d14440a63b5f18cb4443911dd4a868d"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-analytic-cpu.png",
+      "sha256": "fd9661c8df5ce360c1abfbb03652474ef0fd5b969b575a223fdef70e5ddaf437"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-analytic-diff.png",
+      "sha256": "65868d8206256ebdf2c9bfd0034215f9aba871854d5e1ccd518799904ed740da"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-analytic-rust-cpu.png",
+      "sha256": "fd9661c8df5ce360c1abfbb03652474ef0fd5b969b575a223fdef70e5ddaf437"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-analytic-webgl2.png",
+      "sha256": "0471366c8d7066af5ad4216370457aa23bd55ffef02d2c4f6224eaea2bbaff64"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-analytic-webgpu.png",
+      "sha256": "0471366c8d7066af5ad4216370457aa23bd55ffef02d2c4f6224eaea2bbaff64"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figma-cpu.png",
+      "sha256": "298868cbef99ef88a1ae38254ef2a3c7137f0e91039ab6e8b82c67670edb2e2b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figma-diff.png",
+      "sha256": "68e96c47bf86a1a2161dc6b4e2c560b3679c57a78cd5f57faf46033826690fd8"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figma-native.png",
+      "sha256": "298868cbef99ef88a1ae38254ef2a3c7137f0e91039ab6e8b82c67670edb2e2b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figma-rust-cpu.png",
+      "sha256": "298868cbef99ef88a1ae38254ef2a3c7137f0e91039ab6e8b82c67670edb2e2b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figma-webgl2.png",
+      "sha256": "298868cbef99ef88a1ae38254ef2a3c7137f0e91039ab6e8b82c67670edb2e2b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figma-webgpu.png",
+      "sha256": "298868cbef99ef88a1ae38254ef2a3c7137f0e91039ab6e8b82c67670edb2e2b"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figma.png",
+      "sha256": "ae25311b31c4015ed7e8456eeffa81189d4a8da8c9f9c98062a436e38909b0e3"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figmaSubpixel-cpu.png",
+      "sha256": "22c4d50876ae95928738ab79d04c4292ce523b5fcfca2a8d3520edced296b02e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figmaSubpixel-diff.png",
+      "sha256": "5fafcf034af5db998340fdbbf2a61a5cec6d88ca4179d40f61ab643a6852f277"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figmaSubpixel-native.png",
+      "sha256": "22c4d50876ae95928738ab79d04c4292ce523b5fcfca2a8d3520edced296b02e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figmaSubpixel-rust-cpu.png",
+      "sha256": "22c4d50876ae95928738ab79d04c4292ce523b5fcfca2a8d3520edced296b02e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figmaSubpixel-webgl2.png",
+      "sha256": "22c4d50876ae95928738ab79d04c4292ce523b5fcfca2a8d3520edced296b02e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/7-figmaSubpixel-webgpu.png",
+      "sha256": "22c4d50876ae95928738ab79d04c4292ce523b5fcfca2a8d3520edced296b02e"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-analytic-cpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-analytic-diff.png",
+      "sha256": "dbd8e6235a1dba90a6d5e5199db421b6e9f037d56643d2ddec01b18afb7ae64a"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-analytic-rust-cpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-analytic-webgl2.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-analytic-webgpu.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figma-cpu.png",
+      "sha256": "3d634bfdfc92f3b9b99c5e44a9b9a54744a9412e668f7ce87b6bb7df95476f17"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figma-diff.png",
+      "sha256": "f5e1503237eb63ed83f6400ba64f3ddff2e05342e079f4f4978eb657fd6b2e32"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figma-native.png",
+      "sha256": "3d634bfdfc92f3b9b99c5e44a9b9a54744a9412e668f7ce87b6bb7df95476f17"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figma-rust-cpu.png",
+      "sha256": "3d634bfdfc92f3b9b99c5e44a9b9a54744a9412e668f7ce87b6bb7df95476f17"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figma-webgl2.png",
+      "sha256": "3d634bfdfc92f3b9b99c5e44a9b9a54744a9412e668f7ce87b6bb7df95476f17"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figma-webgpu.png",
+      "sha256": "3d634bfdfc92f3b9b99c5e44a9b9a54744a9412e668f7ce87b6bb7df95476f17"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figma.png",
+      "sha256": "f1987cec7ca30425a11a6d2a2823314901a3a8be34666498edf458701bbdd717"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figmaSubpixel-cpu.png",
+      "sha256": "9db2fa8b84bf185709b7a95004bb9a7ce21c69ba35dfb8c938c09260b70bd9e6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figmaSubpixel-diff.png",
+      "sha256": "ed823d6a77e6be646c8ac2e3a8fd43673fd1bcc54934033b13bc861248dea136"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figmaSubpixel-native.png",
+      "sha256": "9db2fa8b84bf185709b7a95004bb9a7ce21c69ba35dfb8c938c09260b70bd9e6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figmaSubpixel-rust-cpu.png",
+      "sha256": "9db2fa8b84bf185709b7a95004bb9a7ce21c69ba35dfb8c938c09260b70bd9e6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figmaSubpixel-webgl2.png",
+      "sha256": "9db2fa8b84bf185709b7a95004bb9a7ce21c69ba35dfb8c938c09260b70bd9e6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/8-figmaSubpixel-webgpu.png",
+      "sha256": "9db2fa8b84bf185709b7a95004bb9a7ce21c69ba35dfb8c938c09260b70bd9e6"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-analytic-cpu.png",
+      "sha256": "8793835ce6f9e184ca31fe90a779eb8c381b125e5824490bab0b8fd8d9b01836"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-analytic-diff.png",
+      "sha256": "631d0ccbdc04d56ffa84437d037b8fba5e685c448f26a573d60fd243a09444a9"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-analytic-rust-cpu.png",
+      "sha256": "8793835ce6f9e184ca31fe90a779eb8c381b125e5824490bab0b8fd8d9b01836"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-analytic-webgl2.png",
+      "sha256": "ca16579f613eb0e938b578877aeebacb3c4211586307095e374dc50113a6de5d"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-analytic-webgpu.png",
+      "sha256": "ca16579f613eb0e938b578877aeebacb3c4211586307095e374dc50113a6de5d"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figma-cpu.png",
+      "sha256": "139965da1b6fe62fad5cffc841af5f82e1a330cbae5c27ccdc484472625a2827"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figma-diff.png",
+      "sha256": "d072b621ba8a8df7ef390146b1452c48ecf9014c06cf925db77b1ec4da9f8b9d"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figma-native.png",
+      "sha256": "139965da1b6fe62fad5cffc841af5f82e1a330cbae5c27ccdc484472625a2827"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figma-rust-cpu.png",
+      "sha256": "139965da1b6fe62fad5cffc841af5f82e1a330cbae5c27ccdc484472625a2827"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figma-webgl2.png",
+      "sha256": "139965da1b6fe62fad5cffc841af5f82e1a330cbae5c27ccdc484472625a2827"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figma-webgpu.png",
+      "sha256": "139965da1b6fe62fad5cffc841af5f82e1a330cbae5c27ccdc484472625a2827"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figma.png",
+      "sha256": "991f775bc17ace8552f1b30c60dc2b2281478d4da7f470c07aefff9cfef99297"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figmaSubpixel-cpu.png",
+      "sha256": "a64f04761b71abe5b7b37e217d2f823b3f16c0dee8da14ed8c30fbbce5d18c28"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figmaSubpixel-diff.png",
+      "sha256": "ac4fc23c9e01314bf751c6b5fbfe2ee1b7388c467641f01f4da7d072ab20e2e0"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figmaSubpixel-native.png",
+      "sha256": "a64f04761b71abe5b7b37e217d2f823b3f16c0dee8da14ed8c30fbbce5d18c28"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figmaSubpixel-rust-cpu.png",
+      "sha256": "a64f04761b71abe5b7b37e217d2f823b3f16c0dee8da14ed8c30fbbce5d18c28"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figmaSubpixel-webgl2.png",
+      "sha256": "a64f04761b71abe5b7b37e217d2f823b3f16c0dee8da14ed8c30fbbce5d18c28"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/images/9-figmaSubpixel-webgpu.png",
+      "sha256": "a64f04761b71abe5b7b37e217d2f823b3f16c0dee8da14ed8c30fbbce5d18c28"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/index.html",
+      "sha256": "d7dc85af99ee1e7e9559b4649927d617026062a6cb5b679221563e452d17265c"
+    },
+    {
+      "path": "testing/review/design-kernel-figma-2026-10-07/results.json",
+      "sha256": "b716cbb6b4aeea0aed731a155250709add5c6979143ebcb2e3799fd8dc40fb05"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/alpha-mask.png",
+      "sha256": "419ce30069b02053557e5a740cd86e264c96facca215095f2d012ef2a2598c06"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/backdrop-blur.png",
+      "sha256": "1a957889f9e36d8410e01c4c6314d1ba487e43cd68fd12bb24ff4ea0f4eab72e"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/blur-small.png",
+      "sha256": "19353e2a7832264291bd6e86004f1e3c459922451eabfbf33cb492446cb98050"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/cases.json",
+      "sha256": "a91c9dfca28bbc17d578004191280976e7fe5865600376aad38ed50d9a3e1600"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/create-in-figma.js",
+      "sha256": "492a099f88d0d7a54ae292be77f0d5c4a47fc595b3efd348cf6ce858aaab95f5"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/ellipse.png",
+      "sha256": "310103d1ca2864fadcca6a9f616c23b6b8947d17882b4180d977fc0de7106b6a"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/fractional-rectangle.png",
+      "sha256": "49efb66d57948dc00e45eacc3902e3bcc6005b1783d3e6eb6229f38ccf4e7831"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/glass-frost-only.png",
+      "sha256": "daeb8037fa015006c3a555acdcc7f638a1f9a4f655f806946881dca6fa8bf297"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/glass-full.png",
+      "sha256": "304e862184b7d1f4c812af177141089df854f821e7fc0abf808495771cb45025"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/integer-rectangle.png",
+      "sha256": "19353e2a7832264291bd6e86004f1e3c459922451eabfbf33cb492446cb98050"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/layer-blur.png",
+      "sha256": "cb58bf174ad8f0d17366ef3ea4074cbd8e9def0ea17e59dbc473366cfc17a60e"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/linear-gradient.png",
+      "sha256": "b2e440261bec79d3821a9ae91683da6a1cad0e309265a36cb4ec39126433e386"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/multiply-opacity.png",
+      "sha256": "d8da78ff2cc3d01f7146b37ac984aaee34b826f6338d9e64c5afcafc62510277"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/outside-stroke.png",
+      "sha256": "28890934aa1eaa1c41753c28a57aeb30e97147806842a4b472bbcca4f65bc1f9"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/provenance.json",
+      "sha256": "c5d84b42bdfdc18602e66788eada83e9d085aa38bc353fa5d99994221c72526a"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/rotated-rectangle.png",
+      "sha256": "f1762088c6aaf2754f02b21dfbf8935ea804766781f8ae28019dc97c975c920d"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/shadow.png",
+      "sha256": "40ba48ba82e2796732fb201e8609de3071879df1613a8d5cf58a24db139c22f9"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/smooth-corner.png",
+      "sha256": "b75eeb5ac80cd7fa2fe3ae4112290495200c5a7447e7cf848fd16c6fc2df26fb"
+    },
+    {
+      "path": "frontend/design-client/public/fidelity/browser-2026-10-07/texture.png",
+      "sha256": "5da4bf45fef28bec03af4a723ebd987a34e152327c27c6232e7a878bce6d5a86"
+    }
+  ],
+  "draftCorrections": [
+    "Initial Figma kernel fixture draft omitted required effect.color for four inputs. Validation rejected those inputs; corrected before final comparison, without changing references.",
+    "A draft variable-width seam test had unequal endpoint widths and was correctly rejected; fixed fixture before final passing regression."
+  ]
+}

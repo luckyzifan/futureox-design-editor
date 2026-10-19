@@ -1,0 +1,181 @@
+{
+  "date": "2026-10-06",
+  "baseCommit": "077d11165af48f7415d099698f7c242e605bb1a8",
+  "scope": [
+    "CPU managed glass extended-linear precision",
+    "unchanged legacy SDR byte output",
+    "targeted CPU crop and 16-bit export regressions"
+  ],
+  "exclusions": [
+    "shader/native GPU edits or hardware tests",
+    "WASM builds",
+    "dependency/lockfile changes",
+    "new Figma exports",
+    "browser/mobile acceptance",
+    "server/database changes",
+    "deployment"
+  ],
+  "environment": {
+    "host": "x86_64-unknown-linux-gnu",
+    "rustc": "1.96.0",
+    "cargo": "1.96.0",
+    "compileJobs": 2,
+    "CARGO_HOME": "/workspace/shared/design-validation-tools/cargo",
+    "RUSTUP_HOME": "/workspace/shared/design-validation-tools/rustup",
+    "CARGO_TARGET_DIR": "/workspace/shared/core-validation-glass/target"
+  },
+  "fix": "Pass the existing compatibility flag into private glass_unmasked; keep its original RGBA8 quantization only for legacy SDR and retain extended-linear floating-point RGB/alpha for explicitly color-managed documents. No sampling, distance-field, blur, refraction, lighting or tolerance changes.",
+  "reproducedDefect": {
+    "test": "managed_refractive_glass_retains_extended_channels",
+    "expectedPremultipliedPixel": [
+      4,
+      -1,
+      0.0625,
+      0.5
+    ],
+    "beforePixel": [
+      1,
+      0,
+      0.062745094,
+      0.50196075
+    ]
+  },
+  "checks": [
+    {
+      "phase": "baseline",
+      "command": "cargo test --locked -p futureox-design-kernel -j 2",
+      "exitCode": 0,
+      "log": "/workspace/shared/core-validation-glass/logs/baseline.log",
+      "logSha256": "800c16d900868bf9a749f7653c13b120d9aae87ed22d66ee622db4dce2c5b478",
+      "passed": 194,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "phase": "red: new tests, original implementation",
+      "command": "cargo test --locked -p futureox-design-kernel -j 2 --test glass",
+      "exitCode": 101,
+      "log": "/workspace/shared/core-validation-glass/logs/red.log",
+      "logSha256": "666c3825d6dc1043ce15f1a7c72553f4506f6ce960c796902c331c9ab86b5e86",
+      "passed": 2,
+      "failed": 3,
+      "ignored": 0
+    },
+    {
+      "phase": "first green",
+      "command": "cargo test --locked -p futureox-design-kernel -j 2 --test glass",
+      "exitCode": 0,
+      "log": "/workspace/shared/core-validation-glass/logs/green-focused.log",
+      "logSha256": "a74dee74d756685eaad1dc0744da879c36c700c5df1a65f6e5a346334b890835",
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "phase": "final formatted implementation and added finite-range boundary",
+      "command": "cargo test --locked -p futureox-design-kernel -j 2",
+      "exitCode": 0,
+      "log": "/workspace/shared/core-validation-glass/logs/green-full-final.log",
+      "logSha256": "6765d3d4bc14422b6845f84f849ef2ca3302be66fb297da303f0219a4f8c9f1b",
+      "passed": 199,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "phase": "final format",
+      "command": "cargo fmt -p futureox-design-kernel -- --check",
+      "exitCode": 0,
+      "log": "/workspace/shared/core-validation-glass/logs/fmt-final.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "phase": "final clippy",
+      "command": "cargo clippy --locked -p futureox-design-kernel --all-targets -j 2 -- -D warnings",
+      "exitCode": 0,
+      "log": "/workspace/shared/core-validation-glass/logs/clippy-final.log",
+      "logSha256": "7f4ff6883b884b1925009bcd7e398af1f0504065dcdbed279add4b9f4467830b"
+    },
+    {
+      "phase": "foundation",
+      "command": "python3 scripts/check-foundation.py",
+      "exitCode": 0,
+      "log": "/workspace/shared/core-validation-glass/logs/foundation.log",
+      "logSha256": "18228bfc6b321f34ff87c8723ac5c9688e034bec4963bc76a34b5155ec015432"
+    },
+    {
+      "phase": "final document links",
+      "command": "python3 scripts/check-current-doc-links.py",
+      "exitCode": 0,
+      "log": "/workspace/shared/core-validation-glass/logs/doc-links-final.log",
+      "logSha256": "df71afca3795b126abd7644e503ddacacb53d0cefbd2ee032ef6ac19a674b5a3"
+    }
+  ],
+  "newTestCoverage": [
+    {
+      "test": "managed_zero_distortion_glass_preserves_hdr_gamut_and_alpha",
+      "parameterCases": 12,
+      "assertion": "Whole-frame exact Pixel equality with effect disabled; both managed profiles, alpha 0, 1/4096, 1/4, 1/2, 1 and an opaque +/-65504 finite-range boundary. No relaxed tolerance."
+    },
+    {
+      "test": "managed_refractive_glass_retains_extended_channels",
+      "parameterCases": 2,
+      "assertion": "Nonzero blur, refraction and light retain exact constant interior, HDR/negative edge channels and finite bounded alpha in both profiles."
+    },
+    {
+      "test": "managed_glass_crops_match_tiled_frames_at_export_scales",
+      "parameterCases": 6,
+      "assertion": "Exact floating-point crop-vs-1024-wide tiled frame equality across the 512 boundary at 1x/2x/3x, with translucent HDR gradient, fractional rounded geometry and ancestor clip."
+    },
+    {
+      "test": "managed_zero_distortion_glass_keeps_16_bit_png_export",
+      "parameterCases": 6,
+      "assertion": "Both profiles at 1x/2x/3x retain exact PQ PNG bytes compared with disabled zero-distortion effect; decoded metadata is 16-bit with expected dimensions."
+    },
+    {
+      "test": "legacy_sdr_glass_keeps_rgba8_baseline",
+      "parameterCases": 3,
+      "assertion": "SHA-256 of full CPU RGBA output matches pre-change 077d111 for analytic, figma and figmaSubpixel, using translucent gradient and nonzero glass parameters."
+    }
+  ],
+  "coverageLimits": [
+    "Five Rust test functions exercise 29 parameter configurations; this is not 29 separate test-runner cases.",
+    "Tiled crop cases use nonzero blur but zero refraction/light. They do not prove tile invariance for arbitrary refractive displacement.",
+    "The nonzero-refraction fixture uses a constant backdrop and tests range/alpha, not displacement direction or amplitude.",
+    "SDR hashes come from the unmodified CPU implementation, not independent Figma exports.",
+    "A 1/255 channel-value difference is not a 1px geometric displacement.",
+    "Portable kernel tests include CPU-side GPU packet/compiler contracts; no native GPU crate or hardware renderer was built or executed.",
+    "These passing CPU checks do not establish whole-product production readiness or full Figma parity."
+  ],
+  "supersededAttempts": [
+    {
+      "phase": "SDR baseline capture before runtime modification",
+      "command": "cargo test --locked -p futureox-design-kernel -j 2 --test glass legacy_sdr_glass_keeps_rgba8_baseline -- --nocapture",
+      "exitCode": 101,
+      "reason": "Deliberate placeholder expected hashes during baseline capture; recorded output became the fixed regression oracle before the genuine red run. Not counted as a product regression failure.",
+      "log": "/workspace/shared/core-validation-glass/logs/sdr-baseline-capture.log",
+      "logSha256": "4bd6d95b9727b075878806b43c82e713cd61a9a2f836e882359c2f9caf9a5a08"
+    },
+    {
+      "phase": "initial fmt check",
+      "exitCode": 1,
+      "reason": "rustfmt requested only conditional-expression line wrapping; applied and separately rechecked successfully.",
+      "log": "/workspace/shared/core-validation-glass/logs/fmt.log",
+      "logSha256": "6dfda7c5731e5cc2d7c28f21d0d9938822afe5dac96184c5a72bc0c2f18ca4fa"
+    },
+    {
+      "phase": "initial foundation invocation",
+      "exitCode": 1,
+      "reason": "This invocation omitted the restored Cargo PATH; corrected environment and reran unchanged script successfully.",
+      "log": "/workspace/shared/core-validation-glass/logs/foundation-missing-path.log",
+      "logSha256": "554208ba1494d6d53aaf1e4ecc487830e0f52d9de70b0f33d5e048f6c3ab48d4"
+    }
+  ],
+  "sourceSha256": {
+    "design-studio/crates/design-kernel/src/effects.rs": "44cb90ca7b2aa08face98e02078f92772ad007f218e1f9b382b1fc1e0daa2c4f",
+    "design-studio/crates/design-kernel/src/renderer.rs": "e4147ee8f91e2204d237b568663c2151c14f94f5726a7463f254cdaeea3ae15e",
+    "design-studio/crates/design-kernel/tests/glass.rs": "a3e5e54c32536761efc3affd690bb71a62213a1da1850907057afb75ed09cffa",
+    "docs/architecture/design-editor.md": "489340670d13fbd072458d58571b5af01adee2c6d70633e40a55b9d4a4e4ca77",
+    "design-studio/Cargo.lock": "57706196d9836cd83e576dae7194f76a477da6fee318a5b794066ed2abf9c6ba"
+  },
+  "unchangedLockfileSha256": "57706196d9836cd83e576dae7194f76a477da6fee318a5b794066ed2abf9c6ba"
+}

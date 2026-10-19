@@ -1,0 +1,531 @@
+{
+  "date": "2026-10-07",
+  "status": "sampling_iteration_verified_overall_acceptance_failed",
+  "fullAcceptancePassed": false,
+  "baseCommit": "73bdf8bc670c9da726d88f417e1bf6966bd4f03d",
+  "platform": "macOS-26.3-arm64-arm-64bit-Mach-O",
+  "evidenceDirectory": ".local/design-validation/sampling-9dfd0357-1da2-44df-8bd7-194d01389456",
+  "previousEvidence": "testing/review/design-kernel-parity-2026-10-07.json",
+  "scope": {
+    "included": [
+      "exact bilinear primitive for managed linear surfaces",
+      "zero displacement and neutral leaf backdrop semantics",
+      "same-backend and cross-native/WASM readbacks",
+      "local CPU/native Metal/WebGPU/WebGL2 validation"
+    ],
+    "excluded": [
+      "external Figma fidelity",
+      "deployment/push",
+      "non-design user work"
+    ]
+  },
+  "mathematicalContract": {
+    "inputs": "finite binary32 premultiplied samples, binary32 u/v in [0,1]",
+    "expression": "a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v",
+    "rounding": "one final nearest-ties-even; exact zero canonical +0; signed underflow retained",
+    "exactPath": "9 dyadic terms, unrounded products, Q447 signed accumulator of 19 u32 words",
+    "cpuFastPath": "f64 interval using 128*f64::EPSILON*max(abs(samples)); accept only equal f32 endpoint bit patterns, otherwise exact integer evaluation",
+    "scopeBoundary": "Upstream coordinate/cell selection, downstream compositing and filter reductions are separate contracts; they are not proved by the primitive test."
+  },
+  "changes": [
+    "CPU sample_linear and matching WGSL/GLSL exact bilinear implementation",
+    "Managed images, texture/glass, backdrop and shadow resampling use the exact operator",
+    "Zero texture displacement bypasses inverse/forward transform round trip",
+    "Shared Rust selected_backdrop fixes first-visible slot precedence; neutral glass bypasses backdrop capture",
+    "GPU polynomial loops avoid repeated large-struct copies; host bounds are always 19 limbs and 9 terms",
+    "SDR shader programs omit the HDR accumulator; byte-surface numeric contract unchanged",
+    "Strict gate includes sampling oracle and real hardware conformance; vector failures counted separately from scene failures"
+  ],
+  "checks": {
+    "independentSamplingVectors": 7008,
+    "existingArithmeticVectors": 65914,
+    "cpuSampling": {
+      "passed": 5,
+      "failed": 0,
+      "log": "final-targeted.log"
+    },
+    "coherenceAfterBackdropChange": {
+      "passed": 19,
+      "failed": 0,
+      "log": "final-targeted.log"
+    },
+    "kernelServerBroadRun": {
+      "passed": 315,
+      "failed": 0,
+      "ignored": 0,
+      "log": "full-gate/kernel.log",
+      "scope": "Broad run preceded the final nonfinite guard and backdrop-slot edits; those are covered by the subsequent 24 focused tests."
+    },
+    "gpuArithmetic": {
+      "exit": 0,
+      "log": "final-gate/arithmetic.log"
+    },
+    "browserArithmetic": {
+      "webgpu": {
+        "checks": 65914,
+        "failures": 0,
+        "examples": []
+      },
+      "webgl2": {
+        "checks": 65914,
+        "failures": 0,
+        "examples": []
+      }
+    },
+    "browserSampling": {
+      "webgpu": {
+        "checks": 7008,
+        "failures": 0,
+        "examples": []
+      },
+      "webgl2": {
+        "checks": 7008,
+        "failures": 0,
+        "examples": []
+      }
+    },
+    "build": {
+      "exit": 0,
+      "log": "final-gate/build.log"
+    },
+    "frontend": {
+      "passed": 202,
+      "failed": 0,
+      "exit": 0,
+      "log": "final-gate/frontend.log"
+    },
+    "nativeScenes": {
+      "exit": 101,
+      "passed": 8,
+      "failed": 3,
+      "ignored": 0,
+      "log": "final-gate/native.log"
+    },
+    "browserScenes": {
+      "checks": 441,
+      "failed": 138,
+      "numericalFailures": 0,
+      "byProfile": {
+        "analytic": {
+          "checks": 147,
+          "failed": 132
+        },
+        "figma": {
+          "checks": 147,
+          "failed": 3
+        },
+        "figmaSubpixel": {
+          "checks": 147,
+          "failed": 3
+        }
+      }
+    },
+    "crossReadbacks": {
+      "checks": 507,
+      "failed": 176,
+      "nativeCpuVsWasmDifferentBytes": 0,
+      "log": "final-gate/cross-results.json"
+    },
+    "clippy": {
+      "exit": 0,
+      "log": "clippy-final.log"
+    },
+    "foundation": {
+      "exit": 0,
+      "log": "foundation.log"
+    },
+    "lint": {
+      "exit": 0,
+      "log": "lint-final.log"
+    },
+    "typecheck": {
+      "exit": 0,
+      "log": "typecheck-final.log"
+    },
+    "documentationLinks": {
+      "exit": 0
+    },
+    "rustfmt": {
+      "exit": 0
+    },
+    "diffCheck": {
+      "exit": 0
+    }
+  },
+  "verifiedSubset": {
+    "sdrInputs": 125,
+    "fineProfiles": 2,
+    "sdrRequests": 250,
+    "managedInputs": 22,
+    "managedFineRequestsPassed": 38,
+    "fineSceneRequestsPassed": 288,
+    "allFiveReadbacks": "native CPU, native GPU, WASM CPU, WebGPU, WebGL2",
+    "taggedImageScope": "Three existing constant 4x4 ICC/PQ/HLG fixtures, each at widths 4,32,37.5; not a claim for arbitrary images/transforms."
+  },
+  "remainingFineFailures": [
+    {
+      "profile": "figma",
+      "index": 128,
+      "name": "Managed precision blur",
+      "format": "linear.f32",
+      "missing": [],
+      "differences": {
+        "native-cpu": 0,
+        "native-gpu": 439,
+        "cpu": 0,
+        "webgpu": 439,
+        "webgl2": 439
+      },
+      "failed": true
+    },
+    {
+      "profile": "figma",
+      "index": 130,
+      "name": "Managed precision glass",
+      "format": "linear.f32",
+      "missing": [],
+      "differences": {
+        "native-cpu": 0,
+        "native-gpu": 205,
+        "cpu": 0,
+        "webgpu": 205,
+        "webgl2": 205
+      },
+      "failed": true
+    },
+    {
+      "profile": "figma",
+      "index": 143,
+      "name": "Managed rotated texture displacement",
+      "format": "linear.f32",
+      "missing": [],
+      "differences": {
+        "native-cpu": 0,
+        "native-gpu": 137,
+        "cpu": 0,
+        "webgpu": 137,
+        "webgl2": 137
+      },
+      "failed": true
+    },
+    {
+      "profile": "figmaSubpixel",
+      "index": 128,
+      "name": "Managed precision blur",
+      "format": "rgba",
+      "missing": [],
+      "differences": {
+        "native-cpu": 0,
+        "native-gpu": 2,
+        "cpu": 0,
+        "webgpu": 2,
+        "webgl2": 2
+      },
+      "failed": true
+    },
+    {
+      "profile": "figmaSubpixel",
+      "index": 128,
+      "name": "Managed precision blur",
+      "format": "linear.f32",
+      "missing": [],
+      "differences": {
+        "native-cpu": 0,
+        "native-gpu": 3354,
+        "cpu": 0,
+        "webgpu": 3354,
+        "webgl2": 3354
+      },
+      "failed": true
+    },
+    {
+      "profile": "figmaSubpixel",
+      "index": 130,
+      "name": "Managed precision glass",
+      "format": "linear.f32",
+      "missing": [],
+      "differences": {
+        "native-cpu": 0,
+        "native-gpu": 184,
+        "cpu": 0,
+        "webgpu": 184,
+        "webgl2": 184
+      },
+      "failed": true
+    },
+    {
+      "profile": "figmaSubpixel",
+      "index": 143,
+      "name": "Managed rotated texture displacement",
+      "format": "linear.f32",
+      "missing": [],
+      "differences": {
+        "native-cpu": 0,
+        "native-gpu": 183,
+        "cpu": 0,
+        "webgpu": 183,
+        "webgl2": 183
+      },
+      "failed": true
+    }
+  ],
+  "remaining": [
+    "Analytic native unsupported and browser analytic still differs",
+    "HDR blur still uses different coefficient/reduction arithmetic",
+    "Active glass still differs; neutral leaf glass cases now pass",
+    "Nonzero texture displacement coordinate arithmetic still differs",
+    "General nonconstant image coordinate transforms remain to be expanded",
+    "Shader sources are still mirrored, not yet generated from one numerical IR"
+  ],
+  "performance": {
+    "nativeRelease131072SamplesMs": {
+      "originalConstant": 0.908,
+      "firstExactConstant": 2.756,
+      "originalVarying": 0.771,
+      "firstExactVarying": 51.11,
+      "certifiedVarying": 4.592,
+      "sameCertifiedRunOriginalVarying": 1.044
+    },
+    "logs": [
+      "cpu-benchmark.log",
+      "cpu-certified-benchmark.log"
+    ],
+    "limits": "Single-run CPU microbenchmarks, not whole-frame/cross-device guarantees. Exact sampling remains more expensive. Initial GPU implementation exceeded 30s compilation; program-loop version retained original timeout and had a first observed WebGPU request about 11s / WebGL2 about 2s, later small-scene requests tens of ms."
+  },
+  "redEvidence": [
+    "../precision-analysis-d6a77513-ee39-49c4-8e31-b2efa1d91295/analysis.json",
+    "native-sampling.log",
+    "browser-primitives/sampling.json",
+    "new-managed-browser/results.json"
+  ],
+  "gate": {
+    "profiles": [
+      "analytic",
+      "figma",
+      "figmaSubpixel"
+    ],
+    "stages": [
+      "native",
+      "frontend",
+      "browser"
+    ],
+    "passed": false,
+    "fullAcceptancePassed": false,
+    "corpusSha256": "6fb23baf460bdca7b40583fd896ff20502a3b72c4abdf300c08a4553cc1cd44d",
+    "arithmeticSha256": "ca58e4c6adf3220c19faabc4489f867f75b18469b050447498561293cc389425",
+    "samplingSha256": "8f7a84422d94e1b55afbc63749fcceefb4bebae1bbc9aada1ca2297f83bd2856",
+    "checks": [
+      {
+        "stage": "oracle",
+        "command": [
+          "python3",
+          "design-studio/scripts/generate-precision-vectors.py",
+          "--check"
+        ],
+        "exit": 0,
+        "seconds": 1.545,
+        "log": "/Users/Apple/project/core/.local/design-validation/sampling-9dfd0357-1da2-44df-8bd7-194d01389456/final-gate/oracle.log"
+      },
+      {
+        "stage": "sampling-oracle",
+        "command": [
+          "python3",
+          "design-studio/scripts/generate-sampling-vectors.py",
+          "--check"
+        ],
+        "exit": 0,
+        "seconds": 0.355,
+        "log": "/Users/Apple/project/core/.local/design-validation/sampling-9dfd0357-1da2-44df-8bd7-194d01389456/final-gate/sampling-oracle.log"
+      },
+      {
+        "stage": "arithmetic",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--manifest-path",
+          "design-studio/Cargo.toml",
+          "-p",
+          "futureox-design-gpu",
+          "--features",
+          "hardware-tests",
+          "--test",
+          "arithmetic",
+          "--test",
+          "sampling",
+          "--",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "exit": 0,
+        "seconds": 12.425,
+        "log": "/Users/Apple/project/core/.local/design-validation/sampling-9dfd0357-1da2-44df-8bd7-194d01389456/final-gate/arithmetic.log"
+      },
+      {
+        "stage": "native",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--manifest-path",
+          "design-studio/Cargo.toml",
+          "-p",
+          "futureox-design-gpu",
+          "--features",
+          "hardware-tests",
+          "--test",
+          "native",
+          "--",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "exit": 101,
+        "seconds": 139.949,
+        "log": "/Users/Apple/project/core/.local/design-validation/sampling-9dfd0357-1da2-44df-8bd7-194d01389456/final-gate/native.log"
+      },
+      {
+        "stage": "build",
+        "command": [
+          "bun",
+          "run",
+          "build"
+        ],
+        "exit": 0,
+        "seconds": 16.252,
+        "log": "/Users/Apple/project/core/.local/design-validation/sampling-9dfd0357-1da2-44df-8bd7-194d01389456/final-gate/build.log"
+      },
+      {
+        "stage": "frontend",
+        "command": [
+          "bun",
+          "run",
+          "test"
+        ],
+        "exit": 0,
+        "seconds": 7.401,
+        "log": "/Users/Apple/project/core/.local/design-validation/sampling-9dfd0357-1da2-44df-8bd7-194d01389456/final-gate/frontend.log"
+      },
+      {
+        "stage": "browser",
+        "command": [
+          "bun",
+          "scripts/check-gpu-parity.ts"
+        ],
+        "exit": 1,
+        "seconds": 54.973,
+        "log": "/Users/Apple/project/core/.local/design-validation/sampling-9dfd0357-1da2-44df-8bd7-194d01389456/final-gate/browser.log"
+      },
+      {
+        "stage": "cross",
+        "command": [
+          "python3",
+          "design-studio/scripts/compare-precision-readbacks.py",
+          "/Users/Apple/project/core/.local/design-validation/sampling-9dfd0357-1da2-44df-8bd7-194d01389456/final-gate",
+          "--profiles",
+          "analytic,figma,figmaSubpixel"
+        ],
+        "exit": 1,
+        "seconds": 5.494,
+        "log": "/Users/Apple/project/core/.local/design-validation/sampling-9dfd0357-1da2-44df-8bd7-194d01389456/final-gate/cross.log"
+      }
+    ],
+    "scope": "Exact RGBA8 and managed binary32 bit comparisons on all requested profiles; independent arithmetic oracle. Missing backends fail. External Figma PNG similarity remains separate."
+  },
+  "documentCoverage": [
+    {
+      "path": "docs/architecture/design-kernel-hard-problems.md",
+      "sha256": "bb19241b3fdfd06d08cffd29066f32cb076a82ac6345b6d7cf22f411bf9dc4a6",
+      "status": "待核对",
+      "scope": "Current sampling section and links checked; historical claims not revalidated as a whole"
+    },
+    {
+      "path": "docs/architecture/design-editor.md",
+      "sha256": "dadd69d72009e0b0d21a13f5ed8d8161595e7b0d794accc81a3929710cb159cd",
+      "status": "待核对",
+      "scope": "Current sampling section and links checked; historical claims not revalidated as a whole"
+    },
+    {
+      "path": "docs/README.md",
+      "sha256": "a75aefe7537698d31fdebbb2e7cf4f0c7930f9b709aa3b79ac033d9e22c8a4ab",
+      "status": "待核对",
+      "scope": "Current sampling section and links checked; historical claims not revalidated as a whole"
+    },
+    {
+      "path": "testing/api/README.md",
+      "sha256": "e61d68997d4f219a7f46dfb433f01f84bd9d4019680cc115e7dfc390acee1ed5",
+      "status": "待核对",
+      "scope": "Current sampling section and links checked; historical claims not revalidated as a whole"
+    }
+  ],
+  "workingTreeSha256": {
+    "design-studio/crates/design-gpu/Cargo.toml": "048afeb6ffb2b76609398dbf99f50c109e72d001c8fb6acd7f03bea5c539bba5",
+    "design-studio/crates/design-gpu/src/compositor.rs": "6d2cb35cb0a9f9ed18e57f1434dd8e99531a2715965b4a7842baa055160211cb",
+    "design-studio/crates/design-gpu/src/device.rs": "8c89a2c32552ee6decaf7dd35f98ab5a272b5a4c574bf7134bddb67817e2be55",
+    "design-studio/crates/design-gpu/tests/arithmetic.rs": "6691b1a500df72c1985a4d699a45e2840a913c121ecf5ac2c099f611312078ff",
+    "design-studio/crates/design-gpu/tests/native.rs": "b912ec5a288b05791ed938ad6e4ae9a41006e82cc36b18b65a221f066bd63dbf",
+    "design-studio/crates/design-gpu/tests/sampling.rs": "1b48d0cd34e784c1de1ea89f829047100d7d6402f8c8ff4be29f8544dec75d57",
+    "design-studio/crates/design-kernel/Cargo.toml": "feb4bd00eac6d87f99f6a78f2232c8ffd8abe9bd833e23aaa9825b3cf9b49d99",
+    "design-studio/crates/design-kernel/benches/blur.rs": "1b2c1e4b59b35ec14a6d64ae522c40fbe903b46bdd22aff3255c45ade973b7a7",
+    "design-studio/crates/design-kernel/benches/fractional_blur.rs": "49f544b29fea0b621d1418e4d48e381c6b75383c453799be70da5d25025febe1",
+    "design-studio/crates/design-kernel/benches/sampling.rs": "f8e850569e8bb791142cd307a95666c62c9ea03cef583912bd5212eb45093df1",
+    "design-studio/crates/design-kernel/shaders/byte-sampling.wgsl": "4c7c92a8a7dc8448aed48ee944d318c399210d8ac7ce9ed3a3acffd7b3a10600",
+    "design-studio/crates/design-kernel/shaders/sampling.wgsl": "5063cd8f98293f571432035279b361a11d05656252d9bdac16188495924849fb",
+    "design-studio/crates/design-kernel/shaders/vector.wgsl": "2f3631437fae803b3f3c8169e3abf09e25290f87cc06d9bbf69c261f9bc052c4",
+    "design-studio/crates/design-kernel/src/analytic.rs": "51f2f33771ec7a20637c3596eaa0cf12e5ac210479b72d6495f0875bb3fc48aa",
+    "design-studio/crates/design-kernel/src/blend.rs": "d6bd65ed3ca3d24dc2601f3a8da5bb89b71e924754b50d65fa15b6b12f2ba412",
+    "design-studio/crates/design-kernel/src/effects.rs": "942a7be3f10a3788e746cdcb2fc49eba3a9d58370770d3dd38898d0d76dda993",
+    "design-studio/crates/design-kernel/src/fidelity.rs": "25f39263d07334913a381b7df4ed8f9de30a54a2a550002ebd3c01a6b3d79f50",
+    "design-studio/crates/design-kernel/src/fixed_gradient.rs": "4537129150b777175d7b196cb71b9cf39315b40169e43e5359fd77bb24d434ca",
+    "design-studio/crates/design-kernel/src/gpu.rs": "c3fbdc0f5828bfdd552b406d91271ebde8923da3776dd793af50440e959b00d3",
+    "design-studio/crates/design-kernel/src/lib.rs": "cfd8136ecf9fef19ae52dcd52ed861551bba7b52454924e70efbcb5f929268e8",
+    "design-studio/crates/design-kernel/src/memory.rs": "8a7dd46499649f54bf4e60d3be4ce5d696b850afe902f457b0c5407c5db0294b",
+    "design-studio/crates/design-kernel/src/paint.rs": "e1f646d42ebf31fb9af7d7b96dfa1f84f6cb38fbeafb9c1cb2e5ad6fb5eaad9e",
+    "design-studio/crates/design-kernel/src/renderer.rs": "3b96d61b620fb5a982ea30d6dd4cf6d34713ef15063a73d3c71d489ab88cfd12",
+    "design-studio/crates/design-kernel/src/renderer_tests/memory.rs": "306aa0d05143b891cded5eaa71d3c446f7d61b7cda480ee6c5bace1e2bed56be",
+    "design-studio/crates/design-kernel/src/renderer_tests/solid_quantization.rs": "0a9fc259010c3fa6487cef50c481d668964d02d401778a7cf4498d2e7ed2d577",
+    "design-studio/crates/design-kernel/src/sampling.rs": "2f614f542e50f3684517f487b60408bdb49f174b9b82e8646e7c82aa525281de",
+    "design-studio/crates/design-kernel/src/scene.rs": "69047022cd3821c9ff4fb20d3a8c52d0a24e3d13770505f5af2857a4d28da51a",
+    "design-studio/crates/design-kernel/tests/arithmetic.rs": "9a85acd0b4031727e2a0150e70b09d87ffe0f2b590c5d7893669b29adec60859",
+    "design-studio/crates/design-kernel/tests/blur.rs": "6bffe66523ee9834c9d1b9e24e65ac09a8baa399152814ec63e800c7200cc763",
+    "design-studio/crates/design-kernel/tests/coherence.rs": "02d488d34a5c45b2be4916355dd8fcc5fff442d012529b170c48e4c8a650a8ea",
+    "design-studio/crates/design-kernel/tests/color.rs": "c3b980d9a1efdee3432334200f294e291e2f35813d55a9880f828d24c4ec1ae2",
+    "design-studio/crates/design-kernel/tests/compositing_memory.rs": "12f4a2bec2e63e8af49fb3853d179645ec039723e2b8051e47489bc5e23a318b",
+    "design-studio/crates/design-kernel/tests/fidelity.rs": "3d87d69af43a6316cef9a60c7d084e00dd270b8fe1abe502646facc2e47a42a5",
+    "design-studio/crates/design-kernel/tests/glass.rs": "c27513d77ecfd14d9d92f88d391723312e0486a453869ccbf58d50c7d401f1b1",
+    "design-studio/crates/design-kernel/tests/image_cache.rs": "f9dafd94f27a0cc0f1c0b653f11a7938f26081c2031788d4e0875850682b10a7",
+    "design-studio/crates/design-kernel/tests/kernel.rs": "f1a0c73af62039751057b8d97230dd9ec1578fbfdd6fa04c9d98470fa2cacf6a",
+    "design-studio/crates/design-kernel/tests/sampling.rs": "cab44ecaa56f5411d93bcfb449290f0d4d74605f988a5693503b68e4114eaab8",
+    "design-studio/crates/design-kernel/tests/sampling_invariance.rs": "ae7e32dc52919ddeafa18cb8ec8e86d8362c042489df74084da63a76d916575d",
+    "design-studio/crates/design-kernel/tests/smooth_corners.rs": "62ae9b77a23328e54070bef9fc90b959b65590375aecf9dc486c50c2e035eb4d",
+    "design-studio/scripts/check-precision.py": "f6de54a3c4870e4a22fb0cccfd6249b8d1acbeedd8d3bc446ac84ae40ee63ddd",
+    "design-studio/scripts/compare-precision-readbacks.py": "96c03f5c3b42adc46a1dd6de17877a7b1731b4717cf123e94a2b2b1f8f9320e4",
+    "design-studio/scripts/generate-precision-vectors.py": "928093a6f5e11df53225dc7b7beb92feb32fe94d53a267561fc14e3b02fc3009",
+    "design-studio/scripts/generate-sampling-vectors.py": "9a002741524b7cb4e70f94d9d505ea1c1c972489ba1c75e24a7e8c90cc1506df",
+    "docs/README.md": "a75aefe7537698d31fdebbb2e7cf4f0c7930f9b709aa3b79ac033d9e22c8a4ab",
+    "docs/architecture/design-editor.md": "dadd69d72009e0b0d21a13f5ed8d8161595e7b0d794accc81a3929710cb159cd",
+    "docs/architecture/design-kernel-hard-problems.md": "bb19241b3fdfd06d08cffd29066f32cb076a82ac6345b6d7cf22f411bf9dc4a6",
+    "frontend/design-client/scripts/check-cpu-baseline.ts": "c6b09446f0a7b38c50f53ed365811e578009f4d94ae98d4d592fa2dc0d3ed179",
+    "frontend/design-client/scripts/check-gpu-parity.ts": "f76dce60bb14add33e48169c111e2991d8783bc7b08cb7bdede81e4b62f66bfb",
+    "frontend/design-client/src/compositing-memory.test.ts": "06d66bd203fee11e4acd22e9e6441a6d921a4091ff73ec7056dc293c532c6ec8",
+    "frontend/design-client/src/kernel/gpu/arithmetic-probe.ts": "2ab235a37de790cee974700e22bb797d606ad87a7e63da8f16889b194fd00053",
+    "frontend/design-client/src/kernel/gpu/check.ts": "587a13bfc11452646a64b6bb12feb098b7cfd8f9b25823938e25c72dbaaa6d1d",
+    "frontend/design-client/src/kernel/gpu/renderer.test.ts": "6791146f48c3d9c3b206b4581b0b7f5252b5e7886374f7585988002b91034913",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "4eb58dd781c0bdb05d7b816ced0693dfcae770415ab1f9ab9da540df338df891",
+    "frontend/design-client/src/kernel/gpu/rgba8.ts": "2246d56ba1348ca1f599af0262979cff12c140118744a0aa61d82c41413420e3",
+    "frontend/design-client/src/kernel/gpu/sampling-probe.ts": "eb607ca065dc10c3778cd7ef0514f8c8b4acdb53fba34dc7b15fd6b83697924d",
+    "frontend/design-client/src/kernel/gpu/sampling.glsl": "0d5c4ba12c89d94c1df0e4c0d97818047755c6936289def3a269b2e391afbe5c",
+    "frontend/design-client/src/kernel/gpu/types.ts": "e8207bb099fcee2c00ed6d9edd0ba6a9ec134b96cbd58ca09eea0f4b455aa91f",
+    "frontend/design-client/src/kernel/gpu/vector.glsl": "f6f27adc220cdf9adc6941d034e0409eac2bc850fc9cb21279f888728eb07966",
+    "frontend/design-client/src/kernel/gpu/webgl.ts": "8ae376afc25d87d2a8420d8417b249c6b6514d415452bac49f27a7f52200dfcc",
+    "frontend/design-client/src/kernel/gpu/webgpu.ts": "5670d5a9a6222a668b546d2cae3d07167a7ef99ee1ec4eb7a65856c73ad21079",
+    "frontend/design-client/src/kernel/render-worker.ts": "30e05f26a9ae83a004a3b553379e33b685e5bb21c66f1729d8e27e4137931d71",
+    "frontend/design-client/src/parity-fixtures.ts": "235d1778818b4cc875e66d74df5e350456df01721350c679f44f00f82c1e9e6e",
+    "frontend/design-client/src/sample-count-oracle.ts": "23a14264f89959fc6e82a3fd0a395acb6ba56c041e1080ac0003cd61a8d31102",
+    "frontend/design-client/src/stroke-normalization.test.ts": "c0ccc86d469b48c412366b0f5c898819e94cb95153d999facf4177f85f3a4d33",
+    "testing/api/README.md": "e61d68997d4f219a7f46dfb433f01f84bd9d4019680cc115e7dfc390acee1ed5",
+    "testing/fixtures/design/arithmetic-vectors.json": "ca58e4c6adf3220c19faabc4489f867f75b18469b050447498561293cc389425",
+    "testing/fixtures/design/figma-rectangle-reference.json": "096c4b2494166d6be18d94faed5c12ba8c1e1802942c62c50913eca32af86f95",
+    "testing/fixtures/design/precision-corpus.json": "6fb23baf460bdca7b40583fd896ff20502a3b72c4abdf300c08a4553cc1cd44d",
+    "testing/fixtures/design/sampling-vectors.json": "8f7a84422d94e1b55afbc63749fcceefb4bebae1bbc9aada1ca2297f83bd2856"
+  }
+}

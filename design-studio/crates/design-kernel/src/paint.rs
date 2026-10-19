@@ -287,7 +287,7 @@ struct ImageCoordinates {
     size: [f64; 2],
     image: [f64; 2],
     fit: String,
-    /// Active pattern tiling (shader_185): replaces the fit placement with
+    /// Active pattern tiling: replaces the fit placement with
     /// the repeating UV chain. `None` covers absent and `mode: none`.
     pattern: Option<crate::pattern_fill::PatternTile>,
 }
@@ -308,9 +308,9 @@ impl ImageCoordinates {
             pattern: paint.tile.clone().filter(|t| t.is_active()),
         })
     }
-    /// shader_185 pattern phase for a device point, as texture UV in
+    /// Pattern-fill phase for a device point, as texture UV in
     /// [0,1)². `Paint.transform` composes before the chain — the paired
-    /// vertex shader (shader_106) feeds `_coord2 = paintTransform·position2`
+    /// vertex shader feeds `_coord2 = paintTransform·position2`
     /// into the tiling math, so the transform scales/rotates the whole
     /// pattern rather than the single placement.
     fn pattern_uv(&self, device: Point) -> Point {
@@ -417,7 +417,7 @@ impl ImageCoordinates {
     }
     fn at(&self, device: Point) -> Option<Point> {
         if self.pattern.is_some() {
-            // shader_185 with tileSizePixels == patternTexSizePixels: the
+            // Pattern fill with tileSizePixels == patternTexSizePixels: the
             // sampled window is the full texture (i = 1) and the `j` clamp
             // is exactly the half-texel bilinear edge below. There is no
             // contain margin — fract(g) ∈ [0,1) always lands inside.
@@ -966,7 +966,7 @@ pub struct Sampler {
     gradient_coordinates: Option<GradientCoordinates>,
     /// Authored image adjustments; `None` covers absent and identity. The
     /// storage domain flag (managed = linear working space, else sRGB bytes)
-    /// selects the shader_62 bookend variant — captured before
+    /// selects the image-adjust bookend variant — captured before
     /// `prepare_sampled` can flip `linear_sampling`.
     adjust: Option<(crate::image_adjust::ImageAdjust, bool)>,
 }
@@ -975,7 +975,7 @@ impl Sampler {
         (self.kind == "solid").then(|| self.base.opacity(self.opacity))
     }
     /// Apply authored image adjustments to a sampled premultiplied texel:
-    /// unpremultiply (shader_62 adjusts straight RGB), run the ported math in
+    /// unpremultiply (the shader adjusts straight RGB), run the ported math in
     /// the texel's storage domain, premultiply again.
     fn adjusted(&self, pixel: Pixel) -> Pixel {
         let Some((adjust, linear)) = &self.adjust else {

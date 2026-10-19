@@ -1,0 +1,317 @@
+{
+  "date": "2026-10-06",
+  "scope": [
+    "three reviewed document lifecycle defects",
+    "current Figma browser PNG precision",
+    "feature coverage assessment"
+  ],
+  "exclusions": [
+    "new product features",
+    "authentication or database changes",
+    "deployment",
+    "full Figma compatibility"
+  ],
+  "baseCommit": "473f1d9aa757433fde9ff20792f2285941935f81",
+  "fixes": [
+    "Shared forward-only file preparation preserves schema 3/4; failed imports do not show success warnings.",
+    "Typed component reference mapping; kernel rebuilds derived instance nodes; upgrades retain consumer overrides.",
+    "Node deletion prunes only newly dangling prototype node references atomically; undo restores them."
+  ],
+  "checks": [
+    {
+      "command": "bun run build",
+      "exitCode": 0
+    },
+    {
+      "command": "bun run test",
+      "exitCode": 0,
+      "passed": 132,
+      "files": 23
+    },
+    {
+      "command": "bun run lint",
+      "exitCode": 0,
+      "warnings": 618,
+      "infos": 12
+    },
+    {
+      "command": "bun scripts/check-persistence.ts",
+      "exitCode": 0
+    },
+    {
+      "command": "bun scripts/check-authoring.ts",
+      "exitCode": 0,
+      "evidence": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/forma-authoring-omdcGD/results.json"
+    },
+    {
+      "command": "bun scripts/check-document-lifecycle.ts",
+      "exitCode": 0,
+      "cases": [
+        "schema1",
+        "schema2",
+        "schema3 HDR",
+        "schema4 rich text, design system, prototype"
+      ],
+      "flows": [
+        "import",
+        "local copy",
+        "reopen from catalog",
+        "reload"
+      ],
+      "evidence": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/forma-lifecycle-Z0YO1W/results.json"
+    },
+    {
+      "command": "python3 scripts/check-foundation.py",
+      "exitCode": 0
+    }
+  ],
+  "precision": {
+    "referenceSets": {
+      "baseline": {
+        "checks": 60,
+        "passed": 18,
+        "maxChannelError": 7,
+        "allBackendsByteEqual": true,
+        "cases": [
+          {
+            "case": "mask-overlap",
+            "maxChannelError": 0,
+            "differentPixels": 0
+          },
+          {
+            "case": "mask-outside",
+            "maxChannelError": 0,
+            "differentPixels": 0
+          },
+          {
+            "case": "rectangle",
+            "maxChannelError": 0,
+            "differentPixels": 0
+          },
+          {
+            "case": "curve",
+            "maxChannelError": 1,
+            "differentPixels": 10
+          },
+          {
+            "case": "rotated-curve",
+            "maxChannelError": 1,
+            "differentPixels": 11
+          },
+          {
+            "case": "alpha-curve",
+            "maxChannelError": 1,
+            "differentPixels": 39
+          },
+          {
+            "case": "shadow",
+            "maxChannelError": 2,
+            "differentPixels": 611
+          },
+          {
+            "case": "layer-blur",
+            "maxChannelError": 1,
+            "differentPixels": 1969
+          },
+          {
+            "case": "blur-radii",
+            "maxChannelError": 3,
+            "differentPixels": 12223
+          },
+          {
+            "case": "coverage-overlap",
+            "maxChannelError": 1,
+            "differentPixels": 123
+          },
+          {
+            "case": "coverage-overlap-2x",
+            "maxChannelError": 1,
+            "differentPixels": 361
+          },
+          {
+            "case": "group-blur",
+            "maxChannelError": 3,
+            "differentPixels": 2582
+          },
+          {
+            "case": "group-shadow",
+            "maxChannelError": 2,
+            "differentPixels": 709
+          },
+          {
+            "case": "group-inner-shadow",
+            "maxChannelError": 1,
+            "differentPixels": 780
+          },
+          {
+            "case": "backdrop-blur",
+            "maxChannelError": 7,
+            "differentPixels": 3887
+          },
+          {
+            "case": "pass-through",
+            "maxChannelError": 0,
+            "differentPixels": 0
+          },
+          {
+            "case": "pass-through-opacity",
+            "maxChannelError": 0,
+            "differentPixels": 0
+          },
+          {
+            "case": "isolated-opacity",
+            "maxChannelError": 0,
+            "differentPixels": 0
+          },
+          {
+            "case": "pass-through-blur",
+            "maxChannelError": 2,
+            "differentPixels": 4730
+          },
+          {
+            "case": "large-nested",
+            "maxChannelError": 1,
+            "differentPixels": 44615
+          }
+        ]
+      },
+      "mcp-2026-10-06": {
+        "checks": 12,
+        "passed": 3,
+        "maxChannelError": 6,
+        "allBackendsByteEqual": true,
+        "cases": [
+          {
+            "case": "shadow",
+            "maxChannelError": 3,
+            "differentPixels": 336
+          },
+          {
+            "case": "layer-blur",
+            "maxChannelError": 3,
+            "differentPixels": 2809
+          },
+          {
+            "case": "backdrop-blur",
+            "maxChannelError": 6,
+            "differentPixels": 5087
+          },
+          {
+            "case": "mask-half-overlap",
+            "maxChannelError": 0,
+            "differentPixels": 0
+          }
+        ]
+      }
+    },
+    "directBrowser": {
+      "source": "Direct PNG 1x export from current Google Chrome Figma UI",
+      "file": "https://www.figma.com/design/cxNzs28hf3dGSEG5wPzoPN/?node-id=4013-1294",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "sha256": "b2d88ddb3045f91f17beac22fa2b7f50726ac5a20ab87e741e08d294434cafc2",
+      "browserVsMcp": {
+        "maxChannelError": 2,
+        "differentPixels": 49018
+      },
+      "results": [
+        {
+          "backend": "cpu",
+          "maxChannelError": 1,
+          "differentPixels": 44615,
+          "totalPixels": 786432,
+          "differentPixelPercent": 5.673090616861979,
+          "meanChannelError": 0.01564788818359375
+        },
+        {
+          "backend": "webgpu",
+          "maxChannelError": 1,
+          "differentPixels": 44615,
+          "totalPixels": 786432,
+          "differentPixelPercent": 5.673090616861979,
+          "meanChannelError": 0.01564788818359375
+        },
+        {
+          "backend": "webgl2",
+          "maxChannelError": 1,
+          "differentPixels": 44615,
+          "totalPixels": 786432,
+          "differentPixelPercent": 5.673090616861979,
+          "meanChannelError": 0.01564788818359375
+        }
+      ]
+    },
+    "freshBrowserMatchesVersionedLargeNestedRgba": true,
+    "mcpCurrent": {
+      "fileKey": "cxNzs28hf3dGSEG5wPzoPN",
+      "nodeId": "4013:1294",
+      "source": "fresh Figma MCP exported PNG",
+      "browserVersion": "153.0.8010.12",
+      "results": [
+        {
+          "backend": "cpu",
+          "maxChannelError": 2,
+          "differentPixels": 22361,
+          "totalPixels": 786432,
+          "meanChannelError": 0.011554400126139322
+        },
+        {
+          "backend": "webgpu",
+          "maxChannelError": 2,
+          "differentPixels": 22361,
+          "totalPixels": 786432,
+          "meanChannelError": 0.011554400126139322
+        },
+        {
+          "backend": "webgl2",
+          "maxChannelError": 2,
+          "differentPixels": 22361,
+          "totalPixels": 786432,
+          "meanChannelError": 0.011554400126139322
+        }
+      ]
+    }
+  },
+  "localEvidence": ".local/design-validation/review-fixes-2026-10-06",
+  "sourceSha256": {
+    "frontend/design-client/src/App.tsx": "bd518edbc29f335bf4802b1dd79b3ccc90b9fccfbf321fee3176255d5f05caed",
+    "frontend/design-client/src/components.ts": "54216ed364b40115c12deedf0c37c973e12af5328a4f1b14f692b44ad73101a4",
+    "frontend/design-client/src/design-system.ts": "802b4b4f0f53b65686c52b28a451f156c3e70cea301bf0f6160686c259802e01",
+    "frontend/design-client/src/engine.ts": "dfbf8a96f6428baeec5023daf5bfc97aa82965abde97bfa091b2c290f9035c2a",
+    "frontend/design-client/src/kernel/picking.ts": "e31dc7ae2ff02c7e0e3c79ef673d98196252116e5feee027ea5d4a8e2eb18ffd",
+    "frontend/design-client/src/prototype.ts": "a947f2e1b39a9655ed8de9f11150cb12092dfe364556424e9756685ca9b1bccc",
+    "frontend/design-client/src/document-lifecycle.test.ts": "0a226b6386ed6ccd3cf526eb8ffa3ba746d5115e8bab6c967afa6eb444dcbdc4",
+    "frontend/design-client/scripts/check-document-lifecycle.ts": "67cfb932889c2d08f9b1beb7cd490ebc1efc0b72cae564b9127842d9882968a2",
+    ".github/workflows/design-studio.yml": "0478bb3bfb3945a70306908eeb171a5728a1f6cafd02f32040984889408876eb",
+    "frontend/design-client/src/large-reference.ts": "a38fd15e89b915f4cee9a2023d15812a24cc4c0bbe2841b761b1712ef2c00312",
+    "frontend/design-client/src/kernel/gpu/figma-reference-check.ts": "9d70f4ae6f8e8a0ea6d90bfbd1e121a5b80b1646c415eec687d393d4a53f9fb7",
+    "frontend/design-client/public/kernel/design_kernel_bg.wasm": "80c022ba7a8547d5f2715fda80dc7213ea283f683708a42ba9ab3e668ca7207f"
+  },
+  "documents": [
+    {
+      "path": "docs/architecture/design-editor.md",
+      "sha256": "192a5ae8cac6630688c7fd75cf76a15dd521d52c6fa3d223cbbcd7ce47befcc4",
+      "status": "部分核对；本轮新增段落已核对",
+      "coverage": "lifecycle repair, focused regression and precision statements; historical sections not revalidated in full"
+    },
+    {
+      "path": "testing/api/README.md",
+      "sha256": "89fd719476a4650c452a8422d6412bf875ac92ca7f43fc5c6e039d2e844d04ed",
+      "status": "部分核对；本轮新增段落已核对",
+      "coverage": "lifecycle repair, focused regression and precision statements; historical sections not revalidated in full"
+    },
+    {
+      "path": "testing/e2e/README.md",
+      "sha256": "638236e526d8e6dca8ee74781e30b0e106d5dc93c489863c942114f79b60a324",
+      "status": "部分核对；本轮新增段落已核对",
+      "coverage": "lifecycle repair, focused regression and precision statements; historical sections not revalidated in full"
+    }
+  ],
+  "remaining": [
+    "Strict Figma reference tests still fail as recorded.",
+    "No assertion of full IME/script/browser support, full native FIG compatibility, collaboration/RBAC, Smart Animate, online team libraries, Dev Mode or plugin ecosystem.",
+    "Remote CI not observed; no deploy."
+  ]
+}

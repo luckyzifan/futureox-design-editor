@@ -1,5 +1,5 @@
-//! The 15 recovered Figma action-schema fields (figma-wasm-analysis/
-//! FULL-RE.md §六) on `prototype::Action`: serde round trips, legacy
+//! The 15 Figma action-schema passthrough fields on `prototype::Action`:
+//! serde round trips, legacy
 //! compatibility, Figma `ID`-casing aliases, and the conservative
 //! admission rules in `prototype::validate_schema_extras`. Every field is
 //! schema passthrough — these tests pin the shape contract, not runtime

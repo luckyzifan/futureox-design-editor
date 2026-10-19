@@ -1,0 +1,217 @@
+{
+  "date": "2026-10-06",
+  "base_commit": "1d18bf6b",
+  "status": "CPU correctness fix locally verified. No commit/push by this task.",
+  "defect": {
+    "description": "Two individually admitted 0.001 scales plus zoom 0.25 produce a nonsingular device matrix with determinant 6.25e-14. The old absolute 1e-12 inverse threshold aborts the entire CPU frame with Singular transform.",
+    "independent_reference": "Absorb the scalar product into rectangle dimensions, retain orientation and paint. First fixture has 9 covered reference pixels; no production inverse or layout derives expected geometry.",
+    "native_red": {
+      "exit": 101,
+      "log": "native-red.log"
+    },
+    "wasm_red": {
+      "exit": 1,
+      "cases": 144,
+      "failures": 48,
+      "matching_controls": 96,
+      "log": "red.log",
+      "data": "red-results.json"
+    }
+  },
+  "implementation": {
+    "boundary": "New inverse_composed is used only by CPU paint, both noise paths and texture. Original inverse and authored scene/paint/animation admission, GPU callers, composed 1e12 budget and geometry tolerances are unchanged.",
+    "fast_path": "Finite legacy-success inverses return bit-identical coefficients. Inline wrapper and cold fallback are the only structural performance adjustment. No persistent cache or dependency changes.",
+    "fallback": "Column-normalize the 2x2 matrix; reject zero columns/determinant and nonfinite intermediates/output. Restore inverse rows by reciprocal column scale. Check both normalized product orders and actual A*inverse device residual <=64 * EPSILON; do not impose local-unit inverse*A residual under extreme anisotropy.",
+    "actual_sampling_domain": "Sampler receives layer∩mask, noise receives its exact loop rectangle, texture receives input.rect. Integer edges enclose .125–.875 coverage samples and .5 default/effect samples. M is the maximum absolute four-edge coordinate, calculated in f64 without Rect integer addition overflow. No fixed 65536/world-window assumption.",
+    "conservative_gate": "For stored inverse linear B and translation q, bound device residual by M*row_sum(abs(A*B-I))+abs(A*q+t). Add 32*EPSILON times uncancelled row products over abs(B)*M+abs(q). Reject nonfinite totals or >= 1/8192 device px. This is conservative arithmetic verification of the stored composed matrix, not a formal total-error proof or a color-discontinuity guarantee.",
+    "remaining_rejections": "Fallback may conservatively reject mathematically invertible near-parallel/cancellation-prone matrices or unsafe inverse/translation overflow. Legacy finite successes stay unchanged; larger requested sample rectangles can legitimately fail the new recovery gate."
+  },
+  "validation": {
+    "native_all": {
+      "passed": 285,
+      "failed": 0,
+      "ignored": 0,
+      "exit": 0,
+      "log": "native-all.log"
+    },
+    "frontend_all": {
+      "files": 34,
+      "passed": 191,
+      "exit": 0,
+      "log": "frontend-all.log"
+    },
+    "new_tests": {
+      "native": 8,
+      "frontend_real_wasm": 4,
+      "native_path": "design-studio/crates/design-kernel/tests/composed_inverse.rs",
+      "frontend_path": "frontend/design-client/src/composed-inverse.test.ts",
+      "coverage": "144 main native pairs;180 real-WASM pairs including repeated zoom. Uniform tiny/large mathematical inverse tests, reflection/general shear, rotated extreme anisotropy, bit-identical legacy inverses, Rect-sensitive near-parallel gates, nextafter ill-conditioning, true singularity, nonfinite/overflow, authored limits, scalar/managed noise/texture, camera ±1e7 cancellation and nonzero 512 tile boundaries. Matrix-only extreme scale tests do not broaden render admission."
+    },
+    "independent": {
+      "native_passed": 8,
+      "native_exit": 0,
+      "native_log": "independent-native.log",
+      "wasm_cases": 144,
+      "wasm_exit": 0,
+      "maximum_channel_difference": 0,
+      "all_references_visibly_nonempty": true,
+      "singular_control": "Still rejected during document load",
+      "wasm_log": "independent-wasm.log",
+      "wasm_data": "independent-green-results.json",
+      "review": "Read-only numerical and sampling-window review plus independent raw performance/hash/quantile audit. No runtime correctness blocker found."
+    },
+    "other_checks": {
+      "clippy_all_targets_D_warnings": {
+        "exit": 0,
+        "log": "clippy.log"
+      },
+      "cargo_fmt": {
+        "exit": 0,
+        "log": "fmt-final.log"
+      },
+      "typecheck": {
+        "exit": 0,
+        "log": "typecheck-final.log"
+      },
+      "focused_ts_lint": {
+        "exit": 0,
+        "warnings": 0,
+        "log": "lint-focused.log"
+      },
+      "whole_design_ts_lint": {
+        "exit": 0,
+        "warnings": 618,
+        "infos": 13,
+        "log": "lint.log",
+        "note": "Existing wider-code diagnostics remain; not a clean whole-project lint claim."
+      },
+      "vite": {
+        "exit": 0,
+        "log": "frontend-build.log"
+      },
+      "catalog": {
+        "exit": 0,
+        "log": "catalog.log"
+      },
+      "foundation": {
+        "exit": 0,
+        "log": "foundation-final-env.log"
+      },
+      "diff": {
+        "exit": 0,
+        "log": "diff.log"
+      }
+    }
+  },
+  "performance": {
+    "method": "Same shared Linux CPU, Rust 1.96.0 release WASM, Bun 1.4.0. Eight 64×64 paint scenarios:1/128 nodes×solid/linear×analytic/figma. Each process:5 warmups,31 sorted means of4 renders; p50 index 15 / p95 index 29. Own tests/builds did not overlap timing; host is not CPU-isolated.",
+    "order": "Initial: B1/C1/C2/B2. One inline/cold-helper split, then final: B1/C1/C2/B2. No further timing rounds or discarded unfavorable data.",
+    "initial_result": "128 solid p50 analytic +11.26/+5.52%, figma +10.75/+8.52%; all scene timings retained.",
+    "final_result": "Mixed. 128 solid analytic -4.68/+2.69%,figma -7.90/+14.07%; 1 solid analytic -24.13/+49.45%. Several tails also regress. This does not establish no regression, overall speedup or production performance.",
+    "pixel_controls": "All 8scene pixel hashes equal across all 8runs and both candidate stages.",
+    "raw_file_count": 8,
+    "sorted_batch_means": 1984,
+    "timed_render_calls": 7936,
+    "raw_files": [
+      {
+        "path": "performance-baseline-1.json",
+        "bytes": 9531,
+        "sha256": "07a90c0c7d5e6bea8af787ad346a29b6c09bd8021d06c0cca9cab88e2c491396"
+      },
+      {
+        "path": "performance-baseline-2.json",
+        "bytes": 9547,
+        "sha256": "879487eb261448e8cc893fb03fedae18cb7345f9372e23cd590b2ecacd34feb7"
+      },
+      {
+        "path": "performance-candidate-1.json",
+        "bytes": 9557,
+        "sha256": "30d821975f04f5ebf02c50ba79f631453d57ff60b5d84ad4fd5aa6fee5ef127f"
+      },
+      {
+        "path": "performance-candidate-2.json",
+        "bytes": 9466,
+        "sha256": "6120d87d11bbd8d913d3702ea61b8aa23fe6f10d261af8b39ed08496efa10f02"
+      },
+      {
+        "path": "split-fallback/performance-baseline-1.json",
+        "bytes": 9525,
+        "sha256": "311275096a7a04d7e403e779c56d25600c058b7ccc4b79d1a208f99f8c46dcd7"
+      },
+      {
+        "path": "split-fallback/performance-baseline-2.json",
+        "bytes": 9498,
+        "sha256": "88f918718d6bc013767be6406f95bb282ef0ab7971d430d6f502ba849664c564"
+      },
+      {
+        "path": "split-fallback/performance-candidate-1.json",
+        "bytes": 9532,
+        "sha256": "f59064315761d9243341b8705cb335b998b0e61f3cfa838b77612474ff207623"
+      },
+      {
+        "path": "split-fallback/performance-candidate-2.json",
+        "bytes": 9532,
+        "sha256": "e4d1986fa49126ccd88d6cae7ee0bb102ea39c4f0109b3943bf272763096fdaa"
+      }
+    ],
+    "initial_summary": "performance-summary.json",
+    "final_summary": "split-fallback/performance-summary.json",
+    "script": "frontend/design-client/scripts/benchmark-composed-inverse.ts",
+    "not_measured": "Browser FPS, production event-latency quantiles, RSS and peak allocations."
+  },
+  "build": {
+    "environment": "Existing /workspace/shared/core-validation-glass/target, CARGO_BUILD_JOBS=1,CARGO_INCREMENTAL=0. No new target, shared registry cleanup or dependency/lock changes.",
+    "disk": "Approximately 2.3 GiB available after full checks; no cleanup performed.",
+    "wasm_artifacts": {
+      "baseline.wasm": {
+        "bytes": 4450715,
+        "sha256": "20097d5fb84333fa9abbe99b4950f6cb1dc1fde6ed15212471034a903118abd3"
+      },
+      "candidate.wasm": {
+        "bytes": 4448944,
+        "sha256": "2a1443abded6e154ee973b47e61786387d24fe064b551ebc9d1cf25a68836aa0"
+      },
+      "split-fallback/candidate.wasm": {
+        "bytes": 4449496,
+        "sha256": "1c11791fe69ff5b2b6d013b8d30bb7401a913eb104c9140d06676be4423db641"
+      }
+    },
+    "verified_active_locations": [
+      "frontend/design-client/src/generated/design-kernel/design_kernel_bg.wasm",
+      "frontend/design-client/public/kernel/design_kernel_bg.wasm",
+      "frontend/design-client/dist/kernel/design_kernel_bg.wasm",
+      "frontend/design-client/dist/assets/design_kernel_bg-6aLYMWcl.wasm"
+    ]
+  },
+  "setup_notes": [
+    "First formatting invocation encountered existing nested Biome root configuration; reran with explicit frontend/biome.json successfully without changing configs.",
+    "Exploratory math_probe.py/math-results.json used a looser initial gate. Independent review rejected its 1e12 translation acceptance; those files are retained research, not current validation. Final native tests assert conservative rejection and exercise actual sample coordinates.",
+    "The final documentation-only foundation rerun initially omitted the toolchain environment and stopped because cargo was not on PATH. Restoring the established environment made the rerun pass; both logs retained."
+  ],
+  "not_run": [
+    "GPU hardware/render validation",
+    "browser or touch/DPR interactions",
+    "Figma external pixel comparison",
+    "server integration/deployment",
+    "whole-product feature parity"
+  ],
+  "protected_source_sha256": {
+    "design-studio/crates/design-kernel/src/scene.rs": "89d28d04a880597aa44ddf294b4fc43888b6a432fc841b90098834d4d87a2c6e",
+    "design-studio/crates/design-kernel/src/animation.rs": "cb473d5c3dc90e7e99dcdd22e0ca1cf6cf014e169d03887028b9b04b187ac529",
+    "design-studio/crates/design-kernel/src/gpu.rs": "cd0aea01bec696d4f0820756aa7ec9f689b8d3111786623949ccdd350326a19b",
+    "design-studio/crates/design-kernel/src/font.rs": "b909921b6481b6df8e807996c965e846462bdd2422be6af5af8b9b2542170da9"
+  },
+  "source_sha256": {
+    "design-studio/crates/design-kernel/src/math.rs": "974bc077bf224bd742d458e3125c50e463663f5023993f735a2463497ecc6c30",
+    "design-studio/crates/design-kernel/src/paint.rs": "7bcc6bff1d0aff2eb4783de30714758931d8fe08fc2fb9d617a665c66c271e16",
+    "design-studio/crates/design-kernel/src/effects.rs": "44d8375a8799109651bdddd3fee064c70f4acd6dd1c5a07dc8b6f67c312dccc7",
+    "design-studio/crates/design-kernel/src/renderer.rs": "e7dee5f561a2e82b259c2f8551a30755eb6230379478afc8ad0d668fad4916e4",
+    "design-studio/crates/design-kernel/tests/authoring.rs": "1e5c70c279f10d3043f2c4214dfac58e0ae2333a384b76193d66ebfa9262f3e3",
+    "design-studio/crates/design-kernel/tests/composed_inverse.rs": "652433e6e4866a32fee4a7f35e9a20151990ccca6c2cf5fe2d26fbe81c4e307a",
+    "frontend/design-client/src/composed-inverse.test.ts": "2857dba543ea836ffd8475e71931dfacd6681670ae4d0c1435187a7188e20a4f",
+    "frontend/design-client/scripts/benchmark-composed-inverse.ts": "8865d9d4c78fa9372503fddb0deb84c4ead0325234077dcd1d1c5da55a1fa509",
+    "docs/architecture/design-editor.md": "00e7470a6c0a36db309f4cc7422eeb4ee169f93f125aeba3dc89b4b01aa20ead",
+    "testing/api/README.md": "c5855f68317fa0db6abe9bc646f1183b1c8d114af0c4196ba8d188aadbb297cd"
+  },
+  "evidence_directory": "/workspace/shared/core-validation-composed-scale"
+}

@@ -1009,7 +1009,7 @@ export class GpuRenderer {
   private uploadImage(uri: string, level: number, intoAtlas: boolean, adjust?: ImageAdjust): Surface {
     if (uri.length > 12 * 1024 * 1024 || !/^data:image\/(png|jpeg|webp);base64,/.test(uri))
       throw new Error('无效的 GPU 图片资源')
-    // Image adjustments (shader_62 math, ported in image-adjust.ts) run on the
+    // Image adjustments (image-adjust math, ported in image-adjust.ts) run on the
     // decoded texels at upload time: premultiplied storage in and out, so no
     // shader/uniform contract changes. Copies are out-of-place because the
     // loader's arrays may be shared with the worker's persistent image cache.

@@ -740,7 +740,7 @@ main {
   margin: 6px 0;
   cursor: pointer;
 }
-/* Pattern tiling panel (shader_185): mode + per-axis size/offset fields. */
+/* Pattern tiling panel: mode + per-axis size/offset fields. */
 .pattern-tile summary {
   margin: 6px 0;
   cursor: pointer;

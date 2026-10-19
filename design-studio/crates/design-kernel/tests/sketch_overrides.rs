@@ -1,5 +1,5 @@
 //! Integration tests for the Sketch symbol override tree
-//! (sketch-kernel-analysis/22-sketch-json-dictionary.md §5, P1-12):
+//! (Sketch JSON dictionary §5, P1-12):
 //! `overrideName` path syntax, nested-instance symbolID resourcing, the
 //! color/image/layerStyle value families and the master's
 //! `overrideProperties` (canOverride) inventory.

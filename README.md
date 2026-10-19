@@ -1,6 +1,6 @@
 # futureoxDesgin
 
-Futureox 设计内核（Design Kernel）独立副本：高性能 2D 设计编辑器渲染内核及配套前端。
+Futureox 设计内核（Design Kernel）独立仓库：高性能 2D 设计编辑器渲染内核及配套前端。
 
 ## 目录结构
 
@@ -12,11 +12,21 @@ Futureox 设计内核（Design Kernel）独立副本：高性能 2D 设计编辑
   - `scripts/` — 构建与测试向量生成脚本
 - `frontend/design-client/` — 网页版设计客户端（React + TypeScript + Vite，WebGPU/WebGL2）
 - `frontend/design-desktop/` — Electron 桌面壳
-- `docs/architecture/` — 设计内核架构文档
-- `reports/` — 渲染与 GPU 优化工作报告
+- `testing/fixtures/design/` — 内核测试向量与夹具
+- `vendor/moxcms` — design-studio 的颜色管理路径依赖
 
 ## 说明
 
-- 本副本只包含原创代码与文档，不含任何反编译/逆向参考材料。
+- 本仓库只包含原创代码与文档。
 - Rust 构建产物（`target/`）、前端依赖（`node_modules/`）与打包输出（`dist/`、`release/`）不入库。
 - 前端 `design-client` 的内核构建脚本通过 `../../design-studio` 相对路径引用 Rust workspace，目录结构需保持不变。
+
+## 构建与测试
+
+```bash
+# Rust 内核（含测试）
+cd design-studio && cargo test --workspace
+
+# 前端（安装依赖后）
+cd frontend/design-client && bun install && bun run test
+```

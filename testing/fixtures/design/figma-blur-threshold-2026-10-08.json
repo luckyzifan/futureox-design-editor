@@ -1,0 +1,413 @@
+{
+  "createdNodeIds": [
+    "79:2",
+    "79:3",
+    "79:4",
+    "79:5",
+    "79:6",
+    "79:7",
+    "79:8",
+    "79:9",
+    "79:10",
+    "79:11",
+    "79:12",
+    "79:13",
+    "79:14",
+    "79:15",
+    "79:16",
+    "79:17",
+    "79:18",
+    "79:19",
+    "79:20",
+    "79:21",
+    "79:22",
+    "79:23",
+    "79:24",
+    "79:25",
+    "79:26",
+    "79:27",
+    "79:28",
+    "79:29",
+    "79:30",
+    "79:31",
+    "79:32",
+    "79:33",
+    "79:34"
+  ],
+  "mutatedNodeIds": [
+    "52:2",
+    "62:191"
+  ],
+  "boardId": "79:2",
+  "pageId": "52:2",
+  "cases": [
+    {
+      "id": "79:3",
+      "name": "BlurThreshold-0p249-1x",
+      "shapeId": "79:4",
+      "radius": 0.24899999797344208,
+      "scale": 1,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:5",
+      "name": "BlurThreshold-0p25-1x",
+      "shapeId": "79:6",
+      "radius": 0.25,
+      "scale": 1,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:7",
+      "name": "BlurThreshold-0p251-1x",
+      "shapeId": "79:8",
+      "radius": 0.25099998712539673,
+      "scale": 1,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:9",
+      "name": "BlurThreshold-0p333-1x",
+      "shapeId": "79:10",
+      "radius": 0.3330000042915344,
+      "scale": 1,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:11",
+      "name": "BlurThreshold-0p499-1x",
+      "shapeId": "79:12",
+      "radius": 0.49900001287460327,
+      "scale": 1,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:13",
+      "name": "BlurThreshold-0p5-1x",
+      "shapeId": "79:14",
+      "radius": 0.5,
+      "scale": 1,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:15",
+      "name": "BlurThreshold-0p249-2x",
+      "shapeId": "79:16",
+      "radius": 0.24899999797344208,
+      "scale": 2,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:17",
+      "name": "BlurThreshold-0p25-2x",
+      "shapeId": "79:18",
+      "radius": 0.25,
+      "scale": 2,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:19",
+      "name": "BlurThreshold-0p251-2x",
+      "shapeId": "79:20",
+      "radius": 0.25099998712539673,
+      "scale": 2,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:21",
+      "name": "BlurThreshold-0p333-2x",
+      "shapeId": "79:22",
+      "radius": 0.3330000042915344,
+      "scale": 2,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:23",
+      "name": "BlurThreshold-0p499-2x",
+      "shapeId": "79:24",
+      "radius": 0.49900001287460327,
+      "scale": 2,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:25",
+      "name": "BlurThreshold-0p5-2x",
+      "shapeId": "79:26",
+      "radius": 0.5,
+      "scale": 2,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:27",
+      "name": "BlurThreshold-0p125-4x",
+      "shapeId": "79:28",
+      "radius": 0.125,
+      "scale": 4,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:29",
+      "name": "BlurThreshold-0p249-4x",
+      "shapeId": "79:30",
+      "radius": 0.24899999797344208,
+      "scale": 4,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:31",
+      "name": "BlurThreshold-0p25-4x",
+      "shapeId": "79:32",
+      "radius": 0.25,
+      "scale": 4,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    },
+    {
+      "id": "79:33",
+      "name": "BlurThreshold-0p5-4x",
+      "shapeId": "79:34",
+      "radius": 0.5,
+      "scale": 4,
+      "width": 128,
+      "height": 128,
+      "transform": [
+        [
+          1,
+          0,
+          63
+        ],
+        [
+          0,
+          1,
+          16
+        ]
+      ],
+      "shapeWidth": 1,
+      "shapeHeight": 96
+    }
+  ]
+}

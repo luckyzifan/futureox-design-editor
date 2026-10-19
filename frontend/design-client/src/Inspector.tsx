@@ -242,8 +242,8 @@ function PaintEditor({
           <select
             aria-label="图片适应方式"
             value={p.fit}
-            // Tiling replaces the fit placement (shader_185 starts from the
-            // pattern chain, not cover/contain), so the mode is inert while
+            // Tiling replaces the fit placement (the pattern chain starts
+            // from its own tiling math, not cover/contain), so the mode is inert while
             // a tile mode is active.
             disabled={!!p.tile && p.tile.mode !== 'none'}
             onChange={(e) => onChange({ ...p, fit: e.target.value as Paint['fit'] })}

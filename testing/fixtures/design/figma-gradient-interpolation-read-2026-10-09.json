@@ -1,0 +1,40 @@
+{
+  "scope": "Official plugin property access; undefined means not exposed, not a proven renderer default.",
+  "documentColorProfile": "SRGB",
+  "rows": [
+    {
+      "id": "62:184",
+      "type": "GRADIENT_LINEAR",
+      "hasOwn": false,
+      "keys": [
+        "type",
+        "visible",
+        "opacity",
+        "blendMode",
+        "gradientStops",
+        "gradientTransform"
+      ],
+      "interpolationColorSpace": {
+        "typeof": "undefined",
+        "value": null
+      }
+    },
+    {
+      "id": "62:186",
+      "type": "GRADIENT_LINEAR",
+      "hasOwn": false,
+      "keys": [
+        "type",
+        "visible",
+        "opacity",
+        "blendMode",
+        "gradientStops",
+        "gradientTransform"
+      ],
+      "interpolationColorSpace": {
+        "typeof": "undefined",
+        "value": null
+      }
+    }
+  ]
+}

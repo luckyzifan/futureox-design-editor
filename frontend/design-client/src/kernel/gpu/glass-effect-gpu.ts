@@ -1,5 +1,5 @@
 // GPU 密集型优化 - 玻璃效果片元化
-// 移植 Figma shader_71，将 SDF/法线/折射计算移到 fragment shader
+// 将 SDF/法线/折射计算移到 fragment shader
 
 /**
  * Figma 玻璃效果实现：
@@ -27,7 +27,7 @@ export interface GlassEffectParams {
   blur: number
 }
 
-/** 玻璃效果 GPU shader（移植自 Figma shader_71） */
+/** 玻璃效果 GPU shader */
 export const glassEffectFragmentWGSL = `
 // 玻璃效果 - Fragment Shader
 // 实时计算 SDF、法线、折射和色散

@@ -1,0 +1,713 @@
+{
+  "source": "Read-only Figma Plugin API, 2026-10-13; geometry checked against frozen 2026-10-08 controls",
+  "fileKey": "KawVhUXCap10WDTprxYEmu",
+  "pageId": "52:2",
+  "rows": [
+    {
+      "id": "93:3",
+      "name": "TextureRamp-x-0",
+      "width": 256,
+      "height": 256,
+      "transform": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          96
+        ],
+        [
+          0,
+          1,
+          1248
+        ]
+      ],
+      "clipsContent": true,
+      "fills": [],
+      "children": [
+        {
+          "id": "93:4",
+          "type": "RECTANGLE",
+          "name": "Rectangle",
+          "width": 256,
+          "height": 256,
+          "transform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              96
+            ],
+            [
+              0,
+              1,
+              1248
+            ]
+          ],
+          "opacity": 1,
+          "fills": [
+            {
+              "type": "GRADIENT_LINEAR",
+              "visible": true,
+              "opacity": 1,
+              "blendMode": "NORMAL",
+              "gradientStops": [
+                {
+                  "color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 1
+                  },
+                  "position": 0,
+                  "boundVariables": {}
+                },
+                {
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 1
+                  },
+                  "position": 1,
+                  "boundVariables": {}
+                }
+              ],
+              "gradientTransform": [
+                [
+                  1,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  1,
+                  0
+                ]
+              ]
+            }
+          ],
+          "effects": []
+        }
+      ]
+    },
+    {
+      "id": "93:5",
+      "name": "TextureRamp-y-0",
+      "width": 256,
+      "height": 256,
+      "transform": [
+        [
+          1,
+          0,
+          280
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          376
+        ],
+        [
+          0,
+          1,
+          1248
+        ]
+      ],
+      "clipsContent": true,
+      "fills": [],
+      "children": [
+        {
+          "id": "93:6",
+          "type": "RECTANGLE",
+          "name": "Rectangle",
+          "width": 256,
+          "height": 256,
+          "transform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              376
+            ],
+            [
+              0,
+              1,
+              1248
+            ]
+          ],
+          "opacity": 1,
+          "fills": [
+            {
+              "type": "GRADIENT_LINEAR",
+              "visible": true,
+              "opacity": 1,
+              "blendMode": "NORMAL",
+              "gradientStops": [
+                {
+                  "color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 1
+                  },
+                  "position": 0,
+                  "boundVariables": {}
+                },
+                {
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 1
+                  },
+                  "position": 1,
+                  "boundVariables": {}
+                }
+              ],
+              "gradientTransform": [
+                [
+                  0,
+                  1,
+                  0
+                ],
+                [
+                  -1,
+                  0,
+                  1
+                ]
+              ]
+            }
+          ],
+          "effects": []
+        }
+      ]
+    },
+    {
+      "id": "93:7",
+      "name": "TextureRamp-x-8",
+      "width": 256,
+      "height": 256,
+      "transform": [
+        [
+          1,
+          0,
+          560
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          656
+        ],
+        [
+          0,
+          1,
+          1248
+        ]
+      ],
+      "clipsContent": true,
+      "fills": [],
+      "children": [
+        {
+          "id": "93:8",
+          "type": "RECTANGLE",
+          "name": "Rectangle",
+          "width": 256,
+          "height": 256,
+          "transform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              656
+            ],
+            [
+              0,
+              1,
+              1248
+            ]
+          ],
+          "opacity": 1,
+          "fills": [
+            {
+              "type": "GRADIENT_LINEAR",
+              "visible": true,
+              "opacity": 1,
+              "blendMode": "NORMAL",
+              "gradientStops": [
+                {
+                  "color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 1
+                  },
+                  "position": 0,
+                  "boundVariables": {}
+                },
+                {
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 1
+                  },
+                  "position": 1,
+                  "boundVariables": {}
+                }
+              ],
+              "gradientTransform": [
+                [
+                  1,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  1,
+                  0
+                ]
+              ]
+            }
+          ],
+          "effects": [
+            {
+              "type": "TEXTURE",
+              "visible": true,
+              "radius": 64,
+              "boundVariables": {},
+              "noiseSize": 8,
+              "noiseSizeVector": {
+                "x": 8,
+                "y": 8
+              },
+              "clipToShape": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "93:9",
+      "name": "TextureRamp-y-8",
+      "width": 256,
+      "height": 256,
+      "transform": [
+        [
+          1,
+          0,
+          840
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          936
+        ],
+        [
+          0,
+          1,
+          1248
+        ]
+      ],
+      "clipsContent": true,
+      "fills": [],
+      "children": [
+        {
+          "id": "93:10",
+          "type": "RECTANGLE",
+          "name": "Rectangle",
+          "width": 256,
+          "height": 256,
+          "transform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              936
+            ],
+            [
+              0,
+              1,
+              1248
+            ]
+          ],
+          "opacity": 1,
+          "fills": [
+            {
+              "type": "GRADIENT_LINEAR",
+              "visible": true,
+              "opacity": 1,
+              "blendMode": "NORMAL",
+              "gradientStops": [
+                {
+                  "color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 1
+                  },
+                  "position": 0,
+                  "boundVariables": {}
+                },
+                {
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 1
+                  },
+                  "position": 1,
+                  "boundVariables": {}
+                }
+              ],
+              "gradientTransform": [
+                [
+                  0,
+                  1,
+                  0
+                ],
+                [
+                  -1,
+                  0,
+                  1
+                ]
+              ]
+            }
+          ],
+          "effects": [
+            {
+              "type": "TEXTURE",
+              "visible": true,
+              "radius": 64,
+              "boundVariables": {},
+              "noiseSize": 8,
+              "noiseSizeVector": {
+                "x": 8,
+                "y": 8
+              },
+              "clipToShape": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "93:11",
+      "name": "TextureRamp-x-16",
+      "width": 256,
+      "height": 256,
+      "transform": [
+        [
+          1,
+          0,
+          1120
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          1216
+        ],
+        [
+          0,
+          1,
+          1248
+        ]
+      ],
+      "clipsContent": true,
+      "fills": [],
+      "children": [
+        {
+          "id": "93:12",
+          "type": "RECTANGLE",
+          "name": "Rectangle",
+          "width": 256,
+          "height": 256,
+          "transform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1216
+            ],
+            [
+              0,
+              1,
+              1248
+            ]
+          ],
+          "opacity": 1,
+          "fills": [
+            {
+              "type": "GRADIENT_LINEAR",
+              "visible": true,
+              "opacity": 1,
+              "blendMode": "NORMAL",
+              "gradientStops": [
+                {
+                  "color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 1
+                  },
+                  "position": 0,
+                  "boundVariables": {}
+                },
+                {
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 1
+                  },
+                  "position": 1,
+                  "boundVariables": {}
+                }
+              ],
+              "gradientTransform": [
+                [
+                  1,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  1,
+                  0
+                ]
+              ]
+            }
+          ],
+          "effects": [
+            {
+              "type": "TEXTURE",
+              "visible": true,
+              "radius": 64,
+              "boundVariables": {},
+              "noiseSize": 16,
+              "noiseSizeVector": {
+                "x": 16,
+                "y": 16
+              },
+              "clipToShape": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "93:13",
+      "name": "TextureRamp-y-16",
+      "width": 256,
+      "height": 256,
+      "transform": [
+        [
+          1,
+          0,
+          1400
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          1496
+        ],
+        [
+          0,
+          1,
+          1248
+        ]
+      ],
+      "clipsContent": true,
+      "fills": [],
+      "children": [
+        {
+          "id": "93:14",
+          "type": "RECTANGLE",
+          "name": "Rectangle",
+          "width": 256,
+          "height": 256,
+          "transform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ],
+          "absoluteTransform": [
+            [
+              1,
+              0,
+              1496
+            ],
+            [
+              0,
+              1,
+              1248
+            ]
+          ],
+          "opacity": 1,
+          "fills": [
+            {
+              "type": "GRADIENT_LINEAR",
+              "visible": true,
+              "opacity": 1,
+              "blendMode": "NORMAL",
+              "gradientStops": [
+                {
+                  "color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0,
+                    "a": 1
+                  },
+                  "position": 0,
+                  "boundVariables": {}
+                },
+                {
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 1
+                  },
+                  "position": 1,
+                  "boundVariables": {}
+                }
+              ],
+              "gradientTransform": [
+                [
+                  0,
+                  1,
+                  0
+                ],
+                [
+                  -1,
+                  0,
+                  1
+                ]
+              ]
+            }
+          ],
+          "effects": [
+            {
+              "type": "TEXTURE",
+              "visible": true,
+              "radius": 64,
+              "boundVariables": {},
+              "noiseSize": 16,
+              "noiseSizeVector": {
+                "x": 16,
+                "y": 16
+              },
+              "clipToShape": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

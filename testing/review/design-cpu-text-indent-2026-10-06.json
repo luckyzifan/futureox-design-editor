@@ -1,0 +1,479 @@
+{
+  "date": "2026-10-06",
+  "base_commit": "df5e6ec1",
+  "status": "complete; independently reviewed and locally validated; no commit/push",
+  "scope": "Shared CPU text intrinsic width, positive first-line indentation and exact-fit wrapping; no shaping or alignment rewrite",
+  "change": {
+    "intrinsic_width": "Maximum of each shaped line advance plus its positive first-line paragraph inset; continuation lines add no inset. TextLine.width remains shaped advance.",
+    "wrap": "Compare advance plus first-line positive inset against maximum directly; avoid subtractive f64 cancellation and do not add epsilon.",
+    "empty_and_negative": "Positive-indent empty paragraphs reserve inset width; negative hanging indent retains left overflow and does not increase intrinsic width.",
+    "resources": "No new dependencies, cache, persistent allocations or limits; existing text/glyph/line/outline budgets remain. New production work is scalar arithmetic per line/cluster.",
+    "unmodified": "Shaping, bidi, rich-text segmentation, font fallback, alignment, source text/UTF-16 ranges, GPU pipeline and browser implementation."
+  },
+  "reference": {
+    "font": "frontend/design-client/public/fonts/NotoSansSC.ttf",
+    "font_sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+    "literal_fixtures": [
+      "中文",
+      "中文AB",
+      "AB中文",
+      "é A",
+      "é 中文\nAB",
+      "\n中文\r\n",
+      "A ABCDEFGHIJ"
+    ],
+    "method": "Use the pinned font to shape the same text with zero indent, then add explicit positive inset to a fixed-width reference. CJK fixtures additionally use independent 20px and 12px advances. Pixel, outline and box-hit comparisons use the fixed reference, not baseline pixels as correctness oracle.",
+    "baseline_wasm_sha256": "5acc2137f384caeda988dc9f58131d522572cc7c2bf89bbef121cef95feb4571",
+    "candidate_wasm_sha256": "26f79ebad6870880b89190a5dbd06ed584b9c0c9ad9c5ba0b4963f61aa6ae5e1"
+  },
+  "red_green": {
+    "native_original": "5 genuine regression failures in native-red-final.log: omitted intrinsic inset, wrapped width, Hug resolution, exact-fit width and CPU pixel mismatch at zoom 0.25.",
+    "wasm_original": "4 genuine semantic failures in wasm-red-with-nested.log against saved original WASM: mixed-text width 65.3 vs77.675, fractional width24 vs44.3, CPU pixel mismatch, rich-text width76.24 vs88.615.",
+    "partial_fix_counterexample": "native-width-only-red.log: width-only repair passes4 but still wraps 12px 中文 with indent20.3 into2 lines; 44.3-20.3=23.999999999999996. Direct occupied-width comparison fixes it.",
+    "green": "Final expanded native6 passed; real rebuilt WASM4 passed. Full portable kernel266 passed,0failed,0ignored; frontend31files178passed. Native spacing/continuation parameter additions reran separately after full native run; full frontend included them."
+  },
+  "coverage": [
+    "Positive, zero and negative indent; fractional inset; empty paragraphs and CRLF",
+    "Literal mixed CJK/Latin and U+0301 combining grapheme UTF-16 clusters",
+    "Paragraph first lines and a continuation wider than the inset first line",
+    "Positive/negative letter spacing exact-fit and1e-9 real width deficit",
+    "Measure/outline metric equality, glyph IDs/advances/source ranges and unmodified TextLine.width",
+    "Unconstrained Hug width/height, no extra wrap, repeated resolve idempotence",
+    "Rich font size/weight/color/underline/strikethrough, nested clipped Hug and sibling placement",
+    "Native and real WASM CPU pixels equal independent fixed reference at zoom0.25,1,1.375,4,1",
+    "Real WASM text-box picking under reflection/shear and repeated zoom; intentionally not glyph-ink picking"
+  ],
+  "checks": {
+    "native_all": {
+      "exit_code": 0,
+      "passed": 266,
+      "failed": 0,
+      "ignored": 0,
+      "new_tests": 6,
+      "log": "native-all.log"
+    },
+    "native_final_expanded": {
+      "exit_code": 0,
+      "passed": 6,
+      "log": "native-green-expanded.log"
+    },
+    "wasm_original_red": {
+      "exit_code": 1,
+      "failed": 4,
+      "log": "wasm-red-with-nested.log"
+    },
+    "wasm_final_focused": {
+      "exit_code": 0,
+      "passed": 4,
+      "log": "wasm-green-focused.log"
+    },
+    "wasm_build": {
+      "exit_code": 0,
+      "rust": "1.96.0",
+      "wasm_bindgen": "0.2.128",
+      "jobs": 1,
+      "log": "wasm-build.log"
+    },
+    "frontend_all": {
+      "exit_code": 0,
+      "files": 31,
+      "passed": 178,
+      "new_tests": 4,
+      "log": "frontend-all.log"
+    },
+    "typecheck": {
+      "exit_code": 0,
+      "log": "typecheck.log"
+    },
+    "vite_build": {
+      "exit_code": 0,
+      "log": "frontend-build.log"
+    },
+    "clippy": {
+      "exit_code": 0,
+      "scope": "futureox-design-kernel all-targets; -Dwarnings",
+      "log": "clippy.log"
+    },
+    "fmt": {
+      "exit_code": 0,
+      "scope": "futureox-design-kernel",
+      "log": "fmt.log"
+    },
+    "lint": {
+      "exit_code": 0,
+      "scope": "new TypeScript test and benchmark files; no warnings",
+      "log": "lint.log"
+    },
+    "foundation": {
+      "exit_code": 0,
+      "log": "foundation.log"
+    },
+    "catalog": {
+      "exit_code": 0,
+      "log": "catalog.log"
+    },
+    "diff": {
+      "exit_code": 0,
+      "log": "diff.log"
+    },
+    "browser": "not run",
+    "gpu": "not run",
+    "figma": "not run",
+    "real_os_ime": "not run"
+  },
+  "performance": {
+    "environment": "Same shared Linux x86_64 cloud, Rust 1.96.0 optimized WASM, wasm-bindgen 0.2.128, Bun 1.4.0; no isolated-CPU claim. Explicit process.versions.bun and executable captured in runtime.json and the final four run outputs. process.version v26.3.0 is Bun Node compatibility metadata.",
+    "method": "Four serialized baseline/candidate rounds after own builds and full test workloads. Same font, fixed inputs, timed functions and loader; each artifact uses a fresh process. Final two rounds additionally record Bun version/executable. 5 warmups,31 samples,4 calls/sample for32 UTF-16 units,1 call/sample for256 units,8 calls/sample for Hug measure. p50=sorted[15],p95=sorted[29], quantiles of batch means; arrays list the initial two then the metadata-confirmed two rounds.",
+    "conclusion": "Shared-host timings are mixed, with slower cases and substantial p95 variability; these runs do not establish a speed improvement or absence of performance regressions. In the initial rounds the 32-unit zero-indent p50 was 2.43%/2.84% slower and 32-unit negative-indent p95 was 6.03%/136.14% slower. All rounds are retained, including unfavorable samples. Fixed-layout glyphs, spans, bounds and line records retain identical hashes for all 6 sampled cases.",
+    "resource_observation": {
+      "baseline_wasm_bytes": 4448802,
+      "candidate_wasm_bytes": 4448829,
+      "delta_bytes": 27,
+      "linear_memory_capacity_bytes_all_cases": 37289984,
+      "memory_scope": "Identical post-case WASM linear-memory capacities across all9 cases and8 runs (72 observations). This is not process RSS or transient peak-allocation measurement."
+    },
+    "results": [
+      {
+        "operation": "fixed-layout-and-outlines",
+        "utf16_length": 32,
+        "indent": 0,
+        "baseline_p50_ms": [
+          1.4357302499999989,
+          1.3810874999999996,
+          1.5600330000000042,
+          1.4327242499999997
+        ],
+        "candidate_p50_ms": [
+          1.470664499999998,
+          1.4203682499999957,
+          1.3996887499999957,
+          1.2443799999999996
+        ],
+        "baseline_p95_ms": [
+          1.8676230000000018,
+          2.1424602500000063,
+          2.0796042499999956,
+          2.0214135000000013
+        ],
+        "candidate_p95_ms": [
+          2.2189312500000007,
+          2.1182765000000003,
+          2.6487652500000003,
+          1.5519739999999977
+        ],
+        "linear_memory_capacity_bytes": 37289984,
+        "geometry_hash_equal": true
+      },
+      {
+        "operation": "fixed-layout-and-outlines",
+        "utf16_length": 32,
+        "indent": 12.375,
+        "baseline_p50_ms": [
+          1.4154002500000047,
+          1.389079499999994,
+          1.45764475,
+          1.2068089999999927
+        ],
+        "candidate_p50_ms": [
+          1.295111999999989,
+          1.2730422500000032,
+          1.3878725000000003,
+          1.2326950000000068
+        ],
+        "baseline_p95_ms": [
+          1.8268099999999947,
+          1.8023055000000028,
+          1.830549750000003,
+          1.7725287499999922
+        ],
+        "candidate_p95_ms": [
+          1.8540254999999917,
+          1.8816342500000047,
+          1.7998542500000099,
+          1.3883234999999985
+        ],
+        "linear_memory_capacity_bytes": 37289984,
+        "geometry_hash_equal": true
+      },
+      {
+        "operation": "fixed-layout-and-outlines",
+        "utf16_length": 32,
+        "indent": -12.375,
+        "baseline_p50_ms": [
+          1.4102952499999901,
+          1.2768702500000018,
+          1.615613250000024,
+          1.347855750000008
+        ],
+        "candidate_p50_ms": [
+          1.3150515000000098,
+          1.505466499999983,
+          1.4853747500000054,
+          1.328526999999994
+        ],
+        "baseline_p95_ms": [
+          1.8400495000000205,
+          1.516949249999982,
+          1.7634749999999997,
+          1.8258355000000108
+        ],
+        "candidate_p95_ms": [
+          1.9509337499999901,
+          3.5821402499999806,
+          1.8936107500000219,
+          2.022239500000012
+        ],
+        "linear_memory_capacity_bytes": 37289984,
+        "geometry_hash_equal": true
+      },
+      {
+        "operation": "fixed-layout-and-outlines",
+        "utf16_length": 256,
+        "indent": 0,
+        "baseline_p50_ms": [
+          14.245993999999996,
+          14.649175000000014,
+          12.231356000000005,
+          13.770892000000003
+        ],
+        "candidate_p50_ms": [
+          14.50428700000009,
+          14.399290999999948,
+          14.42246799999998,
+          12.362121000000002
+        ],
+        "baseline_p95_ms": [
+          15.370208999999932,
+          20.077198000000067,
+          14.281258000000093,
+          15.067267000000015
+        ],
+        "candidate_p95_ms": [
+          17.049807999999985,
+          20.778969000000075,
+          18.492429000000016,
+          14.973067000000015
+        ],
+        "linear_memory_capacity_bytes": 37289984,
+        "geometry_hash_equal": true
+      },
+      {
+        "operation": "fixed-layout-and-outlines",
+        "utf16_length": 256,
+        "indent": 12.375,
+        "baseline_p50_ms": [
+          14.347132999999985,
+          14.667703000000074,
+          16.564717999999857,
+          12.903655000000072
+        ],
+        "candidate_p50_ms": [
+          12.771267999999964,
+          13.996127999999999,
+          12.068585999999868,
+          13.36502100000007
+        ],
+        "baseline_p95_ms": [
+          19.59838600000012,
+          18.593119000000115,
+          18.132714999999962,
+          15.302225999999791
+        ],
+        "candidate_p95_ms": [
+          14.985575000000154,
+          17.211354999999912,
+          17.817540000000008,
+          18.026800000000094
+        ],
+        "linear_memory_capacity_bytes": 37289984,
+        "geometry_hash_equal": true
+      },
+      {
+        "operation": "fixed-layout-and-outlines",
+        "utf16_length": 256,
+        "indent": -12.375,
+        "baseline_p50_ms": [
+          13.261373999999932,
+          13.339523999999983,
+          12.602236000000175,
+          13.504506999999876
+        ],
+        "candidate_p50_ms": [
+          12.844736000000012,
+          15.074080999999751,
+          12.407748999999967,
+          13.034560000000056
+        ],
+        "baseline_p95_ms": [
+          15.348492000000078,
+          21.053139999999985,
+          14.020831999999928,
+          18.026849999999968
+        ],
+        "candidate_p95_ms": [
+          15.058712999999898,
+          17.074857000000065,
+          14.930122999999867,
+          17.14045400000009
+        ],
+        "linear_memory_capacity_bytes": 37289984,
+        "geometry_hash_equal": true
+      },
+      {
+        "operation": "hug-resolve-measure-only",
+        "utf16_length": 4,
+        "indent": 0,
+        "baseline_p50_ms": [
+          0.2641915000000381,
+          0.26213487499995836,
+          0.38722474999997303,
+          0.24994237499998917
+        ],
+        "candidate_p50_ms": [
+          0.284760125000048,
+          0.2331431249999696,
+          0.274489874999972,
+          0.2169020000000046
+        ],
+        "baseline_p95_ms": [
+          0.4202741249999917,
+          0.7373881249999954,
+          0.42687487500001,
+          0.390673750000019
+        ],
+        "candidate_p95_ms": [
+          0.7817684999999983,
+          0.33399637500002655,
+          0.4249733749999791,
+          0.23212087499996414
+        ],
+        "linear_memory_capacity_bytes": 37289984,
+        "geometry_hash_equal": null
+      },
+      {
+        "operation": "hug-resolve-measure-only",
+        "utf16_length": 4,
+        "indent": 12.375,
+        "baseline_p50_ms": [
+          0.23523737499999697,
+          0.2465742500000374,
+          0.3837120000000027,
+          0.2502465000000029
+        ],
+        "candidate_p50_ms": [
+          0.241897750000021,
+          0.2365193750000003,
+          0.23701312499997584,
+          0.21539350000000468
+        ],
+        "baseline_p95_ms": [
+          0.3308378750000429,
+          0.3744851249999783,
+          0.4002265000000307,
+          0.38996387500003493
+        ],
+        "candidate_p95_ms": [
+          0.38955325000000585,
+          0.34286700000001247,
+          0.381891875000008,
+          0.24240487499997698
+        ],
+        "linear_memory_capacity_bytes": 37289984,
+        "geometry_hash_equal": null
+      },
+      {
+        "operation": "hug-resolve-measure-only",
+        "utf16_length": 4,
+        "indent": 20.3,
+        "baseline_p50_ms": [
+          0.24224775000004684,
+          0.24390912500001605,
+          0.2998838749999777,
+          0.2482698750000054
+        ],
+        "candidate_p50_ms": [
+          0.2445493750000196,
+          0.2634342499999889,
+          0.24980462500002432,
+          0.21488899999997102
+        ],
+        "baseline_p95_ms": [
+          0.3813739999999939,
+          0.834409375000007,
+          0.3855573749999621,
+          0.3835845000000404
+        ],
+        "candidate_p95_ms": [
+          0.31265037500003245,
+          0.3957077499999855,
+          0.36555637499998284,
+          0.23888962500001298
+        ],
+        "linear_memory_capacity_bytes": 37289984,
+        "geometry_hash_equal": null
+      }
+    ],
+    "script": "frontend/design-client/scripts/benchmark-text-indent.ts",
+    "records": [
+      "performance-initial-baseline-1.json",
+      "performance-initial-current-1.json",
+      "performance-initial-baseline-2.json",
+      "performance-initial-current-2.json",
+      "performance-baseline-1.json",
+      "performance-current-1.json",
+      "performance-baseline-2.json",
+      "performance-current-2.json",
+      "runtime.json"
+    ],
+    "verification": "Independently verified all 72 case records and 2,232 timing samples, correct p50/p95 indices, all 72 identical capacity observations, and fixed-case geometry hashes across all 8 runs; Bun launcher metadata confirmed."
+  },
+  "limits": [
+    "No browser interaction, IME/composition, actual OS fonts, DPR, GPU device or Figma comparison was run.",
+    "Existing center/end/RTL-start/justify indentation positioning is not corrected; do not infer universal glyph containment.",
+    "Existing maxWidth-constrained Hug remeasurement remains outside this slice.",
+    "Paragraph bidi reanalysis and color-only shaping splits remain unverified candidates; pinned NotoSansSC lacks Hebrew/Arabic and the checked bidi-control glyphs.",
+    "Shared text metrics may affect all consumers; no GPU-specific code changed and no GPU compatibility acceptance is claimed."
+  ],
+  "review": "Independent read-only review accepted source and tests, discovered the fractional-width counterexample and recommended the implemented letter-spacing/continuation coverage. Final amended evidence audit accepted all six file hashes, font and WASM hashes, 266/178 test counts, explicit Bun 1.4.0/executable metadata, four baseline/candidate pairs, 2,232 samples and quantiles, unchanged fixed-case geometry hashes, and all 72 capacity observations. Timing conclusions preserve unfavorable results and claim neither improvement nor absence of regressions. No blocking findings.",
+  "setup_recoveries": [
+    "Initial WASM regression fixture omitted schemaVersion4 and correctly failed validation; fixed fixture, then recorded genuine original semantic failures separately.",
+    "Initial WASM build lacked the existing wasm-bindgen binary on PATH; supplied the already installed official0.2.128 path and rebuilt. No install or dependency upgrade.",
+    "Initial TypeScript test-only fixture needed default TextStyle/Sizing fields; corrected and typecheck passed.",
+    "Intermediate foundation check ran before this ledger file existed and found its documentation link missing; completed ledger and rechecked foundation/catalog successfully.",
+    "cargo fmt on the virtual manifest without a package found no targets; selected futureox-design-kernel explicitly and check passed."
+  ],
+  "evidence_directory": "/workspace/shared/core-validation-text-indent",
+  "cache_cleanup": {
+    "before": 4400553984,
+    "threshold": 2147483648,
+    "removed": [],
+    "after": 4400553984,
+    "kept": "source, RustFS, toolchains, test binaries, logs and evidence; no chat target changes"
+  },
+  "files": [
+    {
+      "path": "design-studio/crates/design-kernel/src/font.rs",
+      "sha256": "b909921b6481b6df8e807996c965e846462bdd2422be6af5af8b9b2542170da9"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/text_indent.rs",
+      "sha256": "a02450f03815400cf0f74f816c11413c77c75249cff805e7fc6b7fa34155ef4f"
+    },
+    {
+      "path": "frontend/design-client/src/text-indent.test.ts",
+      "sha256": "1d2d80e5c9737f68cddd2ef6d1ded1fae1c31099115af34814fe180ad75cca2b"
+    },
+    {
+      "path": "frontend/design-client/scripts/benchmark-text-indent.ts",
+      "sha256": "a7b02f58e2ca49e21ba5a505c8f1dabcc54f57f2a0b94cebec3f3f3b60391559"
+    },
+    {
+      "path": "docs/architecture/design-editor.md",
+      "sha256": "14a5dfd7517a1d79b5ed286021f1ffa599d9b1e44ff7a3b258ab0979931d6399"
+    },
+    {
+      "path": "testing/api/README.md",
+      "sha256": "5a0d18682fe0977b0cf6219768053d27eb5502aa93f8d828b0aaf5ce226faa73"
+    }
+  ]
+}

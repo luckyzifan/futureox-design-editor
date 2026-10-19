@@ -1,0 +1,779 @@
+{
+  "createdNodeIds": [
+    "112:2",
+    "112:3",
+    "112:4",
+    "112:5",
+    "112:6",
+    "112:7",
+    "112:8",
+    "112:9",
+    "112:10",
+    "112:11",
+    "112:12",
+    "112:13",
+    "112:14",
+    "112:15",
+    "112:16",
+    "112:17",
+    "112:18",
+    "112:19",
+    "112:20",
+    "112:21",
+    "112:22",
+    "112:23",
+    "112:24",
+    "112:25",
+    "112:26",
+    "112:27",
+    "112:28",
+    "112:29",
+    "112:30",
+    "112:31",
+    "112:32",
+    "112:33",
+    "112:34",
+    "112:35",
+    "112:36",
+    "112:37",
+    "112:38",
+    "112:39",
+    "112:40",
+    "112:41",
+    "112:42",
+    "112:43",
+    "112:44",
+    "112:45",
+    "112:46",
+    "112:47",
+    "112:48",
+    "112:49",
+    "112:50",
+    "112:51",
+    "112:52",
+    "112:53",
+    "112:54",
+    "112:55",
+    "112:56",
+    "112:57",
+    "112:58",
+    "112:59",
+    "112:60",
+    "112:61",
+    "112:62",
+    "112:63",
+    "112:64",
+    "112:65",
+    "112:66",
+    "112:67",
+    "112:68",
+    "112:69",
+    "112:70",
+    "112:71",
+    "112:72",
+    "112:73",
+    "112:74",
+    "112:75",
+    "112:76",
+    "112:77",
+    "112:78",
+    "112:79",
+    "112:80",
+    "112:81",
+    "112:82",
+    "112:83",
+    "112:84",
+    "112:85",
+    "112:86",
+    "112:87",
+    "112:88",
+    "112:89",
+    "112:90",
+    "112:91",
+    "112:92",
+    "112:93",
+    "112:94",
+    "112:95",
+    "112:96",
+    "112:97",
+    "112:98",
+    "112:99",
+    "112:100",
+    "112:101",
+    "112:102",
+    "112:103",
+    "112:104",
+    "112:105",
+    "112:106",
+    "112:107",
+    "112:108",
+    "112:109",
+    "112:110",
+    "112:111",
+    "112:112",
+    "112:113",
+    "112:114",
+    "112:115",
+    "112:116",
+    "112:117",
+    "112:118",
+    "112:119",
+    "112:120",
+    "112:121",
+    "112:122",
+    "112:123",
+    "112:124",
+    "112:125",
+    "112:126",
+    "112:127",
+    "112:128",
+    "112:129",
+    "112:130",
+    "112:131",
+    "112:132",
+    "112:133",
+    "112:134",
+    "112:135",
+    "112:136",
+    "112:137",
+    "112:138",
+    "112:139",
+    "112:140",
+    "112:141",
+    "112:142",
+    "112:143",
+    "112:144",
+    "112:145",
+    "112:146",
+    "112:147",
+    "112:148",
+    "112:149",
+    "112:150",
+    "112:151",
+    "112:152",
+    "112:153",
+    "112:154",
+    "112:155",
+    "112:156",
+    "112:157",
+    "112:158",
+    "112:159",
+    "112:160",
+    "112:161",
+    "112:162",
+    "112:163",
+    "112:164",
+    "112:165",
+    "112:166",
+    "112:167",
+    "112:168",
+    "112:169",
+    "112:170",
+    "112:171",
+    "112:172",
+    "112:173",
+    "112:174",
+    "112:175",
+    "112:176",
+    "112:177",
+    "112:178",
+    "112:179",
+    "112:180",
+    "112:181",
+    "112:182",
+    "112:183",
+    "112:184",
+    "112:185",
+    "112:186",
+    "112:187",
+    "112:188",
+    "112:189",
+    "112:190",
+    "112:191",
+    "112:192",
+    "112:193",
+    "112:194",
+    "112:195",
+    "112:196",
+    "112:197",
+    "112:198",
+    "112:199",
+    "112:200",
+    "112:201",
+    "112:202",
+    "112:203",
+    "112:204",
+    "112:205",
+    "112:206",
+    "112:207",
+    "112:208",
+    "112:209",
+    "114:2",
+    "114:3",
+    "114:4",
+    "114:5",
+    "114:6",
+    "114:7",
+    "114:8",
+    "114:9",
+    "114:10",
+    "114:11",
+    "114:12",
+    "114:13",
+    "114:14",
+    "114:15",
+    "114:16",
+    "114:17",
+    "114:18",
+    "114:19"
+  ],
+  "mutatedNodeIds": [
+    "52:2"
+  ],
+  "boardId": "112:2",
+  "pageId": "52:2",
+  "cases": [
+    {
+      "id": "112:3",
+      "nodeId": "112:20",
+      "name": "CaptureQA-frame-127x128-1x",
+      "spec": {
+        "family": "frame-width",
+        "scale": 1,
+        "w": 127,
+        "h": 128
+      },
+      "width": 127,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:21",
+      "nodeId": "112:38",
+      "name": "CaptureQA-frame-129x128-1x",
+      "spec": {
+        "family": "frame-width",
+        "scale": 1,
+        "w": 129,
+        "h": 128
+      },
+      "width": 129,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:39",
+      "nodeId": "112:56",
+      "name": "CaptureQA-frame-127x128-2x",
+      "spec": {
+        "family": "frame-width",
+        "scale": 2,
+        "w": 127,
+        "h": 128
+      },
+      "width": 127,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:57",
+      "nodeId": "112:74",
+      "name": "CaptureQA-frame-129x128-2x",
+      "spec": {
+        "family": "frame-width",
+        "scale": 2,
+        "w": 129,
+        "h": 128
+      },
+      "width": 129,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:75",
+      "nodeId": "112:92",
+      "name": "CaptureQA-frame-127x128-4x",
+      "spec": {
+        "family": "frame-width",
+        "scale": 4,
+        "w": 127,
+        "h": 128
+      },
+      "width": 127,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:93",
+      "nodeId": "112:110",
+      "name": "CaptureQA-frame-129x128-4x",
+      "spec": {
+        "family": "frame-width",
+        "scale": 4,
+        "w": 129,
+        "h": 128
+      },
+      "width": 129,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:111",
+      "nodeId": "112:128",
+      "name": "CaptureQA-frame-256x128-1x",
+      "spec": {
+        "family": "frame-size",
+        "scale": 1,
+        "w": 256,
+        "h": 128
+      },
+      "width": 256,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:129",
+      "nodeId": "112:146",
+      "name": "CaptureQA-frame-128x127-1x",
+      "spec": {
+        "family": "frame-size",
+        "scale": 1,
+        "w": 128,
+        "h": 127
+      },
+      "width": 128,
+      "height": 127,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:147",
+      "nodeId": "112:164",
+      "name": "CaptureQA-frame-128x129-1x",
+      "spec": {
+        "family": "frame-size",
+        "scale": 1,
+        "w": 128,
+        "h": 129
+      },
+      "width": 128,
+      "height": 129,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:165",
+      "nodeId": "112:167",
+      "name": "CaptureQA-pulse-x32-off-1x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 1,
+        "x": 32,
+        "active": false
+      },
+      "width": 128,
+      "height": 128,
+      "effects": []
+    },
+    {
+      "id": "112:168",
+      "nodeId": "112:170",
+      "name": "CaptureQA-pulse-x32-glass-1x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 1,
+        "x": 32,
+        "active": true
+      },
+      "width": 128,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:171",
+      "nodeId": "112:173",
+      "name": "CaptureQA-pulse-x64-off-1x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 1,
+        "x": 64,
+        "active": false
+      },
+      "width": 128,
+      "height": 128,
+      "effects": []
+    },
+    {
+      "id": "112:174",
+      "nodeId": "112:176",
+      "name": "CaptureQA-pulse-x64-glass-1x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 1,
+        "x": 64,
+        "active": true
+      },
+      "width": 128,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:177",
+      "nodeId": "112:179",
+      "name": "CaptureQA-pulse-x80-off-1x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 1,
+        "x": 80,
+        "active": false
+      },
+      "width": 128,
+      "height": 128,
+      "effects": []
+    },
+    {
+      "id": "112:180",
+      "nodeId": "112:182",
+      "name": "CaptureQA-pulse-x80-glass-1x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 1,
+        "x": 80,
+        "active": true
+      },
+      "width": 128,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:183",
+      "nodeId": "112:185",
+      "name": "CaptureQA-pulse-x32-off-2x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 2,
+        "x": 32,
+        "active": false
+      },
+      "width": 128,
+      "height": 128,
+      "effects": []
+    },
+    {
+      "id": "112:186",
+      "nodeId": "112:188",
+      "name": "CaptureQA-pulse-x32-glass-2x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 2,
+        "x": 32,
+        "active": true
+      },
+      "width": 128,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:189",
+      "nodeId": "112:191",
+      "name": "CaptureQA-pulse-x64-off-2x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 2,
+        "x": 64,
+        "active": false
+      },
+      "width": 128,
+      "height": 128,
+      "effects": []
+    },
+    {
+      "id": "112:192",
+      "nodeId": "112:194",
+      "name": "CaptureQA-pulse-x64-glass-2x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 2,
+        "x": 64,
+        "active": true
+      },
+      "width": 128,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:195",
+      "nodeId": "112:197",
+      "name": "CaptureQA-pulse-x80-off-2x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 2,
+        "x": 80,
+        "active": false
+      },
+      "width": 128,
+      "height": 128,
+      "effects": []
+    },
+    {
+      "id": "112:198",
+      "nodeId": "112:200",
+      "name": "CaptureQA-pulse-x80-glass-2x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 2,
+        "x": 80,
+        "active": true
+      },
+      "width": 128,
+      "height": 128,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    },
+    {
+      "id": "112:201",
+      "nodeId": "112:203",
+      "name": "CaptureQA-pulse-x63-off-1x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 1,
+        "x": 63,
+        "active": false
+      },
+      "width": 128,
+      "height": 128,
+      "effects": []
+    },
+    {
+      "id": "112:204",
+      "nodeId": "112:206",
+      "name": "CaptureQA-pulse-x63-off-2x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 2,
+        "x": 63,
+        "active": false
+      },
+      "width": 128,
+      "height": 128,
+      "effects": []
+    },
+    {
+      "id": "112:207",
+      "nodeId": "112:209",
+      "name": "CaptureQA-pulse-x63-off-4x",
+      "spec": {
+        "family": "pulse-position",
+        "scale": 4,
+        "x": 63,
+        "active": false
+      },
+      "width": 128,
+      "height": 128,
+      "effects": []
+    },
+    {
+      "id": "114:2",
+      "nodeId": "114:19",
+      "name": "CaptureQA-frame-128x256-1x",
+      "spec": {
+        "family": "frame-size",
+        "scale": 1,
+        "w": 128,
+        "h": 256
+      },
+      "width": 128,
+      "height": 256,
+      "effects": [
+        {
+          "type": "GLASS",
+          "visible": true,
+          "radius": 0,
+          "boundVariables": {},
+          "refraction": 0,
+          "depth": 8,
+          "lightAngle": 45,
+          "lightIntensity": 0,
+          "dispersion": 0
+        }
+      ]
+    }
+  ]
+}

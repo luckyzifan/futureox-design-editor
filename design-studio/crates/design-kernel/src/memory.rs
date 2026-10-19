@@ -91,20 +91,18 @@ impl Drop for Allocation {
 }
 
 // ---------------------------------------------------------------------------
-// GPU memory ledger — Figma's four `CorePerfInfo` i64 counters
-// (VRAM-LEDGER-RESOLVED.md task A: addresses 5246784/5246792/5246800/5246808).
+// GPU memory ledger — Figma's four `CorePerfInfo` i64 counters.
 //
 // Figma's shape: every backend resource constructor does a read-modify-write
 // `+bytes` on exactly one global counter, every destructor `-bytes`, plus a
 // separate high-water mark kept with `max(old, sum)` at the texture creation
 // sites. The four counters sum to the renderer's GPU memory total
-// (`FullscreenPerfInfo::getRendererGpuMemory`, wasm func#46443) and the same
+// (`FullscreenPerfInfo::getRendererGpuMemory`) and the same
 // sum drives the CanvasView memory-pressure decision (`needs_free` /
-// `FREE_CACHED_DATA`, wasm func#39291).
+// `FREE_CACHED_DATA`).
 //
 // Our resource model is not isomorphic to Figma's two backends; the bucket
-// mapping is recorded per category below and in
-// figma-wasm-analysis/impl-2026-10-16/E6-VRAM-LEDGER.md. Deviation: Figma's
+// mapping is recorded per category below. Deviation: Figma's
 // counters are process-global i64s mutated non-atomically; ours is one
 // shared mutex-guarded ledger (clone = same state) with saturating frees.
 // ---------------------------------------------------------------------------
@@ -149,7 +147,7 @@ pub struct GpuMemoryUsage {
     /// `i64.gt_u + select` at the texture creation sites).
     pub peak_total_bytes: u64,
     /// Times the `needs_free` decision hook ran the cached-data reclaim
-    /// path (Figma `FREE_CACHED_DATA` events, wasm func#39291).
+    /// path (Figma `FREE_CACHED_DATA` events).
     pub free_events: u32,
     /// Over-limit admission refusals — the observable counterpart of
     /// Figma's "would delta more bytes exceed the limit" query

@@ -1,0 +1,240 @@
+{
+  "date": "2026-10-18",
+  "scope": "核对下载目录架构评审的重要性能、缓存正确性及实施顺序建议；未修改产品代码，未执行新基准或回归，HDR 排除。算法清单未逐项重验，评分未采信。",
+  "document": {
+    "path": "/Users/Apple/Downloads/design-kernel-architecture-review-2026-09-13.md",
+    "status": "存在漂移",
+    "declaredDate": "2026-09-13",
+    "note": "按本轮工作树核对，不把文件名日期当作代码基线。"
+  },
+  "baseline": {
+    "head": "7defe35b4ae64ee837bfee84b2e11e94702df543",
+    "dirtyWorkingTree": true,
+    "sha256": {
+      "/Users/Apple/Downloads/design-kernel-architecture-review-2026-09-13.md": "b6815552215814bbc8b701e9ab9b524e9931f671c79bba7cb51e0855a4e5769c",
+      "/Users/Apple/project/core/design-studio/crates/design-kernel/src/gpu.rs": "fae05bd549f2047f1167d296d8048609e39b44708f44c90edaeae924d8a76674",
+      "/Users/Apple/project/core/design-studio/crates/design-kernel/src/geometry_snapshot.rs": "319af6b2c79a9837e07b57a33a4bf7e51940535aec9e0fdf1b823c7095cacb08",
+      "/Users/Apple/project/core/design-studio/crates/design-kernel/src/scene.rs": "9e94958e063a78789869ec7409164c35dfc087bf1c5177335e7b13df0a81f0eb",
+      "/Users/Apple/project/core/design-studio/crates/design-kernel/src/renderer.rs": "4760be177383d20162c6f23423178109849515f8de50f8268409673bd15d8ed1",
+      "/Users/Apple/project/core/frontend/design-client/src/kernel/gpu/renderer.ts": "f5460040408d52f70cc5458b1d937af47966827930c37bd2a7769ad92bc843db",
+      "/Users/Apple/project/core/frontend/design-client/src/kernel/gpu/translation-patch-session.ts": "7fdcf5fdedf0b04e3e12f7a198f3d784633780399317d58bef9dcf5bf0119a84",
+      "/Users/Apple/project/core/frontend/design-client/src/kernel/gpu/translated-scene.ts": "c8ed71300b3f48bf335717fce77ea609f67c0a98d51284f3b1438276f3ecc091",
+      "/Users/Apple/project/core/frontend/design-client/src/kernel/compiled-packet-cache.ts": "54b798956a20db9725710947a711b29841694fca4d9b64cf06a7b2971a50e081",
+      "/Users/Apple/project/core/frontend/design-client/src/kernel/render-kernel.ts": "edc961ccf6404af418a36b1172fce33f6886983634635be3faa3bee8ed6db96e",
+      "/Users/Apple/project/core/frontend/design-client/src/kernel/tile-prepare-viewport.ts": "f8c72992fc61c2f8406d7bf92dab9a86c6d593dc6085033eb8f5e9a69f4b821c",
+      "/Users/Apple/project/core/frontend/design-client/src/kernel/client.ts": "9565d4d98a742b463b248d15045dca9a1920d49763bc224ccb8d0571cac1ab46",
+      "/Users/Apple/project/core/testing/review/design-pose-patches-and-display-order-2026-10-18.json": "a1c072597bde96e13a0c92137615c8c6d4d3df9b5749ee5f0c8c0a84e892acfa",
+      "/Users/Apple/project/core/frontend/design-client/src/kernel/gpu/scene-index.ts": "35bce63c0bc37415d66b3722bbf52b428f01c99c5dda98acf4c7ea17f1f62c57",
+      "/Users/Apple/project/core/frontend/design-client/src/kernel/render-worker.ts": "0e5d7f4c594b2d3078be170c178288fef9d059deff8fd31cdc69a53d7d7427a7",
+      "/Users/Apple/project/core/design-studio/crates/design-kernel/Cargo.toml": "8d4b66e664a114bb85b27551131600635270fe02b68486e3f5f2347e6b2abe88",
+      "/Users/Apple/project/core/testing/review/design-render-pipeline-optimization-2026-10-17.json": "4e37c56f056279a38ac3c706bbc2048471749be1e51c412b677df839ca509852"
+    },
+    "recheckedUnchanged": true
+  },
+  "findings": [
+    {
+      "section": "2.1 / 5.1",
+      "status": "部分成立",
+      "evidenceLevel": "源码",
+      "conclusion": "CameraPrepare 单条、同 camera/revision 且 guard 包含才复用，programs 随之失效。直接把 ProgramCache 搬到 Engine 而保持原键不安全：键缺少在旧生命周期内隐含的 geometry/camera 身份。",
+      "evidence": [
+        "design-studio/crates/design-kernel/src/gpu.rs:64",
+        "design-studio/crates/design-kernel/src/gpu.rs:89",
+        "design-studio/crates/design-kernel/src/gpu.rs:519"
+      ],
+      "proposal": "先明确不可变 prepared geometry 身份、精确采样/crop/profile 和失效代号；世界几何与设备几何分层。部分重叠窗口需补齐缺失几何与效果支持，不能直接使用被裁掉的旧 contours。"
+    },
+    {
+      "section": "2.2 / P3.1",
+      "status": "部分成立",
+      "evidenceLevel": "源码",
+      "conclusion": "节点键使不同节点重复编译，但 area_paths 已按完整 program bits 去重最终曲线 buffer；不能称所有层级跨节点零复用。命中 ProgramCache 后仍新建 Vec<u32> 并哈希全量 data。",
+      "evidence": [
+        "design-studio/crates/design-kernel/src/gpu.rs:519"
+      ],
+      "proposal": "可缓存不可变 program 身份/摘要及 bit key，先走同对象快速命中，跨对象摘要命中仍验证精确内容。禁止顶点量化/容差归一代替逐位等价。"
+    },
+    {
+      "section": "2.3 / 5.2",
+      "status": "建议需修正",
+      "evidenceLevel": "源码",
+      "conclusion": "halo 重复可收敛，但 prepare 内 scale=max_scale().max(1e-6)，并非三处完全相同。文档 helper 直接用 max_scale 且非有限值返回 0，不能称行为等价。",
+      "evidence": [
+        "design-studio/crates/design-kernel/src/gpu.rs:297",
+        "design-studio/crates/design-kernel/src/geometry_snapshot.rs:44",
+        "design-studio/crates/design-kernel/src/geometry_snapshot.rs:82"
+      ],
+      "proposal": "保留各调用点的有效 scale、ceil、saturating 算术、非有限值和坐标预算拒绝；收益首先是可维护性。"
+    },
+    {
+      "section": "2.4 / 5.4",
+      "status": "结论不成立",
+      "evidenceLevel": "源码",
+      "conclusion": "Document.validate 已拒绝 depth>64、循环和重复节点；install_document 调用验证，布局/组件解析后也验证。因此不是无深度上限。内部生成富文本等路径可另审，但不能据此推断能导入数千层树。",
+      "evidence": [
+        "design-studio/crates/design-kernel/src/scene.rs:1319",
+        "design-studio/crates/design-kernel/src/renderer.rs:357",
+        "design-studio/crates/design-kernel/src/renderer.rs:570"
+      ],
+      "proposal": "沿用统一深度契约，必要时对内部生成边界加断言；不另引入不一致的512层限制作为性能P0。"
+    },
+    {
+      "section": "2.5 / into_packet",
+      "status": "非性能问题",
+      "evidenceLevel": "源码",
+      "conclusion": "into_packet 按值取得 self，mem::take 不克隆数组，into_ 已符合消耗式命名；FGPK 已含二进制 f32 数组，只有元数据仍是 JSON。",
+      "evidence": [
+        "design-studio/crates/design-kernel/src/gpu.rs:276"
+      ],
+      "proposal": "先测元数据解析和序列化占比，再决定是否修改协议。"
+    },
+    {
+      "section": "3.1 / 5.5",
+      "status": "建议需修正",
+      "evidenceLevel": "源码",
+      "conclusion": "当前 frameBudget 有512MiB驻留显示分支；不能只按256MiB常量评估。deviceMemory 是近似系统RAM，maxTextureDimension2D是尺寸约束，均不提供可用显存预算。",
+      "evidence": [
+        "frontend/design-client/src/kernel/gpu/renderer.ts:2714"
+      ],
+      "proposal": "按真实活跃/驻留/峰值字节、回收命中与分配失败调预算，保留硬上限和回退，不能只按RAM/16套公式。"
+    },
+    {
+      "section": "3.2 / 5.3",
+      "status": "风险需限定，补丁不宜采用",
+      "evidenceLevel": "源码",
+      "conclusion": "interactionRoots 先按不可变 n/previewSource 身份命中；TranslationPatchSession 限纯平移，受影响祖先 previewDynamic 排除缓存，重编译后 source 身份退休。不是无条件只比尺寸。文档 JSON 指纹包含 rect/matrix 会让纯拖动失效，且未覆盖整个子树内容。",
+      "evidence": [
+        "frontend/design-client/src/kernel/gpu/renderer.ts:208",
+        "frontend/design-client/src/kernel/gpu/renderer.ts:2732",
+        "frontend/design-client/src/kernel/gpu/translation-patch-session.ts:60",
+        "frontend/design-client/src/kernel/gpu/translated-scene.ts:168"
+      ],
+      "proposal": "用不可变类型、明确内容/资源/效果代号和 invalidation 测试强化契约，不逐帧遍历或序列化内容。"
+    },
+    {
+      "section": "3.3 / 5.7",
+      "status": "默认热路径判断不成立",
+      "evidenceLevel": "源码",
+      "conclusion": "prefixKey stringify 只在 VITE_DESIGN_RETAIN_PREFIX=1 且满足条件时运行；默认关闭。替代签名遗漏原 policy 字段，还把 prefix roots 长度与全 roots 比较，不能直接替换。",
+      "evidence": [
+        "frontend/design-client/src/kernel/gpu/renderer.ts:179"
+      ],
+      "proposal": "只有重新证实 prefix 缓存净收益后再优化签名，并覆盖完整 policy。"
+    },
+    {
+      "section": "3.4 / 5.8",
+      "status": "成立但低影响",
+      "evidenceLevel": "源码",
+      "conclusion": "bbox 有4次 map 和展开，单循环可去分配；worker 请求最多256瓦片，规划也有预算限制，超大数组爆栈不是目前实测的常规问题。",
+      "evidence": [
+        "frontend/design-client/src/kernel/tile-prepare-viewport.ts:16",
+        "frontend/design-client/src/kernel/render-worker.ts:596"
+      ],
+      "proposal": "作为低风险小改，保留负坐标 floor 与包含性验证，不承诺显著端到端收益。"
+    },
+    {
+      "section": "3.5 / 5.6",
+      "status": "可维护性建议",
+      "evidenceLevel": "源码",
+      "conclusion": "许可字段联合维护确实分散，但本轮未发现实际状态失配；判别联合重构不能自动证明性能改善。",
+      "evidence": [
+        "frontend/design-client/src/kernel/client.ts:334",
+        "frontend/design-client/src/kernel/client.ts:464"
+      ],
+      "proposal": "覆盖 pending/reset/parking/dispose 与全局计数不变量后再改。"
+    },
+    {
+      "section": "4.2 / P3 增量编译",
+      "status": "高价值方向",
+      "evidenceLevel": "源码",
+      "conclusion": "前端已经有32MiB精确编译包缓存，但每个patch仍全清；Rust常见patch/平移提交仍推进geo_revision并清相机准备缓存。嵌套变换无法走仅根平移保留分支。",
+      "evidence": [
+        "frontend/design-client/src/kernel/render-kernel.ts:41",
+        "frontend/design-client/src/kernel/compiled-packet-cache.ts:7",
+        "design-studio/crates/design-kernel/src/renderer.rs:252"
+      ],
+      "proposal": "建立节点派生版本和父/效果依赖索引，保留不相关几何、文本与编译段；背景依赖必须按读写区域传播。分段trace确认提交阶段实际占比。"
+    },
+    {
+      "section": "4.2 / P3 空间索引",
+      "status": "可继续优化",
+      "evidenceLevel": "源码",
+      "conclusion": "当前已有中性clip frame整枝剔除，路径/字形及拓扑索引也已缓存；仍可推进世界保守bounds索引，减少冷视口几何遍历。",
+      "evidence": [
+        "design-studio/crates/design-kernel/src/geometry_snapshot.rs:45",
+        "frontend/design-client/src/kernel/gpu/scene-index.ts:15"
+      ],
+      "proposal": "避免把已有能力当作完全缺失；保持绘制顺序、mask、blend、backdrop依赖，索引只筛候选。"
+    },
+    {
+      "section": "P3 多线程 / 差分上传",
+      "status": "后置验证",
+      "evidenceLevel": "源码",
+      "conclusion": "已有CPU准备worker与GPU重叠，正常驻留显示在GPU内部合成。新增worker池有场景/字体/缓存复制成本；CPU像素差分上传不对应常规驻留显示热路径。",
+      "evidence": [
+        "frontend/design-client/src/kernel/render-kernel.ts:8"
+      ],
+      "proposal": "先确认剩余compile串行占比与GPU墙钟，再选有界worker并行或GPU buffer区域更新。"
+    },
+    {
+      "section": "七 验证命令",
+      "status": "存在漂移",
+      "evidenceLevel": "源码",
+      "conclusion": "实际Rust包名futureox-design-kernel；三项命名测试存在gpu.rs内部。单个同相机等价测试不足以验证新增跨相机缓存。",
+      "evidence": [
+        "design-studio/crates/design-kernel/Cargo.toml:2",
+        "design-studio/crates/design-kernel/src/gpu.rs:1304",
+        "design-studio/crates/design-kernel/src/gpu.rs:1454",
+        "design-studio/crates/design-kernel/src/gpu.rs:1563"
+      ],
+      "proposal": "正确入口 cargo test --manifest-path design-studio/Cargo.toml -p futureox-design-kernel。新增相机/zoom/字体/效果/子节点修改、LRU淘汰、partial guard和取消交错差分回归。"
+    }
+  ],
+  "priorEvidence": {
+    "source": "testing/review/design-pose-patches-and-display-order-2026-10-18.json",
+    "notRerunThisReview": true,
+    "realDocumentNodes": 19949,
+    "withinCaptureWorkerMedianMs": 10.2,
+    "withinCaptureWorkerP95Ms": 12.6,
+    "initialFirstPixelsMs": 2021.9,
+    "initialFullCoverageMs": 4963.7,
+    "coldWideZoomSettleMs": 2024.6,
+    "nestedTextCommitMs": 620.6,
+    "interpretation": "历史样本用于确定下一批目标，不代表本轮已重测或所有设备达标；工作时间不是物理input-to-present延迟。"
+  },
+  "recommendedOrder": [
+    {
+      "priority": "P0",
+      "work": "提交patch的增量派生失效与未变化编译段保留",
+      "measure": "commit各阶段墙钟、变化/总节点、重编/新瓦片数，独立报告嵌套文字与backdrop依赖"
+    },
+    {
+      "priority": "P0",
+      "work": "冷视口可见性索引和几何分层复用",
+      "measure": "首次像素/完整高清时间，遍历节点、prepare/program builds，连续缩放清晰度与内容覆盖"
+    },
+    {
+      "priority": "P1",
+      "work": "ProgramCache命中后bits分配/哈希去重，正确身份下有界跨窗口复用",
+      "measure": "每瓦片cache hit/build/bytes和compile墙钟，不用命中率替代端到端收益"
+    },
+    {
+      "priority": "P1",
+      "work": "按真实pass读写范围缩小背景模糊/混合重绘",
+      "measure": "pass像素、提交墙钟、完整渲染像素oracle；不把重叠GPU timestamp总和当帧耗时"
+    },
+    {
+      "priority": "P2",
+      "work": "单循环bbox、保持语义的halo合并、许可状态机和预算治理",
+      "measure": "等价性与低风险维护收益，性能收益需实测"
+    }
+  ],
+  "validation": {
+    "newProductTests": "未运行：本轮是源码与文档审阅，无产品代码修改",
+    "sourceIntegrity": "已复算已记录文件SHA-256，无变化",
+    "suggestedAcceptance": "同真实复杂文档、同DPR/视口、同构建与profiling模式做A/B；检查原生密度覆盖、空白、白线、文字/边框跟随及背景依赖；缓存输出按完整渲染精确比较。"
+  },
+  "references": [
+    "https://www.w3.org/TR/device-memory/"
+  ]
+}

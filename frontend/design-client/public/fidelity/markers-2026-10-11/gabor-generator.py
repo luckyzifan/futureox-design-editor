@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Reference GRAIN generator prototype based on the reverse-engineered model.
+"""Reference GRAIN generator prototype.
 
-Model (parameters recovered 2026-10-11 from texture-ramps fixtures, see
-grain-notes.md; tuned so the statistical fingerprint matches the measured
-displacement fields):
+Model (parameters fitted 2026-10-11 from the texture-ramps fixtures; tuned
+so the statistical fingerprint matches the measured displacement fields):
     d_channel(x, y) = sum_k a_k * cos(2*pi*f*(u_k . (p - c_k)) + phi_k)
                               * W(p - c_k; u_k)
 with
@@ -22,9 +21,8 @@ Fingerprint comparison (radial autocorr vs measured, tuned err 0.048):
     target: +1.000 +0.902 +0.758 +0.582 +0.407 +0.250 +0.121 +0.020 -0.051 ...
 
 This prototype uses a placeholder PRNG (numpy) for a/phi/u/jitter; its
-purpose is to reproduce the STATISTICAL FINGERPRINT of Figma's GRAIN
-displacement field. Figma's deterministic generator constants (how a/phi/u
-are hashed) are not yet identified.
+purpose is to reproduce the STATISTICAL FINGERPRINT of the GRAIN
+displacement field, not any vendor's exact bytes.
 
 Run: python3 gabor-generator.py   (prints fingerprint + saves sample PNG)
 """

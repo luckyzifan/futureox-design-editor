@@ -1,0 +1,910 @@
+{
+  "createdNodeIds": [
+    "121:2",
+    "121:3",
+    "121:4",
+    "121:5",
+    "121:6",
+    "121:7",
+    "121:8",
+    "121:9"
+  ],
+  "mutatedNodeIds": [
+    "115:2",
+    "52:2"
+  ],
+  "boardId": "115:2",
+  "encoded": [
+    {
+      "id": "121:2",
+      "name": "NumericQA-encoded-x-control",
+      "nodeId": "121:3",
+      "axis": "x",
+      "active": false,
+      "width": 257,
+      "height": 257,
+      "transform": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "fills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0.3333333432674408,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0.6666666865348816,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "effects": []
+    },
+    {
+      "id": "121:4",
+      "name": "NumericQA-encoded-x-texture",
+      "nodeId": "121:5",
+      "axis": "x",
+      "active": true,
+      "width": 257,
+      "height": 257,
+      "transform": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "fills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0.3333333432674408,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0.6666666865348816,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "effects": [
+        {
+          "type": "TEXTURE",
+          "visible": true,
+          "radius": 100,
+          "boundVariables": {},
+          "noiseSize": 64,
+          "noiseSizeVector": {
+            "x": 64,
+            "y": 64
+          },
+          "clipToShape": false
+        }
+      ]
+    },
+    {
+      "id": "121:6",
+      "name": "NumericQA-encoded-y-control",
+      "nodeId": "121:7",
+      "axis": "y",
+      "active": false,
+      "width": 257,
+      "height": 257,
+      "transform": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "fills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0.3333333432674408,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0.6666666865348816,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              -1,
+              0,
+              1
+            ]
+          ]
+        }
+      ],
+      "effects": []
+    },
+    {
+      "id": "121:8",
+      "name": "NumericQA-encoded-y-texture",
+      "nodeId": "121:9",
+      "axis": "y",
+      "active": true,
+      "width": 257,
+      "height": 257,
+      "transform": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "fills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "visible": true,
+          "opacity": 1,
+          "blendMode": "NORMAL",
+          "gradientStops": [
+            {
+              "color": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 0,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0.3333333432674408,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 0,
+                "a": 1
+              },
+              "position": 0.6666666865348816,
+              "boundVariables": {}
+            },
+            {
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              },
+              "position": 1,
+              "boundVariables": {}
+            }
+          ],
+          "gradientTransform": [
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              -1,
+              0,
+              1
+            ]
+          ]
+        }
+      ],
+      "effects": [
+        {
+          "type": "TEXTURE",
+          "visible": true,
+          "radius": 100,
+          "boundVariables": {},
+          "noiseSize": 64,
+          "noiseSizeVector": {
+            "x": 64,
+            "y": 64
+          },
+          "clipToShape": false
+        }
+      ]
+    }
+  ],
+  "frames": [
+    {
+      "id": "115:3",
+      "name": "NumericQA-red-low",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          22668
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "115:5",
+      "name": "NumericQA-red-high",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          22820
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "115:7",
+      "name": "NumericQA-red-middle",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          22972
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "115:9",
+      "name": "NumericQA-red-reverse",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          23124
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "115:11",
+      "name": "NumericQA-red-wide",
+      "width": 129,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          23276
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "115:13",
+      "name": "NumericQA-red-alpha",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          23429
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "115:15",
+      "name": "NumericQA-texture-x-odd-257",
+      "width": 257,
+      "height": 257,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          23581
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "115:17",
+      "name": "NumericQA-texture-y-odd-257",
+      "width": 257,
+      "height": 257,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          23862
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "117:2",
+      "name": "NumericQA-green-ramp",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          24143
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "117:4",
+      "name": "NumericQA-green-ramp-red75",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          24295
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "117:6",
+      "name": "NumericQA-pulse-comb-fixed-1x",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          24447
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 24
+    },
+    {
+      "id": "117:31",
+      "name": "NumericQA-pulse-comb-fixed-2x",
+      "width": 128,
+      "height": 128,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          24599
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 2
+          }
+        }
+      ],
+      "childCount": 24
+    },
+    {
+      "id": "119:2",
+      "name": "NumericQA-color-strip",
+      "width": 128,
+      "height": 132,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          24751
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 33
+    },
+    {
+      "id": "121:2",
+      "name": "NumericQA-encoded-x-control",
+      "width": 257,
+      "height": 257,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          24903
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "121:4",
+      "name": "NumericQA-encoded-x-texture",
+      "width": 257,
+      "height": 257,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          25184
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "121:6",
+      "name": "NumericQA-encoded-y-control",
+      "width": 257,
+      "height": 257,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          25465
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    },
+    {
+      "id": "121:8",
+      "name": "NumericQA-encoded-y-texture",
+      "width": 257,
+      "height": 257,
+      "absoluteTransform": [
+        [
+          1,
+          0,
+          25746
+        ],
+        [
+          0,
+          1,
+          96
+        ]
+      ],
+      "exports": [
+        {
+          "format": "PNG",
+          "suffix": "",
+          "contentsOnly": true,
+          "colorProfile": "SRGB",
+          "constraint": {
+            "type": "SCALE",
+            "value": 1
+          }
+        }
+      ],
+      "childCount": 1
+    }
+  ]
+}

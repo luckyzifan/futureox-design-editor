@@ -1,0 +1,118 @@
+{
+  "date": "2026-10-06",
+  "base_commit": "082c9d43",
+  "status": "Research only. All four runtime optimization candidates rejected; production font.rs and active WASM restored exactly. No commit/push.",
+  "decision": "Strong gains on the small working set do not offset repeatable or inconclusive high-cardinality regressions. Current production retains the constrained-Hug measurement cost. No additional rounds were run to select favorable samples.",
+  "restored": {
+    "font_rs_sha256": "b909921b6481b6df8e807996c965e846462bdd2422be6af5af8b9b2542170da9",
+    "wasm": {
+      "bytes": 4450715,
+      "sha256": "20097d5fb84333fa9abbe99b4950f6cb1dc1fde6ed15212471034a903118abd3"
+    },
+    "locations": "src/generated/design-kernel,public/kernel,dist/assets,dist/kernel all match baseline WASM. Generated JS/d.ts match saved baseline. git diff font.rs is empty.",
+    "retained_changes": [
+      "native and real-WASM pinned-baseline rich-text regression tests",
+      "native benchmark example",
+      "concise research/documentation record"
+    ]
+  },
+  "hotspot": {
+    "method": "Temporary debug-native face/shape/outline counters and Instant timers; diagnostic overhead included, not release performance evidence. Instrumented sources/logs retained separately, removed from production code.",
+    "utf16_256_before": {
+      "intrinsic_face_calls": 450,
+      "wrapped_face_calls": 685,
+      "outlined_wrapped_face_calls": 909,
+      "intrinsic_shape_calls": 1,
+      "wrapped_shape_calls": 7,
+      "intrinsic_outline_calls": 0,
+      "wrapped_outline_calls": 0,
+      "render_outline_calls": 224
+    },
+    "after": "Face construction1 per layout for this single-face fixture; shape and outline counts unchanged. Baseline face/setup accounted for roughly96–98% of measured debug layout time. Measurement already skipped outlines before this change."
+  },
+  "candidate_contract": "All candidates used only layout-call-local immutable font bytes, exact(font ID,f32 weight bits), no font-byte clone, no persistent cache, no dependency/lock changes and unchanged existing glyph/line/outline budgets. Fixed index0/onlywght are current constructor parameters. At most16 cachedFaces include real owned GSUB/GPOS metadata, not just16 pointers.",
+  "experiments": [
+    {
+      "name": "FIFO16",
+      "source": "font-candidate-fifo.rs",
+      "wasm": "candidate-fifo.wasm",
+      "native": "native-candidate-fifo-benchmark",
+      "result": "Rejected: nowrap40weights +21.4–23.3%,80weights +13.0–14.0% in2rounds. Small-workset256-unit constrained WASM12.96–16.21ms→0.502–0.564ms and native10.31–11.95ms→0.370–0.414ms are rejected-candidate data, not a shipped gain.",
+      "validation": "279native/187frontend;91geometry/error cases and12pixel hashes equal. Native16/WASM16 ordinary cases plus6wrap/5nowrap pressure cases each compared over2rounds."
+    },
+    {
+      "name": "Preflight and Cow-owned bypass",
+      "source": "guarded/font-candidate.rs",
+      "wasm": "guarded/candidate.wasm",
+      "native": "guarded/native-candidate-benchmark",
+      "design": "Inspect at most16 borrowed primary/run/fallback keys;17th disables caching. Original Face returned through Cow::Owned on bypass, no16-entry scan orIDclone.",
+      "result": "Rejected: nowrap17 +6.4/+8.1%,40 +11.1/+4.2%,80 +2.5/+5.5%.",
+      "validation": "3cache/preflight+2golden native tests;93geometry/error cases+12pixels equal. Full native/WASM/pressure2rounds; no full-suite acceptance claim for this revision."
+    },
+    {
+      "name": "Current-face temporary slot",
+      "source": "temporary/font-candidate.rs",
+      "wasm": "temporary/candidate.wasm",
+      "design": "Same preflight; disabled lookup drops/reconstructs the temporary Face every time and returns a reference, never a reuse hit.",
+      "result": "Rejected early: nowrap17 +9.0/+3.2%,40 +2.6/+3.9%,80 +3.3/+6.6%.",
+      "validation": "2nowrap pressure rounds with fixed geometry/patch hashes. No native build/full suite or93-case matrix claimed for this rejected revision."
+    },
+    {
+      "name": "Scoped with_face closure",
+      "source": "scoped/font-candidate.rs",
+      "wasm": "scoped/candidate.wasm",
+      "design": "Same preflight/dynamic cap; disabled branch constructs a local original Face and returns only callback result(bool/ascent/ownedGlyphBuffer/outline side effect). No ownedFace crosses the cache API.",
+      "result": "Rejected mixed evidence: nowrap40 p50 +6.50/-0.17%,p95 +1.85/+14.47%;80 p50 +13.43/-0.42%,p95 -4.31/+20.70%;wrap40p50 +0.71/+3.85%.",
+      "validation": "93geometry/error cases and12pixel hashes equal; wrap6/nowrap5 pressure cases compared over2rounds. No new native build/full-suite or ordinary16-case performance claim."
+    }
+  ],
+  "performance_method": {
+    "runtime": "Same shared Linux x86_64; Rust1.96.0 optimized native/WASM, Bun1.4.0; jobs1,CARGO_INCREMENTAL=0, stable target/profile.",
+    "sampling": "Fresh serial processes within each phase: B1/C1/C2/B2,5warmups,31sorted means of4calls;p50index15/p95index29. Own compilation/tests were not concurrent with timing, but shared-host CPU is not isolated.",
+    "retention": "44raw performance files,12648sample means/50592timed calls audited for finite sorted samples and quantile indices. All stages, failed experiments and noisy tails preserved; all-raw-audit.json records hashes.",
+    "scope": "Native clone+resolve and WASM JSON resolve_layout have different timed boundaries. No FPS, production event-latency, RSS or peak-allocation claim.",
+    "pressure_note": "A run-weight count excludes base style400 and possible fallback keys;16run weights can already mean17actual/potentialFace keys.",
+    "scripts": [
+      "frontend/design-client/scripts/benchmark-text-hug-limits.ts",
+      "design-studio/crates/design-kernel/examples/benchmark_text_measure.rs",
+      "private pressure.mjs,pressure-nowrap.mjs,equivalence.mjs,summarize.py"
+    ]
+  },
+  "equivalence": "Matrices cover signed indent/letterSpacing, richtext sizes/weights/colors/decorations, paragraphs, existing bidi/alignment outputs, real DejaVu+Noto Arabic/Hebrew/CJK fallback, same-ID font replacement/restoration, dormant/reached16missing fallbacks, empty-text laziness and text/run/line/outline error budgets. Equality preserves current behavior; it is not new UAX/Figma conformance acceptance. DejaVu was already on the host and is not bundled.",
+  "restored_validation": {
+    "native": {
+      "passed": 277,
+      "failed": 0,
+      "ignored": 0,
+      "log": "restored/native-all.log"
+    },
+    "frontend": {
+      "files": 33,
+      "passed": 187,
+      "failed": 0,
+      "log": "restored/frontend-all.log"
+    },
+    "focused_final": "After comment/import-only clarification, native2/2 and realWASM2/2 rechecked against restored baseline.",
+    "other_checks": "clippy all-targets -D warnings,fmt,typecheck,lint/style,Vite,foundation,catalog,diff all passed after restoration."
+  },
+  "setup_recoveries": [
+    "First temporary profile fixture omitted required height; corrected before diagnostic measurements; original panic log retained.",
+    "An independent shared-cache cleanup removed Cargo .crate archives although source trees remained. Offline build stopped before testing; restored same locked versions from original rsproxy registry without source/lock/dependency changes; no test failure claim.",
+    "Initial Biome invocation from repository root found nested configuration; rerun from frontend/design-client passed.",
+    "A comment-only cleanup initially used repository-relative paths from frontend cwd and found no file; rerun with absolute paths, no runtime change.",
+    "Final stronger Biome check requested sorting new-test imports; applied safe organize-imports and reran check/focused tests, no runtime change."
+  ],
+  "limits": [
+    "No browser/IME/GPU/Figma runtime or production acceptance.",
+    "No accepted performance improvement;082c9d43 correctness remains intact.",
+    "All optimization code and candidate-only internal tests removed from production."
+  ],
+  "evidence_directory": "/workspace/shared/core-validation-font-measure",
+  "retained_file_hashes": {
+    "design-studio/crates/design-kernel/examples/benchmark_text_measure.rs": "cc5df61fcd73c950703e345c195d1c62adf6431d1cdeeefef9773b5188601c5e",
+    "design-studio/crates/design-kernel/tests/text_face_reuse.rs": "95e5feab400d6939525c70dc3a997640ebeeb17efe836eac5654a83131f054d9",
+    "frontend/design-client/src/text-face-reuse.test.ts": "8608c2617f5cb324ac4283970e46d9fa4053e49a37c0cf449a20cd5907a13d18",
+    "docs/architecture/design-editor.md": "28ee3ee840ab8930db62c091c04a4fbbc8f0e4db0a23c4389dae84f5a04149a4",
+    "testing/api/README.md": "2339d62f738116e019cdb069ecb22f24a88f6e310f3fcaa392e090892509e737"
+  }
+}

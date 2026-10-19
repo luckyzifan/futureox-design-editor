@@ -1,0 +1,520 @@
+{
+  "date": "2026-10-06",
+  "scope": "CPU point picking and geometric ancestor fill constraints; retained smooth corners only",
+  "base_commit": "a7f78594",
+  "status": "complete; validated and frozen; no commit/push",
+  "change": {
+    "fill": "f64 point±1/64 CSS px guard; replace a smooth subarc only when its complete transformed monotone box is outside one guard half-plane. Preserve full-adaptive signed winding and existing inclusive 1e-9 ancestor edge predicate.",
+    "stroke": "Keep complete local centerline flatten and expansion; unchanged dash/offset, width profile, cap/join, inside/outside, and 5 CSS px outline halo. Skip unnecessary centerline flatten if no visible positive-width strokes.",
+    "resource": "No persistent cache; same tolerance and subdivision limits; f64 guard does not clamp large absolute device points to render Rect.",
+    "errors": "Input/stroke parameter and smooth coordinate-precision validation retained. Query-irrelevant subdivision budget errors may disappear because the corresponding geometry is no longer generated; no claim of exact old Err parity.",
+    "unmodified": "GPU, SVG, Boolean, scene serialization, full Path::flatten, bounds, rendering pipeline and frontend picking/index logic"
+  },
+  "evidence": {
+    "hotspot": "Native unoptimized kernel diagnostic: full flatten p50 2.808ms, winding 0.130ms, full hit 2.874ms; full contour8195points. Candidate hit0.010526ms while full flatten2.891ms and8195points unchanged. Native diagnostic is not a release-native benchmark.",
+    "guard_not_stroke": "Unit counterexample shows shortened guarded fill perimeter differs from full by >1000 device units, so it must never be used for stroke dash/profile arc-length.",
+    "native_point_comparisons": {
+      "affine_original_vertices_midpoints_nearby": 4150,
+      "complete_stroke_grid": 2704,
+      "zero_hidden_stroke_smoothing": 128,
+      "compound_signed_winding": 1156
+    },
+    "wasm_equivalence": {
+      "boolean_comparisons": 21042,
+      "nested_query_ids": 50,
+      "differences": 0,
+      "baseline_wasm_sha256": "e4a0ba77c1af2af8d636290d7d03d028d6c293940ffbe21bf1f488c200c82110",
+      "candidate_wasm_sha256": "5acc2137f384caeda988dc9f58131d522572cc7c2bf89bbef121cef95feb4571"
+    },
+    "render_equivalence": {
+      "cases": 4,
+      "differences": 0,
+      "scope": "baseline-smooth/current-smooth byte SHA256 and all stats equal; same pre/post point optimization release WASM"
+    },
+    "coverage": [
+      "reflection, shear, nonuniform and rank-one transforms",
+      "±3e9 absolute device coordinates",
+      "high zoom implicit reference and full-polyline vertices/edge midpoints",
+      "zero radius, tiny shape, zero/near-zero smoothing",
+      "compound smooth inner contours, both orientations and signed winding",
+      "dash, dashOffset, widthProfile, center/inside/outside, butt/round/square, miter/round/bevel, 0/5px halo",
+      "nested clip/shape mask, pointer/zoom changes, frame box versus fill semantics",
+      "hidden invalid stroke and unattainable smooth coordinate precision errors"
+    ]
+  },
+  "checks": {
+    "native_all": {
+      "exit_code": 0,
+      "passed": 260,
+      "failed": 0,
+      "ignored": 0,
+      "new_tests": 7,
+      "log": "native-all.log"
+    },
+    "wasm_build": {
+      "exit_code": 0,
+      "rust": "1.96.0",
+      "wasm_bindgen": "0.2.128",
+      "jobs": 1,
+      "sha256": "5acc2137f384caeda988dc9f58131d522572cc7c2bf89bbef121cef95feb4571",
+      "log": "wasm-build.log"
+    },
+    "frontend": {
+      "exit_code": 0,
+      "files": 30,
+      "passed": 174,
+      "new_tests": 3,
+      "log": "frontend-all.log"
+    },
+    "typecheck": {
+      "exit_code": 0,
+      "log": "typecheck.log"
+    },
+    "vite_build": {
+      "exit_code": 0,
+      "log": "frontend-build.log"
+    },
+    "browser": "not run; user validates in own browser",
+    "gpu": "not run",
+    "figma": "not run",
+    "clippy": {
+      "exit_code": 0,
+      "log": "clippy.log"
+    },
+    "fmt": {
+      "exit_code": 0,
+      "log": "fmt.log"
+    },
+    "lint": {
+      "exit_code": 0,
+      "log": "lint.log",
+      "scope": "two added TypeScript test/benchmark files; no warnings"
+    },
+    "foundation": {
+      "exit_code": 0,
+      "log": "foundation.log"
+    },
+    "catalog": {
+      "exit_code": 0,
+      "log": "catalog.log"
+    },
+    "diff": {
+      "exit_code": 0,
+      "log": "diff.log"
+    }
+  },
+  "performance": {
+    "environment": "Shared Linux x86_64 dot cloud, Bun1.4.0, real optimized Rust1.96.0 WASM. No isolated CPU/governor claim.",
+    "method": "Same script, inputs and loader; WASM_PATH saved full-adaptive picking reference. Two serialized baseline/current rounds after compilation/test workloads. 5warmups,31samples,8queries/sample; nested2queries/sample. Per-query time; p50 middle, p95 nearest-rank index29. Quantiles are of per-batch mean query times, not individual event latency samples. Timed cases are fill-only smooth shapes and smooth clip/mask ancestry; active-stroke and ordinary-vector performance are not covered.",
+    "conclusion": "Stable reduction for sampled smooth fill/ancestor queries; highzoom fill p50~1.97–2.01ms to~0.0070ms, nested8levels~31.15–32.41ms to~0.13–0.21ms. No full-stroke, general geometry, FPS, productionp95, input latency or peak-memory claim.",
+    "results": [
+      {
+        "radius": 1,
+        "zoom": 1,
+        "outside": false,
+        "selection": {
+          "p50Ms": {
+            "baseline": [
+              0.027075124999999645,
+              0.026946875000000148
+            ],
+            "current": [
+              0.0126659999999994,
+              0.011584625000001125
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              0.2657613750000003,
+              0.05139125
+            ],
+            "current": [
+              0.03511624999999974,
+              0.03478637499999948
+            ]
+          }
+        },
+        "ancestor": {
+          "p50Ms": {
+            "baseline": [
+              0.016513249999999147,
+              0.021449999999999747
+            ],
+            "current": [
+              0.007719999999999061,
+              0.008860624999998734
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              0.033669874999999294,
+              0.031199250000000234
+            ],
+            "current": [
+              0.04089649999999878,
+              0.015749500000000083
+            ]
+          }
+        }
+      },
+      {
+        "radius": 1,
+        "zoom": 1,
+        "outside": true,
+        "selection": {
+          "p50Ms": {
+            "baseline": [
+              0.03059537499999898,
+              0.024823749999999478
+            ],
+            "current": [
+              0.005265125000001092,
+              0.0052514999999999645
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              0.03874375000000008,
+              0.03589737499999934
+            ],
+            "current": [
+              0.026393499999999293,
+              0.007235624999999857
+            ]
+          }
+        },
+        "ancestor": {
+          "p50Ms": {
+            "baseline": [
+              0.012753874999999582,
+              0.012682374999998913
+            ],
+            "current": [
+              0.005439250000000229,
+              0.005648250000000132
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              0.025077125000001033,
+              0.019125374999999778
+            ],
+            "current": [
+              0.014847874999999178,
+              0.013185749999999885
+            ]
+          }
+        }
+      },
+      {
+        "radius": 20,
+        "zoom": 1,
+        "outside": false,
+        "selection": {
+          "p50Ms": {
+            "baseline": [
+              0.031635624999999834,
+              0.0288232500000003
+            ],
+            "current": [
+              0.00665462499999947,
+              0.00657474999999863
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              0.0460932500000002,
+              0.03696399999999933
+            ],
+            "current": [
+              0.01478912500000007,
+              0.01195762500000086
+            ]
+          }
+        },
+        "ancestor": {
+          "p50Ms": {
+            "baseline": [
+              0.04410662499999951,
+              0.03400962499999949
+            ],
+            "current": [
+              0.007771375000000802,
+              0.010038500000000283
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              0.0670868750000011,
+              0.08003562499999894
+            ],
+            "current": [
+              0.04230674999999984,
+              0.01570450000000001
+            ]
+          }
+        }
+      },
+      {
+        "radius": 20,
+        "zoom": 1,
+        "outside": true,
+        "selection": {
+          "p50Ms": {
+            "baseline": [
+              0.07219699999999918,
+              0.05884212499999819
+            ],
+            "current": [
+              0.005809750000000946,
+              0.009446500000001024
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              0.10747424999999922,
+              0.09334499999999935
+            ],
+            "current": [
+              0.024240499999999443,
+              0.012343250000000694
+            ]
+          }
+        },
+        "ancestor": {
+          "p50Ms": {
+            "baseline": [
+              0.044629874999998265,
+              0.03312837499999688
+            ],
+            "current": [
+              0.006211625000000609,
+              0.006229249999998743
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              0.05799462499999919,
+              0.07937712499999705
+            ],
+            "current": [
+              0.008796625000000446,
+              0.012246875000000657
+            ]
+          }
+        }
+      },
+      {
+        "radius": 2000,
+        "zoom": 32,
+        "outside": false,
+        "selection": {
+          "p50Ms": {
+            "baseline": [
+              1.9705661250000048,
+              2.0097020000000043
+            ],
+            "current": [
+              0.0070152500000002505,
+              0.0070278749999985735
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              3.374159000000006,
+              2.304277000000006
+            ],
+            "current": [
+              0.010123500000000618,
+              0.017920249999999527
+            ]
+          }
+        },
+        "ancestor": {
+          "p50Ms": {
+            "baseline": [
+              1.9846569999999986,
+              1.9765448750000019
+            ],
+            "current": [
+              0.007203125000000199,
+              0.007163124999999937
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              2.330977125000004,
+              2.4357858750000076
+            ],
+            "current": [
+              0.009088249999999576,
+              0.014985874999998927
+            ]
+          }
+        }
+      },
+      {
+        "radius": 2000,
+        "zoom": 32,
+        "outside": true,
+        "selection": {
+          "p50Ms": {
+            "baseline": [
+              3.8582981250000046,
+              3.7036407500000053
+            ],
+            "current": [
+              0.0067987499999997425,
+              0.006956499999999366
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              6.317653000000007,
+              4.043627624999999
+            ],
+            "current": [
+              0.008449874999998386,
+              0.012851500000000016
+            ]
+          }
+        },
+        "ancestor": {
+          "p50Ms": {
+            "baseline": [
+              2.142947750000019,
+              1.9811792499999683
+            ],
+            "current": [
+              0.007256874999999496,
+              0.010805875000000853
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              2.832602749999978,
+              2.484204625000018
+            ],
+            "current": [
+              0.009073250000000144,
+              0.014573999999999643
+            ]
+          }
+        }
+      },
+      {
+        "depth": 1,
+        "result": "leaf",
+        "nestedHit": {
+          "p50Ms": {
+            "baseline": [
+              4.761164999999892,
+              3.8220910000000003
+            ],
+            "current": [
+              0.02961299999999767,
+              0.03746550000000326
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              6.793276000000105,
+              5.1365189999999075
+            ],
+            "current": [
+              0.0812634999999986,
+              0.1115649999999988
+            ]
+          }
+        }
+      },
+      {
+        "depth": 8,
+        "result": "leaf",
+        "nestedHit": {
+          "p50Ms": {
+            "baseline": [
+              32.40843599999994,
+              31.1526194999999
+            ],
+            "current": [
+              0.20682699999998988,
+              0.13095350000000394
+            ]
+          },
+          "p95Ms": {
+            "baseline": [
+              48.69216899999992,
+              36.69714950000025
+            ],
+            "current": [
+              0.33405799999999886,
+              0.2950710000000001
+            ]
+          }
+        }
+      }
+    ],
+    "script": "frontend/design-client/scripts/benchmark-precise-picking.ts",
+    "records": [
+      "performance-baseline-1.json",
+      "performance-current-1.json",
+      "performance-baseline-2.json",
+      "performance-current-2.json",
+      "native-stage-baseline.txt",
+      "native-stage-current.txt",
+      "native-stage-baseline-repeat.txt",
+      "probe.rs"
+    ],
+    "reference_wasm_sha256": "e4a0ba77c1af2af8d636290d7d03d028d6c293940ffbe21bf1f488c200c82110"
+  },
+  "review": "Independent read-only static review accepted the half-plane winding argument and retained full-stroke contract; requested compound/error cases added. Reviewer independently verified all21042booleans,50nonempty nested IDs, both actual WASM hashes,260/174 test logs and all benchmark sample/quantile calculations.",
+  "setup_recoveries": [
+    "Initial new test fixture had widthProfile width instead of required left/right and incorrectly assumed zero-radius rectangle stores4 rather than8points; corrected fixture, retained initial failure log, then full suite passed.",
+    "Running one test invocation outside repository selected a different cached registry source and rebuilt dependencies; subsequent tests/builds ran from repository root. No lockfile changes.",
+    "A documentation-only final foundation recheck lacked the toolchain PATH; retained foundation-path-setup-error.log, sourced the existing environment, and reran foundation/catalog/diff successfully."
+  ],
+  "cache_cleanup": {
+    "available_before": 2138918912,
+    "threshold": 2147483648,
+    "removed": [
+      "/workspace/shared/core-validation-glass/target/debug/incremental/futureox_design_kernel-0pfwqdztq9gms",
+      "/workspace/shared/core-validation-glass/target/debug/incremental/futureox_design_kernel-1gzk5wo8iatd1",
+      "/workspace/shared/core-validation-glass/target/debug/incremental/futureox_design_kernel-1nwa8hwb7n5tb",
+      "/workspace/shared/core-validation-glass/target/debug/incremental/futureox_design_kernel-3jkect1akkoav"
+    ],
+    "available_after": 2467340288,
+    "kept": "source, RustFS, toolchains, binaries, logs and evidence"
+  },
+  "evidence_directory": "/workspace/shared/core-validation-precise-picking",
+  "files": [
+    {
+      "path": "design-studio/crates/design-kernel/src/lib.rs",
+      "sha256": "a8c410a860dc3a6cc1bf1bffa0f364454e96663397533aac3ecafa210407c66d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/path.rs",
+      "sha256": "250aff63fdbafcc41e5a4caa8e7e5cf388b9b4f31517fdab692615c8911d3359"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/point_guard.rs",
+      "sha256": "7d721931a5fac36740eed2e33e6204d1693ebea507b9ff73c7a8019923c567df"
+    },
+    {
+      "path": "frontend/design-client/src/precise-picking.test.ts",
+      "sha256": "5c7837aa211a281178084aea4e87729d18b67f772b4affee55432a94a9a234ca"
+    },
+    {
+      "path": "frontend/design-client/scripts/benchmark-precise-picking.ts",
+      "sha256": "93a63f083dacd81b31a4fcf7df01d34de4329df4f7b7818d46a91244506c2c06"
+    },
+    {
+      "path": "docs/architecture/design-editor.md",
+      "sha256": "b6492bffe9c65bea845b332162497973b67b489d240587373bc1c0c0a04b0c32"
+    },
+    {
+      "path": "testing/api/README.md",
+      "sha256": "2108cfc9345bd097feb2c29536e71b7061b1a2f699464d7db81dffa068772b94"
+    }
+  ]
+}

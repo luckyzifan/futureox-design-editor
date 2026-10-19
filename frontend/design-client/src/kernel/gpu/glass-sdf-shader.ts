@@ -1,7 +1,7 @@
 /**
  * 玻璃效果 GPU 片元化 - 完整 Shader 实现
  *
- * 基于 Figma shader_71 逆向分析：
+ * 实现要点：
  * - 平滑圆角 SDF（四角独立 radii + smoothings）
  * - 法线计算
  * - 折射（Snell's law）
@@ -149,7 +149,7 @@ fn computeRefraction(
 /**
  * 八档色散（模拟不同波长的折射率差异）
  *
- * Figma shader_71 实现：
+ * 色散实现：
  * - 红光折射率最低（偏移最小）
  * - 蓝光折射率最高（偏移最大）
  * - 中间按波长线性插值

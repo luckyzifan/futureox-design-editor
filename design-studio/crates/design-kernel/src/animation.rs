@@ -66,8 +66,8 @@ impl Easing {
             Err("Invalid animation easing".into())
         }
     }
-    /// Figma's 21 named easing presets (recovered from its JS easing
-    /// module): standard Penner equations, each in/out/inOut.
+    /// Figma's 21 named easing presets: standard Penner equations, each
+    /// in/out/inOut.
     pub fn named_curve(curve: &str, t: f64) -> Option<f64> {
         let result = match curve {
             "ease-in-sine" => 1. - (t * std::f64::consts::PI / 2.).cos(),

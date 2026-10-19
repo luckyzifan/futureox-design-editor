@@ -1,0 +1,460 @@
+{
+  "date": "2026-10-07",
+  "recordedAt": "2026-10-07T08:09:15.395465+00:00",
+  "status": "research_and_mathematical_probes_only",
+  "fullAcceptancePassed": false,
+  "priorRuntimeEvidence": "testing/review/design-kernel-figma-2026-10-07.json",
+  "scope": "Analyze the current precision/Figma gaps one by one using primary literature, public book chapters/metadata and official standards; do not implement or certify the proposals.",
+  "productionChanges": [],
+  "unchangedPriorSourceSnapshots": 20,
+  "researchDocument": "docs/architecture/design-kernel-hard-problems.md",
+  "researchDocumentSha256": "4122f404c56eb30720989d8d0cca1755600e9cb0d8582408662d329ef512a740",
+  "documentCoverage": "Only the new research section and corrected numeric-vector count; historical sections not recertified.",
+  "probes": {
+    "filter": "unit-area tent integrated against the source/destination unit-pixel overlap",
+    "rationalKernelChecks": [
+      {
+        "radius": "1/8",
+        "numerators": [
+          1,
+          46,
+          1
+        ],
+        "denominator": 48,
+        "sum": "1"
+      },
+      {
+        "radius": "1/4",
+        "numerators": [
+          1,
+          22,
+          1
+        ],
+        "denominator": 24,
+        "sum": "1"
+      },
+      {
+        "radius": "1/2",
+        "numerators": [
+          1,
+          10,
+          1
+        ],
+        "denominator": 12,
+        "sum": "1"
+      },
+      {
+        "radius": "1",
+        "numerators": [
+          1,
+          4,
+          1
+        ],
+        "denominator": 6,
+        "sum": "1"
+      },
+      {
+        "radius": "5/2",
+        "numerators": [
+          1,
+          25,
+          72,
+          104,
+          72,
+          25,
+          1
+        ],
+        "denominator": 300,
+        "sum": "1"
+      },
+      {
+        "radius": "3",
+        "numerators": [
+          1,
+          6,
+          12,
+          16,
+          12,
+          6,
+          1
+        ],
+        "denominator": 54,
+        "sum": "1"
+      },
+      {
+        "radius": "17/4",
+        "numerators": [
+          1,
+          123,
+          480,
+          864,
+          1248,
+          1504,
+          1248,
+          864,
+          480,
+          123,
+          1
+        ],
+        "denominator": 6936,
+        "sum": "1"
+      },
+      {
+        "radius": "8",
+        "numerators": [
+          1,
+          6,
+          12,
+          18,
+          24,
+          30,
+          36,
+          42,
+          46,
+          42,
+          36,
+          30,
+          24,
+          18,
+          12,
+          6,
+          1
+        ],
+        "denominator": 384,
+        "sum": "1"
+      }
+    ],
+    "coordinateCounterexample": {
+      "pixelCenter": 0.5,
+      "authoredTranslation": 0.50000001,
+      "exactLocal": "-90071993/9007199254740992",
+      "exactFloor": -1,
+      "binary32InverseTranslation": -0.5,
+      "binary32Local": 0.0,
+      "binary32Floor": 0,
+      "scope": "Valid affine arithmetic counterexample; not a new full-frame rendering test or attribution of every existing texture difference."
+    },
+    "runtimeAcceptance": "Not run; these are analysis-only mathematical probes."
+  },
+  "probeCommand": "python3 .local/design-validation/research-7ca27d34-8674-4e2e-af94-75afce206983/probes.py",
+  "probeExit": 0,
+  "runtimeTestsThisTurn": "Not rerun: production and test sources unchanged; do not attribute previous 320/202 passes to this research turn.",
+  "references": [
+    {
+      "title": "Goldberg, What Every Computer Scientist Should Know About Floating-Point Arithmetic",
+      "year": 1991,
+      "url": "https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html",
+      "type": "paper, authorized reprint",
+      "scopeBoundary": "Rounding/cancellation principles; not a complete renderer proof."
+    },
+    {
+      "title": "Higham, Accuracy and Stability of Numerical Algorithms, second edition",
+      "year": 2002,
+      "url": "https://nhigham.com/accuracy-and-stability-of-numerical-algorithms/",
+      "type": "book, author page and available preview",
+      "scopeBoundary": "Book metadata/rounding-error foundations checked; not claimed to have read the full paid book."
+    },
+    {
+      "title": "WGSL 15.7.5 Reassociation and Fusion",
+      "year": null,
+      "url": "https://www.w3.org/TR/WGSL/#reassociation-and-fusion",
+      "type": "official specification",
+      "scopeBoundary": "Source parentheses do not guarantee evaluation identity."
+    },
+    {
+      "title": "Neal, Fast Exact Summation Using Small and Large Superaccumulators",
+      "year": 2015,
+      "url": "https://arxiv.org/abs/1505.05571",
+      "type": "paper, author preprint",
+      "scopeBoundary": "Exact sum and final rounding; exact dot product must also preserve product bits."
+    },
+    {
+      "title": "Demmel, Ahrens, Nguyen, Efficient Reproducible Floating Point Summation and BLAS",
+      "year": 2016,
+      "url": "https://www2.eecs.berkeley.edu/Pubs/TechRpts/2016/EECS-2016-121.html",
+      "type": "author institution technical report",
+      "scopeBoundary": "Reproducibility and reduction design; not automatic correctly rounded convolution."
+    },
+    {
+      "title": "Shewchuk, Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates",
+      "year": 1997,
+      "url": "https://www.cs.cmu.edu/~quake/robust.html",
+      "type": "author research page and implementation",
+      "scopeBoundary": "Adaptive exact-predicate method; needs a new proof for this affine/floor decision."
+    },
+    {
+      "title": "Manson and Schaefer, Analytic Rasterization of Curves with Polynomial Filters",
+      "year": 2013,
+      "url": "https://josiahmanson.com/research/scanline_rasterization/scanline_rasterization.pdf",
+      "type": "paper, author-hosted preprint",
+      "scopeBoundary": "Boundary integrals; nonoverlapping-shape assumption must not be omitted."
+    },
+    {
+      "title": "Figma, Desperately seeking squircles",
+      "year": 2017,
+      "url": "https://www.figma.com/blog/desperately-seeking-squircles/",
+      "type": "official engineering article",
+      "scopeBoundary": "Bezier/circular smoothing construction; current implementation still requires fresh contour validation."
+    },
+    {
+      "title": "Farin, Curves and Surfaces for CAGD, fifth edition",
+      "year": 2002,
+      "url": "https://www.farinhansford.com/books/cagd/toc.html",
+      "type": "book, author table of contents; publisher metadata checked",
+      "scopeBoundary": "Bezier derivatives/subdivision foundations; not a source of a certified current Figma formula."
+    },
+    {
+      "title": "Rong and Tan, Jump Flooding in GPU with Applications to Voronoi Diagram and Distance Transform",
+      "year": 2006,
+      "url": "https://www.comp.nus.edu.sg/~tants/jfa.html",
+      "type": "author project page and paper",
+      "scopeBoundary": "Approximate grid distance transform; not proven as the cause of current backend drift."
+    },
+    {
+      "title": "Felzenszwalb and Huttenlocher, Distance Transforms of Sampled Functions",
+      "year": 2012,
+      "url": "https://cs.brown.edu/people/pfelzens/papers/dt-final.pdf",
+      "type": "paper, author-hosted full text",
+      "scopeBoundary": "Exact sampled-grid EDT; not exact distance to continuous vector boundaries."
+    },
+    {
+      "title": "Cao, Tang, Mohamed, Tan, Parallel Banding Algorithm",
+      "year": 2010,
+      "url": "https://www.comp.nus.edu.sg/~tants/pba.html",
+      "type": "author project page, paper and addendum",
+      "scopeBoundary": "Exact GPU EDT candidate; CUDA performance not extrapolated to WebGL2."
+    },
+    {
+      "title": "Physically Based Rendering, fourth edition: Specular Reflection and Transmission",
+      "year": 2023,
+      "url": "https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission",
+      "type": "book, public chapter",
+      "scopeBoundary": "Snell/Fresnel reference; does not imply Figma uses that physical model."
+    },
+    {
+      "title": "Figma Effect API",
+      "year": null,
+      "url": "https://developers.figma.com/docs/plugins/api/Effect/",
+      "type": "official API documentation",
+      "scopeBoundary": "Glass/texture/progressive blur parameter definitions; implementation is not disclosed."
+    },
+    {
+      "title": "Perlin, Improved Noise reference implementation",
+      "year": 2002,
+      "url": "https://mrl.cs.nyu.edu/~perlin/noise/",
+      "type": "author code corresponding to SIGGRAPH paper",
+      "scopeBoundary": "Candidate smooth gradient noise; not evidence that Figma uses it."
+    },
+    {
+      "title": "Jarzynski and Olano, Hash Functions for GPU Rendering",
+      "year": 2020,
+      "url": "https://jcgt.org/published/0009/03/02/paper.pdf",
+      "type": "paper, journal full text",
+      "scopeBoundary": "Deterministic integer hash candidates/statistical quality; not a visual matching guarantee."
+    },
+    {
+      "title": "Physically Based Rendering, fourth edition: Texture Sampling and Antialiasing",
+      "year": 2023,
+      "url": "https://www.pbr-book.org/4ed/Textures_and_Materials/Texture_Sampling_and_Antialiasing",
+      "type": "book, public chapter",
+      "scopeBoundary": "Sampling footprint/bandwidth analysis."
+    },
+    {
+      "title": "Physically Based Rendering, fourth edition: Image Texture",
+      "year": 2023,
+      "url": "https://www.pbr-book.org/4ed/Textures_and_Materials/Image_Texture",
+      "type": "book, public chapter",
+      "scopeBoundary": "MIP/EWA candidates; weights, rounding and boundaries must be separately specified for byte parity."
+    },
+    {
+      "title": "Porter and Duff, Compositing Digital Images",
+      "year": 1984,
+      "url": "https://keithp.com/~keithp/porterduff/p253-porter.pdf",
+      "type": "original paper, hosted reprint",
+      "scopeBoundary": "Premultiplied alpha and explicit assumptions about subpixel overlap."
+    },
+    {
+      "title": "W3C Compositing and Blending Level 1",
+      "year": null,
+      "url": "https://www.w3.org/TR/compositing-1/",
+      "type": "official specification",
+      "scopeBoundary": "Compositing/group semantics; not Figma intermediate quantization specification."
+    },
+    {
+      "title": "ICC.1 v4 Specification",
+      "year": null,
+      "url": "https://www.color.org/v4spec/",
+      "type": "official standard index",
+      "scopeBoundary": "Color profile contract; current constant-image tests do not establish general image resampling."
+    },
+    {
+      "title": "ITU-R BT.2100",
+      "year": null,
+      "url": "https://www.itu.int/rec/R-REC-BT.2100",
+      "type": "official recommendation index",
+      "scopeBoundary": "PQ/HLG and HDR signal definitions."
+    }
+  ],
+  "sourceSnapshots": [
+    {
+      "path": "design-studio/crates/design-kernel/src/stroke.rs",
+      "sha256": "4c4662ea1038b1365ea484c6955adddcb43f53ae7bebe8b717e3a3c0e6d45894",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/effects.rs",
+      "sha256": "a1e6c6f045eddb783ff95fbdba0c10ed4914236efd51d6f3845d7bfd7cbd4cab",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/shaders/vector.wgsl",
+      "sha256": "7814da820d8bec23f53c062a2560f9d38dcf8d7d6e752bb49baa68d70fe9457e",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/vector.glsl",
+      "sha256": "3b3591b1052a934ee059b016dbf35fb61651a0427f23579eba87f475c24c23d2",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/stroke_normalization.rs",
+      "sha256": "40e554b3f5b8888e8ce11c2e154dc9645516ea2f233d30a574c470054f971d13",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/blur.rs",
+      "sha256": "62e7908d996d56cae94b7f927c534ab0b55494e5d23da2e5b76a8e6dd253c253",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/arithmetic.rs",
+      "sha256": "53eb8891a095207330425c0462d1eeecd8257e148290e1ddb93e9f7842cc89c5",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-gpu/tests/arithmetic.rs",
+      "sha256": "30003c8203ad8abf4124fbce6a0d8c2f6548091a60eed86fb02f9f1e8fc956ac",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/arithmetic-probe.ts",
+      "sha256": "c071fd8c8a25ffccd4131bed174ea0d8de6fc265f4c8e80b93f22e3a1cb019fd",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/scripts/generate-precision-vectors.py",
+      "sha256": "68a926ab879d4ae00cf39c2e93fa138db688c2812104cf61d48873d72db2c182",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "testing/fixtures/design/arithmetic-vectors.json",
+      "sha256": "238985a6c352d3e758a3a9516bab62f901b623da227dbb0c2f930564ac9780a9",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/scripts/compare-figma.py",
+      "sha256": "c65ec638a64707c2815f3be34154b4356b0b39c15d65681027d05bbb70e57d95",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "frontend/design-client/scripts/check-gpu-parity.ts",
+      "sha256": "f76dce60bb14add33e48169c111e2991d8783bc7b08cb7bdede81e4b62f66bfb",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/scripts/check-precision.py",
+      "sha256": "f6de54a3c4870e4a22fb0cccfd6249b8d1acbeedd8d3bc446ac84ae40ee63ddd",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/scripts/compare-precision-readbacks.py",
+      "sha256": "96c03f5c3b42adc46a1dd6de17877a7b1731b4717cf123e94a2b2b1f8f9320e4",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "testing/fixtures/design/precision-corpus.json",
+      "sha256": "6fb23baf460bdca7b40583fd896ff20502a3b72c4abdf300c08a4553cc1cd44d",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "testing/fixtures/design/sampling-vectors.json",
+      "sha256": "8f7a84422d94e1b55afbc63749fcceefb4bebae1bbc9aada1ca2297f83bd2856",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/path.rs",
+      "sha256": "250aff63fdbafcc41e5a4caa8e7e5cf388b9b4f31517fdab692615c8911d3359",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/scene.rs",
+      "sha256": "69047022cd3821c9ff4fb20d3a8c52d0a24e3d13770505f5af2857a4d28da51a",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-gpu/src/main.rs",
+      "sha256": "33e2931494068ca97cc7d7098629b5dd6622b6d76339364164dfb85b85d4075a",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/raster.rs",
+      "sha256": "13bbd41e7d5ffc94ddcf0e0ce346bc3ae16e78213da5e3809ac70ecc8f06e090",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/math.rs",
+      "sha256": "974bc077bf224bd742d458e3125c50e463663f5023993f735a2463497ecc6c30",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/blend.rs",
+      "sha256": "d6bd65ed3ca3d24dc2601f3a8da5bb89b71e924754b50d65fa15b6b12f2ba412",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/analytic.rs",
+      "sha256": "51f2f33771ec7a20637c3596eaa0cf12e5ac210479b72d6495f0875bb3fc48aa",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/color.rs",
+      "sha256": "c4e4cd192bc0ee58f9ce61aacdb2a3a83e678a1b98ef5ab39f252b381247bf96",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "design-studio/crates/design-gpu/src/compositor.rs",
+      "sha256": "6d2cb35cb0a9f9ed18e57f1434dd8e99531a2715965b4a7842baa055160211cb",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "sha256": "4eb58dd781c0bdb05d7b816ced0693dfcae770415ab1f9ab9da540df338df891",
+      "coverage": "Relevant symbols only; snapshot is not an exhaustive audit."
+    }
+  ],
+  "evidence": [
+    {
+      "path": ".local/design-validation/research-7ca27d34-8674-4e2e-af94-75afce206983/probes.py",
+      "sha256": "ff9da0ea2f18da36504c1d03e03dd7a04ed594b41f5c19c1a7832cf3726f0dd3"
+    },
+    {
+      "path": ".local/design-validation/research-7ca27d34-8674-4e2e-af94-75afce206983/probes.json",
+      "sha256": "0cebee659186f93598b88654601d3314ccf52856b764ec45d04acacc76d532d4"
+    }
+  ],
+  "priority": [
+    "Exact rational filter/reference at radius 2.5; expand domain only with capacity proof.",
+    "Texture cell/coordinate contract and staged glass readbacks.",
+    "Shared analytic coverage/compositor across native and browser APIs.",
+    "Current Figma smoothing contour and blur-response calibration.",
+    "Explicit effect parameters, nonuniform color-managed images and full combinations."
+  ],
+  "limits": [
+    "Literature supplies algorithms and assumptions, not private Figma internals.",
+    "Exact grid EDT is not continuous vector distance.",
+    "Reproducible accumulation is not necessarily exact or correctly rounded.",
+    "Better noise/filtering/physical rendering is not automatically Figma matching.",
+    "The lattice probe is an arithmetic counterexample, not a fresh full-frame attribution.",
+    "No performance claims from the cited CPU/CUDA benchmarks are transferred to this renderer."
+  ]
+}

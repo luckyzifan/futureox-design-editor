@@ -1,0 +1,609 @@
+{
+  "date": "2026-10-06",
+  "base_commit": "d479164f",
+  "status": "Locally validated correctness fix with explicit residual performance cost; no commit/push; not production performance acceptance",
+  "scope": "CPU constrained width-Hug/height-Hug text consistency; alignment semantics unchanged",
+  "contract": {
+    "bug": "Pinned NotoSansSC 中文中文中文,20px,LTR/start,indent25,wrap=true,maxWidth65: resolver returned65x27 while actual fixed-width layout yielded2/3/1 CJK lines and height81.",
+    "fix": "Determine clamped intrinsic width first; only when width and height are Hug, wrap enabled, and width narrowed, remeasure height at that width. Keep clamped intrinsic width, then enforce height limits.",
+    "reuse": "During one resolve call, store post-resize width/height for eligible nodes keyed by owned document map ID. Replay resize each iteration. No glyph/font/path data is retained. Fixed/Fill text still remeasures with current width.",
+    "invariants": "Solver mutates dimensions, transforms and constraints, not text/font/style/runs or text sizing modes/limits. Hug-to-Fixed mutations belong to flex/grid containers, and validated text cannot own those layouts. Components/variables resolve before layout in components::changes and renderer. Map lifetime ends before subsequent calls or clones.",
+    "budget": "At most one entry per eligible text node; at most20000 entries under the existing document node budget. Each entry has an owned stable node-ID string plus two f64 values and BTreeMap overhead. Existing68 iterations and glyph/line/outline limits retained.",
+    "non_changes": "font.rs, shaping, bidi, glyph positions, indent and alignment semantics, source UTF-16 ranges, negative-indent overflow, fixed-height, wrap=false, minWidth expansion, ordinary Hug, GPU/browser code, dependencies and lockfiles.",
+    "figma": "Official Figma help permits paragraph indentation only with left alignment. Core UI/validation/FIG import independently retain indent and alignment; docs do not establish whether Figma retains, ignores or clears stored indent after changing alignment. CSS start-margin geometry is not Figma evidence. This slice does not adopt CSS center/end behavior or normalize those combinations.",
+    "sources": [
+      "https://help.figma.com/hc/en-us/articles/360039956634-Explore-text-properties",
+      "https://developers.figma.com/docs/plugins/api/TextNode/",
+      "https://www.w3.org/TR/css-text-3/#text-indent-property"
+    ]
+  },
+  "validation": {
+    "red_native": "6 real semantic failures in native-red.log; retained original test binary. Earlier probe recorded27 vs81.",
+    "red_wasm": "Final first5 tests all fail against baseline WASM in wasm-red-expanded.log. Earlier4-failure run retained. Cache-specific tests added afterward are freshness/equivalence coverage, not counted as baseline reds.",
+    "green_focused": {
+      "native": 9,
+      "wasm": 7,
+      "logs": [
+        "native-reuse-focused.log",
+        "wasm-reuse-focused.log"
+      ]
+    },
+    "full_native": {
+      "passed": 275,
+      "failed": 0,
+      "ignored": 0,
+      "exit_code": 0,
+      "log": "native-all.log"
+    },
+    "full_frontend": {
+      "files": 32,
+      "passed": 185,
+      "failed": 0,
+      "log": "frontend-all-final.log"
+    },
+    "other_checks": {
+      "clippy": "passed all-targets -D warnings",
+      "fmt": "passed",
+      "lint": "passed zero warnings",
+      "typecheck": "passed",
+      "vite": "passed",
+      "foundation": "passed",
+      "catalog": "passed",
+      "diff": "passed"
+    },
+    "reference": "Literal20px CJK advances give independent line count. Additional geometry/pixel oracles use independently fixed width/height, not baseline pixels. Rich/paragraph fixtures use the same pinned font.",
+    "coverage": [
+      "signed indent,paragraph spacing,empty/CRLF,combining grapheme,rich size/weight/color/underline",
+      "min/max width/height,wrap=false,fixed height,minWidth expansion,oversized indivisible glyph",
+      "fractional exact-fit and true1e-9 deficit with signed letter spacing",
+      "nested Hug/Fill and sibling positions,repeated solve,clipped native/WASM pixels at0.25/1/1.375/4/1",
+      "supported CJK/Latin with alignment/direction flags preserve fixed-width geometry; not Hebrew/Arabic shaping acceptance",
+      "later text/fontSize/runs/maxWidth changes and missing-font failures recompute each call",
+      "component variant stable-ID rebuild and design-system modes binding fontSize before fresh layout"
+    ],
+    "uncached_equivalence": "24/24 successful exact patch snapshots match before/after reuse for vertical/horizontal/grid,start/stretch,120/180 parent width,absolute/constraint combinations and mixed cached Hug plus uncached Fill text. Also all16 benchmark output hashes match the uncached-correct candidate."
+  },
+  "performance": {
+    "environment": "Shared Linux x86_64, Rust1.96.0 optimized WASM, wasm-bindgen0.2.128, Bun1.4.0 and explicit executable recorded. No isolated CPU claim. Runs serialized in fresh processes; order baseline1,candidate1,candidate2,baseline2 before and after local reuse.",
+    "method": "16 cases:32/256 UTF-16 units times constrained-positive/zero/negative,no-wrap,fixed-height,unconstrained,min-expanded,fixed-width. Each5 warmups,31 sorted samples,4 calls/sample; p50index15,p95index29.3968 sample means retained across8 runs; these are not event-latency quantiles or FPS.",
+    "conclusion": "Initial correction raised constrained p50 to2.39–2.96 times the broken baseline. Call-local reuse reduces these samples substantially, but final32-unit cases remain44.6–66.8% slower and256-unit cases28.8–39.5% slower than baseline;256-unit p50 is12.19–13.90ms. Unaffected controls are mixed, including32-unit no-wrap9.7–21.5% slower. No no-regression, speedup-over-baseline, or production performance acceptance claim.",
+    "geometric_equivalence": "All128 fixed-width text-layout hashes across8 runs match by case; all16 corrected resolved-output hashes match before/after reuse.",
+    "memory": "All128 post-case WASM linear-memory capacity observations are37289984bytes. This is capacity, not RSS, peak temporary allocation or a bound on the new per-document map.",
+    "wasm_bytes": {
+      "baseline": 4448829,
+      "uncached_correct": 4448930,
+      "final": 4450715
+    },
+    "results": [
+      {
+        "utf16_length": 32,
+        "case": "constrained-positive",
+        "initial_baseline_p50_ms": [
+          1.503808499999998,
+          1.641270249999998
+        ],
+        "uncached_correct_p50_ms": [
+          4.102175000000003,
+          3.916105250000001
+        ],
+        "final_baseline_p50_ms": [
+          1.4375242499999956,
+          1.526717749999996
+        ],
+        "final_candidate_p50_ms": [
+          2.2887704999999983,
+          2.2071982500000047
+        ],
+        "final_baseline_p95_ms": [
+          2.1499685,
+          2.1703752499999993
+        ],
+        "final_candidate_p95_ms": [
+          2.9334792499999907,
+          3.236010499999999
+        ]
+      },
+      {
+        "utf16_length": 32,
+        "case": "constrained-zero",
+        "initial_baseline_p50_ms": [
+          1.3688722500000097,
+          1.4424177500000042
+        ],
+        "uncached_correct_p50_ms": [
+          3.6814170000000104,
+          3.8285330000000215
+        ],
+        "final_baseline_p50_ms": [
+          1.221915249999995,
+          1.1682217500000007
+        ],
+        "final_candidate_p50_ms": [
+          2.0385327500000017,
+          1.9044155000000274
+        ],
+        "final_baseline_p95_ms": [
+          1.74328675000001,
+          1.300748000000013
+        ],
+        "final_candidate_p95_ms": [
+          2.499954250000002,
+          2.2857045000000085
+        ]
+      },
+      {
+        "utf16_length": 32,
+        "case": "constrained-negative",
+        "initial_baseline_p50_ms": [
+          1.3413037499999803,
+          1.3147057500000017
+        ],
+        "uncached_correct_p50_ms": [
+          3.946677999999963,
+          3.89580275000003
+        ],
+        "final_baseline_p50_ms": [
+          1.3212522500000148,
+          1.2786852499999952
+        ],
+        "final_candidate_p50_ms": [
+          2.002056500000009,
+          1.9953347499999836
+        ],
+        "final_baseline_p95_ms": [
+          1.8855194999999867,
+          2.0273687499999937
+        ],
+        "final_candidate_p95_ms": [
+          2.7470282499999996,
+          3.3017692500000067
+        ]
+      },
+      {
+        "utf16_length": 32,
+        "case": "no-wrap",
+        "initial_baseline_p50_ms": [
+          1.3285072500000012,
+          1.3336237500000152
+        ],
+        "uncached_correct_p50_ms": [
+          1.3256507500000225,
+          1.2637399999999843
+        ],
+        "final_baseline_p50_ms": [
+          1.2399070000000165,
+          1.2613447500000063
+        ],
+        "final_candidate_p50_ms": [
+          1.5070089999999823,
+          1.3833192499999996
+        ],
+        "final_baseline_p95_ms": [
+          1.5455115000000035,
+          1.932736250000005
+        ],
+        "final_candidate_p95_ms": [
+          2.579228999999998,
+          1.8894280000000094
+        ]
+      },
+      {
+        "utf16_length": 32,
+        "case": "fixed-height",
+        "initial_baseline_p50_ms": [
+          1.321392000000003,
+          1.3674964999999872
+        ],
+        "uncached_correct_p50_ms": [
+          1.361661750000053,
+          1.236720000000048
+        ],
+        "final_baseline_p50_ms": [
+          1.2543307499999798,
+          1.189345750000001
+        ],
+        "final_candidate_p50_ms": [
+          1.4220109999999977,
+          1.404117499999984
+        ],
+        "final_baseline_p95_ms": [
+          1.3765517500000044,
+          1.280593500000009
+        ],
+        "final_candidate_p95_ms": [
+          2.367027749999977,
+          1.9628942500000335
+        ]
+      },
+      {
+        "utf16_length": 32,
+        "case": "unconstrained",
+        "initial_baseline_p50_ms": [
+          1.3734242500000278,
+          1.2265974999999685
+        ],
+        "uncached_correct_p50_ms": [
+          1.32261625000001,
+          1.294180249999954
+        ],
+        "final_baseline_p50_ms": [
+          1.407790250000005,
+          1.1890475000000151
+        ],
+        "final_candidate_p50_ms": [
+          1.2411510000000021,
+          1.378334499999994
+        ],
+        "final_baseline_p95_ms": [
+          1.8219179999999824,
+          1.490175999999991
+        ],
+        "final_candidate_p95_ms": [
+          1.506176499999981,
+          1.8479042499999991
+        ]
+      },
+      {
+        "utf16_length": 32,
+        "case": "min-expanded",
+        "initial_baseline_p50_ms": [
+          1.335064750000015,
+          1.2749390000000176
+        ],
+        "uncached_correct_p50_ms": [
+          1.2779352500000414,
+          1.2673302499999863
+        ],
+        "final_baseline_p50_ms": [
+          1.2451147499999706,
+          1.1745487499999854
+        ],
+        "final_candidate_p50_ms": [
+          1.189845250000019,
+          1.2978727500000105
+        ],
+        "final_baseline_p95_ms": [
+          1.463232249999976,
+          1.477572250000037
+        ],
+        "final_candidate_p95_ms": [
+          1.3068054999999958,
+          1.689217000000042
+        ]
+      },
+      {
+        "utf16_length": 32,
+        "case": "fixed-width",
+        "initial_baseline_p50_ms": [
+          2.5623875,
+          2.4386410000000183
+        ],
+        "uncached_correct_p50_ms": [
+          2.3378195000000233,
+          2.531255750000014
+        ],
+        "final_baseline_p50_ms": [
+          2.6623612500000036,
+          2.3307604999999967
+        ],
+        "final_candidate_p50_ms": [
+          2.5134804999999574,
+          2.4787352499999997
+        ],
+        "final_baseline_p95_ms": [
+          3.1514399999999796,
+          2.774780250000049
+        ],
+        "final_candidate_p95_ms": [
+          3.1405867500000113,
+          3.501037750000023
+        ]
+      },
+      {
+        "utf16_length": 256,
+        "case": "constrained-positive",
+        "initial_baseline_p50_ms": [
+          10.147839249999947,
+          9.73297274999993
+        ],
+        "uncached_correct_p50_ms": [
+          24.871560249999902,
+          27.039240999999947
+        ],
+        "final_baseline_p50_ms": [
+          9.577782749999983,
+          9.963612249999983
+        ],
+        "final_candidate_p50_ms": [
+          12.835713749999968,
+          13.895837000000029
+        ],
+        "final_baseline_p95_ms": [
+          11.369621250000023,
+          10.698432749999995
+        ],
+        "final_candidate_p95_ms": [
+          14.680498499999999,
+          16.11987375000001
+        ]
+      },
+      {
+        "utf16_length": 256,
+        "case": "constrained-zero",
+        "initial_baseline_p50_ms": [
+          10.076743749999878,
+          9.907760999999937
+        ],
+        "uncached_correct_p50_ms": [
+          26.26256074999992,
+          26.48028075000002
+        ],
+        "final_baseline_p50_ms": [
+          10.044390750000048,
+          9.943006999999966
+        ],
+        "final_candidate_p50_ms": [
+          13.212429250000014,
+          13.795365250000032
+        ],
+        "final_baseline_p95_ms": [
+          11.118134249999912,
+          11.045406250000042
+        ],
+        "final_candidate_p95_ms": [
+          13.80092650000006,
+          14.909554000000071
+        ]
+      },
+      {
+        "utf16_length": 256,
+        "case": "constrained-negative",
+        "initial_baseline_p50_ms": [
+          10.205687500000067,
+          10.285825999999815
+        ],
+        "uncached_correct_p50_ms": [
+          25.688126250000096,
+          27.005898500000058
+        ],
+        "final_baseline_p50_ms": [
+          9.465799500000003,
+          9.841468999999961
+        ],
+        "final_candidate_p50_ms": [
+          12.188265750000028,
+          12.983041500000127
+        ],
+        "final_baseline_p95_ms": [
+          10.748740249999855,
+          10.946838500000013
+        ],
+        "final_candidate_p95_ms": [
+          14.781099249999897,
+          14.642996499999981
+        ]
+      },
+      {
+        "utf16_length": 256,
+        "case": "no-wrap",
+        "initial_baseline_p50_ms": [
+          9.908382000000074,
+          10.595145000000002
+        ],
+        "uncached_correct_p50_ms": [
+          9.72293824999997,
+          10.315056000000368
+        ],
+        "final_baseline_p50_ms": [
+          9.938737500000116,
+          9.985069250000151
+        ],
+        "final_candidate_p50_ms": [
+          9.50748324999995,
+          9.833242250000012
+        ],
+        "final_baseline_p95_ms": [
+          11.318979000000127,
+          11.051776250000103
+        ],
+        "final_candidate_p95_ms": [
+          11.060253000000102,
+          11.084959750000053
+        ]
+      },
+      {
+        "utf16_length": 256,
+        "case": "fixed-height",
+        "initial_baseline_p50_ms": [
+          10.287276250000104,
+          9.631805750000012
+        ],
+        "uncached_correct_p50_ms": [
+          10.037570250000044,
+          10.669875000000047
+        ],
+        "final_baseline_p50_ms": [
+          9.506433000000015,
+          9.980970750000097
+        ],
+        "final_candidate_p50_ms": [
+          10.409430249999787,
+          9.754270500000075
+        ],
+        "final_baseline_p95_ms": [
+          10.895467250000138,
+          10.848550250000017
+        ],
+        "final_candidate_p95_ms": [
+          10.990578749999713,
+          11.316487500000221
+        ]
+      },
+      {
+        "utf16_length": 256,
+        "case": "unconstrained",
+        "initial_baseline_p50_ms": [
+          10.101608250000027,
+          10.052670000000035
+        ],
+        "uncached_correct_p50_ms": [
+          9.512260500000139,
+          9.901665250000406
+        ],
+        "final_baseline_p50_ms": [
+          10.069408500000009,
+          9.608639499999754
+        ],
+        "final_candidate_p50_ms": [
+          11.322150500000134,
+          9.349997249999888
+        ],
+        "final_baseline_p95_ms": [
+          11.318561000000045,
+          10.971170749999601
+        ],
+        "final_candidate_p95_ms": [
+          13.06973724999989,
+          12.506935500000054
+        ]
+      },
+      {
+        "utf16_length": 256,
+        "case": "min-expanded",
+        "initial_baseline_p50_ms": [
+          9.917560500000036,
+          10.116570000000138
+        ],
+        "uncached_correct_p50_ms": [
+          9.562878249999812,
+          9.818956750000325
+        ],
+        "final_baseline_p50_ms": [
+          10.109960999999657,
+          9.242667750000237
+        ],
+        "final_candidate_p50_ms": [
+          10.62352624999994,
+          9.619112750000113
+        ],
+        "final_baseline_p95_ms": [
+          11.237980500000049,
+          9.95502475000012
+        ],
+        "final_candidate_p95_ms": [
+          13.59108550000019,
+          10.306625499999882
+        ]
+      },
+      {
+        "utf16_length": 256,
+        "case": "fixed-width",
+        "initial_baseline_p50_ms": [
+          15.349375999999666,
+          15.850890500000332
+        ],
+        "uncached_correct_p50_ms": [
+          15.4141132499999,
+          15.785839000000124
+        ],
+        "final_baseline_p50_ms": [
+          15.646475749999809,
+          15.523542249999991
+        ],
+        "final_candidate_p50_ms": [
+          17.152734500000406,
+          15.68109400000003
+        ],
+        "final_baseline_p95_ms": [
+          17.202552749999995,
+          17.43017325000028
+        ],
+        "final_candidate_p95_ms": [
+          20.682108750000225,
+          18.186679249999997
+        ]
+      }
+    ],
+    "raw_records": [
+      "performance-baseline-1.json",
+      "performance-candidate-1.json",
+      "performance-candidate-2.json",
+      "performance-baseline-2.json",
+      "performance-reuse-baseline-1.json",
+      "performance-reuse-candidate-1.json",
+      "performance-reuse-candidate-2.json",
+      "performance-reuse-baseline-2.json"
+    ],
+    "script": "frontend/design-client/scripts/benchmark-text-hug-limits.ts"
+  },
+  "limits": [
+    "No browser,IME,OS-font matrix,GPU or Figma runtime verification",
+    "No Hebrew/Arabic fixture or missing-font substitution; direction-flag checks only use supported CJK/Latin",
+    "Center/end/justify plus indentation remains an unspecified Core/Figma compatibility gap",
+    "Performance tradeoff remains; no commit,push,deployment or production acceptance"
+  ],
+  "commands": {
+    "environment": "source /workspace/shared/design-validation-tools/env.sh; CARGO_TARGET_DIR=/workspace/shared/core-validation-glass/target CARGO_BUILD_JOBS=1; later CARGO_INCREMENTAL=0",
+    "native": "cargo test --offline --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel",
+    "wasm_build": "WASM_BINDGEN=/workspace/shared/design-validation-tools/wasm-bindgen-0.2.128-x86_64-unknown-linux-musl/wasm-bindgen python3 design-studio/scripts/build-web.py",
+    "frontend": "cd frontend/design-client; bun run test; bun run typecheck; node_modules/.bin/vite build",
+    "lint": "../node_modules/.bin/biome lint --config-path=../biome.json src/text-hug-limits.test.ts scripts/benchmark-text-hug-limits.ts",
+    "clippy": "cargo clippy --offline --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --all-targets -- -D warnings",
+    "foundation": "python3 scripts/check-foundation.py; python3 testing/check_catalog.py; git diff --check"
+  },
+  "setup_recoveries": [
+    "Initial TS write used a wrong cwd and found no test; corrected before counting semantic reds.",
+    "Biome lookup from repository root resolved an unnecessary package; used existing frontend binary with explicit config/cwd. Nested-config failures retained.",
+    "Initial extra equivalence probe used #fff, rejected by validator; corrected to#ffffff and obtained24 successful comparisons. Invalid-color outputs are not counted as coverage.",
+    "Initial Vite binary path missed design-client/node_modules; corrected path passed.",
+    "New DesignSystem TS fixture initially omitted libraries; added the required empty field and typecheck passed.",
+    "Initial final foundation invocation omitted the toolchain PATH; sourced the existing environment and passed."
+  ],
+  "resource_management": "When free disk fell below2GiB, parent coordinated deletion of confirmed inactive regenerable incremental/static caches. Sources,RustFS,toolchains,test binaries,logs and evidence preserved. Relevant parent records: scratch/cache-cleanup-20261006-1513.json,1514.json,1519.json. No cleanup of test executables by this worker.",
+  "evidence_directory": "/workspace/shared/core-validation-text-align",
+  "artifacts": {
+    "baseline.wasm": {
+      "bytes": 4448829,
+      "sha256": "26f79ebad6870880b89190a5dbd06ed584b9c0c9ad9c5ba0b4963f61aa6ae5e1"
+    },
+    "before-reuse.wasm": {
+      "bytes": 4448930,
+      "sha256": "c0df700a6f9631940276a0a44a93c878e4ba3e4f2252ee9f4472f4ad2d8ddea6"
+    },
+    "candidate.wasm": {
+      "bytes": 4450715,
+      "sha256": "20097d5fb84333fa9abbe99b4950f6cb1dc1fde6ed15212471034a903118abd3"
+    }
+  },
+  "font": {
+    "path": "frontend/design-client/public/fonts/NotoSansSC.ttf",
+    "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da"
+  },
+  "files": [
+    {
+      "path": "design-studio/crates/design-kernel/src/layout.rs",
+      "sha256": "6ba06d3780d287627a90d920fa21dd84ad4978e7576331bdde38b41446dbfce5"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/text_hug_limits.rs",
+      "sha256": "5faf5d857861531781fac8a276978fac709b62f25c582dc4522f4f35bd05a868"
+    },
+    {
+      "path": "frontend/design-client/src/text-hug-limits.test.ts",
+      "sha256": "2dc26fa03dc9b2b484cdfc772b35c951eb79e7411843d7f2ae90f32470d3d8ee"
+    },
+    {
+      "path": "frontend/design-client/scripts/benchmark-text-hug-limits.ts",
+      "sha256": "1d9957db41807b9ba5c656387573e674b46fccdfb5e749bdffede5a5f4b5421b"
+    },
+    {
+      "path": "docs/architecture/design-editor.md",
+      "sha256": "abaff7f37d0effacd509bd3c3eb38ef3f3eb603dd077725992b678a8249ca670"
+    },
+    {
+      "path": "testing/api/README.md",
+      "sha256": "870a82d8ebb3963bf3fedd4da3987fb6f4b79e6b9b83c972b6ad58d64a83b06f"
+    }
+  ],
+  "review": "Independent read-only review found no runtime blocker; checked cache mutation invariants, all3968 sorted finite timing samples and quantile indices, all128 recomputed output hashes and fixed-layout hash agreement,16 corrected-output equivalences,24 successful nested patch equivalences,artifact hashes,and focused9/7 plus frontend185 logs. Full275 native completed afterward. Comment clarified expansion is outside resolve; source commentary does not claim every entry point performs it beforehand."
+}

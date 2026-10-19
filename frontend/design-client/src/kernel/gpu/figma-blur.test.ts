@@ -14,7 +14,7 @@ test('uniforms follow the recovered CPU contract', () => {
 })
 
 test('paired tent equals full tent by construction', () => {
-  // shader_78 的成对插值在线性采样下与逐 tap 帐篷数学等价:
+  // 成对插值在线性采样下与逐 tap 帐篷数学等价:
   // 用纯数学参照验证帐篷核的归一化与对称性。
   const taps = new Float32Array([0, 0, 0, 1, 1, 1, 0, 0, 0])
   const count = 3
@@ -32,7 +32,7 @@ test('paired tent equals full tent by construction', () => {
 
 import { figmaPack4, figmaUnpack4 } from './figma-blur'
 
-test('shader_118 packing ladder round-trips within RGBA8 precision', () => {
+test('shadow packing ladder round-trips within RGBA8 precision', () => {
   // 其精度设计:255/65025/16581375 三级阶梯,往返误差 ~1/16581375 量级
   for (const v of [0, 0.001, 0.123456, 0.5, 0.999999, 1]) {
     const packed = figmaPack4(v)

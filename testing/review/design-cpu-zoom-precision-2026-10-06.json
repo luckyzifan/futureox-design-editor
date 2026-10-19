@@ -1,0 +1,393 @@
+{
+  "date": "2026-10-06",
+  "verified_at_utc": "2026-10-06T12:27:00Z",
+  "base_commit": "a2e03db1006d925664c4119ebf009f15dafe28b8",
+  "status": "CPU/native/real-WASM and frontend camera contracts verified; browser/Figma zoom bounds/GPU acceptance not run; one extreme nested-scale defect remains known failing",
+  "scope": "CPU geometry precision and device-space picking, frontend shared camera coordinates. No GPU backend/shader edits, export-scale changes, dependency changes, commit, push or deployment.",
+  "contract": {
+    "canvas_range": {
+      "min": 0.025,
+      "max": 32,
+      "status": "existing Core limits retained pending actual Figma editor verification; not Figma parity"
+    },
+    "export_range": "unchanged 0.001–128; Figma export supersampling cap 64",
+    "coordinates": "translation and picking halo use CSS pixels; world and camera use doubles. Device matrix includes camera, DPR, ancestor transforms, and internal raster supersampling.",
+    "precision": "epsilon_local <= epsilon_device / sigma_max(full linear transform). CPU fill flattened in device space; stroke centerline/round arcs use 0.125-device-pixel per-stage tolerance without 1e-6 local floor; device picking uses 1/64 CSS px and 5 CSS px halo.",
+    "budgets": "stroke arcs explicitly reject >131072 subdivisions; uniform and variable-width stroke expansion reject >2000000 output points. These prevent silent segment-count coarsening; they are not a proof over all accepted numerical inputs.",
+    "camera": "shared screen/world conversion, zoomAt and fitBounds; repeated limit requests exactly preserve camera; latest editor state used by repeated controls; wheel deltaMode converted to CSS pixels",
+    "presentation": "previous bitmap temporarily CSS-transformed while current vector frame is pending; first 1x render, higher DPR after 180ms, max DPR2 and 4000000 display pixels; browser visual acceptance remains separate",
+    "cache": "Engine retains vector Paths/glyph outlines, not zoomed raster snapshots for final CPU output",
+    "not_proven": "arbitrary nested transforms/cusps/offset curves, all mask/editing paths, all AA phases, total end-to-end error, interactive latency, full Figma parity"
+  },
+  "regressions": [
+    {
+      "name": "round cap device sagitta",
+      "red_exit": 101,
+      "before_device_error": 3.1829148196464985,
+      "target_device_error": 0.125,
+      "input": "4000-unit stroke width at zoom32, round caps",
+      "pixel": [
+        31,
+        31
+      ],
+      "before_alpha": 0,
+      "after_alpha": 255,
+      "profiles": [
+        "analytic",
+        "figma",
+        "figmaSubpixel"
+      ],
+      "evidence": "red-native.log, probe.json, green-precision-native.log, probe-final.json"
+    },
+    {
+      "name": "tiny magnified ellipse picking",
+      "input": "0.001-unit ellipse, node uniform scale1000, view zoom32, local point(0.0008,0.0008)",
+      "rendered_alpha": 255,
+      "old_local_api_hit": false,
+      "new_device_api_hit": true,
+      "compatibility": "legacy hit_test/hit_test_json retained; editor routes through new device-space API"
+    },
+    {
+      "name": "clear final vector frame",
+      "proof": "same original ellipse rerendered at zoom32 equals a freshly constructed 32-unit ellipse byte-for-byte; differs from an upscaled 1x sample at >900 output pixels; repeated zoom round trips return identical output"
+    },
+    {
+      "name": "location and text",
+      "proof": "signed +/-9999999.125 origins render identical pixels after camera cancellation; real WASM text SVG retains C/Q curves and path resolution grows with zoom; 11 camera tests cover every tested zoom pair at +/-1e7 and 10000 repeated cycles"
+    },
+    {
+      "name": "resource and subpixel contracts",
+      "proof": "round caps and width-profile caps satisfy sagitta bounds; sub-1e-6 local flattening; fractional 0.25-device-pixel vertical hairline coverage; explicit per-arc and total stroke budget errors"
+    }
+  ],
+  "checks": {
+    "native": {
+      "command": "cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel",
+      "exit_code": 0,
+      "passed": 223,
+      "failed": 0,
+      "ignored": 0,
+      "new_tests": 9,
+      "log": "native-final.log"
+    },
+    "wasm_build": {
+      "command": "python3 design-studio/scripts/build-web.py",
+      "exit_code": 0,
+      "rust": "1.96.0",
+      "wasm_bindgen": "0.2.128",
+      "jobs": 1,
+      "log": "wasm-final-build.log",
+      "wasm_sha256": "99df896c5ad9246b5f99000f2bbf4198d319f0635702abdf0bf5fcd0f10c8f31"
+    },
+    "frontend": {
+      "command": "bun run test; bun run typecheck; bunx vite build",
+      "exit_code": 0,
+      "files": 26,
+      "tests": 155,
+      "new_camera_tests": 11,
+      "new_real_wasm_tests": 5,
+      "logs": [
+        "frontend-final.log",
+        "typecheck-final.log",
+        "frontend-final-build.log"
+      ]
+    },
+    "independent_review": {
+      "exit_code": 0,
+      "assertions": 96,
+      "result": {
+        "pass": true,
+        "cases": 96,
+        "wasmSha256": "99df896c5ad9246b5f99000f2bbf4198d319f0635702abdf0bf5fcd0f10c8f31",
+        "scope": [
+          "filled ellipse mirrored/sheared/anisotropic inside/outside",
+          "CSS 5px stroke halo at 4.9 and 5.1px",
+          "frame transformed edge compatibility",
+          "invalid device transform/tolerance errors",
+          "CPU affine zoom pixel identity"
+        ]
+      },
+      "logs": [
+        "cpu-zoom-independent-review.mjs",
+        "cpu-zoom-independent-review.json"
+      ]
+    },
+    "clippy": {
+      "command": "cargo clippy --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --all-targets -- -D warnings",
+      "exit_code": 0,
+      "log": "clippy-final.log"
+    },
+    "fmt": {
+      "command": "cargo fmt --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --check",
+      "exit_code": 0,
+      "log": "fmt-final.log"
+    },
+    "frontend_scoped_lint": {
+      "exit_code": 0,
+      "files": 9,
+      "warnings": 99,
+      "infos": 2,
+      "log": "lint-final.log"
+    },
+    "foundation": {
+      "command": "python3 scripts/check-foundation.py",
+      "exit_code": 0,
+      "log": "foundation-final.log"
+    },
+    "catalog": {
+      "command": "python3 testing/check_catalog.py",
+      "exit_code": 0,
+      "log": "catalog-final.log"
+    },
+    "browser": "not_run at user direction",
+    "gpu_execution": "not_run",
+    "figma_range": "unverified; not hardcoded from forum or simulated/default viewport",
+    "diff_check": {
+      "exit_code": 0,
+      "log": "diff-check-final.log"
+    }
+  },
+  "known_failing": [
+    {
+      "name": "absolute short-edge threshold under extreme nested scale",
+      "status": "unresolved existing defect, excluded from passing test totals",
+      "reproduced_on_final_wasm": true,
+      "options": {
+        "pageId": "p",
+        "width": 64,
+        "height": 64,
+        "view": {
+          "x": 8,
+          "y": 8,
+          "zoom": 1
+        },
+        "transparent": true,
+        "rasterProfile": "analytic"
+      },
+      "sample_pixel": [
+        20,
+        8
+      ],
+      "expected_equivalent_alpha": 255,
+      "actual_extreme_alpha": 0,
+      "equivalent_document": {
+        "schemaVersion": 1,
+        "id": "d",
+        "name": "extreme",
+        "pages": [
+          {
+            "id": "p",
+            "name": "p",
+            "background": "#ffffff",
+            "children": [
+              "g"
+            ]
+          }
+        ],
+        "nodes": {
+          "g": {
+            "id": "g",
+            "kind": "group",
+            "width": 1,
+            "height": 1,
+            "transform": [
+              1,
+              0,
+              0,
+              1,
+              0,
+              0
+            ],
+            "children": [
+              "n"
+            ]
+          },
+          "n": {
+            "id": "n",
+            "kind": "line",
+            "width": 32,
+            "height": 0.1,
+            "transform": [
+              1,
+              0,
+              0,
+              1,
+              0,
+              0
+            ],
+            "strokes": [
+              {
+                "width": 2,
+                "cap": "butt",
+                "paint": {
+                  "kind": "solid",
+                  "color": "#000000"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "extreme_document": {
+        "schemaVersion": 1,
+        "id": "d",
+        "name": "extreme",
+        "pages": [
+          {
+            "id": "p",
+            "name": "p",
+            "background": "#ffffff",
+            "children": [
+              "g"
+            ]
+          }
+        ],
+        "nodes": {
+          "g": {
+            "id": "g",
+            "kind": "group",
+            "width": 1,
+            "height": 1,
+            "transform": [
+              100000.0,
+              0,
+              0,
+              100000.0,
+              0,
+              0
+            ],
+            "children": [
+              "n"
+            ]
+          },
+          "n": {
+            "id": "n",
+            "kind": "line",
+            "width": 3.2e-11,
+            "height": 1e-13,
+            "transform": [
+              10000000.0,
+              0,
+              0,
+              10000000.0,
+              0,
+              0
+            ],
+            "strokes": [
+              {
+                "width": 2e-12,
+                "cap": "butt",
+                "paint": {
+                  "kind": "solid",
+                  "color": "#000000"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "cause": "stroke.rs absolute 1e-10 point deduplication and short-edge thresholds collapse a local 32e-12 edge which the accepted nested 1e5*1e7 transform expands to 32 pixels",
+      "reachability": "native/WASM scene accepts this. Frontend primitive minimum dimensions do not exclude tiny vector-network edges.",
+      "reproduction": "bun /workspace/shared/core-validation-zoom/probe-extreme.mjs",
+      "evidence": "probe-extreme.log",
+      "next_scope": "Separate shared stroke-entry normalization: one translation and power-of-two scale for each whole contour, transform points/width/dash/offset/tolerance together, preserve normalized width-profile positions, map expanded output back. Do not normalize per segment or alter arc-length/dash phase. Preserve original input validation and cover reflections/shears, closed seams, variable widths, zero-length paths, dashes and ordinary-pixel identity. No camera/document/GPU or blanket scene-threshold changes."
+    },
+    {
+      "name": "ancestor masks and editing outline precision",
+      "status": "not covered by ordinary-node hit-test migration",
+      "source": "engine.ts ancestor mask pointInContours(contours(mask)); kernel/picking.ts kernelStrokePaths uses stroke_geometry_json fixed local tolerance"
+    },
+    {
+      "name": "temporary display scaling and Figma extremes",
+      "status": "requires user-browser acceptance and actual Figma UI measurement"
+    }
+  ],
+  "official_sources": [
+    {
+      "url": "https://help.figma.com/hc/en-us/articles/360041065034-Adjust-your-zoom-and-view-options",
+      "checked_at_utc": "2026-10-06T12:11:00Z",
+      "finding": "describes resolution-independent vectors, pixel-preview and zoom controls; no minimum/maximum value in retrieved official text"
+    },
+    {
+      "url": "https://developers.figma.com/docs/plugins/api/properties/figma-viewport-zoom/",
+      "checked_at_utc": "2026-10-06T12:11:00Z",
+      "finding": "1.0 means 100%; no range documented"
+    },
+    {
+      "url": "https://www.figma.com/design/KawVhUXCap10WDTprxYEmu/",
+      "check": "read-only use_figma viewport inspection",
+      "result": "default 1.0/1920x1080 viewport; not sufficient evidence of a live user editor or UI limits; no node or viewport mutations performed"
+    }
+  ],
+  "private_evidence_directory": "/workspace/shared/core-validation-zoom",
+  "files": [
+    {
+      "path": "design-studio/crates/design-kernel/src/lib.rs",
+      "sha256": "5167dca10b6e4c8a63352575d614791ea2d961b8a65d36afc6f65051729bc578"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/path.rs",
+      "sha256": "1bf4596c521c371bdc81aea0da0014c4c56c8a977579ba10942cdc4d5169319f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer.rs",
+      "sha256": "30561cc8873bc7b8531afcbf930fe3227f6c0fdd618e1fff313503728619c0ed"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/stroke.rs",
+      "sha256": "d984d9fe06d86e9706b873208de69dd221b66df61567ad6f7f1d9b4c3d80df70"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/stroke/profile.rs",
+      "sha256": "85f71027f772d0188627e0174f49be2af1d07f3ed073613939f794f077961808"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/zoom_precision.rs",
+      "sha256": "884e468ca2abd5d376ba9b49efd1626763229e90e441d7fc62b9509928220223"
+    },
+    {
+      "path": "frontend/design-client/src/canvas-camera.ts",
+      "sha256": "9e0dffbd454e989b645f4fe1f0775d89d425a6443bee67770c474e4cae901a14"
+    },
+    {
+      "path": "frontend/design-client/src/canvas-camera.test.ts",
+      "sha256": "f701c46f5a2340a23b8a582c7527bdb4e50635a75efbe57646b49e39d7ad7929"
+    },
+    {
+      "path": "frontend/design-client/src/canvas-view.ts",
+      "sha256": "b7f621bab52712fc87526750ef86e940b9d09331e6b63abbd528d867d470ebad"
+    },
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "sha256": "5cefdbfd0868dcee875766bf39fa98a518d2799211ce9b248bfa9f18edb1167f"
+    },
+    {
+      "path": "frontend/design-client/src/ViewControls.tsx",
+      "sha256": "c0faf325f006b2afaf77585932f779875835f615e5dc7a6ba23add607d8d3d2d"
+    },
+    {
+      "path": "frontend/design-client/src/AnimationPanel.tsx",
+      "sha256": "883c72da8f67d8cddbe18481ba130a004fe0aeb098f7104a9abe37cd98b8d7de"
+    },
+    {
+      "path": "frontend/design-client/src/engine.ts",
+      "sha256": "e471d2a4688e6d0daf1502decfce3d17a6a2206149fae700385e39a2ef7237a5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/picking.ts",
+      "sha256": "592ae76f351f6adfbd8bfbffb246455a84207f2331b6ed5a991a8bdd53562691"
+    },
+    {
+      "path": "frontend/design-client/src/zoom-precision.test.ts",
+      "sha256": "5fe21ff12d86ffcb327cf5f33b0a08d193a3699f67e5bf2c1c6d64dbcb4f1153"
+    },
+    {
+      "path": "docs/architecture/design-editor.md",
+      "sha256": "fb778a7e32d4ac18154ceda24aa92a108170012d36d0786b9737904dfa348bde"
+    },
+    {
+      "path": "testing/api/README.md",
+      "sha256": "a754302878dd8c3d77ba701482bf675095ff997dbc3b7c6947ab99df351dc5ff"
+    }
+  ]
+}

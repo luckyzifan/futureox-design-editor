@@ -1,0 +1,360 @@
+{
+  "date": "2026-10-17",
+  "status": "implemented-with-open-performance-gaps",
+  "scope": "FIG/Sketch SDR stop alpha, imported large-page rendering, retained board dragging, pointer input and missing GPU texture presentation. HDR and Electron excluded.",
+  "nativeBrowserComparison": {
+    "figma": "https://www.figma.com/design/cxNzs28hf3dGSEG5wPzoPN/01有料素材--Copy-?node-id=0-1&p=f&m=dev",
+    "local": "http://127.0.0.1:1430/",
+    "surface": "Existing user Google Chrome via native accessibility and screenshots",
+    "figmaMemoryLabelMB": 631,
+    "localMemoryLabelGB": {
+      "before": 2.4,
+      "last": 2.2
+    },
+    "browserZoom": {
+      "local": 0.9,
+      "figma": 1
+    },
+    "observed": "Local zoom shows an enlarged low-density cache before refinement. Figma was clear in the captured 50% view. Neither screenshot comparison nor Chrome memory labels constitute controlled FPS/GPU-memory benchmarks. Figma was in Dev Mode; no object-edit drag benchmark was claimed."
+  },
+  "pinch": {
+    "source": "https://raw.githubusercontent.com/chromium/chromium/main/components/input/touchpad_pinch_event_queue.cc",
+    "nativeEncoding": "deltaY=-100*log(scale)",
+    "beforeGain": 0.002,
+    "afterPinchGain": 0.01,
+    "physicalWheelGainUnchanged": 0.002,
+    "oldResponseTo2x": 1.148698354997035,
+    "tests": "Native scale inversion, pointer anchor and physical-wheel notch bounds"
+  },
+  "retainedPointerCost": {
+    "before": {
+      "nodes": 19949,
+      "medianMs": 4.184916999999928,
+      "p95Ms": 12.377916000000027,
+      "maxMs": 18.28779099999997
+    },
+    "after": {
+      "nodes": 19949,
+      "ready": true,
+      "mode": "retained-board",
+      "medianMs": 0.0020830000000273685,
+      "p95Ms": 0.029832999999996446,
+      "maxMs": 0.9632499999999595
+    },
+    "scope": "Pure retained-board transform handling, excludes snapping, React, GPU and browser input latency"
+  },
+  "missingTexture": {
+    "before": {
+      "status": "complete",
+      "transparentColumns": 400,
+      "reportedCoverage": 1,
+      "validBackgroundPresent": true,
+      "missingForegroundHandle": 999999
+    },
+    "after": {
+      "status": "complete",
+      "transparentColumns": 0,
+      "reportedCoverage": 1,
+      "validBackgroundPresent": true,
+      "missingForegroundHandle": 999999
+    },
+    "note": "Fault reproduction with the production compositor and a valid cached background; does not prove every previously reported blank board had this trigger."
+  },
+  "largeDocument": {
+    "fileSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+    "rawImportedNodes": 19277,
+    "editableNodes": 19949,
+    "pages": 14,
+    "firstPageVisibleNodes": 8254,
+    "serializedBytes": 24904732,
+    "startupViewport": "703x720 CSS pixels, DPR 2; in-app browser, separate from native Chrome comparison",
+    "startupBefore": {
+      "firstDetailMs": 7810.1,
+      "completeMs": 10903.3
+    },
+    "startupAfter": {
+      "firstDetailMs": 3487.0,
+      "completeMs": 6277.0
+    },
+    "drag": {
+      "before": {
+        "frames": "18",
+        "moves": "0",
+        "rendered": "64",
+        "samples": "0",
+        "title": {
+          "x": 901.3646850585938,
+          "y": 247.51112365722656
+        }
+      },
+      "after": {
+        "frames": "26",
+        "mode": "retained-board",
+        "moves": "9",
+        "rendered": "64",
+        "samples": "0",
+        "status": "WebGPU · 计算中",
+        "title": {
+          "x": 897.2927856445312,
+          "y": 445.52740478515625
+        },
+        "trace": "[{\"sequence\":1,\"latency\":39.700000047683716},{\"sequence\":2,\"latency\":28.100000023841858},{\"sequence\":3,\"latency\":25.900000035762787},{\"sequence\":4,\"latency\":25},{\"sequence\":5,\"latency\":25.600000023841858},{\"sequence\":6,\"latency\":25.80000001192093},{\"sequence\":7,\"latency\":26.600000023841858},{\"sequence\":8,\"latency\":27.399999976158142}]",
+        "transform": "matrix(1 0 0 1 13837 4592)"
+      }
+    },
+    "testBoardRestored": "13937,-271; confirmed saved"
+  },
+  "importValidation": [
+    {
+      "file": "01有料素材 (Copy).fig",
+      "ok": true,
+      "bytes": 649304,
+      "ms": 6420.335,
+      "nodes": 19949,
+      "pages": 14,
+      "alphaStops": 2,
+      "alphaExamples": [
+        {
+          "offset": 1,
+          "color": "color(srgb 1 0.5411764979362488 0.2823529541492462 / 0.00009999999747378752)"
+        },
+        {
+          "offset": 1,
+          "color": "color(srgb 1 0.5411764979362488 0.2823529541492462 / 0.00009999999747378752)"
+        }
+      ],
+      "warnings": [
+        "矢量网络已保留，区域填充规则与区域样式需要核对",
+        "字体 Poppins 尚需匹配，已保留文字内容",
+        "实例覆盖需要检查，已按主组件重新解析",
+        "字体 ABeeZee 尚需匹配，已保留文字内容"
+      ]
+    },
+    {
+      "file": "117.sketch",
+      "ok": true,
+      "bytes": 5013257,
+      "ms": 601.8569170000001,
+      "nodes": 752,
+      "pages": 1,
+      "alphaStops": 26,
+      "alphaExamples": [
+        {
+          "offset": 0.9616423845291138,
+          "color": "color(srgb 0.1372549086809158 0.8470588326454163 0.3607843220233917 / 0)"
+        },
+        {
+          "offset": 0,
+          "color": "color(srgb 0.168627455830574 0.4549019634723663 1 / 0)"
+        },
+        {
+          "offset": 0.9616423845291138,
+          "color": "color(srgb 0.1372549086809158 0.8470588326454163 0.3607843220233917 / 0)"
+        }
+      ],
+      "warnings": [
+        "Sketch compatibility import: unsupported source fields may not be editable or survive export; keep the original .sketch file.",
+        "Sketch: fonts without embedded resources use the default font; source font names remain in metadata.",
+        "Sketch: operand boolean flags remain source metadata; executable boolean groups use the shared vector model.",
+        "Sketch: text-vertical-alignment-not-modeled",
+        "Sketch: zero-sized layers use a minimum selection box; source dimensions remain in metadata."
+      ]
+    }
+  ],
+  "verification": {
+    "frontend": {
+      "passed": 1225,
+      "skipped": 1,
+      "exit": 0
+    },
+    "rustFocused": {
+      "passed": 38,
+      "exit": 0
+    },
+    "buildExit": 0,
+    "foundationExit": 0,
+    "gpuSeams": {
+      "status": "passed",
+      "cases": 325,
+      "failures": []
+    },
+    "gpuAlpha": {
+      "status": "passed",
+      "stages": [
+        {
+          "profile": "analytic",
+          "kind": "linear",
+          "backend": "webgpu",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "analytic",
+          "kind": "linear",
+          "backend": "webgl2",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "analytic",
+          "kind": "radial",
+          "backend": "webgpu",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "analytic",
+          "kind": "radial",
+          "backend": "webgl2",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "analytic",
+          "kind": "angular",
+          "backend": "webgpu",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "analytic",
+          "kind": "angular",
+          "backend": "webgl2",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "analytic",
+          "kind": "diamond",
+          "backend": "webgpu",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "analytic",
+          "kind": "diamond",
+          "backend": "webgl2",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "figmaSubpixel",
+          "kind": "linear",
+          "backend": "webgpu",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "figmaSubpixel",
+          "kind": "linear",
+          "backend": "webgl2",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "figmaSubpixel",
+          "kind": "radial",
+          "backend": "webgpu",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "figmaSubpixel",
+          "kind": "radial",
+          "backend": "webgl2",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "figmaSubpixel",
+          "kind": "angular",
+          "backend": "webgpu",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "figmaSubpixel",
+          "kind": "angular",
+          "backend": "webgl2",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "figmaSubpixel",
+          "kind": "diamond",
+          "backend": "webgpu",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        },
+        {
+          "profile": "figmaSubpixel",
+          "kind": "diamond",
+          "backend": "webgl2",
+          "maxPremultipliedError": 0,
+          "maxAlphaError": 0
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "Native physical pinch input was not generated by the automation tool; Chromium encoding and anchor behavior were verified in tests. Physical wheel tuning remains unchanged.",
+    "Large native Chrome memory footprint remains high; no allocation profiler attribution or comprehensive reclamation fix claimed.",
+    "Cold exact refinement still takes seconds; full-size native Chrome cold-zoom timing and all blank-board causes are not closed.",
+    "Retained board cropping requires an opaque clipped nonoverlapping frame and complete cached coverage; dependent/overlapping selections still use the existing effect-correct path.",
+    "No new real-document background-blur/multiply overlapping-drag pixel oracle was run after this increment.",
+    "FIG vector region styling, component overrides and unembedded fonts retain explicit import warnings.",
+    "No commit or push in this iteration."
+  ],
+  "privateEvidence": [
+    ".local/browser-comparison-20261017/",
+    ".local/large-document-20261017/",
+    ".local/gradient-alpha-20261017/"
+  ],
+  "sourceSHA256": {
+    "frontend/design-client/src/Canvas.tsx": "ab0893ff170cb96963adbb750abaa285bfd490d7d45c9376b02f4f9e5352ef2a",
+    "frontend/design-client/src/canvas-camera.ts": "4f42b2f2454f97005f3133f76bc40962c96b5f1843afc88c3e6bdd36913b109b",
+    "frontend/design-client/src/canvas-camera.test.ts": "908d1d4940f87348a79d9f0b8c35c2b6b18f57bf9c36653e698684e6fa530acf",
+    "frontend/design-client/src/canvas-move-feedback.ts": "894276e59e7c498886a255195ca42d05a3baedc2456c08648c98be4b65d87ffb",
+    "frontend/design-client/src/canvas-move-feedback.test.ts": "8ccd5efdc949f96a6000438afdc362ef43b1bed0e556201e4581592427580dd9",
+    "frontend/design-client/src/styles.css": "72d9e75ec3834ef08a4fdb3ab0686cd22cee37fcd289b87cc93fe354c9ba0506",
+    "frontend/design-client/src/import-fig.ts": "13493c4b42ef8e7262e6333f0718df7d90ed249f4db77aa98d9e40dc4b855f22",
+    "frontend/design-client/src/import-fig-fidelity.test.ts": "0e90a0fea2420fa09cab32a058083b3ff4335607883ff9a1d3f78dee4eebd76f",
+    "frontend/design-client/src/color.ts": "11209648e188e4e12545234bd1b9c55e02f7cb34356e8cb419bc9a688eddf682",
+    "frontend/design-client/src/color.test.ts": "a6de58de0ba8eb63f49cefb91e55110e664f0e87a2b713fd2d9927ace9fb7c91",
+    "frontend/design-client/src/kernel/ProgressiveSurface.tsx": "89ee51aba209bb458529af2042539cecc596606ef853d389277ba6980fe25b43",
+    "frontend/design-client/src/kernel/ResidentCompositeSurface.tsx": "2cc4f5207f8c0fe9fd43198e4abbfbb350046aeec291620ab247ce4ec8c2854b",
+    "frontend/design-client/src/kernel/interaction-layers.ts": "0d269311bab5e752a364787d0e3669b0cc462536407f5d4f1766e95ef72a9171",
+    "frontend/design-client/src/kernel/interaction-layers.test.ts": "fec243461e2ba41cc8ad5c1ca76ba16b3cc9410854798bcaf982d38d7c140631",
+    "frontend/design-client/src/kernel/interaction-renderer.ts": "b47a084c7a7cb8a46464e21719559fa96d9e73ab921a51c1c01244dd0d97315d",
+    "frontend/design-client/src/kernel/page-translation.ts": "fdc3a6b52b5ec5d0a6e80bf004a75eb0a35a55ff124de6996f8b08e988d7ae14",
+    "frontend/design-client/src/kernel/page-translation.test.ts": "8960732f0e8e5a95773faba31b7590234a0aae6f97244cbc4caf72df91081aac",
+    "frontend/design-client/src/kernel/gpu/resident-presenter.ts": "85562b7ed18863f4652fe53c1270f0e563cc1095e960024d06fc8886fc3ab948",
+    "frontend/design-client/src/kernel/gpu/tile-compositor.ts": "c0f084b3003160e4dae8ba295cf3777a352d1b99a797bf87909887ea9b2c37cb",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "47eb54c2f120014fdfc49263e820a6fa4aff24243730ec791929e5ace67ea67c",
+    "frontend/design-client/src/kernel/gpu/vector.glsl": "e5b59686ea906894b5a862420f952ca5e714f9f1378aca8e610c01065f9a6937",
+    "frontend/design-client/src/kernel/gpu/gradient-alpha-check.ts": "2f397363ab9c26d72863ad33fb6ac485bea17d38b266bc111e29656779ba95ee",
+    "frontend/design-client/src/kernel/gpu/display-seams-check.ts": "91531a1c7236e7cc9bee3dc52cbc75ac2b1e5eb31b2747a13c5b712c668bf47f",
+    "design-studio/crates/design-kernel/shaders/vector.wgsl": "af047ef61a58abb84d2f001eaf48fd2afd8bf6e83b0250ffd55b49f952614afa",
+    "design-studio/crates/design-kernel/src/color.rs": "e2309a4d100b37e64b8e6f94be70f6935f7360ae50796ff9dc73183f19306b3d",
+    "design-studio/crates/design-kernel/src/animation.rs": "30cfbe159d438c059722c1769c10281d8832815f2e00a44df1faabd2e4c15369",
+    "design-studio/crates/design-kernel/src/figma_gradient.rs": "510b6b9138e84aab8e724143b4df7e1583ccf108bfd8813e251e654407c92686",
+    "design-studio/crates/design-kernel/src/fixed_gradient.rs": "ac8e0d767a1f37f61b24b5ddb4d608db0373c85b432a1794977a4d2d56334d5e",
+    "design-studio/crates/design-kernel/src/gpu.rs": "900080f5878aa616083e9caf6a3b779c6089c183064cd6245b30b9a6ddcfd499"
+  },
+  "inputDeviceFollowup": {
+    "userPreference": "Mouse wheel and Mac trackpad are both used",
+    "change": "Extract and regression-test native pinch vs physical Ctrl/Meta wheel classification; preserve coarse/fine wheel accumulation and the pointer anchor. Numeric gains unchanged from the previous fix.",
+    "tests": {
+      "files": 3,
+      "passed": 32,
+      "exit": 0
+    },
+    "typecheckExit": 0,
+    "fullSuiteAndBuildNote": "The full suite and build in verification ran before this input helper extraction. Latest three input files passed the focused checks above.",
+    "sourceSHA256": {
+      "frontend/design-client/src/Canvas.tsx": "a8660b33db03833cad462cd69d185ca042fb5a70f5b928525c9c6ebb052b66ce",
+      "frontend/design-client/src/canvas-camera.ts": "2a661847640c085f3433ecbdb7c075edf836ccf78e7ae25189b82b5835363678",
+      "frontend/design-client/src/canvas-camera.test.ts": "60b2b124422d9de22ec50d2799a520aa9a53363a330b7b9436129f45f8f45390"
+    }
+  }
+}

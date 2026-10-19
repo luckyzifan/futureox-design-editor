@@ -1,0 +1,987 @@
+{
+  "updatedUTC": "2026-10-08T04:50:06.084029+00:00",
+  "status": "lighting_and_tile_budget_improved_internal_verified_external_fidelity_failed",
+  "completeKernelAcceptancePassed": false,
+  "productionChanges": [
+    "Glass lighting separates a scale-aware directional rim from depth-dependent signed tint; retains explicit f32 arithmetic across all backends. Empirical coefficients, not a recovered proprietary/physical model.",
+    "Figma CPU RGBA/float tiles bound source dimensions under 2x supersampling; unchanged 256MiB allocation budget."
+  ],
+  "schema": {
+    "document": 5,
+    "gpuScene": 4,
+    "changedThisIteration": false
+  },
+  "strictInternalCorpus": {
+    "cases": 258,
+    "profiles": [
+      "analytic",
+      "figma",
+      "figmaSubpixel"
+    ],
+    "fullAcceptancePassed": true,
+    "crossReadbackChecks": 1026,
+    "crossReadbackFailures": 0,
+    "evidence": ".local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/result.json",
+    "checks": [
+      {
+        "stage": "oracle",
+        "command": [
+          "python3",
+          "design-studio/scripts/generate-precision-vectors.py",
+          "--check"
+        ],
+        "exit": 0,
+        "seconds": 1.59,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/oracle.log"
+      },
+      {
+        "stage": "sampling-oracle",
+        "command": [
+          "python3",
+          "design-studio/scripts/generate-sampling-vectors.py",
+          "--check"
+        ],
+        "exit": 0,
+        "seconds": 0.35,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/sampling-oracle.log"
+      },
+      {
+        "stage": "filter-oracle",
+        "command": [
+          "python3",
+          "design-studio/scripts/generate-filter-vectors.py",
+          "--check"
+        ],
+        "exit": 0,
+        "seconds": 0.514,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/filter-oracle.log"
+      },
+      {
+        "stage": "coverage-oracle",
+        "command": [
+          "python3",
+          "design-studio/scripts/generate-coverage-vectors.py",
+          "--check"
+        ],
+        "exit": 0,
+        "seconds": 0.179,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/coverage-oracle.log"
+      },
+      {
+        "stage": "icc-patch",
+        "command": [
+          "python3",
+          "design-studio/scripts/check-moxcms-patch.py"
+        ],
+        "exit": 0,
+        "seconds": 0.078,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/icc-patch.log"
+      },
+      {
+        "stage": "generated-shaders",
+        "command": [
+          "python3",
+          "design-studio/scripts/generate-rational-glsl.py",
+          "--check"
+        ],
+        "exit": 0,
+        "seconds": 0.073,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/generated-shaders.log"
+      },
+      {
+        "stage": "kernel",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--manifest-path",
+          "design-studio/Cargo.toml",
+          "-p",
+          "futureox-design-kernel",
+          "-p",
+          "futureox-design-server",
+          "--no-fail-fast",
+          "--",
+          "--test-threads=2"
+        ],
+        "exit": 0,
+        "seconds": 298.104,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/kernel.log"
+      },
+      {
+        "stage": "arithmetic",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--manifest-path",
+          "design-studio/Cargo.toml",
+          "-p",
+          "futureox-design-gpu",
+          "--features",
+          "hardware-tests",
+          "--test",
+          "arithmetic",
+          "--test",
+          "sampling",
+          "--test",
+          "rational_filter",
+          "--test",
+          "coverage64",
+          "--test",
+          "area",
+          "--",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "exit": 0,
+        "seconds": 10.087,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/arithmetic.log"
+      },
+      {
+        "stage": "native",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "--manifest-path",
+          "design-studio/Cargo.toml",
+          "-p",
+          "futureox-design-gpu",
+          "--features",
+          "hardware-tests",
+          "--test",
+          "native",
+          "--",
+          "--test-threads=1",
+          "--nocapture"
+        ],
+        "exit": 0,
+        "seconds": 326.92,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/native.log"
+      },
+      {
+        "stage": "build",
+        "command": [
+          "bun",
+          "run",
+          "build"
+        ],
+        "exit": 0,
+        "seconds": 2.756,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/build.log"
+      },
+      {
+        "stage": "frontend",
+        "command": [
+          "bun",
+          "run",
+          "test"
+        ],
+        "exit": 0,
+        "seconds": 4.874,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/frontend.log"
+      },
+      {
+        "stage": "browser",
+        "command": [
+          "bun",
+          "scripts/check-gpu-parity.ts"
+        ],
+        "exit": 0,
+        "seconds": 120.427,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/browser.log"
+      },
+      {
+        "stage": "cross",
+        "command": [
+          "python3",
+          "design-studio/scripts/compare-precision-readbacks.py",
+          "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate",
+          "--profiles",
+          "analytic,figma,figmaSubpixel"
+        ],
+        "exit": 0,
+        "seconds": 14.622,
+        "log": "/Users/Apple/project/core/.local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/full-gate/cross.log"
+      }
+    ]
+  },
+  "externalFigma": {
+    "report": "testing/review/design-kernel-optics-2026-10-08/verified/results.json",
+    "caseCount": 72,
+    "strictCaseCount": 72,
+    "comparisons": 1080,
+    "internalComparisons": 864,
+    "internalPassed": true,
+    "externalPassed": false,
+    "exactCasesPerProfile": {
+      "analytic": 0,
+      "figma": 0,
+      "figmaSubpixel": 0
+    },
+    "missingBackends": 0,
+    "nativeBinarySha256": "83d6c119db804d416ce1804030135caf0cb5ba293f5d578d591c0c76525bd159",
+    "casesSha256": "888c4806ea2110702ea165c09bc6e73a875d3c69081ac3623266e396fe553c50",
+    "verifiedReusedNativeExecutions": 396,
+    "freshNativeExecutions": 36,
+    "reuseBoundary": "396 prior native results verified against binary SHA, exact complete input, driver, repeat count, successful exit and RGBA SHA; original commands retained. Changed inputs executed anew. No reuse in the full 258-case precision gate.",
+    "commandExit": 1,
+    "commandExitReason": "Expected strict external pixel failure, never waived.",
+    "independentPixelAudit": {
+      "rows": 1080,
+      "mismatches": [],
+      "exactBackendGroups": 216,
+      "referenceHashesVerified": 72,
+      "casesSha256": "888c4806ea2110702ea165c09bc6e73a875d3c69081ac3623266e396fe553c50"
+    }
+  },
+  "previous23CaseComparison": [
+    {
+      "case": "MaterialQA-glass-neutral",
+      "beforeDifferentPixels": 16,
+      "afterDifferentPixels": 16,
+      "beforeMaximum": 1,
+      "afterMaximum": 1,
+      "beforeMae": 0.000732421875,
+      "afterMae": 0.000732421875,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-light-0",
+      "beforeDifferentPixels": 1490,
+      "afterDifferentPixels": 640,
+      "beforeMaximum": 63,
+      "afterMaximum": 20,
+      "beforeMae": 0.517913818359375,
+      "afterMae": 0.065277099609375,
+      "unchangedRgba": false
+    },
+    {
+      "case": "MaterialQA-light-90",
+      "beforeDifferentPixels": 1577,
+      "afterDifferentPixels": 667,
+      "beforeMaximum": 63,
+      "afterMaximum": 21,
+      "beforeMae": 0.5227203369140625,
+      "afterMae": 0.0694427490234375,
+      "unchangedRgba": false
+    },
+    {
+      "case": "MaterialQA-light-180",
+      "beforeDifferentPixels": 1510,
+      "afterDifferentPixels": 666,
+      "beforeMaximum": 63,
+      "afterMaximum": 21,
+      "beforeMae": 0.516632080078125,
+      "afterMae": 0.06317138671875,
+      "unchangedRgba": false
+    },
+    {
+      "case": "MaterialQA-light-270",
+      "beforeDifferentPixels": 1562,
+      "afterDifferentPixels": 650,
+      "beforeMaximum": 62,
+      "afterMaximum": 20,
+      "beforeMae": 0.5182342529296875,
+      "afterMae": 0.0655059814453125,
+      "unchangedRgba": false
+    },
+    {
+      "case": "MaterialQA-light-strong",
+      "beforeDifferentPixels": 1998,
+      "afterDifferentPixels": 1408,
+      "beforeMaximum": 84,
+      "afterMaximum": 56,
+      "beforeMae": 1.0273590087890625,
+      "afterMae": 0.1399383544921875,
+      "unchangedRgba": false
+    },
+    {
+      "case": "MaterialQA-depth-1",
+      "beforeDifferentPixels": 2546,
+      "afterDifferentPixels": 2546,
+      "beforeMaximum": 68,
+      "afterMaximum": 68,
+      "beforeMae": 3.01556396484375,
+      "afterMae": 3.01556396484375,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-depth-8",
+      "beforeDifferentPixels": 2842,
+      "afterDifferentPixels": 2842,
+      "beforeMaximum": 189,
+      "afterMaximum": 189,
+      "beforeMae": 3.0260009765625,
+      "afterMae": 3.0260009765625,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-depth-24",
+      "beforeDifferentPixels": 2306,
+      "afterDifferentPixels": 2306,
+      "beforeMaximum": 229,
+      "afterMaximum": 229,
+      "beforeMae": 4.6425018310546875,
+      "afterMae": 4.6425018310546875,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-refraction-1",
+      "beforeDifferentPixels": 3339,
+      "afterDifferentPixels": 3339,
+      "beforeMaximum": 224,
+      "afterMaximum": 224,
+      "beforeMae": 4.004913330078125,
+      "afterMae": 4.004913330078125,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-dispersion-half",
+      "beforeDifferentPixels": 2715,
+      "afterDifferentPixels": 2715,
+      "beforeMaximum": 203,
+      "afterMaximum": 203,
+      "beforeMae": 3.057708740234375,
+      "afterMae": 3.057708740234375,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-dispersion-without-refraction",
+      "beforeDifferentPixels": 2721,
+      "afterDifferentPixels": 2721,
+      "beforeMaximum": 66,
+      "afterMaximum": 66,
+      "beforeMae": 3.066650390625,
+      "afterMae": 3.066650390625,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-frost-quarter",
+      "beforeDifferentPixels": 2436,
+      "afterDifferentPixels": 2436,
+      "beforeMaximum": 56,
+      "afterMaximum": 56,
+      "beforeMae": 2.7322998046875,
+      "afterMae": 2.7322998046875,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-frost-1",
+      "beforeDifferentPixels": 2289,
+      "afterDifferentPixels": 2289,
+      "beforeMaximum": 27,
+      "afterMaximum": 27,
+      "beforeMae": 0.8421478271484375,
+      "afterMae": 0.8421478271484375,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-frost-4",
+      "beforeDifferentPixels": 7308,
+      "afterDifferentPixels": 7308,
+      "beforeMaximum": 3,
+      "afterMaximum": 3,
+      "beforeMae": 0.276275634765625,
+      "afterMae": 0.276275634765625,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-texture-neutral",
+      "beforeDifferentPixels": 4124,
+      "afterDifferentPixels": 4124,
+      "beforeMaximum": 2,
+      "afterMaximum": 2,
+      "beforeMae": 0.0906219482421875,
+      "afterMae": 0.0906219482421875,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-texture-size-1",
+      "beforeDifferentPixels": 5323,
+      "afterDifferentPixels": 5323,
+      "beforeMaximum": 47,
+      "afterMaximum": 47,
+      "beforeMae": 0.254058837890625,
+      "afterMae": 0.254058837890625,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-texture-size-8",
+      "beforeDifferentPixels": 6029,
+      "afterDifferentPixels": 6029,
+      "beforeMaximum": 49,
+      "afterMaximum": 49,
+      "beforeMae": 0.3207244873046875,
+      "afterMae": 0.3207244873046875,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-texture-unclipped",
+      "beforeDifferentPixels": 6362,
+      "afterDifferentPixels": 6362,
+      "beforeMaximum": 185,
+      "afterMaximum": 185,
+      "beforeMae": 1.191650390625,
+      "afterMae": 1.191650390625,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-texture-size-32",
+      "beforeDifferentPixels": 6153,
+      "afterDifferentPixels": 6153,
+      "beforeMaximum": 47,
+      "afterMaximum": 47,
+      "beforeMae": 0.3119354248046875,
+      "afterMae": 0.3119354248046875,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-texture-radius-4",
+      "beforeDifferentPixels": 6849,
+      "afterDifferentPixels": 6849,
+      "beforeMaximum": 65,
+      "afterMaximum": 65,
+      "beforeMae": 0.470306396484375,
+      "afterMae": 0.470306396484375,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-texture-anisotropic",
+      "beforeDifferentPixels": 5942,
+      "afterDifferentPixels": 5942,
+      "beforeMaximum": 44,
+      "afterMaximum": 44,
+      "beforeMae": 0.320404052734375,
+      "afterMae": 0.320404052734375,
+      "unchangedRgba": true
+    },
+    {
+      "case": "MaterialQA-texture-size-8-twin",
+      "beforeDifferentPixels": 6029,
+      "afterDifferentPixels": 6029,
+      "beforeMaximum": 49,
+      "afterMaximum": 49,
+      "beforeMae": 0.3207244873046875,
+      "afterMae": 0.3207244873046875,
+      "unchangedRgba": true
+    }
+  ],
+  "prospectiveLightingHoldout": {
+    "cases": [
+      {
+        "id": "OpticsHoldout-light-30-0.75-depth-12-1x",
+        "beforeMax": 79,
+        "afterMax": 37,
+        "beforeMae": 0.7616729736328125,
+        "afterMae": 0.2362060546875
+      },
+      {
+        "id": "OpticsHoldout-light-135-0.75-depth-12-1x",
+        "beforeMax": 79,
+        "afterMax": 42,
+        "beforeMae": 0.8420562744140625,
+        "afterMae": 0.1095428466796875
+      },
+      {
+        "id": "OpticsHoldout-light-225-0.75-depth-12-1x",
+        "beforeMax": 79,
+        "afterMax": 42,
+        "beforeMae": 0.84393310546875,
+        "afterMae": 0.10528564453125
+      },
+      {
+        "id": "OpticsHoldout-light-315-0.75-depth-12-1x",
+        "beforeMax": 79,
+        "afterMax": 42,
+        "beforeMae": 0.8323974609375,
+        "afterMae": 0.100616455078125
+      },
+      {
+        "id": "OpticsHoldout-light-30-0.75-depth-12-2x",
+        "beforeMax": 97,
+        "afterMax": 42,
+        "beforeMae": 0.7433395385742188,
+        "afterMae": 0.23175430297851562
+      },
+      {
+        "id": "OpticsHoldout-light-135-0.75-depth-12-2x",
+        "beforeMax": 97,
+        "afterMax": 52,
+        "beforeMae": 0.8336906433105469,
+        "afterMae": 0.11360549926757812
+      },
+      {
+        "id": "OpticsHoldout-light-225-0.75-depth-12-2x",
+        "beforeMax": 97,
+        "afterMax": 52,
+        "beforeMae": 0.8334732055664062,
+        "afterMae": 0.1132049560546875
+      },
+      {
+        "id": "OpticsHoldout-light-315-0.75-depth-12-2x",
+        "beforeMax": 97,
+        "afterMax": 53,
+        "beforeMae": 0.8273391723632812,
+        "afterMae": 0.10748291015625
+      }
+    ],
+    "beforeMeanOfCaseMae": 0.8147377967834473,
+    "afterMeanOfCaseMae": 0.13971233367919922,
+    "allImproved": true,
+    "boundary": "Created and exported after choosing production lighting coefficients. Excluded from fitting script."
+  },
+  "calibration": {
+    "fit": "testing/review/design-kernel-lighting-fit-2026-10-08.json",
+    "diagnostics": "testing/review/design-kernel-optical-measurements-2026-10-08.json",
+    "distance": "testing/review/design-kernel-distance-probe-2026-10-08.json",
+    "parameterAudit": {
+      "checkedCases": 49,
+      "binary32RadiusReadbacks": [
+        {
+          "id": "OpticsQA-frost-1.99-1x",
+          "authoredRadius": 1.99,
+          "renderedAndReadBackRadius": 1.9900000095367432
+        },
+        {
+          "id": "OpticsQA-frost-2.01-1x",
+          "authoredRadius": 2.01,
+          "renderedAndReadBackRadius": 2.009999990463257
+        },
+        {
+          "id": "OpticsQA-frost-1.99-2x",
+          "authoredRadius": 1.99,
+          "renderedAndReadBackRadius": 1.9900000095367432
+        },
+        {
+          "id": "OpticsQA-frost-2.01-2x",
+          "authoredRadius": 2.01,
+          "renderedAndReadBackRadius": 2.009999990463257
+        },
+        {
+          "id": "OpticsQA-frost-1.99-4x",
+          "authoredRadius": 1.99,
+          "renderedAndReadBackRadius": 1.9900000095367432
+        },
+        {
+          "id": "OpticsQA-frost-2.01-4x",
+          "authoredRadius": 2.01,
+          "renderedAndReadBackRadius": 2.009999990463257
+        }
+      ]
+    },
+    "radiusCorrection": "Six authored 1.99/2.01 radius probes normalized to actual Figma binary32 readbacks, then rerun on all five backends and all three profiles. No pixels changed. Copied descriptive figmaEffects metadata corrected for 49 new probes; original PNG bytes unchanged."
+  },
+  "memoryRegression": {
+    "previousFailures": 9,
+    "currentFailures": 0,
+    "unchangedBudgetBytes": 268435456,
+    "test": "four_times_glass_export_respects_memory_budget_and_tile_seams",
+    "beforeEvidence": ".local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/baseline-cpu-complete/results.json",
+    "afterEvidence": ".local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/tile-cpu/results.json",
+    "performance": "No release performance improvement claimed. Debug 4x renders remain expensive."
+  },
+  "literatureAssessment": [
+    {
+      "source": "https://peterkovesi.com/papers/FastGaussianSmoothing.pdf",
+      "readScope": "Author full text, averaging-width equations 3 and 5 and boundary propagation discussion",
+      "application": "Measured 3/5 odd-box cascades at density1/2/4 and sigma=radius/2. On 8 active blur center rows their summed absolute errors206..642 exceeded integrated tent14. Reject tested mappings, not all box filters."
+    },
+    {
+      "source": "https://scribblethink.org/Work/Pdfs/A_Survey_of_Procedural_Noise_Functions.pdf",
+      "readScope": "Definitions and spatial/frequency characterization sections",
+      "application": "Measured autocorrelation, spectral centroid and fixed SVG lattice cubic/quintic candidates. Candidate correlations -0.196..0.198 do not identify native Figma noise."
+    },
+    {
+      "source": "https://www.cs.cmu.edu/~jkh/462_s07/paper445.pdf",
+      "readScope": "Perlin 2002 interpolation and gradient changes",
+      "application": "Quintic fade evaluated only as a controlled SVG-lattice variant; not mislabelled as the full 3D Improved Noise algorithm. Not adopted."
+    },
+    {
+      "source": "https://jcgt.org/published/0009/03/02/paper.pdf",
+      "readScope": "PRNG versus random hash requirements and multidimensional hashing discussion",
+      "application": "Corrected PCG classification; deterministic spatial hash quality does not identify Figma seed/field."
+    },
+    {
+      "source": "https://graphics.cs.kuleuven.be/publications/LLDD09PNSGC/",
+      "readScope": "Author project description and errata; no full-text proof claim",
+      "application": "Gabor is a future spectral candidate; formulas19..22 have author corrections. No production adoption."
+    },
+    {
+      "source": "https://perso.liris.cnrs.fr/ostrom/publications/pdf/SIGGRAPH01_varcoeffED.pdf",
+      "readScope": "Accessible indexed abstract; direct full-text retrieval failed",
+      "application": "Error diffusion is a candidate only. Measured constant G variation118/119/120 and no exact tested2/4/8/16/32 period; no production dither added."
+    },
+    {
+      "source": "https://www.cs.cornell.edu/~srm/publications/EGSR07-btdf.pdf",
+      "readScope": "Microfacet model assumptions and reflection/transmission sections",
+      "application": "Physical BTDF is not a proof of the screen-space stylized glass model. No unsupported substitution."
+    },
+    {
+      "source": "https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission",
+      "readScope": "Physical principles/IOR and reflection/transmission model sections",
+      "application": "Separates physical reference from empirically calibrated lighting."
+    },
+    {
+      "source": "https://registry.khronos.org/webgl/specs/latest/2.0/",
+      "readScope": "GLSL ES3.00 support and restrictions",
+      "application": "Replaced GLSL ES3.20 as the direct WebGL2 contract reference."
+    },
+    {
+      "source": "https://www.w3.org/TR/filter-effects-1/",
+      "readScope": "feGaussianBlur implementation notes",
+      "application": "Box-cascade candidate family only; SVG export is not evidence of native PNG implementation."
+    }
+  ],
+  "documentCorrections": [
+    "WebGL2 directly references GLSL ES3.00, not3.20.",
+    "PCG PRNG family is not automatically a validated2D coordinate hash.",
+    "Subdivision references do not by themselves certify the implementation chord bound.",
+    "PDF isolated/knockout terminology does not establish pass-through semantic isomorphism.",
+    "Gabor author errata must be respected."
+  ],
+  "additionalChecks": [
+    {
+      "name": "Clippy all design workspace targets/hardware tests -D warnings",
+      "exit": 0,
+      "log": ".local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/clippy.log"
+    },
+    {
+      "name": "Foundation checks",
+      "exit": 0,
+      "log": ".local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/foundation.log"
+    },
+    {
+      "name": "Frontend lint",
+      "exit": 0,
+      "log": ".local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/frontend-lint.log"
+    },
+    {
+      "name": "Native report reuse safeguards, 4 tests",
+      "exit": 0,
+      "log": ".local/design-validation/optics-debe33e3-b14e-475f-8e60-3cb6e66c98e1/reuse-tests-final.log"
+    }
+  ],
+  "sourceSha256": {
+    "design-studio/Cargo.lock": "14f563aeca298f4c9d97eb1ce3f2b142f9dbe16b88fa29cc8544f5e01597baea",
+    "design-studio/Cargo.toml": "0bf38f7869bce9a2ce78a04aabcba157a60558db7a487e726460f429df5310f2",
+    "design-studio/crates/design-gpu/Cargo.toml": "048afeb6ffb2b76609398dbf99f50c109e72d001c8fb6acd7f03bea5c539bba5",
+    "design-studio/crates/design-gpu/src/compositor.rs": "6c54f9f8cdce3e57fd239f2121e190282fd45a122f31a706e56590bf3f0e0e24",
+    "design-studio/crates/design-gpu/src/device.rs": "cc04f886a02db76becb200f84fae5cd6a5a0204225354194c74cdd571299be21",
+    "design-studio/crates/design-gpu/src/lib.rs": "52f24e0aa30f39729081ad1a10739caddc43cf6a94e19112780157b167d65138",
+    "design-studio/crates/design-gpu/src/main.rs": "0f0728f85714bd9a725f9b9ab89c094915361b751d9f5c0ca584c2174f5b148e",
+    "design-studio/crates/design-gpu/tests/area.rs": "6825418f09366cd4448886a3ccb636daa8497149027cb60c59303c0334354caf",
+    "design-studio/crates/design-gpu/tests/arithmetic.rs": "0474237ffddbffcf5e3ea51a77fccc560e8c9ef4c52926bc291996f6ff29b10e",
+    "design-studio/crates/design-gpu/tests/coverage64.rs": "b39e2e39740be7d031823df1b79735a8c39ee84e89edbefb497b019eb5ebccd8",
+    "design-studio/crates/design-gpu/tests/native.rs": "11834eb10fe3c8de4aebfb64fe0670204f059abadca4047afa983a1eae659421",
+    "design-studio/crates/design-gpu/tests/rational_filter.rs": "d008ee7f9ea4545b65dbddf3dfd1bfd27eb186654028e51d984b115614c08b12",
+    "design-studio/crates/design-gpu/tests/sampling.rs": "1b48d0cd34e784c1de1ea89f829047100d7d6402f8c8ff4be29f8544dec75d57",
+    "design-studio/crates/design-kernel/Cargo.toml": "55760bbdc268b47cab72061da2ad9411b86f2ca99d9c76b3eb895b792c8a666b",
+    "design-studio/crates/design-kernel/benches/blur.rs": "1b2c1e4b59b35ec14a6d64ae522c40fbe903b46bdd22aff3255c45ade973b7a7",
+    "design-studio/crates/design-kernel/benches/editing.rs": "4057610505ab0c67662145d750b2ad8507cf5bf00cadc2e293be3d76850f4e0e",
+    "design-studio/crates/design-kernel/benches/fractional_blur.rs": "49f544b29fea0b621d1418e4d48e381c6b75383c453799be70da5d25025febe1",
+    "design-studio/crates/design-kernel/benches/precision.rs": "1cdf6b7c1258c09a96d9251929bdd0d0aca2b858e5941e7d0e22b2bc9158d017",
+    "design-studio/crates/design-kernel/benches/raster.rs": "daf9e9f6ffcc0deae42ae38a3dadc38bf817d84fe3708b14583b5cc5790f0fe5",
+    "design-studio/crates/design-kernel/benches/sample_edges.rs": "300e34a9c9a1aad4daede17f2788b4346ea6896a9cd72389f4f6b4f287635d47",
+    "design-studio/crates/design-kernel/benches/sampling.rs": "f8e850569e8bb791142cd307a95666c62c9ea03cef583912bd5212eb45093df1",
+    "design-studio/crates/design-kernel/examples/benchmark_text_measure.rs": "cc5df61fcd73c950703e345c195d1c62adf6431d1cdeeefef9773b5188601c5e",
+    "design-studio/crates/design-kernel/examples/color_assets.rs": "5c540f8b4c8d930120b0159b4fe782838e52ff2fdc789407f5c539babe4bb755",
+    "design-studio/crates/design-kernel/examples/profile_text_paths.rs": "53727e14f4de4ef16243d1c5ac2734f4db3a0f19978cfbbd34b33c5eeb21724c",
+    "design-studio/crates/design-kernel/shaders/area.wgsl": "9f675d7d668e510cbd2ed64d955a5ff62c3dd6f7aede75fc4b7b673e760f9217",
+    "design-studio/crates/design-kernel/shaders/byte-sampling.wgsl": "4c7c92a8a7dc8448aed48ee944d318c399210d8ac7ce9ed3a3acffd7b3a10600",
+    "design-studio/crates/design-kernel/shaders/coverage64.wgsl": "bbbc444b7485e58ed01d9be8a452a1546c57692af62c7de52513fe9046950f57",
+    "design-studio/crates/design-kernel/shaders/rational-filter.wgsl": "8737f9e13ebca5507ab43c9efdc814f41f1fc91c3bfd319ca9aeae8e9189b5ff",
+    "design-studio/crates/design-kernel/shaders/sampling.wgsl": "5063cd8f98293f571432035279b361a11d05656252d9bdac16188495924849fb",
+    "design-studio/crates/design-kernel/shaders/vector.wgsl": "fdf06c6110cb4a6ae3400196ed08202b841f60882784bf8f84c7cb2ec9b58d74",
+    "design-studio/crates/design-kernel/src/analytic.rs": "51f2f33771ec7a20637c3596eaa0cf12e5ac210479b72d6495f0875bb3fc48aa",
+    "design-studio/crates/design-kernel/src/animation.rs": "9c6f5714c2711d526d8dd2b00c5662ae110cc9935d3c5597ee522af4fd98b122",
+    "design-studio/crates/design-kernel/src/area_program.rs": "a0484b33ea4cf8ce8c8dcce8528e18a09d83c844aaaba397709a0df71288aad7",
+    "design-studio/crates/design-kernel/src/bin/render.rs": "1fff1a88d05cef467eac98a82c2334f55511048af314c70c7320f3aa9dd018d8",
+    "design-studio/crates/design-kernel/src/blend.rs": "0d35cca85f83360ed4c07c4a2eb0c625cc8e0a8c1ea5d05d0dfee36d61441b89",
+    "design-studio/crates/design-kernel/src/boolean.rs": "f01cabfca7fc460e8debb2ec4a447923a56aebc8769ae08ba8172a0f16c55113",
+    "design-studio/crates/design-kernel/src/bounds.rs": "bd295f85e6b618bee770ae19cf03baed5635a60414f5330ee44580d554279ac0",
+    "design-studio/crates/design-kernel/src/certified_filter.rs": "b59f74ffe1df7a36ae50526c8dd32098b79d6bd8b569b76f724f7a252e26c054",
+    "design-studio/crates/design-kernel/src/color.rs": "aeabf648b2767edf39d6fa3f182f095fdc15957503b67abaaceb49299abeabb5",
+    "design-studio/crates/design-kernel/src/components.rs": "42bb7be22fbf91b4e71fccaa2f8fcc63ee597d38aaaf3750dd11b1c081b318bb",
+    "design-studio/crates/design-kernel/src/coverage.rs": "daf312073138d5c75696048978d5c56146b3162345a0d82191288711eb5456b8",
+    "design-studio/crates/design-kernel/src/curve_boolean.rs": "e48c99c81684e03ad7d53d2902a4014069fd58ce1e862343680bd847321d4863",
+    "design-studio/crates/design-kernel/src/design_system.rs": "98d859b7d8af8da2c867a8358d7f5c45210550c0dd348cac84e600925802708f",
+    "design-studio/crates/design-kernel/src/editing.rs": "978a57ba2a710703fafed4c98f90c7884b7514e2096843618ed3121d24036c02",
+    "design-studio/crates/design-kernel/src/effects.rs": "407014e657c0fbed9c5289a22174b3aa8317d5fbe004e54d5d8422c3a86377c9",
+    "design-studio/crates/design-kernel/src/export.rs": "53c24e0199601b04a4235d89682c3febf7bac565f2b29d4dcc99911375c3ddbc",
+    "design-studio/crates/design-kernel/src/fidelity.rs": "510bc23e9948159d40c6a76caea58d6647f2fa61208ec9a63b91472ca9d5e050",
+    "design-studio/crates/design-kernel/src/fixed_gradient.rs": "4537129150b777175d7b196cb71b9cf39315b40169e43e5359fd77bb24d434ca",
+    "design-studio/crates/design-kernel/src/font.rs": "b909921b6481b6df8e807996c965e846462bdd2422be6af5af8b9b2542170da9",
+    "design-studio/crates/design-kernel/src/freehand.rs": "ffaff9d7e97d53b55a71665cfca734a0cdc9536379d121c947e080ba057f4eed",
+    "design-studio/crates/design-kernel/src/geometry_snapshot.rs": "77834ad54fe7b1f1ef7041d02f1295c9ff945a2e295f7dcc94637947b2f88876",
+    "design-studio/crates/design-kernel/src/gpu.rs": "971ee2aed60ef7b9a7a460a777c92a3fd3682f7b099d472a05754fb3680a3fe9",
+    "design-studio/crates/design-kernel/src/image_color.rs": "b7f8d85f3630c878f4718ce8a864a3842581960b168b147eafc60ab8af06b0c1",
+    "design-studio/crates/design-kernel/src/layout.rs": "6ba06d3780d287627a90d920fa21dd84ad4978e7576331bdde38b41446dbfce5",
+    "design-studio/crates/design-kernel/src/lib.rs": "eb97fe2ec858fd52c9e5d7933e0118c9c5e9910f2c03fec1017d2b43125faac0",
+    "design-studio/crates/design-kernel/src/material.rs": "056cb5ad6cfc13a4d4695b2fbc81c83e7c429107035b0955db09500dbd11e820",
+    "design-studio/crates/design-kernel/src/math.rs": "974bc077bf224bd742d458e3125c50e463663f5023993f735a2463497ecc6c30",
+    "design-studio/crates/design-kernel/src/memory.rs": "8a7dd46499649f54bf4e60d3be4ce5d696b850afe902f457b0c5407c5db0294b",
+    "design-studio/crates/design-kernel/src/paint.rs": "86f06a17e87dfee54cfee3934937c74cc019003545f874b70f6605f1924f2d9e",
+    "design-studio/crates/design-kernel/src/path.rs": "f05e3704cbf863462df847bce1e79a6517fb6e94f01d59a31c13921ff1d92ba5",
+    "design-studio/crates/design-kernel/src/preview.rs": "50b89f2590f82e03475e090d5eb1a4f4dea2e519e1f14ffd0508b2c7e26024fb",
+    "design-studio/crates/design-kernel/src/prototype.rs": "2ed5a15dda7a2fecab51446f5f1c494eb27e31bc6b907614319f4f323ae518ea",
+    "design-studio/crates/design-kernel/src/raster.rs": "0649a9b0a7c7f3bd548840bedbffd938b859d740bc0ddabfc28f833df663915d",
+    "design-studio/crates/design-kernel/src/rational_filter.rs": "8e9c4d7b3d43065cb5f00f4b84c92667298fba9fc11cd70b4cc1c51a83b926ea",
+    "design-studio/crates/design-kernel/src/renderer.rs": "90d2a58d52fbe6508341fe3af40c3bcda5bbbffbfb00eb9357f1dd0426b9d1f1",
+    "design-studio/crates/design-kernel/src/renderer_tests/memory.rs": "dd65cae0916d133b1bf81bf9370cae88b3e172dc166b6042fab1913ab442ace8",
+    "design-studio/crates/design-kernel/src/renderer_tests/solid_quantization.rs": "22a76c9de2fc73ba26db622d517276bdde8b82b4bfa433a121fc931d1c30b55a",
+    "design-studio/crates/design-kernel/src/rounded.rs": "6f17a8718cb58c3d92d0560f84c869783be758e52e59b7f2bb93758bca8b7066",
+    "design-studio/crates/design-kernel/src/sampling.rs": "61404d6599edac053e378baa1300250bb2f7686e1a1178656d8d037a56963de4",
+    "design-studio/crates/design-kernel/src/scene.rs": "cb06fed6022696797a94fdc0cb4952b781ebaf273841b7724547817d35fc915e",
+    "design-studio/crates/design-kernel/src/stroke/profile.rs": "2675382c336b0cc1c343feb450dfd55934009e3153d74f370bc31c9910c6ecef",
+    "design-studio/crates/design-kernel/src/stroke.rs": "4c4662ea1038b1365ea484c6955adddcb43f53ae7bebe8b717e3a3c0e6d45894",
+    "design-studio/crates/design-kernel/tests/animation.rs": "cfa590b07576338dc53cb2482fea4c6a9ec77dac6a295277391ae3109527ab4c",
+    "design-studio/crates/design-kernel/tests/arithmetic.rs": "9ef9223bb5e2f911e0be31f86c10c9ec1dcbf06539817ac34669a7beba10c282",
+    "design-studio/crates/design-kernel/tests/authoring.rs": "1e5c70c279f10d3043f2c4214dfac58e0ae2333a384b76193d66ebfa9262f3e3",
+    "design-studio/crates/design-kernel/tests/blur.rs": "cde05fe9fe5fea83937d4e7fed455a408bc8975fb8a19346b3a4e1c5fa23ca6f",
+    "design-studio/crates/design-kernel/tests/canvas.rs": "81a9ba0cde12feec09b80dc5ede952e1891b7710a245df0a7bdcb671d9cc9c45",
+    "design-studio/crates/design-kernel/tests/coherence.rs": "9c3819e7e86a5a89c04e8c73ee5f3072e7da3554b5bc5bfb7692369db93a39b8",
+    "design-studio/crates/design-kernel/tests/color.rs": "c3b980d9a1efdee3432334200f294e291e2f35813d55a9880f828d24c4ec1ae2",
+    "design-studio/crates/design-kernel/tests/components.rs": "6b64b3ca35aab9620c597b30dde9f9a0eeb78103b944a56b0a89cf4075606806",
+    "design-studio/crates/design-kernel/tests/composed_inverse.rs": "652433e6e4866a32fee4a7f35e9a20151990ccca6c2cf5fe2d26fbe81c4e307a",
+    "design-studio/crates/design-kernel/tests/compositing_memory.rs": "12f4a2bec2e63e8af49fb3853d179645ec039723e2b8051e47489bc5e23a318b",
+    "design-studio/crates/design-kernel/tests/coverage64.rs": "2dd566846495ea4faa3b01dbcc6a177b810250befb0927882cfa71fa07994288",
+    "design-studio/crates/design-kernel/tests/dash_offset.rs": "66652ec5f21bb6238e4cab8368f01394ac95815f3cb7ca1932c7ac0b4370d77e",
+    "design-studio/crates/design-kernel/tests/editing.rs": "6076797f8d5d10e12cf74bca9a59c7041d38fbce7e8c7271402b01209acf6524",
+    "design-studio/crates/design-kernel/tests/export_regions.rs": "fb7ac993b331e1e2bdbe9c2289dbe939483773ddede3d3cd5fe3710dbcf99618",
+    "design-studio/crates/design-kernel/tests/fidelity.rs": "193afbfe2d5832468ca8b9b33cad5f48a388891388d8c8f9c11e48cde4d9140c",
+    "design-studio/crates/design-kernel/tests/figma_corners.rs": "479a3b3c3d62d24832c730af0539b9b95f401d23c58bd0f7906d7c267d93473b",
+    "design-studio/crates/design-kernel/tests/figma_mask.rs": "dd20bfc0a3d0cde3fe37ef0fa8f7026fb7a67d87b8ea71f6aaba53fa5999d55a",
+    "design-studio/crates/design-kernel/tests/freehand.rs": "51f5af0c1ec88dc326411e3ef7ccaa4ac0bd7d108e36912f2514b90ae6e3893e",
+    "design-studio/crates/design-kernel/tests/glass.rs": "8ca7cce606f776c7163a811933af7065eccdb0d377acd95713203630830475d3",
+    "design-studio/crates/design-kernel/tests/gradient_grid.rs": "3101a0baefdc63a4c3354dc8710821cc62bfd2366b23e4fae5ffe4231291d849",
+    "design-studio/crates/design-kernel/tests/image_cache.rs": "f9dafd94f27a0cc0f1c0b653f11a7938f26081c2031788d4e0875850682b10a7",
+    "design-studio/crates/design-kernel/tests/image_grid.rs": "55a54a25cc4ee49aba6a1b20ab96e5495e909c76179c4a995f3a2dde5054de8f",
+    "design-studio/crates/design-kernel/tests/kernel.rs": "d0785711e3adc2a2ae0adb6d23dc4a024f7b3ba9770c2aaa7780a7aa5919d1f6",
+    "design-studio/crates/design-kernel/tests/layer_blur_threshold.rs": "b7def1780bcf0710dde09eef01a9b0daef3d2252e70cb409b95bc63fa162d2f9",
+    "design-studio/crates/design-kernel/tests/layout.rs": "60fc472df6f0451eabc0285c05d9315b259972b4360323c8dc2a9765686ac39d",
+    "design-studio/crates/design-kernel/tests/mask_picking.rs": "36d0f5e71e2369438b5ef365c950256e4ef3790ef6d52ea58d92be14391915a9",
+    "design-studio/crates/design-kernel/tests/mask_precision.rs": "a6a0652a89997371910e4975a175fa88ef4b12e67a5c97a16f7ea0ef6dcc7033",
+    "design-studio/crates/design-kernel/tests/material.rs": "9596c2a14d6d0de5d4a002f8f89799ba2609b183c34ed8a5323621e4f97e0f20",
+    "design-studio/crates/design-kernel/tests/passthrough.rs": "fe2cfc8d2f6926ac25640572f2de444e37490beb2425d2a7bdfd480bb47b4c1a",
+    "design-studio/crates/design-kernel/tests/pixels.rs": "1e15a787c76123e08ab641e9a7ae68b603c6912982eca769c06f1c0f9c1efd0d",
+    "design-studio/crates/design-kernel/tests/point_guard.rs": "7d721931a5fac36740eed2e33e6204d1693ebea507b9ff73c7a8019923c567df",
+    "design-studio/crates/design-kernel/tests/rational_filter.rs": "ba1e8f109fbb59553751310f0b80fcc2bff2aed4160a6292ae612ec8e2d2ae2a",
+    "design-studio/crates/design-kernel/tests/sample_edges.rs": "301817c048810815824fdac1959b5d7042da61785a938caa03e0721505f1e89e",
+    "design-studio/crates/design-kernel/tests/sampling.rs": "cab44ecaa56f5411d93bcfb449290f0d4d74605f988a5693503b68e4114eaab8",
+    "design-studio/crates/design-kernel/tests/sampling_invariance.rs": "ae7e32dc52919ddeafa18cb8ec8e86d8362c042489df74084da63a76d916575d",
+    "design-studio/crates/design-kernel/tests/smooth_corners.rs": "e7b9a04ba260d3c777aa48bff23036a0705cf92a8dbf212c0eae6597ee40be9c",
+    "design-studio/crates/design-kernel/tests/stroke_normalization.rs": "40e554b3f5b8888e8ce11c2e154dc9645516ea2f233d30a574c470054f971d13",
+    "design-studio/crates/design-kernel/tests/stroke_profile.rs": "813fcd0bd7e81a6739fbb2794d0ee40e5cbae79b360ea8f242b494777c7ed2e2",
+    "design-studio/crates/design-kernel/tests/text.rs": "3d53bc28250fbeaaa6135d4a9e5663070eefdbed171a0ee93cb1a9ce3b7af971",
+    "design-studio/crates/design-kernel/tests/text_face_reuse.rs": "95e5feab400d6939525c70dc3a997640ebeeb17efe836eac5654a83131f054d9",
+    "design-studio/crates/design-kernel/tests/text_hug_limits.rs": "5faf5d857861531781fac8a276978fac709b62f25c582dc4522f4f35bd05a868",
+    "design-studio/crates/design-kernel/tests/text_indent.rs": "a02450f03815400cf0f74f816c11413c77c75249cff805e7fc6b7fa34155ef4f",
+    "design-studio/crates/design-kernel/tests/texture_grid.rs": "5240daf32201bb04421abcdfa7466d71fbb1e067b2d7848a5d9ccce24eac67ce",
+    "design-studio/crates/design-kernel/tests/visibility_resolve.rs": "4613521125da17615ebd1445a7703c16ccfdde5b3470d99ea27d9a57231326dd",
+    "design-studio/crates/design-kernel/tests/zoom_precision.rs": "884e468ca2abd5d376ba9b49efd1626763229e90e441d7fc62b9509928220223",
+    "design-studio/crates/design-server/Cargo.toml": "823124aaebb9c0654b203d8a0022452a1616220568b97b2f351d1f95d7680df5",
+    "design-studio/crates/design-server/src/main.rs": "3301a9e084722b6bb777879105649ec93d19da9f3bab135dc869c56d61c47a06",
+    "design-studio/crates/design-server/src/validation.rs": "d1999dd84c0cd6fe1348327d350146659f9fe38cc9eb488b789dee9dc434b212",
+    "design-studio/scripts/analyze-figma-materials.py": "39440b4513f68916f86cec8d819932342933e458240132792d69203665627887",
+    "design-studio/scripts/analyze-glass-distance.py": "4423c41a431bd62b5db84ceec7bf1d3b3cf4e62ece8819fe317ad8ad5a561dbd",
+    "design-studio/scripts/analyze-optical-evidence.py": "f16025868f46419917434d43c6f644b5b3923d22ef65502534f09a27335e8739",
+    "design-studio/scripts/build-web.py": "12c331332587f81eca74b84261405f1e8e14aafaaf5291dc91b76052a6273e4f",
+    "design-studio/scripts/calibrate-corner-model.py": "1c9e27648b48ec0470b3ae1b39b7d44d1be078c3afb2533f2e1f1bd41c78fd23",
+    "design-studio/scripts/calibrate-glass-lighting.py": "1ba737b9fadf562ed237c967c87f8d68e56c51469a764be22e92f3ad7de14818",
+    "design-studio/scripts/check-local.py": "08f1c0f5323a4b256df409c1e9f78930346f1fd1d4e87641f5f6fed98055a1b1",
+    "design-studio/scripts/check-moxcms-patch.py": "f8f4cabbd607dbb95312eea7d1d9345dc8f4b7fde794bf7ae1114f6002b61dc2",
+    "design-studio/scripts/check-precision.py": "3df33529c1700f8eff09421f19b7a7b2734ee19d9573dbfcd5f787711a3ab81a",
+    "design-studio/scripts/compare-figma.py": "2fdf83af3da0ad4bb3209b01f90667b1cad2382dd2f7bd419fc1d777836c241d",
+    "design-studio/scripts/compare-precision-readbacks.py": "96c03f5c3b42adc46a1dd6de17877a7b1731b4717cf123e94a2b2b1f8f9320e4",
+    "design-studio/scripts/generate-coverage-vectors.py": "2dd374ba27bd54bd291a06d3da3443d6a48ba8a35fd6c1415187c8c5f258b677",
+    "design-studio/scripts/generate-filter-vectors.py": "ac581b8e34b9bd969ded29c7a3dc57184963f35e57a5537a4a81b5772114c532",
+    "design-studio/scripts/generate-precision-vectors.py": "9a1ae5b79f1f04838d8636f32b7645b1e0ba12e50f780fa2c5ac0b4c25161b94",
+    "design-studio/scripts/generate-rational-glsl.py": "f725fac122170845f6be1cf55b80a139a43da1b2a47d8e4ec6560af26ed194f8",
+    "design-studio/scripts/generate-sampling-vectors.py": "9a002741524b7cb4e70f94d9d505ea1c1c972489ba1c75e24a7e8c90cc1506df",
+    "design-studio/scripts/test_compare_figma_reuse.py": "bc30d3185928191029b0169f485938df805d3c565608501279b36f26a86f138f",
+    "frontend/design-client/package.json": "758bd4d8405ae080992c4129184ce6cc0aa4e8a1ed43aee6d208bffcabe4ac90",
+    "frontend/design-client/public/fidelity/optics-2026-10-08/cases.json": "9f8d3f3bd666f8b5c1dc16f3ee1466ccdc90ddbfd86ae2448dc96c5b66620fdb",
+    "frontend/design-client/public/fidelity/optics-2026-10-08/provenance.json": "5b907b64c65ee4613867ae5b79d3c3ad2eed90f993825e6f8c696f6172b7f15b",
+    "frontend/design-client/public/fidelity/optics-combined-2026-10-08/cases.json": "888c4806ea2110702ea165c09bc6e73a875d3c69081ac3623266e396fe553c50",
+    "frontend/design-client/public/fidelity/optics-combined-2026-10-08/provenance.json": "a053ebe799f0df5a2b76cfc401ec9f84658cf1fadd8cbdc59493a1a682e1d5de",
+    "frontend/design-client/public/fidelity/optics-holdout-2026-10-08/cases.json": "030f76f214f6d90368df67760e3db3a35bc6913719361efb64e6575117920ae8",
+    "frontend/design-client/public/fidelity/optics-holdout-2026-10-08/provenance.json": "e07deebb0579f8c018b45ab6b1de226f9eb3ec3fb24a9847f071f5b834df84ec",
+    "frontend/design-client/src/AnimationPanel.tsx": "883c72da8f67d8cddbe18481ba130a004fe0aeb098f7104a9abe37cd98b8d7de",
+    "frontend/design-client/src/App.tsx": "5f61bd86ffe8270136055e94cd7971497c95bc032d954fbfdbe3f37ca9d78f08",
+    "frontend/design-client/src/AssetsPanel.tsx": "668287b65316944d70aab8ce05fbd7f9a2f3f056f39dd9cb488e5e7648574946",
+    "frontend/design-client/src/Canvas.tsx": "5cefdbfd0868dcee875766bf39fa98a518d2799211ce9b248bfa9f18edb1167f",
+    "frontend/design-client/src/ColorInput.tsx": "e0abe01b0fbabbe49dd0bca608f5ced8ba5c74009e026ddf8d2dde1ae5796dfe",
+    "frontend/design-client/src/ColorPanel.tsx": "bc0890c1f7c963f22b7624e09cb2ccf02c994498d18bd7d4ca5d8e86536bac0d",
+    "frontend/design-client/src/ComponentPanel.tsx": "668233bf20c32166bfcdb16cef7faee3fac589940e97f4b77550e3bd6a3eafd9",
+    "frontend/design-client/src/DesignTools.tsx": "1be8131f815c698358aa5f887fbd158e2d7ae0875d8d5c0e5e977baa7117a3c9",
+    "frontend/design-client/src/ExportPanel.tsx": "08124e56cb0cd7c3cff183336ed2aa352b7e181a339eb822379f516294d7f4dc",
+    "frontend/design-client/src/Inspector.tsx": "c366eaad31d6f4e427244191f02ac650d17a6b98e4225937d2f88fd8607c7c16",
+    "frontend/design-client/src/Layers.tsx": "de254b884ba29e0a222f722caeaa425875f024e47a9612d92c5fa0217fe8d65d",
+    "frontend/design-client/src/LayoutPanel.tsx": "05187e81cc2ba167c4b9adeb5925b98b30951ab3aa0241c0b4cc5c8f00d8b35f",
+    "frontend/design-client/src/PrototypePlayer.tsx": "83a6164ef5a233789f39e6cabbb98e39f01d499921b285054b6dbc7521fda08d",
+    "frontend/design-client/src/Renderer.tsx": "fd35406911b1a87ef140831dc297f745db1caf402e0c3456e14a17dbcd3993da",
+    "frontend/design-client/src/StrokeProfilePanel.tsx": "8ecb4b8e4845a05011d6101c579de9177da99713adcb6aadb3825dbe8647db51",
+    "frontend/design-client/src/TextEditor.tsx": "d7333ec27d9bb551e24af529a727ef3bbb35e27aa261a4fc5725c757b25c8d2b",
+    "frontend/design-client/src/TextStylePanel.tsx": "c00d466ec9e08b434fafce512b0bef85e11add086ac9e7241855b85abccbaabe",
+    "frontend/design-client/src/ViewControls.tsx": "c0faf325f006b2afaf77585932f779875835f615e5dc7a6ba23add607d8d3d2d",
+    "frontend/design-client/src/animation-check.tsx": "9417fafe566e558550fae1e96b3fdf4f0a24c8cd23bb8fb742ef509567dfd141",
+    "frontend/design-client/src/animation-fixture.ts": "bc964c1d8eb53c72fbc449140aeb006f5bf49440b0c82e03492b4118238d5066",
+    "frontend/design-client/src/animation.test.ts": "87bcad65b5d8cb4be847c43ef9da832d06958e8f91e85a3976d207d1f2dd9db0",
+    "frontend/design-client/src/animation.ts": "474d4f5857b1edabe95240dd341b2b907157d2600e72a485986fb15e4b8032f4",
+    "frontend/design-client/src/authoring-check.tsx": "d78e6b411b9a5ff2dc04480cc5291dcea8f8bddf15ed77a4f66a12c4f38ef135",
+    "frontend/design-client/src/authoring-fixture.ts": "3c48cb9d8eee146d039b634579d6cecd9bf27708676ab6d98407133890d42228",
+    "frontend/design-client/src/authoring.test.ts": "57dd43b02d9afcde4befd32ae0f182aa25fb7fd69014456c714572e31e748f0f",
+    "frontend/design-client/src/canvas-camera.test.ts": "f701c46f5a2340a23b8a582c7527bdb4e50635a75efbe57646b49e39d7ad7929",
+    "frontend/design-client/src/canvas-camera.ts": "9e0dffbd454e989b645f4fe1f0775d89d425a6443bee67770c474e4cae901a14",
+    "frontend/design-client/src/canvas-check.tsx": "572a8570adcf61bf5a40ef2a721dc7d7405ca8cc4d750658ba457274f5346631",
+    "frontend/design-client/src/canvas-view.test.ts": "f94bb37b42703ce249df0e28a457d60c1e22ed79dea6267019eddaaf8961c46d",
+    "frontend/design-client/src/canvas-view.ts": "b7f621bab52712fc87526750ef86e940b9d09331e6b63abbd528d867d470ebad",
+    "frontend/design-client/src/color-check.tsx": "847802acc872aae08a7bf66c94dcca28e97d04ea6521464c5c476bbeac7605bf",
+    "frontend/design-client/src/color-fixture.ts": "aa48efec418c07359300cf44b7921d579fcc3d501031986fc47bf3b1abfe62fb",
+    "frontend/design-client/src/color.test.ts": "7158e5618dcad4cde02fc292decf7fb523d38bd087c46e4a48836b323b2c62b0",
+    "frontend/design-client/src/color.ts": "fb3fb15704f36393e4c594efc7759481c430e300564c8356de30bf5a7eac6eb1",
+    "frontend/design-client/src/component-check.tsx": "d59eb25667926f483aa7f3cb1a39d2ba9bc738b5909af9e489e220d8df1480c7",
+    "frontend/design-client/src/component-fixtures.ts": "ad4a44d072882b7582d2f187664f1917fc51e0f3175baca30fc72dec442c35ca",
+    "frontend/design-client/src/components.test.ts": "41cf4b8e2eb35a1ae41094b127cf6cc42cb4fd462755c323f43ae7289be17310",
+    "frontend/design-client/src/components.ts": "54216ed364b40115c12deedf0c37c973e12af5328a4f1b14f692b44ad73101a4",
+    "frontend/design-client/src/composed-inverse.test.ts": "2857dba543ea836ffd8475e71931dfacd6681670ae4d0c1435187a7188e20a4f",
+    "frontend/design-client/src/compositing-memory.test.ts": "06d66bd203fee11e4acd22e9e6441a6d921a4091ff73ec7056dc293c532c6ec8",
+    "frontend/design-client/src/core.test.ts": "bafb6f99cc3c4226fd89af5dee3de4b60b96ccd50df0b19ae771fda6888058f5",
+    "frontend/design-client/src/cubic-corner-reference.ts": "93957706ae291bc0a51921eb5d66221ce9161e8650488643f8129e9689c0211b",
+    "frontend/design-client/src/design-system.ts": "802b4b4f0f53b65686c52b28a451f156c3e70cea301bf0f6160686c259802e01",
+    "frontend/design-client/src/document-lifecycle.test.ts": "5e2f60262860e98b5155c6380381abdec1ae905957d887fd6427e244a1d32f04",
+    "frontend/design-client/src/document-patch.ts": "004947ddb00212b647a0765d1720b5b7905f38b2adfe744148d06e0bee528ec7",
+    "frontend/design-client/src/draft.ts": "708635bfc60b207af3b2d2e290c3d0322b9b90a0f04233e1943ca3257c83245d",
+    "frontend/design-client/src/engine.ts": "ad6dee7b2604e2506ffccdae23389cb48653627df88b62a951161c1b25029a76",
+    "frontend/design-client/src/export-native.test.ts": "0a6a4e095670029a79a7c241e8b28aaeaddded7fed8d5ab8f07d1b01fa0fd043",
+    "frontend/design-client/src/export-regions.test.ts": "014bde9b6f81d4e3b36c71831d9202b4a6399c39973aae625d65c7b51229eabf",
+    "frontend/design-client/src/export.tsx": "0b0ecf091e6400f1b88ef48a00471cbcc4f1513e8cd58d6c1e05aa25f8f15ba1",
+    "frontend/design-client/src/fields.tsx": "8839c21c5b2304586b68fb8483632da640d5d7a8eb6bacbdb951b503755d5df5",
+    "frontend/design-client/src/figma-fixtures.ts": "a9ada635bdb651276dadeccf8a567c735cb5cd95671ca304a8888d38083a6286",
+    "frontend/design-client/src/freehand-check.tsx": "ed2032c1e60bbfbcf7ff2283de6c0a118f4ef53853b235084a49530b2bd3d08b",
+    "frontend/design-client/src/freehand-fixtures.ts": "6a80ddabc1e832a983212b6bd35ca814d5aa31108bf099f8d03d3f60472dbeb1",
+    "frontend/design-client/src/freehand.test.ts": "aa570696377d0bb0f956f429d01d90853ba5093207c1ed24efd45bb8f3c73891",
+    "frontend/design-client/src/freehand.ts": "38e12a9419daff1564bcdfb7baf7eb91f8f4d141d12c7c14995d9a94ddabb9df",
+    "frontend/design-client/src/generated/design-kernel/design_kernel.d.ts": "f2d276c723a0f48a5787c50ec08ce39f3d65a4818101f4044ce557c052ecb9a3",
+    "frontend/design-client/src/generated/design-kernel/design_kernel_bg.wasm.d.ts": "31eb848c821f012d1dd6905c1c616d6a6ceeb258e58b802351b4b04003029465",
+    "frontend/design-client/src/geometry.ts": "29f10c6f383dc55c7de60ae9f2700dfb52753d812fdf685ce94ea06b3cb7a7e5",
+    "frontend/design-client/src/gradient.test.ts": "24fdd65124013333e0751c43d5eba5a884182408ba15477290f4ad1460cb0d23",
+    "frontend/design-client/src/import-fig.ts": "3a15294729d1cca855c7ce57d6c8ec85e2fa27183d379e09a71897a47700cd11",
+    "frontend/design-client/src/import-svg.ts": "1936ca20087cebdb10408f21db12be3293bdcc3f5e6057791fd6fc885ec2ffe8",
+    "frontend/design-client/src/import-worker.ts": "d81e8498304e4e370a37a1d72e77525e0b49bec2c92b3afa0c3ff5891e781d42",
+    "frontend/design-client/src/kernel/Surface.tsx": "1bca944100e7e71d51f863a30af440382ab954531b1dc9fb119b2f6dd3c3f26c",
+    "frontend/design-client/src/kernel/client.test.ts": "5f0542c793b4e95240f84697506975b551df3deac42b266639cd0e6981266d62",
+    "frontend/design-client/src/kernel/client.ts": "f139b46464eab61cac95e47c4f80169db0749eac44257b8f082f7293661319d2",
+    "frontend/design-client/src/kernel/color-presenter.ts": "536320ad643aa5a4aed4e49836780b3917e5eac46eb9074ca095d12557fe1b84",
+    "frontend/design-client/src/kernel/geometry-worker.ts": "9076112764ff7b19e04602d95db4a7125b2362ee38dc51e8544f1fb132664c23",
+    "frontend/design-client/src/kernel/gpu/area-shader.ts": "cf555bd2593895004135f37061a5193e4eb377234d7b18fcbd56a012dad6a126",
+    "frontend/design-client/src/kernel/gpu/area.glsl": "9fe3e52648d2970f6d540c658fd75a91d1e3b5cf1058e97aac78a883f13cd121",
+    "frontend/design-client/src/kernel/gpu/arithmetic-probe.ts": "1b22d6caa11da680960b97c9ad9123cb43da08eafb6e1660503e3ce075f8f01f",
+    "frontend/design-client/src/kernel/gpu/benchmark.ts": "2dbe12867449427b42f07acbbf844a86db0588eb8623501f30a445dd4ca25e66",
+    "frontend/design-client/src/kernel/gpu/check.ts": "587a13bfc11452646a64b6bb12feb098b7cfd8f9b25823938e25c72dbaaa6d1d",
+    "frontend/design-client/src/kernel/gpu/coverage-cache.test.ts": "02aeb90a428cf87439af5598c02b6ac6642d1f008244ee20875640e2b4bb84f2",
+    "frontend/design-client/src/kernel/gpu/coverage-cache.ts": "974e9d5224ccb70a08a32c15d08d6dd723625236650a6053e4171160c3b4de2d",
+    "frontend/design-client/src/kernel/gpu/coverage-probe.ts": "6f6f7bd2eaff692c6b7352ca877543470686d128bdbc57a2fd5fc1bc383ff829",
+    "frontend/design-client/src/kernel/gpu/coverage64.glsl": "c674a93f0eced35c860607f10264e283d7023878401220d9cee40b08d0d17983",
+    "frontend/design-client/src/kernel/gpu/factory.ts": "af7cb69742477d3c4fb04e30897aeffd9c800b6c09c4a69bd2c088b6f74bc038",
+    "frontend/design-client/src/kernel/gpu/figma-reference-check.ts": "9d70f4ae6f8e8a0ea6d90bfbd1e121a5b80b1646c415eec687d393d4a53f9fb7",
+    "frontend/design-client/src/kernel/gpu/filter-probe.ts": "e9e6145dc390df5b89d0e05a563c1de33c79e27beea63f02e3e73e02c3ce7c1f",
+    "frontend/design-client/src/kernel/gpu/large-check.ts": "13e8b59798792aabb19d503ef062fc13760bace028a8c3b9eb1a4eb08b32ef1e",
+    "frontend/design-client/src/kernel/gpu/performance-check.ts": "c4b94a98a5e7dae982ea17e3cde9ccb2550872b25dd0b18d1d7f564af25e555b",
+    "frontend/design-client/src/kernel/gpu/pixel-check.ts": "72e31d1afc47df55d3486e353db6ba3b7699ce878fd831703b9837b67f92321e",
+    "frontend/design-client/src/kernel/gpu/preview-check.ts": "3b1fc6e39254e1d37a120e1e5e623d2954d8c5d9a42a2fe9fbdd49021b1ce26f",
+    "frontend/design-client/src/kernel/gpu/rational-filter.glsl": "127ff1565b648e233c68fee099f673b65cfb9ed02211a6ffa91d61898ec2317a",
+    "frontend/design-client/src/kernel/gpu/renderer.test.ts": "a506897b9362e088dfb266e13bd9cdfdc7ab664617c8e6268731da8190731090",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "53692a54814a3f86ef30ec57c953a6abb6e1117a4b7b90590bf13aff7efaa2f9",
+    "frontend/design-client/src/kernel/gpu/rgba8.test.ts": "a44e7dbf1e123eaff04ce7f5f065bc8eba4fe24ea3892f7d10504bece13ccdbb",
+    "frontend/design-client/src/kernel/gpu/rgba8.ts": "2246d56ba1348ca1f599af0262979cff12c140118744a0aa61d82c41413420e3",
+    "frontend/design-client/src/kernel/gpu/sampling-probe.ts": "eb607ca065dc10c3778cd7ef0514f8c8b4acdb53fba34dc7b15fd6b83697924d",
+    "frontend/design-client/src/kernel/gpu/sampling.glsl": "0d5c4ba12c89d94c1df0e4c0d97818047755c6936289def3a269b2e391afbe5c",
+    "frontend/design-client/src/kernel/gpu/solid-batch.test.ts": "6773b3e10624eb99c74fd3c0b30eda6a3fff8f8b4c214dd70094073b66a1f823",
+    "frontend/design-client/src/kernel/gpu/solid-batch.ts": "09b9cde7bdbbeb1d725b0ad57328e9826f4c7c23fabd47d7b80c2734f95a92b9",
+    "frontend/design-client/src/kernel/gpu/types.ts": "d8488678d8559fb9078c9c513cc5f37b7faa6e9826a5f2da927c4b01afdd9a6d",
+    "frontend/design-client/src/kernel/gpu/vector.glsl": "594a83c5f3fc34a3b35f54aec59e22a1912936051c2850bf4d19354cdb458a1b",
+    "frontend/design-client/src/kernel/gpu/webgl.ts": "b26ee1ead8462cc0cff910e4c6375aec0aa10d47d5bfd5536aa3ea52004de44a",
+    "frontend/design-client/src/kernel/gpu/webgpu.ts": "7814029a486004e83a9ddd35f3bf2d09d039bd3db20f4bfee32362465da425ac",
+    "frontend/design-client/src/kernel/picking.ts": "4aa4399328d6bb7f5b12f7e00aaa800f1e27ad6452e8516c7bd26c0d3a017196",
+    "frontend/design-client/src/kernel/presentation.test.ts": "388f65f51c5c871db635ec2b43b01ad0a5302db917c553622d46e5718716f6de",
+    "frontend/design-client/src/kernel/presentation.ts": "62cd2ea4b36c13b4f8197bc2b1702599f88edde3d7b08c9ee2717ae33744dec0",
+    "frontend/design-client/src/kernel/render-worker.ts": "4f86c71eb79a0178933ffb3453d58b9ecccc81db825a71412a3ba67a8c826f54",
+    "frontend/design-client/src/kernel-regression-fixtures.ts": "2a09438dfd91407c94232a8e25bba7dafba2f42c34fda73d22ca1d61d898e968",
+    "frontend/design-client/src/large-reference.ts": "a38fd15e89b915f4cee9a2023d15812a24cc4c0bbe2841b761b1712ef2c00312",
+    "frontend/design-client/src/layout-check.tsx": "a08dea4c2aedf85ee7a31976095aeea515402bd8aab246224497bb603f99c6df",
+    "frontend/design-client/src/layout-fixtures.ts": "c3d27b05cd4989cbf9ca5a612fc2405bed350aa8f65b8b3ea4af7585b64b8805",
+    "frontend/design-client/src/layout-order.test.ts": "cd5ad5a4560a79db7b0343444d1110447bfa5c4d7385478b572f6da7a16942c6",
+    "frontend/design-client/src/layout-order.ts": "28ffcca3895320c61ddbee3353de05d7236d239e9f5aa4f929fb1ee8debef4c5",
+    "frontend/design-client/src/local-store.test.ts": "749af5affcc4f44f9a4a2ef9ab177e9d34e36f7a6478636cb8fb86be1ab98c2f",
+    "frontend/design-client/src/local-store.ts": "6a853301ccd500d0e5909afb4a2281081332e261562352848f5a688a6beb29ab",
+    "frontend/design-client/src/main.tsx": "f4b10ad7452c8838fc94d1cfbf30227cb11100421071e1befc5f68f69e3f9d8c",
+    "frontend/design-client/src/mask-alpha-picking.test.ts": "155fee9fae178eca6d5aed884156b76fa584899cddc6fd8099d99507fd0f93d6",
+    "frontend/design-client/src/mask-coverage.ts": "af30301cdbd3a792a7cab9b0d6f2a5f95ab09d6a5b2c561e395b6309837c7e75",
+    "frontend/design-client/src/mask-picking.test.ts": "a97c9ca8b91b9d394e8375f0b316cb2feeac6b8a1c010a6fc206c1ee9df58802",
+    "frontend/design-client/src/material-import.test.ts": "a1e5e0bb42e87f6d6d8a28d3dfd4aea52be285591b550d032dc9dfd9c3f471fb",
+    "frontend/design-client/src/model-layout.test.ts": "03a2ddc6c4dbc0dd4c89b1ad2997f3d2cab1ab3965f5141231748316005cd1d6",
+    "frontend/design-client/src/model.ts": "a72016c7c6f16d882848e1071b8126e5fde3bc1d9839e164d59403fafc39bf29",
+    "frontend/design-client/src/parity-fixtures.ts": "235d1778818b4cc875e66d74df5e350456df01721350c679f44f00f82c1e9e6e",
+    "frontend/design-client/src/persistence.ts": "40db19f65b4f2a3e728cea3664c57e1f894a505abdbe5c4f5f47ec7d3d98af14",
+    "frontend/design-client/src/pixel-fixtures.ts": "38dd02e07b86f4a7d12f66093d294c6e7d1bb82cafde0b462066ab0ca9fbe72f",
+    "frontend/design-client/src/precise-picking.test.ts": "167770ea9edd938440bbc6b7b0e6637c6cbe05f8b4e851d2c372c01489314226",
+    "frontend/design-client/src/presentation-check.tsx": "710c6fb9a9e9cb4c0f9906d4a622311090ee8017c9888576a1fab8bde363100b",
+    "frontend/design-client/src/prototype.ts": "a947f2e1b39a9655ed8de9f11150cb12092dfe364556424e9756685ca9b1bccc",
+    "frontend/design-client/src/render.test.tsx": "42949d95fbe1b19c9d7f555ad7e160f58a79f537ac9e7dfd0556c726def7f946",
+    "frontend/design-client/src/sample-count-oracle.ts": "8e1febf1011091d42085f0baa6f252af53d77f6294f8227aa536b14e3f165f74",
+    "frontend/design-client/src/smooth-corners.test.ts": "c83ab6b7bf34137d778e645336180af54a0ab8ea5e93c8f1b63c1842e2bed9c0",
+    "frontend/design-client/src/stress-fixtures.ts": "c7fc71c76af367f186d59fac98ddd7681076348c095cddd2c86e4542caa6c3ea",
+    "frontend/design-client/src/stress.test.ts": "a8076355eca21074a08616f0adbda4632f10abe775531c342fb2a3a69e7869f7",
+    "frontend/design-client/src/stroke-check.tsx": "abda4cc50d0367d7d4a0168cfe5a556f68185ec8882f8060a45b53d253b11fb1",
+    "frontend/design-client/src/stroke-fixtures.ts": "ebc5e69a6250ce9ec7d087340804ecb32daffb3fbb5607733bf4e611cefa99e8",
+    "frontend/design-client/src/stroke-normalization.test.ts": "c0ccc86d469b48c412366b0f5c898819e94cb95153d999facf4177f85f3a4d33",
+    "frontend/design-client/src/stroke-profile.test.tsx": "cbc89990b3d7e81fe058e603493175a337447221f72ab568e6fe0a29e01e1036",
+    "frontend/design-client/src/stroke-profile.ts": "e650018a4104d2c5d6f4d9d66bcd665c040ea8d993167f0ad18799c2ec174744",
+    "frontend/design-client/src/test-setup.ts": "1602f49c4b080ef3104ab40b5f238d180709bb1f20f9e987e2bbd1f90ddb1faa",
+    "frontend/design-client/src/text-face-reuse.test.ts": "8608c2617f5cb324ac4283970e46d9fa4053e49a37c0cf449a20cd5907a13d18",
+    "frontend/design-client/src/text-hug-limits.test.ts": "2dc26fa03dc9b2b484cdfc772b35c951eb79e7411843d7f2ae90f32470d3d8ee",
+    "frontend/design-client/src/text-indent.test.ts": "1d2d80e5c9737f68cddd2ef6d1ded1fae1c31099115af34814fe180ad75cca2b",
+    "frontend/design-client/src/text.test.ts": "6c1a98f857a82ce3c2755647f38b639d084c98cc899f647f8edb2ba6f5e0c989",
+    "frontend/design-client/src/text.ts": "a4cbf97a21c868541c1eb4814fae7777142ef49019f08777f5ecde4c1c6f1436",
+    "frontend/design-client/src/vector.ts": "fb0ad46cc252e4c1177de5cbe4b48841156a9c4a71f859a1734ad0ddc3096333",
+    "frontend/design-client/src/zoom-precision.test.ts": "5fe21ff12d86ffcb327cf5f33b0a08d193a3699f67e5bf2c1c6d64dbcb4f1153",
+    "testing/fixtures/design/figma-optics-holdout-2026-10-08.json": "c49ecd814b2110167a404e71281bf84f84b62f690e8d52e9e0647bd78a09d9a3",
+    "testing/fixtures/design/figma-optics-probes-2026-10-08.json": "18de2758acacbb154bd33917551c919fb375924fda05ff955975bac942c4fa4f",
+    "testing/fixtures/design/kernel-optics-distance-mask.png": "91e75859ba97c92d63e5708c95bf3ac140f435ddff817018694f4530975d325b",
+    "testing/fixtures/design/kernel-optics-distance-request.json": "4fb8dd883c53a583b6a06ae42ec06c0df2eceebc77ea17c981f8ff00276ac4dc",
+    "testing/fixtures/design/precision-corpus.json": "dd3846b1959ffd246800a33515eb4ad6189beaf5872441bf1a497184feb36d2f"
+  },
+  "sourceSnapshotScope": "Final build/test-input snapshot, not exhaustive code review. Actual binaries, corpus and source-run readbacks are separately bound above.",
+  "wasmSha256": "a464867053bb37f73f2d4d3b55e237f2c5a1262e9c0494a30e67eeee0a5989e4",
+  "documentReview": [
+    {
+      "path": "docs/README.md",
+      "sha256": "1b8e062a8e3a9d83d339ccd54326f892a4b767914b59d4744d03a7b316d17448",
+      "wholeFileReviewStatus": "待核对",
+      "verifiedScope": "New literature claims, current optics/tile behavior and this iteration acceptance sections; no full-book or exhaustive historical-document review claim."
+    },
+    {
+      "path": "docs/architecture/design-editor.md",
+      "sha256": "f85bd3d9878f8d25890f7f00cf8ed1826bf9983bbaf00565eb097c98bb78572d",
+      "wholeFileReviewStatus": "待核对",
+      "verifiedScope": "New literature claims, current optics/tile behavior and this iteration acceptance sections; no full-book or exhaustive historical-document review claim."
+    },
+    {
+      "path": "docs/architecture/design-kernel-hard-problems.md",
+      "sha256": "641e632ec57c3d0ef65ab5b22ff21d07997de32d63d7256eb559cffb4a24a077",
+      "wholeFileReviewStatus": "待核对",
+      "verifiedScope": "New literature claims, current optics/tile behavior and this iteration acceptance sections; no full-book or exhaustive historical-document review claim."
+    }
+  ],
+  "limitations": [
+    "All72 strict external cases still fail; no acceptance relaxation, publish or deployment.",
+    "Refraction, dispersion, frost capture/resampling and texture noise remain unmatched; previous18 non-lighting material outputs unchanged.",
+    "Residual corner/rim errors remain; JFA replay/EDT comparison is one raster mask, not GPU intermediate readback or continuous-boundary proof.",
+    "8-bit ramp inversion has nominal rounding uncertainty and unknown dither/encoding error; no certified hidden-displacement error bound.",
+    "Finite tests on this Apple M2 Pro/Metal host do not prove arbitrary input or every GPU architecture.",
+    "New literature was triaged and relevant accessible sections read; not every paywalled book or paper was read in full."
+  ]
+}

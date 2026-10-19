@@ -1,5 +1,5 @@
-/** Figma 画布镶边 WGSL(shader_03 逐行移植:棋盘两档/点背景/网格十字线)。 */
-export const figmaCanvasChromeWgsl = `// Figma 画布镶边着色器,逐行移植自其 shader_03(figma-wasm-analysis/shaders/)。
+/** Figma 画布镶边 WGSL(棋盘两档/点背景/网格十字线)。 */
+export const figmaCanvasChromeWgsl = `// Figma 画布镶边着色器。
 // 源码事实:checkerboardStyle 四档(0=无,1=亮棋盘,2=暗棋盘,3=点背景);
 // 棋盘两色是 1.0/0.95(亮)与 0.12/0.17(暗),按 fract(c*scale)-0.5 的叉积符号切换;
 // 点背景的网格大小随 zoomScale 指数降档(32×16→16×16→…→1×16,基 16px);

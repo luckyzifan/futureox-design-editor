@@ -1,8 +1,8 @@
 //! Rendering telemetry — the counter that proves render count is not frame
 //! count.
 //!
-//! Sketch's `MSRenderingTelemetry` (class-dump `SketchRendering_dump.txt`
-//! lines 582–602) keeps `rasterisationStatistics` with `beginRasterisation
+//! Sketch's `MSRenderingTelemetry` keeps `rasterisationStatistics` with
+//! `beginRasterisation
 //! WithPixelCount:` / `endRasterisation` pairs, a parallel overlay stack, and
 //! reports `rasterisationDuration:pixelCount:frameCount:overlayDuration:
 //! overlayCount:` — five numbers in which rasterisation events and frames are
@@ -226,24 +226,22 @@ impl RenderingTelemetry {
 }
 
 // ---------------------------------------------------------------------------
-// Figma engine memory telemetry axes — proto_telemetry_axes.txt offsets
-// 840..872: `_totalGpuMemory` (840), `_texturesMemory` (848),
-// `_vertexBuffersMemory` (856), `_renderBuffersMemory` (864),
-// `_uniformBuffersMemory` (872).
+// Figma engine memory telemetry axes: `_totalGpuMemory`,
+// `_texturesMemory`, `_vertexBuffersMemory`, `_renderBuffersMemory`,
+// `_uniformBuffersMemory`.
 //
-// The evidence files do not close the binding between these five axes and
-// the four CorePerfInfo ledger counters (VRAM-LEDGER-RESOLVED.md covers the
-// counters; the axis slots are i32). The mapping below is by resource role
-// and is recorded as an inference, with our four buckets
+// The binding between these five axes and the four ledger counters is not
+// publicly documented (the axis slots are i32). The mapping below is by
+// resource role and is recorded as an inference, with our four buckets
 // (`memory::GpuMemoryCategory`) as the source of truth:
 //
-// | Figma axis              | our bucket        | Figma counter (inferred)      |
+// | Figma axis              | our bucket        | role                          |
 // |-------------------------|-------------------|-------------------------------|
-// | texturesMemory          | Texture           | 5246784 texture bytes         |
-// | vertexBuffersMemory     | FixedArray        | 5246800 countxcountx4 arrays  |
-// | uniformBuffersMemory    | Buffer            | 5246792 lazy GPU buffers      |
-// | renderBuffersMemory     | Blob              | 5246808 CPU-copied blobs      |
-// | totalGpuMemory          | sum of all four   | #46443 renderer GPU total     |
+// | texturesMemory          | Texture           | texture bytes                 |
+// | vertexBuffersMemory     | FixedArray        | countxcountx4 arrays          |
+// | uniformBuffersMemory    | Buffer            | lazy GPU buffers              |
+// | renderBuffersMemory     | Blob              | CPU-copied blobs              |
+// | totalGpuMemory          | sum of all four   | renderer GPU total            |
 //
 // Units: we report bytes (u64). Figma's axis slots are i32 and its display
 // strings use `>> 20` MB conversions, so the slots plausibly hold MB —

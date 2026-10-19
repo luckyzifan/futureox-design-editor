@@ -1,4 +1,4 @@
-//! Official TextBehaviour contract, independent of reverse-engineering notes:
+//! Official TextBehaviour contract:
 //! https://github.com/sketch-hq/sketch-document/blob/main/packages/file-format/schema/enums/text-behaviour.schema.yaml
 //! 0 Flexible, 1 Fixed, 2 FixedWidthAndHeight. No pixel goldens are changed.
 use futureox_design_kernel::{font::Fonts, interop, scene::Document};

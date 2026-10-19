@@ -1,0 +1,325 @@
+{
+  "date": "2026-10-06",
+  "verified_at_utc": "2026-10-06T13:36:37.311779+00:00",
+  "base_commit": "216eda232b0fcb47264458320629d20b16e03196",
+  "status": "CPU/native/real-WASM regressions and independent review passed; browser/GPU/Figma acceptance not run",
+  "scope": "CPU geometric ancestor clip and shape-mask picking; no GPU, renderer pixel algorithm, schema, exports, dependencies, commit, push or deployment by this task.",
+  "contract": {
+    "precision": "fill constraints use the same 1/64 CSS-pixel device flatten tolerance as object picking; full affine node-to-world matrix rebased at pointer before zoom",
+    "fill_rules": "Rust Node.paths plus nonzero/evenodd; rounded frame fill rather than selectable frame rectangle",
+    "halo": "No5px selection halo on ancestors; inclusive path edges use1e-9device numerical epsilon",
+    "culling": "f64 path bounds plus device/error rounding margin before flattening; integer render Rect clamp is not used",
+    "cache": "one hit call owns constraint-result and matrix caches; one lazy allParents map; no persistent constraint cache",
+    "unchanged_proxies": "Group/text without a network retain the previous bounding-shape proxy. This API is geometric fill containment, not alpha sampling."
+  },
+  "regressions": [
+    {
+      "case": "rounded frame clip",
+      "before": "CPU alpha0 yet child selected outside rounded fill",
+      "after": "child excluded; alpha255 interior remains selected",
+      "red_exit": 1
+    },
+    {
+      "case": "tiny curved shape mask",
+      "before": "local0.001 curve, mask scale1000 and zoom32: CPU alpha255 but child missed",
+      "after": "child selected under identity, mirror, shear and fractional/large signed origins",
+      "red_exit": 1
+    },
+    {
+      "case": "nonzero compound mask",
+      "before": "same-direction concentric rings rendered alpha255 but JS default evenodd rejected child",
+      "after": "Rust winding preserves nonzero and evenodd",
+      "red_exit": 1
+    },
+    {
+      "case": "independent-review offscreen mask guard",
+      "input": "ellipse width/height1e7 at(1e6,1e6), zoom32, child100x100, pointer(10,10)",
+      "before": "Arc subdivision budget exceeded in candidate fill API, while CPU alpha0",
+      "red_native_exit": 101,
+      "after": "CPU alpha0, fill false, Editor null; also verified reflection/shear"
+    }
+  ],
+  "checks": {
+    "native_selected": {
+      "passed": 7,
+      "exit_code": 0,
+      "log": "green-native.log"
+    },
+    "native_all": {
+      "command": "cargo test --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel",
+      "exit_code": 0,
+      "log": "native-final.log",
+      "passed": 239,
+      "failed": 0,
+      "ignored": 0,
+      "new_tests": 7
+    },
+    "wasm_build": {
+      "exit_code": 0,
+      "rust": "1.96.0",
+      "wasm_bindgen": "0.2.128",
+      "jobs": 1,
+      "sha256": "55a0672a94bb6e1d64cdf278846c752c689223dddbf678b12c584c299a99dbbe",
+      "baseline_sha256": "7b3cd16bcde411343180efdc45bcc3f88d02bbfcf0304d7d3292251f5615a97d",
+      "log": "wasm-build-final.log"
+    },
+    "frontend": {
+      "exit_code": 0,
+      "tests": 166,
+      "files": 28,
+      "new_tests": 7,
+      "log": "frontend-final.log"
+    },
+    "typecheck": {
+      "exit_code": 0,
+      "log": "typecheck-final.log"
+    },
+    "vite_build": {
+      "exit_code": 0,
+      "log": "frontend-build-final.log"
+    },
+    "scoped_lint": {
+      "exit_code": 0,
+      "warnings": 39,
+      "infos": 2,
+      "log": "lint-final.log"
+    },
+    "independent": {
+      "assertions": 33,
+      "exit_code": 0,
+      "scope": [
+        "affine offscreen masks",
+        "immutable mask edits, visibility, opacity, camera queries",
+        "exact edges without halo",
+        "absolute device API coordinates+/-1e9"
+      ],
+      "probe": "independent-probe.ts",
+      "probe_sha256": "cf9165863d9bce1c84d2149f5a5f0b5ed6ecefc5e425439331f989120ba95f90",
+      "log": "independent-result.log",
+      "wasm_sha256": "55a0672a94bb6e1d64cdf278846c752c689223dddbf678b12c584c299a99dbbe"
+    },
+    "catalog": {
+      "exit_code": 0,
+      "log": "catalog-final.log"
+    },
+    "foundation": {
+      "command": "python3 scripts/check-foundation.py",
+      "exit_code": 0,
+      "log": "foundation-final.log"
+    },
+    "clippy": {
+      "command": "cargo clippy --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --all-targets -- -D warnings",
+      "exit_code": 0,
+      "log": "clippy-final.log"
+    },
+    "fmt": {
+      "command": "cargo fmt --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --check",
+      "exit_code": 0,
+      "log": "fmt-final.log"
+    },
+    "browser": "not_run at user direction",
+    "gpu_execution": "not_run",
+    "scoped_diff_check": {
+      "exit_code": 0,
+      "log": "diff-final.log"
+    },
+    "new_file_lint": {
+      "exit_code": 0,
+      "warnings": 0,
+      "infos": 0,
+      "files": [
+        "scripts/benchmark-picking.ts",
+        "src/mask-picking.test.ts"
+      ],
+      "log": "lint-new-files.log"
+    },
+    "setup_recoveries": [
+      "First WASM command omitted the already installed binding-generator path; set WASM_BINDGEN and built successfully.",
+      "First foundation command lacked cargo PATH, second ran before the linked ledger existed; sourced the toolchain environment, wrote the ledger, then full foundation passed. No dependency or source workaround used."
+    ]
+  },
+  "performance": {
+    "environment": {
+      "os": "Linux x86_64 kernel6.18.44; shared dot cloud container",
+      "reported_cpu": "AMD EPYC9V74 80-Core Processor; no isolated-core allocation verified",
+      "runtime": "Bun1.4.0; WASM Rust release1.96.0",
+      "image": "256x256 transparent analytic CPU; view zoom2, fractional pan(0.125,0.375)"
+    },
+    "method": "Same saved script before/after. One warmup per measurement;11 indexed hit samples,5 full-hit samples including scene/index rebuild,5 CPU render samples. p50 sorted middle; p95 nearest-rank ceil(N*.95)-1 (therefore maximum at these small N). Repeated miss against overlapping ellipses, with rounded clips and a rectangle mask at each frame. No browser or input-to-display timing.",
+    "samples": [
+      {
+        "depth": 1,
+        "overlapping_leaves": 32,
+        "nodes": 34,
+        "indexedHit": {
+          "before_p50_ms": 1.916924999999992,
+          "after_p50_ms": 1.0650009999999952,
+          "before_p95_ms": 82.36500100000002,
+          "after_p95_ms": 1.4815980000000053
+        },
+        "fullHit": {
+          "before_p50_ms": 1.4439889999999878,
+          "after_p50_ms": 0.7524070000000052,
+          "before_p95_ms": 1.6982439999999883,
+          "after_p95_ms": 0.9322129999999902
+        },
+        "render": {
+          "before_p50_ms": 94.22053500000004,
+          "after_p50_ms": 68.192971,
+          "before_p95_ms": 99.37743699999999,
+          "after_p95_ms": 85.96409099999997
+        },
+        "unchanged_render_sha256": "874647d7bc916b55d363528e9240674e992932fba6d98cd12334ee595d2f24f2",
+        "pixels_identical": true,
+        "counters_identical": true,
+        "render_counters": {
+          "effectLayers": 0,
+          "backdropReads": 0,
+          "nodes": 34,
+          "culled": 0,
+          "pathSegments": 5808,
+          "shadedPixels": 1057591,
+          "peakLayerPixels": 230372,
+          "allocatedLayerPixels": 1483524
+        }
+      },
+      {
+        "depth": 8,
+        "overlapping_leaves": 128,
+        "nodes": 144,
+        "indexedHit": {
+          "before_p50_ms": 34.05096299999991,
+          "after_p50_ms": 2.002832000000012,
+          "before_p95_ms": 63.18566400000009,
+          "after_p95_ms": 2.371859000000086
+        },
+        "fullHit": {
+          "before_p50_ms": 30.895060000000058,
+          "after_p50_ms": 2.453640999999948,
+          "before_p95_ms": 41.13267100000007,
+          "after_p95_ms": 2.4920580000000427
+        },
+        "render": {
+          "before_p50_ms": 319.30279199999995,
+          "after_p50_ms": 322.3646429999999,
+          "before_p95_ms": 351.60971299999983,
+          "after_p95_ms": 334.8251620000001
+        },
+        "unchanged_render_sha256": "15063e73b62041c27dc1427702f3f7f74d4854019593f79d70a8df9f7b223c25",
+        "pixels_identical": true,
+        "counters_identical": true,
+        "render_counters": {
+          "effectLayers": 0,
+          "backdropReads": 0,
+          "nodes": 144,
+          "culled": 0,
+          "pathSegments": 23680,
+          "shadedPixels": 4391736,
+          "peakLayerPixels": 1095761,
+          "allocatedLayerPixels": 6593440
+        }
+      },
+      {
+        "depth": 24,
+        "overlapping_leaves": 256,
+        "nodes": 304,
+        "indexedHit": {
+          "before_p50_ms": 343.11812100000043,
+          "after_p50_ms": 4.765304000000015,
+          "before_p95_ms": 367.0377470000003,
+          "after_p95_ms": 7.854639999999563
+        },
+        "fullHit": {
+          "before_p50_ms": 328.79691400000047,
+          "after_p50_ms": 7.222136999999748,
+          "before_p95_ms": 339.2289779999992,
+          "after_p95_ms": 7.303065999999944
+        },
+        "render": {
+          "before_p50_ms": 687.4037629999984,
+          "after_p50_ms": 649.8773150000006,
+          "before_p95_ms": 752.1647350000003,
+          "after_p95_ms": 702.3454080000001
+        },
+        "unchanged_render_sha256": "93d3397cb85f5f4f3a56dde27fc88744da28614b84760acceded7be33bd3f9a0",
+        "pixels_identical": true,
+        "counters_identical": true,
+        "render_counters": {
+          "effectLayers": 0,
+          "backdropReads": 0,
+          "nodes": 304,
+          "culled": 0,
+          "pathSegments": 48256,
+          "shadedPixels": 9106216,
+          "peakLayerPixels": 3073793,
+          "allocatedLayerPixels": 14505568
+        }
+      }
+    ],
+    "memory": {
+      "before_end_rss_bytes": 293564416,
+      "after_end_rss_bytes": 177430528,
+      "caveat": "End-of-process benchmark snapshot, not measured peak or controlled-GC memory comparison. Renderer peakLayerPixels unchanged; temporary JS/WASM allocation and retained font/buffers included in RSS."
+    },
+    "limits": [
+      "Synthetic dense-overlap workload; not FPS or1000/10000/50000-node acceptance.",
+      "No renderer algorithm changed; pixel hashes/counters identical. Render timing variation is not claimed as a speedup.",
+      "Small sample counts do not establish production p95; shared cloud scheduling and GC can add outliers."
+    ],
+    "script": "benchmark.ts",
+    "script_sha256": "e2deb478341501778c02bee033f40688fbf97b925ebd02c5922f67a12cff76a0",
+    "records": [
+      "benchmark-before.json",
+      "benchmark-after.json"
+    ],
+    "reproducible_command": "cd frontend/design-client && bun scripts/benchmark-picking.ts",
+    "reproducible_script": "frontend/design-client/scripts/benchmark-picking.ts",
+    "reproducible_script_sha256": "d574817f7c0962f1362294c1792e6e92c9b4c6473c0656a0e542ebabdd00f50a",
+    "reproduce_check": {
+      "exit_code": 0,
+      "pixels_and_counters_match_after_record": true,
+      "record": "benchmark-reproduce.json"
+    }
+  },
+  "remaining_limits": [
+    "Full image/paint alpha, luminance masks, stroke-only masks, mask effects/subtrees, and group/text geometry proxy are not unified by this change.",
+    "geometry outline and stroke_geometry still flatten/expand with0.01 local tolerance; Boolean snapping and transform-aware edit outline need a separate numerical contract.",
+    "Smoothing path fixed subdivision, browser/DPR behavior, GPU execution, all AA phases, and full Figma parity are not proven.",
+    "Extreme curves whose bounds contain the pointer still retain the existing explicit subdivision budget; this patch does not add a new analytical point-in-curve solver."
+  ],
+  "private_evidence_directory": "/workspace/shared/core-validation-mask-picking",
+  "files": [
+    {
+      "path": "design-studio/crates/design-kernel/src/lib.rs",
+      "sha256": "c6b287f45838b71e8442ebe551e2c833a4b3d2da7de01da9462b79f59aa9c3de"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/mask_picking.rs",
+      "sha256": "36d0f5e71e2369438b5ef365c950256e4ef3790ef6d52ea58d92be14391915a9"
+    },
+    {
+      "path": "frontend/design-client/src/engine.ts",
+      "sha256": "e059fe979d7d358baf8c53c7b7d54dd99e956b30124ed507a251cf569f295e87"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/picking.ts",
+      "sha256": "cc38f7c02897ae671e569eda1b63e1ba5c0fcac7d94a58df2252d1ea0bcee44d"
+    },
+    {
+      "path": "frontend/design-client/src/mask-picking.test.ts",
+      "sha256": "a97c9ca8b91b9d394e8375f0b316cb2feeac6b8a1c010a6fc206c1ee9df58802"
+    },
+    {
+      "path": "docs/architecture/design-editor.md",
+      "sha256": "1765d2a9ee89edf9444d7695d9576d350712179413afd245954e317fe2128130"
+    },
+    {
+      "path": "testing/api/README.md",
+      "sha256": "143986d6c6986a1761c86214974ea46e1af3fcc0ca0fb830722b9dcc009112e4"
+    },
+    {
+      "path": "frontend/design-client/scripts/benchmark-picking.ts",
+      "sha256": "d574817f7c0962f1362294c1792e6e92c9b4c6473c0656a0e542ebabdd00f50a"
+    }
+  ]
+}
