@@ -6,6 +6,7 @@ import { interactionCaptureTiles, recoverableInteractionBudget } from './interac
 import { canvasRasterPlan } from './canvas-raster-plan'
 import { tilePlacementAtView } from './tile-preview'
 import { scene, unionBounds } from '../geometry'
+import { interactionRootBounds } from './interaction-scene-bounds'
 import { KernelClient, type KernelOptions, type KernelResult } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
@@ -303,13 +304,7 @@ export class InteractionRenderer {
         // Bound propagation through all backdrop filters conservatively. This
         // is computed once per scene, not once per pointer sample.
         this.resident.dependencyPadding = pageBackdropPadding(props.document,entries)
-        this.resident.rootBounds = new Map((props.document.pages.find(p => p.id === pageId)?.children || []).map(id =>
-          [id, unionBounds(entries.filter(e => e.id === id || e.ancestors[0] === id).map(e => {
-            const node=props.document.nodes[e.id],scale=Math.max(Math.hypot(e.matrix[0],e.matrix[1]),Math.hypot(e.matrix[2],e.matrix[3]))
-            const pad=Math.max(0,...node.effects.filter(effect=>effect.visible).map(effect=>effect.radius*3+Math.abs(effect.x||0)+Math.abs(effect.y||0)+Math.abs(effect.spread||0)),
-              ...node.strokes.filter(stroke=>stroke.visible).map(stroke=>stroke.width*4))*scale
-            return {x:e.bounds.x-pad,y:e.bounds.y-pad,width:e.bounds.width+pad*2,height:e.bounds.height+pad*2}
-          }))]))
+        this.resident.rootBounds = interactionRootBounds(props.document, pageId, entries)
         // Small nested edits do not need a full-screen capture. Only localize
         // when no backdrop can propagate the changed pixels and every ancestor
         // is an ordinary effect-free, mask-free container; other selections

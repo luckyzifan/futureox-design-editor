@@ -1,5 +1,10 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 
+
+export function editableOwnsKeyboard(target: EventTarget | null) {
+  return !!(target as Element | null)?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="combobox"]')
+}
+
 export function modalOwnsKeyboard(target: EventTarget | null) {
   const element = target as HTMLElement | null
   return !!element?.closest?.('[role="dialog"],[role="alertdialog"],[role="menu"]') ||

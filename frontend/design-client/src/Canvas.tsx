@@ -1,4 +1,4 @@
-import { marqueeScope } from './selection-hierarchy'
+import { canvasMarqueeSelection } from './canvas-selection-workflows'
 import { StartupPreview } from './StartupPreview'
 import type { StartupPreview as StartupPixels, PreviewPixels } from './startup-preview'
 import { CanvasEditPreview, type RetainedMoveControl } from './CanvasEditPreview'
@@ -11,7 +11,6 @@ import {selectionScaleFrame} from './selection-scale'
 import {measureBounds} from './canvas-measurements'
 import {CanvasLayoutHandles} from './CanvasLayoutHandles'
 import {CanvasSmartSelection} from './CanvasSmartSelection'
-import {CanvasMinimap} from './CanvasMinimap'
 import {pixelGridPathData} from './pixel-grid'
 import {CanvasGuides} from './CanvasGuides'
 import {worldGuides} from './ruler-guides'
@@ -19,7 +18,9 @@ import {smartGuidesSnapWorld, type SmartGuideSegment} from './canvas-smart-guide
 import {useCanvasColorPicker} from './canvas-color-picker'
 import { captureContentPlane } from './kernel/content-plane'
 import { useUtilityTools, translateVertices } from './utility-tools'
-import { resolveToolShortcut } from './kernel/shortcuts'
+import { resolveShortcut, shortcutPlatform } from './shortcut-profiles'
+import { shortcutPreference } from './shortcut-preference'
+import { dispatchEditorShortcut, shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { createPortal } from 'react-dom'
 import { gridOverlayRectangles, layoutGridRectangles } from './grid-overlay'
 import { canvasDropFrame, insideParentFrame } from './canvas-drop'
@@ -30,7 +31,7 @@ import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
 import { createBox, forcedPixelSnap, resizeInBasis, snapMove, selectionLocalBounds } from './canvas-view'
-import { fitBounds, isNativePinch, revealInView, screenToWorld, wheelCamera, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
+import { fitBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, wheelCamera, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
 import { desktopBridge,type LocalPeer } from './desktop'
 import {
   kernelLayout,
@@ -70,7 +71,6 @@ import {
   unionBounds,
   boxPoints,
   contains,
-  intersects,
   bounds,
   matrixString,
   networkD,
@@ -127,6 +127,9 @@ type Drag = {
   widthSide?: 'left' | 'right'
   widthIndex?: number
   additive?: boolean
+  sketchMarquee?: boolean
+  forcedMarquee?: boolean
+  marqueeIgnoreId?: string | null
   originSelection: string[]
   clickSelection?: string[] | null
   moved?: boolean
@@ -199,7 +202,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   startupPreview?: StartupPixels; loading?: boolean
   onCapturePreview?: (document: import('./model').DesignDocument, version: number, pixels: PreviewPixels) => Promise<void>
 }) {
-  const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-minimap,.canvas-scrollbars,.pencil-controls,.rich-text-editor'
+  const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.pencil-controls,.rich-text-editor'
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const retainedMove = useRef<RetainedMoveControl|null>(null)
   const gpuMove = useRef<GpuMoveControl | null>(null)
@@ -230,7 +233,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const displayViewRef = useRef(displayView)
   displayViewRef.current = displayView
   // Coalesced camera writes live on the editor (see Editor.setViewCoalesced)
-  // so every entry point — wheel, zoom buttons, commands, minimap — observes
+  // so every entry point — wheel, zoom buttons, commands — observes
   // one consistent pending camera. Gestures flush synchronously on completion.
   const flushView = () => {
     editor.flushPendingView()
@@ -504,6 +507,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const wheelModifiers = useRef({ ctrl: false, meta: false })
   const space = useRef(false)
   const [spaceHeld, setSpaceHeld] = useState(false)
+  const marqueeHeld = useRef(false)
+  const [marqueeKeyHeld, setMarqueeKeyHeld] = useState(false)
+  useLayoutEffect(() => {
+    marqueeHeld.current = false; setMarqueeKeyHeld(false)
+  }, [editor, editor.sessionGeneration, state.page])
   const [panning, setPanning] = useState(false)
   const entries = useMemo(
     () => scene(state.doc, state.page),
@@ -682,6 +690,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     editor.set({ view: zoomAt(view, zoom, editor.pointerScreen || { x: (host.current?.clientWidth || size.width) / 2, y: (host.current?.clientHeight || size.height) / 2 }) })
   }
   useEffect(() => desktopBridge()?.onCommand((command) => {
+    if (editor.state.busy || (typeof document !== 'undefined' && shortcutTargetOwnsKeyboard(document.activeElement))) return
     if (command === 'zoomIn' || command === 'zoomOut' || command === 'zoom100') zoomCanvas(command)
   }), [editor])
   function finishPen() {
@@ -728,26 +737,38 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || shortcutTargetOwnsKeyboard(e.target)) return
+      if (e.getModifierState?.('AltGraph')) return
       if(e.key==='Escape')cancelToolActivation(editor)
-      if(!editor.interactionActive && !e.isComposing && e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.toLowerCase()==='c'&&/Mac/.test(navigator.platform)&&!modalOwnsKeyboard(e.target)){
-        e.preventDefault();editor.set({tool:'eyedropper'});return
-      }
-      if (modalOwnsKeyboard(e.target) || (e.target as HTMLElement).closest('input,textarea,select,[contenteditable]')) return
+      const shortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge() }
+      const shortcut = resolveShortcut(e, shortcutContext)
+      if (e.repeat && !shortcut?.repeat && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) { if (shortcut) e.preventDefault(); return }
       if(['Alt','Meta','Control'].includes(e.key)) {
         setMeasureKeys({alt:e.altKey,deep:e.metaKey||e.ctrlKey})
         if (e.altKey) setCursor(cursorPoint.current)
       }
       if (['Shift', 'Alt', 'Control'].includes(e.key) && replayDragModifiers(e)) return
       if(utility.active() && e.key!=='Escape'){e.preventDefault();return}
+      // X is a momentary selection override, never a persistent tool switch.
+      // Keep it out of text/IME/modal handling and don't toggle on repeats.
+      if (shortcutContext.profile === 'sketch-like' && e.key.toLowerCase() === 'x' &&
+          !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey &&
+          !drag.current && !pencil.current && !penRef.current && !editor.interactionActive && !editor.state.busy) {
+        e.preventDefault(); marqueeHeld.current = true; setMarqueeKeyHeld(true); return
+      }
+      if ((e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) && !e.metaKey && !e.ctrlKey && !e.altKey && e.target === host.current) {
+        e.preventDefault()
+        if (drag.current || pencil.current || editor.interactionActive || editor.state.busy) return
+        const rect = host.current!.getBoundingClientRect(), view = editor.flushPendingView(), bounds = editor.selectionBounds()
+        const center = bounds ? worldToScreen(view, { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }) : { x: rect.width / 2, y: rect.height / 2 }
+        const anchor = { x: Math.max(8, Math.min(center.x, rect.width - 8)), y: Math.max(8, Math.min(center.y, rect.height - 8)) }
+        const parents = allParents(editor.state.doc)
+        setContextMenu({ x: rect.left + anchor.x, y: rect.top + anchor.y, worldPoint: screenToWorld(view, anchor), candidates: editor.state.selection.map(id => ({ id, name: editor.state.doc.nodes[id].name, locked: !interactivePath(editor.state.doc, editor.state.page, id, false, parents).length })) })
+        return
+      }
       const mod = e.metaKey || e.ctrlKey
       if(!mod&&e.shiftKey&&e.code==='KeyR'&&!drag.current){e.preventDefault();editor.set({rulers:!editor.state.rulers});return}
       if(e.altKey&&!mod&&e.code==='KeyR'&&!drag.current&&editor.topSelection().length){e.preventDefault();setOrigin(origin.current.point,!origin.current.visible);return}
-      if (!mod && e.code === 'KeyP' && (e.shiftKey || e.altKey) && !drag.current && !pencil.current) {
-        e.preventDefault()
-        if (penRef.current) finishPen()
-        editor.set({ tool: 'pencil' })
-        return
-      }
       const creation = drag.current
       if (creation?.kind === 'create' && creation.creationSeed) {
         if (['Shift', 'Alt'].includes(e.key)) {
@@ -765,12 +786,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if ((drag.current || pencil.current) && !['Escape', 'Shift', 'Alt'].includes(e.key) && e.code !== 'Space' &&
           !(pencil.current && mod && e.key.toLowerCase() === 'z')) {
         e.preventDefault()
-        return
-      }
-      if (!e.altKey && ((mod && ['=', '+', '-', '0'].includes(e.key)) ||
-        (!mod && e.shiftKey && ['Equal', 'Minus'].includes(e.code)))) {
-        e.preventDefault()
-        zoomCanvas(e.key === '0' ? 'zoom100' : e.code === 'Minus' || e.key === '-' ? 'zoomOut' : 'zoomIn')
         return
       }
       const mac = /Mac|iPhone|iPad/.test(navigator.platform)
@@ -791,12 +806,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         cancelPencil()
         return
       }
-      if (e.code === 'Space') {
+      if (e.code === 'Space' && !mod && !e.altKey) {
         space.current = true
         setSpaceHeld(true)
         e.preventDefault()
       }
       if (e.key === 'Escape') {
+        e.preventDefault()
+        marqueeHeld.current = false; setMarqueeKeyHeld(false)
         const cancelOnly = !!drag.current || !!pencil.current || !!penRef.current || editor.state.tool !== 'select'
         flushView()
         cancelPencil()
@@ -810,7 +827,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         penRef.current = null
         pendingEditsChanged(editor)
         editor.set({ tool: 'select', editingVertex: null })
-        if (!cancelOnly) editor.clearSelection()
+        if (!cancelOnly && !(shortcutContext.profile === 'sketch-like' &&
+            !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && editor.selectParent())) editor.clearSelection()
         editor.hoverLayer(null, 'canvas')
         return
       }
@@ -847,62 +865,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       if (penRef.current && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && e.code !== 'Space') finishPen()
-      if (mod && e.key.toLowerCase() === 'z') {
-        e.preventDefault()
-        void dispatchEditorCommand(editor, e.shiftKey ? 'redo' : 'undo')
-      } else if (!mod && e.shiftKey && ['KeyH', 'KeyV'].includes(e.code)) {
-        e.preventDefault()
-        void dispatchEditorCommand(editor, e.code === 'KeyH' ? 'flip-horizontal' : 'flip-vertical')
-      } else if (!mod && !e.altKey && ['BracketLeft', 'BracketRight'].includes(e.code)) {
-        e.preventDefault(); void dispatchEditorCommand(editor, e.code === 'BracketRight' ? 'bring-to-front' : 'send-to-back')
-      } else if (mod && ['BracketLeft', 'BracketRight'].includes(e.code)) {
-        e.preventDefault()
-        void dispatchEditorCommand(editor, e.code === 'BracketRight' ? (e.altKey ? 'bring-to-front' : 'bring-forward') : (e.altKey ? 'send-to-back' : 'send-backward'))
-      } else if (mod && e.shiftKey && e.code === 'KeyR') {
-        e.preventDefault(); void dispatchEditorCommand(editor, 'paste-to-replace')
-      } else if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyR') {
-        e.preventDefault(); void dispatchEditorCommand(editor, 'rename')
-      } else if (mod && e.shiftKey && e.code === 'KeyL') {
-        e.preventDefault()
-        void dispatchEditorCommand(editor, lockedSelectionIds(editor).length ? 'unlock-selection' : 'lock-selection')
-      } else if (mod && e.shiftKey && e.code === 'KeyH') {
-        e.preventDefault()
-        void dispatchEditorCommand(editor, editor.state.selection.some(id => !editor.state.doc.nodes[id]?.visible) ? 'show-selection' : 'hide-selection')
-      } else if (e.metaKey && e.ctrlKey && e.code === 'KeyM') {
-        e.preventDefault(); void dispatchEditorCommand(editor, 'mask-selection')
-      } else if (mod && e.altKey && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        editor.createComponent()
-      } else if (!mod && e.shiftKey && e.key.toLowerCase() === 'a') {
-        e.preventDefault()
-        editor.autoLayout()
-      } else if (mod && e.key.toLowerCase() === 'a') {
-        e.preventDefault()
-        if(e.altKey){void dispatchEditorCommand(editor,'select-matching');return}
-        if(e.shiftKey){void dispatchEditorCommand(editor,'select-inverse');return}
-        editor.select(
-          editor.state.doc.pages
-            .find((p) => p.id === editor.state.page)!
-            .children.filter((id) => !editor.state.doc.nodes[id].locked),
-        )
-      } else if (mod && e.key.toLowerCase() === 'g') {
-        e.preventDefault()
-        void dispatchEditorCommand(editor, e.altKey ? 'frame-selection' : e.shiftKey ? 'ungroup' : 'group')
-      } else if (mod && e.key.toLowerCase() === 'd') {
-        e.preventDefault()
-        void dispatchEditorCommand(editor, 'duplicate')
-      } else if (mod && e.key.toLowerCase() === 'x') {
-        e.preventDefault()
-        void dispatchEditorCommand(editor, 'cut')
-      } else if (mod && e.key.toLowerCase() === 'c') {
-        e.preventDefault()
-        void dispatchEditorCommand(editor, e.altKey ? 'copy-properties' : e.shiftKey ? 'copy-as-png' : 'copy')
-      } else if (mod && e.key.toLowerCase() === 'v') {
-        e.preventDefault()
-        void dispatchEditorCommand(editor, e.altKey ? 'paste-properties' : e.shiftKey ? 'paste-in-place' : 'paste')
-      } else if (mod && (e.key === 'Backspace' || e.key === 'Delete')) {
-        e.preventDefault(); void dispatchEditorCommand(editor, 'ungroup')
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (shortcut && !(shortcut.command === 'delete' && editor.state.tool === 'vector' && editor.state.editingVertex)) {
+        void dispatchEditorShortcut(editor, e, shortcutContext)
+        return
+      }
+      if (!mod && !e.altKey && !e.shiftKey && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault()
         if (editor.state.tool === 'vector' && editor.state.editingVertex) {
           const vertices = new Set(editor.state.editingVertices?.length?editor.state.editingVertices:[editor.state.editingVertex])
@@ -920,7 +887,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           )
           editor.set({ editingVertex: null, editingVertices:[] })
         } else editor.remove()
-      } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+      } else if (!mod && !e.altKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         e.preventDefault()
         const amount = e.shiftKey ? 10 : 1
         if (editor.state.tool === 'vector' && editor.state.editingVertex) {
@@ -946,22 +913,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           ),
           '微移图层',
         )
-      } else if (!mod && e.shiftKey && e.code === 'KeyL') {
-        e.preventDefault(); if (penRef.current) finishPen(); editor.set({ tool: 'arrow' })
-      } else if (!mod && e.shiftKey && e.code === 'KeyS') {
-        e.preventDefault()
-        editor.set({ tool: 'section' })
-      } else if (!mod && !e.shiftKey && !e.altKey) {
-        const os = /Mac/.test(navigator.platform) ? 'mac' : /Win/.test(navigator.platform) ? 'windows' : 'linux'
-        const tool = resolveToolShortcut(e.key,os)
-        if (tool) {
-          e.preventDefault()
-          if (penRef.current) finishPen()
-          editor.set({ tool })
-        }
       }
     }
     const up = (e: KeyboardEvent) => {
+      if (e.code === 'KeyX' || e.key.toLowerCase() === 'x') { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
       if(['Alt','Meta','Control'].includes(e.key))setMeasureKeys({alt:e.altKey,deep:e.metaKey||e.ctrlKey})
       if (['Shift', 'Alt', 'Control'].includes(e.key) && replayDragModifiers(e)) return
       if (e.code === 'Space') { space.current = false; setSpaceHeld(false) }
@@ -976,6 +931,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       cancelPencil()
       setShapePreview(null)
       space.current = false
+      marqueeHeld.current = false; setMarqueeKeyHeld(false)
       setSpaceHeld(false); setPanning(false)
       editor.cancel()
       drag.current = null
@@ -986,10 +942,21 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
     window.addEventListener('blur', blur)
+    const releaseMarquee = () => { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
+    const visibility = () => { if (document.hidden) releaseMarquee() }
+    const focus = (e: FocusEvent) => { if (shortcutTargetOwnsKeyboard(e.target)) releaseMarquee() }
+    const unsubscribeProfile = shortcutPreference.subscribe(() => {
+      if (shortcutPreference.getSnapshot() !== 'sketch-like') releaseMarquee()
+    })
+    document.addEventListener('visibilitychange', visibility)
+    document.addEventListener('focusin', focus)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', blur)
+      document.removeEventListener('visibilitychange', visibility)
+      document.removeEventListener('focusin', focus)
+      unsubscribeProfile()
     }
   }, [editor])
   useEffect(() => {
@@ -999,7 +966,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         e.preventDefault()
         return
       }
-      if ((e.target as HTMLElement).closest('.canvas-controls,.canvas-minimap')) return
+      if ((e.target as HTMLElement).closest('.canvas-controls')) return
       e.preventDefault()
       hoverPoint.current = { x: e.clientX, y: e.clientY }
       suspendNavigationHover()
@@ -1028,21 +995,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       window.removeEventListener('keyup', modifiers, true)
     }
   }, [editor])
-  useEffect(() => {
-    const fit = (e: KeyboardEvent) => {
-      if (
-        modalOwnsKeyboard(e.target) || (e.target as HTMLElement).closest('input,textarea,select,[contenteditable]') ||
-        e.metaKey || e.ctrlKey || e.altKey ||
-        !e.shiftKey ||
-        !['1', '2', '!', '@'].includes(e.key)
-      )
-        return
-      e.preventDefault()
-      fitView(e.code === 'Digit2')
-    }
-    window.addEventListener('keydown', fit)
-    return () => window.removeEventListener('keydown', fit)
-  }, [entries, size, state.selection])
   function fitView(onlySelection = false) {
     if (pencil.current || drag.current) return
     flushView()
@@ -1222,6 +1174,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       ids = editor.topSelection()
     let clickSelection: string[] | null = null
     if (e.button === 1 || space.current || s.tool === 'hand') { dragKind = 'pan'; setPanning(true); editor.hoverLayer(null, 'canvas') }
+    else if (kind === 'marquee') { ids = []; setRubber({ ...p, width: 0, height: 0 }) }
     else if(!kind&&s.tool==='zoom'){dragKind='zoom';setRubber({...p,width:0,height:0})}
     else if (!kind && !['select', 'multiselect', 'scale', 'vector', 'width'].includes(s.tool)) {
       dragKind = 'create'
@@ -1254,9 +1207,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     const sourceDocument=editor.state.doc,sourceParents=allParents(sourceDocument)
     const matrices = Object.fromEntries(ids.map((id) => [id, worldMatrix(sourceDocument, id,sourceParents)]))
+    const selectedIds = new Set(ids)
     const currentBox = unionBounds(
       scene(editor.state.doc, s.page)
-        .filter((v) => ids.includes(v.id))
+        .filter((v) => selectedIds.has(v.id))
         .map((v) => v.bounds),
     )
     drag.current = {
@@ -1303,6 +1257,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       edge: edgeId,
       control,
       additive: e.shiftKey || s.tool==='multiselect',
+      ...(dragKind === 'marquee' ? {
+        sketchMarquee: shortcutPreference.getSnapshot() === 'sketch-like',
+        forcedMarquee: kind === 'marquee',
+        // Sketch's forced marquee ignores its starting layer and reaches
+        // nested content without requiring an additional deep-select chord.
+        marqueeIgnoreId: kind === 'marquee' ? displayedHit(p, true) : null,
+      } : {}),
       originSelection: s.selection,
       clickSelection, moved: false,
       lastScreen: screen,
@@ -1509,8 +1470,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         try {
           d.ids = editor.moveDuplication(e.altKey, d.originalIds || d.ids)
           d.duplicating = e.altKey
-          d.matrices = Object.fromEntries(d.ids.map(id => [id, worldMatrix(editor.state.doc, id)]))
-          d.parentMatrices = Object.fromEntries(d.ids.map(id=>[id,worldMatrix(editor.state.doc,allParents(editor.state.doc).get(id)!)]))
+          // Duplication changes topology; share one fresh map for this sample.
+          const parents = allParents(editor.state.doc)
+          d.matrices = Object.fromEntries(d.ids.map(id => [id, worldMatrix(editor.state.doc, id, parents)]))
+          d.parentMatrices = Object.fromEntries(d.ids.map(id=>[id,worldMatrix(editor.state.doc,parents.get(id)!,parents)]))
           d.layoutPointerOrigin = undefined
         } catch (error) {
           editor.notify(String(error)); editor.cancel(); drag.current = null; return
@@ -1535,19 +1498,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       let guidedX = false,
         guidedY = false
       if (editor.state.snap && !e.ctrlKey) {
+        const movingIds = new Set(d.ids)
         // The kernel owns candidate collection and best-delta selection over
         // the dragged world rect; the canvas only supplies sibling rects
         // (every other on-page entry, ruler guides included as zero-width/
         // zero-height rectangles) and applies the returned correction.
         const others = entries.filter(
-          (v) => !d.ids.includes(v.id) && !v.ancestors.some((id) => d.ids.includes(id)),
+          (v) => !movingIds.has(v.id) && !v.ancestors.some((id) => movingIds.has(id)),
         )
         const movingEntry = entries.find((v) => v.id === d.ids[0]),
           parentId = d.ids.length === 1 ? movingEntry?.ancestors.at(-1) : undefined,
           parent = parentId ? entries.find((v) => v.id === parentId)?.bounds : undefined
         const siblings = others.map((v) => v.bounds)
         if(editor.state.rulers){
-          const moving=new Set(entries.filter(v=>d.ids.includes(v.id)||v.ancestors.some(id=>d.ids.includes(id))).map(v=>v.id))
+          const moving=new Set(entries.filter(v=>movingIds.has(v.id)||v.ancestors.some(id=>movingIds.has(id))).map(v=>v.id))
           for(const guide of worldGuides(editor.state.doc,editor.state.page,entries)){
             if(moving.has(guide.owner))continue
             if(Math.abs(guide.to.x-guide.from.x)<1e-9)siblings.push({x:guide.from.x,y:Math.min(guide.from.y,guide.to.y),width:0,height:Math.abs(guide.to.y-guide.from.y)})
@@ -1621,7 +1585,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const parents = d.kind === 'move' && d.sourceParents || allParents(editor.state.doc),
       patches: Record<string, Partial<DesignNode>> = {}
     for (const id of d.ids) {
-      const parent = d.kind === 'move' && d.parentMatrices?.[id] || worldMatrix(editor.state.doc, parents.get(id)!)
+      const parent = d.kind === 'move' && d.parentMatrices?.[id] || worldMatrix(editor.state.doc, parents.get(id)!, parents)
       patches[id] = { transform: multiply(inverse(parent), multiply(transform, d.matrices[id])) }
       if (d.kind === 'resize') {
         const original = d.sourceDocument?.nodes[id]
@@ -1725,15 +1689,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       // React's rubber-band state may still describe the previous move. The
       // committed selection uses the owner's actual final coordinates.
       const area = createBox(d.start, screenToWorld(d.view, release), false)
-      const parents = allParents(editor.state.doc)
-      const deep = e.metaKey || e.ctrlKey
-      const scope = marqueeScope(editor.state.doc, editor.state.page, d.originSelection)
-      const candidates = (d.pickIndex || index).query(area).filter(entry => !entry.locked &&
-        (deep || parents.get(entry.id) === scope) && intersects(entry.bounds, area) &&
-        interactivePath(editor.state.doc, editor.state.page, entry.id, false, parents).length)
-      const ancestors = new Set(deep ? candidates.flatMap(entry => entry.ancestors) : [])
-      const ids = candidates.filter(entry => !ancestors.has(entry.id)).map(entry => entry.id)
-      editor.select([...d.originSelection.filter(() => d.additive), ...ids])
+      const deep = d.forcedMarquee || (d.sketchMarquee
+        ? shortcutPlatform() === 'mac' ? e.metaKey : e.ctrlKey : e.metaKey || e.ctrlKey)
+      // Use release-time modifiers and the original selection, not the last
+      // coalesced move or an earlier preview (which would toggle repeatedly).
+      const additive = d.sketchMarquee ? e.shiftKey || d.creationTool === 'multiselect' : !!d.additive
+      editor.select(canvasMarqueeSelection(editor.state.doc, editor.state.page, d.originSelection,
+        (d.pickIndex || index).query(area), area, { deep: !!deep, contained: !!d.sketchMarquee && e.altKey,
+          additive, toggle: !!d.sketchMarquee && additive, ignoreId: d.marqueeIgnoreId }))
     } else if(d.kind==='pivot') {
       // The origin is an editing handle, not document geometry or undo state.
     } else if (d.kind === 'move' && !d.moved) {
@@ -1887,10 +1850,19 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       data-testid="canvas" aria-busy={state.busy}
       data-creation-kind={shapePreview?.kind}
       data-transform-gesture={drag.current?.kind}
-      style={drag.current?.kind==='rotate'?{cursor:transformHandles[drag.current.handle ?? 0]?.rotateCursor}:undefined}
+      style={marqueeKeyHeld ? { cursor: 'crosshair' } : drag.current?.kind==='rotate'?{cursor:transformHandles[drag.current.handle ?? 0]?.rotateCursor}:undefined}
+      onPointerDownCapture={e => {
+        // Capture before transform/layout handles, so held X cannot resize or
+        // move an existing selection. Canvas controls keep their own input.
+        if (!marqueeHeld.current || shortcutPreference.getSnapshot() !== 'sketch-like' ||
+            drag.current || pencil.current || utility.active() || space.current || editor.state.tool === 'hand' ||
+            e.button !== 0 || !(e.target instanceof Element) || !host.current?.contains(e.target) ||
+            e.target.closest(canvasChromeSelector) || shortcutTargetOwnsKeyboard(e.target)) return
+        cancelQueuedMove(); start(e, 'marquee'); e.stopPropagation()
+      }}
       onPointerDown={(e) => { if (!drag.current) cancelQueuedMove(); start(e) }}
       onPointerMoveCapture={e => {
-        // Minimap/scrollbar gestures stop propagation. Clear a previous canvas
+        // Scrollbar gestures stop propagation. Clear a previous canvas
         // target before that boundary, including any queued hover sample.
         if (!drag.current && !pencil.current && !utility.active() && e.target instanceof Element && e.target.closest(canvasChromeSelector)) {
           cancelQueuedMove(); hoverPoint.current = null; editor.pointerLocation = null; editor.pointerScreen = null; editor.hoverLayer(null, 'canvas')
@@ -1928,7 +1900,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       onDrop={drop}
       onContextMenu={e => {
         if (!host.current?.contains(e.target as Node)) return
-        if ((e.target as HTMLElement).closest('input,textarea,[contenteditable="true"]')) return
+        if (shortcutTargetOwnsKeyboard(e.target)) return
         e.preventDefault()
         if (drag.current || pencil.current || !geometryReady || !displayedSnapshot || !displayedIndex) return
         host.current?.focus({ preventScroll: true })
@@ -2001,7 +1973,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       )}
       <CanvasLayoutHandles editor={editor} view={displayView} size={size} visible={exactOverlayMatches}/>
       <CanvasSmartSelection editor={editor} view={displayView} size={size} visible={exactOverlayMatches}/>
-      <CanvasMinimap editor={editor} entries={entries} view={displayView} size={size}/>
       <CanvasGuides editor={editor} view={displayView} size={size} intercept={e=>{
         if(!canTransform||e.button!==0)return false
         const p=world(e)

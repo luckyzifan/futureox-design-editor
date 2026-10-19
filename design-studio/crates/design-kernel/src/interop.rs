@@ -1416,6 +1416,20 @@ impl<'a> Importer<'a> {
         {
             instance.property_values = map;
         }
+        // Canonical component data uses editor layer keys, not Sketch's native
+        // overrideName spelling. Keep both representations explicit; native
+        // overrides remain the fallback for ordinary external Sketch files.
+        if let Some(instance) = user_ns.get("instance") {
+            if let Ok(instance) = serde_json::from_value::<crate::components::Instance>(instance.clone()) {
+                node.instance = Some(instance);
+            }
+        }
+        if let Some(key) = user_ns.get("componentKey").and_then(Value::as_str) {
+            node.component_key = Some(key.to_owned());
+        }
+        if user_ns.get("componentSet").and_then(Value::as_bool) == Some(true) {
+            node.component_set = true;
+        }
         // Kernel-authored layout grid payload (color/opacity have no
         // archived Sketch home and ride our userInfo namespace).
         if let Some(grid) = user_ns.get("layoutGrid")
@@ -2125,8 +2139,104 @@ pub struct SketchImportReport {
 
 pub const MAX_IMPORT_WARNINGS: usize = 32;
 
+/// Resolve the separate Sketch symbol identity before shared-model admission.
+/// The low-level archival importer intentionally retains native spellings.
+fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
+    let mut symbols = BTreeMap::<String, String>::new();
+    for node in document.nodes.values_mut() {
+        if let Some(symbol) = node.bindings.get("symbolID") {
+            if symbols.insert(symbol.to_ascii_uppercase(), node.id.clone()).is_some() {
+                return Err(Error::Unsupported("ambiguous duplicate Sketch symbolID".into()));
+            }
+            node.component.get_or_insert_with(Default::default);
+        }
+    }
+    // An authored compatibility archive may refer to a canonical node ID.
+    for node in document.nodes.values().filter(|n| n.component.is_some()) {
+        let key = node.id.to_ascii_uppercase();
+        if symbols.get(&key).is_some_and(|id| id != &node.id) {
+            return Err(Error::Unsupported("ambiguous Sketch symbol/node identity".into()));
+        }
+        symbols.insert(key, node.id.clone());
+    }
+    for node in document.nodes.values_mut() {
+        if let Some(instance) = &mut node.instance {
+            instance.component_id = symbols.get(&instance.component_id.to_ascii_uppercase()).cloned()
+                .ok_or_else(|| Error::Unsupported("Sketch instance requires an embedded symbol master".into()))?;
+        }
+        // Stable keys must survive the host's fresh node-ID assignment.
+        if !symbols.is_empty() { node.component_key.get_or_insert_with(|| node.id.clone()); }
+    }
+    if !symbols.is_empty() { document.schema_version = document.schema_version.max(4); }
+    fn native_path(document: &Document, root: &str, path: &str) -> Option<String> {
+        let mut scope = root.to_owned();
+        let mut keys = Vec::new();
+        let parts: Vec<_> = path.split('/').collect();
+        for (index, part) in parts.iter().enumerate() {
+            let mut pending = vec![scope.clone()];
+            let mut found = None;
+            let mut visited = std::collections::BTreeSet::new();
+            while let Some(id) = pending.pop() {
+                if !visited.insert(id.clone()) || visited.len() > 20000 { return None }
+                let node = document.nodes.get(&id)?;
+                if id.eq_ignore_ascii_case(part) { found = Some(node); break }
+                if id == scope || node.instance.is_none() { pending.extend(node.children.iter().cloned()); }
+            }
+            let node = found?;
+            if index + 1 == parts.len() {
+                keys.push(if node.id == root { "$root".to_owned() }
+                    else { node.component_key.as_ref().unwrap_or(&node.id).clone() });
+            } else if let Some(instance) = &node.instance {
+                keys.push(node.component_key.as_ref().unwrap_or(&node.id).clone());
+                scope = instance.component_id.clone();
+            } else { scope = node.id.clone(); }
+        }
+        Some(keys.join("/"))
+    }
+    let mut replacements = Vec::new();
+    for node in document.nodes.values() {
+        let Some(instance) = &node.instance else { continue };
+        let mut overrides = crate::components::Overrides::new();
+        for (path, fields) in &instance.overrides {
+            for (field, value) in fields {
+                let (key, field, mut value) = if crate::components::FIELDS.contains(&field.as_str())
+                    || matches!(field.as_str(), "swapComponent" | "propertyValues") {
+                    (path.clone(), field.clone(), value.clone())
+                } else {
+                    let (layer, native_field) = field.rsplit_once('_')
+                        .ok_or_else(|| Error::Unsupported(format!("Sketch override `{field}` has no editable mapping")))?;
+                    let full_path = if path == "self" { layer.to_owned() } else { format!("{path}/{layer}") };
+                    let key = native_path(document, &instance.component_id, &full_path)
+                        .ok_or_else(|| Error::Unsupported(format!("Sketch override target `{full_path}` could not be resolved")))?;
+                    let field = match native_field {
+                        "stringValue" if value.is_string() => "text",
+                        "symbolID" if value.is_string() => "swapComponent",
+                        "isVisible" if value.is_boolean() => "visible",
+                        _ => return Err(Error::Unsupported(format!("Sketch override `{native_field}` has no supported editable mapping; keep the original .sketch file"))),
+                    };
+                    (key, field.to_owned(), value.clone())
+                };
+                if field == "swapComponent" {
+                    let symbol = value.as_str().ok_or_else(|| Error::Unsupported("invalid Sketch symbol override".into()))?;
+                    value = json!(symbols.get(&symbol.to_ascii_uppercase())
+                        .ok_or_else(|| Error::Unsupported("Sketch symbol override requires an embedded master".into()))?);
+                }
+                if overrides.entry(key).or_default().insert(field, value).is_some() {
+                    return Err(Error::Unsupported("ambiguous Sketch overrides map to the same property".into()));
+                }
+            }
+        }
+        replacements.push((node.id.clone(), overrides));
+    }
+    for (id, overrides) in replacements {
+        document.nodes.get_mut(&id).unwrap().instance.as_mut().unwrap().overrides = overrides;
+    }
+    Ok(())
+}
+
 pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
     let mut document = import_sketch(bytes)?;
+    admit_sketch_symbols(&mut document)?;
     let mut warnings = std::collections::BTreeSet::new();
     warnings.insert("Sketch compatibility import: unsupported source fields may not be editable or survive export; keep the original .sketch file.".to_owned());
     // A shared document stores pages outside nodes. The low-level codec also
@@ -2892,6 +3002,64 @@ fn sketch_font_name(doc: &Document, font_id: &str) -> String {
         .unwrap_or_else(|| font_id.to_owned())
 }
 
+fn exported_symbol_id(doc: &Document, id: &str) -> String {
+    let Some(master) = doc.nodes.get(id).filter(|node| node.component.is_some()) else {
+        // Legacy archive inspection keeps the native symbol reference here.
+        return id.to_owned();
+    };
+    master.bindings.get("symbolID").cloned().or_else(|| doc.design_system.as_ref()
+        .and_then(|system| system.sketch_containers.get("nodeMetadata"))
+        .and_then(|metadata| metadata.get(id))
+        .and_then(|metadata| metadata.get("bindings"))
+        .and_then(|bindings| bindings.get("symbolID"))
+        .and_then(Value::as_str).map(str::to_owned))
+        .unwrap_or_else(|| sketch_id(id))
+}
+
+fn exported_override_path(doc: &Document, component: &str, path: &str) -> Option<String> {
+    let mut scope = component.to_owned();
+    let mut native = Vec::new();
+    let parts: Vec<_> = path.split('/').collect();
+    for (index, part) in parts.iter().enumerate() {
+        let mut pending = vec![scope.clone()];
+        let mut visited = std::collections::BTreeSet::new();
+        let mut found = None;
+        while let Some(id) = pending.pop() {
+            if !visited.insert(id.clone()) || visited.len() > 20000 { return None }
+            let node = doc.nodes.get(&id)?;
+            if (index == 0 && *part == "$root" && id == scope)
+                || node.component_key.as_deref().unwrap_or(&node.id) == *part {
+                found = Some(node); break;
+            }
+            if id == scope || node.instance.is_none() { pending.extend(node.children.iter().cloned()); }
+        }
+        let node = found?;
+        native.push(sketch_id(&node.id));
+        if index + 1 < parts.len() { scope = node.instance.as_ref()?.component_id.clone(); }
+    }
+    Some(native.join("/"))
+}
+
+/// Sketch's frame/rotation/flips represent rigid local placement. Test only
+/// floating-point orthogonality here; never flatten scale/shear to identity.
+fn sketch_placement(node: &Node) -> Option<([f64; 4], f64, [bool; 2])> {
+    let [a, b, c, d, x, y] = node.transform.0;
+    let determinant = a * d - b * c;
+    if [a, b, c, d, x, y].iter().any(|value| !value.is_finite())
+        || (a * a + b * b - 1.).abs() > 1e-12
+        || (c * c + d * d - 1.).abs() > 1e-12
+        || (a * c + b * d).abs() > 1e-12
+        || (determinant.abs() - 1.).abs() > 1e-12 { return None }
+    let flip = determinant < 0.;
+    let sign = if flip { -1. } else { 1. };
+    let rotation = -(b * sign).atan2(a * sign).to_degrees();
+    Some(([
+        x - node.width / 2. + a * node.width / 2. + c * node.height / 2.,
+        y - node.height / 2. + b * node.width / 2. + d * node.height / 2.,
+        node.width, node.height,
+    ], rotation, [flip, false]))
+}
+
 fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value {
     let mut source_text_frame_restored = false;
     let restored_node = doc.nodes.get(id).map(|node| {
@@ -2993,6 +3161,12 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
             json!({"_class": "rect", "x": t[4], "y": t[5],
                     "width": n.width, "height": n.height}),
         );
+        if let Some((frame, rotation, flip)) = sketch_placement(n) {
+            layer.insert("frame".into(), json!({"_class":"rect", "x":frame[0], "y":frame[1], "width":frame[2], "height":frame[3]}));
+            layer.insert("rotation".into(), json!(rotation));
+            layer.insert("isFlippedHorizontal".into(), json!(flip[0]));
+            layer.insert("isFlippedVertical".into(), json!(flip[1]));
+        }
         if let Some(source) = n.bindings.get("sketchSourceTransform")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
             && source.get("matrix").and_then(|v| serde_json::from_value::<[f64; 6]>(v.clone()).ok()) == Some(t)
@@ -3190,18 +3364,35 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
                 // (22 号字典 §5 syntax: "ancestor/layerID_field", bare names
                 // import back with the "self" path key).
                 if let Some(inst) = &n.instance {
-                    layer.insert("symbolID".into(), json!(inst.component_id));
+                    layer.insert("symbolID".into(), json!(exported_symbol_id(doc, &inst.component_id)));
                     layer.insert("scale".into(), json!(1.));
                     layer.insert("preservesSpaceWhenHidden".into(), json!(false));
                     let mut values = Vec::new();
                     for (path, fields) in &inst.overrides {
                         for (field, value) in fields {
-                            let name = if path == "self" {
+                            let canonical = crate::components::FIELDS.contains(&field.as_str())
+                                || matches!(field.as_str(), "swapComponent" | "propertyValues");
+                            let mut native_value = value.clone();
+                            let name = if canonical {
+                                let native_field = match field.as_str() {
+                                    "text" => "stringValue",
+                                    "visible" => "isVisible",
+                                    "swapComponent" => "symbolID",
+                                    _ => { note_lossy(&mut lossy, "component-overrides-in-userInfo"); continue; }
+                                };
+                                let Some(native_path) = exported_override_path(doc, &inst.component_id, path) else {
+                                    note_lossy(&mut lossy, "component-override-path-in-userInfo"); continue;
+                                };
+                                if field == "swapComponent" {
+                                    if let Some(id) = value.as_str() { native_value = json!(exported_symbol_id(doc, id)); }
+                                }
+                                format!("{native_path}_{native_field}")
+                            } else if path == "self" {
                                 field.clone()
                             } else {
                                 format!("{path}/{field}")
                             };
-                            let exported = match value {
+                            let exported = match &native_value {
                                 Value::String(s) => {
                                     // 22 号字典 §5 image 覆盖: a data-URI string
                                     // under an `*_image` field archives as an
@@ -3692,13 +3883,17 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
         // properties) survives symbol round-trips this way.
         let mut user_info = Map::new();
         user_info.insert("originalId".into(), json!(id));
+        if let Some(key) = &n.component_key { user_info.insert("componentKey".into(), json!(key)); }
+        if n.component_set { user_info.insert("componentSet".into(), json!(true)); }
         if let Some(c) = &n.component
-            && (!c.variants.is_empty() || !c.properties.is_empty())
         {
             user_info.insert(
                 "component".into(),
                 serde_json::to_value(c).unwrap_or(Value::Null),
             );
+        }
+        if let Some(instance) = &n.instance {
+            user_info.insert("instance".into(), serde_json::to_value(instance).unwrap_or(Value::Null));
         }
         if let Some(inst) = &n.instance
             && !inst.property_values.is_empty()
@@ -3835,6 +4030,12 @@ fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Vec<Val
 
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
 pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
+    for node in doc.nodes.values() {
+        if sketch_placement(node).is_none() {
+            return Err(Error::Unsupported(format!(
+                "Sketch export cannot represent scaled or sheared affine placement on layer `{}` without changing editable geometry; use the native document format", node.id)));
+        }
+    }
     let mut images = ExportedImages {
         entries: Vec::new(),
         seen: Default::default(),

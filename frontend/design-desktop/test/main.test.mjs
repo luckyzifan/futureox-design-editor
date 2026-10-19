@@ -18,9 +18,12 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
     handlers: new Map(),
     open: [],
     save: [],
-    messages: [],
+    messages: [{ response: 1 }], // Explicitly choose the legacy default in the startup chooser.
     prompts: [],
     requests: [],
+    backends: [],
+    children: [],
+    relaunchCalls: 0,
     documents: new Map(),
     recoveries: new Map(),
     recoveryIssues: [],
@@ -51,8 +54,10 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
       return Promise.resolve()
     },
     getPath: () => root,
+    getAppPath: () => root,
     addRecentDocument: value => state.recent.push(value),
     quit() { state.quitCalls++ },
+    relaunch() { state.relaunchCalls++; if (state.relaunchFailure) throw new Error('Relaunch failed') },
     exit() {},
   })
   class Window extends EventEmitter {
@@ -65,6 +70,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
         mainFrame: { url: '' },
         setWindowOpenHandler() {},
         setZoomFactor(value) { state.pageZoom = value },
+        setIgnoreMenuShortcuts(value) { state.ignoreMenuShortcuts = value },
         undo() { state.textCommand = 'undo' }, redo() { state.textCommand = 'redo' },
         cut() { state.textCommand = 'cut' }, copy() { state.textCommand = 'copy' },
         paste() { state.textCommand = 'paste' }, selectAll() { state.textCommand = 'selectAll' },
@@ -155,12 +161,16 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
     },
   }
   state.Sidecar = class {
+    constructor(executable, recoveryDir, options) { state.backends.push({ executable, recoveryDir, ...options }) }
     async stop() {
       state.stopCalls++
       return true
     }
     async request(method, params = {}) {
       state.requests.push({ method, params })
+      if (method === 'workspace.open') return { id: params.id }
+      if (method === 'workspace.list') { if (state.workspaceFailure) throw Object.assign(new Error('Invalid workspace'), { code: state.workspaceFailure }); return { documents: [] } }
+      if (method === 'catalog.list') return { projects: [], directories: [], files: [] }
       if (method === 'health') return { protocolVersion: 1, maxDocumentBytes: 32 * 1024 * 1024 }
       if (method === 'fonts.list') return { fonts: [{ id: 'font-1' }], truncated: false }
       if (method === 'fonts.read') {
@@ -209,6 +219,13 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
       throw new Error(`Unexpected method ${method}`)
     }
   }
+  state.spawn = () => {
+    const child = new EventEmitter()
+    child.unref = () => {}
+    state.children.push(child)
+    setImmediate(() => child.emit('spawn'))
+    return child
+  }
   globalThis[key] = state
   const src = new URL('../src/main.mjs', import.meta.url)
   let source = await readFile(src, 'utf8')
@@ -216,8 +233,12 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
     /import \{ app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem \} from 'electron'/,
     `const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem } = globalThis[${JSON.stringify(key)}].electron`,
   )
+  source = source.replace("from './workspace-roots.mjs'", `from ${JSON.stringify(new URL('../src/workspace-roots.mjs', import.meta.url).href)}`)
+  source = source.replace("from './keyboard-shortcuts.mjs'", `from ${JSON.stringify(new URL('../src/keyboard-shortcuts.mjs', import.meta.url).href)}`)
+  source = source.replace("from './automation-bridge.mjs'", `from ${JSON.stringify(new URL('../src/automation-bridge.mjs', import.meta.url).href)}`)
   source = source.replace("from './clipboard.mjs'", `from ${JSON.stringify(new URL('../src/clipboard.mjs', import.meta.url).href)}`)
-  source = source.replaceAll('process.platform', `globalThis[${JSON.stringify(key)}].platform`)
+  source = source.replace("import { spawn } from 'node:child_process'", `const { spawn } = globalThis[${JSON.stringify(key)}]`)
+  source = source.replaceAll('process.platform' , `globalThis[${JSON.stringify(key)}].platform`)
   source = source.replace(
     "import { Sidecar } from './sidecar.mjs'",
     `const { Sidecar } = globalThis[${JSON.stringify(key)}]`,
@@ -254,6 +275,10 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
       value,
     )
   await state.invoke('renderer-ready')
+  state.startupPrompts = state.prompts.splice(0)
+  state.startupRequests = state.requests.splice(0)
+  state.startupStopCalls = state.stopCalls
+  state.stopCalls = 0
   state.dispose = async () => {
     if (!state.window.destroyed) { state.window.destroyed = true; state.window.emit('closed') }
     app.emit('before-quit', { preventDefault() {} })
@@ -282,7 +307,7 @@ test('desktop zoom shortcuts dispatch canvas commands and keep page zoom at one'
     for (const [key, command] of [['=', 'zoomIn'], ['+', 'zoomIn'], ['-', 'zoomOut'], ['0', 'zoom100']]) {
       let prevented = false
       state.window.webContents.emit('before-input-event', { preventDefault() { prevented = true } },
-        { type: 'keyDown', key, meta: true, control: true, alt: false })
+        { type: 'keyDown', key, meta: true, control: false, alt: false })
       assert.equal(prevented, true)
       commands.push(['design-desktop:command', command])
     }
@@ -295,6 +320,10 @@ test('native modified clipboard shortcuts retain their meaning before menu dispa
  const state=await host()
  try{
   await state.invoke('renderer-ready')
+  state.startupPrompts = state.prompts.splice(0)
+  state.startupRequests = state.requests.splice(0)
+  state.startupStopCalls = state.stopCalls
+  state.stopCalls = 0
   state.sent=[]
   for(const [key,shift,command] of [['c',false,'copy'],['c',true,'copy-as-png'],['r',true,'paste-to-replace']]){
    let prevented=false
@@ -881,8 +910,16 @@ test('native commands after last-window close wait for the new renderer handshak
     await state.waitFor(() => state.windows.length === 2)
     assert.equal(state.sent.length, 0)
     await state.invoke('renderer-ready')
+  state.startupPrompts = state.prompts.splice(0)
+  state.startupRequests = state.requests.splice(0)
+  state.startupStopCalls = state.stopCalls
+  state.stopCalls = 0
     assert.deepEqual(state.sent, [['design-desktop:command', 'new']])
     await state.invoke('renderer-ready')
+  state.startupPrompts = state.prompts.splice(0)
+  state.startupRequests = state.requests.splice(0)
+  state.startupStopCalls = state.stopCalls
+  state.stopCalls = 0
     assert.equal(state.sent.length, 1, 'Repeated ready notifications do not replay native commands')
   } finally { await state.dispose() }
 })
@@ -954,5 +991,228 @@ test('Sketch inspection uses only native selection and cannot replace the Forma 
     state.sketchResult = p => ({ owner: { kernel_id: 'sketch', document_schema: 'future', document_id: p.documentId, session_epoch: p.sessionEpoch }, pageCount: 1, layerCount: 1, editable: false, renderable: false })
     state.open.push({ canceled: false, filePaths: [path.join(state.root, 'native.sketch')] })
     assert.equal((await state.invoke('sketch-inspect')).status, 'error')
+  } finally { await state.dispose() }
+})
+
+
+for (const platform of ['darwin', 'win32', 'linux']) {
+  test(`${platform}: registered input handler protects IME and consumes repeat before native menu dispatch`, async () => {
+    const state = await host({ platform })
+    try {
+      await state.invoke('renderer-ready')
+  state.startupPrompts = state.prompts.splice(0)
+  state.startupRequests = state.requests.splice(0)
+  state.startupStopCalls = state.stopCalls
+  state.stopCalls = 0; state.sent = []
+      const mod = platform === 'darwin' ? { meta: true, control: false } : { meta: false, control: true }
+      let prevented = 0
+      const emit = extra => state.window.webContents.emit('before-input-event', { preventDefault() { prevented++ } }, { type: 'keyDown', key: 'd', alt: false, shift: false, ...mod, ...extra })
+      emit({}); emit({ isAutoRepeat: true }); emit({ isComposing: true })
+      assert.deepEqual(state.sent, [['design-desktop:command', 'duplicate']]); assert.equal(prevented, 2); assert.equal(state.ignoreMenuShortcuts, true)
+      emit({ control: true, meta: true }); assert.equal(state.sent.length, 1)
+      emit({ key: 'z' }); assert.deepEqual(state.sent.at(-1), ['design-desktop:command', 'undo']); assert.equal(state.ignoreMenuShortcuts, false)
+    } finally { await state.dispose() }
+  })
+}
+
+for (const platform of ['darwin', 'win32', 'linux']) {
+  test(`${platform}: native paste-over-selection menu is distinct from paste-in-place and replacement`, async () => {
+    const state = await host({ platform })
+    try {
+      const edit = state.menu.find(item => item.label === 'Edit').submenu
+      const over = edit.find(item => item.label === 'Paste Over Selection')
+      const inPlace = edit.find(item => item.label === 'Paste in Place')
+      const replace = edit.find(item => item.label === 'Paste to Replace')
+      const paste = edit.find(item => item.label === 'Paste')
+      assert.ok(over, 'Paste Over Selection must be available in the native Edit menu')
+      assert.equal(over.accelerator, 'CmdOrCtrl+Shift+V')
+      assert.equal(inPlace.accelerator, undefined, 'Paste in Place must not compete for Shift+Mod+V')
+      assert.equal(replace.accelerator, 'CmdOrCtrl+Shift+R')
+      assert.equal(paste.accelerator, 'CmdOrCtrl+V')
+      const menuItems = items => items.flatMap(item => [item, ...menuItems(item.submenu || [])])
+      assert.deepEqual(menuItems(state.menu).filter(item => item.accelerator === 'CmdOrCtrl+Shift+V'), [over])
+      state.sent = []
+      for (const item of [over, inPlace, replace, paste]) item.click()
+      const center = state.menu.find(item => item.label === 'View').submenu.find(item => item.label === 'Center Selection')
+      assert.equal(center.accelerator, undefined, 'Renderer retains profile-specific center-selection keys')
+      center.click()
+      assert.deepEqual(state.sent, ['paste-over-selection', 'paste-in-place', 'paste-to-replace', 'paste', 'center-selection'].map(command => ['design-desktop:command', command]))
+      assert.equal(state.handlers.has('design-desktop:command'), false, 'No arbitrary renderer command IPC is exposed')
+      assert.equal(state.pageZoom, 1)
+    } finally { await state.dispose() }
+  })
+  test(`${platform}: registered paste-over-selection shortcut forwards once and preserves IME and repeat suppression`, async () => {
+    const state = await host({ platform })
+    try {
+      state.sent = []
+      const mod = platform === 'darwin' ? { meta: true, control: false } : { meta: false, control: true }
+      let prevented = 0
+      const emit = extra => state.window.webContents.emit('before-input-event', { preventDefault() { prevented++ } }, {
+        type: 'keyDown', key: 'v', code: 'KeyV', alt: false, shift: true, ...mod, ...extra,
+      })
+      emit({})
+      assert.deepEqual(state.sent, [['design-desktop:command', 'paste-over-selection']])
+      assert.equal(prevented, 1)
+      emit({ isAutoRepeat: true })
+      assert.equal(state.ignoreMenuShortcuts, true)
+      assert.equal(prevented, 2)
+      for (const extra of [{ isComposing: true }, { keyCode: 229 }, { key: 'Dead' }, { key: 'Process' }]) {
+        emit(extra)
+        assert.equal(state.ignoreMenuShortcuts, true)
+      }
+      for (const extra of [{ type: 'keyUp' }, { control: true, meta: true }, { alt: true }]) emit(extra)
+      assert.equal(state.sent.length, 1)
+      assert.equal(prevented, 2)
+      emit({})
+      assert.deepEqual(state.sent, [
+        ['design-desktop:command', 'paste-over-selection'],
+        ['design-desktop:command', 'paste-over-selection'],
+      ])
+      assert.equal(state.ignoreMenuShortcuts, false)
+      assert.equal(prevented, 3)
+    } finally { await state.dispose() }
+  })
+}
+
+async function stageWorkspace(state, name = 'selected-workspace') {
+  const selected = path.join(state.root, name)
+  await mkdir(selected)
+  state.open.push({ canceled: false, filePaths: [selected] })
+  const result = await state.invoke('workspace-root-select')
+  assert.equal(result.status, 'ok')
+  return { selected, result }
+}
+async function savedWorkspace(state) {
+  return JSON.parse(await readFile(path.join(state.root, 'workspace-selection-v1.json'), 'utf8'))
+}
+
+test('workspace startup explicitly chooses original default, probes both SQLite stores, and preserves default backend paths', async () => {
+  const state = await host()
+  try {
+    assert.equal(state.startupPrompts[0].title, '选择本地工作区')
+    assert.ok(state.startupRequests.some(r => r.method === 'workspace.list'))
+    assert.ok(state.startupRequests.some(r => r.method === 'catalog.list'))
+    assert.equal(state.startupStopCalls, 1)
+    assert.equal(state.backends.at(-1).workspaceDb, path.join(state.root, 'workspace-v1.sqlite3'))
+    assert.equal(state.backends.at(-1).catalogDb, path.join(state.root, 'catalog-v1.sqlite3'))
+    assert.equal((await state.invoke('workspace-root-status')).isDefault, true)
+  } finally { await state.dispose() }
+})
+
+test('native workspace stage and cancelled close never change the active or saved root', async () => {
+  const state = await host()
+  try {
+    const { selected, result } = await stageWorkspace(state)
+    assert.equal(state.backends.at(-1).workspaceDb, path.join(selected, '.futureox-workspace', 'workspace-v1.sqlite3'))
+    assert.equal((await savedWorkspace(state)).kind, 'default')
+    assert.equal((await state.invoke('workspace-root-activate', { selectionId: result.selectionId })).restarting, true)
+    const requestId = state.sent.at(-1)[1].requestId
+    assert.equal((await savedWorkspace(state)).kind, 'default')
+    assert.deepEqual(await state.invoke('close-response', { requestId, allow: false }), { accepted: true })
+    assert.equal(state.relaunchCalls, 0)
+    assert.equal((await savedWorkspace(state)).kind, 'default')
+    assert.equal((await state.invoke('workspace-root-status')).isDefault, true)
+    assert.equal((await state.invoke('workspace-root-activate', { selectionId: result.selectionId })).status, 'error')
+  } finally { await state.dispose() }
+})
+
+test('approved workspace switch saves pointer only after close handshake and relaunches after backend drains', async () => {
+  const state = await host()
+  try {
+    const { selected, result } = await stageWorkspace(state)
+    await state.invoke('workspace-root-activate', { selectionId: result.selectionId })
+    assert.equal(state.relaunchCalls, 0)
+    const requestId = state.sent.at(-1)[1].requestId
+    assert.equal((await state.invoke('live-new-window', { id: '10000000-0000-0000-0000-000000000001' })).code, 'BUSY')
+    assert.equal(state.children.length, 0)
+    const [first, duplicate] = await Promise.all([
+      state.invoke('close-response', { requestId, allow: true }),
+      state.invoke('close-response', { requestId, allow: true }),
+    ])
+    assert.equal(first.accepted, true); assert.equal(duplicate.accepted, false)
+    assert.equal(state.relaunchCalls, 1)
+    assert.equal((await savedWorkspace(state)).rootPath, selected)
+    // No backend replacement occurs in this process, even after native approval.
+    assert.equal((await state.invoke('workspace-root-status')).isDefault, true)
+    state.finishClose(); await state.waitFor(() => state.quitCalls === 1)
+    assert.ok(state.stopCalls >= 3, 'Both probes and the original backend must stop')
+  } finally { await state.dispose() }
+})
+
+test('workspace native relaunch failure rolls preference back and rejects close so renderer can resume', async () => {
+  const state = await host()
+  try {
+    const { result } = await stageWorkspace(state)
+    state.relaunchFailure = true
+    await state.invoke('workspace-root-activate', { selectionId: result.selectionId })
+    const requestId = state.sent.at(-1)[1].requestId
+    assert.deepEqual(await state.invoke('close-response', { requestId, allow: true }), { accepted: false })
+    assert.equal((await savedWorkspace(state)).kind, 'default')
+    assert.equal(state.quitCalls, 0)
+    assert.equal(state.closeCalls, 1, 'A failed restart must not permit the final native close')
+    assert.equal(state.prompts.at(-1).title, '工作区未切换')
+    assert.equal((await state.invoke('workspace-list')).status, 'ok')
+  } finally { await state.dispose() }
+})
+
+test('root replacement while dirty-close decision is pending fails closed without changing preference', async () => {
+  const state = await host()
+  try {
+    const { selected, result } = await stageWorkspace(state)
+    await state.invoke('workspace-root-activate', { selectionId: result.selectionId })
+    await rename(selected, `${selected}-moved`); await mkdir(selected)
+    assert.deepEqual(await state.invoke('close-response', { requestId: state.sent.at(-1)[1].requestId, allow: true }), { accepted: false })
+    assert.equal((await savedWorkspace(state)).kind, 'default')
+    assert.equal(state.relaunchCalls, 0)
+  } finally { await state.dispose() }
+})
+
+test('workspace selection refuses renderer paths and untrusted frames, cancellation is non-mutating', async () => {
+  const state = await host()
+  try {
+    const before = state.backends.length
+    assert.equal((await state.invoke('workspace-root-select', { path: state.root })).status, 'error')
+    assert.equal((await state.invoke('workspace-root-default', { path: state.root })).status, 'error')
+    assert.equal((await state.invoke('workspace-root-activate', { selectionId: 'forged', path: state.root })).status, 'error')
+    await assert.rejects(state.invoke('workspace-root-status', undefined, { sender: state.window.webContents, senderFrame: { url: 'https://evil.example/' } }), /Untrusted/)
+    assert.deepEqual(await state.invoke('workspace-root-select'), { status: 'cancelled' })
+    assert.equal(state.backends.length, before)
+    assert.equal((await savedWorkspace(state)).kind, 'default')
+  } finally { await state.dispose() }
+})
+
+test('original default can be explicitly selected without restart and new peer window blocks staged switch', async () => {
+  const state = await host()
+  try {
+    const original = await state.invoke('workspace-root-default')
+    assert.equal(original.isDefault, true)
+    assert.deepEqual(await state.invoke('workspace-root-activate', { selectionId: original.selectionId }), { status: 'ok', restarting: false })
+    assert.equal(state.closeCalls, 0)
+    const { result } = await stageWorkspace(state)
+    assert.equal((await state.invoke('live-new-window', { id: '10000000-0000-0000-0000-000000000001' })).status, 'ok')
+    assert.equal((await state.invoke('workspace-root-status')).canSwitch, false)
+    assert.equal((await state.invoke('workspace-root-select')).code, 'WORKSPACE_ROOT_PEERS')
+    assert.equal((await state.invoke('workspace-root-activate', { selectionId: result.selectionId })).code, 'WORKSPACE_ROOT_PEERS')
+    assert.equal(state.closeCalls, 0)
+    state.children[0].emit('exit')
+    assert.equal((await state.invoke('workspace-root-status')).canSwitch, true)
+  } finally { await state.dispose() }
+})
+
+test('target SQLite failure rejects stage and late target probe failure cancels approved close', async () => {
+  const state = await host()
+  try {
+    const selected = path.join(state.root, 'broken-workspace'); await mkdir(selected)
+    state.workspaceFailure = 'WORKSPACE_FUTURE_SCHEMA'
+    state.open.push({ canceled: false, filePaths: [selected] })
+    assert.equal((await state.invoke('workspace-root-select')).code, 'WORKSPACE_FUTURE_SCHEMA')
+    assert.equal((await savedWorkspace(state)).kind, 'default')
+    state.workspaceFailure = undefined
+    const { result } = await stageWorkspace(state, 'valid-before-close')
+    await state.invoke('workspace-root-activate', { selectionId: result.selectionId })
+    state.workspaceFailure = 'WORKSPACE_INVALID'
+    assert.deepEqual(await state.invoke('close-response', { requestId: state.sent.at(-1)[1].requestId, allow: true }), { accepted: false })
+    assert.equal((await savedWorkspace(state)).kind, 'default')
+    assert.equal(state.relaunchCalls, 0)
   } finally { await state.dispose() }
 })

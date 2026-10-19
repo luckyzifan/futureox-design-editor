@@ -3,6 +3,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { stripTypeScriptTypes } from 'node:module'
 import vm from 'node:vm'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
+// Resolve through our direct Vite dependency even with isolated Bun installs.
+const viteRequire = createRequire(import.meta.resolve('vite'))
+const { parseAst } = await import(pathToFileURL(viteRequire.resolve('rolldown/parseAst')).href)
 import { ExportOwner, commitExportEdits } from './export-ownership.ts'
 import { registerPendingEdit, hasPendingEdits } from './pending-edits.ts'
 
@@ -13,17 +18,39 @@ function deferred() {
 }
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8')
 const app = read('./App.tsx'), color = read('./ColorPanel.tsx'), batch = read('./ExportPanel.tsx')
-function callback(source, start, end, name) {
-  assert.equal(source.split(start).length, 2, start)
-  assert.equal(source.split(end).length, 2, end)
-  let block = source.slice(source.indexOf(start), source.indexOf(end))
-  assert.equal(block.split("await import('./export')").length, 2)
-  block = block.replace("await import('./export')", 'await loadExportModule()')
-  return stripTypeScriptTypes(`${block}\n;(${name})`)
+// Execute the actual production callback bodies in a controlled async host.
+// This is not a React DOM test. AST boundaries avoid capturing unrelated
+// neighboring functions when a panel acquires additional imports or handlers.
+function callbacks(source, names, result) {
+  const tree = parseAst(source, { lang: 'tsx' }, 'panel.tsx')
+  const found = new Map(names.map(name => [name, []]))
+  const visit = node => {
+    if (node.type === 'FunctionDeclaration' && found.has(node.id?.name)) found.get(node.id.name).push(node)
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) value.forEach(item => { if (item?.type) visit(item) })
+      else if (value?.type) visit(value)
+    }
+  }
+  visit(tree)
+  const blocks = names.map(name => {
+    assert.equal(found.get(name).length, 1, `unique production callback ${name}`)
+    return source.slice(found.get(name)[0].start, found.get(name)[0].end)
+  })
+  const block = blocks.join('\n')
+  assert.match(block, /await import\(['"]\.\/export['"]\)/)
+  return stripTypeScriptTypes(`${block.replaceAll(/await import\(['"]\.\/export['"]\)/g, 'await loadExportModule()')}\n;(${result})`)
 }
-const appScript = callback(app, '  async function generateExport(', '  const [fileImports]', 'generateExport')
-const colorScript = callback(color, '  function closePanel()', '\n  return (\n    <div className="modal-backdrop">', '{ output, closePanel }')
-const batchScript = callback(batch, '  async function generate()', '\n  return (\n    <div className="feature-backdrop">', 'generate')
+const appScript = callbacks(app, ['generateExport'], 'generateExport')
+const colorScript = callbacks(color, ['closePanel', 'output'], '{ output, closePanel }')
+const batchScript = callbacks(batch, ['generate'], 'generate')
+
+test('callback isolation preserves multiple lazy imports and excludes neighboring callbacks', () => {
+  const script = callbacks(`async function generate() { if (true) await import('./export'); else await import('./export') }
+async function unrelated() { throw new Error('must not execute') }`, ['generate'], 'generate')
+  assert.equal(script.match(/loadExportModule/g).length, 2)
+  assert.doesNotMatch(script, /unrelated/)
+  assert.throws(() => callbacks('function other() {}', ['generate'], 'generate'), /unique production callback/)
+})
 function harness() {
   const listeners = new Set(), messages = [], errors = [], busy = [], created = [], revoked = [], loaders = [], calls = []
   let closed = 0
@@ -40,11 +67,11 @@ function harness() {
   const owner = new ExportOwner(urlApi)
   owner.activate(editor)
   const loadExportModule = () => { const request = deferred(); loaders.push(request); return request.promise }
-  const exportsModule = Object.fromEntries(['exportImage', 'exportVisualSvg', 'exportPngBatch'].map(name => [name, (...args) => {
+  const exportsModule = Object.fromEntries(['exportImage', 'exportVisualSvg', 'exportRasterBatch', 'exportPdfVector'].map(name => [name, (...args) => {
     const reply = deferred(); calls.push({ name, args, reply }); return reply.promise
   }]))
   const context = vm.createContext({ exports: owner, editor, loadExportModule, commitExportEdits, sdrToneMap: 'clip',
-    request: { current: null }, kind: 'selection', padding: '40', region: { x: '0', y: '0', width: '10', height: '10' }, scales: [1],
+    request: { current: null }, kind: 'selection', format: 'png', padding: '40', region: { x: '0', y: '0', width: '10', height: '10' }, scales: [1],
     structuredClone, AbortController, URL: urlApi, urls: { current: [] }, setAssets() {}, setStatus() {}, release() {},
     exportRequest: { current: null }, setBusy: value => busy.push(value), setError: value => errors.push(value), onClose: () => { closed++ },
   })
@@ -56,7 +83,7 @@ function harness() {
     async importReady(index = loaders.length - 1) { loaders[index].resolve(exportsModule); await Promise.resolve(); await Promise.resolve() },
     resolve(index = calls.length - 1, name = 'result.png') {
       const asset = { name, blob: new Blob(['pixels']), width: 10, height: 10, scale: 1 }
-      calls[index].reply.resolve(calls[index].name === 'exportPngBatch' ? [asset] : asset)
+      calls[index].reply.resolve(calls[index].name === 'exportRasterBatch' ? [asset] : asset)
     },
   }
 }

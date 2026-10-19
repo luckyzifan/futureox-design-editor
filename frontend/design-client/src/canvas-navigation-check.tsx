@@ -92,15 +92,11 @@ try {
   for (let i = 0; i < 4; i++) await frame()
   if (outline()) throw Error('Canvas controls leaked hover to the document')
   report.stages.push({ name: 'controls do not pick underlying content', passed: true })
-  const minimap = host().querySelector<HTMLElement>('.canvas-minimap')
-  if (minimap) {
-    pointer(); for (let i = 0; i < 4; i++) await frame()
-    if (!outline()) throw Error('Missing hover before minimap boundary')
-    minimap.dispatchEvent(new PointerEvent('pointermove', { ...pointAt(), bubbles: true, pointerId: 2, pointerType: 'mouse' }))
-    for (let i = 0; i < 4; i++) await frame()
-    if (outline()) throw Error('Minimap retained a stale canvas hover')
-    report.stages.push({ name: 'minimap cancels queued canvas hover', passed: true })
-  }
+  if (host().querySelector('.canvas-minimap,[data-testid="canvas-minimap"]'))
+    throw Error('Removed minimap is still mounted')
+  if ([...host().querySelectorAll('label')].some(label => label.textContent?.includes('显示缩略导航')))
+    throw Error('Removed minimap setting is still available')
+  report.stages.push({ name: 'navigation works without a minimap or its setting', passed: true })
   report.status = 'complete'; await publish()
   }
 } catch (error) { report.status = 'failed'; report.error = String(error); await publish() }

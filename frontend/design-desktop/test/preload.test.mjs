@@ -42,8 +42,10 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
     Object.keys(api).sort(),
     [
       'version',
+      'automation',
       'rendererReady',
       'workspace',
+      'workspaceRoot',
       'live',
       'clipboard',
       'fonts',
@@ -125,12 +127,12 @@ test('command subscription strips IPC event, rejects invalid payloads and remove
   const observed = []
   const event = { sender: { dangerous: 'never expose' } }
   const unsubscribe = api.onCommand((...args) => observed.push(args))
-  const commands = ['copy-properties','paste-properties','select-matching','select-inverse','new', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection']
+  const commands = ['copy-properties','paste-properties','select-matching','select-inverse','new', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection']
   for (const command of commands) {
     events.emit('design-desktop:command', event, command)
   }
   assert.deepEqual(observed, commands.map((command) => [command]))
-  for (const value of ['quit', 'exec', '', null, {}, ['open'], 1]) {
+  for (const value of ['quit', 'exec', '', 'paste-over-selection ', 'Paste-over-selection', 'design-desktop:paste-over-selection', null, undefined, {}, { command: 'paste-over-selection' }, { toString: () => 'paste-over-selection' }, ['paste-over-selection'], ['open'], 1]) {
     events.emit('design-desktop:command', event, value)
   }
   assert.equal(observed.length, commands.length)
@@ -239,4 +241,75 @@ test('native render API is frozen, maps the fixed native-render channels, and st
   // The stub invoke answers { status: 'ok' } (no ok/gpu_memory): the stats
   // convenience must report absence rather than fabricate a breakdown.
   assert.equal(await api.nativeRenderStats(), null)
+})
+
+
+test('automation preload is frozen and routes only named IPC methods', async () => {
+  const { api, calls } = load()
+  const requests = {
+    status: ['automation-status', false], config: ['automation-config', false],
+    configure: ['automation-configure', true], auditHistory: ['automation-audit-history', true],
+    storageStatus: ['automation-storage-status', false], enable: ['automation-enable', true],
+    disable: ['automation-disable', false], copyConnection: ['automation-copy-connection', false],
+    register: ['automation-register', true], recordEdit: ['automation-record-edit', true],
+    respond: ['automation-response', true],
+  }
+  assert.equal(Object.isFrozen(api.automation), true)
+  assert.deepEqual(Object.keys(api.automation).sort(), [...Object.keys(requests), 'onStatus', 'onRequest', 'onCancel'].sort())
+  for (const key of ['require', 'process', 'ipcRenderer', 'send', 'invoke', 'fs', 'exec', 'shell']) {
+    assert.equal(Object.hasOwn(api.automation, key), false)
+  }
+  const value = { requestId: 'test', channel: 'arbitrary-channel-must-not-be-used' }
+  for (const [method, [channel, forwards]] of Object.entries(requests)) {
+    assert.deepEqual(await api.automation[method](value), { status: 'ok' })
+    assert.deepEqual(calls.at(-1), [`design-desktop:${channel}`, forwards ? value : undefined])
+  }
+  assert.equal(calls.length, Object.keys(requests).length)
+})
+
+test('automation subscriptions filter payloads, strip IPC events and independently unsubscribe', () => {
+  const { api, events } = load()
+  const cases = [
+    ['onStatus', 'automation-status', [{ enabled: true }, { enabled: false }], [{}, { enabled: 1 }]],
+    ['onRequest', 'automation-request', [{ requestId: 'a', kind: 'capabilities' }, { requestId: 'b', kind: 'execute' }], [{ requestId: 1, kind: 'execute' }, { requestId: 'x', kind: 'shell' }, {}]],
+    ['onCancel', 'automation-cancel', [{ requestId: 'a' }], [{ requestId: 1 }, {}]],
+  ]
+  for (const [method, suffix, valid, invalid] of cases) {
+    const channel = `design-desktop:${suffix}`
+    assert.throws(() => api.automation[method](null), /Expected a callback/)
+    assert.equal(events.listenerCount(channel), 0)
+    const first = [], second = []
+    const removeFirst = api.automation[method]((...args) => first.push(args))
+    const removeSecond = api.automation[method]((...args) => second.push(args))
+    const privateEvent = { sender: { secret: true } }
+    for (const payload of [...invalid, null, undefined, 42]) events.emit(channel, privateEvent, payload)
+    assert.deepEqual(first, [])
+    for (const payload of valid) events.emit(channel, privateEvent, payload)
+    assert.deepEqual(first, valid.map(value => [value]))
+    assert.deepEqual(second, first)
+    removeFirst(); removeFirst()
+    assert.equal(events.listenerCount(channel), 1)
+    events.emit(channel, privateEvent, valid[0])
+    assert.equal(first.length, valid.length)
+    assert.equal(second.length, valid.length + 1)
+    removeSecond()
+    assert.equal(events.listenerCount(channel), 0)
+  }
+})
+
+
+test('workspace root selection is a frozen capability and never forwards renderer paths', async () => {
+  const { api, calls } = load()
+  assert.equal(Object.isFrozen(api.workspaceRoot), true)
+  assert.deepEqual(Object.keys(api.workspaceRoot).sort(), ['activate', 'select', 'status', 'useDefault'])
+  await api.workspaceRoot.status('/renderer/path')
+  await api.workspaceRoot.select({ path: '/renderer/path' })
+  await api.workspaceRoot.useDefault({ path: '/renderer/path' })
+  await api.workspaceRoot.activate({ selectionId: 'opaque' })
+  assert.deepEqual(calls, [
+    ['design-desktop:workspace-root-status', undefined],
+    ['design-desktop:workspace-root-select', undefined],
+    ['design-desktop:workspace-root-default', undefined],
+    ['design-desktop:workspace-root-activate', { selectionId: 'opaque' }],
+  ])
 })

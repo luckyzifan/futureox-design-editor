@@ -1,6 +1,6 @@
 import type { Editor } from './engine'
 import { blendModes, paint, stroke, effect, type DesignNode, type Effect } from './model'
-import { propertyUnits } from './property-units'
+import { propertyUnitReader, type PropertyUnitReader } from './property-units'
 import { commonValue } from './selection-properties'
 import { MixedNumberField } from './MixedNumberField'
 import { DraftInput } from './DraftInput'
@@ -11,7 +11,7 @@ import { styleSlots, editStyleSlot, styleValue, setStyleValue, type StyleField }
 const effectNames: Record<Effect['kind'], string> = { shadow: '投影', 'inner-shadow': '内阴影', blur: '图层模糊', 'background-blur': '背景模糊', glass: '玻璃', noise: '噪声', texture: '纹理' }
 const paintNames: Record<string, string> = {solid:'纯色',linear:'线性渐变',radial:'径向渐变',angular:'角度渐变',diamond:'菱形渐变',image:'图片'}
 const names = { fills: '填充', strokes: '描边', effects: '效果' }
-export function MultiStylePanel({ editor, nodes, field }: { editor: Editor; nodes: DesignNode[]; field: StyleField }) {
+export function MultiStylePanel({ editor, nodes, field, readUnits = propertyUnitReader(editor.state.doc) }: { editor: Editor; nodes: DesignNode[]; field: StyleField; readUnits?: PropertyUnitReader }) {
   const add = (kind: Effect['kind'] = 'shadow') => editor.updateProperties(nodes.map(n => n.id), n => {
     if (n[field].length >= 16) throw new Error('每层最多支持 16 项样式')
     if (field === 'fills') { n.fills.push(paint()); clearWholeTextRunColor(n) }
@@ -23,17 +23,20 @@ export function MultiStylePanel({ editor, nodes, field }: { editor: Editor; node
       <option value="">＋ 添加</option>{Object.entries(effectNames).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
     </select> : <button type="button" aria-label={`批量添加${names[field]}`} onClick={() => add()}>＋ 添加</button>}
   </h3>{styleSlots(nodes, field).map(slot => {
-    const selected = nodes.filter(n => slot.ids.includes(n.id)), items = selected.map(n => n[field][slot.index])
+    const slotIds = new Set(slot.ids), selected = nodes.filter(n => slotIds.has(n.id)), items = selected.map(n => n[field][slot.index])
     const title = `${names[field]} ${slot.index + 1}`, prefix = field === 'strokes' ? 'paint.' : ''
-    const update = (path: string, value: unknown, scaled = false) => editor.updateProperties(slot.ids, n =>
+    const update = (path: string, value: unknown, scaled = false) => {
+      const units = propertyUnitReader(editor.state.doc)
+      editor.updateProperties(slot.ids, n =>
       editStyleSlot(n, field, slot, item => {
-        const changed = setStyleValue(item, path, scaled && typeof value === 'number' ? value / propertyUnits(editor.state.doc, n.id).style : value)
+        const changed = setStyleValue(item, path, scaled && typeof value === 'number' ? value / units(n.id).style : value)
         if (changed && field === 'fills') clearWholeTextRunColor(n)
       }), `批量修改${title}`)
+    }
     const number = (path: string, label: string, min = 0, max = 10000, scaled = false, percent = false) => {
       const values = items.map((item, i) => {
         const v = styleValue(item, path)
-        return typeof v === 'number' ? v * (scaled ? propertyUnits(editor.state.doc, selected[i].id).style : 1) * (percent ? 100 : 1) : undefined
+        return typeof v === 'number' ? v * (scaled ? readUnits(selected[i].id).style : 1) * (percent ? 100 : 1) : undefined
       })
       if (values.every(v => v === undefined)) return null
       return <MixedNumberField key={path} label={label} value={commonValue(values)} min={min} max={max}

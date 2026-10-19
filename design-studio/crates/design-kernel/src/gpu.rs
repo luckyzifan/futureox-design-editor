@@ -99,7 +99,11 @@ impl CameraPrepare {
             if let Some(n) = doc.nodes.get(&id) { stack.extend(n.render_children().iter().cloned()); }
             dirty.insert(id);
         }
-        Arc::make_mut(&mut self.prepared).retain(|id, _| !dirty.contains(id));
+        // The precise dirty set is usually one node and its ancestors. Do not
+        // scan every retained node for each pointer-move event. make_mut still
+        // preserves any live snapshot reader before the targeted removals.
+        let prepared = Arc::make_mut(&mut self.prepared);
+        for id in &dirty { prepared.remove(id); }
         self.programs.retain_nodes(&dirty);
         self.key.0 = revision;
         // Rigid translation leaves effect radii, linear transforms and
@@ -204,37 +208,78 @@ impl Eq for ProgramIdentity {}
 /// contours and the exact crop/fill rule, never an approximate content hash.
 #[derive(Default)]
 struct ProgramCache {
-    entries: HashMap<String, HashMap<ProgramShape, Arc<CachedProgram>>>,
-    order: std::collections::VecDeque<ProgramKey>,
+    entries: HashMap<String, HashMap<ProgramShape, ProgramEntry>>,
+    // Indexed FIFO: deleting a dirty node removes its exact order records in
+    // O(log n), without scanning unrelated programs or leaving tombstones.
+    order: BTreeMap<u64, ProgramKey>,
+    next_order: u64,
+    count: usize,
     bytes: usize,
     hits: u64,
     builds: u64,
 }
+struct ProgramEntry { order: u64, program: Arc<CachedProgram> }
 impl ProgramCache {
     const LIMIT: usize = 32 * 1024 * 1024;
-    fn retain_nodes(&mut self, dirty: &std::collections::HashSet<String>) {
-        self.entries.retain(|id, _| !dirty.contains(id));
-        self.order.retain(|(id, shape)| self.entries.get(id).is_some_and(|entries| entries.contains_key(shape)));
-        self.bytes = self.entries.iter().map(|(id, entries)| entries.values().map(|value| value.data.len()*4 + id.len()*2 + 512).sum::<usize>()).sum();
+    fn program_bytes(id: &str, program: &CachedProgram) -> usize {
+        program.data.len()*4 + id.len()*2 + 512
     }
-    fn len(&self) -> usize { self.entries.values().map(HashMap::len).sum() }
+    fn retain_nodes(&mut self, dirty: &std::collections::HashSet<String>) {
+        for id in dirty {
+            if let Some(entries) = self.entries.remove(id) {
+                self.count -= entries.len();
+                for entry in entries.into_values() {
+                    self.bytes -= Self::program_bytes(id, &entry.program);
+                    self.order.remove(&entry.order);
+                }
+            }
+        }
+    }
+    fn len(&self) -> usize { self.count }
     fn get(&mut self, id: &str, shape: &ProgramShape) -> Option<Arc<CachedProgram>> {
-        let value = self.entries.get(id)?.get(shape)?.clone(); self.hits += 1; Some(value)
+        let value = self.entries.get(id)?.get(shape)?.program.clone(); self.hits += 1; Some(value)
+    }
+    fn allocate_order(&mut self) -> u64 {
+        if self.next_order == u64::MAX {
+            // Preserve live FIFO order on counter exhaustion, rather than
+            // wrapping onto an occupied key and losing an eviction record.
+            for (index, (_, (id, shape))) in std::mem::take(&mut self.order).into_iter().enumerate() {
+                let order = index as u64;
+                self.entries.get_mut(&id).unwrap().get_mut(&shape).unwrap().order = order;
+                self.order.insert(order, (id, shape));
+            }
+            self.next_order = self.count as u64;
+        }
+        let order = self.next_order;
+        self.next_order += 1;
+        order
     }
     fn insert(&mut self, id: &str, shape: ProgramShape, program: Arc<CachedProgram>) {
         self.builds += 1;
-        let size = program.data.len()*4 + id.len()*2 + 512;
+        let size = Self::program_bytes(id, &program);
         if size > Self::LIMIT { return; }
+        // Replacement is one live entry. Retire its old size/FIFO record
+        // before admitting the new version, including at the byte limit.
+        if let Some(old) = self.entries.get_mut(id).and_then(|entries| entries.remove(&shape)) {
+            self.bytes -= Self::program_bytes(id, &old.program);
+            self.count -= 1;
+            self.order.remove(&old.order);
+        }
         while self.bytes + size > Self::LIMIT {
-            let Some((old_id, old_shape)) = self.order.pop_front() else { break; };
+            let Some((_, (old_id, old_shape))) = self.order.pop_first() else { break; };
             if let Some(entries) = self.entries.get_mut(&old_id) {
-                if let Some(value) = entries.remove(&old_shape) { self.bytes -= value.data.len()*4 + old_id.len()*2 + 512; }
+                if let Some(old) = entries.remove(&old_shape) {
+                    self.bytes -= Self::program_bytes(&old_id, &old.program);
+                    self.count -= 1;
+                }
                 if entries.is_empty() { self.entries.remove(&old_id); }
             }
         }
+        let order = self.allocate_order();
         self.bytes += size;
-        self.order.push_back((id.to_owned(), shape));
-        self.entries.entry(id.to_owned()).or_default().insert(shape,program);
+        self.count += 1;
+        self.order.insert(order, (id.to_owned(), shape));
+        self.entries.entry(id.to_owned()).or_default().insert(shape, ProgramEntry { order, program });
     }
 }
 
@@ -1282,7 +1327,18 @@ impl Engine {
             // A pan inside the retained preparation window does not change
             // geometry. Preserve that wider guard instead of shrinking it to
             // every new request; crops still compile their own exact pixels.
-            (Some(key), Some(cache)) if cache.covers(key) => { cache.reuses += 1; cache.prepared.clone() },
+            (Some(key), Some(cache)) if cache.covers(key) => {
+                cache.reuses += 1;
+                if cache.incomplete {
+                    // The compiler owns this partial map. Keeping a cache Arc
+                    // here would force make_mut to clone every retained node
+                    // for a one-node edit. Move it instead; live external
+                    // readers still receive normal copy-on-write protection.
+                    // A failed rebuild leaves an empty, incomplete cache, so
+                    // the next attempt rebuilds against the same wider guard.
+                    std::mem::take(&mut cache.prepared)
+                } else { cache.prepared.clone() }
+            },
             _ => Arc::new(HashMap::new()),
         };
         let partial = self.camera_prepare.as_ref().is_some_and(|cache| cache.incomplete && cache_key.as_ref().is_some_and(|key| cache.covers(key)));
@@ -1989,6 +2045,97 @@ mod incremental_prepare_tests {
             "fixed":{"id":"fixed","kind":"rectangle","width":90,"height":100,"transform":[1,0,0,1,950,120],
               "fills":[{"kind":"solid","color":"#336699"}]}}})
     }
+    fn large_document() -> serde_json::Value {
+        let mut nodes = serde_json::Map::new();
+        let mut children = Vec::new();
+        for i in 0..3500 {
+            let id = format!("node-{i:05}"); children.push(id.clone());
+            nodes.insert(id.clone(), json!({"id":id,"kind":"rectangle","width":5,"height":5,
+                "transform":[1,0,0,1,(i%80)*8,(i/80)*8],
+                "fills":[{"kind":"solid","color":"#527acc"}],
+                "strokes":[{"width":0.5,"paint":{"kind":"solid","color":"#203040"}}]}));
+        }
+        json!({"schemaVersion":1,"id":"large-prepare","name":"Large prepare",
+            "pages":[{"id":"p","name":"Page","children":children,"background":"#ffffff"}],"nodes":nodes})
+    }
+    #[test]
+    fn partial_prepare_reuses_large_map_without_changing_packets() {
+        for profile in ["analytic", "figmaSubpixel"] {
+            let mut doc = large_document();
+            let mut engine = Engine::new(); engine.load_document(&doc.to_string()).unwrap();
+            let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":514,"height":514,
+                "view":{"x":0.125,"y":0.375,"zoom":1.25},"rasterProfile":profile})).unwrap();
+            let guard = Rect::new(-1,-1,1100,900);
+            let region = Rect::new(-1,-1,514,514);
+            engine.compile_gpu_region(&options,region,Some(guard)).unwrap();
+            assert_eq!(engine.camera_prepare.as_ref().unwrap().prepared.len(),3500);
+            for i in 1..=3 {
+                let transform = Transform([1.,0.,0.,1.,i as f64*0.375,0.125]);
+                doc["nodes"]["node-00000"]["transform"] = json!(transform);
+                assert!(engine.apply_interaction_transforms(&[("node-00000".into(),transform)].into_iter().collect()).unwrap());
+                let cache = engine.camera_prepare.as_ref().unwrap();
+                assert_eq!(cache.prepared.len(),3499);
+                // Do not retain an Arc here: a live external reader legitimately
+                // requires copy-on-write. The production compiler owns this map.
+                let allocation = Arc::as_ptr(&cache.prepared);
+                let actual = engine.compile_gpu_region(&options,region,Some(region)).unwrap().into_packet().unwrap();
+                let mut fresh = Engine::new(); fresh.load_document(&doc.to_string()).unwrap();
+                assert_eq!(actual,fresh.compile_gpu_region(&options,region,Some(guard)).unwrap().into_packet().unwrap());
+                assert_eq!(allocation,Arc::as_ptr(&engine.camera_prepare.as_ref().unwrap().prepared),
+                    "a one-node translation must not clone all 3499 retained records");
+                // The rebuilt map must retain the original outer guard, even
+                // when its first consumer requests only the inner crop.
+                let outer = Rect::new(511,-1,514,514);
+                assert_eq!(engine.compile_gpu_region(&options,outer,Some(guard)).unwrap().into_packet().unwrap(),
+                    fresh.compile_gpu_region(&options,outer,Some(guard)).unwrap().into_packet().unwrap());
+            }
+        }
+    }
+    #[test]
+    fn partial_prepare_preserves_a_live_shared_reader() {
+        let mut doc = large_document();
+        let mut engine = Engine::new(); engine.load_document(&doc.to_string()).unwrap();
+        let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":96,"height":96,
+            "view":{"x":0.125,"y":0.375,"zoom":1.25}})).unwrap();
+        engine.compile_gpu(&options).unwrap();
+        let transform = Transform([1.,0.,0.,1.,0.375,0.125]);
+        doc["nodes"]["node-00000"]["transform"] = json!(transform);
+        assert!(engine.apply_interaction_transforms(&[("node-00000".into(),transform)].into_iter().collect()).unwrap());
+        let reader = engine.camera_prepare.as_ref().unwrap().prepared.clone();
+        assert_eq!(reader.len(),3499); assert!(!reader.contains_key("node-00000"));
+        let actual = engine.compile_gpu(&options).unwrap().into_packet().unwrap();
+        let mut fresh = Engine::new(); fresh.load_document(&doc.to_string()).unwrap();
+        assert_eq!(actual,fresh.compile_gpu(&options).unwrap().into_packet().unwrap());
+        assert_eq!(reader.len(),3499); assert!(!reader.contains_key("node-00000"));
+        assert!(!Arc::ptr_eq(&reader,&engine.camera_prepare.as_ref().unwrap().prepared));
+    }
+    #[test]
+    fn partial_prepare_failure_retries_without_reusing_unfinished_geometry() {
+        let mut doc = large_document();
+        doc["nodes"]["parent"] = json!({"id":"parent","kind":"group","width":1,"height":1,
+            "transform":[10000000,0,0,10000000,0,0],"children":["node-00000"]});
+        doc["pages"][0]["children"][0] = json!("parent");
+        doc["nodes"]["node-00000"]["transform"] = json!([1,0,0,1,99999,0]);
+        let mut engine = Engine::new(); engine.load_document(&doc.to_string()).unwrap();
+        let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":96,"height":96,
+            "view":{"x":0,"y":0,"zoom":1}})).unwrap();
+        engine.compile_gpu(&options).unwrap();
+        // Locally valid transforms can exceed the composed precision budget.
+        // Two failed compilations must not certify a half-prepared cache.
+        let invalid = Transform([1.,0.,0.,1.,100001.,0.]);
+        assert!(engine.apply_interaction_transforms(&[("node-00000".into(),invalid)].into_iter().collect()).unwrap());
+        for _ in 0..2 {
+            assert_eq!(engine.compile_gpu(&options).err().unwrap(),"Composed transform exceeds precision budget");
+            assert!(engine.camera_prepare.as_ref().unwrap().incomplete);
+        }
+        let valid = Transform([1.,0.,0.,1.,99998.,0.]);
+        assert!(engine.apply_interaction_transforms(&[("node-00000".into(),valid)].into_iter().collect()).unwrap());
+        doc["nodes"]["node-00000"]["transform"] = json!(valid);
+        let actual = engine.compile_gpu(&options).unwrap().into_packet().unwrap();
+        let mut fresh = Engine::new(); fresh.load_document(&doc.to_string()).unwrap();
+        assert_eq!(actual,fresh.compile_gpu(&options).unwrap().into_packet().unwrap());
+        assert!(!engine.camera_prepare.as_ref().unwrap().incomplete);
+    }
     #[test]
     fn translation_keeps_unaffected_geometry_and_matches_fresh_packets() {
         for profile in ["analytic","figmaSubpixel"] {
@@ -2041,5 +2188,151 @@ mod program_identity_tests {
         assert_eq!(map.get(&a),Some(&1));assert_eq!(map.get(&equal),Some(&1));
         assert!(map.get(&signed).is_none());assert!(map.get(&different).is_none());
         map.insert(signed,2);assert_eq!(map.len(),2);
+    }
+}
+
+#[cfg(test)]
+mod program_cache_invalidation_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn shape(slot: usize) -> ProgramShape { (slot, 0, 0, 1, 1, false, true) }
+    fn program(value: f32, words: usize) -> Arc<CachedProgram> {
+        Arc::new(CachedProgram::new(crate::area_program::AreaProgram {
+            rect: Rect::new(0, 0, 1, 1), data: vec![value; words],
+        }))
+    }
+    fn dirty(id: &str) -> HashSet<String> { [id.to_owned()].into_iter().collect() }
+
+    #[test]
+    fn replacement_accounts_only_one_live_program_and_fifo_record() {
+        let mut cache = ProgramCache::default();
+        cache.insert("moving", shape(0), program(1., 4));
+        let replacement = program(2., 8);
+        cache.insert("moving", shape(0), replacement.clone());
+        assert_eq!(cache.bytes, 8*4 + "moving".len()*2 + 512);
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.order.len(), 1);
+        assert!(Arc::ptr_eq(&cache.get("moving", &shape(0)).unwrap(), &replacement));
+    }
+
+    #[test]
+    fn invalidation_preserves_other_nodes_and_live_program_readers() {
+        let mut cache = ProgramCache::default();
+        let reader = program(1., 4);
+        let fixed = program(3., 12);
+        cache.insert("moving", shape(0), reader.clone());
+        cache.insert("moving", shape(1), program(2., 8));
+        cache.insert("fixed", shape(0), fixed.clone());
+        cache.retain_nodes(&dirty("moving"));
+        assert!(!cache.entries.contains_key("moving"));
+        assert!(cache.get("moving", &shape(0)).is_none());
+        assert!(cache.get("moving", &shape(1)).is_none());
+        assert_eq!(reader.data, vec![1.; 4]);
+        assert!(Arc::ptr_eq(&cache.get("fixed", &shape(0)).unwrap(), &fixed));
+        assert_eq!(cache.bytes, 12*4 + "fixed".len()*2 + 512);
+        assert_eq!(cache.order.len(), 1);
+        cache.retain_nodes(&dirty("missing"));
+        assert_eq!(cache.len(), 1);
+        cache.retain_nodes(&dirty("fixed"));
+        assert_eq!((cache.len(), cache.bytes, cache.order.len()), (0, 0, 0));
+        assert!(cache.entries.is_empty());
+    }
+
+    #[test]
+    fn repeated_invalidation_and_reinsertion_keeps_fifo_storage_bounded() {
+        let mut cache = ProgramCache::default();
+        cache.insert("fixed", shape(0), program(3., 12));
+        for i in 0..5000 {
+            cache.insert("moving", shape(0), program(i as f32, 4));
+            cache.retain_nodes(&dirty("moving"));
+            assert_eq!(cache.order.len(), 1, "iteration {i}");
+            assert_eq!(cache.len(), 1);
+        }
+        assert_eq!(cache.bytes, 12*4 + "fixed".len()*2 + 512);
+    }
+
+    #[test]
+    fn reinsertion_is_evicted_in_its_new_fifo_position() {
+        let mut cache = ProgramCache::default();
+        let words = ProgramCache::LIMIT / 12;
+        cache.insert("a", shape(0), program(1., words));
+        cache.insert("b", shape(0), program(2., words));
+        cache.retain_nodes(&dirty("a"));
+        let newer = program(3., words);
+        cache.insert("a", shape(0), newer.clone());
+        cache.insert("c", shape(0), program(4., words));
+        assert!(cache.get("b", &shape(0)).is_none());
+        assert!(Arc::ptr_eq(&cache.get("a", &shape(0)).unwrap(), &newer));
+        assert!(cache.get("c", &shape(0)).is_some());
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.order.len(), 2);
+        assert_eq!(cache.entries.len(), 2);
+        assert_eq!(cache.bytes, 2*(words*4 + 2 + 512));
+        assert!(cache.bytes <= ProgramCache::LIMIT);
+    }
+
+    #[test]
+    fn oversized_program_does_not_disturb_resident_entries() {
+        let mut cache = ProgramCache::default();
+        let fixed = program(1., 4);
+        cache.insert("fixed", shape(0), fixed.clone());
+        let before = cache.bytes;
+        cache.insert("large", shape(0), program(2., ProgramCache::LIMIT/4));
+        assert_eq!(cache.bytes, before);
+        assert_eq!(cache.order.len(), 1);
+        assert!(Arc::ptr_eq(&cache.get("fixed", &shape(0)).unwrap(), &fixed));
+        assert!(cache.get("large", &shape(0)).is_none());
+    }
+
+    #[test]
+    fn fifo_serial_rollover_preserves_entries_order_and_accounting() {
+        let mut cache = ProgramCache::default();
+        let words = ProgramCache::LIMIT / 12;
+        cache.next_order = u64::MAX - 1;
+        let first = program(1., words);
+        cache.insert("first", shape(0), first.clone());
+        assert_eq!(cache.next_order, u64::MAX);
+        let second = program(2., words);
+        cache.insert("second", shape(0), second.clone());
+        assert_eq!(cache.next_order, 2);
+        assert_eq!(cache.order.keys().copied().collect::<Vec<_>>(), vec![0, 1]);
+        assert!(Arc::ptr_eq(&cache.get("first", &shape(0)).unwrap(), &first));
+        assert!(Arc::ptr_eq(&cache.get("second", &shape(0)).unwrap(), &second));
+        cache.insert("third", shape(0), program(3., words));
+        assert!(cache.get("first", &shape(0)).is_none());
+        assert!(cache.get("second", &shape(0)).is_some());
+        assert!(cache.get("third", &shape(0)).is_some());
+        assert_eq!(cache.order.len(), 2);
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.bytes, 2*words*4 + ("second".len()+"third".len())*2 + 1024);
+        cache.retain_nodes(&dirty("second"));
+        assert_eq!(cache.order.len(), 1);
+        assert_eq!(cache.bytes, words*4 + "third".len()*2 + 512);
+    }
+
+    #[test]
+    #[ignore = "isolated native CPU benchmark; run with --ignored --nocapture"]
+    fn benchmark_single_node_cache_invalidation() {
+        use std::{hint::black_box, time::Instant};
+        for count in [3000, 10000] {
+            let mut cache = ProgramCache::default();
+            let shared = program(1., 8);
+            for i in 0..count { cache.insert(&format!("node-{i:05}"), shape(0), shared.clone()); }
+            let dirty = dirty("node-00000");
+            let mut samples = Vec::new();
+            for sample in 0..36 {
+                let start = Instant::now();
+                for _ in 0..32 {
+                    cache.retain_nodes(black_box(&dirty));
+                    cache.insert("node-00000", shape(0), shared.clone());
+                }
+                if sample >= 5 { samples.push(start.elapsed().as_secs_f64()*1000./32.); }
+            }
+            samples.sort_by(f64::total_cmp);
+            println!("{}", serde_json::json!({"nodes":count,"p50Ms":samples[15],"p95Ms":samples[29],"samplesMs":samples}));
+            assert_eq!(cache.len(), count);
+            assert_eq!(cache.order.len(), count);
+        }
     }
 }

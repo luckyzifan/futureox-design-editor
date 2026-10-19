@@ -103,7 +103,6 @@ export function ViewControls({
             />
             智能吸附
           </label>
-          <label><input type="checkbox" checked={s.minimap!==false} onChange={e=>editor.set({minimap:e.target.checked})}/>显示缩略导航</label>
           <label><input type="checkbox" checked={!!s.rulers} onChange={e=>editor.set({rulers:e.target.checked})}/>标尺与参考线　⇧R</label>
         </div>
       </details>
