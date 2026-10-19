@@ -304,6 +304,8 @@ export interface Driver {
   ): Texture
   clear(target: Texture): void
   mask(path: PathMesh, target: Texture, sampleIndex?: number): void
+  /** Rasterize an integer crop without rebasing the interval program. */
+  maskRegion?(path: PathMesh, target: Texture, sampleIndex: number, region: Rect): void
   /** channels is only used by exact separable filters; all other passes write RGBA. */
   pass(target: Texture, uniforms: Float32Array, inputs: Texture[], region?: Rect, channels?: number, filter?: {kind: 'tent'; radius: number}, clearOutside?: boolean): void
   over(target: Texture, uniforms: Float32Array, inputs: Texture[], region: Rect): void

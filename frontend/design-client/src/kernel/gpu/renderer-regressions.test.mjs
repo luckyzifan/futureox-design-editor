@@ -3,6 +3,7 @@
 // executes production renderer/graph/cache code with explicit driver doubles.
 // Geometry/WASM boundaries fail loudly if an untested operation reaches them.
 import test from 'node:test'
+import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
 import { registerHooks, stripTypeScriptTypes } from 'node:module'
 
@@ -40,6 +41,43 @@ const hooks = registerHooks({
 try {
   const { GpuRenderer } = await import('./renderer.ts')
   const { highZoomRegressions, imageResourceRegressions } = await import('./renderer-regression-cases.ts')
+  const { translationRegressions } = await import('./translation-regression-cases.ts')
+  const { renderBudgetDiagnostic } = await import('../render-diagnostics.ts')
+  test('production allocation rejection owns a scalar summary and consumes pending budget state', () => {
+    const renderer = new GpuRenderer({ name: 'webgpu', managed: false, scratchBytes: 0,
+      create: (width, height) => ({ width, height, bytes: width * height * 4, resource: {} }) })
+    renderer.scene = { coherentSamples: false, id: 'private-node', view: { x: 123, y: 456 } }
+    renderer.frameBudget = 1000
+    assert.throws(() => renderer.acquire({ x: 123, y: 456, w: 16, h: 32 }), error => {
+      assert.equal(error.message, 'GPU 表面内存预算超限')
+      assert.deepEqual(renderBudgetDiagnostic(error), { requestedBytes: 2048, workingBytes: 0,
+        budgetBytes: 1000, width: 16, height: 32, coherent: false })
+      assert.doesNotMatch(JSON.stringify(renderBudgetDiagnostic(error)), /private-|stack|view|"x"|"y"/)
+      return true
+    })
+    assert.equal(renderer.lastBudgetFailure, undefined)
+    assert.equal(renderer.acquire({ x: 0, y: 0, w: 1, h: 1 }).texture.bytes, 4)
+    assert.equal(renderer.lastBudgetFailure, undefined)
+  })
+  test('optional admission failures are cleared by success, invalid admission and a new render attempt', async () => {
+    const renderer = new GpuRenderer({ name: 'webgpu', managed: false, scratchBytes: 0 })
+    renderer.scene = { coherentSamples: true }; renderer.frameBudget = 1000
+    assert.equal(renderer.overBudget(1001), true)
+    assert.deepEqual(renderer.lastBudgetFailure, { requestedBytes: 1001, workingBytes: 0, budgetBytes: 1000, coherent: true })
+    assert.equal(renderer.overBudget(1), false)
+    assert.equal(renderer.lastBudgetFailure, undefined)
+    renderer.overBudget(1001)
+    assert.throws(() => renderer.overBudget(NaN), /字节数/)
+    assert.equal(renderer.lastBudgetFailure, undefined)
+    renderer.overBudget(1001)
+    await assert.rejects(renderer.render({ version: 0, extent: { x: 0, y: 0, w: 1, h: 1 } }), error => {
+      assert.match(error.message, /版本/)
+      assert.equal(renderBudgetDiagnostic(error), undefined)
+      return true
+    })
+    assert.equal(renderer.lastBudgetFailure, undefined)
+  })
+  translationRegressions(test)
   highZoomRegressions(test, GpuRenderer)
   imageResourceRegressions(test, GpuRenderer)
 } finally { hooks.deregister() }

@@ -1,3 +1,4 @@
+import { renderFailureEnvelope, renderErrorWithBudget } from './render-diagnostics'
 import { readAuthoredSnapshot, type AuthoredSnapshot } from './authored-snapshot'
 import initialize, {
   transcode_export_png,
@@ -23,13 +24,15 @@ import {
 import type { GpuRenderer } from './gpu/renderer'
 import { decodeScenePacket } from './gpu/scene-packet'
 import type { ColorSettings } from '../color'
-import type { BackendPreference, GpuScene, Driver } from './gpu/types'
+import type { BackendPreference, GpuScene } from './gpu/types'
 import type { KernelOptions } from './client'
 import { TILE_SIDE, type RasterTile } from './tile-cache'
 import { imageCacheKey, readCachedImage, writeCachedImage } from './image-mip-cache'
+import { DecodedImageCache } from './decoded-image-cache'
 import { ExactTileCache, coordinateSlot } from './exact-tile-cache'
 import { tileComputationDependsOnCamera } from './tile-computation-key'
 import { recoverFailedTileRenderer } from './tile-failure'
+import { recoverPreviewBudget, isRecoverablePreviewBudget } from './preview-budget-recovery'
 import { PreviewAdmission } from './preview-tiles'
 import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
@@ -43,7 +46,6 @@ import { canCommitResidentFrame } from './gpu/retained-commit'
 import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
 import { loadKernelResources } from './kernel-resources'
-import { recoverableInteractionBudget } from './interaction-capture-tiles'
 import { preparedTileCanFill } from './prepared-tile-fallback'
 import { reuseExactSceneSources } from './gpu/exact-scene-reuse'
 import { PrepareAhead } from './prepare-ahead'
@@ -68,7 +70,6 @@ let solidBatchGpu = true
 // revision and all rendering options; GPU resource caches remain separate.
 let compiledScene: { revision: number; options: string; scene: GpuScene } | undefined
 let gpu: GpuRenderer | undefined
-let fractionalWarmDriver:Driver|undefined
 let displayCanvas: OffscreenCanvas | undefined
 let displayFrame: import('./gpu/resident-presenter').ResidentFrame | undefined
 let displayFramePending = false
@@ -150,12 +151,14 @@ async function engine() {
  * consult the persistent image cache (frozen kernel outputs; Electron keeps
  * the store on disk, browsers in IndexedDB) and write back on miss, so a
  * reopened document skips re-decoding its imported bitmaps. */
-type DiskEntry = { width: number; height: number; data: Uint8Array | Float32Array }
-const diskImageCache = new Map<string, DiskEntry>()
+const diskImageCache = new DecodedImageCache()
+const imageCacheScope = (kernel: RenderKernel) => JSON.stringify([loadedDocumentId, kernel.color_settings()])
 function managedImageLoader(kernel: RenderKernel) {
   return (uri: string, byte?: boolean, level = 0) => {
+    const scope = imageCacheScope(kernel)
+    diskImageCache.begin(scope)
     if (level === 0 && diskImageCache.size) {
-      const hit = diskImageCache.get(`${byte ? 'b' : 'f'}:${uri}`)
+      const hit = diskImageCache.get(scope, `${byte ? 'b' : 'f'}:${uri}`)
       if (hit)
         return byte
           ? { width: hit.width, height: hit.height, pixels: new Float32Array(0), bytes: hit.data as Uint8Array }
@@ -183,7 +186,7 @@ function persistLevelZero(
   height: number,
   data: Uint8Array | Float32Array,
 ) {
-  diskImageCache.set(`${byte ? 'b' : 'f'}:${uri}`, { width, height, data })
+  diskImageCache.set(imageCacheScope(kernel), `${byte ? 'b' : 'f'}:${uri}`, { width, height, data })
   void imageCacheKey(uri, byte ? 'byte' : 'linear', kernel.color_settings()).then((key) => {
     if (key) writeCachedImage(key, { width, height, data })
   })
@@ -191,6 +194,8 @@ function persistLevelZero(
 /** Hydrate the in-memory map from the persistent store before a render batch
  * touches its assets. Misses simply fall through to the kernel decode. */
 async function warmImageCache(kernel: RenderKernel, doc: DesignDocument) {
+  const scope = imageCacheScope(kernel)
+  diskImageCache.begin(scope)
   try {
     const uris = new Set<string>()
     const scan = (paints: unknown) => {
@@ -207,21 +212,17 @@ async function warmImageCache(kernel: RenderKernel, doc: DesignDocument) {
     }
     if (!uris.size) return
     const settings = kernel.color_settings()
-    await Promise.all(
-      [...uris].flatMap(async (uri) => {
-        for (const variant of ['byte', 'linear'] as const) {
-          const key = await imageCacheKey(uri, variant, settings)
-          if (!key) return
-          const record = await readCachedImage(key)
-          if (record)
-            diskImageCache.set(`${variant === 'byte' ? 'b' : 'f'}:${uri}`, {
-              width: record.width,
-              height: record.height,
-              data: record.data,
-            })
-        }
-      }),
-    )
+    // Hydration is optional. Read one decode at a time instead of cloning all
+    // document images concurrently before the resident budget can reject them.
+    for (const uri of uris) {
+      for (const variant of ['byte', 'linear'] as const) {
+        const key = await imageCacheKey(uri, variant, settings)
+        if (!key) return
+        const record = await readCachedImage(key)
+        if (record && (variant === 'byte' ? record.data instanceof Uint8Array : record.data instanceof Float32Array))
+          diskImageCache.set(scope, `${variant === 'byte' ? 'b' : 'f'}:${uri}`, record)
+      }
+    }
   } catch {
     /* The persistent cache is optional acceleration only. */
   }
@@ -489,6 +490,8 @@ self.onmessage = (e) => {
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionChannel: _interactionChannel, livePreview, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
         tilePrepareViewport: requestedPrepareViewport, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
+      const previewCurrent = () => generation === previewGenerations[channel] &&
+        (!tileViewport || channel !== 'canvas' || fillGeneration === tileFillGeneration)
       const retainCoverage = channel === 'canvas' && coverageTiles === true && !!tileViewport && renderIntent === 'preview'
       if(renderOptions.captureViewport&&(request.png||request.readback||tileViewport||renderOptions.pixelPreview||exportFormat||renderOptions.exportRegion))
         throw Error('Native viewport capture is only available for canvas presentation')
@@ -824,7 +827,8 @@ self.onmessage = (e) => {
                 result = await renderTiledPreview(kernel, tileOptions, backend, color,
                   settingsJson, TILE_SIDE + 2, crop, preparedScene,
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
-                  prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress)
+                  prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
+                  () => generation === previewGenerations[channel] && (cameraFallback || current()))
                 undelivered = result
                 if (generation !== previewGenerations[channel]) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
@@ -991,6 +995,7 @@ self.onmessage = (e) => {
               backend,
               color,
               settingsJson,
+              256, undefined, undefined, false, undefined, false, false, false, undefined, previewCurrent,
             )
             self.postMessage(
               { id: request.id, ...result, loadMs },
@@ -1020,6 +1025,9 @@ self.onmessage = (e) => {
               if (cacheScene) compiledScene = { revision: loadedRevision, options, scene: scene! }
             }
           }
+          // A compile can outlive the camera request while the preparation
+          // worker is busy. Do not initialize/encode its superseded graph.
+          if ((livePreview || tileViewport) && !previewCurrent()) throw Error('PREVIEW_CANCELLED')
           if (retainInteraction && interactionSelection !== undefined) {
             if (!Array.isArray(interactionSelection) || interactionSelection.length > 16 ||
                 interactionSelection.some(id => typeof id !== 'string')) throw Error('Invalid interaction selection')
@@ -1082,6 +1090,7 @@ self.onmessage = (e) => {
               throw error
             }
           }
+          if ((livePreview || tileViewport) && !previewCurrent()) throw Error('PREVIEW_CANCELLED')
           prepareDisplay(!request.png && !request.readback)
           const t = performance.now(),
             result = await gpu.render(
@@ -1089,6 +1098,11 @@ self.onmessage = (e) => {
               request.png || request.readback || (!!color && !gpu.driver.hdr && !((retainInteraction || displayCanvas) && backend === 'webgpu')),
             )
           const renderMs = performance.now() - t
+          if ((livePreview || tileViewport) && !previewCurrent()) {
+            result.bitmap?.close()
+            if (result.gpuTile) gpu.driver.releasePresented?.([result.gpuTile])
+            throw Error('PREVIEW_CANCELLED')
+          }
           const rgba =
             result.straightRgba ??
             (result.linear
@@ -1122,23 +1136,9 @@ self.onmessage = (e) => {
           if (request.png) result.bitmap?.close()
           if(channel==='interaction'&&retainInteraction&&interactionDocument&&result.gpuTile&&interactionWindow&&
               !scene!.resolve&&!scene!.presentation&&import.meta.env.VITE_DESIGN_WORKER_POSES!=='0'){
-            // Warm the actual fractional-composition path before declaring a
-            // selection ready. Its first GPU use otherwise stalls short drags
-            // despite the integer-position snapshot already being available.
-            if(!interactionNative&&fractionalWarmDriver!==gpu.driver){
-              const id=scene!.roots.find(id=>interactionDocument!.nodes[id]?.blend!=='normal'||
-                interactionDocument!.nodes[id]?.effects.some(e=>e.visible&&e.kind==='background-blur'))||scene!.roots[0]
-              const node=interactionDocument.nodes[id]
-              if(node){
-                const moved={...interactionDocument,nodes:{...interactionDocument.nodes,[id]:{...node,
-                  transform:[...node.transform.slice(0,4),node.transform[4]+.25/scene!.view.zoom,node.transform[5]+.125/scene!.view.zoom] as Matrix}}}
-                const prime=translatePreviewScene(scene!,interactionDocument,moved)
-                if(prime){
-                  try{const primed=await gpu.render(prime,false,true);if(primed.gpuTile)gpu.driver.releasePresented?.([primed.gpuTile]);primed.bitmap?.close();fractionalWarmDriver=gpu.driver}
-                  catch(error){gpu.driver.releasePresented?.([result.gpuTile]);throw error}
-                }
-              }
-            }
+            // Cached coverage is reused only for integer device-pixel moves.
+            // Fractional poses request a fresh capture through the normal rebase
+            // path; warming their former bilinear approximation is unnecessary.
             poseSession={slot:result.gpuTile,document:interactionDocument,baseDocument:interactionDocument,
               scene:scene!,native:interactionNative===true,delta:!!incrementalScene,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
               patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
@@ -1214,20 +1214,21 @@ self.onmessage = (e) => {
           if (String(error).includes('PREVIEW_CANCELLED')) throw error
           if (import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile')
             console.debug('DESIGN_RENDER_FAILURE ' + JSON.stringify({backend,error:String(error),tile:tileViewport}))
-          // An optional viewport capture must never destroy the already
-          // displayed first tile when it encounters a working-surface limit.
-          if(renderOptions.captureViewport&&!gpu?.driver.lost&&/GPU.*(?:budget|预算)|Invalid GPU viewport|interval program budget/i.test(String(error))){
-            await gpu?.driver.abortFrameAndReleaseFilterScratch?.()
-            throw error
-          }
           // Display-cache pressure belongs to the surface owner. Destroying
           // this device would also destroy the last visible frame's textures.
           if (isDisplayBudgetError(error)) throw error
-          if (_retainInteractionGraph && livePreview && !gpu?.driver.lost && recoverableInteractionBudget(error)) {
-            // A bounded tiled retry keeps the same display device and its
-            // previous complete frame. Arithmetic/sampling policy is unchanged.
-            await gpu?.driver.abortFrameAndReleaseFilterScratch?.()
-            throw new Error(`PREVIEW_BUDGET: ${String(error)}`)
+          // Optional navigation/interaction captures share the displayed
+          // device. Allocation rejection must retire only their failed encoder
+          // and scratch, rather than erasing the last complete viewport.
+          const previewBudget = isRecoverablePreviewBudget(error, gpu?.driver.lost)
+          let preservedPreview = false
+          if (!tileViewport && (livePreview || renderOptions.captureViewport)) {
+            try { preservedPreview = await recoverPreviewBudget(error, gpu, invalidateTileCache) }
+            catch (recoveryError) { gpu = undefined; throw recoveryError }
+          }
+          if (preservedPreview && (renderOptions.captureViewport || _retainInteractionGraph ||
+              !previewTileFallback || tiledPreviewMode)) {
+            throw renderErrorWithBudget(error, `PREVIEW_BUDGET: ${String(error)}`)
           }
           if (tileViewport) {
             if (
@@ -1242,17 +1243,18 @@ self.onmessage = (e) => {
               continue
             }
             if (preference === 'auto' && !String(error).includes('Invalid tile request'))
-              throw new Error(`PREVIEW_CPU_FALLBACK: ${String(error)}`)
+              throw renderErrorWithBudget(error, `PREVIEW_CPU_FALLBACK: ${String(error)}`)
             throw error
           }
-          const diagnostic = import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile' ? gpu?.lastBudgetFailure : undefined
-          invalidateTileCache()
-          gpu?.dispose()
-          gpu = undefined
-          const message = `${backend}: ${error instanceof Error ? error.message : String(error)}${diagnostic ? ' '+JSON.stringify(diagnostic) : ''}`
-          if (livePreview && /GPU 表面内存预算超限|Invalid GPU viewport/.test(message)) {
+          if (!preservedPreview) {
+            invalidateTileCache()
+            gpu?.dispose()
+            gpu = undefined
+          }
+          const message = `${backend}: ${error instanceof Error ? error.message : String(error)}`
+          if (livePreview && previewBudget) {
             if (!previewTileFallback || tiledPreviewMode)
-              throw new Error(`PREVIEW_BUDGET: ${message}`)
+              throw renderErrorWithBudget(error, `PREVIEW_BUDGET: ${message}`)
             tiledPreviewMode = true
             try {
               await synchronizeDeferred()
@@ -1262,6 +1264,7 @@ self.onmessage = (e) => {
                 backend,
                 color,
                 settingsJson,
+                256, undefined, undefined, false, undefined, false, false, false, undefined, previewCurrent,
               )
               self.postMessage(
                 { id: request.id, ...result, loadMs },
@@ -1271,10 +1274,11 @@ self.onmessage = (e) => {
               )
               return
             } catch (tileError) {
-              throw new Error(`PREVIEW_BUDGET: ${String(tileError)}`)
+              if (String(tileError).includes('PREVIEW_CANCELLED')) throw tileError
+              throw renderErrorWithBudget(tileError, `PREVIEW_BUDGET: ${String(tileError)}`)
             }
           }
-          if (displayCanvas || preference !== 'auto') throw new Error(message)
+          if (displayCanvas || preference !== 'auto') throw renderErrorWithBudget(error, message)
           failures.set(backend, message)
         }
       }
@@ -1333,7 +1337,7 @@ self.onmessage = (e) => {
     } catch (error) {
       self.postMessage({
         id: request.id,
-        error: error instanceof Error ? error.message : String(error),
+        ...renderFailureEnvelope(error),
       })
     }
   }, channel === 'interaction' ? 1 : 0)
@@ -1356,7 +1360,19 @@ async function renderTiledPreview(
   canvasDisplayFilters = false,
   canvasMath = false,
   onRegionComplete?: () => void,
+  isCurrent?: () => boolean,
 ) {
+  const checkCurrent = () => {
+    if (isCurrent && !isCurrent()) throw new Error('PREVIEW_CANCELLED')
+  }
+  const checkpoint = isCurrent ? async () => {
+    checkCurrent()
+    // Let cancel-preview/cancel-tile-fill messages reach this worker between
+    // completed subdivision attempts, without yielding renderer ownership.
+    await yieldPreviewTask()
+    checkCurrent()
+  } : undefined
+  checkCurrent()
   const { createGpu, straightAlpha } = await import('./gpu/factory')
   const { renderPreviewTiles, renderBitmapPreviewTiles } = await import('./preview-tiles')
   let hybridEffects = 0, materialFieldHits = 0, materialFieldBuilds = 0, materialFieldBuildMs = 0, materialFieldUploadBytes = 0
@@ -1397,6 +1413,7 @@ async function renderTiledPreview(
     !options.pixelPreview && tileSide >= Math.max(crop.width, crop.height) &&
     !(import.meta.env.DEV && forceFirstTileBudgetFailure) && !admission.shouldSplit(crop)
   ) {
+    await checkpoint?.()
     const scene = preparedScene
     preparedScene = undefined
     scene.floatCompositing = requiresFloatCompositing(executionPolicy!, scene)
@@ -1422,12 +1439,14 @@ async function renderTiledPreview(
           displayMath,
         )
         if (gpu.driver.name !== 'webgpu') throw new Error('present fast path unavailable')
+        checkCurrent()
         prepareDisplay()
         const result = await gpu.render(scene, false, true)
-        onRegionComplete?.()
-        if (!result.bitmap && !result.gpuTile) throw new Error('present fast path unavailable')
         presented = result.bitmap
         residentTile = result.gpuTile
+        checkCurrent()
+        onRegionComplete?.()
+        if (!result.bitmap && !result.gpuTile) throw new Error('present fast path unavailable')
         Object.keys(scene.nodes).forEach((id) => nodes.add(id))
         description = result.description
         hybridEffects += result.hybridEffects
@@ -1444,11 +1463,13 @@ async function renderTiledPreview(
         peakTextureBytes = Math.max(peakTextureBytes, result.peakTextureBytes)
         finishTransientBytes = Math.max(finishTransientBytes, result.finishTransientBytes ?? 0)
       } catch (error) {
-        if (isDisplayBudgetError(error)) throw error
-        presentationFailure = `GPU bitmap presentation fallback: ${String(error)}`
-        admission.observe(error,crop)
         presented?.close()
         presented = undefined
+        if (residentTile) gpu?.driver.releasePresented?.([residentTile])
+        residentTile = undefined
+        if (String(error).includes('PREVIEW_CANCELLED') || isDisplayBudgetError(error)) throw error
+        presentationFailure = `GPU bitmap presentation fallback: ${String(error)}`
+        admission.observe(error,crop)
         const deviceLost = gpu?.driver.lost || /device lost|GPU device|has been lost|设备已丢失/i.test(String(error))
         await recoverTileFailure(error)
         if (deviceLost) throw error
@@ -1460,6 +1481,7 @@ async function renderTiledPreview(
   const rasterize = async (tile: import('./preview-tiles').PreviewTile) => {
       let bitmap: ImageBitmap | undefined
       try {
+        checkCurrent()
         if (skipFailedRegion) {
           skipFailedRegion = false
           // The identical whole region has already exceeded the budget above.
@@ -1485,6 +1507,7 @@ async function renderTiledPreview(
               y: (crop?.y || 0) + tile.y, w: tile.width, h: tile.height },
             ...(prepareViewport ? { prepareViewport } : {}) })),
         ) as GpuScene
+        checkCurrent()
         compileMs += performance.now() - t
         Object.keys(scene.nodes).forEach((id) => nodes.add(id))
         scene.floatCompositing = requiresFloatCompositing(executionPolicy!, scene)
@@ -1518,10 +1541,12 @@ async function renderTiledPreview(
         )
         // Assembly needs a bitmap per leaf, but the attached presenter and its
         // previous textures remain alive on this same device during the retry.
+        checkCurrent()
         prepareDisplay(false)
         const result = await gpu.render(scene, !bitmapAssembly, bitmapAssembly)
-        onRegionComplete?.()
         bitmap = result.bitmap
+        checkCurrent()
+        onRegionComplete?.()
         description = result.description
         hybridEffects += result.hybridEffects
         materialFieldHits += result.materialFieldHits
@@ -1556,6 +1581,9 @@ async function renderTiledPreview(
         if (!rgba) throw new Error('Missing preview tile readback')
         return rgba
       } catch (error) {
+        // Cancellation is not an allocation failure. A finished stale frame
+        // can be discarded without destroying the displayed GPU resources.
+        if (String(error).includes('PREVIEW_CANCELLED')) throw error
         if (import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile')
           console.debug(
             'DESIGN_TILE_BUDGET',
@@ -1580,14 +1608,14 @@ async function renderTiledPreview(
         const pixels = await rasterize(tile)
         if (ArrayBuffer.isView(pixels)) throw new Error('Expected GPU display tile')
         return pixels
-      }, tileSide, admission)
+      }, tileSide, admission, checkpoint)
       presented = result.bitmap
       bitmapLeaves = result.tiles
     } else assembled = await renderPreviewTiles(width, height, async tile => {
       const pixels = await rasterize(tile)
       if (!ArrayBuffer.isView(pixels)) { pixels.close(); throw new Error('Expected exact tile readback') }
       return pixels
-    }, tileSide, admission)
+    }, tileSide, admission, checkpoint)
   }
   if (presented || residentTile)
     return {

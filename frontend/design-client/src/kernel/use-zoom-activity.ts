@@ -25,7 +25,10 @@ function useActivity(value: number | string, identity: string) {
       if (frame !== undefined) cancelAnimationFrame(frame)
     }
   }, [value, identity])
-  return settled.identity === identity && settled.value !== value
+  // A reversal can return to the committed value while a newer camera is
+  // still queued. Equality alone would label that moving frame as settled,
+  // briefly switching sampling/prefetch tiers before the two-frame boundary.
+  return settled.identity === identity && (settled.value !== value || state.current.pending)
 }
 export const useZoomActivity = (zoom: number, identity: string) => useActivity(zoom, identity)
 export const useCameraActivity = (view: CanvasCamera, identity: string) =>

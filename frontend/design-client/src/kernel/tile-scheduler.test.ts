@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import type { RasterTile } from './tile-cache'
+import { planTiles, type RasterTile } from './tile-cache'
 import {
   DEFAULT_TILE_FRAME_TIME_BUDGET_MS,
   DEFAULT_TILE_FRAME_TILE_RENDER_BUDGET,
@@ -81,7 +81,7 @@ describe('viewport-distance priority', () => {
     expect(tileOverlapsViewport(tile(0, 0, 2), { x: 300, y: 0, width: 100, height: 100 })).toBe(false)
   })
 
-  test('on-screen tiles first, nearest first, equal distance by stable row order', () => {
+  test('visible tiles are center-first; off-screen tiles keep distance / row order', () => {
     // Centers: interior tiles sit inside the viewport (distance 0); the edge
     // tile overlaps but its center is 233 px outside; off-screen tiles sit at
     // 1233 (four row-tied placements) and 2233 px.
@@ -93,10 +93,23 @@ describe('viewport-distance priority', () => {
       [far, tieHighRow, interiorB, rowTieLeft, edge, rowTieRight, interiorA, tieLowRow],
       viewport,
     )
-    expect(ranked.onScreen.map((t) => t.key)).toEqual([interiorA.key, interiorB.key, edge.key])
+    expect(ranked.onScreen.map((t) => t.key)).toEqual([interiorB.key, interiorA.key, edge.key])
     expect(ranked.offScreen.map((t) => t.key)).toEqual([
       rowTieLeft.key, rowTieRight.key, tieLowRow.key, tieHighRow.key, far.key,
     ])
+  })
+
+  test('a production center-out plan is not reset to its top-left row', () => {
+    const bounds = { x: 0, y: 0, width: 2560, height: 2560 }
+    const planned = planTiles(bounds, 1)
+    const ranked = prioritizeTileFill(planned, bounds).onScreen
+    expect(ranked[0]).toBe(planned[0])
+    expect(ranked[0].key).toBe('1:0:0:2:2')
+    expect(ranked).toHaveLength(planned.length)
+    expect(new Set(ranked)).toEqual(new Set(planned))
+    // Four exactly equidistant neighbours retain their input order.
+    const ties = planned.filter(t => Math.abs(t.x + 257 - 1280) + Math.abs(t.y + 257 - 1280) === 512)
+    expect(prioritizeTileFill(ties, bounds).onScreen).toEqual(ties)
   })
 })
 
@@ -153,7 +166,7 @@ describe('tile fill scheduling', () => {
     const done = scheduler.fill([...offScreen, ...onScreen])
     // First tick starts synchronously: all three on-screen tiles submit at
     // once although the budget permits only 2 rasterizations per frame.
-    expect(chunks).toEqual([[onScreen[0].key, onScreen[1].key, onScreen[2].key]])
+    expect(chunks).toEqual([[onScreen[1].key, onScreen[2].key, onScreen[0].key]])
     await settleMicrotasks()
     expect(cutoffs).toEqual(['offscreenHitBudget_'])
     expect(scheduler.counters.deferredTiles).toBe(3)
@@ -246,7 +259,7 @@ describe('tile fill scheduling', () => {
       budget: { now: c.now },
     })
     const done = scheduler.fill([tile(0, 0), tile(500, 0), tile(2000, 0), tile(3000, 0)])
-    expect(chunks).toEqual([[tile(0, 0).key, tile(500, 0).key]])
+    expect(chunks).toEqual([[tile(500, 0).key, tile(0, 0).key]])
     await settleMicrotasks()
     scheduler.cancel()
     manual.flush()
@@ -334,7 +347,7 @@ describe('prefetch rim scheduling', () => {
     const done = scheduler.fill([...rim, ...onScreen])
     // The whole viewport plan submits in the first exempt chunk; the rim is
     // deferred behind the frame its on-screen tiles spent.
-    expect(chunks).toEqual([[onScreen[0].key, onScreen[1].key]])
+    expect(chunks).toEqual([[onScreen[1].key, onScreen[0].key]])
     await settleMicrotasks()
     expect(cutoffs).toEqual(['offscreenHitBudget_'])
     expect(scheduler.counters.deferredTiles).toBe(4)
@@ -391,7 +404,7 @@ describe('prefetch rim scheduling', () => {
       budget: { now: c.now },
     })
     const done = scheduler.fill([tile(0, 0), tile(500, 0), ...rim])
-    expect(chunks).toEqual([[tile(0, 0).key, tile(500, 0).key]])
+    expect(chunks).toEqual([[tile(500, 0).key, tile(0, 0).key]])
     await settleMicrotasks()
     // Camera moved: the pending rim queue is abandoned before any frame runs.
     scheduler.cancel()

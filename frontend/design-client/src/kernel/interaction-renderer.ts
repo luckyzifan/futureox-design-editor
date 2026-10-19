@@ -29,6 +29,7 @@ type ResidentInteraction = {
   backgroundLinear?:KernelResult['backgroundLinear']
   requestedScale?:number
   tiledExact?:boolean
+  retainedFallback?:boolean
 }
 
 /** A bounded, kernel-rendered set of isolated layer intervals. It is reusable
@@ -38,7 +39,8 @@ export class InteractionRenderer {
   private qualityZoom = 1
   private client: KernelClient | null = null
   private generation = 0
-  private pending?: { document: DesignDocument; ids: string }
+  private pending?: { document: DesignDocument; ids: string; scale: number }
+  private pendingDensity?: Parameters<InteractionRenderer['prepare']>
   private resident?: ResidentInteraction
   private props?: InteractionProps
   private disposed = false
@@ -100,15 +102,20 @@ export class InteractionRenderer {
         const offsets = interactionPatchedOffsets(r.plan, document, patches,fast?this.baseOffsets(r.plan,document):undefined)
         if (!offsets) return null
         const transforms=Object.fromEntries(r.plan.ids.map(id=>[id,[...(patches[id]?.transform||document.nodes[id].transform)] as Matrix]))
+        this.liveAuthored=document
         this.latestPatch={document,patches:Object.fromEntries(r.plan.ids.map(id=>[id,{transform:transforms[id]}]))}
         this.latestCandidate=fast?undefined:interactionPatchedDocument(document,patches)
         const wasActive = r.active
-        r.offsets = offsets; r.active = true; this.moves++
+        const retainedRebase = !r.live && !this.retainedOffsetsReusable(r, offsets)
+        if (!retainedRebase) r.offsets = offsets
+        r.active = true; this.moves++
         this.lastInput={sequence:this.moves,at:performance.now()}
         if(this.latestCandidate)this.inputs.set(this.latestCandidate,this.lastInput)
+        if (!r.live && !retainedRebase) this.lastPresentedInput = this.lastInput
         this.changed()
         if (!wasActive) this.props?.onReady()
-        if (r.live) {
+        if (retainedRebase && r.tiles.length) this.promoteRetained(this.candidateDocument()!)
+        else if (r.live) {
           if(this.sharedClient&&r.workerPoses&&!this.inlineDisabled&&r.tiles[0]?.gpuTile){
             this.sharedClient.moveResidentInteraction(r.tiles[0].gpuTile,transforms,this.lastInput)
           }else this.renderLive(this.candidateDocument()!)
@@ -133,6 +140,10 @@ export class InteractionRenderer {
         this.lastEnd = offsets ? [...offsets.values()].map(p => `${p.x},${p.y}`).join(';') : 'content-changed'
         r.active = r.live ? document !== r.plan.document && document.id === r.plan.document.id :
           !!offsets && [...offsets.values()].some(p => p.x !== 0 || p.y !== 0)
+        if (offsets && !r.live && !this.retainedOffsetsReusable(r, offsets)) {
+          if (r.tiles.length) this.promoteRetained(document)
+          this.changed(); return
+        }
         if (offsets) r.offsets = offsets
         if(r.live&&r.active&&offsets&&r.workerPoses&&this.sharedClient&&!this.liveRunning&&!this.livePending&&r.tiles[0]?.gpuTile){
           // Finish the gesture through the already compiled pose session.
@@ -152,6 +163,27 @@ export class InteractionRenderer {
         this.changed()
       },
     }
+  }
+
+  private retainedOffsetsReusable(r: ResidentInteraction, offsets: Map<string, { x: number; y: number }>) {
+    if (allowsReducedSampling(this.qualityZoom)) return true
+    return r.plan.layers.every((layer, index) => {
+      const offset = layer.moving && offsets.get(layer.moving)
+      const scale = r.tiles[index]?.zoom ?? r.scale
+      return !offset || [offset.x * scale, offset.y * scale].every(Number.isSafeInteger)
+    })
+  }
+
+  private promoteRetained(document: DesignDocument) {
+    const r = this.resident
+    if (!r || r.live || !r.tiles.length) return
+    // A fractional translation changes coverage phase. Keep the last complete
+    // isolated layers until the kernel publishes a freshly rasterized pose;
+    // do not snap the pointer or translate old antialiasing samples instead.
+    r.displayedOffsets = new Map(r.offsets)
+    r.live = true; r.retainedFallback = true
+    this.liveAuthored = this.latestPatch?.document || this.props?.document
+    this.renderLive(document)
   }
 
   private sameIds(ids: string[]) {
@@ -180,16 +212,23 @@ export class InteractionRenderer {
     if (props) props.control.current = this.control
     if (this.disposed) return
     if (!props) {
-      this.generation++; this.releaseClient(); this.pending = undefined
+      this.generation++; this.releaseClient(); this.pending = undefined; this.pendingDensity = undefined
       this.closeResidents(); this.warming = false; return
     }
     if (this.sessionEpoch !== props.epoch) {
-      this.generation++; this.releaseClient(); this.pending = undefined
+      this.generation++; this.releaseClient(); this.pending = undefined; this.pendingDensity = undefined
       this.closeResidents(); this.error = ''; this.sessionEpoch = props.epoch
     }
     const r = this.resident, key = props.selection.join(',')
     const samePolicy = profile === this.profile && backend === this.backend
-    const needsDensity=!!r&&!r.live&&view.zoom*dpr>(r.requestedScale||r.scale)*1.25
+    // Normal/high zoom cannot keep a drag bitmap upscaled by up to 25% after
+    // the camera settles. Only the explicitly reduced low-zoom tier retains
+    // hysteresis; native tiers refresh whenever their real sampled density
+    // falls below the current camera/DPR requirement.
+    const requestedScale = view.zoom * dpr
+    const needsDensity = !!r && !r.live && requestedScale > (allowsReducedSampling(view.zoom)
+      ? (r.requestedScale || r.scale) * 1.25 : r.scale)
+    if (!needsDensity) this.pendingDensity = undefined
     const viewport = size ? { x: -view.x / view.zoom, y: -view.y / view.zoom,
       width: size.width / view.zoom, height: size.height / view.zoom } : undefined
     const capture = r?.plan.viewport
@@ -203,7 +242,15 @@ export class InteractionRenderer {
         if (this.liveAuthored !== props.document || cameraChanged) { this.liveAuthored = props.document; this.renderLive(cameraChanged?(this.candidateDocument()||props.document):props.document) }
         return
       }
-      const offsets = this.baseOffsets(r.plan, props.document)
+      const candidate = r.active && this.latestPatch?.document === props.document ? this.candidateDocument() : undefined
+      const offsets = this.baseOffsets(r.plan, candidate || props.document)
+      // A page fast-path handover warms the last displayed pose while the
+      // authored document remains unchanged. Do not replace that useful warm
+      // job with the old authored pose on the next React layout pass.
+      if (candidate && r.active && this.pending && !needsDensity && !needsViewport && !cameraChanged) return
+      if (!r.live && offsets && !this.retainedOffsetsReusable(r, offsets) && r.tiles.length) {
+        this.promoteRetained(candidate || props.document); return
+      }
       if (offsets && r.active && settledDocument !== props.document && !needsDensity && !needsViewport) { r.offsets = offsets; return }
       if (r.plan.document === props.document && !needsDensity && !needsViewport) return
       if (offsets && settledDocument === props.document && !needsDensity && !needsViewport && !cameraChanged) {
@@ -218,11 +265,21 @@ export class InteractionRenderer {
       }
       if (settledDocument === props.document) r.active = false
     }
-    if (samePolicy && this.pending?.document === props.document && this.pending.ids === key && !needsViewport) return
+    if (samePolicy && this.pending?.document === props.document && this.pending.ids === key && !needsViewport &&
+        (!this.error || this.pending.scale === requestedScale)) {
+      // Preserve one useful capture and remember only the latest higher
+      // density. Recompiling/cancelling on every small zoom input would turn
+      // native-density fidelity into an unbounded warm-up backlog.
+      this.pendingDensity = needsDensity && this.pending.scale < requestedScale
+        ? [props, pageId, { ...view }, dpr, profile, backend, settledDocument, size && { ...size }]
+        : undefined
+      return
+    }
+    this.pendingDensity = undefined
     this.profile = profile; this.backend = backend
     const token = ++this.generation
     if (!this.sharedClient) this.client?.cancelPreview()
-    this.pending = { document: props.document, ids: key }
+    this.pending = { document: props.document, ids: key, scale: requestedScale }
     const contentGesture = props.active && !!r && !this.baseOffsets(r.plan, props.document)
     // Managed layers require linear-light recomposition. The legacy byte
     // presenter leaves that work to the kernel instead of blending sRGB bytes.
@@ -314,7 +371,7 @@ export class InteractionRenderer {
     this.client ??= this.sharedClient || new KernelClient()
     const client = this.client, tiles: CompositeTile[] = []
     let backgroundLinear:KernelResult['backgroundLinear']
-    let accepted=false
+    let accepted=false, rebase:DesignDocument|undefined
     void (async () => {
       try {
         // 8M pixels across all intervals; replacement may temporarily retain
@@ -327,12 +384,16 @@ export class InteractionRenderer {
           let scale = reduced ? Math.min(view.zoom * dpr, 8192 / Math.max(b.width, b.height),
             Math.sqrt(pixelsPerLayer / Math.max(1, b.width * b.height))) : view.zoom*dpr
           const targetScale=scale
-          let width = 1, height = 1, result: KernelResult | undefined
+          const phaseX = reduced ? 0 : view.x * dpr - Math.floor(view.x * dpr)
+          const phaseY = reduced ? 0 : view.y * dpr - Math.floor(view.y * dpr)
+          let width = 1, height = 1, originX = 0, originY = 0, result: KernelResult | undefined
           for (let attempt = 0; attempt < 5 && current(); attempt++) {
-            width = Math.max(1, Math.ceil(b.width * scale)); height = Math.max(1, Math.ceil(b.height * scale))
+            originX = Math.floor(b.x * scale); originY = Math.floor(b.y * scale)
+            width = Math.max(1, Math.ceil((b.x + b.width) * scale) - originX)
+            height = Math.max(1, Math.ceil((b.y + b.height) * scale) - originY)
             try {
               result = await client.render(layer.document, { pageId, width, height,
-                view: { x: -b.x * scale, y: -b.y * scale, zoom: scale },
+                view: { x: -originX + phaseX, y: -originY + phaseY, zoom: scale },
                 transparent: true, grid: false, rasterProfile: profile, livePreview: true, renderIntent: 'preview', interactionChannel: !!this.sharedClient,
               }, false, backend, !this.sharedClient)
               break
@@ -352,17 +413,22 @@ export class InteractionRenderer {
           if (!current()) return
           if (!result.gpuTile && result.bytes.length !== width * height * 4) throw Error('交互图层像素不完整')
           tiles.push({ key: `interaction:${token}:${index}`, serial: serial--,
-            x: b.x * scale, y: b.y * scale, width, height, zoom: scale, bytes: result.bytes, gpuTile: result.gpuTile })
+            x: originX, y: originY, width, height, zoom: scale, phaseX, phaseY, bytes: result.bytes, gpuTile: result.gpuTile })
         }
         if (!current()) return
         const candidate=this.resident?.active?this.candidateDocument():undefined
+        const latestPatch=this.latestPatch
         const offsets=interactionOffsets(plan,candidate||this.props!.document)
         if (!offsets) return
         const active = !!this.resident?.active
         this.closeResidents()
         this.resident = { plan, tiles, offsets, scale: Math.min(...tiles.map(tile=>tile.zoom)),requestedScale:view.zoom*dpr,active,backgroundLinear }
+        if (!this.retainedOffsetsReusable(this.resident, offsets)) {
+          this.resident.offsets = new Map(plan.ids.map(id => [id, { x: 0, y: 0 }]))
+          rebase = candidate || this.props!.document
+        } else this.lastPresentedInput = this.lastInput
         accepted=true
-        this.latestCandidate=candidate
+        this.latestCandidate=candidate; this.latestPatch=latestPatch
         this.warming = false; this.props?.onReady(); this.changed()
       } catch (error) {
         if (!current()) return
@@ -374,6 +440,13 @@ export class InteractionRenderer {
           // indefinitely and starve image export/prototype clients.
           if (client !== this.sharedClient) client.dispose(); this.client = null
           if (!this.error) this.pending = undefined
+          const refresh = this.pendingDensity
+          this.pendingDensity = undefined
+          // A failure applies to the attempted density, not a newer request
+          // already waiting behind it. Consume that request once; an unchanged
+          // failed signature remains latched until the user changes input.
+          if (refresh) this.prepare(...refresh)
+          else if (!this.error && rebase) this.promoteRetained(rebase)
         }
       }
     })()
@@ -383,10 +456,11 @@ export class InteractionRenderer {
     const r = this.resident
     if (!r?.active || !r.tiles.length) return null
     return r.tiles.map((tile, i) => {
-      const offset = r.plan.layers[i]?.moving ? r.offsets.get(r.plan.layers[i].moving!) : undefined
+      const offsets = r.retainedFallback ? r.displayedOffsets : r.offsets
+      const offset = (!r.live || r.retainedFallback) && r.plan.layers[i]?.moving ? offsets?.get(r.plan.layers[i].moving!) : undefined
       const scale = view.zoom / tile.zoom
-      return { tile, active: true, layer: i, gutter: tile.gutter ?? 0, blend: !r.live,
-        ...(r.live && r.visibleBounds ? {clip:{left:r.visibleBounds.x*view.zoom+view.x,top:r.visibleBounds.y*view.zoom+view.y,
+      return { tile, active: true, layer: i, gutter: tile.gutter ?? 0, blend: !r.live || !!r.retainedFallback,
+        ...(r.live && !r.retainedFallback && r.visibleBounds ? {clip:{left:r.visibleBounds.x*view.zoom+view.x,top:r.visibleBounds.y*view.zoom+view.y,
           width:r.visibleBounds.width*view.zoom,height:r.visibleBounds.height*view.zoom}} : {}),
         placement: { ...tilePlacementAtView(tile,view),
           left: (tile.x-(tile.phaseX||0)) * scale + view.x + (offset?.x || 0) * view.zoom,
@@ -409,7 +483,7 @@ export class InteractionRenderer {
   }
   get tiles() { return this.resident?.tiles || [] }
   get ready() { return !!this.resident?.tiles.length }
-  get mode() { return this.resident?.live ? 'live-kernel' : 'retained-layers' }
+  get mode() { return this.resident?.live && !this.resident.retainedFallback ? 'live-kernel' : 'retained-layers' }
   get presentedInput() { return this.resident?.live ? this.lastPresentedInput : this.lastInput }
   get backgroundLinear(){return this.resident?.backgroundLinear}
   acceptResidentSample(sample:{slot:number;sequence:number;at:number;total?:number;compileMs?:number;nativePose?:boolean;graphMs?:number;finishMs?:number;groupHits?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number;bounds?:Bounds;needsRebase?:boolean;signature?:string}) {
@@ -496,9 +570,10 @@ export class InteractionRenderer {
             Math.sqrt(4_194_304 / Math.max(1, b.width * b.height))) : resident.scale
           const targetScale=scale
           this.lastSamplePrepareMs = performance.now() - started
-          let result: KernelResult | undefined, width = 1, height = 1, originX = 0, originY = 0
+          let result: KernelResult | undefined, width = 1, height = 1, originX = 0, originY = 0, phaseX = 0, phaseY = 0
           let capturedTiles: CompositeTile[] | undefined
           this.client ??= this.sharedClient || new KernelClient()
+          const client = this.client
           for (let attempt = 0; attempt < 5 && current(); attempt++) {
             // Capture on the world pixel lattice. A fractional capture origin
             // adds a second resampling phase when the final pose joins the page.
@@ -515,12 +590,12 @@ export class InteractionRenderer {
               // exact geometry at the capture origin changes floating-point
               // operation order, even if the final world position is identical.
               const raster=this.viewport?canvasRasterPlan(this.viewport.view,scale/this.viewport.view.zoom,
-                this.viewport.width,this.viewport.height,{rasterProfile:this.profile,samplingScale:scale}):
+                this.viewport.width,this.viewport.height,{rasterProfile:this.profile,samplingScale:scale,exactPhase:!reduced}):
                 {camera:{x:0,y:0,zoom:scale},phase:{x:0,y:0}}
               const plan=interactionCaptureTiles(originX,originY,width,height,scale).map(tile=>({...tile,
                 phaseX:raster.phase.x,phaseY:raster.phase.y})), staged:CompositeTile[]=[]
               try {
-                const result=await this.client!.render(document,{pageId:resident.plan.pageId,width,height,
+                const result=await client.render(document,{pageId:resident.plan.pageId,width,height,
                   view:raster.camera,transparent:false,grid:false,rasterProfile:this.profile,
                   livePreview:true,renderIntent:'preview',interactionChannel:!!this.sharedClient,
                   tileViewport:plan,tilePrepareViewport:{x:originX+Math.floor(raster.camera.x)-1,
@@ -534,18 +609,19 @@ export class InteractionRenderer {
                 return result
               } catch(error) {
                 for(const tile of staged)tile.bitmap?.close()
-                this.client!.releasePresented(staged.flatMap(tile=>tile.gpuTile?[tile.gpuTile]:[]))
+                client.releasePresented(staged.flatMap(tile=>tile.gpuTile?[tile.gpuTile]:[]))
                 throw error
               }
             }
             try {
               if(resident.tiledExact){result=await renderTiles();break}
               const canonical=this.viewport?canvasRasterPlan(this.viewport.view,scale/this.viewport.view.zoom,
-                this.viewport.width,this.viewport.height,{rasterProfile:this.profile,samplingScale:scale}):undefined
+                this.viewport.width,this.viewport.height,{rasterProfile:this.profile,samplingScale:scale,exactPhase:!reduced}):undefined
               const worldCapture=!!this.sharedClient && !reduced && this.profile!=='figma' && this.profile!=='figmaSoftware' &&
                 canonical?.camera.x===0 && canonical?.camera.y===0
-              result = await this.client.render(document, { pageId: resident.plan.pageId, width, height,
-                view: { x: worldCapture?0:-originX, y: worldCapture?0:-originY, zoom: scale }, transparent: false, grid: false,
+              phaseX = canonical?.phase.x || 0; phaseY = canonical?.phase.y || 0
+              result = await client.render(document, { pageId: resident.plan.pageId, width, height,
+                view: { x: worldCapture?0:-originX+phaseX, y: worldCapture?0:-originY+phaseY, zoom: scale }, transparent: false, grid: false,
                 ...(worldCapture?{captureViewport:{x:originX,y:originY,w:width,h:height}}:{}),
                 rasterProfile: this.profile, livePreview: true, retainInteractionGraph: true, interactionSelection: resident.plan.ids,
                 interactionNative: !allowsReducedSampling(this.qualityZoom),
@@ -568,7 +644,7 @@ export class InteractionRenderer {
           }
           if (!current()) {
             result?.bitmap?.close();for(const tile of capturedTiles||[])tile.bitmap?.close()
-            this.client?.releasePresented([...(result?.gpuTile?[result.gpuTile]:[]),...(capturedTiles||[]).flatMap(t=>t.gpuTile?[t.gpuTile]:[])])
+            client.releasePresented([...(result?.gpuTile?[result.gpuTile]:[]),...(capturedTiles||[]).flatMap(t=>t.gpuTile?[t.gpuTile]:[])])
             return
           }
           if (!result || !capturedTiles && !result.gpuTile && !result.bitmap && result.bytes.length !== width * height * 4) throw Error('交互场景像素不完整')
@@ -577,12 +653,14 @@ export class InteractionRenderer {
           if (this.viewportRevision === viewportRevision) resident.scale = scale
           resident.visibleBounds = this.viewport ? { ...bounds } : undefined
           this.lastPresentedInput = input
+          this.error = ''
+          resident.retainedFallback = false
           resident.displayedOffsets=offsets||undefined
           resident.workerPoses=!capturedTiles && result.residentInteraction===true
           this.inlineDisabled=false
           for (const tile of resident.tiles) tile.bitmap?.close()
           resident.tiles = capturedTiles || [{ key: `interaction-live:${token}`, serial: serial--,
-            x: originX, y: originY, width, height, zoom: scale, bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile }]
+            x: originX, y: originY, width, height, zoom: scale, phaseX, phaseY, bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile }]
           this.samples++; this.lastSampleMs = performance.now() - started
           this.lastSampleCompileMs = result.compileMs; this.lastSampleGraphMs = result.graphMs || 0
           this.lastSampleReused = !!result.compileCacheHit
@@ -620,7 +698,7 @@ export class InteractionRenderer {
     this.endedDocument=undefined
   }
   dispose() {
-    this.disposed = true; this.generation++; this.releaseClient()
+    this.disposed = true; this.generation++; this.releaseClient(); this.pendingDensity = undefined
     if (this.props?.control.current === this.control) this.props.control.current = null
     this.closeResidents()
   }

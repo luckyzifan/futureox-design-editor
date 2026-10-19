@@ -12,10 +12,12 @@
  * In Electron the underlying IndexedDB persists in the user profile, so the
  * desktop client shares this cache with no extra plumbing. */
 
+import { imageCacheVictims, validDecodedImage, type ImageCacheMetadata } from './decoded-image-cache'
+
 const STORE = 'design-image-mip-cache'
 const DB_NAME = 'forma-image-cache'
 const DB_VERSION = 1
-/** Resident cap for cached decodes; entries evict least-recently-used. */
+/** Persistent payload cap, separate from worker decoded-image residency. */
 const MAX_STORE_BYTES = 256 * 1024 * 1024
 
 export type CachedImage = {
@@ -92,39 +94,58 @@ export async function imageCacheKey(
 export async function readCachedImage(key: string): Promise<CachedImage | undefined> {
   try {
     const record = await transaction<CachedImage | undefined>('readonly', (store) => store.get(key))
-    if (!record || !record.width || !record.height || !record.data) return undefined
+    if (!validDecodedImage(record) || record.data.buffer.byteLength > MAX_STORE_BYTES) return undefined
     return record
   } catch {
     return undefined
   }
 }
 
-async function allEntries(): Promise<[IDBValidKey, CachedImage][]> {
-  const keys = await transaction<IDBValidKey[]>('readonly', (store) => store.getAllKeys())
-  const records = await Promise.all(
-    keys.map(async (key) => [key, await transaction<CachedImage | undefined>('readonly', (store) => store.get(key))] as const),
-  )
-  return records.filter((entry): entry is [IDBValidKey, CachedImage] => !!entry[1])
+async function allMetadata(): Promise<ImageCacheMetadata<IDBValidKey>[]> {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const entries: ImageCacheMetadata<IDBValidKey>[] = []
+    const tx = db.transaction(STORE, 'readonly'), request = tx.objectStore(STORE).openCursor()
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) return
+      const record = cursor.value as CachedImage
+      entries.push({ key: cursor.key, bytes: validDecodedImage(record) ? record.data.buffer.byteLength : NaN,
+        lastUsed: record?.lastUsed })
+      // Drop the current decoded buffer before advancing. getAll/Promise.all
+      // would materialize the entire disk cache on every individual write.
+      cursor.continue()
+    }
+    tx.oncomplete = () => resolve(entries)
+    tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('image cache scan failed'))
+  })
 }
 
-/** Fire-and-forget persist with an LRU byte cap. Writes never block or fail
+let trimming: Promise<void> | undefined
+let trimAgain = false
+function trimStore() {
+  trimAgain = true
+  if (trimming) return trimming
+  trimming = (async () => {
+    try {
+      while (trimAgain) {
+        trimAgain = false
+        const victims = imageCacheVictims(await allMetadata(), MAX_STORE_BYTES)
+        for (const key of victims) await transaction('readwrite', store => store.delete(key))
+      }
+    } finally { trimming = undefined }
+  })()
+  return trimming
+}
+
+/** Fire-and-forget persist with a byte cap. Oldest writes retire first. Writes never block or fail
  * a render. */
 export function writeCachedImage(key: string, record: Omit<CachedImage, 'lastUsed'>): void {
   void (async () => {
     try {
-      if (!key) return
+      if (!key || !validDecodedImage(record) || record.data.buffer.byteLength > MAX_STORE_BYTES) return
       await transaction('readwrite', (store) => store.put({ ...record, lastUsed: Date.now() }, key))
-      const entries = await allEntries()
-      const total = entries.reduce((n, [, e]) => n + e.data.byteLength, 0)
-      if (total <= MAX_STORE_BYTES) return
-      const victims = entries
-        .sort((a, b) => a[1].lastUsed - b[1].lastUsed)
-        .slice(0, entries.length - Math.floor((MAX_STORE_BYTES * 3) / 4 / 1))
-      for (let i = 0; i < victims.length; i++) {
-        const [, entry] = victims[i]
-        if (total - entry.data.byteLength < MAX_STORE_BYTES * 0.75) break
-        await transaction('readwrite', (store) => store.delete(victims[i][0]))
-      }
+      await trimStore()
     } catch {
       /* Storage is optional; decoding stays the fallback. */
     }

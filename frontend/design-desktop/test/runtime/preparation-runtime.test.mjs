@@ -24,7 +24,7 @@ test('native host binary matches WASM packets, edits and pixels; queues and reti
   reference.load_font(await readFile(fontPath));reference.load_document(JSON.stringify(document))
   await call('initialize',[false]);await call('initialize',[false],'interaction')
   assert.equal((await call('load_document',[JSON.stringify(document)])).settings,'null')
-  const [packet,pixels]=await Promise.all([call('compile_gpu_packet',[options]),call('render_cpu_frame',[options])])
+  const [packet,pixels,linear]=await Promise.all([call('compile_gpu_packet',[options]),call('render_cpu_frame',[options]),call('render_linear',[options])])
   // Area fingerprints are acceleration hints from Rust's platform-sized
   // Hash(usize); WASM32 and native64 differ. Compare every other metadata
   // field and the exact binary geometry, then compare rendered pixels.
@@ -37,6 +37,11 @@ test('native host binary matches WASM packets, edits and pixels; queues and reti
   }
   assert.deepEqual(comparable(packet.value),comparable(reference.compile_gpu_packet(options)))
   assert.deepEqual(pixels.value,reference.render_rgba(options))
+  assert.match(linear.error,/requires document color management/)
+  for(const value of [packet.value,pixels.value]){
+   assert.equal(value.byteOffset,0)
+   assert.equal(value.buffer.byteLength,value.byteLength)
+  }
   assert.equal((await call('load_document',[JSON.stringify(document)],'interaction')).documentFork,true)
   const moved=JSON.stringify({r:[1,0,0,1,17.375,11]})
   assert.equal((await call('apply_interaction_transforms',[moved],'interaction')).value,true)
@@ -47,6 +52,15 @@ test('native host binary matches WASM packets, edits and pixels; queues and reti
   const invalid=await call('load_document',['{}']);assert.ok(invalid.error)
   await call('load_document',[JSON.stringify(document)])
   assert.deepEqual((await call('compile_gpu_packet',[options])).value,packet.value)
+  const managed=JSON.stringify({...document,schemaVersion:3,colorManagement:{documentSpace:'srgb',referenceWhiteNits:203,peakLuminanceNits:1000}})
+  await call('load_document',[managed]);reference.load_document(managed)
+  const floatOptions=JSON.stringify({...JSON.parse(options),width:128,height:128})
+  const floats=await call('render_linear',[floatOptions])
+  assert.equal(floats.error,undefined)
+  assert.ok(floats.value instanceof Float32Array)
+  assert.deepEqual(floats.value,reference.render_linear(floatOptions))
+  assert.equal(floats.value.byteOffset,0)
+  assert.equal(floats.value.buffer.byteLength,128*128*4*4)
   await assert.rejects(call('not-a-method'),/Invalid native preparation/)
  }finally{reference.free();await host.close()}
  await assert.rejects(call('stats'),/closed/)

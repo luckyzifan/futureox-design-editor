@@ -1,3 +1,4 @@
+import { recordRenderDiagnostic, renderBudgetDiagnostic, renderErrorWithBudget } from './render-diagnostics'
 import type { RasterTile } from './tile-cache'
 import type { DesignDocument } from '../model'
 import type { BackendPreference } from './gpu/types'
@@ -462,8 +463,14 @@ export class KernelClient {
       }
       clearTimeout(p.timer)
       this.pending.delete(e.data.id)
-      if (e.data.error) p.reject(new Error(e.data.error))
-      else {
+      if (e.data.error) {
+        const error = renderErrorWithBudget(e.data.error, undefined, e.data.budgetDiagnostic)
+        const budget = renderBudgetDiagnostic(error)
+        // Capture allocation rejection even if a caller recovers from it.
+        // The journal itself stays opt-in and stores only validated scalars.
+        if (budget) recordRenderDiagnostic({ kind: 'error', errorCode: 'budget', ...budget })
+        p.reject(error)
+      } else {
         if (e.data.gpuMemory === undefined && typeof e.data.compileMs === 'number')
           recordRenderProfile(p.channel === 'interaction' ? '交互准备' : '渲染请求', e.data, performance.now() - p.started)
         // Control-command replies (gpuMemory) carry no render accounting;

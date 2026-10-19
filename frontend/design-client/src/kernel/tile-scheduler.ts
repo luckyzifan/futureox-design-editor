@@ -19,6 +19,8 @@ import type { RasterTile } from './tile-cache'
  * Differences against Figma are recorded inline:
  * - Distance uses content bounds (gutters are not owned pixels), converted
  *   to canvas space. Every viewport-intersecting tile has distance zero.
+ *   Visible ties use viewport-center distance, preserving the planner's
+ *   center-out intent instead of resetting every visible batch to row order.
  * - Our rasterization is async in the render worker, so the budget gates
  *   request submission per animation frame, not in-frame synchronous GPU work.
  *   The tile-count budget is the effective limiter; the time budget bounds the
@@ -82,18 +84,21 @@ export function tileOverlapsViewport(tile: RasterTile, viewport: ViewportRect): 
 export type PrioritizedTileFill = { onScreen: RasterTile[]; offScreen: RasterTile[] }
 
 /** Partition a fill set into on-screen (viewport-intersecting) and off-screen
- * tiles. Both classes sort by viewport distance ascending; equal distances
- * keep stable row order (y, then x) — the order Figma's row-major
- * `forEachTileWithinBounds` produces for its distance-0 on-screen ties.
+ * tiles. Visible tiles sort center-out, with input order breaking equal
+ * center distances. Off-screen tiles retain viewport-distance / row order.
+ * Coverage repair can then stably promote visible holes before batch slicing.
  * Tiles planned with `prefetch` (the rim around the viewport set) are always
  * off-screen: their one-pixel overlap gutters can touch the viewport edge,
  * but gutter pixels alone must never buy the on-screen budget exemption. */
 export function prioritizeTileFill(tiles: RasterTile[], viewport: ViewportRect): PrioritizedTileFill {
+  const centerX = viewport.x + viewport.width / 2, centerY = viewport.y + viewport.height / 2
   const ranked = tiles.map((tile, index) => ({
     tile,
     index,
     onScreen: tile.prefetch !== true && tileOverlapsViewport(tile, viewport),
     distance: tileViewportDistance(tile, viewport),
+    centerDistance: Math.hypot((tile.x + tile.width / 2 - (tile.phaseX || 0)) / tile.zoom - centerX,
+      (tile.y + tile.height / 2 - (tile.phaseY || 0)) / tile.zoom - centerY),
   }))
   const byDistanceThenRow = (
     a: (typeof ranked)[number],
@@ -103,7 +108,8 @@ export function prioritizeTileFill(tiles: RasterTile[], viewport: ViewportRect):
     if (Math.abs(distance) > 1e-6) return distance
     return a.tile.y - b.tile.y || a.tile.x - b.tile.x || a.index - b.index
   }
-  const onScreen = ranked.filter((entry) => entry.onScreen).sort(byDistanceThenRow)
+  const onScreen = ranked.filter((entry) => entry.onScreen).sort((a, b) =>
+    a.centerDistance - b.centerDistance || a.index - b.index)
   const offScreen = ranked.filter((entry) => !entry.onScreen).sort(byDistanceThenRow)
   return { onScreen: onScreen.map((entry) => entry.tile), offScreen: offScreen.map((entry) => entry.tile) }
 }

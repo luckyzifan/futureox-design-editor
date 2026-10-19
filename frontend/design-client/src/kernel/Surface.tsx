@@ -558,6 +558,7 @@ export function KernelSurface(props: SurfaceProps) {
   const [navigation, setNavigation] = useState({ contract, view: props.view })
   const renderView = navigation.contract === contract ? navigation.view : props.view
   const failedNavigation = useRef<{ contract: object; view: SurfaceProps['view'] } | null>(null)
+  const [failedPresentation, setFailedPresentation] = useState<{ contract: object; view: SurfaceProps['view'] } | null>(null)
   const latest = useRef({ props, backend, fallback, dpr, target, displayCapability, contract, renderView })
   latest.current = { props, backend, fallback, dpr, target, displayCapability, contract, renderView }
   const advanceCamera = useCallback(() => {
@@ -568,6 +569,8 @@ export function KernelSurface(props: SurfaceProps) {
   const onRenderFailure = useCallback(() => {
     const current = latest.current
     failedNavigation.current = { contract: current.contract, view: current.renderView }
+    setFailedPresentation(failedNavigation.current)
+    current.props.onRenderFailure?.()
     advanceCamera()
   }, [advanceCamera])
   useLayoutEffect(() => {
@@ -595,6 +598,7 @@ export function KernelSurface(props: SurfaceProps) {
     if (frame && presentationMatches(frame, requested)) {
       setPresented({ frame, backend: 'gpu', computeBackend: current.backend })
       setPreviewed(null)
+      setFailedPresentation(null)
       advanceCamera()
     } else if (frame && presentationContentMatches(frame, requested)) {
       // A late native frame still owns the displayed coordinates, but only
@@ -622,6 +626,7 @@ export function KernelSurface(props: SurfaceProps) {
     if (frame && presentationMatches(frame, requested)) {
       setPresented({ frame, backend: 'cpu', computeBackend: transition ? 'cpu' : latest.current.backend })
       setPreviewed(null)
+      setFailedPresentation(null)
       advanceCamera()
     }
   }, [])
@@ -640,28 +645,42 @@ export function KernelSurface(props: SurfaceProps) {
   const heldProps: SurfaceProps = frame ? { ...props, ...frame, presentationEpoch: frame.epoch, grid: !!frame.grid, checkerboard: !!frame.checkerboard } : props
   const holdGpu = !!holding && presented?.backend === 'gpu'
   const holdReference = !!holding && presented?.backend === 'cpu'
+  const renderFailed = failedPresentation?.contract === contract &&
+    failedPresentation.view.x === props.view.x && failedPresentation.view.y === props.view.y &&
+    failedPresentation.view.zoom === props.view.zoom
+  const ready = !renderFailed && !props.interactionPreview && !holding && !(fallback && !fallback.committed) &&
+    presentationMatches(frame || null, requested)
+  const presentationState = renderFailed ? 'error' : ready ? 'ready' : visualFrame ? 'preview' : 'loading'
+  const identifiedFrame = sameIdentity ? frame : undefined
   const gpuSources = new Set<BackendPreference>(target === 'gpu' ? [backend] : [])
   const referenceSources = new Set<BackendPreference>(target === 'cpu' ? [targetCompute] : [])
   if (holdGpu) gpuSources.add(presented!.computeBackend)
   if (holdReference) referenceSources.add(presented!.computeBackend)
   return (
     <div className="kernel-presentation"
+      aria-busy={!ready && !renderFailed}
       data-fallback-phase={fallback ? fallback.committed ? 'cpu' : 'pending' : 'none'}
       data-fallback-reason={fallback?.reason}
       data-presentation-backend={sameIdentity ? presented?.backend : 'none'}
-      data-presentation-ready={String(!props.interactionPreview && !holding && !(fallback && !fallback.committed) && presentationMatches(frame || null, requested))}
-      data-displayed-document={frame?.document.id}
-      data-displayed-epoch={frame?.epoch}
-      data-camera-x={frame?.view.x} data-camera-y={frame?.view.y} data-camera-zoom={frame?.view.zoom}
+      data-presentation-ready={String(ready)}
+      data-presentation-state={presentationState}
+      data-displayed-document={identifiedFrame?.document.id}
+      data-displayed-epoch={identifiedFrame?.epoch}
+      data-camera-x={identifiedFrame?.view.x} data-camera-y={identifiedFrame?.view.y} data-camera-zoom={identifiedFrame?.view.zoom}
       data-preview-active={String(!!visualFrame?.preview)}
       data-visual-camera-x={visualFrame?.view.x} data-visual-camera-y={visualFrame?.view.y}
-      data-pixel-ratio={frame?.pixelRatio}
-      data-display-capability={frame?.displayCapability}
+      data-pixel-ratio={identifiedFrame?.pixelRatio}
+      data-display-capability={identifiedFrame?.displayCapability}
       data-requested-display-capability={displayCapability}
       data-requested-document={props.document.id} data-requested-epoch={props.presentationEpoch || 0}
       data-requested-camera-x={props.view.x} data-requested-camera-y={props.view.y}
       data-requested-camera-zoom={props.view.zoom} data-requested-pixel-ratio={dpr}
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {/* Workspace chrome only: never paint this into a content canvas or
+          document/export pixels. Transparent pages and a cold/failed renderer
+          must still have a stable, opaque surface beneath their content. */}
+      <div className="kernel-workspace-backdrop" aria-hidden="true"
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundColor: '#eeeff3' }} />
       {[...gpuSources].map((source) => {
         const held = holdGpu && presented?.computeBackend === source
         return <ProgressiveSurface key={`gpu:${source}`}
@@ -685,6 +704,11 @@ export function KernelSurface(props: SurfaceProps) {
           onPresentation={onReferencePresentation}
         />
       })}
+      {!visualFrame && <div className="kernel-first-frame" role="status" aria-live="polite" aria-atomic="true"
+        style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
+          pointerEvents: 'none', fontSize: 12, color: renderFailed ? '#bd3b54' : '#777c8e' }}>
+        {renderFailed ? '画布暂未绘制完成' : '正在绘制画布…'}
+      </div>}
     </div>
   )
 }

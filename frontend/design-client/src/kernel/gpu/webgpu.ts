@@ -1,3 +1,4 @@
+import { textureByteLength } from './texture-byte-length'
 /// <reference types="@webgpu/types" />
 import vectorShader from '../../../../../design-studio/crates/design-kernel/shaders/vector.wgsl?raw'
 import { minifiedPreviewRgba8 } from './rgba8'
@@ -898,6 +899,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       height > this.device.limits.maxTextureDimension2D
     )
       throw new Error('WebGPU 纹理尺寸超限')
+    const bytes = textureByteLength(width, height, format === 'rgba32float' ? 16 : 4)
     const resource = this.device.createTexture({
       label: `Forma layer ${width}x${height} ${this.layerFormat}`,
       size: [width, height],
@@ -912,7 +914,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       width,
       height,
       resource,
-      bytes: width * height * (format === 'rgba32float' ? 16 : 4),
+      bytes,
     }
     this.textures.add(t)
     return t
@@ -1169,15 +1171,20 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.msaa.set(key, buffer)
     return buffer
   }
-  mask(path: PathMesh, target: Texture, sampleIndex?: number) {
+  maskRegion(path: PathMesh, target: Texture, sampleIndex: number, region: Rect) {
+    if (!path.area) throw Error('Regional coverage requires an interval program')
+    this.mask(path, target, sampleIndex, region)
+  }
+  mask(path: PathMesh, target: Texture, sampleIndex?: number, region = path.rect) {
     if (path.area) {
       if (!this.areaPipeline) throw new Error('Coverage program unavailable')
-      const u = parameters(path.rect)
+      const u = parameters(region)
       u[16] = 31
       const first=this.programOffsets?.get(path.area.first)
       if(this.programOffsets&&first===undefined)throw new Error('Resident coverage program is missing')
       u[36] = first??path.area.first
       u[38] = sampleIndex === undefined ? 0 : sampleIndex + 1
+      u.set([region.x - path.rect.x, region.y - path.rect.y, path.rect.w, path.rect.h], 40)
       this.pass(target, u, [])
       this.triangles++
       return

@@ -39,6 +39,9 @@ export function canvasRasterPlan(
   width: number,
   height: number,
   options: { pixelPreview?: number; grid?: boolean; checkerboard?: boolean; rasterProfile?: string; hdr?: boolean;
+    /** After camera motion, align final coverage to the display's pixel phase.
+     * Moving cameras may keep reprojecting canonical tiles as a preview. */
+    exactPhase?: boolean;
     /** Preserve the exact debounced world scale across camera reprojection. */
     samplingScale?: number },
 ) {
@@ -52,6 +55,7 @@ export function canvasRasterPlan(
       phase: { x: camera.x - Math.floor(camera.x), y: camera.y - Math.floor(camera.y) }, density: dpr }
   }
   if (options.pixelPreview || options.grid || options.checkerboard) return native()
+  if (options.exactPhase && (!Number.isInteger(view.x * dpr) || !Number.isInteger(view.y * dpr))) return native()
   const ceiling = options.rasterProfile === 'figma' || options.rasterProfile === 'figmaSoftware' ? 64 : 128
   if (needed > ceiling) return native() // Preserve the renderer's explicit limit error.
   const scale = needed
@@ -64,4 +68,11 @@ export function canvasRasterPlan(
   catch { return native() } // Extra density must not reject an otherwise supported display.
   return { mode: 'density-cache' as const, scale, camera: { x: 0, y: 0, zoom: scale },
     phase: { x: 0, y: 0 }, density }
+}
+
+/** Density alone cannot certify a reprojected tile as an exact display sample.
+ * Both axes must land on the same device-pixel lattice as the current camera. */
+export function canvasRasterPhaseMatches(view: CanvasCamera, dpr: number, scale: number, phase: { x: number; y: number }) {
+  return scale === view.zoom * dpr &&
+    Number.isInteger(view.x * dpr - phase.x) && Number.isInteger(view.y * dpr - phase.y)
 }

@@ -71,11 +71,12 @@ test('fractional regional blending preserves destination lattice and avoids text
 
 test('transient neutral-group fusion preserves cache, clip, mask, and backdrop boundaries',async()=>{
   const renderer=new GpuRenderer({name:'webgpu',managed:true,displayMath:true,scratchBytes:0} as Driver) as any
-  const group={id:'group',rect:{x:0,y:0,w:2000,h:2000},opacity:1,blend:'normal',children:['child'],fills:[],strokes:[],effects:[]}
+  const side=Math.ceil(Math.sqrt(renderer.interactionBudget/16))+1
+  const group={id:'group',rect:{x:0,y:0,w:side,h:side},opacity:1,blend:'normal',children:['child'],fills:[],strokes:[],effects:[]}
   const child={id:'child',blend:'normal',effects:[]}
   renderer.scene={coherentSamples:false,interactionRetained:true,nodes:{group,child}}
   renderer.drawList=vi.fn(async(_ids,target)=>target);renderer.nodeSource=vi.fn(async()=>undefined)
-  const target={rect:{x:0,y:0,w:2000,h:2000},texture:{}}
+  const target={rect:{x:0,y:0,w:side,h:side},texture:{}}
   await renderer.drawNode('group',target)
   expect(renderer.drawList).toHaveBeenCalledTimes(1)
   for(const patch of [{mask:true},{blend:'multiply'},{passthrough:true},{effects:[{kind:'background-blur',visible:true,radius:18}]}]){
@@ -882,3 +883,41 @@ test('command v5 cannot silently omit texture replay', async () => {
 
 // Image admission/atlas lifetime regressions run through the shared real-renderer
 // cases in __tests__/gpu-mipmap-fallback.test.ts and the standalone Node runner.
+
+
+test('external failed-frame recovery reconciles retired driver scratch with the renderer ledger', async () => {
+  const driver = { name: 'webgpu', managed: true, scratchBytes: 128,
+    async abortFrameAndReleaseFilterScratch(this: { scratchBytes: number }) { this.scratchBytes = 0 } } as unknown as Driver
+  const renderer = new GpuRenderer(driver) as any
+  renderer.bytes += 64 // Valid resident textures remain accounted and alive.
+  await renderer.abortFrameAndReleaseFilterScratch()
+  expect(renderer.bytes).toBe(64)
+})
+
+test('external abort failure still reconciles partially retired scratch exactly once', async () => {
+  const driver = { name: 'webgpu', managed: true, scratchBytes: 128,
+    async abortFrameAndReleaseFilterScratch(this: { scratchBytes: number }) { this.scratchBytes = 32; throw Error('submit failed') } } as unknown as Driver
+  const renderer = new GpuRenderer(driver) as any
+  renderer.bytes += 64
+  await expect(renderer.abortFrameAndReleaseFilterScratch()).rejects.toThrow('submit failed')
+  expect(renderer.bytes).toBe(96)
+})
+
+
+test.each([NaN, Infinity, -Infinity, .5, Number.MAX_SAFE_INTEGER + 1])('invalid surface dimension %s is rejected before GPU allocation or eviction', width => {
+  const create = vi.fn(), destroy = vi.fn()
+  const renderer = new GpuRenderer({ managed: true, create, destroy } as unknown as Driver) as any
+  expect(() => renderer.acquire({ x: 0, y: 0, w: width, h: 2 })).toThrow()
+  expect(create).not.toHaveBeenCalled(); expect(destroy).not.toHaveBeenCalled()
+  expect(renderer.bytes).toBe(0)
+})
+
+test('unsafe surface products, non-finite origins, and invalid byte admissions cannot poison the ledger', () => {
+  const create = vi.fn(), renderer = new GpuRenderer({ managed: true, create } as unknown as Driver) as any
+  expect(() => renderer.acquire({ x: 0, y: 0, w: 2 ** 28, h: 2 ** 28 })).toThrow(/字节数/)
+  expect(() => renderer.acquire({ x: NaN, y: 0, w: 1, h: 1 })).toThrow(/边界/)
+  for (const bytes of [NaN, Infinity, -.1, .5, Number.MAX_SAFE_INTEGER + 1])
+    expect(() => renderer.overBudget(bytes)).toThrow(/字节数/)
+  expect(renderer.overBudget(0)).toBe(false)
+  expect(renderer.bytes).toBe(0); expect(create).not.toHaveBeenCalled()
+})

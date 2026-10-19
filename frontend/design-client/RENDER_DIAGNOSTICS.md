@@ -12,11 +12,13 @@ JSON 顶层 `schema: 2` 保留原有 `samples` 阶段耗时，新增 `diagnostic
 - `cache`：可见计划的 `cacheHits` / `cacheMisses`，不含文档或瓦片标识
 - `tile`：收到瓦片时的采样密度、缓存结果、编译/构图/提交/等待等阶段耗时；收到瓦片不等于已经呈现
 - `present`：收到显示确认后的 `publishedDensity`。它是能映射到已确认纹理的最小采样密度；不能识别时省略。混合密度和遮盖可能使该值保守，不能单独用它证明可见边缘的清晰度
-- `error`：只保留 `budget`、`device-lost`、`cancelled`、`timeout` 或 `unknown`，不保留原始异常文本
+- `error`：保留 `budget`、`device-lost`、`cancelled`、`timeout` 或 `unknown`，不保留原始异常文本。实际 GPU 分配被工作集预算拒绝时，可额外包含 `requestedBytes`、`workingBytes`、`budgetBytes`，以及已知的分配尺寸 `width` / `height` 和布尔值 `coherent`。尺寸不是位置；字节数是该次分配拒绝时的工作集账本，不是设备可用显存测量
 
 密度单位统一为“每世界坐标单位的采样像素”，不是屏幕 DPR。3200% = `zoom: 32`，DPR 2 时目标密度为 64。阶段耗时是毫秒壁钟，可能重叠，不能简单相加或宣称为 input-to-photon 延迟。
 
 不记录文档/节点名称或 ID、图片 URI、二进制负载、原始错误文本或相机坐标。无效/无限/负值会被丢弃，不产生伪造的精度结果。
+
+预算摘要随具体失败经过 Web 和 Electron 共用的 worker/client 通道传递，在客户端收到拒绝时才交给启用中的录制器；不依赖开发构建或控制台钩子。错误随后被恢复或由界面再次报告时，可能还有一条原有的错误分类事件，因此错误事件数不是唯一故障次数。取消、设备丢失、其他失败和成功结果不会继承上一次预算摘要；已取消请求的迟到消息也不会进入录制。没有新遥测、网络请求或自动日志。
 
 ## 无 GPU 单元测试
 
@@ -28,13 +30,15 @@ npm run test:render-diagnostics
 npm run test:render-contracts
 ```
 
-这些 `.test.mjs` 用 Node 自带测试运行器直接导入实际生产模块，不依赖 Vitest、WASM 或 GPU。诊断的 8 个测试覆盖默认关闭、暂停/重开、512 条上限、丢弃计数、字段白名单、错误脱敏、非法数值、不可变快照，以及现有性能面板录制控制的集成。
+这些 `.test.mjs` 用 Node 自带测试运行器直接导入实际生产模块，不依赖 Vitest、WASM 或 GPU。诊断的 14 个测试覆盖默认关闭、暂停/重开、512 条上限、丢弃计数、字段白名单、错误脱敏、非法数值、不可变快照、预算摘要跨边界验证，以及现有性能面板录制控制的集成。
+
+`npm run test:renderer-contracts` 还验证生产分配拒绝携带的摘要、状态消费、成功/非法分配/新渲染尝试清除旧状态。安装依赖后，`npm test -- src/kernel/render-budget-client.test.ts src/kernel/client.test.ts` 用 worker 替身验证 Web 和 Electron 两种主机策略走同一通道，包含未启用录制、启用/暂停、错误分类隔离、取消后迟到消息和后续成功；不启动真实 GPU。
 
 `test:render-contracts` 还包含图片导入、页面滤镜采样策略和精确 CPU 路由的纯逻辑测试。它不是全部前端测试，也不是 Electron 或 WebGPU 视觉验收。
 
 ## 仍需真实渲染验收
 
-本轮环境未安装前端依赖或 Rust 工具链，没有运行 TypeScript 全量类型检查、Vitest、构建、WebGPU 或 Electron UI。下面的门禁应在具备依赖和真实 GPU 的机器补跑：
+本次预算诊断扩展已运行 TypeScript 全量类型检查、上述 Node 测试和 Web/Electron 策略的 Vitest 通道测试；这些都是 CPU 验证，没有运行真实 WebGPU 或 Electron UI。下面的门禁仍应在真实 GPU 的机器补跑：
 
 1. 默认 Web 和打包 Electron，DPR 1/2，同一文档持续缩放到 3200%，然后平移、反向缩放、回访旧倍率。
 2. 核对输入相机与实际显示确认，确认手势期间收到新的高密度瓦片，而非仅缩放旧纹理。

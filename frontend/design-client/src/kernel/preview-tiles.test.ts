@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PreviewAdmission, renderPreviewTiles, renderBitmapPreviewTiles, type PreviewTile } from './preview-tiles'
+import { PreviewAdmission, renderPreviewRegions, renderPreviewTiles, renderBitmapPreviewTiles, type PreviewTile } from './preview-tiles'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -115,4 +115,55 @@ it('display assembly closes malformed leaves and never publishes a partial faile
     return { width: tile.width, height: tile.height, close } as ImageBitmap
   }, 64)).rejects.toThrow('Device lost')
   expect(publish).not.toHaveBeenCalled()
+})
+
+
+it('canceled expensive subdivision stops before compiling its first child region', async () => {
+  let current = true
+  const attempted: PreviewTile[] = []
+  const checkpoint = async () => {
+    await Promise.resolve()
+    if (!current) throw new Error('PREVIEW_CANCELLED')
+  }
+  await expect(renderPreviewRegions(512, 512, async tile => {
+    attempted.push(tile)
+    current = false
+    throw new Error('GPU 表面内存预算超限')
+  }, 512, new PreviewAdmission(), checkpoint)).rejects.toThrow('PREVIEW_CANCELLED')
+  expect(attempted).toEqual([{ x: 0, y: 0, width: 512, height: 512 }])
+})
+
+it('cancellation is observed while traversing learned budget subdivisions', async () => {
+  const admission = new PreviewAdmission(), rasterize = vi.fn(async () => {})
+  admission.observe(Error('GPU surface budget exceeded'), { x: 0, y: 0, width: 128, height: 128 })
+  let checkpoints = 0
+  const checkpoint = async () => {
+    if (++checkpoints === 2) throw new Error('PREVIEW_CANCELLED')
+  }
+  await expect(renderPreviewRegions(512, 512, rasterize, 512, admission, checkpoint)).rejects.toThrow('PREVIEW_CANCELLED')
+  expect(rasterize).not.toHaveBeenCalled()
+  expect(checkpoints).toBe(2)
+})
+
+it('canceling a partial byte assembly never publishes it or starts the next region', async () => {
+  let current = true, rasterized = 0
+  await expect(renderPreviewTiles(512, 256, async tile => {
+    rasterized++
+    current = false
+    return pixels(tile)
+  }, 256, undefined, async () => {
+    if (!current) throw new Error('PREVIEW_CANCELLED')
+  })).rejects.toThrow('PREVIEW_CANCELLED')
+  expect(rasterized).toBe(1)
+})
+
+it('current subdivided work still assembles every exact pixel with checkpoints', async () => {
+  let checkpoints = 0
+  const result = await renderPreviewTiles(256, 128, async tile => {
+    if (tile.width > 128) throw new Error('GPU surface budget exceeded')
+    return pixels(tile, true)
+  }, 256, undefined, async () => { checkpoints++ })
+  expect(result.tiles).toBe(2)
+  expect(checkpoints).toBe(3)
+  expect(result.pixels).toEqual(pixels({ x: 0, y: 0, width: 256, height: 128 }, true))
 })

@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { blank, node, effect } from '../model'
 import { InteractionRenderer } from './interaction-renderer'
+import { PageTranslation } from './page-translation'
 import type { InteractionProps } from './interaction-layers'
 import {KernelClient} from './client'
 
@@ -19,8 +20,8 @@ vi.mock('./client', () => ({ KernelClient: class {
 
 const owners: InteractionRenderer[] = []
 afterEach(() => { owners.splice(0).forEach(owner => owner.dispose()); worker.jobs.length = 0; worker.poses.length=worker.stops.length=worker.released.length=0;worker.disposed = 0 })
-function fixture(dependent = false, zoom = 1) {
-  const doc = blank(), root = node('frame', 0, 0, 100, 100)
+function fixture(dependent = false, zoom = 1, extent = 100) {
+  const doc = blank(), root = node('frame', 0, 0, extent, extent)
   root.blend = 'normal'
   if (dependent) root.effects = [effect('glass')]
   doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
@@ -59,7 +60,7 @@ test('HQ dependent captures keep the settled computation camera and full density
   owner.prepare({document:doc,selection:[root.id],active:false,epoch:1,control:{current:null},onReady(){}},
     doc.pages[0].id,{x:-.375,y:.125,zoom:1},2,'figma','webgpu',undefined,{width:100,height:100})
   const request=worker.jobs[0].options
-  expect(request.view).toEqual({x:0,y:0,zoom:2})
+  expect(request.view).toEqual({x:-.75,y:.25,zoom:2})
   expect(request.tileViewport.length).toBeGreaterThan(0)
   expect(request.tileViewport.every((tile:any)=>tile.zoom===2&&tile.gutter===1)).toBe(true)
   expect(request.retainInteractionGraph).toBeUndefined()
@@ -307,4 +308,225 @@ test('nested background-blur motion captures the fixed board at Retina density i
   first.resolve({gpuTile:101,residentInteraction:true});await vi.waitFor(()=>expect(owner.ready).toBe(true))
   owner.control.apply(doc,{[child.id]:{transform:[1,0,0,1,900,500]}})
   expect(worker.poses).toHaveLength(1);expect(worker.jobs).toHaveLength(1)
+})
+
+test.each([1, 2])('native retained layers refresh 31x to 32x without a density gap at DPR %i', async dpr => {
+  const doc = blank(), root = node('frame', .125, -.25, 2, 2)
+  root.blend = 'normal'
+  doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
+  const props: InteractionProps = { document: doc, selection: [root.id], active: false,
+    epoch: 1, control: { current: null }, onReady() {} }
+  const owner = new InteractionRenderer(vi.fn()); owners.push(owner)
+  owner.prepare(props, doc.pages[0].id, { x: 0, y: 0, zoom: 31 }, dpr, 'analytic', 'webgpu')
+  expect(worker.jobs[0].options.view.zoom).toBe(31 * dpr)
+  worker.jobs[0].resolve(); await vi.waitFor(() => expect(owner.ready).toBe(true))
+  owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, 1.125, .75] } })
+  const view = { x: 0, y: 0, zoom: 32 }
+  owner.prepare({ ...props, active: true }, doc.pages[0].id, view, dpr, 'analytic', 'webgpu')
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.jobs[1].options.view.zoom).toBe(32 * dpr)
+  worker.jobs[1].resolve()
+  await vi.waitFor(() => expect(owner.items(view)![0].tile.zoom).toBe(32 * dpr))
+  expect(owner.control.isActive()).toBe(true)
+})
+
+test('in-flight 31x warm-up cannot pin a 32x drag to stale density', async () => {
+  const doc = blank(), root = node('frame', 0, 0, 2, 2)
+  root.blend = 'normal'; doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
+  const props: InteractionProps = { document: doc, selection: [root.id], active: false,
+    epoch: 1, control: { current: null }, onReady() {} }
+  const owner = new InteractionRenderer(vi.fn()); owners.push(owner)
+  owner.prepare(props, doc.pages[0].id, { x: 0, y: 0, zoom: 31 }, 2, 'analytic', 'webgpu')
+  owner.prepare(props, doc.pages[0].id, { x: 0, y: 0, zoom: 32 }, 2, 'analytic', 'webgpu')
+  expect(worker.jobs).toHaveLength(1)
+  worker.jobs[0].resolve(); await vi.waitFor(() => expect(worker.jobs).toHaveLength(2))
+  worker.jobs[1].resolve(); await vi.waitFor(() => expect(owner.tiles[0].zoom).toBe(64))
+})
+
+
+test('native retained layers keep integer pixel motion fast and reraster fractional coverage without a blank', async () => {
+  const { doc, root, owner, view, props } = fixture(false, 32, 10)
+  worker.jobs[0].resolve()
+  await vi.waitFor(() => expect(owner.ready).toBe(true))
+  owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, 1 / 32, 0] } })
+  const previous = owner.items(view)![0]
+  expect(worker.jobs).toHaveLength(1)
+  expect(owner.mode).toBe('retained-layers')
+  owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, .1, 0] } })
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.jobs[1].options.interactionNative).toBe(true)
+  expect(worker.jobs[1].options.view.zoom).toBe(32)
+  expect(worker.jobs[1].document.nodes[root.id].transform[4]).toBe(.1)
+  expect(owner.items(view)![0].tile).toBe(previous.tile)
+  expect(owner.items(view)![0].placement).toEqual(previous.placement)
+  expect(owner.items(view)![0].blend).toBe(true)
+  // An authored React refresh cannot overwrite the newer imperative pose.
+  owner.prepare({ ...props, active: true }, doc.pages[0].id, view, 1, 'analytic', 'webgpu')
+  worker.jobs[1].resolve()
+  await vi.waitFor(() => expect(owner.mode).toBe('live-kernel'))
+  expect(worker.jobs).toHaveLength(2)
+  expect(owner.items(view)![0].tile).not.toBe(previous.tile)
+  expect(owner.items(view)![0].blend).toBe(false)
+  expect(owner.presentedInput.sequence).toBe(2)
+})
+
+test('fractional retained promotion coalesces newer poses and commits the last native sample', async () => {
+  const { doc, root, owner, view } = fixture(false, 32, 10)
+  worker.jobs[0].resolve(); await vi.waitFor(() => expect(owner.ready).toBe(true))
+  for (const x of [.1, .2, .3]) owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, x, 0] } })
+  expect(worker.jobs).toHaveLength(2)
+  worker.jobs[1].resolve()
+  await vi.waitFor(() => expect(worker.jobs).toHaveLength(3))
+  expect(worker.jobs[2].document.nodes[root.id].transform[4]).toBe(.3)
+  expect(worker.jobs[2].options.view.zoom).toBe(32)
+  worker.jobs[2].resolve(); await vi.waitFor(() => expect(owner.samples).toBe(2))
+  const moved = { ...doc, nodes: { ...doc.nodes, [root.id]: { ...root, transform: [1, 0, 0, 1, .3, 0] as const } } } as typeof doc
+  owner.control.end(moved)
+  expect(owner.items(view)).not.toBeNull()
+  expect(owner.presentedInput.sequence).toBe(3)
+})
+
+test('fractional input during initial retained warm-up publishes then rerasterizes without cancelling useful work', async () => {
+  const { doc, root, owner, view } = fixture(false, 32, 10)
+  owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, .1, 0] } })
+  expect(worker.jobs).toHaveLength(1)
+  worker.jobs[0].resolve()
+  await vi.waitFor(() => expect(worker.jobs).toHaveLength(2))
+  expect(owner.ready).toBe(true)
+  const previous = owner.items(view)![0]
+  expect(previous.placement!.left).toBe(previous.tile.x / previous.tile.zoom * view.zoom)
+  worker.jobs[1].resolve()
+  await vi.waitFor(() => expect(owner.mode).toBe('live-kernel'))
+})
+
+test('failed retained warm-up admits a changed native density once without a same-request retry loop', async () => {
+  const { doc, props, owner, view } = fixture(false, 31, 10)
+  worker.jobs[0].reject(Error('PREVIEW_BUDGET'))
+  await vi.waitFor(() => expect(owner.error).toContain('PREVIEW_BUDGET'))
+  owner.prepare(props, doc.pages[0].id, view, 1, 'analytic', 'webgpu')
+  expect(worker.jobs).toHaveLength(1)
+  const higher = { ...view, zoom: 32 }
+  owner.prepare(props, doc.pages[0].id, higher, 1, 'analytic', 'webgpu')
+  owner.prepare(props, doc.pages[0].id, higher, 1, 'analytic', 'webgpu')
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.jobs[1].options.view.zoom).toBe(32)
+  worker.jobs[1].resolve()
+  await vi.waitFor(() => expect(owner.ready).toBe(true))
+  expect(owner.error).toBe('')
+})
+
+test('retained captures preserve the world pixel lattice for fractional authored bounds', async () => {
+  const doc = blank(), root = node('frame', .1, .2, 10, 10)
+  root.blend = 'normal'; doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
+  const owner = new InteractionRenderer(vi.fn()); owners.push(owner)
+  owner.prepare({ document: doc, selection: [root.id], active: false, epoch: 1, control: { current: null }, onReady() {} },
+    doc.pages[0].id, { x: 0, y: 0, zoom: 32 }, 1, 'analytic', 'webgpu')
+  expect(Number.isInteger(worker.jobs[0].options.view.x)).toBe(true)
+  expect(Number.isInteger(worker.jobs[0].options.view.y)).toBe(true)
+  worker.jobs[0].resolve(); await vi.waitFor(() => expect(owner.ready).toBe(true))
+  expect(owner.tiles.every(tile => Number.isInteger(tile.x) && Number.isInteger(tile.y))).toBe(true)
+})
+
+
+test('failed fractional replacement retains the complete pose and a newer input recovers', async () => {
+  const { doc, root, owner, view } = fixture(false, 32, 10)
+  worker.jobs[0].resolve(); await vi.waitFor(() => expect(owner.ready).toBe(true))
+  owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, .1, 0] } })
+  const retained = owner.items(view)![0].tile
+  worker.jobs[1].reject(Error('temporary render failure'))
+  await vi.waitFor(() => expect(owner.error).toContain('temporary render failure'))
+  expect(owner.items(view)![0].tile).toBe(retained)
+  expect(owner.mode).toBe('retained-layers')
+  owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, .2, 0] } })
+  worker.jobs[2].resolve(); await vi.waitFor(() => expect(owner.mode).toBe('live-kernel'))
+  expect(owner.error).toBe('')
+})
+
+test('disposing a fractional native replacement releases its late shared GPU handle', async () => {
+  const doc = blank(), root = node('frame', 0, 0, 10, 10)
+  root.blend = 'normal'; doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
+  const shared = new KernelClient(), owner = new InteractionRenderer(vi.fn(), shared); owners.push(owner)
+  owner.prepare({ document: doc, selection: [root.id], active: false, epoch: 1, control: { current: null }, onReady() {} },
+    doc.pages[0].id, { x: 0, y: 0, zoom: 32 }, 1, 'analytic', 'webgpu')
+  worker.jobs[0].resolve({ gpuTile: 70 }); await vi.waitFor(() => expect(owner.ready).toBe(true))
+  owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, .1, 0] } })
+  owner.dispose()
+  worker.jobs[1].resolve({ gpuTile: 71 })
+  await vi.waitFor(() => expect(worker.released).toContain(71))
+  expect(owner.ready).toBe(false)
+  shared.dispose()
+})
+
+
+test('a failed old-density warm-up consumes the newer queued density exactly once', async () => {
+  const { doc, props, owner, view } = fixture(false, 31, 10)
+  const higher = { ...view, zoom: 32 }
+  owner.prepare(props, doc.pages[0].id, higher, 1, 'analytic', 'webgpu')
+  expect(worker.jobs).toHaveLength(1)
+  worker.jobs[0].reject(Error('PREVIEW_BUDGET'))
+  await vi.waitFor(() => expect(worker.jobs).toHaveLength(2))
+  expect(worker.jobs[1].options.view.zoom).toBe(32)
+  worker.jobs[1].reject(Error('PREVIEW_BUDGET'))
+  await vi.waitFor(() => expect(owner.error).toContain('PREVIEW_BUDGET'))
+  owner.prepare(props, doc.pages[0].id, higher, 1, 'analytic', 'webgpu')
+  expect(worker.jobs).toHaveLength(2)
+})
+
+
+test('retained and native live samples preserve fractional device camera phase at 32x', async () => {
+  const doc = blank(), root = node('frame', 0, 0, 2, 2)
+  root.blend = 'normal'; doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
+  const owner = new InteractionRenderer(vi.fn()); owners.push(owner)
+  const view = { x: .125, y: -.125, zoom: 32 }, dpr = 2
+  owner.prepare({ document: doc, selection: [root.id], active: false, epoch: 1, control: { current: null }, onReady() {} },
+    doc.pages[0].id, view, dpr, 'analytic', 'webgpu', undefined, { width: 100, height: 100 })
+  worker.jobs[0].resolve(); await vi.waitFor(() => expect(owner.ready).toBe(true))
+  expect(owner.tiles[0].phaseX).toBe(.25); expect(owner.tiles[0].phaseY).toBe(.75)
+  owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, .1, 0] } })
+  worker.jobs[1].resolve(); await vi.waitFor(() => expect(owner.mode).toBe('live-kernel'))
+  const tile = owner.tiles[0]
+  expect(tile.phaseX).toBe(.25); expect(tile.phaseY).toBe(.75)
+  const placement = owner.items(view)![0].placement!
+  expect(Number.isInteger(placement.left * dpr)).toBe(true)
+  expect(Number.isInteger(placement.top * dpr)).toBe(true)
+})
+
+
+test('page translation hands fractional native motion to the GPU renderer without losing its last complete pose', async () => {
+  const doc = blank(), root = node('frame', 0, 0, 10, 10)
+  root.blend = 'normal'; doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
+  const props: InteractionProps = { document: doc, selection: [root.id], active: true, epoch: 1, control: { current: null }, onReady() {} }
+  const view = { x: 0, y: 0, zoom: 32 }, size = { width: 100, height: 100 }
+  const shared = new KernelClient(), owner = new InteractionRenderer(vi.fn(), shared); owners.push(owner)
+  const page = new PageTranslation(vi.fn(), (document, patches, displayed) => {
+    owner.prepare({ ...props, document: displayed }, doc.pages[0].id, view, 1, 'analytic', 'webgpu', doc, size)
+    return owner.control.apply(document, patches)
+  })
+  const tile = { key: 'page', serial: 1, gpuTile: 70, bytes: new Uint8Array(), x: 0, y: 0, width: 512, height: 512, zoom: 32 }
+  const items = [{ tile, active: true, layer: 0 }]
+  page.prepare(props, doc.pages[0].id, doc, items, doc, true); page.bind()
+  props.control.current!.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, 1 / 32, 0] } })
+  const accepted = page.items(view)![0].placement!.left
+  expect(props.control.current!.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, .1, 0] } })).toEqual({ x: .1, y: 0 })
+  expect(props.control.current).toBe(owner.control)
+  expect(owner.ready).toBe(false)
+  expect(page.items(view)![0].placement!.left).toBe(accepted)
+  expect(worker.jobs[0].document.nodes[root.id].transform[4]).toBe(1 / 32)
+  expect(page.prepare(props, doc.pages[0].id, doc, items, doc, true)).toBe(false)
+  owner.prepare(props, doc.pages[0].id, view, 1, 'analytic', 'webgpu', doc, size)
+  expect(worker.jobs).toHaveLength(1)
+  worker.jobs[0].resolve({ gpuTile: 71 })
+  await vi.waitFor(() => expect(worker.jobs).toHaveLength(2))
+  expect(owner.ready).toBe(true)
+  expect(worker.jobs[1].document.nodes[root.id].transform[4]).toBe(.1)
+  expect(worker.jobs[1].options.interactionNative).toBe(true)
+  owner.prepare(props, doc.pages[0].id, view, 1, 'analytic', 'webgpu', doc, size)
+  worker.jobs[1].resolve({ gpuTile: 72, residentInteraction: true })
+  await vi.waitFor(() => expect(owner.mode).toBe('live-kernel'))
+  expect(worker.jobs).toHaveLength(2)
+  const moved = { ...doc, nodes: { ...doc.nodes, [root.id]: { ...root, transform: [1, 0, 0, 1, .1, 0] as typeof root.transform } } }
+  owner.control.end(moved)
+  expect(page.prepare({ ...props, document: moved, active: false }, doc.pages[0].id, moved, items, moved, true)).toBe(true)
+  expect(page.handingOff).toBe(false)
+  shared.dispose()
 })

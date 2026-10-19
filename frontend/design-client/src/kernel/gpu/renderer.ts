@@ -1,3 +1,5 @@
+import { renderErrorWithBudget, sanitizeRenderBudget, type RenderBudgetDiagnostic } from '../render-diagnostics'
+import { textureByteLength } from './texture-byte-length'
 import { movingBackdropKey, staticBackdropKey } from './static-backdrop'
 import { workingSetBudget } from './working-set-budget'
 import {rectangleBorder} from './rect-partition'
@@ -146,7 +148,7 @@ export class GpuRenderer {
     if (pause && import.meta.env.VITE_DESIGN_ENCODE_SUBMIT !== '0') this.driver.submitPending?.()
     return pause
   }
-  lastBudgetFailure?: {bytes:number;workingBytes:number;retainedBytes:number;required:number;budget:number;coherent?:boolean;retained?:boolean;busyCount:number;busy:number[][];stack?:string}
+  lastBudgetFailure?: RenderBudgetDiagnostic
   private frameBudget = SURFACE_BUDGET_BYTES
   private backdropReuseFrames=0
   private backdropReusePixels=0
@@ -442,14 +444,14 @@ export class GpuRenderer {
     let texture = this.optimized && allowCache ? this.materialFields.get(key, bits) : undefined
     if (texture) this.fieldHits++
     else {
-      if (this.overBudget(admissionBytes)) throw new Error('GPU 表面内存预算超限')
+      if (this.overBudget(admissionBytes, layout ? undefined : r.w, layout ? undefined : r.h)) throw this.budgetError('GPU 表面内存预算超限')
       const start = performance.now()
       const values = build()
       this.fieldBuildMs += performance.now() - start
       this.fieldBuilds++
       const [width,height] = layout?.(values) || [r.w,r.h]
       if (values.length !== width * height * 4) throw Error('无效的参数字段布局')
-      if (this.overBudget(values.byteLength)) throw new Error('GPU 表面内存预算超限')
+      if (this.overBudget(values.byteLength, width, height)) throw this.budgetError('GPU 表面内存预算超限')
       texture = upload.call(this.driver, values, width, height)
       this.fieldUploadBytes += values.byteLength
       this.bytes += texture.bytes
@@ -482,14 +484,16 @@ export class GpuRenderer {
   }
   private acquire(r: Rect, binaryCoverage = false, scalarCoverage = false): Surface {
     if (r.w < 1 || r.h < 1) throw new Error('空 GPU 表面')
+    const required = textureByteLength(r.w, r.h, this.driver.managed && !binaryCoverage && !scalarCoverage ? 16 : 4)
+    if (![r.x, r.y, r.x + r.w, r.y + r.h].every(value => Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER))
+      throw new Error('无效的 GPU 表面边界')
     const key = `${scalarCoverage ? 'scalar:' : binaryCoverage ? 'binary:' : ''}${r.w}:${r.h}`,
       list = this.free.get(key)
     let texture = list?.pop()
     if (!texture) {
-      const required = r.w * r.h * (this.driver.managed && !binaryCoverage && !scalarCoverage ? 16 : 4)
       // Over-budget pressure first evicts the oldest generations of the free
       // pool and the least-recently-used images (both re-create identically).
-      if (this.overBudget(required)) {
+      if (this.overBudget(required, r.w, r.h)) {
         if (import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile') {
           const busy = new Map<string, number>()
           for (const texture of this.busy) {
@@ -502,7 +506,7 @@ export class GpuRenderer {
               binary:!!t.binaryCoverage,scalar:!!t.scalarCoverage,aliases:this.aliases.get(t)||1,...this.traceSurfaces.get(t) })),
             coordinates: this.coordinateMaps.size, stack: new Error().stack }))
         }
-        throw new Error('GPU 表面内存预算超限')
+        throw this.budgetError('GPU 表面内存预算超限')
       }
       texture = scalarCoverage ? this.driver.createScalarCoverage!(r.w,r.h) : binaryCoverage ? this.driver.createBinaryCoverage!(r.w, r.h) : this.driver.create(r.w, r.h)
       this.bytes += texture.bytes
@@ -569,7 +573,9 @@ export class GpuRenderer {
    * last referenced before the previous frame completed, so destroying them
    * cannot race queued commands. Callers keep throwing their explicit errors;
    * nothing is silently downgraded. */
-  private overBudget(required: number): boolean {
+  private overBudget(required: number, width?: number, height?: number): boolean {
+    this.lastBudgetFailure = undefined
+    if (!Number.isSafeInteger(required) || required < 0) throw new Error('无效的 GPU 分配字节数')
     if (this.workingBytes + required <= this.frameBudget) return false
     this.materialFields.evictUnused(this.workingBytes + required - this.frameBudget)
     this.coverage.evictUnused(this.workingBytes + required - this.frameBudget)
@@ -589,11 +595,17 @@ export class GpuRenderer {
     if (this.workingBytes + required > this.frameBudget && !this.driver.captureDisplay && !this.scene?.interactionRetained && this.interactionRoots.size)
       this.retireInteractionRoots()
     const exceeded = this.workingBytes + required > this.frameBudget
-    if (exceeded && import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile')
-      this.lastBudgetFailure = {bytes:this.bytes,workingBytes:this.workingBytes,retainedBytes:this.interactionBytes,required,budget:this.frameBudget,
-        coherent:this.scene?.coherentSamples,retained:this.scene?.interactionRetained,
-        busyCount:this.busy.size,busy:[...this.busy].sort((a,b)=>b.bytes-a.bytes).slice(0,16).map(t=>[t.width,t.height,t.bytes]),stack:new Error().stack}
+    if (exceeded)
+      this.lastBudgetFailure = sanitizeRenderBudget({ requestedBytes: required, workingBytes: this.workingBytes,
+        budgetBytes: this.frameBudget, width, height, coherent: this.scene?.coherentSamples })
     return exceeded
+  }
+  /** Consume at the immediate allocation rejection, before any recovery can
+   * clear/reuse this renderer. Optional failed admissions own no error. */
+  private budgetError(message: string): Error {
+    const diagnostic = this.lastBudgetFailure
+    this.lastBudgetFailure = undefined
+    return renderErrorWithBudget(message, undefined, diagnostic)
   }
   private release(...surfaces: (Surface | undefined)[]) {
     for (const s of new Set(surfaces)) {
@@ -1035,7 +1047,7 @@ export class GpuRenderer {
       const image = this.managedImageLoader(uri, false, level)
       // Images share the one surface ledger; pressure evicts older images
       // first instead of failing the frame.
-      if (this.overBudget(image.width * image.height * 16)) throw new Error('GPU 浮点图片内存预算超限')
+      if (this.overBudget(image.width * image.height * 16, image.width, image.height)) throw this.budgetError('GPU 浮点图片内存预算超限')
       if (intoAtlas && image.width <= ATLAS_MAX_IMAGE && image.height <= ATLAS_MAX_IMAGE)
         return this.writeAtlasSlot(uri, level, image.width, image.height, { floats: bakeFloats(image.pixels) }, adjust)
       const texture = this.driver.uploadLinear(bakeFloats(image.pixels), image.width, image.height)
@@ -1058,7 +1070,7 @@ export class GpuRenderer {
     // fidelity pixels as a successfully rendered native-density tile.
     if (level === 0 && image.width * image.height > 16_777_216)
       throw new Error('GPU 图片像素预算超限')
-    if (this.overBudget(image.bytes.length)) throw new Error('GPU 图片总内存预算超限')
+    if (this.overBudget(image.bytes.length, image.width, image.height)) throw this.budgetError('GPU 图片总内存预算超限')
     if (intoAtlas && image.width <= ATLAS_MAX_IMAGE && image.height <= ATLAS_MAX_IMAGE)
       return this.writeAtlasSlot(uri, level, image.width, image.height, { bytes: bake(image.bytes) }, adjust)
     const texture = this.driver.uploadRgba8(bake(image.bytes), image.width, image.height)
@@ -1098,9 +1110,9 @@ export class GpuRenderer {
     let fresh = false
     if (!page) {
       const texture = this.driver.create(ATLAS_SIDE, ATLAS_SIDE)
-      if (this.overBudget(texture.bytes)) {
+      if (this.overBudget(texture.bytes, texture.width, texture.height)) {
         this.driver.destroy(texture)
-        throw new Error('GPU 图集页内存预算超限')
+        throw this.budgetError('GPU 图集页内存预算超限')
       }
       this.bytes += texture.bytes
       this.peak = Math.max(this.peak, this.bytes)
@@ -1264,7 +1276,7 @@ export class GpuRenderer {
       (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin], n.rect, () => {
       let values = compact ? image_sampling_axes_placed(...arguments_) : new Float32Array()
       if (!values.length) {
-        if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16)) throw new Error('GPU 表面内存预算超限')
+        if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16, n.rect.w, n.rect.h)) throw this.budgetError('GPU 表面内存预算超限')
         values = this.driver.managed ? image_sampling_grid_placed(...arguments_) : image_byte_sampling_field_placed(...arguments_)
       }
       separated = this.driver.managed ? values[3] === -1 : values[3] === 1
@@ -1746,6 +1758,8 @@ export class GpuRenderer {
       this.activeNode = id
       const n = this.scene.nodes[id]
       if (!n || n.opacity <= 0) continue
+      const streamed = await this.streamIsolatedFilter(n, targets, clip)
+      if (streamed) { targets = streamed; continue }
       if (this.optimized && this.driver.managed && !this.driver.displayMath &&
           n.children.length && this.independentSamples(n)) {
         // No descendant resolves or reads another sample plane. Finish and
@@ -2171,6 +2185,106 @@ export class GpuRenderer {
     this.orderedEffectLayers++
     return targets
   }
+  /** Resolve an isolated subtree's independent samples in bounded rows, then keep only the horizontal
+   * filter output needed by the vertical pass. Sampling coordinates, exact
+   * coefficients and the four-sample addition order are unchanged. */
+  private filterSourceSupported(n: GpuNode, root = true): boolean {
+    return !n.passthrough && !n.clip && !n.mask && !n.maskId && !n.strokes.length && !n.previewSource &&
+      (!n.fill.count || !!n.fill.area) && (root || !n.effects.some(e=>e.visible)) &&
+      n.fills.every(p=>p.kind==='solid'||p.kind==='image') &&
+      n.children.every(id=>!this.scene.nodes[id]||this.filterSourceSupported(this.scene.nodes[id],false))
+  }
+  private filterSource(n: GpuNode, region: Rect, sample: number): Surface {
+    if(!intersect(n.rect,region).w||!intersect(n.rect,region).h)return this.empty(region)
+    const node={...n,rect:region,fills:n.fills.map(p=>({...p}))}
+    this.sampleIndex=sample
+    let layer=this.empty(region)
+    if(node.fills.some(p=>p.visible)) {
+      const mask=this.acquire(region,!!this.driver.createBinaryCoverage)
+      if(n.fill.count)this.driver.maskRegion!(n.fill,mask.texture,sample,region)
+      else this.driver.clear(mask.texture)
+      for(const paint of node.fills)if(paint.visible)layer=this.paintOver(node,paint,mask,layer)
+      this.release(mask)
+    }
+    for(const id of n.children){
+      const child=this.scene.nodes[id];if(!child||child.opacity<=0)continue
+      const source=this.filterSource(child,region,sample)
+      layer=this.merge(source,layer,child.blend,child.opacity)
+      this.release(source)
+    }
+    for(const paint of node.fills)this.imageGrids.delete(paint)
+    return layer
+  }
+  private async streamIsolatedFilter(n: GpuNode, targets: Surface[], clip?: Surface[]): Promise<Surface[] | undefined> {
+    const effects = n.effects.filter(e => e.visible)
+    if (!this.optimized || !this.driver.managed || this.driver.displayMath || !this.driver.maskRegion ||
+        !this.driver.sequentialSampleResolve || !this.scene.integratedBlur || this.scene.displayFilters ||
+        !this.filterSourceSupported(n) || this.interactionCapturing || this.scene.interactionRetained ||
+        effects.length !== 1 || effects[0].gradientBlur ||
+        !(effects[0].kind === 'blur' || effects[0].kind === 'shadow' && effects[0].spread === 0 &&
+          effects[0].x === 0 && effects[0].y === 0 && this.driver.exactShadowOver) ||
+        n.fills.some(p => p.kind !== 'solid' && p.kind !== 'image')) return
+    const radius = effects[0].radius * scale(n.matrix)
+    if (!(radius >= 64 && radius <= 2048)) return
+    const output = intersect(n.rect, targets[0].rect)
+    if (!output.w || !output.h) return targets
+    const reach = Math.ceil(radius) + 1
+    const input = intersect(n.rect, {x:output.x-reach,y:output.y-reach,w:output.w+reach*2,h:output.h+reach*2})
+    if (!exactBlendLattice([input, output]) || input.w > 8192 || input.h > 8192) return
+    // Reserve room for the persistent horizontal result and four RGBA strips.
+    await this.reclaimScratch(output.w*input.h*16 + input.w*64*16*4)
+    const horizontal = this.acquire({x:output.x,y:input.y,w:output.w,h:input.h})
+    this.driver.clear(horizontal.texture)
+    for (let y=input.y;y<input.y+input.h;y+=64) {
+      await this.reclaimScratch()
+      const pause=this.yieldEncoding(); if(pause) await pause
+      const region={x:input.x,y,w:input.w,h:Math.min(64,input.y+input.h-y)}
+      let resolved:Surface|undefined
+      for(let i=0;i<4;i++) {
+        const layer=this.filterSource(n,region,i)
+        const next=this.run(48,region,resolved?[layer,resolved]:[layer],u=>{u[17]=i})
+        this.release(layer,resolved);resolved=next
+      }
+      this.sampleIndex=undefined
+      const filtered=this.exactTentAxis(resolved!,radius,0,{x:output.x,y,w:output.w,h:region.h})
+      this.release(resolved)
+      const u=parameters(horizontal.rect,filtered.rect);u[16]=0
+      this.driver.pass(horizontal.texture,u,[filtered.texture],{x:0,y:y-input.y,w:output.w,h:region.h})
+      this.release(filtered)
+    }
+    await this.reclaimScratch(output.w*output.h*16 + output.h*64*16)
+    const blurred=this.acquire(output)
+    this.driver.clear(blurred.texture)
+    // Bound vertical encoding too: one whole-width prefix pass can otherwise
+    // delay camera-presentation messages behind hundreds of dispatches.
+    for(let x=output.x;x<output.x+output.w;x+=64){
+      const pause=this.yieldEncoding();if(pause)await pause
+      await this.reclaimScratch()
+      const region={x,y:output.y,w:Math.min(64,output.x+output.w-x),h:output.h}
+      const filtered=this.exactTentAxis(horizontal,radius,1,region)
+      const u=parameters(output,filtered.rect);u[16]=0
+      this.driver.pass(blurred.texture,u,[filtered.texture],{x:x-output.x,y:0,w:region.w,h:region.h})
+      this.release(filtered)
+    }
+    this.release(horizontal)
+    const shadow=effects[0].kind==='shadow'
+    const sharpNode=shadow?{...n,rect:output,fills:n.fills.map(p=>({...p}))}:undefined
+    for(let i=0;i<4;i++) {
+      await this.reclaimScratch()
+      let source=blurred
+      if(sharpNode){
+        const sharp=this.filterSource(n,output,i)
+        source=this.shadow(sharp,blurred,sharpNode,effects[0],true)
+        this.release(sharp)
+      }
+      targets[i]=this.merge(source,targets[i],n.blend,n.opacity,clip?.[i])
+      if(shadow)this.release(source)
+    }
+    this.sampleIndex=undefined
+    this.release(blurred)
+    this.orderedEffectLayers++
+    return targets
+  }
   private async applySampleEffects(
     n: GpuNode,
     planes: Surface[],
@@ -2187,12 +2301,9 @@ export class GpuRenderer {
         (fx.texture ? fx.radius === 0 : fx.amount === 0 || fx.opacity === 0)
       )
         continue
-      const scalarAlpha = !!(this.optimized && this.driver.managed && this.driver.scalarAlphaFilter &&
-        this.scene.integratedBlur && !this.scene.displayFilters && fx.spread === 0 &&
-        (fx.kind === 'shadow' || fx.kind === 'inner-shadow'))
-      const resolved = resolvedFirstBlur || this.run(scalarAlpha ? 49 : 23, n.rect, planes, undefined, 15, undefined, scalarAlpha)
-      resolvedFirstBlur = undefined
       if (fx.kind === 'blur') {
+        const resolved = resolvedFirstBlur || this.run(23, n.rect, planes)
+        resolvedFirstBlur = undefined
         // The resolve has encoded the last read of these sample planes.
         // Keeping them throughout both separable passes unnecessarily pins
         // four full effect-halo surfaces at high zoom.
@@ -2214,6 +2325,10 @@ export class GpuRenderer {
           coverage.owned = true
         }
       } else if (fx.kind === 'shadow' || fx.kind === 'inner-shadow') {
+        const scalarAlpha = !!(this.optimized && this.driver.managed && this.driver.scalarAlphaFilter &&
+          this.scene.integratedBlur && !this.scene.displayFilters && fx.spread === 0)
+        const resolved = resolvedFirstBlur || this.run(scalarAlpha ? 49 : 23, n.rect, planes, undefined, 15, undefined, scalarAlpha)
+        resolvedFirstBlur = undefined
         const inner = fx.kind === 'inner-shadow'
         const pointwise =
           fx.radius === 0 &&
@@ -2261,7 +2376,8 @@ export class GpuRenderer {
       } else if (fx.kind === 'noise' || fx.kind === 'texture') {
         const shared = new Map<Texture, Surface>()
         const addresses = this.textureGrid(n, fx)
-        const outputs = planes.map((plane) => {
+        const outputs: Surface[] = []
+        for (const plane of planes) {
           let next = shared.get(plane.texture)
           if (!next) {
             next = this.run(
@@ -2283,9 +2399,12 @@ export class GpuRenderer {
             )
             shared.set(plane.texture, next)
           } else next = this.retain(next)
-          return next
-        })
-        this.release(...planes, resolved)
+          // No four-sample resolve is read by noise/texture. Once this pass is
+          // encoded, its input can return to the queue-ordered pool. Retained
+          // aliases stay pinned; later shared samples reuse the saved output.
+          this.release(plane)
+          outputs.push(next)
+        }
         planes = outputs
       } else throw new Error(`不支持的采样效果 ${fx.kind}`)
     }
@@ -2298,13 +2417,27 @@ export class GpuRenderer {
     if (!kernel) {
       const bytes = box ? certified_box_kernel_rgba(radius) : certified_tent_kernel_rgba(radius)
       if (!this.driver.uploadRgba8) throw new Error('Backend cannot upload certified coefficients')
-      if (this.overBudget(bytes.length * 4)) throw new Error('GPU 表面内存预算超限')
+      if (this.overBudget(bytes.length * 4, bytes.length / 4, 1)) throw this.budgetError('GPU 表面内存预算超限')
       const texture = this.driver.uploadRgba8(bytes, bytes.length / 4, 1)
       kernel = { texture, rect: rect(0, 0, bytes.length / 4, 1) }
       this.bytes += texture.bytes
       this.certifiedKernels.set(key, kernel)
     }
     return kernel
+  }
+  private exactTentAxis(input: Surface, radius: number, axis: number, output: Rect) {
+    if (!(radius > 0 && radius <= 2048)) throw Error('GPU exact blur radius exceeds 2048 pixels')
+    let kernel=this.blurKernels.get(radius)
+    if(!kernel) {
+      const bytes=rational_tent_kernel_rgba(radius)
+      if(!this.driver.uploadRgba8)throw Error('Backend cannot upload exact coefficients')
+      if(this.overBudget(bytes.length*4,bytes.length/4,1))throw this.budgetError('GPU 表面内存预算超限')
+      const texture=this.driver.uploadRgba8(bytes,bytes.length/4,1)
+      kernel={texture,rect:rect(0,0,bytes.length/4,1)}
+      this.bytes+=texture.bytes;this.blurKernels.set(radius,kernel)
+    }
+    const certified=this.certifiedKernel(radius)
+    return this.run(22,output,[input,kernel,...(certified?[certified]:[])],u=>u.set([radius,axis,0,1],36),15,{kind:'tent',radius})
   }
   private blur(input: Surface, sigma: number, clampEdges = false, alphaOnly = false): Surface {
     // Every finite normalized kernel maps the all-+0 field to itself, with
@@ -2329,7 +2462,7 @@ export class GpuRenderer {
         const weights = displayFilterWeights(radius), height = Math.ceil(weights.length / 256)
         const data = new Float32Array(256 * height * 4)
         weights.forEach((weight, i) => { data[i * 4] = weight })
-        if (this.overBudget(data.byteLength)) throw new Error('GPU 表面内存预算超限')
+        if (this.overBudget(data.byteLength, 256, height)) throw this.budgetError('GPU 表面内存预算超限')
         const texture = this.driver.uploadLinear!(data, 256, height)
         kernel = { texture, rect: rect(0, 0, 256, height) }
         this.bytes += texture.bytes; this.blurKernels.set(radius, kernel)
@@ -2351,8 +2484,8 @@ export class GpuRenderer {
             ? rational_tent_kernel_rgba(radius)
             : quantized_tent_kernel_rgba(radius)
           if (!this.driver.uploadRgba8) throw new Error('后端不支持精确模糊系数')
-          if (this.overBudget(bytes.length * (this.driver.managed ? 4 : 1)))
-            throw new Error('GPU 表面内存预算超限')
+          if (this.overBudget(bytes.length * (this.driver.managed ? 4 : 1), bytes.length / 4, 1))
+            throw this.budgetError('GPU 表面内存预算超限')
           const texture = this.driver.uploadRgba8(bytes, bytes.length / 4, 1)
           kernel = { texture, rect: rect(0, 0, bytes.length / 4, 1) }
           this.bytes += texture.bytes
@@ -2378,7 +2511,7 @@ export class GpuRenderer {
         const bytes = rational_box_kernel_rgba(r)
         if (!this.driver.uploadRgba8) throw new Error('后端不支持精确模糊系数')
         const size = bytes.length * (this.driver.managed ? 4 : 1)
-        if (this.overBudget(size)) throw new Error('GPU 表面内存预算超限')
+        if (this.overBudget(size, bytes.length / 4, 1)) throw this.budgetError('GPU 表面内存预算超限')
         const texture = this.driver.uploadRgba8(bytes, bytes.length / 4, 1)
         kernel = { texture, rect: rect(0, 0, bytes.length / 4, 1) }
         this.bytes += texture.bytes
@@ -2579,7 +2712,7 @@ export class GpuRenderer {
     const reusable = this.driver.uploadReplayParameters
     if (!reusable && !this.driver.uploadParameters) throw new Error('后端不支持纹理重放参数')
     const bytes = reusable ? (this.replayParameters ? 0 : 1024 * 1024 * 16) : r.w * r.h * 16
-    if (this.overBudget(bytes)) throw new Error('GPU 表面内存预算超限')
+    if (this.overBudget(bytes)) throw this.budgetError('GPU 表面内存预算超限')
     const values = texture_replay_field(
       JSON.stringify(n.textureReplay),
       JSON.stringify(viewport),
@@ -2607,7 +2740,7 @@ export class GpuRenderer {
     }
     if (!this.driver.uploadRgba8) throw new Error('后端不支持纹理裁剪数学表')
     const bytes = 1024 * 1024 * 4
-    if (this.overBudget(bytes)) throw new Error('GPU 表面内存预算超限')
+    if (this.overBudget(bytes)) throw this.budgetError('GPU 表面内存预算超限')
     const values = texture_clip_math_atlas()
     if (values.length !== bytes) throw new Error('纹理裁剪数学表长度不一致')
     this.textureMath = this.retainTextureData(
@@ -2639,7 +2772,7 @@ export class GpuRenderer {
       let lookup = this.textureLookups.get(key)
       if (!lookup) {
         if (!this.driver.uploadRgba8) throw new Error('后端不支持纹理渐变查找表')
-        if (this.overBudget(8192)) throw new Error('GPU 表面内存预算超限')
+        if (this.overBudget(8192, 1024, 2)) throw this.budgetError('GPU 表面内存预算超限')
         const values = figma_gradient_lookup(key)
         if (values.length !== 8192) throw new Error('纹理渐变查找表长度不一致')
         lookup = this.retainTextureData(
@@ -3005,6 +3138,13 @@ export class GpuRenderer {
     }
     return layer
   }
+  async abortFrameAndReleaseFilterScratch() {
+    const abort = this.driver.abortFrameAndReleaseFilterScratch
+    if (!abort) throw new Error('GPU frame abort is unavailable')
+    const reserved = this.driver.scratchBytes || 0
+    try { await abort.call(this.driver) }
+    finally { this.bytes += (this.driver.scratchBytes || 0) - reserved }
+  }
   async render(scene: GpuScene, readback = false, present = true) {
     try { return await this.renderAttempt(scene, readback, present) }
     catch (error) {
@@ -3012,8 +3152,7 @@ export class GpuRenderer {
       if (!(error instanceof Error) || error.message !== 'GPU 表面内存预算超限' || !reserved || !this.driver.abortFrameAndReleaseFilterScratch) throw error
       // Drop unsubmitted commands, wait for submitted references, then retire
       // scratch. The original exact graph gets one attempt at its old capacity.
-      try { await this.driver.abortFrameAndReleaseFilterScratch() }
-      finally { this.bytes += (this.driver.scratchBytes || 0) - reserved }
+      await this.abortFrameAndReleaseFilterScratch()
       if (this.driver.scratchBytes) throw new Error('Prefix scratch was not retired after frame abort')
       this.prefixAllowed = false
       console.debug('DESIGN_GPU_PREFIX_BUDGET_FALLBACK ' + JSON.stringify({ reserved, extent: scene.extent }))
