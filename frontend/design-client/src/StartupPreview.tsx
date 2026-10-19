@@ -4,11 +4,14 @@ import type { StartupPreview as Preview } from './startup-preview'
 
 export function StartupPreview({ preview, view, loading, width, height }:
   { preview: Preview; view: CanvasCamera; loading: boolean; width: number; height: number }) {
-  const [url, setUrl] = useState('')
+  const [image, setImage] = useState<{ preview: Preview; url: string } | null>(null)
   useEffect(() => {
-    const value = URL.createObjectURL(preview.image); setUrl(value)
+    const value = URL.createObjectURL(preview.image); setImage({ preview, url: value })
     return () => URL.revokeObjectURL(value)
   }, [preview])
+  // Passive URL replacement must never show another document's old image for
+  // the intervening render, even if the component instance is reused.
+  const url = image?.preview === preview ? image.url : ''
   const scale = loading ? 1 : view.zoom / preview.view.zoom
   const x = loading ? (width - preview.width) / 2 : view.x - preview.view.x * scale
   const y = loading ? (height - preview.height) / 2 : view.y - preview.view.y * scale

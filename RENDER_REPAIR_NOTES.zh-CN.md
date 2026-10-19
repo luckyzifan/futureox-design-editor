@@ -1,4 +1,6 @@
-# 渲染修复与交付说明（2026-10-19）
+# 首轮渲染修复记录（2026-10-19）
+
+> 本文保留首轮交付时的修复与验证范围。第二轮已补 Rust/CPU/WASM 验证、连续缩放调度及内存修复；当前结果以 `RENDER_PATH_PHASE2.zh-CN.md`、`testing/NATIVE_PREPARATION_CHECKS.zh-CN.md` 和第二轮验证记录为准。下文“未执行”等表述是首轮历史状态。
 
 ## 交付边界
 

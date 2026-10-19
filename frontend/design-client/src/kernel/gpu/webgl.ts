@@ -1,3 +1,4 @@
+import { textureByteLength } from './texture-byte-length'
 import vectorFragment from './vector.glsl?raw'
 import { minifiedPreviewRgba8 } from './rgba8'
 import sampling from './sampling.glsl?raw'
@@ -214,6 +215,7 @@ export class WebGlDriver implements Driver {
       height > gl.getParameter(gl.MAX_TEXTURE_SIZE)
     )
       throw new Error('WebGL 纹理尺寸不受支持')
+    const bytes = textureByteLength(width, height, this.managed ? 16 : 4)
     const resource = gl.createTexture()!
     gl.bindTexture(gl.TEXTURE_2D, resource)
     gl.texStorage2D(gl.TEXTURE_2D, 1, this.managed ? gl.RGBA32F : gl.RGBA8, width, height)
@@ -231,7 +233,7 @@ export class WebGlDriver implements Driver {
       height,
       resource,
       framebuffer,
-      bytes: width * height * (this.managed ? 16 : 4),
+      bytes,
     }
     this.textures.add(t)
     return t

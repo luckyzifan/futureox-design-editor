@@ -47,12 +47,12 @@ export function previewTranslationDelta(scene: GpuScene, id: string, transform: 
   return delta.every(value => Number.isFinite(value) && Math.abs(value) < 1_000_000) ? delta : null
 }
 
-/** Reuse local interval programs for a transient translation. Area
- * programs address mask-local pixels; continuous placement therefore moves
- * their rectangles, not their coverage arrays. Composition bilinearly samples
- * those local textures at the fractional translation. No exact/export caller
- * may use this approximation. Clipped geometry, replay recipes, derived
- * mutations and camera changes retain ordinary kernel compilation. */
+/** Reuse local interval programs only on their original device-pixel phase.
+ * An integer raster translation preserves coverage texels. A fractional move
+ * must recompile: bilinearly shifting an already antialiased mask applies a
+ * second filter and cannot reproduce coverage at the new sample locations.
+ * Clipped geometry, replay recipes, derived mutations and camera changes also
+ * retain ordinary kernel compilation. */
 export function translatePreviewScene(scene: GpuScene, before: DesignDocument, after: DesignDocument): GpuScene | null {
   if (scene.softwareRaster || before.animations?.length || after.id !== before.id ||
       Object.keys(before).length !== Object.keys(after).length ||
@@ -108,6 +108,14 @@ export function translatePreviewScene(scene: GpuScene, before: DesignDocument, a
  * reference use exactly the same clipping, rounding and gradient operations. */
 export function translatePreviewOffsets(scene: GpuScene, offsets: Map<string, [number, number]>,
   affectedParents: Set<string>, nested: Set<string>, targetNodes?: GpuScene['nodes']): GpuScene | null {
+  // Validate the whole batch before writing a reusable node table. Do not
+  // round a fractional pointer delta: the fallback recompiles its real pose.
+  // Also reject a fractional phase inherited from an older preview source.
+  for (const [id, [dx, dy]] of offsets) {
+    const node = scene.nodes[id], source = node?.previewSource || node
+    if (!node || ![dx, dy, node.rect.x + dx - source.rect.x, node.rect.y + dy - source.rect.y]
+      .every(Number.isSafeInteger)) return null
+  }
   const extent = scene.extent
   const window = scene.interactionWindow
   if (window && (window.x < extent.x || window.y < extent.y ||

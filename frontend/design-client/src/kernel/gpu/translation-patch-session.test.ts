@@ -24,7 +24,7 @@ test.each([false,true])('patch sessions match full-document translation, nested=
     let fast=scene,reference=scene,before=doc
     const window={x:40,y:40,w:80,h:80},original=JSON.stringify(scene.nodes)
     for(let i=1;i<=24;i++){
-      const transforms=Object.fromEntries(ids.map((id,j)=>[id,[...doc.nodes[id].transform.slice(0,4),doc.nodes[id].transform[4]+(j===1?Math.floor(i/2):i)*.375,doc.nodes[id].transform[5]+Math.sin(i/3)*2] as Matrix]))
+      const transforms=Object.fromEntries(ids.map((id,j)=>[id,[...doc.nodes[id].transform.slice(0,4),doc.nodes[id].transform[4]+(j===1?Math.floor(i/2):i),doc.nodes[id].transform[5]+Math.round(Math.sin(i/3)*2)] as Matrix]))
       const after={...doc,nodes:{...doc.nodes,...Object.fromEntries(ids.map(id=>[id,{...doc.nodes[id],transform:transforms[id]}]))}}
       const published=JSON.stringify(fast.nodes)
       const next=plan.prepare(fast,transforms,window)!
@@ -45,7 +45,7 @@ test('invalid transforms, guard escapes and stale scene leases leave the display
   try{
     const plan=TranslationPatchSession.create(scene,doc,ids)!,id=ids[0],original=JSON.stringify(scene.nodes)
     const window={x:40,y:40,w:80,h:80}
-    for(const transform of [[0,1,-1,0,55,50],[1,0,0,1,Infinity,50],[1,0,0,1,500,50]] as Matrix[])
+    for(const transform of [[0,1,-1,0,55,50],[1,0,0,1,Infinity,50],[1,0,0,1,500,50],[1,0,0,1,50.25,50]] as Matrix[])
       expect(plan.prepare(scene,{[id]:transform},window)).toBeNull()
     expect(plan.prepare({...scene},{[id]:doc.nodes[id].transform},window)).toBeNull()
     expect(JSON.stringify(scene.nodes)).toBe(original)

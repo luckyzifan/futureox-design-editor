@@ -39,3 +39,9 @@ cd frontend/design-client && bun install && bun run test
 - 可执行测试结果与未执行项以交付记录为准；新增测试不等于已经通过真实 GPU 像素验证。
 - `test-high-zoom.sh --help` / `test-new-features.sh --help` 提供针对性测试入口。
 - 未替项目选择开源许可证，也未上传或发布修改。
+
+## 2026-10-19 渲染增量验证
+
+第二轮路径与边界见 [渲染路径说明](RENDER_PATH_PHASE2.zh-CN.md)，算法资料见 [参考来源](RENDER_ALGORITHM_REFERENCES.zh-CN.md)，原生 CPU/WASM 验证见 [准备与几何检查](testing/NATIVE_PREPARATION_CHECKS.zh-CN.md)。产品 GPU 默认路径保持；云端 CPU 测试不等于实际 GPU 帧率或像素验收。
+
+第三轮 GPU 表面与调度增量见 [内存专项说明](RENDER_MEMORY_PHASE3.zh-CN.md)。本轮包含 Rust 内核修改，需重建 WASM 与桌面本地准备程序；测试记录见 testing/verification-phase3。

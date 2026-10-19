@@ -29,6 +29,7 @@ export async function renderPreviewRegions(
   rasterize: (tile: PreviewTile) => Promise<void>,
   side = 256,
   admission = new PreviewAdmission(),
+  checkpoint?: () => Promise<void>,
 ) {
   if (
     !Number.isSafeInteger(width) ||
@@ -44,6 +45,9 @@ export async function renderPreviewRegions(
   let tiles = 0
   let attempts = 0
   async function draw(tile: PreviewTile): Promise<void> {
+    // Check before every recursive region, including learned budget splits.
+    // Only completed regions yield; a caller never interleaves GPU encoders.
+    await checkpoint?.()
     if (++attempts > 2048) throw new Error('Preview tile work budget exceeded')
     const split = async () => {
       const splitX=tile.width>=tile.height,first=Math.floor((splitX?tile.width:tile.height)/2)
@@ -83,7 +87,7 @@ export async function renderPreviewRegions(
 }
 
 export async function renderPreviewTiles(width: number, height: number,
-  rasterize: (tile: PreviewTile) => Promise<PreviewPixels>, side = 256, admission?: PreviewAdmission) {
+  rasterize: (tile: PreviewTile) => Promise<PreviewPixels>, side = 256, admission?: PreviewAdmission, checkpoint?: () => Promise<void>) {
   let pixels: PreviewPixels | undefined
   const { tiles } = await renderPreviewRegions(width, height, async tile => {
     const source = await rasterize(tile)
@@ -92,7 +96,7 @@ export async function renderPreviewTiles(width: number, height: number,
     if (source instanceof Float32Array !== pixels instanceof Float32Array) throw new Error('Preview tile precision changed')
     for (let y = 0; y < tile.height; y++) pixels.set(
       source.subarray(y * tile.width * 4, (y + 1) * tile.width * 4), ((tile.y + y) * width + tile.x) * 4)
-  }, side, admission)
+  }, side, admission, checkpoint)
   return { pixels: pixels!, tiles }
 }
 
@@ -100,7 +104,7 @@ export async function renderPreviewTiles(width: number, height: number,
  * path. Exact integer blits preserve sampling; no pixel readback or decoding
  * takes place. Failed assemblies never publish a partial frame. */
 export async function renderBitmapPreviewTiles(width: number, height: number,
-  rasterize: (tile: PreviewTile) => Promise<ImageBitmap>, side = 256, admission?: PreviewAdmission) {
+  rasterize: (tile: PreviewTile) => Promise<ImageBitmap>, side = 256, admission?: PreviewAdmission, checkpoint?: () => Promise<void>) {
   let canvas: OffscreenCanvas | undefined
   try {
     const { tiles } = await renderPreviewRegions(width, height, async tile => {
@@ -113,7 +117,7 @@ export async function renderBitmapPreviewTiles(width: number, height: number,
         context.imageSmoothingEnabled = false
         context.drawImage(bitmap, tile.x, tile.y)
       } finally { bitmap.close() }
-    }, side, admission)
+    }, side, admission, checkpoint)
     return { bitmap: canvas!.transferToImageBitmap(), tiles }
   } finally { if (canvas) { canvas.width = 1; canvas.height = 1 } }
 }

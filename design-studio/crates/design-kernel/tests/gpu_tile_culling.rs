@@ -187,6 +187,8 @@ fn foreground_halo_stays_on_its_branch_and_backdrop_keeps_global_support() {
 
     // A backdrop may read earlier siblings: the branch-local proof cannot apply.
     d["nodes"]["child"]["effects"][0]["kind"] = json!("background-blur");
+    // Keep that read observable: a fully opaque fill hides its own backdrop.
+    d["nodes"]["child"]["fills"][0]["opacity"] = json!(0.5);
     engine.load_document(&d.to_string()).unwrap();
     let scene = engine.compile_gpu_region(&options, crop, None).unwrap();
     assert!(scene.extent.w > crop.w + 200);

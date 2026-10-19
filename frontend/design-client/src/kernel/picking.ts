@@ -13,6 +13,7 @@ import {
 import { initializeKernelModule, validateKernelDocument } from './module'
 import { admitDocumentSync } from '../document-admission'
 import { InitializationGate, readKernelAsset } from './initialization'
+import { loadKernelResourcePair } from './kernel-resources'
 import type { DesignNode, Point, DesignDocument, Bounds, Matrix } from '../model'
 import { defaultLayout, defaultSizing, validateVariableModes } from '../model'
 import { translationOnlyChanges } from './translation-preview'
@@ -96,12 +97,15 @@ export function kernelPdfVector(
 }
 export function initializePicking(resources?: { wasm: Uint8Array; font: Uint8Array }) {
   return initialization.run(async (lease) => {
-    await initializeKernelModule(resources?.wasm)
-    lease.assertCurrent()
     // The packaged NotoSansSC.ttf is 17,772,300 bytes; retain bounded headroom.
     const limit = 32 * 1024 * 1024
     if (resources?.font && resources.font.byteLength > limit) throw new Error('布局字体超过大小限制')
-    const fontBytes = resources?.font?.slice() || await readKernelAsset('/fonts/NotoSansSC.ttf', limit, lease.signal)
+    // The font transfer is independent of WASM compilation. Keep both bounded
+    // and gate publication exactly as before, without serializing cold startup.
+    const fontBytes = await loadKernelResourcePair(
+      () => initializeKernelModule(resources?.wasm),
+      async () => resources?.font?.slice() || await readKernelAsset('/fonts/NotoSansSC.ttf', limit, lease.signal),
+    )
     lease.assertCurrent()
     const engine = new VectorEngine()
     try {

@@ -25,6 +25,11 @@ fn prefix_mul_i32(a:PrefixInt,k:i32)->PrefixInt {
  if(k<0){return prefix_neg(prefix_mul_u32(a,u32(-k)));}
  return prefix_mul_u32(a,u32(k));
 }
+fn prefix_mul(a:PrefixInt,b:PrefixInt)->PrefixInt {
+ var result=PrefixInt(0u);
+ for(var i=0u;i<4u;i=i+1u){result=prefix_add(result,prefix_shl(prefix_mul_u32(a,b[i]),i*32u));}
+ return result;
+}
 fn prefix_shl(a:PrefixInt,shift:u32)->PrefixInt {
  if(shift==0u){return a;}if(shift>=128u){return PrefixInt(0u);}
  let words=shift/32u;let bits=shift%32u;var result=PrefixInt(0u);
@@ -70,6 +75,35 @@ fn prefix_round_ratio(input:PrefixInt,denominator:u32,quantum:i32)->vec2<u32> {
  for(var bit=23;bit>=0;bit=bit-1){let term=prefix_shl(divisor,u32(bit));
   if(prefix_compare(remainder,term)>=0){remainder=prefix_sub(remainder,term);mantissa=mantissa|(1u<<u32(bit));}
  }
+ let comparison=prefix_compare(prefix_shl(remainder,1u),divisor);
+ if(comparison>0||(comparison==0&&(mantissa&1u)!=0u)){mantissa=mantissa+1u;}
+ if(mantissa>=0x1000000u){mantissa=mantissa>>1u;exponent=exponent+1;}
+ if(exponent>=128){return vec2<u32>(sign|0x7f800000u,1u);}
+ var rawExponent=0u;if(exponent>=-126){rawExponent=u32(exponent+127);}
+ if(rawExponent==0u&&mantissa>=0x800000u){rawExponent=1u;}
+ return vec2<u32>(sign|(rawExponent<<23u)|(mantissa&0x7fffffu),1u);
+}
+
+// Same nearest-even division for the exact coefficient packet's denominator.
+// Admission bounds signed accumulation to 123 bits and denominator to 96;
+// the extra guards also cover cancellation/subnormal normalization shifts.
+fn prefix_round_wide(input:PrefixInt,divisorBase:PrefixInt,quantum:i32)->vec2<u32> {
+ let dh=prefix_high(divisorBase);
+ if(dh<0||dh>95||quantum < -149||quantum > 104){return vec2<u32>(0u);}
+ if(all(input==PrefixInt(0u))){return vec2<u32>(0u,1u);}
+ let sign=input.w&0x80000000u;var magnitude=input;if(sign!=0u){magnitude=prefix_neg(magnitude);}
+ let mh=prefix_high(magnitude);var power=mh-dh;
+ if(power>=0){if(prefix_compare(magnitude,prefix_shl(divisorBase,u32(power)))<0){power=power-1;}}
+ else{if(prefix_compare(prefix_shl(magnitude,u32(-power)),divisorBase)<0){power=power-1;}}
+ var exponent=power+quantum;
+ if(exponent>=128){return vec2<u32>(sign|0x7f800000u,1u);}
+ let unit=max(exponent-23,-149);let shift=unit-quantum;
+ if(shift>=128||shift<=-128||mh+max(0,-shift)>125||dh+max(0,shift)+23>125){return vec2<u32>(0u);}
+ var remainder=magnitude;var divisor=divisorBase;
+ if(shift<0){remainder=prefix_shl(magnitude,u32(-shift));}else{divisor=prefix_shl(divisorBase,u32(shift));}
+ var mantissa=0u;
+ for(var bit=23;bit>=0;bit=bit-1){let term=prefix_shl(divisor,u32(bit));
+  if(prefix_compare(remainder,term)>=0){remainder=prefix_sub(remainder,term);mantissa=mantissa|(1u<<u32(bit));}}
  let comparison=prefix_compare(prefix_shl(remainder,1u),divisor);
  if(comparison>0||(comparison==0&&(mantissa&1u)!=0u)){mantissa=mantissa+1u;}
  if(mantissa>=0x1000000u){mantissa=mantissa>>1u;exponent=exponent+1;}

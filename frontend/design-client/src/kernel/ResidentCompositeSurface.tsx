@@ -58,8 +58,9 @@ export function ResidentCompositeSurface(props: {
   repaint.current = () => {
     if (!attached.current) return
     const p = latest.current,
-      moving = usePageTranslation.current ? pageTranslation.current : interaction.current
-    const owner=`${inputScope.current}:${usePageTranslation.current?'page':'layer'}:${p.interaction?.epoch??0}`
+      moving = usePageTranslation.current || pageTranslation.current?.handingOff && !interaction.current?.ready
+        ? pageTranslation.current : interaction.current
+    const owner=`${inputScope.current}:${moving===pageTranslation.current?'page':'layer'}:${p.interaction?.epoch??0}`
     if(owner!==inputOwner.current){
       inputOwner.current=owner;inputTrace.current=[]
       if(canvas.current){canvas.current.dataset.inputTrace='[]';canvas.current.dataset.contentSequence='0'}
@@ -242,7 +243,16 @@ export function ResidentCompositeSurface(props: {
         }
       }
       interaction.current = new InteractionRenderer(() => repaint.current(), p.client)
-      pageTranslation.current = new PageTranslation(() => repaint.current())
+      pageTranslation.current = new PageTranslation(() => repaint.current(), (document, patches, displayed) => {
+        const p = latest.current, renderer = interaction.current
+        if (!p.interaction || !renderer) return null
+        usePageTranslation.current = false; interactionStarted.current = true
+        // Warm at the last displayed pose, so a fractional move never falls
+        // back to the unshifted page while its native GPU sample is pending.
+        renderer.prepare({ ...p.interaction, document: displayed }, p.pageId, p.view, p.dpr,
+          p.rasterProfile, p.backend, p.settledDocument, { width: p.width, height: p.height })
+        return renderer.control.apply(document, patches)
+      })
     } catch (error) {
       p.onFailure(String(error))
     }
