@@ -9,6 +9,7 @@
 //! omitted on export — Sketch itself defaults-absent fields, so a subset
 //! document opens cleanly.
 use crate::math::Transform;
+use crate::color::{ColorSettings, ColorSpace};
 use crate::scene::{Document, Effect, ExportSetting, Node, Page, Paint, Stroke};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -193,12 +194,13 @@ fn color_alpha(color: &Value) -> f64 {
     f64_at(adaptable_resolved(color), "alpha").clamp(0., 1.)
 }
 
-fn gradient_stop_color(color: &Value) -> String {
+fn gradient_stop_color(color: &Value, space: ColorSpace) -> String {
     let resolved = adaptable_resolved(color);
     if color_alpha(color) == 1. {
         return color_hex(color);
     }
-    format!("color(srgb {} {} {} / {})",
+    format!("color({} {} {} {} / {})",
+        if space == ColorSpace::DisplayP3 { "display-p3" } else { "srgb" },
         f64_at(resolved, "red").clamp(0., 1.),
         f64_at(resolved, "green").clamp(0., 1.),
         f64_at(resolved, "blue").clamp(0., 1.), color_alpha(color))
@@ -462,7 +464,7 @@ fn blur_projection(effects: &[Effect]) -> Vec<Effect> {
         .cloned().map(|mut effect| { effect.id.clear(); effect }).collect()
 }
 
-fn gradient_paint(gradient: &Value, fill_type: u64, size: [f64; 2]) -> Option<Paint> {
+fn gradient_paint(gradient: &Value, fill_type: u64, size: [f64; 2], space: ColorSpace) -> Option<Paint> {
     let native_type = gradient.get("gradientType").and_then(Value::as_u64)
         .unwrap_or(fill_type.saturating_sub(1));
     let kind = match native_type {
@@ -501,7 +503,7 @@ fn gradient_paint(gradient: &Value, fill_type: u64, size: [f64; 2]) -> Option<Pa
                 offset: f64_at(stop, "position"),
                 color: stop
                     .get("color")
-                    .map(gradient_stop_color)
+                    .map(|color| gradient_stop_color(color, space))
                     .unwrap_or_else(|| "#000000".into()),
             });
         }
@@ -551,6 +553,7 @@ fn kind_for_class(class: &str) -> &'static str {
 }
 
 struct Importer<'a> {
+    color_space: ColorSpace,
     files: &'a BTreeMap<String, Vec<u8>>,
     nodes: BTreeMap<String, Node>,
     /// do_objectID → kernel id (prototype flow destinations address the
@@ -603,7 +606,7 @@ impl<'a> Importer<'a> {
                 }
             }
             1..=3 => part.get("gradient").and_then(|g| {
-                let mut p = gradient_paint(g, fill_type, size)?;
+                let mut p = gradient_paint(g, fill_type, size, self.color_space)?;
                 p.blend = blend.into();
                 p.opacity *= base_opacity;
                 Some(p)
@@ -1718,6 +1721,7 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
     };
 
     let mut importer = Importer {
+        color_space: if document.get("colorSpace").and_then(Value::as_i64) == Some(2) { ColorSpace::DisplayP3 } else { ColorSpace::Srgb },
         files: &files,
         nodes: BTreeMap::new(),
         uuids: BTreeMap::new(),
@@ -2428,30 +2432,44 @@ pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
 }
 
 struct ExportedImages {
+    color_settings: ColorSettings,
     entries: Vec<(String, Vec<u8>)>,
     seen: std::collections::HashSet<String>,
 }
 
-fn hex_to_rgba(hex: &str, alpha: f64) -> Value {
-    if hex.starts_with("color(")
-        && let Ok((space, components, intrinsic_alpha)) = crate::color::parse(hex, crate::color::ColorSpace::Srgb)
-        && space == crate::color::ColorSpace::Srgb
-    {
-        return json!({"_class":"color", "red":components[0], "green":components[1],
-            "blue":components[2], "alpha":(intrinsic_alpha * alpha).clamp(0.,1.)});
+/// Export straight coordinates in the Sketch document's SDR profile. Alpha is
+/// coverage; neither the transfer function nor the profile matrix touches it.
+/// Only matrix/transfer roundoff (1e-10 encoded channel units) may be snapped at
+/// the gamut boundary. Genuine gamut loss and HDR need an explicit conversion
+/// workflow, so they fail before any archive is produced.
+fn hex_to_rgba(value: &str, alpha: f64, settings: ColorSettings) -> Result<Value> {
+    if value.starts_with('#') {
+        // Keep the existing exact byte/255 path; color::parse uses f32 Pixel
+        // for Hex and would perturb already-correct archived SDR coordinates.
+        if value.len() != 7 || !value.is_ascii() {
+            return Err(Error::Unsupported(format!("Invalid Sketch color `{value}`")));
+        }
+        let channel = |start| u8::from_str_radix(&value[start..start + 2], 16)
+            .map(|v| f64::from(v) / 255.)
+            .map_err(|_| Error::Unsupported(format!("Invalid Sketch color `{value}`")));
+        return Ok(json!({"_class":"color", "red":channel(1)?, "green":channel(3)?,
+            "blue":channel(5)?, "alpha":alpha.clamp(0., 1.)}));
     }
-    let hex = hex.trim_start_matches('#');
-    let (r, g, b) = if hex.len() == 6 {
-        (
-            u8::from_str_radix(&hex[0..2], 16).unwrap_or(0),
-            u8::from_str_radix(&hex[2..4], 16).unwrap_or(0),
-            u8::from_str_radix(&hex[4..6], 16).unwrap_or(0),
-        )
-    } else {
-        (0, 0, 0)
+    let (source, rgb, intrinsic_alpha) = crate::color::parse(value, settings.document_space)
+        .map_err(|reason| Error::Unsupported(format!("Sketch color `{value}`: {reason}")))?;
+    if matches!(source, ColorSpace::Pq | ColorSpace::Hlg) {
+        return Err(Error::Unsupported(format!("Sketch cannot preserve HDR color `{value}`; use the native format or explicitly tone-map an SDR copy")));
+    }
+    let rgb = if source == settings.document_space { rgb } else {
+        settings.from_working(settings.to_working(rgb, source), settings.document_space)
     };
-    json!({"_class": "color", "red": r as f64 / 255., "green": g as f64 / 255.,
-           "blue": b as f64 / 255., "alpha": alpha.clamp(0., 1.)})
+    const ROUND_OFF: f64 = 1e-10;
+    if rgb.iter().any(|v| !v.is_finite() || *v < -ROUND_OFF || *v > 1. + ROUND_OFF) {
+        return Err(Error::Unsupported(format!("Sketch color `{value}` is outside the target {:?} gamut; no implicit clipping or tone mapping is applied", settings.document_space)));
+    }
+    let [red, green, blue] = rgb.map(|v| v.clamp(0., 1.));
+    Ok(json!({"_class":"color", "red":red, "green":green, "blue":blue,
+        "alpha":(intrinsic_alpha * alpha).clamp(0., 1.)}))
 }
 
 fn data_uri_bytes(uri: &str) -> Option<(String, Vec<u8>)> {
@@ -2494,14 +2512,14 @@ fn sketch_id(id: &str) -> String {
     .to_uppercase()
 }
 
-fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> Option<Value> {
+fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> Result<Option<Value>> {
     if !paint.visible {
-        return None;
+        return Ok(None);
     }
-    match paint.kind.as_str() {
+    Ok(match paint.kind.as_str() {
         "solid" if !paint.color.is_empty() => Some(json!({
             "_class": "fill", "isEnabled": true, "fillType": 0,
-            "color": hex_to_rgba(&paint.color, 1.0),
+            "color": hex_to_rgba(&paint.color, 1.0, images.color_settings)?,
             "noiseIndex": 0, "noiseIntensity": 0., "noiseFillType": 0,
             "patternFillType": 1, "patternTileScale": 1.,
             "contextSettings": {"_class": "graphicsContextSettings",
@@ -2517,7 +2535,7 @@ fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> O
                 ([center.x, center.y], [edge.x, edge.y])
             } else if let Some(matrix) = paint.transform {
                 if paint.kind == "linear" {
-                    let inverse = matrix.inverse().ok()?;
+                    let inverse = matrix.inverse().map_err(|e| Error::Unsupported(e.to_string()))?;
                     let (a, b, c) = (inverse.0[0], inverse.0[2], inverse.0[4]);
                     let norm = a * a + b * b;
                     let d = [a / norm, b / norm];
@@ -2547,13 +2565,13 @@ fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> O
             let stops: Vec<Value> = paint
                 .stops
                 .iter()
-                .map(|s| {
-                    json!({
+                .map(|s| -> Result<Value> {
+                    Ok(json!({
                         "_class": "gradientStop", "position": s.offset,
-                        "color": hex_to_rgba(&s.color, 1.0)
-                    })
+                        "color": hex_to_rgba(&s.color, 1.0, images.color_settings)?
+                    }))
                 })
-                .collect();
+                .collect::<Result<Vec<_>>>()?;
             let gradient_type = match paint.kind.as_str() {
                 "radial" => 1,
                 "angular" => 2,
@@ -2570,8 +2588,8 @@ fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> O
             }))
         }
         "image" => {
-            let uri = paint.image.as_deref()?;
-            let (mime, bytes) = data_uri_bytes(uri)?;
+            let Some(uri) = paint.image.as_deref() else { return Ok(None) };
+            let Some((mime, bytes)) = data_uri_bytes(uri) else { return Ok(None) };
             let name = sha1_hex(&bytes);
             if images.seen.insert(name.clone()) {
                 images.entries.push((format!("images/{name}"), bytes));
@@ -2580,7 +2598,7 @@ fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> O
             let _ = ext;
             Some(json!({
                 "_class": "fill", "isEnabled": true, "fillType": 4,
-                "color": hex_to_rgba("#000000", 1.),
+                "color": hex_to_rgba("#000000", 1., images.color_settings)?,
                 "image": {"_class": "MSJSONFileReference", "_ref_class": "MSImageData", "_ref": name},
                 "noiseIndex": 0, "noiseIntensity": 0., "noiseFillType": 0,
                 "patternFillType": 1, "patternTileScale": 1.,
@@ -2588,7 +2606,7 @@ fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> O
             }))
         }
         _ => None,
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -2605,20 +2623,30 @@ fn export_style_parts(
     strokes: &[crate::scene::Stroke],
     effects: &[Effect],
     lossy: &mut Vec<String>,
-) -> (Vec<Value>, Vec<Value>, Vec<Value>, Value, Value) {
+    settings: ColorSettings,
+) -> Result<(Vec<Value>, Vec<Value>, Vec<Value>, Value, Value)> {
+    // This compatibility path only represents solid borders. Do not flatten
+    // gradient/image strokes to their unused fallback color, even when hidden:
+    // that loses authored content and bypasses gradient-stop color admission.
+    if let Some(stroke) = strokes.iter().find(|stroke| stroke.paint.kind != "solid") {
+        return Err(Error::Unsupported(format!(
+            "Sketch export cannot preserve {} stroke paints; use the native format instead",
+            stroke.paint.kind
+        )));
+    }
     let borders: Vec<Value> = strokes
         .iter()
-        .map(|s| {
-            json!({
+        .map(|s| -> Result<Value> {
+            Ok(json!({
                 "_class": "border", "isEnabled": s.paint.visible, "thickness": s.width,
                 "position": match s.align.as_str() { "inside" => 1, "outside" => 2, _ => 0 },
                 "fillType": 0,
-                "color": hex_to_rgba(&s.paint.color, s.paint.opacity.clamp(0., 1.)),
+                "color": hex_to_rgba(&s.paint.color, s.paint.opacity.clamp(0., 1.), settings)?,
                 "contextSettings": {"_class": "graphicsContextSettings",
                                       "blendMode": blend_code(&s.paint.blend), "opacity": 1., "isProgressive": false}
-            })
+            }))
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     // Dash/cap/join live on the style's borderOptions in Sketch (one set
     // shared by every border); kernel strokes each own them, so mixed sets
     // are reported instead of silently collapsed.
@@ -2663,22 +2691,22 @@ fn export_style_parts(
     };
     // Shadow alpha lives in the color payload; kernel keeps it separately
     // in Effect.opacity, so export multiplies it back into the color.
-    let shadow_json = |e: &Effect| {
-        json!({"_class": "shadow", "isEnabled": e.visible, "blurRadius": e.radius,
+    let shadow_json = |e: &Effect| -> Result<Value> {
+        Ok(json!({"_class": "shadow", "isEnabled": e.visible, "blurRadius": e.radius,
                 "offsetX": e.x, "offsetY": e.y, "spread": e.spread,
-                "color": hex_to_rgba(&e.color, e.opacity.clamp(0., 1.)),
-                "contextSettings": {"_class": "graphicsContextSettings", "blendMode": 0, "opacity": 1., "isProgressive": false}})
+                "color": hex_to_rgba(&e.color, e.opacity.clamp(0., 1.), settings)?,
+                "contextSettings": {"_class": "graphicsContextSettings", "blendMode": 0, "opacity": 1., "isProgressive": false}}))
     };
     let shadows: Vec<Value> = effects
         .iter()
         .filter(|e| e.kind == "shadow")
         .map(shadow_json)
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     let inner_shadows: Vec<Value> = effects
         .iter()
         .filter(|e| e.kind == "inner-shadow")
         .map(shadow_json)
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     // Sketch style carries one blur object: Gaussian=0, Background=3.
     // Glass refraction parameters have no native Sketch representation.
     let blur_like: Vec<&Effect> = effects
@@ -2711,7 +2739,7 @@ fn export_style_parts(
             note_lossy(lossy, &format!("effect-{}-omitted", e.kind));
         }
     }
-    (borders, shadows, inner_shadows, blur, border_options)
+    Ok((borders, shadows, inner_shadows, blur, border_options))
 }
 
 /// Record a downgrade note once; the exporter writes the collected list into
@@ -2821,14 +2849,14 @@ fn curve_mode_of(v: &crate::scene::Vertex, c1: Option<crate::math::Point>, c2: O
 
 /// Kernel paint objects stored inside instance overrides (fig imports keep
 /// converted `fillPaints` there) become Sketch color override values.
-fn override_object_to_sketch(value: &Value) -> Option<Value> {
+fn override_object_to_sketch(value: &Value, settings: ColorSettings) -> Result<Option<Value>> {
     if value.get("kind").and_then(Value::as_str) == Some("solid")
         && let Some(color) = value.get("color").and_then(Value::as_str)
     {
         let opacity = value.get("opacity").and_then(Value::as_f64).unwrap_or(1.);
-        return Some(hex_to_rgba(color, opacity));
+        return Ok(Some(hex_to_rgba(color, opacity, settings)?));
     }
-    None
+    Ok(None)
 }
 
 /// 22 号字典 §5 import side: an image override archives its value as an
@@ -2863,12 +2891,12 @@ fn sketch_override_value_from_native(
 /// verbatim; kernel paint objects convert — solid fills through
 /// [`override_object_to_sketch`], image fills archive their blob and
 /// reference it. Anything else returns `None` and is reported by the caller.
-fn sketch_override_value_to_native(value: &Value, images: &mut ExportedImages) -> Option<Value> {
+fn sketch_override_value_to_native(value: &Value, images: &mut ExportedImages) -> Result<Option<Value>> {
     if value.get("_class").is_some() {
-        return Some(value.clone());
+        return Ok(Some(value.clone()));
     }
-    if let converted @ Some(_) = override_object_to_sketch(value) {
-        return converted;
+    if let converted @ Some(_) = override_object_to_sketch(value, images.color_settings)? {
+        return Ok(converted);
     }
     if value.get("kind").and_then(Value::as_str) == Some("image")
         && let Some(uri) = value.get("image").and_then(Value::as_str)
@@ -2878,11 +2906,11 @@ fn sketch_override_value_to_native(value: &Value, images: &mut ExportedImages) -
         if images.seen.insert(name.clone()) {
             images.entries.push((format!("images/{name}"), bytes));
         }
-        return Some(
+        return Ok(Some(
             json!({"_class": "MSJSONFileReference", "_ref_class": "MSImageData", "_ref": name}),
-        );
+        ));
     }
-    None
+    Ok(None)
 }
 
 /// Sketch paragraph alignment (sketchformat/text.py): LEFT=0 RIGHT=1
@@ -3060,7 +3088,7 @@ fn sketch_placement(node: &Node) -> Option<([f64; 4], f64, [bool; 2])> {
     ], rotation, [flip, false]))
 }
 
-fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value {
+fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result<Value> {
     let mut source_text_frame_restored = false;
     let restored_node = doc.nodes.get(id).map(|node| {
         let mut node = node.clone();
@@ -3206,7 +3234,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
             .fills
             .iter()
             .enumerate()
-            .filter_map(|(index, p)| {
+            .map(|(index, p)| -> Result<Option<Value>> {
                 if p.kind == "diamond" {
                     // Sketch gradients: 1 linear, 2 radial, 3 angular — no
                     // diamond; radial is the nearest visual approximation.
@@ -3220,17 +3248,17 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
                         note_lossy(&mut lossy, "fill-radial-skew-approximated");
                     }
                 }
-                let mut part = export_paint(p, images, [n.width, n.height])?;
+                let Some(mut part) = export_paint(p, images, [n.width, n.height])? else { return Ok(None) };
                 if let Some(source) = source_gradients.as_ref().and_then(|source| source.get(index.to_string()))
                     && source.get("paint").and_then(|value| serde_json::from_value::<Paint>(value.clone()).ok()).as_ref() == Some(p)
                 {
                     part["gradient"] = source["gradient"].clone();
                 }
-                Some(part)
+                Ok(Some(part))
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?.into_iter().flatten().collect();
         let (borders, shadows, inner_shadows, mut blur, border_options) =
-            export_style_parts(&n.strokes, &n.effects, &mut lossy);
+            export_style_parts(&n.strokes, &n.effects, &mut lossy, images.color_settings)?;
         if let Some(source) = n.bindings.get("sketchSourceBlur")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
             && source.get("effects").and_then(|value| serde_json::from_value::<Vec<Effect>>(value.clone()).ok())
@@ -3274,7 +3302,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
             "artboard" | "symbolMaster" => {
                 layer.insert("hasBackgroundColor".into(), json!(false));
                 layer.insert("includeBackgroundColorInExport".into(), json!(true));
-                layer.insert("backgroundColor".into(), hex_to_rgba("#ffffff", 0.));
+                layer.insert("backgroundColor".into(), hex_to_rgba("#ffffff", 0., images.color_settings)?);
                 layer.insert(
                     "isFlowHome".into(),
                     json!(
@@ -3417,7 +3445,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
                                 Value::Bool(b) => Some(json!(b)),
                                 Value::Object(_) => {
                                     let converted =
-                                        sketch_override_value_to_native(value, images);
+                                        sketch_override_value_to_native(value, images)?;
                                     if converted.is_none() {
                                         note_lossy(
                                             &mut lossy,
@@ -3564,7 +3592,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
                                  color: Option<&str>,
                                  underline: bool,
                                  strikethrough: bool|
-                 -> Value {
+                 -> Result<Value> {
                     let mut attrs = Map::new();
                     attrs.insert(
                         "MSAttributedStringFontAttribute".into(),
@@ -3574,7 +3602,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
                     if let Some(c) = color {
                         attrs.insert(
                             "MSAttributedStringColorAttribute".into(),
-                            hex_to_rgba(c, 1.),
+                            hex_to_rgba(c, 1., images.color_settings)?,
                         );
                     }
                     if kerning != 0. {
@@ -3613,8 +3641,8 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
                         json!(allows_tightening),
                     );
                     attrs.insert("textStyleBasicParagraphStyle".into(), Value::Object(para));
-                    json!({"_class": "stringAttribute", "attributes": Value::Object(attrs),
-                           "location": location, "length": length})
+                    Ok(json!({"_class": "stringAttribute", "attributes": Value::Object(attrs),
+                           "location": location, "length": length}))
                 };
                 let total = utf16_len(&n.text);
                 let mut runs: Vec<&crate::font::TextRun> = n
@@ -3641,7 +3669,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
                             default_color.as_deref(),
                             false,
                             false,
-                        ));
+                        )?);
                     }
                     attributes.push(attribute(
                         start,
@@ -3651,7 +3679,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
                         run.color.as_deref().or(default_color.as_deref()),
                         run.underline,
                         run.strikethrough,
-                    ));
+                    )?);
                     cursor = end;
                 }
                 if cursor < total || attributes.is_empty() {
@@ -3663,7 +3691,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
                         default_color.as_deref(),
                         false,
                         false,
-                    ));
+                    )?);
                 }
                 layer.insert(
                     "attributedString".into(),
@@ -3850,7 +3878,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
             .children
             .iter()
             .map(|c| export_layer(doc, c, images))
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
         if class == "shapeGroup" && let Some(operation) = n.boolean_operation {
             let source = n.bindings.get("sketchSourceShapeGroup")
                 .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
@@ -3944,7 +3972,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Value 
         // updatableColors recolor markers.
         adaptable_apply_layer(&mut layer, &n.bindings);
     }
-    Value::Object(layer)
+    Ok(Value::Object(layer))
 }
 
 /// P0-4 container export: a shared style's preserved color payloads return
@@ -3981,7 +4009,7 @@ fn adaptable_apply_shared_style(object: &mut Value, fidelity: &Value) {
 /// re-exported from the live node (it may have been edited); everything
 /// else — originalMaster, remoteToLocalIDMap, library flags — comes from
 /// the raw entry kept at import.
-fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Vec<Value> {
+fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<Vec<Value>> {
     let mut out = Vec::new();
     for (id, node) in &doc.nodes {
         let Some(library_id) = node.bindings.get("sketchForeignLibraryID") else {
@@ -4001,7 +4029,7 @@ fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Vec<Val
             );
         }
         entry.insert("libraryID".into(), json!(library_id));
-        let mut master = export_layer(doc, id, images);
+        let mut master = export_layer(doc, id, images)?;
         if let Value::Object(map) = &mut master {
             map.insert("_class".into(), json!("symbolMaster"));
             let symbol_id = node
@@ -4025,11 +4053,16 @@ fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Vec<Val
         }
         out.push(Value::Object(entry));
     }
-    out
+    Ok(out)
 }
 
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
 pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
+    let settings = doc.color_management.unwrap_or_default();
+    if !matches!(settings.document_space, ColorSpace::Srgb | ColorSpace::DisplayP3) {
+        return Err(Error::Unsupported(format!("Sketch only supports sRGB or Display P3 document profiles, not {:?}; preserve the native file or explicitly convert an SDR copy", settings.document_space)));
+    }
+    settings.validate().map_err(Error::InvalidDocument)?;
     for node in doc.nodes.values() {
         if sketch_placement(node).is_none() {
             return Err(Error::Unsupported(format!(
@@ -4037,6 +4070,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
         }
     }
     let mut images = ExportedImages {
+        color_settings: settings,
         entries: Vec::new(),
         seen: Default::default(),
     };
@@ -4046,12 +4080,12 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
 
     for page in &doc.pages {
         let page_json = {
-            let mut page_layer = export_layer(doc, &page.id, &mut images);
+            let mut page_layer = export_layer(doc, &page.id, &mut images)?;
             if let Value::Object(map) = &mut page_layer {
                 map.insert("_class".into(), json!("page"));
                 map.insert("name".into(), json!(page.name));
                 map.insert("layers".into(), Value::Array(page.children.iter()
-                    .map(|id| export_layer(doc, id, &mut images)).collect()));
+                    .map(|id| export_layer(doc, id, &mut images)).collect::<Result<Vec<_>>>()?));
                 map.insert("userInfo".into(), json!({"com.futureox.design-kernel":{"originalId":page.id}}));
                 map.remove("frame");
                 map.remove("style");
@@ -4083,8 +4117,8 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
 
     // P0-4: color space. Sketch document.json colorSpace: 0 unmanaged,
     // 1 sRGB, 2 P3 — the kernel color_management maps onto the same three
-    // states (linear variants and HDR luminances have no Sketch home and
-    // stay kernel-side; HDR is out of scope).
+    // states. Unsupported target profiles have already failed at admission;
+    // no linear/HDR document is silently relabelled as unmanaged.
     let color_space = match doc.color_management.as_ref().map(|c| c.document_space) {
         Some(crate::color::ColorSpace::DisplayP3) => 2,
         Some(crate::color::ColorSpace::Srgb) => 1,
@@ -4101,22 +4135,21 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
         for (style_id, shared) in &system.styles {
             let object = match shared.kind.as_str() {
                 "paint" => {
-                    let paints: Vec<Value> = shared
-                        .value
-                        .as_array()
-                        .map(|ps| {
-                            ps.iter()
-                                .filter_map(|p| serde_json::from_value::<Paint>(p.clone()).ok())
-                                .filter_map(|p| export_paint(&p, &mut images, [1., 1.]))
-                                .collect()
-                        })
-                        .unwrap_or_default();
+                    let mut paints = Vec::new();
+                    if let Some(values) = shared.value.as_array() {
+                        for value in values {
+                            if let Ok(paint) = serde_json::from_value::<Paint>(value.clone())
+                                && let Some(part) = export_paint(&paint, &mut images, [1., 1.])? {
+                                paints.push(part);
+                            }
+                        }
+                    }
                     // Full layer styles archive borders/shadows/blur next to
                     // their fills; the shared helper writes the same parts a
                     // layer with these strokes/effects would.
                     let mut style_lossy = Vec::new();
                     let (borders, shadows, inner_shadows, blur, border_options) =
-                        export_style_parts(&shared.strokes, &shared.effects, &mut style_lossy);
+                        export_style_parts(&shared.strokes, &shared.effects, &mut style_lossy, images.color_settings)?;
                     json!({"do_objectID": style_id, "name": shared.name,
                            "style": {"_class": "style", "do_objectID": sketch_id(style_id),
                                      "fills": paints, "borders": borders,
@@ -4185,7 +4218,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
             document[key] = value.clone();
         }
     }
-    let mut foreign_symbols = foreign_symbol_export(doc, &mut images);
+    let mut foreign_symbols = foreign_symbol_export(doc, &mut images)?;
     if let Some(system) = &doc.design_system
         && let Some(unresolved) = system
             .sketch_containers

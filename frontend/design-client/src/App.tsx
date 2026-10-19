@@ -4,8 +4,10 @@ import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootContr
 import { useShortcutProfile } from './shortcut-preference'
 import { shortcutPlatform, toolShortcutLabel } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
-import { AutomationPanel } from './AutomationPanel'
+import { AutomationPanel } from './AutomationPanelLauncher'
 import { attachDesktopAutomation } from './automation/bridge'
+import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
+import { createAutomationSettingsAdapter } from './automation/settings-adapter'
 import {activateTool} from './tool-activation'
 import { readStartupPreview, writeStartupPreview, type StartupPreview, type PreviewPixels } from './startup-preview'
 import {useLocalWindows,LocalWindowControl} from './LocalWindows'
@@ -531,8 +533,21 @@ export default function App() {
     }
   }
   useEffect(() => {
-    if (ready && desktop?.automation) return attachDesktopAutomation(editor, desktop.automation)
-  }, [ready, desktop, editor])
+    if (!ready || !desktop?.automation) return
+    const preferences = createAutomationSettingsAdapter(editor)
+    const host = createWorkspaceAutomationRenderer(editor, {
+      inspect: () => ({ storageRevision: desktopSession?.status.revision ?? null,
+        dirty: desktopSession?.dirty ?? true, busy: desktopSession?.status.busy ?? false }),
+      execute: (method, params, guard, signal) => {
+        if (method === 'settings.get') return preferences.get()
+        if (method === 'settings.update') return preferences.update(params, guard, signal)
+        if (!desktopSession) throw Object.assign(new Error('Local workspace session is unavailable'), { code: 'WORKSPACE_UNAVAILABLE' })
+        return desktopSession.automationWorkspace(method, params, guard, signal)
+      },
+    })
+    const detach = attachDesktopAutomation(editor, desktop.automation, { host })
+    return () => { detach(); preferences.dispose() }
+  }, [ready, desktop, editor, desktopSession])
   useEffect(() => {
     if (ready && desktop?.rendererReady) void desktop.rendererReady().then(result => {
       if (result.status === 'error' || result.status === 'conflict') editor.notify(result.message)

@@ -51,6 +51,22 @@ describe('automation actual DOM controls (no browser/GPU)',()=>{
     await click('启用读写');expect(automation.enable).toHaveBeenLastCalledWith({scope:'write'});await click('复制连接配置');expect(automation.copyConnection).toHaveBeenCalledTimes(1)
     await click('停用');expect(automation.disable).toHaveBeenCalledTimes(1);await act(async()=>root.render(<div/>));expect(unsubscribe).toHaveBeenCalledTimes(1)
   })
+  it('additional scopes default to none and require explicit enable after selecting their independent values',async()=>{
+    const disabled={enabled:false,connectedClients:0,pendingRequests:0,journal:[]}
+    const enable=vi.fn(async(value:{scope:'read'|'write';workspaceScope?:'read'|'write';settingsScope?:'read'|'write'})=>({...disabled,enabled:true,scope:value.scope,grants:{workspace:value.workspaceScope,settings:value.settingsScope}}))
+    const automation={status:async()=>disabled,onStatus:()=>()=>{},enable}
+    const render=()=>root.render(<AutomationDialog editor={editor} desktop={{automation} as unknown as DesktopBridge} onClose={()=>{}}/>)
+    await act(async()=>render())
+    const workspace=element.querySelector<HTMLSelectElement>('[aria-label="工作区 MCP 权限"]')!,settings=element.querySelector<HTMLSelectElement>('[aria-label="设置 MCP 权限"]')!
+    expect(workspace.value).toBe('none');expect(settings.value).toBe('none')
+    await act(async()=>{workspace.value='write';workspace.dispatchEvent(new dom.window.Event('change',{bubbles:true}));settings.value='read';settings.dispatchEvent(new dom.window.Event('change',{bubbles:true}))})
+    expect(enable).not.toHaveBeenCalled();expect(element.textContent).toContain('未启用')
+    await click('启用只读');expect(enable).toHaveBeenLastCalledWith({scope:'read',workspaceScope:'write',settingsScope:'read'})
+    expect(element.textContent).toContain('当前文档只读');expect(element.textContent).toContain('工作区读写 · 应用设置只读')
+    await act(async()=>root.render(<div/>));await act(async()=>render())
+    expect(element.querySelector<HTMLSelectElement>('[aria-label="工作区 MCP 权限"]')!.value).toBe('none')
+    expect(element.querySelector<HTMLSelectElement>('[aria-label="设置 MCP 权限"]')!.value).toBe('none')
+  })
   it('native gate errors show without claiming enabled',async()=>{
     const automation={status:async()=>({enabled:false,connectedClients:0,pendingRequests:0,journal:[]}),onStatus:()=>()=>{},enable:async()=>{throw Error('Permission declined')}}
     await act(async()=>root.render(<AutomationDialog editor={editor} desktop={{automation} as unknown as DesktopBridge} onClose={()=>{}}/>));await click('启用读写');expect(element.querySelector('[role=alert]')?.textContent).toBe('Permission declined');expect(element.textContent).toContain('未启用')

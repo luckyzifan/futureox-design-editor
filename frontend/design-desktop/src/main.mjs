@@ -147,6 +147,13 @@ const workspaceRoots = new WorkspaceRoots({
   },
 })
 const automationBridge = registerAutomationBridge({
+  workspace: {
+    getRoot: () => workspaceRoots.current,
+    verifyRoot: root => workspaceRoots.verify(root),
+    status: () => workspaceRoots.status(),
+    select: useDefault => stageWorkspaceRoot(useDefault),
+    activate: selectionId => activateWorkspaceRoot(selectionId),
+  },
   ipcMain, getWindow: () => window, assertSender, dialog, clipboard,
   storage: (method, params) => backend.request(method, params),
   audit: entry => backend.request('automation.audit.append', {
@@ -337,24 +344,29 @@ register('workspace-root-status', rootAction(value => {
   if (value !== undefined) throw new Error('Unexpected arguments')
   return workspaceRoots.status()
 }), false)
+function stageWorkspaceRoot(useDefault = false) {
+  if (closePending || quitRequested || pendingWorkspaceRoot) throw Object.assign(new Error('Closing'), { code: 'BUSY' })
+  return workspaceRoots.stage(useDefault)
+}
 register('workspace-root-select', rootAction(value => {
   if (value !== undefined) throw new Error('Unexpected arguments')
-  if (closePending || quitRequested) throw Object.assign(new Error('Closing'), { code: 'BUSY' })
-  return workspaceRoots.stage()
+  return stageWorkspaceRoot()
 }))
 register('workspace-root-default', rootAction(value => {
   if (value !== undefined) throw new Error('Unexpected arguments')
-  if (closePending || quitRequested) throw Object.assign(new Error('Closing'), { code: 'BUSY' })
-  return workspaceRoots.stage(true)
+  return stageWorkspaceRoot(true)
 }))
-register('workspace-root-activate', rootAction(async value => {
-  const request = record(value, ['selectionId'])
+async function activateWorkspaceRoot(selectionId) {
   if (closePending || quitRequested || pendingWorkspaceRoot) throw Object.assign(new Error('Closing'), { code: 'BUSY' })
-  const root = await workspaceRoots.take(request.selectionId)
+  const root = await workspaceRoots.take(selectionId)
   if (root.storagePath === workspaceRoots.current.storagePath) return { status: 'ok', restarting: false }
   pendingWorkspaceRoot = root
   window.close() // Existing renderer close handshake drains/asks about dirty edits.
   return { status: 'ok', restarting: true }
+}
+register('workspace-root-activate', rootAction(async value => {
+  const request = record(value, ['selectionId'])
+  return activateWorkspaceRoot(request.selectionId)
 }))
 register('live-initial',()=>({status:'ok',documentId:initialWorkspaceId||null,sessionId:localSessionId}),false)
 register('live-observe',async value=>{

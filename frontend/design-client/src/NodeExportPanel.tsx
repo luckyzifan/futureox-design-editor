@@ -1,4 +1,4 @@
-import { pdfVectorIssues, sliceExportTarget } from './export'
+import { pdfVectorIssues, sliceExportTarget } from './export-metadata'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from './engine'
 import { exportSuffixHasForbiddenCharacters, uid, type DesignNode, type ExportSetting } from './model'

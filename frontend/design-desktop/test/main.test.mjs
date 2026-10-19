@@ -235,7 +235,9 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
   )
   source = source.replace("from './workspace-roots.mjs'", `from ${JSON.stringify(new URL('../src/workspace-roots.mjs', import.meta.url).href)}`)
   source = source.replace("from './keyboard-shortcuts.mjs'", `from ${JSON.stringify(new URL('../src/keyboard-shortcuts.mjs', import.meta.url).href)}`)
-  source = source.replace("from './automation-bridge.mjs'", `from ${JSON.stringify(new URL('../src/automation-bridge.mjs', import.meta.url).href)}`)
+  source = source.replace("import { registerAutomationBridge } from './automation-bridge.mjs'",
+    `import { registerAutomationBridge as registerRealAutomationBridge } from ${JSON.stringify(new URL('../src/automation-bridge.mjs', import.meta.url).href)}; const registerAutomationBridge = options => { globalThis[${JSON.stringify(key)}].automationOptions = options; return registerRealAutomationBridge(options) }`)
+
   source = source.replace("from './clipboard.mjs'", `from ${JSON.stringify(new URL('../src/clipboard.mjs', import.meta.url).href)}`)
   source = source.replace("import { spawn } from 'node:child_process'", `const { spawn } = globalThis[${JSON.stringify(key)}]`)
   source = source.replaceAll('process.platform' , `globalThis[${JSON.stringify(key)}].platform`)
@@ -1214,5 +1216,30 @@ test('target SQLite failure rejects stage and late target probe failure cancels 
     assert.deepEqual(await state.invoke('close-response', { requestId: state.sent.at(-1)[1].requestId, allow: true }), { accepted: false })
     assert.equal((await savedWorkspace(state)).kind, 'default')
     assert.equal(state.relaunchCalls, 0)
+  } finally { await state.dispose() }
+})
+
+
+test('actual main binds MCP workspace callbacks to the same native root and close-transition guards as UI', async () => {
+  const state = await host()
+  try {
+    const workspace = state.automationOptions.workspace
+    assert.equal(typeof workspace.verifyRoot, 'function')
+    assert.equal(workspace.getRoot().storagePath, state.root)
+    assert.deepEqual(workspace.status(), await state.invoke('workspace-root-status'))
+    await workspace.verifyRoot(workspace.getRoot())
+    const selected = path.join(state.root, 'mcp-native-selection'); await mkdir(selected)
+    state.open.push({ canceled: false, filePaths: [selected] })
+    const staged = await workspace.select(false)
+    assert.equal(staged.status, 'ok'); assert.equal((await savedWorkspace(state)).kind, 'default')
+    assert.equal((await workspace.activate(staged.selectionId)).restarting, true)
+    const requestId = state.sent.at(-1)[1].requestId
+    state.open.push({ canceled: true, filePaths: [] })
+    assert.throws(() => workspace.select(false), { code: 'BUSY' })
+    assert.equal((await state.invoke('workspace-root-select')).code, 'BUSY')
+    assert.equal(state.open.length, 1, 'Neither callback consumes the picker while closing')
+    await state.invoke('close-response', { requestId, allow: false })
+    assert.equal((await workspace.select(false)).status, 'cancelled')
+    assert.equal((await savedWorkspace(state)).kind, 'default'); assert.equal(state.relaunchCalls, 0)
   } finally { await state.dispose() }
 })

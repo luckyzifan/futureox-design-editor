@@ -202,7 +202,9 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
           title="删除当前页面"
           disabled={s.doc.pages.length === 1}
           onClick={() => {
-            if (confirm('删除当前页面及其所有图层？可通过撤销恢复。')) editor.removePage()
+            if (editor.interactionActive || editor.state.busy) return
+            if (confirm('删除当前页面及其所有图层？可通过撤销恢复。') &&
+                !editor.interactionActive && !editor.state.busy) editor.removePage()
           }}
         >
           <Trash2 size={12} />

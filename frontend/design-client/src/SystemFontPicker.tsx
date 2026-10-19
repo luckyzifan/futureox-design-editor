@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { desktopBridge, type DesktopFontData } from './desktop'
 import type { Editor } from './engine'
 import type { DesignDocument } from './model'
 import { ImportOwner, importStep } from './import-ownership'
-import { applyWholeTextStyle } from './text'
-import { applyMatchedFonts, matchFont, unmatchedSourceFonts, type FontResource } from './font-matching'
+import { applySelectionFont, FONT_PAGE_SIZE, searchFontChoices, matchSourceFontsInDocument, unmatchedEditableSourceFonts } from './font-management'
+import { commitPendingEdits } from './pending-edits'
+import { matchFont, type FontResource } from './font-matching'
 import { initializeKernelModule } from './kernel/module'
 import { font_faces_json } from './generated/design-kernel/design_kernel'
 
@@ -38,24 +39,31 @@ export function nativeFontResource(read: DesktopFontData): NonNullable<DesignDoc
   return { family: `${read.font.family} ${read.font.style}`.trim().slice(0, 200), data: read.data, index: read.index,
     ...(read.font.postscript ? { postscript: read.font.postscript } : {}) }
 }
-export function SystemFontPicker({ editor, ids }: { editor: Editor; ids: string[] }) {
+export function SystemFontPicker({ editor, ids, detachSharedStyle = false }: { editor: Editor; ids: string[]; detachSharedStyle?: boolean }) {
   const native = desktopBridge()?.fonts
   const [open, setOpen] = useState(false), [fonts, setFonts] = useState<SystemFont[]>([])
-  const [query, setQuery] = useState(''), [busy, setBusy] = useState(false), [message, setMessage] = useState('')
+  const [query, setQuery] = useState(''), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [pageIndex, setPageIndex] = useState(0)
+  const matches = useMemo(() => searchFontChoices(fonts, query), [fonts, query])
+  const page = Math.min(pageIndex, Math.max(0, Math.ceil(matches.length / FONT_PAGE_SIZE) - 1))
+  const visible = matches.slice(page * FONT_PAGE_SIZE, (page + 1) * FONT_PAGE_SIZE)
   const [owner] = useState(() => new ImportOwner())
   useEffect(() => { owner.activate(); return () => owner.dispose() }, [owner])
+  const targetsKey = ids.join('\0')
+  const session = useSyncExternalStore(editor.subscribe, () => editor.sessionGeneration)
+  useEffect(() => { owner.invalidate(); setBusy(false) }, [owner, editor, targetsKey, session])
   const available = !!native || typeof window !== 'undefined' && !!queryFonts()
-  const list = async (): Promise<SystemFont[]> => {
+  const list = async (): Promise<{ fonts: SystemFont[]; notice: string }> => {
     if (native) {
       const result = await native.list()
       if (result.status !== 'ok') throw new Error(result.status === 'cancelled' ? '已取消' : result.message)
-      return result.fonts
+      const notice = `${result.truncated ? '已达到本机返回上限' : ''}${result.skippedCollections ? `；跳过 ${result.skippedCollections} 个不可读取的字体集合` : ''}`
+      return { fonts: result.fonts, notice }
     }
     const query = queryFonts()
     if (!query) throw new Error('此浏览器不支持本机字体访问，请导入 TTF / OTF 字体')
     // Called directly from a user click; never query fonts at page startup.
-    return (await query.call(window)).map(f => ({ id: f.postscriptName, family: f.family, style: f.style,
-      postscript: f.postscriptName, index: 0, browserFont: f }))
+    return { fonts: (await query.call(window)).map(f => ({ id: f.postscriptName, family: f.family, style: f.style,
+      postscript: f.postscriptName, index: 0, browserFont: f })), notice: '' }
   }
   const read = async (font: SystemFont) => {
     if (font.browserFont) return browserFontResource(font.browserFont)
@@ -66,49 +74,62 @@ export function SystemFontPicker({ editor, ids }: { editor: Editor; ids: string[
     return nativeFontResource(result)
   }
   const load = async () => {
+    if (!commitPendingEdits(editor)) return
     setOpen(true); setBusy(true); setMessage('正在读取本机字体…')
     const request = owner.begin(editor)
     try {
       const result = await importStep(request, list)
-      setFonts(result)
-      setMessage(`${result.length} 个字体`)
+      setFonts(result.fonts); setPageIndex(0)
+      setMessage(`${result.fonts.length} 个字体${result.notice ? `；${result.notice}` : ''}`)
     } catch (e) { if (request.isCurrent()) setMessage(String(e)) }
-    finally { if (request.isCurrent()) setBusy(false) }
+    finally { if (request.isCurrent()) setBusy(false); request.finish() }
   }
   const choose = async (font: SystemFont) => {
+    if (!commitPendingEdits(editor)) return
     const request = owner.begin(editor); setBusy(true)
     try {
       const resource = await importStep(request, () => read(font))
       const id = await importStep(request, () => resourceId(resource))
       request.assertCurrent()
-      editor.change('使用本机字体', document => {
-        // The host extracts TTC faces into standalone bytes. Use the read
-        // response's index and identity, never the original collection index.
-        document.fonts = { ...document.fonts, [id]: resource }
-        for (const target of ids) if (document.nodes[target]?.kind === 'text')
-          applyWholeTextStyle(document.nodes[target], { fontId: id })
-      })
-      setOpen(false)
+      const result = applySelectionFont(editor, ids, id, { detachSharedStyle }, resource)
+      setMessage(result.message)
+      if (result.status === 'committed' || result.status === 'unchanged') setOpen(false)
     } catch (e) { if (request.isCurrent()) setMessage(String(e)) }
-    finally { if (request.isCurrent()) setBusy(false) }
+    finally { if (request.isCurrent()) setBusy(false); request.finish() }
   }
   const matchDocument = async () => {
+    if (!commitPendingEdits(editor)) return
     const request = owner.begin(editor); setBusy(true); setMessage('正在匹配原字体…')
     try {
-      const fonts = await importStep(request, list)
-      const names = new Set(Object.values(editor.state.doc.nodes).flatMap(n => unmatchedSourceFonts(editor.state.doc, n)))
+      const { fonts } = await importStep(request, list)
+      const names = unmatchedEditableSourceFonts(editor.state.doc)
       const matched = new Map<string, { id: string; resource: FontResource }>(), missing: string[] = []
+      const loaded = new Map<string, { id: string; resource: FontResource }>(), faces = new Map<string, { id: string; resource: FontResource }>()
       for (const name of names) {
         const font = matchFont(name, fonts)
         if (!font) { missing.push(name); continue }
-        const resource = await importStep(request, () => read(font))
-        matched.set(name, { id: await importStep(request, () => resourceId(resource)), resource })
+        let entry = faces.get(font.id)
+        if (!entry) {
+          const resource = await importStep(request, () => read(font))
+          const id = await importStep(request, () => resourceId(resource))
+          entry = loaded.get(id)
+          if (!entry) {
+            // Admission allows 32 resources. Retain at most that many plus
+            // the single face currently being identified; aliases reuse bytes.
+            if (loaded.size >= 32) throw Error('文档最多支持 32 个字体资源；请先缩小原字体匹配范围')
+            entry = { id, resource }; loaded.set(id, entry)
+          }
+          faces.set(font.id, entry)
+        }
+        matched.set(name, entry)
       }
       request.assertCurrent()
-      if (matched.size) editor.change('匹配文档原字体', document => { applyMatchedFonts(document, matched) })
-      setMessage(`已匹配 ${matched.size} 种原字体${missing.length ? `；未找到：${missing.join('、')}` : ''}`)
+      if (!commitPendingEdits(editor)) { setMessage(editor.state.message); return }
+      let changed = 0, skipped = 0
+      const result = matched.size ? editor.change('匹配文档原字体', document => { const edit = matchSourceFontsInDocument(document, matched); changed = edit.changed; skipped = edit.skippedLinked + edit.skippedLocked }) : undefined
+      setMessage(result?.status === 'rejected' ? result.message : `已匹配 ${changed} 处原字体引用${skipped ? `；跳过 ${skipped} 个锁定或共享样式图层` : ''}${missing.length ? `；未找到：${missing.join('、')}` : ''}`)
     } catch (e) { if (request.isCurrent()) setMessage(String(e)) }
-    finally { if (request.isCurrent()) setBusy(false) }
+    finally { if (request.isCurrent()) setBusy(false); request.finish() }
   }
   if (!available) return null
   return <>
@@ -116,10 +137,11 @@ export function SystemFontPicker({ editor, ids }: { editor: Editor; ids: string[
     <button disabled={busy} onClick={() => void matchDocument()}>匹配文档原字体</button>
     {!open && message && <p role="status">{message}</p>}
     {open && <section className="system-font-picker" aria-label="本机字体选择">
-      <div className="remote-actions"><input aria-label="搜索本机字体" placeholder="字体名称或样式" value={query} onChange={e => setQuery(e.target.value)} /><button onClick={() => { owner.invalidate(); setBusy(false); setOpen(false) }}>关闭</button></div>
+      <div className="remote-actions"><input aria-label="搜索本机字体" placeholder="字体名称或样式" value={query} onChange={e => { setQuery(e.target.value); setPageIndex(0) }} /><button onClick={() => { owner.invalidate(); setBusy(false); setOpen(false) }}>关闭</button></div>
       <p role="status">{message}</p>
-      <div style={{maxHeight:240,overflowY:'auto'}}>{fonts.filter(f => `${f.family} ${f.style} ${f.postscript}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).slice(0,100).map(f =>
-        <button style={{display:'flex',width:'100%',justifyContent:'space-between'}} disabled={busy} key={f.id} onClick={() => void choose(f)}><span>{f.family}</span><small>{f.style}</small></button>)}</div>
+      <div style={{maxHeight:240,overflowY:'auto'}}>{visible.map(f =>
+        <button style={{display:'flex',width:'100%',justifyContent:'space-between'}} disabled={busy || !ids.length} key={f.id} onClick={() => void choose(f)}><span>{f.family}</span><small>{f.style}</small></button>)}</div>
+      <div className="selection-actions"><button type="button" disabled={page === 0} onClick={() => setPageIndex(page - 1)}>上一页字体</button><span>{matches.length ? page * FONT_PAGE_SIZE + 1 : 0}–{Math.min((page + 1) * FONT_PAGE_SIZE, matches.length)} / {matches.length}</span><button type="button" disabled={(page + 1) * FONT_PAGE_SIZE >= matches.length} onClick={() => setPageIndex(page + 1)}>下一页字体</button></div>
     </section>}
   </>
 }
