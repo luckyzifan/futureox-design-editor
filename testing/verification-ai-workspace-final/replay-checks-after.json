@@ -1,0 +1,56 @@
+[
+  {
+    "page": "workspace",
+    "format": "futureox.design-check.v1",
+    "documentId": "8787441f-03eb-4cb7-bdd2-eeb19bf5c698",
+    "checkedNodes": 89,
+    "issues": [],
+    "issueCount": 0,
+    "pagination": {
+      "offset": 0,
+      "returned": 89,
+      "total": 89,
+      "limit": 500,
+      "nextCursor": null
+    },
+    "warnings": [],
+    "complete": true,
+    "scope": "This page of visible nodes only; no overlap/style/aesthetic judgment or pixel equivalence check."
+  },
+  {
+    "page": "files",
+    "format": "futureox.design-check.v1",
+    "documentId": "8787441f-03eb-4cb7-bdd2-eeb19bf5c698",
+    "checkedNodes": 93,
+    "issues": [],
+    "issueCount": 0,
+    "pagination": {
+      "offset": 0,
+      "returned": 93,
+      "total": 93,
+      "limit": 500,
+      "nextCursor": null
+    },
+    "warnings": [],
+    "complete": true,
+    "scope": "This page of visible nodes only; no overlap/style/aesthetic judgment or pixel equivalence check."
+  },
+  {
+    "page": "settings",
+    "format": "futureox.design-check.v1",
+    "documentId": "8787441f-03eb-4cb7-bdd2-eeb19bf5c698",
+    "checkedNodes": 80,
+    "issues": [],
+    "issueCount": 0,
+    "pagination": {
+      "offset": 0,
+      "returned": 80,
+      "total": 80,
+      "limit": 500,
+      "nextCursor": null
+    },
+    "warnings": [],
+    "complete": true,
+    "scope": "This page of visible nodes only; no overlap/style/aesthetic judgment or pixel equivalence check."
+  }
+]

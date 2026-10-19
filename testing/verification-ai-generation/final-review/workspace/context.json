@@ -1,0 +1,7071 @@
+{
+  "format": "futureox.design-context.v1",
+  "document": {
+    "id": "ad1b0938-7cc2-4ee1-a35b-7b68f96a650f",
+    "name": "Forma / local design studio",
+    "schemaVersion": 2
+  },
+  "page": {
+    "id": "b5a64600-3016-429e-8cdb-7b9330df219e",
+    "name": "Workspace",
+    "background": "#e7e9e1"
+  },
+  "geometrySemantics": "authored-parent-local",
+  "rootIds": [
+    "42000000-0000-4000-8000-000000000001"
+  ],
+  "rootCount": 1,
+  "nodes": [
+    {
+      "id": "42000000-0000-4000-8000-000000000001",
+      "name": "Workspace / Desktop 1440 x 1000",
+      "kind": "frame",
+      "parentId": null,
+      "depth": 0,
+      "children": [
+        "42000000-0000-4000-8000-000000000002",
+        "42000000-0000-4000-8000-000000000031",
+        "42000000-0000-4000-8000-000000000032",
+        "42000000-0000-4000-8000-000000000034",
+        "42000000-0000-4000-8000-000000000035",
+        "42000000-0000-4000-8000-000000000036",
+        "42000000-0000-4000-8000-000000000037",
+        "42000000-0000-4000-8000-000000000039",
+        "42000000-0000-4000-8000-000000000051",
+        "42000000-0000-4000-8000-000000000052",
+        "42000000-0000-4000-8000-000000000053",
+        "42000000-0000-4000-8000-000000000087"
+      ],
+      "childCount": 12,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "width": 1440,
+        "height": 1000
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#f5f4f0",
+          "fit": "cover",
+          "id": "37863352-c6af-4e07-960a-cf1387dad5df",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#f5f4f0",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000002",
+      "name": "Primary navigation",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [
+        "42000000-0000-4000-8000-000000000003",
+        "42000000-0000-4000-8000-000000000007",
+        "42000000-0000-4000-8000-000000000008",
+        "42000000-0000-4000-8000-000000000009",
+        "42000000-0000-4000-8000-000000000010",
+        "42000000-0000-4000-8000-000000000011",
+        "42000000-0000-4000-8000-000000000012",
+        "42000000-0000-4000-8000-000000000013",
+        "42000000-0000-4000-8000-000000000014",
+        "42000000-0000-4000-8000-000000000015",
+        "42000000-0000-4000-8000-000000000016",
+        "42000000-0000-4000-8000-000000000017",
+        "42000000-0000-4000-8000-000000000018",
+        "42000000-0000-4000-8000-000000000019",
+        "42000000-0000-4000-8000-000000000020",
+        "42000000-0000-4000-8000-000000000021",
+        "42000000-0000-4000-8000-000000000022",
+        "42000000-0000-4000-8000-000000000023",
+        "42000000-0000-4000-8000-000000000024",
+        "42000000-0000-4000-8000-000000000029",
+        "42000000-0000-4000-8000-000000000030"
+      ],
+      "childCount": 21,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "width": 232,
+        "height": 1000
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#ffffff",
+          "fit": "cover",
+          "id": "601a8676-7ae8-4741-89e2-bde7741ff9b9",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#ffffff",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000003",
+      "name": "Forma original geometric mark",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [
+        "42000000-0000-4000-8000-000000000004",
+        "42000000-0000-4000-8000-000000000005",
+        "42000000-0000-4000-8000-000000000006"
+      ],
+      "childCount": 3,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          26,
+          30
+        ],
+        "width": 32,
+        "height": 32
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#d9f17d",
+          "fit": "cover",
+          "id": "d5aa2547-b90f-49f3-879b-8a842c582c10",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#d9f17d",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          9,
+          9,
+          9,
+          9
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000004",
+      "name": "Mark vertical",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000003",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          8,
+          8
+        ],
+        "width": 5,
+        "height": 17
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#25352b",
+          "fit": "cover",
+          "id": "6d2c7b2e-488d-49e7-b72b-f911a5c3422a",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#25352b",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000005",
+      "name": "Mark upper",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000003",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          8,
+          8
+        ],
+        "width": 17,
+        "height": 5
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#25352b",
+          "fit": "cover",
+          "id": "e5ef52f0-99d6-4caa-b7a7-7c1b2f096876",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#25352b",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000006",
+      "name": "Mark middle",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000003",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          8,
+          15
+        ],
+        "width": 13,
+        "height": 4
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#25352b",
+          "fit": "cover",
+          "id": "4225025e-1489-4b8d-a192-2e234a6ec88d",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#25352b",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000007",
+      "name": "forma",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          70,
+          27
+        ],
+        "width": 136,
+        "height": 42
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#22251f",
+          "fit": "cover",
+          "id": "d20f246d-d266-4842-9978-d66f784fd682",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#22251f",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "forma",
+        "characters": 5,
+        "truncated": false,
+        "fontSize": 27,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 700,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000008",
+      "name": "LOCAL DESIGN STUDIO",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          26,
+          89
+        ],
+        "width": 188,
+        "height": 25
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "b6b4b1ae-5a2e-4ba0-80df-78bec71e2113",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "LOCAL DESIGN STUDIO",
+        "characters": 19,
+        "truncated": false,
+        "fontSize": 11,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000009",
+      "name": "Workspace selected",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          16,
+          141
+        ],
+        "width": 200,
+        "height": 44
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#dbeabb",
+          "fit": "cover",
+          "id": "c71b7578-3db6-4dc5-9bbd-7b968578860a",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#dbeabb",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          10,
+          10,
+          10,
+          10
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000010",
+      "name": "Workspace navigation icon",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          30,
+          156
+        ],
+        "width": 12,
+        "height": 12
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#25352b",
+          "fit": "cover",
+          "id": "ea9d66ce-df75-475c-a460-3e4c0395dfad",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#25352b",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          6,
+          6,
+          6,
+          6
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000011",
+      "name": "Workspace",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          56,
+          151
+        ],
+        "width": 143,
+        "height": 30
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#25352b",
+          "fit": "cover",
+          "id": "6c7ecf18-1982-4510-9c94-90e6f970a3a0",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#25352b",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Workspace",
+        "characters": 9,
+        "truncated": false,
+        "fontSize": 15,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000012",
+      "name": "Files navigation icon",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          30,
+          210
+        ],
+        "width": 12,
+        "height": 12
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#b7beb1",
+          "fit": "cover",
+          "id": "57ad41fb-dcb6-49ab-b21b-30b94dffe757",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#b7beb1",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000013",
+      "name": "Files",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          56,
+          205
+        ],
+        "width": 143,
+        "height": 30
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "1c1d701b-216e-4368-a0d6-55cbdff33648",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Files",
+        "characters": 5,
+        "truncated": false,
+        "fontSize": 15,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000014",
+      "name": "Settings navigation icon",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          30,
+          264
+        ],
+        "width": 12,
+        "height": 12
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#b7beb1",
+          "fit": "cover",
+          "id": "46e302a2-d999-45b8-98d1-8984ada28c41",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#b7beb1",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          6,
+          6,
+          6,
+          6
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000015",
+      "name": "Settings",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          56,
+          259
+        ],
+        "width": 143,
+        "height": 30
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "0077cdba-9e25-43bb-9d05-9426db57b683",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Settings",
+        "characters": 8,
+        "truncated": false,
+        "fontSize": 15,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000016",
+      "name": "Divider",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          24,
+          329
+        ],
+        "width": 184,
+        "height": 1
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#e5e7df",
+          "fit": "cover",
+          "id": "934fcb8d-b6f1-4c9c-b3cf-3c637f3364e7",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#e5e7df",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000017",
+      "name": "YOUR COLLECTIONS",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          26,
+          354
+        ],
+        "width": 180,
+        "height": 25
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "5422b1cd-b1de-4ff0-a4aa-1f70bbe06cd0",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "YOUR COLLECTIONS",
+        "characters": 16,
+        "truncated": false,
+        "fontSize": 11,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000018",
+      "name": "Product design collection marker",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          30,
+          403
+        ],
+        "width": 7,
+        "height": 7
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#819b71",
+          "fit": "cover",
+          "id": "cc44e680-f53c-47ec-8573-ce69433fa93b",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#819b71",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000019",
+      "name": "Product design",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          50,
+          392
+        ],
+        "width": 165,
+        "height": 32
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "249c59d7-dc3e-43b2-9a89-12840e220ebb",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Product design",
+        "characters": 14,
+        "truncated": false,
+        "fontSize": 13,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000020",
+      "name": "Brand explorations collection marker",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          30,
+          446
+        ],
+        "width": 7,
+        "height": 7
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#d49f82",
+          "fit": "cover",
+          "id": "fcaf23d8-27a4-47bc-9cc9-547e863d3045",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#d49f82",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000021",
+      "name": "Brand explorations",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          50,
+          435
+        ],
+        "width": 165,
+        "height": 32
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "c5eb20c8-417c-49cf-91c0-93513fd45fc4",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Brand explorations",
+        "characters": 18,
+        "truncated": false,
+        "fontSize": 13,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000022",
+      "name": "Personal drafts collection marker",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          30,
+          489
+        ],
+        "width": 7,
+        "height": 7
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#9da5b2",
+          "fit": "cover",
+          "id": "81ee0adb-cc37-4012-ad88-a2f92b448b37",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#9da5b2",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000023",
+      "name": "Personal drafts",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          50,
+          478
+        ],
+        "width": 165,
+        "height": 32
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "37f4807b-98ea-43ae-9895-f9c97a9c3d2a",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Personal drafts",
+        "characters": 15,
+        "truncated": false,
+        "fontSize": 13,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000024",
+      "name": "Local storage summary",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [
+        "42000000-0000-4000-8000-000000000025",
+        "42000000-0000-4000-8000-000000000026",
+        "42000000-0000-4000-8000-000000000027",
+        "42000000-0000-4000-8000-000000000028"
+      ],
+      "childCount": 4,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          18,
+          795
+        ],
+        "width": 196,
+        "height": 112
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#f3f5ee",
+          "fit": "cover",
+          "id": "5d5840ea-4551-4d66-a191-bc4e387e229e",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#f3f5ee",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          12,
+          12,
+          12,
+          12
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000025",
+      "name": "On this device",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000024",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          16,
+          14
+        ],
+        "width": 170,
+        "height": 28
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#22251f",
+          "fit": "cover",
+          "id": "c1dcefb7-eaf8-4152-a413-eca7f8f95cdc",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#22251f",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "On this device",
+        "characters": 14,
+        "truncated": false,
+        "fontSize": 13,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000026",
+      "name": "2.4 GB of 10 GB",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000024",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          16,
+          44
+        ],
+        "width": 170,
+        "height": 24
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "1341948c-8dc0-485b-823f-b2e8d2408639",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "2.4 GB of 10 GB",
+        "characters": 15,
+        "truncated": false,
+        "fontSize": 12,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000027",
+      "name": "Storage capacity track",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000024",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          16,
+          81
+        ],
+        "width": 164,
+        "height": 5
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#e0e6d7",
+          "fit": "cover",
+          "id": "abe05314-bc43-44df-9598-3ca8411aba26",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#e0e6d7",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000028",
+      "name": "Storage capacity used",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000024",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          16,
+          81
+        ],
+        "width": 40,
+        "height": 5
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#7b9560",
+          "fit": "cover",
+          "id": "df655b54-3b22-4906-b74d-b8a17222d7fc",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#7b9560",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000029",
+      "name": "Profile avatar",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          26,
+          938
+        ],
+        "width": 30,
+        "height": 30
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#f4d7c7",
+          "fit": "cover",
+          "id": "f2e14395-f925-4c6f-aca7-73c9940a8be0",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#f4d7c7",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          15,
+          15,
+          15,
+          15
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000030",
+      "name": "Alex Morgan",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000002",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          68,
+          938
+        ],
+        "width": 146,
+        "height": 28
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#22251f",
+          "fit": "cover",
+          "id": "dac64d42-ab80-4103-9754-c45b370c2073",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#22251f",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Alex Morgan",
+        "characters": 11,
+        "truncated": false,
+        "fontSize": 13,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 500,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000031",
+      "name": "STUDIO / WORKSPACE",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          280,
+          31
+        ],
+        "width": 600,
+        "height": 26
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "e6ac2224-68e7-4f78-aaba-6b5a41c20d46",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "STUDIO / WORKSPACE",
+        "characters": 18,
+        "truncated": false,
+        "fontSize": 11,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000032",
+      "name": "LOCAL MODE badge",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [
+        "42000000-0000-4000-8000-000000000033"
+      ],
+      "childCount": 1,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          1260,
+          27
+        ],
+        "width": 132,
+        "height": 30
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#e7ecdf",
+          "fit": "cover",
+          "id": "8ddead3a-c273-4e5e-a91b-b754f2851031",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#e7ecdf",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          15,
+          15,
+          15,
+          15
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000033",
+      "name": "LOCAL MODE",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000032",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          12,
+          4
+        ],
+        "width": 112,
+        "height": 24
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#5a7053",
+          "fit": "cover",
+          "id": "aa00e1e8-9a88-49c6-869d-8bd2337909e3",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#5a7053",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "LOCAL MODE",
+        "characters": 10,
+        "truncated": false,
+        "fontSize": 12,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 500,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000034",
+      "name": "Divider",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          280,
+          78
+        ],
+        "width": 1112,
+        "height": 1
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#e5e7df",
+          "fit": "cover",
+          "id": "1655c90f-1317-458a-a59e-1a5a7e18936a",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#e5e7df",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000035",
+      "name": "A good place to make things.",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          280,
+          112
+        ],
+        "width": 900,
+        "height": 62
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#22251f",
+          "fit": "cover",
+          "id": "136eef42-ad2d-46bf-be33-fd4a47ce9705",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#22251f",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "A good place to make things.",
+        "characters": 28,
+        "truncated": false,
+        "fontSize": 38,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000036",
+      "name": "Your files, ideas, and next steps. All right here.",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          282,
+          178
+        ],
+        "width": 850,
+        "height": 32
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "a8b66551-45df-4284-8223-defa3480cae4",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Your files, ideas, and next steps. All right here.",
+        "characters": 50,
+        "truncated": false,
+        "fontSize": 16,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000037",
+      "name": "+  New design button",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [
+        "42000000-0000-4000-8000-000000000038"
+      ],
+      "childCount": 1,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          1222,
+          117
+        ],
+        "width": 170,
+        "height": 46
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#25352b",
+          "fit": "cover",
+          "id": "d4a91917-a3b6-4eb9-b7a9-e7b8d540903f",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#25352b",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          10,
+          10,
+          10,
+          10
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000038",
+      "name": "+  New design",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000037",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          18,
+          11
+        ],
+        "width": 140,
+        "height": 25
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#ffffff",
+          "fit": "cover",
+          "id": "3ab30d81-e22a-4ae7-8f60-9287069447cb",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#ffffff",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "+  New design",
+        "characters": 13,
+        "truncated": false,
+        "fontSize": 14,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000039",
+      "name": "Continue working feature",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [
+        "42000000-0000-4000-8000-000000000040",
+        "42000000-0000-4000-8000-000000000042",
+        "42000000-0000-4000-8000-000000000043",
+        "42000000-0000-4000-8000-000000000044",
+        "42000000-0000-4000-8000-000000000046"
+      ],
+      "childCount": 5,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          280,
+          242
+        ],
+        "width": 1112,
+        "height": 244
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#25352b",
+          "fit": "cover",
+          "id": "abbb25c0-1053-4c80-ac2d-90328713bcb1",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#25352b",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          18,
+          18,
+          18,
+          18
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000040",
+      "name": "PICK UP WHERE YOU LEFT OFF badge",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000039",
+      "depth": 2,
+      "children": [
+        "42000000-0000-4000-8000-000000000041"
+      ],
+      "childCount": 1,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          28,
+          25
+        ],
+        "width": 253,
+        "height": 30
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#425842",
+          "fit": "cover",
+          "id": "6e95d086-cfc1-42f8-975c-e11502f7d733",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#425842",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          15,
+          15,
+          15,
+          15
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000041",
+      "name": "PICK UP WHERE YOU LEFT OFF",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000040",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          12,
+          4
+        ],
+        "width": 233,
+        "height": 24
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#e0edcf",
+          "fit": "cover",
+          "id": "d36e036b-2763-4e26-94fa-81745a2d7cfe",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#e0edcf",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "PICK UP WHERE YOU LEFT OFF",
+        "characters": 26,
+        "truncated": false,
+        "fontSize": 12,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 500,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000042",
+      "name": "Make room for your next idea.",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000039",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          28,
+          75
+        ],
+        "width": 770,
+        "height": 50
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#ffffff",
+          "fit": "cover",
+          "id": "19c2b7e9-3e34-4c2b-8bd0-cd322b612fbf",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#ffffff",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Make room for your next idea.",
+        "characters": 29,
+        "truncated": false,
+        "fontSize": 29,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000043",
+      "name": "Product dashboard  /  4 pages  /  Edited 12 minutes ago",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000039",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          30,
+          132
+        ],
+        "width": 750,
+        "height": 32
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#c1ceb9",
+          "fit": "cover",
+          "id": "239a44c0-38e0-4621-ba91-69b55c62ec09",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#c1ceb9",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Product dashboard  /  4 pages  /  Edited 12 minutes ago",
+        "characters": 55,
+        "truncated": false,
+        "fontSize": 14,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000044",
+      "name": "Continue editing button",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000039",
+      "depth": 2,
+      "children": [
+        "42000000-0000-4000-8000-000000000045"
+      ],
+      "childCount": 1,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          28,
+          170
+        ],
+        "width": 190,
+        "height": 46
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#d9f17d",
+          "fit": "cover",
+          "id": "92bb1677-61d7-421e-92d8-c6a38bd480ab",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#d9f17d",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          10,
+          10,
+          10,
+          10
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000045",
+      "name": "Continue editing",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000044",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          18,
+          11
+        ],
+        "width": 160,
+        "height": 25
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#25352b",
+          "fit": "cover",
+          "id": "f43533be-23d7-4940-bbc4-e8f74f90065a",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#25352b",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Continue editing",
+        "characters": 16,
+        "truncated": false,
+        "fontSize": 14,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000046",
+      "name": "Original paper stack artwork",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000039",
+      "depth": 2,
+      "children": [
+        "42000000-0000-4000-8000-000000000047",
+        "42000000-0000-4000-8000-000000000048",
+        "42000000-0000-4000-8000-000000000049",
+        "42000000-0000-4000-8000-000000000050"
+      ],
+      "childCount": 4,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          870,
+          27
+        ],
+        "width": 208,
+        "height": 168
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#425842",
+          "fit": "cover",
+          "id": "d76ff0e0-ee57-4e90-a073-ce0dedaf8f9c",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#425842",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          14,
+          14,
+          14,
+          14
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000047",
+      "name": "Paper back",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000046",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          61,
+          23
+        ],
+        "width": 118,
+        "height": 121
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#8fa781",
+          "fit": "cover",
+          "id": "668b4e24-da7a-46b7-baeb-676f1453856d",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#8fa781",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          12,
+          12,
+          12,
+          12
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000048",
+      "name": "Paper front",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000046",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          30,
+          44
+        ],
+        "width": 118,
+        "height": 104
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#d9f17d",
+          "fit": "cover",
+          "id": "20623cfd-a2cb-4412-8c23-7fb82e2b7dca",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#d9f17d",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          12,
+          12,
+          12,
+          12
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000049",
+      "name": "Paper accent circle",
+      "kind": "ellipse",
+      "parentId": "42000000-0000-4000-8000-000000000046",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          51,
+          65
+        ],
+        "width": 33,
+        "height": 33
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#25352b",
+          "fit": "cover",
+          "id": "8fa6535b-e648-4e01-880a-f3ac29136764",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#25352b",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          16,
+          16,
+          16,
+          16
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000050",
+      "name": "Paper accent line",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000046",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          51,
+          112
+        ],
+        "width": 74,
+        "height": 8
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#718e4d",
+          "fit": "cover",
+          "id": "42052733-bc72-4925-a42b-9d1aa4113560",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#718e4d",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          4,
+          4,
+          4,
+          4
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000051",
+      "name": "Recent files",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          280,
+          501
+        ],
+        "width": 700,
+        "height": 42
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#22251f",
+          "fit": "cover",
+          "id": "6c86b823-e0a8-4359-b01d-5131a384f60a",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#22251f",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Recent files",
+        "characters": 12,
+        "truncated": false,
+        "fontSize": 23,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000052",
+      "name": "View all files  →",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          1230,
+          509
+        ],
+        "width": 165,
+        "height": 30
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "4142bebe-c1e0-4951-987c-57c594f00d1c",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "View all files  →",
+        "characters": 17,
+        "truncated": false,
+        "fontSize": 14,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 500,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000053",
+      "name": "Recent file cards",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [
+        "42000000-0000-4000-8000-000000000054",
+        "42000000-0000-4000-8000-000000000069",
+        "42000000-0000-4000-8000-000000000077"
+      ],
+      "childCount": 3,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          280,
+          558
+        ],
+        "width": 1112,
+        "height": 273
+      },
+      "layout": {
+        "align": "start",
+        "columns": 3,
+        "fillRows": false,
+        "gap": 20,
+        "justify": "start",
+        "lineGap": 12,
+        "mode": "horizontal",
+        "padding": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "wrap": false
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#f5f4f0",
+          "fit": "cover",
+          "id": "10f94513-92b5-4d47-b298-2c6718839f48",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#f5f4f0",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000054",
+      "name": "Product dashboard file card",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000053",
+      "depth": 2,
+      "children": [
+        "42000000-0000-4000-8000-000000000055",
+        "42000000-0000-4000-8000-000000000066",
+        "42000000-0000-4000-8000-000000000067",
+        "42000000-0000-4000-8000-000000000068"
+      ],
+      "childCount": 4,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "width": 357,
+        "height": 273
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#ffffff",
+          "fit": "cover",
+          "id": "274bcd5c-1cfc-4870-a659-b9ba2cb44ca4",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#ffffff",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          14,
+          14,
+          14,
+          14
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000055",
+      "name": "Product dashboard editable thumbnail",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000054",
+      "depth": 3,
+      "children": [
+        "42000000-0000-4000-8000-000000000056"
+      ],
+      "childCount": 1,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          14,
+          14
+        ],
+        "width": 329,
+        "height": 159
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#dde5d3",
+          "fit": "cover",
+          "id": "b94ced88-b787-4eb7-82ec-df3527d18b79",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#dde5d3",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          10,
+          10,
+          10,
+          10
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000056",
+      "name": "Dashboard miniature",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000055",
+      "depth": 4,
+      "children": [
+        "42000000-0000-4000-8000-000000000057",
+        "42000000-0000-4000-8000-000000000058",
+        "42000000-0000-4000-8000-000000000059",
+        "42000000-0000-4000-8000-000000000060",
+        "42000000-0000-4000-8000-000000000061",
+        "42000000-0000-4000-8000-000000000062",
+        "42000000-0000-4000-8000-000000000063",
+        "42000000-0000-4000-8000-000000000064",
+        "42000000-0000-4000-8000-000000000065"
+      ],
+      "childCount": 9,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          55,
+          25
+        ],
+        "width": 220,
+        "height": 115
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#ffffff",
+          "fit": "cover",
+          "id": "e5483325-076e-4351-a359-4bc03952a173",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#ffffff",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          7,
+          7,
+          7,
+          7
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000057",
+      "name": "Mini sidebar",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000056",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "width": 44,
+        "height": 115
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#5b7456",
+          "fit": "cover",
+          "id": "10b20aeb-b062-438f-9d8f-3c0a366ffe8a",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#5b7456",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          7,
+          7,
+          7,
+          7
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000058",
+      "name": "Mini card 1",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000056",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          56,
+          19
+        ],
+        "width": 42,
+        "height": 27
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#e3eadc",
+          "fit": "cover",
+          "id": "7e804a17-ae04-484a-a77f-5d035d1ebc77",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#e3eadc",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          4,
+          4,
+          4,
+          4
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000059",
+      "name": "Mini card 2",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000056",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          106,
+          19
+        ],
+        "width": 42,
+        "height": 27
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#e3eadc",
+          "fit": "cover",
+          "id": "b6f60709-9af2-4096-9cd1-bbd9849bd150",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#e3eadc",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          4,
+          4,
+          4,
+          4
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000060",
+      "name": "Mini card 3",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000056",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          156,
+          19
+        ],
+        "width": 42,
+        "height": 27
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#e3eadc",
+          "fit": "cover",
+          "id": "56871bbf-65c4-4651-92f4-28c8a3afc4c3",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#e3eadc",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          4,
+          4,
+          4,
+          4
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000061",
+      "name": "Mini bar 1",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000056",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          59,
+          88
+        ],
+        "width": 16,
+        "height": 15
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#9cb182",
+          "fit": "cover",
+          "id": "324c909d-bb5a-4369-9555-71786a0ca495",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#9cb182",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000062",
+      "name": "Mini bar 2",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000056",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          87,
+          80
+        ],
+        "width": 16,
+        "height": 23
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#9cb182",
+          "fit": "cover",
+          "id": "8b5b7dd2-78ff-44d6-9c71-5fec3809107f",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#9cb182",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000063",
+      "name": "Mini bar 3",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000056",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          115,
+          72
+        ],
+        "width": 16,
+        "height": 31
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#9cb182",
+          "fit": "cover",
+          "id": "c08bb1c3-ba4c-4dc6-a7b0-d4c0863ed14b",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#9cb182",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000064",
+      "name": "Mini bar 4",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000056",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          143,
+          64
+        ],
+        "width": 16,
+        "height": 39
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#9cb182",
+          "fit": "cover",
+          "id": "2315abe0-de68-4976-89f4-83acbda93f1f",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#9cb182",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000065",
+      "name": "Mini bar 5",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000056",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          171,
+          56
+        ],
+        "width": 16,
+        "height": 47
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#9cb182",
+          "fit": "cover",
+          "id": "2712289e-2137-4820-b1bc-46745702f490",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#9cb182",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000066",
+      "name": "Product dashboard",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000054",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          19,
+          190
+        ],
+        "width": 320,
+        "height": 32
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#22251f",
+          "fit": "cover",
+          "id": "71612d75-c89a-47a0-a161-4c87c59c2270",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#22251f",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Product dashboard",
+        "characters": 17,
+        "truncated": false,
+        "fontSize": 16,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000067",
+      "name": "Product design",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000054",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          19,
+          229
+        ],
+        "width": 230,
+        "height": 26
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "d4e99b73-872c-497c-b793-e1336bde80e4",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Product design",
+        "characters": 14,
+        "truncated": false,
+        "fontSize": 12,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000068",
+      "name": "12m ago",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000054",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          265,
+          229
+        ],
+        "width": 80,
+        "height": 24
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "2ac3805c-553a-4f02-935f-dce3b19953fc",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "12m ago",
+        "characters": 7,
+        "truncated": false,
+        "fontSize": 11,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000069",
+      "name": "Identity explorations file card",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000053",
+      "depth": 2,
+      "children": [
+        "42000000-0000-4000-8000-000000000070",
+        "42000000-0000-4000-8000-000000000074",
+        "42000000-0000-4000-8000-000000000075",
+        "42000000-0000-4000-8000-000000000076"
+      ],
+      "childCount": 4,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          377,
+          0
+        ],
+        "width": 357,
+        "height": 273
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#ffffff",
+          "fit": "cover",
+          "id": "3bf40b2a-0f49-4111-ab4a-37711c347e9f",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#ffffff",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          14,
+          14,
+          14,
+          14
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000070",
+      "name": "Identity explorations editable thumbnail",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000069",
+      "depth": 3,
+      "children": [
+        "42000000-0000-4000-8000-000000000071",
+        "42000000-0000-4000-8000-000000000072",
+        "42000000-0000-4000-8000-000000000073"
+      ],
+      "childCount": 3,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          14,
+          14
+        ],
+        "width": 329,
+        "height": 159
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#eadad0",
+          "fit": "cover",
+          "id": "9044e556-26b1-428d-b093-121085a1aa9e",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#eadad0",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          10,
+          10,
+          10,
+          10
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000071",
+      "name": "Brand circle",
+      "kind": "ellipse",
+      "parentId": "42000000-0000-4000-8000-000000000070",
+      "depth": 4,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          85,
+          31
+        ],
+        "width": 94,
+        "height": 94
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#3a4a38",
+          "fit": "cover",
+          "id": "6bcf8436-f240-4bee-a415-56e2d488dcd3",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#3a4a38",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          47,
+          47,
+          47,
+          47
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000072",
+      "name": "Brand square",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000070",
+      "depth": 4,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          157,
+          57
+        ],
+        "width": 75,
+        "height": 75
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#c9936f",
+          "fit": "cover",
+          "id": "86ee3d41-0166-4931-b04d-96873183a84f",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#c9936f",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          13,
+          13,
+          13,
+          13
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000073",
+      "name": "f",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000070",
+      "depth": 4,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          120,
+          42
+        ],
+        "width": 60,
+        "height": 70
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#f9f4eb",
+          "fit": "cover",
+          "id": "acccf232-71a0-445f-938f-c619570dcc08",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#f9f4eb",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "f",
+        "characters": 1,
+        "truncated": false,
+        "fontSize": 48,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 700,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000074",
+      "name": "Identity explorations",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000069",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          19,
+          190
+        ],
+        "width": 320,
+        "height": 32
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#22251f",
+          "fit": "cover",
+          "id": "77f77bfe-5c3e-483f-87d3-5342d86fc686",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#22251f",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Identity explorations",
+        "characters": 21,
+        "truncated": false,
+        "fontSize": 16,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000075",
+      "name": "Brand explorations",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000069",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          19,
+          229
+        ],
+        "width": 230,
+        "height": 26
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "3eead0b3-41c7-4484-9270-5a889ce66c22",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Brand explorations",
+        "characters": 18,
+        "truncated": false,
+        "fontSize": 12,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000076",
+      "name": "2h ago",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000069",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          265,
+          229
+        ],
+        "width": 80,
+        "height": 24
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "8ff5741a-9396-4831-bcee-4223819d0920",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "2h ago",
+        "characters": 6,
+        "truncated": false,
+        "fontSize": 11,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000077",
+      "name": "Reading companion file card",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000053",
+      "depth": 2,
+      "children": [
+        "42000000-0000-4000-8000-000000000078",
+        "42000000-0000-4000-8000-000000000084",
+        "42000000-0000-4000-8000-000000000085",
+        "42000000-0000-4000-8000-000000000086"
+      ],
+      "childCount": 4,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          754,
+          0
+        ],
+        "width": 357,
+        "height": 273
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#ffffff",
+          "fit": "cover",
+          "id": "cf7de712-018c-463b-851a-2b40b15dd71b",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#ffffff",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          14,
+          14,
+          14,
+          14
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000078",
+      "name": "Reading companion editable thumbnail",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000077",
+      "depth": 3,
+      "children": [
+        "42000000-0000-4000-8000-000000000079"
+      ],
+      "childCount": 1,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          14,
+          14
+        ],
+        "width": 329,
+        "height": 159
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#dfe3eb",
+          "fit": "cover",
+          "id": "4545aa54-19a9-44ba-aa66-c2f16dfeb0cd",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#dfe3eb",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          10,
+          10,
+          10,
+          10
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000079",
+      "name": "Reading app miniature",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000078",
+      "depth": 4,
+      "children": [
+        "42000000-0000-4000-8000-000000000080",
+        "42000000-0000-4000-8000-000000000081",
+        "42000000-0000-4000-8000-000000000082",
+        "42000000-0000-4000-8000-000000000083"
+      ],
+      "childCount": 4,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          104,
+          18
+        ],
+        "width": 121,
+        "height": 128
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#ffffff",
+          "fit": "cover",
+          "id": "da4019c3-dfdc-4372-804c-6916aa245dad",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#ffffff",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          9,
+          9,
+          9,
+          9
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000080",
+      "name": "Book cover",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000079",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          14,
+          13
+        ],
+        "width": 93,
+        "height": 66
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#a8b7cc",
+          "fit": "cover",
+          "id": "8b4d28b9-7665-4698-8510-09dbdec26f67",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#a8b7cc",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          5,
+          5,
+          5,
+          5
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000081",
+      "name": "Book text line 1",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000079",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          14,
+          91
+        ],
+        "width": 93,
+        "height": 3
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#a8b7cc",
+          "fit": "cover",
+          "id": "cfdb99e2-f871-42bf-bddd-11804437bc47",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#a8b7cc",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000082",
+      "name": "Book text line 2",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000079",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          14,
+          100
+        ],
+        "width": 78,
+        "height": 3
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#a8b7cc",
+          "fit": "cover",
+          "id": "02c33656-a343-4e18-952a-98da88db232c",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#a8b7cc",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000083",
+      "name": "Book text line 3",
+      "kind": "rectangle",
+      "parentId": "42000000-0000-4000-8000-000000000079",
+      "depth": 5,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          14,
+          109
+        ],
+        "width": 63,
+        "height": 3
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#a8b7cc",
+          "fit": "cover",
+          "id": "a9b72c2f-c993-4e11-8878-d4f45d254b45",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#a8b7cc",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000084",
+      "name": "Reading companion",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000077",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          19,
+          190
+        ],
+        "width": 320,
+        "height": 32
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#22251f",
+          "fit": "cover",
+          "id": "2105889f-19e1-463c-8300-03b1ccbd320f",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#22251f",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Reading companion",
+        "characters": 17,
+        "truncated": false,
+        "fontSize": 16,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000085",
+      "name": "Personal drafts",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000077",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          19,
+          229
+        ],
+        "width": 230,
+        "height": 26
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "1eea91be-6389-4a1c-8665-8e91a8c3ccba",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Personal drafts",
+        "characters": 15,
+        "truncated": false,
+        "fontSize": 12,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000086",
+      "name": "Yesterday",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000077",
+      "depth": 3,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          265,
+          229
+        ],
+        "width": 80,
+        "height": 24
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#73776e",
+          "fit": "cover",
+          "id": "25794fcd-0f03-446d-b848-85092f6a18cd",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#73776e",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Yesterday",
+        "characters": 9,
+        "truncated": false,
+        "fontSize": 11,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000087",
+      "name": "Local-first information",
+      "kind": "frame",
+      "parentId": "42000000-0000-4000-8000-000000000001",
+      "depth": 1,
+      "children": [
+        "42000000-0000-4000-8000-000000000088",
+        "42000000-0000-4000-8000-000000000089"
+      ],
+      "childCount": 2,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          280,
+          863
+        ],
+        "width": 1112,
+        "height": 86
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#e8ecdf",
+          "fit": "cover",
+          "id": "3b9fced7-677f-4514-baba-fd42feba2e23",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#e8ecdf",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          12,
+          12,
+          12,
+          12
+        ],
+        "smoothing": 0,
+        "clip": true,
+        "mask": false
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000088",
+      "name": "Made here. Kept here.",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000087",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          22,
+          14
+        ],
+        "width": 970,
+        "height": 30
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#25352b",
+          "fit": "cover",
+          "id": "8262b903-f6cd-40f6-a443-55b2495fdb0e",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#25352b",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Made here. Kept here.",
+        "characters": 21,
+        "truncated": false,
+        "fontSize": 15,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 600,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    },
+    {
+      "id": "42000000-0000-4000-8000-000000000089",
+      "name": "Your design files stay on this device. Export a copy whenever you need it.",
+      "kind": "text",
+      "parentId": "42000000-0000-4000-8000-000000000087",
+      "depth": 2,
+      "children": [],
+      "childCount": 0,
+      "childrenTruncated": false,
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "blend": "normal",
+      "geometry": {
+        "space": "parent",
+        "transform": [
+          1,
+          0,
+          0,
+          1,
+          22,
+          44
+        ],
+        "width": 1050,
+        "height": 28
+      },
+      "layout": {
+        "mode": "none"
+      },
+      "fills": [
+        {
+          "angle": 90,
+          "blend": "normal",
+          "color": "#61735a",
+          "fit": "cover",
+          "id": "2eea76de-3b40-4385-aaaa-110486fda5f8",
+          "kind": "solid",
+          "opacity": 1,
+          "stops": [
+            {
+              "color": "#61735a",
+              "offset": 0
+            },
+            {
+              "color": "#f5b8dc",
+              "offset": 1
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "fillCount": 1,
+      "strokes": [],
+      "strokeCount": 0,
+      "effects": [],
+      "effectCount": 0,
+      "materialRefs": [],
+      "shape": {
+        "radii": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "smoothing": 0,
+        "clip": false,
+        "mask": false
+      },
+      "text": {
+        "content": "Your design files stay on this device. Export a copy whenever you need it.",
+        "characters": 74,
+        "truncated": false,
+        "fontSize": 13,
+        "style": {
+          "align": "start",
+          "direction": "auto",
+          "fallbacks": [],
+          "fontId": "forma-noto",
+          "letterSpacing": 0,
+          "lineHeight": 1.3,
+          "weight": 400,
+          "wrap": true
+        },
+        "runs": []
+      },
+      "components": {},
+      "tokens": {}
+    }
+  ],
+  "tokens": {
+    "collections": [],
+    "variables": [],
+    "styles": [],
+    "truncated": false
+  },
+  "assets": [],
+  "pagination": {
+    "offset": 0,
+    "returned": 89,
+    "total": 89,
+    "limit": 500,
+    "nextCursor": null
+  },
+  "warnings": [],
+  "warningCount": 0
+}

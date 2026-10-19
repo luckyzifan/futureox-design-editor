@@ -1,0 +1,32 @@
+{
+  "scope": "Prior performance-batch CPU Rust invocations, not rerun in this AI/workspace batch. All 365 design-studio source records and runtime hashes match the prior delivered freeze. Counts are not merged into the new independent aggregate.",
+  "suites": [
+    {
+      "suite": "kernel",
+      "counts": {
+        "passed": 1185,
+        "failed": 0,
+        "ignored": 1
+      },
+      "ignoredCases": [
+        "test gpu::program_cache_invalidation_tests::benchmark_single_node_cache_invalidation ... ignored, isolated native CPU benchmark; run with --ignored --nocapture"
+      ],
+      "existingEvidence": "testing/verification-performance-rust/full-kernel-tests.log",
+      "originalLogSha256": "2fa32e9e5af1bd99e7c6164030b82be69fa1f5d8153c0ede59642c15df7447a1"
+    },
+    {
+      "suite": "backend",
+      "counts": {
+        "passed": 83,
+        "failed": 0,
+        "ignored": 1
+      },
+      "ignoredCases": [
+        "test cjk_font_multiple_revision_size_and_time_benchmark ... ignored, explicit local size/time benchmark with the bundled full CJK font"
+      ],
+      "existingEvidence": "testing/verification-performance-rust/full-backend-tests.log",
+      "originalLogSha256": "322f7a0e921959c1954049e9e6c3eb997d04decbccebc0ddaecd531a5471389e"
+    }
+  ],
+  "microbenchmarkNote": "Kernel ignored microbenchmark was actually executed separately in the prior batch; see ../verification-performance-rust/comparison-clean.json. Backend CJK benchmark remains ignored and unexecuted."
+}

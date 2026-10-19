@@ -1,0 +1,19 @@
+{
+  "initialVitestCounts": {
+    "passed": 1906,
+    "failed": 1,
+    "skipped": 3
+  },
+  "failures": [
+    {
+      "file": "<repo>/frontend/design-client/src/editor-lifecycle.test.tsx",
+      "title": "modal keyboard and asynchronous insertion ownership dialog button Delete cannot reach canvas; modal owns Escape and preserves Space activation",
+      "failureMessages": [
+        "ReferenceError: document is not defined\n    at <repo>/frontend/design-client/src/Canvas.tsx:951:5\n    at Object.effects (<repo>/frontend/design-client/src/editor-lifecycle.test.tsx:56:134)\n    at <repo>/frontend/design-client/src/editor-lifecycle.test.tsx:196:7\n    at file://<runtime-cache>/frontend-deps/node_modules/vitest/dist/chunks/run.C5UmxDPh.js:1628:35\n    at file://<runtime-cache>/frontend-deps/node_modules/vitest/dist/chunks/run.C5UmxDPh.js:2783:26\n    at file://<runtime-cache>/frontend-deps/node_modules/vitest/dist/chunks/run.C5UmxDPh.js:3319:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<runtime-cache>/frontend-deps/node_modules/vitest/dist/chunks/run.C5UmxDPh.js:3314:10)\n    at file://<runtime-cache>/frontend-deps/node_modules/vitest/dist/chunks/run.C5UmxDPh.js:3299:20\n    at new Promise (<anonymous>)"
+      ]
+    }
+  ],
+  "initialLogSha256": "0d8f1a831187263cabcf08ed28aa3092dc7cd422b72ecc19c8fd12c0d1496762",
+  "repair": "Boundary test now provides stable window/document listener registration/removal and verifies cleanup; existing modal keyboard assertions retained. Production source unchanged by this repair.",
+  "repairedTestSha256": "f4a4c5811b9933203e6f8203bd841b9d2ee6f20c608d2f2e93dac905225412db"
+}

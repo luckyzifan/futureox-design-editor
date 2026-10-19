@@ -1,0 +1,377 @@
+{
+  "schemaVersion": 1,
+  "revision": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "runnerSelectedSuiteResult": "passed",
+  "selectedSuites": [
+    {
+      "id": "runner-contracts",
+      "status": "passed",
+      "category": "runner-negative-controls",
+      "files": 3,
+      "counts": {
+        "total": 23,
+        "passed": 23,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "frontend-contracts",
+      "status": "passed",
+      "category": "CPU production logic + sandboxed callbacks/source contracts/mock DOM; not native UI",
+      "files": 30,
+      "counts": {
+        "total": 300,
+        "passed": 300,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "desktop-contracts",
+      "status": "passed",
+      "category": "mock host/IPC and file-policy contracts; not Electron GUI",
+      "files": 25,
+      "counts": {
+        "total": 157,
+        "passed": 157,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "python-tools",
+      "status": "passed",
+      "category": "CPU tool unit tests",
+      "files": 3,
+      "counts": {
+        "total": 15,
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "typecheck",
+      "status": "passed",
+      "category": "static TypeScript check",
+      "files": 0
+    },
+    {
+      "id": "frontend-vitest",
+      "status": "passed",
+      "category": "real CPU WASM + pure logic + mocked DOM/driver suites; not real GPU/UI",
+      "files": 268,
+      "counts": {
+        "total": 1910,
+        "passed": 1907,
+        "failed": 0,
+        "skipped": 3
+      },
+      "reportedAssertions": 1910,
+      "skippedCases": [
+        {
+          "file": "<repo>/frontend/design-client/src/append-document.test.ts",
+          "title": "real 117 repeated three times: independent nodes, fonts, editable groups and one-step undo",
+          "status": "skipped"
+        },
+        {
+          "file": "<repo>/frontend/design-client/src/__tests__/design-file-import.test.ts",
+          "title": "external corpus: DESIGN_TEST_SKETCH",
+          "status": "skipped"
+        },
+        {
+          "file": "<repo>/frontend/design-client/src/__tests__/design-file-import.test.ts",
+          "title": "external corpus: DESIGN_TEST_FIG",
+          "status": "skipped"
+        }
+      ]
+    },
+    {
+      "id": "mcp-example",
+      "status": "passed",
+      "category": "real Editor/WASM via in-memory MCP, synthetic HTML/CSS and native-file outputs",
+      "files": 1,
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "reportedAssertions": 1,
+      "skippedCases": []
+    },
+    {
+      "id": "bun-unit",
+      "status": "passed",
+      "category": "CPU budget/policy logic; no actual GPU",
+      "files": 4,
+      "counts": {
+        "total": 31,
+        "passed": 31,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "automation-storage",
+      "status": "passed",
+      "category": "real SQLite sidecar + mocked IPC host",
+      "files": 1,
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "mcp-contracts",
+      "status": "passed",
+      "category": "in-memory protocol/transport + real stdio; no OS socket",
+      "files": 6,
+      "counts": {
+        "total": 46,
+        "passed": 46,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "native-preparation",
+      "status": "passed",
+      "category": "real native CPU binary / WASM packet + pixel comparison",
+      "files": 1,
+      "counts": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "native-sidecar",
+      "status": "passed",
+      "category": "real owned Rust processes + local SQLite; not OS dialogs",
+      "files": 2,
+      "counts": {
+        "total": 8,
+        "passed": 8,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    }
+  ],
+  "fileSelectionOverlap": {},
+  "sameTitleNodeVitestRegistrations": [
+    "32x nested patch session rejects fractional pose without changing its accepted snapshot",
+    "32x root movement preserves integer raster phase and rejects subpixel masks",
+    "32x root patch session rejects fractional pose without changing its accepted snapshot",
+    "32x rotated nested movement preserves integer raster phase and rejects subpixel masks",
+    "atlas cleanup retains shared pages and retires each physical allocation once",
+    "compiled global-raster nodes survive zoom 2.99 with origin tiles",
+    "compiled global-raster nodes survive zoom 2.99 with translated tiles",
+    "compiled global-raster nodes survive zoom 3 with origin tiles",
+    "compiled global-raster nodes survive zoom 3 with translated tiles",
+    "compiled global-raster nodes survive zoom 32 with origin tiles",
+    "compiled global-raster nodes survive zoom 32 with translated tiles",
+    "compiled global-raster nodes survive zoom 64 with origin tiles",
+    "compiled global-raster nodes survive zoom 64 with translated tiles",
+    "current image survives unrelated resource touches and is uploaded only once",
+    "image admission preserves demanded source quality (mips=false, float=false)",
+    "image admission preserves demanded source quality (mips=false, float=true)",
+    "image admission preserves demanded source quality (mips=true, float=false)",
+    "image admission preserves demanded source quality (mips=true, float=true)",
+    "image selection with mips disabled stays at level zero at every zoom",
+    "integer delta cannot certify a raster already shifted to a fractional phase",
+    "integer translation keeps stationary clipped backdrop admission and rejects foreground/replay dependencies",
+    "real paint preserves source fidelity under pressure (mips=false)",
+    "real paint preserves source fidelity under pressure (mips=true)",
+    "subpixel cached antialiasing differs from freshly evaluated coverage",
+    "translation batch rejects fractional deltas before mutating reusable node tables"
+  ],
+  "knownSharedRegistrationCount": 25,
+  "knownSharedImplementationSources": [
+    "frontend/design-client/src/kernel/gpu/renderer-regression-cases.ts",
+    "frontend/design-client/src/kernel/gpu/translation-regression-cases.ts"
+  ],
+  "countingNotes": [
+    "Counts are framework-reported test executions, not individual assertions, line coverage or proof of complete user workflows.",
+    "25 shared production-renderer cases are intentionally registered in Node and Vitest; do not sum suite counts as unique coverage.",
+    "mcp-example is a validated synthetic output demonstration and is kept separate from unit-test coverage.",
+    "Typecheck is a static gate, not an additional passing test.",
+    "Rust and performance evidence from other invocations is not included in these independent runner counts."
+  ],
+  "freeze": {
+    "sourceAndTestsUnchanged": true,
+    "generatedRuntimeUnchanged": true,
+    "nativeBinariesUnchanged": true,
+    "sourceDrift": [],
+    "generatedDrift": [],
+    "nativeDrift": [],
+    "documentationOrEvidenceDrift": [
+      {
+        "path": "testing/verification-canvas-selection-workflows/lifecycle-before/editor-lifecycle.test.tsx",
+        "before": {
+          "sha256": "0d3f652766b01c5baceaf9fc53b9e170be8c5ab4a4b6c0c3c64dd75c36e7a181",
+          "bytes": 27585,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": null
+      },
+      {
+        "path": "testing/verification-canvas-selection-workflows/lifecycle-before/source.sha256",
+        "before": {
+          "sha256": "384b8e745bcb8c47fb404709076d52b40e84cd206ae458ed4c522134c1ff47fe",
+          "bytes": 96,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": null
+      },
+      {
+        "path": "testing/verification-canvas-selection-workflows/lifecycle-final.sha256",
+        "before": {
+          "sha256": "34e6b5e378e8d3bb61bc52d52328a29ccd569dbd16ba63aa1c094be14c2d29b9",
+          "bytes": 119,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": null
+      },
+      {
+        "path": "testing/verification-canvas-selection-workflows/lifecycle-no-cleanup.vitest.config.mjs",
+        "before": {
+          "sha256": "b38cdc3e210ebe8fc5e1783d0cffd71a62680d391aa79ab342234e1d895e3e5f",
+          "bytes": 752,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": null
+      },
+      {
+        "path": "testing/verification-canvas-selection-workflows/lifecycle-repair-result.json",
+        "before": {
+          "sha256": "0dc35bcf70d93a275219e68b302a6ca165b5a1559af31f15e89bd8d14899a8c8",
+          "bytes": 1098,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": null
+      },
+      {
+        "path": "testing/verification-canvas-selection-workflows/lifecycle-test-increment.patch",
+        "before": {
+          "sha256": "09914a5e4304347c028324e6e5f66740c7ccaba61551784b9622c28c96177174",
+          "bytes": 4289,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": null
+      },
+      {
+        "path": "testing/verification-lifecycle-harness/README.md",
+        "before": null,
+        "after": {
+          "sha256": "c9891c7b522bb6dc802149f8f8775cd298fc9942aa6b62755532ff847769cc19",
+          "bytes": 2616,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-lifecycle-harness/lifecycle-before/editor-lifecycle.test.tsx",
+        "before": null,
+        "after": {
+          "sha256": "0d3f652766b01c5baceaf9fc53b9e170be8c5ab4a4b6c0c3c64dd75c36e7a181",
+          "bytes": 27585,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-lifecycle-harness/lifecycle-before/source.sha256",
+        "before": null,
+        "after": {
+          "sha256": "384b8e745bcb8c47fb404709076d52b40e84cd206ae458ed4c522134c1ff47fe",
+          "bytes": 96,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-lifecycle-harness/lifecycle-final.sha256",
+        "before": null,
+        "after": {
+          "sha256": "34e6b5e378e8d3bb61bc52d52328a29ccd569dbd16ba63aa1c094be14c2d29b9",
+          "bytes": 119,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-lifecycle-harness/lifecycle-no-cleanup.vitest.config.mjs",
+        "before": null,
+        "after": {
+          "sha256": "b38cdc3e210ebe8fc5e1783d0cffd71a62680d391aa79ab342234e1d895e3e5f",
+          "bytes": 752,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-lifecycle-harness/lifecycle-repair-result.json",
+        "before": null,
+        "after": {
+          "sha256": "0dc35bcf70d93a275219e68b302a6ca165b5a1559af31f15e89bd8d14899a8c8",
+          "bytes": 1098,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-lifecycle-harness/lifecycle-test-increment.patch",
+        "before": null,
+        "after": {
+          "sha256": "b52795d30e9e0c7143b8a42f594fdf63f621054400268891085b1b6cb1b763ff",
+          "bytes": 4280,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-lifecycle-harness/publication.sha256",
+        "before": null,
+        "after": {
+          "sha256": "a73f12e16b78f45e969e82bd64a5bac62b27683f81901e7589e7a23d57751576",
+          "bytes": 1041,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      }
+    ]
+  },
+  "limitations": [
+    "Passing only applies to the selected named suites; test files are not assertions or line coverage.",
+    "No browser, Electron GUI, GPU driver/readback, installed-app packaging, accessibility or native OS dialog was launched. Real socket tests are separate opt-in and never automatically selected.",
+    "No Windows/macOS run is inferred from Linux; consult each actual CI artifact.",
+    "Private external corpora may be explicitly skipped unless DESIGN_REQUIRE_PRIVATE_FIXTURES=1.",
+    "WASM scalar/SIMD experiments, performance benchmarks and browser check scripts remain separate explicitly requested gates.",
+    "OS socket integration was already blocked by permission (listen EPERM; escalation bwrap blocked); no bypass or retry was attempted."
+  ]
+}

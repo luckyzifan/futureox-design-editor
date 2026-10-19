@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-19T14:31:46.567Z",
+  "node": "v24.19.0",
+  "platform": "linux",
+  "command": "node testing/verification-native-paste-over/verify.mjs",
+  "productionSnapshot": [
+    {
+      "path": "src/keyboard-shortcuts.mjs",
+      "sha256": "996ce1a6c983df682b036373d864f41465b48e3065056db16768894af6285be3"
+    },
+    {
+      "path": "src/main.mjs",
+      "sha256": "a1f24d81e5404b541ef12dde9757f5eea46a2d02621a75ebe46488687c1ce3cc"
+    },
+    {
+      "path": "src/preload.cjs",
+      "sha256": "c20a740443383f760ef3d4b41906e09ad7fa75a232762179067b025a4c3f1a62"
+    }
+  ],
+  "testSnapshot": [
+    {
+      "path": "test/keyboard-shortcuts.test.mjs",
+      "sha256": "b073d24f51fd627da0ce4491afd480dcad70c2eefe39599708a9cb805e7d3959"
+    },
+    {
+      "path": "test/main.test.mjs",
+      "sha256": "594bc35ee7cbe302a992da6bf81315ca4ba84179f59ac14f20ad46392c122827"
+    },
+    {
+      "path": "test/preload.test.mjs",
+      "sha256": "2f3430e23de94c99a111022461b30914de0aa3ada755106cee5b68d3ca1886ae"
+    }
+  ],
+  "preimageSnapshot": [
+    {
+      "path": "src/keyboard-shortcuts.mjs",
+      "sha256": "fa4ead0bbdd4e90e9c6c2351c77078cad122a32cefa2cb1196d9eb2400a9af40"
+    },
+    {
+      "path": "src/main.mjs",
+      "sha256": "52885f490006e3f33dfb384559f423e5c675f7bcba09a5aa70a7897439db23a6"
+    },
+    {
+      "path": "src/preload.cjs",
+      "sha256": "c5d6ca6899402d6a0aa2af297f82b335d2f306fd99be28834a4a900e906d0c3d"
+    }
+  ],
+  "positive": {
+    "status": "passed",
+    "exitCode": 0,
+    "tests": 66,
+    "passed": 66,
+    "failed": 0,
+    "skipped": 0
+  },
+  "oldCodeNegativeControl": {
+    "status": "expected-failure",
+    "exitCode": 1,
+    "tests": 66,
+    "passed": 53,
+    "failed": 13,
+    "skipped": 0
+  },
+  "limits": [
+    "Mock Electron and VM preload; not real Electron GUI, OS clipboard, or packaged app.",
+    "Policy coverage names three platforms, but this process ran on Linux only.",
+    "No socket, GPU, Rust/WASM build, or native backend runtime test.",
+    "Renderer graph semantics and editable/modal dispatch belong to the companion client verification."
+  ]
+}

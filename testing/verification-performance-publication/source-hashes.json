@@ -1,0 +1,7 @@
+{
+  "frontend/design-client/src/kernel/gpu/composite-draw-plan.ts": "8d9f7ee0a4679e7e53b2c9423b2ea0be1d4c6f4fca2d6896850edc90f02a157c",
+  "frontend/design-client/src/kernel/gpu/composite-draw-plan-cpu.test.mjs": "16ea3165c3d9e20717140af610b80974d4d45a8508585a7beeb48a4813aa6975",
+  "testing/verification-performance-publication/composite-draw-plan.before.ts": "c2299336e926a8c83ca3daeb92fde2db5b74a6770c4cf071d5c5ea84eae53f55",
+  "testing/verification-performance-publication/benchmark-draw-plan.mjs": "d57ecc747fea7ae993d9c6d85f90727c668e680a85a470858e0e191062e8e667",
+  "frontend/design-client/public/kernel/design_kernel_bg.wasm": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b"
+}

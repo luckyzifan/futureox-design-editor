@@ -1,0 +1,9 @@
+      const parents = allParents(editor.state.doc)
+      const deep = e.metaKey || e.ctrlKey
+      const scope = marqueeScope(editor.state.doc, editor.state.page, d.originSelection)
+      const candidates = (d.pickIndex || index).query(area).filter(entry => !entry.locked &&
+        (deep || parents.get(entry.id) === scope) && intersects(entry.bounds, area) &&
+        interactivePath(editor.state.doc, editor.state.page, entry.id, false, parents).length)
+      const ancestors = new Set(deep ? candidates.flatMap(entry => entry.ancestors) : [])
+      const ids = candidates.filter(entry => !ancestors.has(entry.id)).map(entry => entry.id)
+      editor.select([...d.originSelection.filter(() => d.additive), ...ids])

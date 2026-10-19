@@ -1,0 +1,36 @@
+{
+  "scope": "Remove small canvas minimap; preserve current performance work and main preview paths",
+  "typecheck": {
+    "status": "passed",
+    "exitCode": 0,
+    "log": "typecheck-final.log"
+  },
+  "focused": {
+    "files": 9,
+    "passed": 114,
+    "failed": 0,
+    "pending": 0,
+    "json": "focused.json"
+  },
+  "expectedNegativeFailures": 2,
+  "productionSourceFilesEdited": [
+    "frontend/design-client/src/Canvas.tsx",
+    "frontend/design-client/src/ViewControls.tsx",
+    "frontend/design-client/src/engine.ts",
+    "frontend/design-client/src/styles.css",
+    "frontend/design-client/src/canvas-navigation-check.tsx",
+    "frontend/design-client/scripts/check-canvas-pointer-release.ts",
+    "frontend/design-client/src/canvas-minimap-removal.test.tsx"
+  ],
+  "deleted": [
+    "frontend/design-client/src/CanvasMinimap.tsx"
+  ],
+  "sourceManifestSha256": "e06ac7ea7ef50cf223a3e6bdb93aecf06d5558319ad9a56deb8b954424f69f21",
+  "notRun": [
+    "browser navigation check scripts",
+    "actual KernelSurface/GPU rendering",
+    "pixel quality",
+    "socket tests",
+    "Rust compilation"
+  ]
+}

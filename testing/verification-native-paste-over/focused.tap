@@ -1,0 +1,490 @@
+TAP version 13
+# Subtest: darwin: native boundary forwards exactly once, suppresses held destructive chords and resets suppression
+ok 1 - darwin: native boundary forwards exactly once, suppresses held destructive chords and resets suppression
+  ---
+  duration_ms: 2.362683
+  type: 'test'
+  ...
+# Subtest: darwin: composing, extra modifiers and keyup never forward
+ok 2 - darwin: composing, extra modifiers and keyup never forward
+  ---
+  duration_ms: 0.328285
+  type: 'test'
+  ...
+# Subtest: darwin: native aliases and renderer profile commands remain distinct
+ok 3 - darwin: native aliases and renderer profile commands remain distinct
+  ---
+  duration_ms: 0.337479
+  type: 'test'
+  ...
+# Subtest: win32: native boundary forwards exactly once, suppresses held destructive chords and resets suppression
+ok 4 - win32: native boundary forwards exactly once, suppresses held destructive chords and resets suppression
+  ---
+  duration_ms: 0.212811
+  type: 'test'
+  ...
+# Subtest: win32: composing, extra modifiers and keyup never forward
+ok 5 - win32: composing, extra modifiers and keyup never forward
+  ---
+  duration_ms: 0.150347
+  type: 'test'
+  ...
+# Subtest: win32: native aliases and renderer profile commands remain distinct
+ok 6 - win32: native aliases and renderer profile commands remain distinct
+  ---
+  duration_ms: 0.142725
+  type: 'test'
+  ...
+# Subtest: linux: native boundary forwards exactly once, suppresses held destructive chords and resets suppression
+ok 7 - linux: native boundary forwards exactly once, suppresses held destructive chords and resets suppression
+  ---
+  duration_ms: 0.164999
+  type: 'test'
+  ...
+# Subtest: linux: composing, extra modifiers and keyup never forward
+ok 8 - linux: composing, extra modifiers and keyup never forward
+  ---
+  duration_ms: 0.140171
+  type: 'test'
+  ...
+# Subtest: linux: native aliases and renderer profile commands remain distinct
+ok 9 - linux: native aliases and renderer profile commands remain distinct
+  ---
+  duration_ms: 0.211829
+  type: 'test'
+  ...
+# Subtest: darwin: paste-over-selection preserves native repeat, IME, modifier and keyup policy
+ok 10 - darwin: paste-over-selection preserves native repeat, IME, modifier and keyup policy
+  ---
+  duration_ms: 0.590441
+  type: 'test'
+  ...
+# Subtest: win32: paste-over-selection preserves native repeat, IME, modifier and keyup policy
+ok 11 - win32: paste-over-selection preserves native repeat, IME, modifier and keyup policy
+  ---
+  duration_ms: 0.197067
+  type: 'test'
+  ...
+# Subtest: linux: paste-over-selection preserves native repeat, IME, modifier and keyup policy
+ok 12 - linux: paste-over-selection preserves native repeat, IME, modifier and keyup policy
+  ---
+  duration_ms: 0.162505
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: desktop zoom shortcuts dispatch canvas commands and keep page zoom at one
+ok 13 - desktop zoom shortcuts dispatch canvas commands and keep page zoom at one
+  ---
+  duration_ms: 56.835185
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: native modified clipboard shortcuts retain their meaning before menu dispatch
+ok 14 - native modified clipboard shortcuts retain their meaning before menu dispatch
+  ---
+  duration_ms: 18.078444
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: Save As confirms the normalized existing .fd target and Cancel performs no write
+ok 15 - Save As confirms the normalized existing .fd target and Cancel performs no write
+  ---
+  duration_ms: 15.448642
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: accepted active capability survives many cancelled renderer-open replacements
+ok 16 - accepted active capability survives many cancelled renderer-open replacements
+  ---
+  duration_ms: 17.855762
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: recovery adoption works at full quota and retains source unless cleanup names approved token
+ok 17 - recovery adoption works at full quota and retains source unless cleanup names approved token
+  ---
+  duration_ms: 19.373837
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: main rejects forged iframe sender and arbitrary path-bearing IPC before sidecar IO
+ok 18 - main rejects forged iframe sender and arbitrary path-bearing IPC before sidecar IO
+  ---
+  duration_ms: 11.500233
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: close replies are correlated and stale approvals never close a newer request
+ok 19 - close replies are correlated and stale approvals never close a newer request
+  ---
+  duration_ms: 15.19154
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: only own-window known Blob exports reach a native save dialog, with byte bound
+ok 20 - only own-window known Blob exports reach a native save dialog, with byte bound
+  ---
+  duration_ms: 13.080275
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: stale native fallback response 0 cannot settle a newer close request
+ok 21 - stale native fallback response 0 cannot settle a newer close request
+  ---
+  duration_ms: 21.238449
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: stale native fallback response 1 cannot settle a newer close request
+ok 22 - stale native fallback response 1 cannot settle a newer close request
+  ---
+  duration_ms: 10.255636
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: mixed corrupt recovery remains visible with valid snapshot choice 0
+ok 23 - mixed corrupt recovery remains visible with valid snapshot choice 0
+  ---
+  duration_ms: 12.730173
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: mixed corrupt recovery remains visible with valid snapshot choice 1
+ok 24 - mixed corrupt recovery remains visible with valid snapshot choice 1
+  ---
+  duration_ms: 11.688887
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: mixed corrupt recovery remains visible with valid snapshot choice 2
+ok 25 - mixed corrupt recovery remains visible with valid snapshot choice 2
+  ---
+  duration_ms: 14.096128
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: native fallback only settles its live owning window
+ok 26 - native fallback only settles its live owning window
+  ---
+  duration_ms: 13.100116
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: current native fallback response 0 is honored
+ok 27 - current native fallback response 0 is honored
+  ---
+  duration_ms: 11.362836
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: current native fallback response 1 is honored
+ok 28 - current native fallback response 1 is honored
+  ---
+  duration_ms: 11.857458
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: catalog selection exposes opaque grant and replacement revokes document authority
+ok 29 - catalog selection exposes opaque grant and replacement revokes document authority
+  ---
+  duration_ms: 14.412134
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: accepted catalog document keeps its root grant through sixteen later folder selections
+ok 30 - accepted catalog document keeps its root grant through sixteen later folder selections
+  ---
+  duration_ms: 25.832532
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: native clipboard keeps selected graph and readable text in one write
+ok 31 - native clipboard keeps selected graph and readable text in one write
+  ---
+  duration_ms: 12.280589
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: workspace bridge rejects paths, invalid revisions and untrusted senders before IPC
+ok 32 - workspace bridge rejects paths, invalid revisions and untrusted senders before IPC
+  ---
+  duration_ms: 12.722786
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: Finder files arriving before ready are bounded opaque reads and are consumed only after acceptance
+ok 33 - Finder files arriving before ready are bounded opaque reads and are consumed only after acceptance
+  ---
+  duration_ms: 22.123864
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: Finder queue retains only sixteen unique native files and reports overflow
+ok 34 - Finder queue retains only sixteen unique native files and reports overflow
+  ---
+  duration_ms: 11.977092
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: macOS close keeps backend alive and Dock activation restores geometry with one protocol/download registration
+ok 35 - macOS close keeps backend alive and Dock activation restores geometry with one protocol/download registration
+  ---
+  duration_ms: 15.271315
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: CmdQ honors cancelled close and only stops backend after an approved later quit
+ok 36 - CmdQ honors cancelled close and only stops backend after an approved later quit
+  ---
+  duration_ms: 15.513855
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: non-macOS last-window close still shuts down the owned backend
+ok 37 - non-macOS last-window close still shuts down the owned backend
+  ---
+  duration_ms: 9.630874
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: native file received with no window survives reopening and invalid file never reaches backend
+ok 38 - native file received with no window survives reopening and invalid file never reaches backend
+  ---
+  duration_ms: 11.37243
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: display removal constrains a normal window to the remaining visible work area
+ok 39 - display removal constrains a normal window to the remaining visible work area
+  ---
+  duration_ms: 17.21416
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: font listing is shared across repeated requests and invalidated by a changed source read
+ok 40 - font listing is shared across repeated requests and invalidated by a changed source read
+  ---
+  duration_ms: 9.981959
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: native commands after last-window close wait for the new renderer handshake
+ok 41 - native commands after last-window close wait for the new renderer handshake
+  ---
+  duration_ms: 11.828533
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: native Open while no window uses its own file dialog and the same acceptance queue
+ok 42 - native Open while no window uses its own file dialog and the same acceptance queue
+  ---
+  duration_ms: 11.844482
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: invalid Finder input reports failure without blocking the next item, while backend failure preserves retry
+ok 43 - invalid Finder input reports failure without blocking the next item, while backend failure preserves retry
+  ---
+  duration_ms: 9.658626
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: native PNG clipboard validates dimensions and bit depth before replacing clipboard contents
+ok 44 - native PNG clipboard validates dimensions and bit depth before replacing clipboard contents
+  ---
+  duration_ms: 9.368408
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: Sketch inspection uses only native selection and cannot replace the Forma canvas or leak paths
+ok 45 - Sketch inspection uses only native selection and cannot replace the Forma canvas or leak paths
+  ---
+  duration_ms: 11.250331
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: darwin: registered input handler protects IME and consumes repeat before native menu dispatch
+ok 46 - darwin: registered input handler protects IME and consumes repeat before native menu dispatch
+  ---
+  duration_ms: 8.969015
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: win32: registered input handler protects IME and consumes repeat before native menu dispatch
+ok 47 - win32: registered input handler protects IME and consumes repeat before native menu dispatch
+  ---
+  duration_ms: 10.107272
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: linux: registered input handler protects IME and consumes repeat before native menu dispatch
+ok 48 - linux: registered input handler protects IME and consumes repeat before native menu dispatch
+  ---
+  duration_ms: 12.758691
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: darwin: native paste-over-selection menu is distinct from paste-in-place and replacement
+ok 49 - darwin: native paste-over-selection menu is distinct from paste-in-place and replacement
+  ---
+  duration_ms: 14.334296
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: darwin: registered paste-over-selection shortcut forwards once and preserves IME and repeat suppression
+ok 50 - darwin: registered paste-over-selection shortcut forwards once and preserves IME and repeat suppression
+  ---
+  duration_ms: 16.220527
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: win32: native paste-over-selection menu is distinct from paste-in-place and replacement
+ok 51 - win32: native paste-over-selection menu is distinct from paste-in-place and replacement
+  ---
+  duration_ms: 12.833073
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: win32: registered paste-over-selection shortcut forwards once and preserves IME and repeat suppression
+ok 52 - win32: registered paste-over-selection shortcut forwards once and preserves IME and repeat suppression
+  ---
+  duration_ms: 11.793496
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: linux: native paste-over-selection menu is distinct from paste-in-place and replacement
+ok 53 - linux: native paste-over-selection menu is distinct from paste-in-place and replacement
+  ---
+  duration_ms: 10.066195
+  type: 'test'
+  ...
+# 原生渲染桥:design-render 未安装于 <repository>/frontend/design-desktop/dist/bin/design-render,native-render:* 调用将返回错误
+# Local presence lease will expire: Unexpected method workspace.leave
+# Subtest: linux: registered paste-over-selection shortcut forwards once and preserves IME and repeat suppression
+ok 54 - linux: registered paste-over-selection shortcut forwards once and preserves IME and repeat suppression
+  ---
+  duration_ms: 13.768404
+  type: 'test'
+  ...
+# Subtest: preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or shell handle
+ok 55 - preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or shell handle
+  ---
+  duration_ms: 4.374097
+  type: 'test'
+  ...
+# Subtest: preload request methods map only to the fixed desktop IPC allowlist
+ok 56 - preload request methods map only to the fixed desktop IPC allowlist
+  ---
+  duration_ms: 1.991333
+  type: 'test'
+  ...
+# Subtest: command subscription strips IPC event, rejects invalid payloads and removes its own listener
+ok 57 - command subscription strips IPC event, rejects invalid payloads and removes its own listener
+  ---
+  duration_ms: 1.150966
+  type: 'test'
+  ...
+# Subtest: close subscription strips event, validates requests, and independently cleans up callbacks
+ok 58 - close subscription strips event, validates requests, and independently cleans up callbacks
+  ---
+  duration_ms: 0.916482
+  type: 'test'
+  ...
+# Subtest: subscriptions reject non-functions before registering any IPC listener
+ok 59 - subscriptions reject non-functions before registering any IPC listener
+  ---
+  duration_ms: 1.271007
+  type: 'test'
+  ...
+# Subtest: render policy is captured from trusted preload argv and deeply frozen
+ok 60 - render policy is captured from trusted preload argv and deeply frozen
+  ---
+  duration_ms: 1.889249
+  type: 'test'
+  ...
+# Subtest: workspace, font and clipboard APIs are frozen fixed-method bridges
+ok 61 - workspace, font and clipboard APIs are frozen fixed-method bridges
+  ---
+  duration_ms: 1.298448
+  type: 'test'
+  ...
+# Subtest: Sketch session preload is frozen and maps named methods without accepting open paths
+ok 62 - Sketch session preload is frozen and maps named methods without accepting open paths
+  ---
+  duration_ms: 3.791473
+  type: 'test'
+  ...
+# Subtest: local window API stays frozen and uses only three fixed IPC methods
+ok 63 - local window API stays frozen and uses only three fixed IPC methods
+  ---
+  duration_ms: 2.018414
+  type: 'test'
+  ...
+# Subtest: native render API is frozen, maps the fixed native-render channels, and stats fail safe to null
+ok 64 - native render API is frozen, maps the fixed native-render channels, and stats fail safe to null
+  ---
+  duration_ms: 4.778627
+  type: 'test'
+  ...
+# Subtest: automation preload is frozen and routes only named IPC methods
+ok 65 - automation preload is frozen and routes only named IPC methods
+  ---
+  duration_ms: 2.13528
+  type: 'test'
+  ...
+# Subtest: automation subscriptions filter payloads, strip IPC events and independently unsubscribe
+ok 66 - automation subscriptions filter payloads, strip IPC events and independently unsubscribe
+  ---
+  duration_ms: 1.382635
+  type: 'test'
+  ...
+1..66
+# tests 66
+# suites 0
+# pass 66
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 733.245525

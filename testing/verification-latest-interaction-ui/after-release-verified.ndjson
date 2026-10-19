@@ -1,0 +1,2 @@
+{"name":"camera-120","runtime":"React/jsdom + real Editor/WASM; no Canvas or native browser","nodes":256,"durationMs":3.0763459999998304,"propertyUnitCalls":0,"allParentsCalls":0,"shellRenders":0,"statusPublications":0}
+{"name":"drag-36","runtime":"React/jsdom + real Editor/WASM; no Canvas or native browser","nodes":256,"samples":36,"durationMs":106.10131499999989,"propertyUnitCalls":5,"allParentsCalls":81,"shellRenders":1,"statusPublications":1}

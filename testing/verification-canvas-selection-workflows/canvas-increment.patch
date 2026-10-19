@@ -1,0 +1,173 @@
+--- testing/verification-canvas-selection-workflows/before/frontend/design-client/src/Canvas.tsx	2026-10-19 23:13:58.701141910 +0900
++++ frontend/design-client/src/Canvas.tsx	2026-10-19 23:18:23.471976478 +0900
+@@ -1,4 +1,4 @@
+-import { marqueeScope } from './selection-hierarchy'
++import { canvasMarqueeSelection } from './canvas-selection-workflows'
+ import { StartupPreview } from './StartupPreview'
+ import type { StartupPreview as StartupPixels, PreviewPixels } from './startup-preview'
+ import { CanvasEditPreview, type RetainedMoveControl } from './CanvasEditPreview'
+@@ -71,7 +71,6 @@
+   unionBounds,
+   boxPoints,
+   contains,
+-  intersects,
+   bounds,
+   matrixString,
+   networkD,
+@@ -128,6 +127,9 @@
+   widthSide?: 'left' | 'right'
+   widthIndex?: number
+   additive?: boolean
++  sketchMarquee?: boolean
++  forcedMarquee?: boolean
++  marqueeIgnoreId?: string | null
+   originSelection: string[]
+   clickSelection?: string[] | null
+   moved?: boolean
+@@ -505,6 +507,11 @@
+   const wheelModifiers = useRef({ ctrl: false, meta: false })
+   const space = useRef(false)
+   const [spaceHeld, setSpaceHeld] = useState(false)
++  const marqueeHeld = useRef(false)
++  const [marqueeKeyHeld, setMarqueeKeyHeld] = useState(false)
++  useLayoutEffect(() => {
++    marqueeHeld.current = false; setMarqueeKeyHeld(false)
++  }, [editor, editor.sessionGeneration, state.page])
+   const [panning, setPanning] = useState(false)
+   const entries = useMemo(
+     () => scene(state.doc, state.page),
+@@ -742,6 +749,13 @@
+       }
+       if (['Shift', 'Alt', 'Control'].includes(e.key) && replayDragModifiers(e)) return
+       if(utility.active() && e.key!=='Escape'){e.preventDefault();return}
++      // X is a momentary selection override, never a persistent tool switch.
++      // Keep it out of text/IME/modal handling and don't toggle on repeats.
++      if (shortcutContext.profile === 'sketch-like' && e.key.toLowerCase() === 'x' &&
++          !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey &&
++          !drag.current && !pencil.current && !penRef.current && !editor.interactionActive && !editor.state.busy) {
++        e.preventDefault(); marqueeHeld.current = true; setMarqueeKeyHeld(true); return
++      }
+       if ((e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) && !e.metaKey && !e.ctrlKey && !e.altKey && e.target === host.current) {
+         e.preventDefault()
+         if (drag.current || pencil.current || editor.interactionActive || editor.state.busy) return
+@@ -798,6 +812,8 @@
+         e.preventDefault()
+       }
+       if (e.key === 'Escape') {
++        e.preventDefault()
++        marqueeHeld.current = false; setMarqueeKeyHeld(false)
+         const cancelOnly = !!drag.current || !!pencil.current || !!penRef.current || editor.state.tool !== 'select'
+         flushView()
+         cancelPencil()
+@@ -811,7 +827,8 @@
+         penRef.current = null
+         pendingEditsChanged(editor)
+         editor.set({ tool: 'select', editingVertex: null })
+-        if (!cancelOnly) editor.clearSelection()
++        if (!cancelOnly && !(shortcutContext.profile === 'sketch-like' &&
++            !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && editor.selectParent())) editor.clearSelection()
+         editor.hoverLayer(null, 'canvas')
+         return
+       }
+@@ -899,6 +916,7 @@
+       }
+     }
+     const up = (e: KeyboardEvent) => {
++      if (e.code === 'KeyX' || e.key.toLowerCase() === 'x') { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
+       if(['Alt','Meta','Control'].includes(e.key))setMeasureKeys({alt:e.altKey,deep:e.metaKey||e.ctrlKey})
+       if (['Shift', 'Alt', 'Control'].includes(e.key) && replayDragModifiers(e)) return
+       if (e.code === 'Space') { space.current = false; setSpaceHeld(false) }
+@@ -913,6 +931,7 @@
+       cancelPencil()
+       setShapePreview(null)
+       space.current = false
++      marqueeHeld.current = false; setMarqueeKeyHeld(false)
+       setSpaceHeld(false); setPanning(false)
+       editor.cancel()
+       drag.current = null
+@@ -923,10 +942,21 @@
+     window.addEventListener('keydown', down)
+     window.addEventListener('keyup', up)
+     window.addEventListener('blur', blur)
++    const releaseMarquee = () => { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
++    const visibility = () => { if (document.hidden) releaseMarquee() }
++    const focus = (e: FocusEvent) => { if (shortcutTargetOwnsKeyboard(e.target)) releaseMarquee() }
++    const unsubscribeProfile = shortcutPreference.subscribe(() => {
++      if (shortcutPreference.getSnapshot() !== 'sketch-like') releaseMarquee()
++    })
++    document.addEventListener('visibilitychange', visibility)
++    document.addEventListener('focusin', focus)
+     return () => {
+       window.removeEventListener('keydown', down)
+       window.removeEventListener('keyup', up)
+       window.removeEventListener('blur', blur)
++      document.removeEventListener('visibilitychange', visibility)
++      document.removeEventListener('focusin', focus)
++      unsubscribeProfile()
+     }
+   }, [editor])
+   useEffect(() => {
+@@ -1144,6 +1174,7 @@
+       ids = editor.topSelection()
+     let clickSelection: string[] | null = null
+     if (e.button === 1 || space.current || s.tool === 'hand') { dragKind = 'pan'; setPanning(true); editor.hoverLayer(null, 'canvas') }
++    else if (kind === 'marquee') { ids = []; setRubber({ ...p, width: 0, height: 0 }) }
+     else if(!kind&&s.tool==='zoom'){dragKind='zoom';setRubber({...p,width:0,height:0})}
+     else if (!kind && !['select', 'multiselect', 'scale', 'vector', 'width'].includes(s.tool)) {
+       dragKind = 'create'
+@@ -1226,6 +1257,13 @@
+       edge: edgeId,
+       control,
+       additive: e.shiftKey || s.tool==='multiselect',
++      ...(dragKind === 'marquee' ? {
++        sketchMarquee: shortcutPreference.getSnapshot() === 'sketch-like',
++        forcedMarquee: kind === 'marquee',
++        // Sketch's forced marquee ignores its starting layer and reaches
++        // nested content without requiring an additional deep-select chord.
++        marqueeIgnoreId: kind === 'marquee' ? displayedHit(p, true) : null,
++      } : {}),
+       originSelection: s.selection,
+       clickSelection, moved: false,
+       lastScreen: screen,
+@@ -1651,15 +1689,14 @@
+       // React's rubber-band state may still describe the previous move. The
+       // committed selection uses the owner's actual final coordinates.
+       const area = createBox(d.start, screenToWorld(d.view, release), false)
+-      const parents = allParents(editor.state.doc)
+-      const deep = e.metaKey || e.ctrlKey
+-      const scope = marqueeScope(editor.state.doc, editor.state.page, d.originSelection)
+-      const candidates = (d.pickIndex || index).query(area).filter(entry => !entry.locked &&
+-        (deep || parents.get(entry.id) === scope) && intersects(entry.bounds, area) &&
+-        interactivePath(editor.state.doc, editor.state.page, entry.id, false, parents).length)
+-      const ancestors = new Set(deep ? candidates.flatMap(entry => entry.ancestors) : [])
+-      const ids = candidates.filter(entry => !ancestors.has(entry.id)).map(entry => entry.id)
+-      editor.select([...d.originSelection.filter(() => d.additive), ...ids])
++      const deep = d.forcedMarquee || (d.sketchMarquee
++        ? shortcutPlatform() === 'mac' ? e.metaKey : e.ctrlKey : e.metaKey || e.ctrlKey)
++      // Use release-time modifiers and the original selection, not the last
++      // coalesced move or an earlier preview (which would toggle repeatedly).
++      const additive = d.sketchMarquee ? e.shiftKey || d.creationTool === 'multiselect' : !!d.additive
++      editor.select(canvasMarqueeSelection(editor.state.doc, editor.state.page, d.originSelection,
++        (d.pickIndex || index).query(area), area, { deep: !!deep, contained: !!d.sketchMarquee && e.altKey,
++          additive, toggle: !!d.sketchMarquee && additive, ignoreId: d.marqueeIgnoreId }))
+     } else if(d.kind==='pivot') {
+       // The origin is an editing handle, not document geometry or undo state.
+     } else if (d.kind === 'move' && !d.moved) {
+@@ -1813,7 +1850,16 @@
+       data-testid="canvas" aria-busy={state.busy}
+       data-creation-kind={shapePreview?.kind}
+       data-transform-gesture={drag.current?.kind}
+-      style={drag.current?.kind==='rotate'?{cursor:transformHandles[drag.current.handle ?? 0]?.rotateCursor}:undefined}
++      style={marqueeKeyHeld ? { cursor: 'crosshair' } : drag.current?.kind==='rotate'?{cursor:transformHandles[drag.current.handle ?? 0]?.rotateCursor}:undefined}
++      onPointerDownCapture={e => {
++        // Capture before transform/layout handles, so held X cannot resize or
++        // move an existing selection. Canvas controls keep their own input.
++        if (!marqueeHeld.current || shortcutPreference.getSnapshot() !== 'sketch-like' ||
++            drag.current || pencil.current || utility.active() || space.current || editor.state.tool === 'hand' ||
++            e.button !== 0 || !(e.target instanceof Element) || !host.current?.contains(e.target) ||
++            e.target.closest(canvasChromeSelector) || shortcutTargetOwnsKeyboard(e.target)) return
++        cancelQueuedMove(); start(e, 'marquee'); e.stopPropagation()
++      }}
+       onPointerDown={(e) => { if (!drag.current) cancelQueuedMove(); start(e) }}
+       onPointerMoveCapture={e => {
+         // Scrollbar gestures stop propagation. Clear a previous canvas

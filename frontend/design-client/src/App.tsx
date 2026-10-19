@@ -1,3 +1,11 @@
+import { SettingsDialog } from './SettingsDialog'
+import { bindEditorSettings } from './settings-preference'
+import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
+import { useShortcutProfile } from './shortcut-preference'
+import { shortcutPlatform, toolShortcutLabel } from './shortcut-profiles'
+import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
+import { AutomationPanel } from './AutomationPanel'
+import { attachDesktopAutomation } from './automation/bridge'
 import {activateTool} from './tool-activation'
 import { readStartupPreview, writeStartupPreview, type StartupPreview, type PreviewPixels } from './startup-preview'
 import {useLocalWindows,LocalWindowControl} from './LocalWindows'
@@ -17,7 +25,8 @@ import { ImportNotice } from './ImportNotice'
 import { dispatchEditorCommand, editorCommands, type EditorCommand } from './editor-commands'
 import { TOOL_COMMANDS, unavailableReason } from './tool-registry'
 import { canvasMenuItems } from './canvas-menu-model'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { flushSync } from 'react-dom'
 import {
   MousePointer2,
   Scaling,
@@ -97,42 +106,50 @@ import { download, exportDocument, readDesignFile } from './persistence'
 import { exportSketchInWorker } from './import-file-worker'
 import { ImportOwner, importStep, type ImportRequest } from './import-ownership'
 import { ExportOwner, commitExportEdits, type ExportRequest } from './export-ownership'
-const tools: { id: Tool; label: string; key: string; icon: typeof Square }[] = [
-  { id: 'select', label: '选择', key: 'V', icon: MousePointer2 },
-  { id: 'hand', label: '平移', key: 'H', icon: Hand },
-  { id: 'zoom', label: '区域缩放', key: 'Z', icon: ZoomIn },
-  { id: 'scale', label: '缩放', key: 'K', icon: Scaling },
-  { id: 'slice', label: '切片', key: 'S', icon: Scan },
-  { id: 'frame', label: '画板', key: 'F', icon: Frame },
-  { id: 'section', label: '分区', key: '⇧ S', icon: Scan },
-  { id: 'rectangle', label: '矩形', key: 'R', icon: Square },
-  { id: 'ellipse', label: '椭圆', key: 'O', icon: Circle },
-  { id: 'polygon', label: '多边形', key: '', icon: Triangle },
-  { id: 'star', label: '星形', key: '', icon: Star },
-  { id: 'line', label: '直线', key: 'L', icon: Minus },
-  { id: 'arrow', label: '箭头', key: '⇧ L', icon: ArrowUpRight },
-  { id: 'pen', label: '钢笔', key: 'P', icon: PenTool },
-  { id: 'pencil', label: '铅笔', key: '⇧ P / ⌥ P', icon: Pencil },
-  { id:'marker',label:'马克笔',key:'',icon:Brush },
-  { id:'washi-tape',label:'和纸胶带',key:'',icon:Brush },
-  { id: 'brush', label: '画笔', key: 'B', icon: Brush },
-  { id: 'text', label: '文字', key: 'T', icon: Type },
+const toolItems: { id: Tool; label: string; icon: typeof Square }[] = [
+  { id: 'select', label: '选择', icon: MousePointer2 },
+  { id: 'hand', label: '平移', icon: Hand },
+  { id: 'zoom', label: '区域缩放', icon: ZoomIn },
+  { id: 'scale', label: '缩放', icon: Scaling },
+  { id: 'slice', label: '切片', icon: Scan },
+  { id: 'frame', label: '画板', icon: Frame },
+  { id: 'section', label: '分区', icon: Scan },
+  { id: 'rectangle', label: '矩形', icon: Square },
+  { id: 'ellipse', label: '椭圆', icon: Circle },
+  { id: 'polygon', label: '多边形', icon: Triangle },
+  { id: 'star', label: '星形', icon: Star },
+  { id: 'line', label: '直线', icon: Minus },
+  { id: 'arrow', label: '箭头', icon: ArrowUpRight },
+  { id: 'pen', label: '钢笔', icon: PenTool },
+  { id: 'pencil', label: '铅笔', icon: Pencil },
+  { id:'marker',label:'马克笔',icon:Brush },
+  { id:'washi-tape',label:'和纸胶带',icon:Brush },
+  { id: 'brush', label: '画笔', icon: Brush },
+  { id: 'text', label: '文字', icon: Type },
 ]
-const utilityTools: { id: Tool; label: string; key: string; icon: typeof Square }[] = [
-  { id: 'eraser', label: '橡皮', key: 'E', icon: Eraser },
-  { id: 'eyedropper', label: '吸管', key: 'I', icon: Pipette },
-  { id: 'paint-bucket', label: '油漆桶', key: '', icon: PaintBucket },
-  { id: 'measure', label: '测量', key: '', icon: Ruler },
-  { id: 'slice', label: '切片', key: '', icon: Slice },
-  { id: 'crop', label: '裁切', key: '', icon: Crop },
-  { id: 'comments', label: '评论', key: 'C', icon: MessageSquare },
+const utilityToolItems: { id: Tool; label: string; icon: typeof Square }[] = [
+  { id: 'eraser', label: '橡皮', icon: Eraser },
+  { id: 'eyedropper', label: '吸管', icon: Pipette },
+  { id: 'paint-bucket', label: '油漆桶', icon: PaintBucket },
+  { id: 'measure', label: '测量', icon: Ruler },
+  { id: 'slice', label: '切片', icon: Slice },
+  { id: 'crop', label: '裁切', icon: Crop },
+  { id: 'comments', label: '评论', icon: MessageSquare },
 ]
 export default function App() {
+  const shortcutProfile = useShortcutProfile()
+  const shortcutContext = useMemo(() => ({ profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), [shortcutProfile])
+  const tools = useMemo(() => toolItems.map(tool => ({ ...tool, key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext])
+  const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext])
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)
   const [showTools, setShowTools] = useState(false)
   const [showCatalog, setShowCatalog] = useState(false)
   const [showWorkspaceLibrary, setShowWorkspaceLibrary] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [workspaceRootBusy, setWorkspaceRootBusy] = useState(false)
+  const workspaceRootPending = useRef(false)
+  const fileMenuTrigger = useRef<HTMLButtonElement>(null)
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>('layers')
   const [zoomHost, setZoomHost] = useState<HTMLDivElement | null>(null)
   const workspaceActions = useRef<HTMLDetailsElement>(null)
@@ -163,6 +180,7 @@ export default function App() {
   const [showInspector, setShowInspector] = useState(() => window.innerWidth > 900)
   const [desktop] = useState(desktopBridge)
   const [editor] = useState(() => new Editor(blank()))
+  useEffect(() => bindEditorSettings(editor), [editor])
   const [exports] = useState(() => new ExportOwner())
   const exportAsset = useSyncExternalStore(exports.subscribe, exports.getSnapshot)
   useLayoutEffect(() => {
@@ -324,7 +342,7 @@ export default function App() {
   }, [s.tool])
   useEffect(() => {
     const minimize = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.code !== 'Backslash' ||
+      if (event.defaultPrevented || event.repeat || event.keyCode === 229 || (shortcutPlatform() === 'mac' ? (!event.metaKey || event.ctrlKey) : (!event.ctrlKey || event.metaKey)) || !event.shiftKey || event.code !== 'Backslash' ||
           event.altKey || event.isComposing || editor.interactionActive || modalOwnsKeyboard(event.target) ||
           (event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable],[role="menu"]')) return
       event.preventDefault()
@@ -513,6 +531,9 @@ export default function App() {
     }
   }
   useEffect(() => {
+    if (ready && desktop?.automation) return attachDesktopAutomation(editor, desktop.automation)
+  }, [ready, desktop, editor])
+  useEffect(() => {
     if (ready && desktop?.rendererReady) void desktop.rendererReady().then(result => {
       if (result.status === 'error' || result.status === 'conflict') editor.notify(result.message)
     }).catch(error => editor.notify(String(error)))
@@ -531,7 +552,8 @@ export default function App() {
       else if (editorCommands.includes(name as EditorCommand)) void dispatchEditorCommand(editor, name as EditorCommand)
     }
     const shortcut = (e: KeyboardEvent) => {
-      if (!ready || modalOwnsKeyboard(e.target) || !(e.ctrlKey || e.metaKey)) return
+      if (!ready || e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.repeat || e.altKey || shortcutTargetOwnsKeyboard(e.target)) return
+      if (shortcutPlatform() === 'mac' ? (!e.metaKey || e.ctrlKey) : (!e.ctrlKey || e.metaKey)) return
       const key = e.key.toLowerCase()
       if (key === 's') {
         e.preventDefault()
@@ -547,6 +569,9 @@ export default function App() {
     const offCommand = desktop?.onCommand(command)
     const offClose = desktop?.onCloseRequested(({ requestId }) => {
       fileImports.invalidate()
+      // Release the settings portal's focus/inert ownership before a dirty
+      // document confirmation is rendered in the application root.
+      flushSync(() => setShowSettings(false))
       void (ready && desktopSession ? desktopSession.requestClose() : Promise.resolve(false))
         .then(async (approved) => {
           const allow = approved && !!desktopSession?.closeReady
@@ -625,6 +650,7 @@ export default function App() {
         }
       }}
       onKeyDownCapture={(e) => {
+        if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
         const penCanvas = editor.state.tool === 'pen' && (e.target as Element).closest('[data-testid="canvas"]')
         if (!penCanvas && !(e.target as Element).closest('input,textarea,select,.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
@@ -641,7 +667,7 @@ export default function App() {
         </div>
       )}
       <header className="editor-header">
-        <button className="brand" onClick={() => setMenu(!menu)}>
+        <button ref={fileMenuTrigger} className="brand" aria-label="文件菜单" aria-expanded={menu} onClick={() => setMenu(!menu)}>
           <span className="brand-mark">f</span>
           <strong>futureox-desgin</strong>
           <ChevronDown size={13} />
@@ -748,6 +774,10 @@ export default function App() {
         <>
           <div className="menu-scrim" onClick={() => setMenu(false)} />
           <div className="file-menu">
+            <button type="button" onClick={() => {
+              if (!commitPendingEdits(editor)) return
+              setMenu(false); setShowSettings(true)
+            }}><SlidersHorizontal size={15} />设置</button>
             <button
               onClick={() => {
                 void switchDocument(blank())
@@ -924,13 +954,13 @@ export default function App() {
           <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || editor.interactionActive}>
             <div className="tool-group">
               <ToolPopover label="移动工具" icon={<MoveIcon size={18} />} open={showMove} onOpenChange={open => openToolbarMenu('move', open)}
-                primary={{ label: moveTool.label, title: `${moveTool.label} (${moveTool.key})`, active: s.tool === moveTool.id, onClick: () => chooseTool(moveTool.id) }}>
+                primary={{ label: moveTool.label, title: `${moveTool.label}${moveTool.key ? ` (${moveTool.key})` : ''}`, active: s.tool === moveTool.id, onClick: () => chooseTool(moveTool.id) }}>
                 {tools.filter(({ id }) => ['select', 'hand', 'scale', 'zoom'].includes(id)).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={moveTool.id === id} onClick={() => { chooseTool(id); setShowMove(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
               </ToolPopover>
               <ToolPopover label="区域工具" icon={<RegionIcon size={18} />} open={showRegions} onOpenChange={open => openToolbarMenu('regions', open)}
-                primary={{ label: regionTool.label, title: `${regionTool.label} (${regionTool.key})`, active: s.tool === regionTool.id, onClick: () => chooseTool(regionTool.id) }}>
+                primary={{ label: regionTool.label, title: `${regionTool.label}${regionTool.key ? ` (${regionTool.key})` : ''}`, active: s.tool === regionTool.id, onClick: () => chooseTool(regionTool.id) }}>
                 {(['frame', 'section', 'slice'] as const).map(id => tools.find(tool => tool.id === id)!).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={regionTool.id === id} onClick={() => { chooseTool(id); setShowRegions(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
@@ -942,7 +972,7 @@ export default function App() {
                 ))}
               </ToolPopover>
               <ToolPopover label="绘图工具" icon={<DrawingIcon size={18} />} open={showDrawing} onOpenChange={open => openToolbarMenu('drawing', open)}
-                primary={{ label: drawingTool.label, title: `${drawingTool.label} (${drawingTool.key})`, active: s.tool === drawingTool.id, onClick: () => chooseTool(drawingTool.id) }}>
+                primary={{ label: drawingTool.label, title: `${drawingTool.label}${drawingTool.key ? ` (${drawingTool.key})` : ''}`, active: s.tool === drawingTool.id, onClick: () => chooseTool(drawingTool.id) }}>
                 {tools.filter(({ id }) => ['pen', 'pencil', 'brush', 'marker', 'washi-tape'].includes(id)).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={drawingTool.id === id} onClick={() => { chooseTool(id); setShowDrawing(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
@@ -950,7 +980,7 @@ export default function App() {
                 <button type="button" role="menuitem" tabIndex={-1} disabled={s.busy || s.selection.length !== 1 || !editor.topSelection().includes(s.selection[0]) || ['frame', 'section', 'group', 'text'].includes(s.doc.nodes[s.selection[0]]?.kind)} onClick={() => { editor.set({ tool: 'vector', editingVertex: null }); setShowDrawing(false) }}>编辑矢量</button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('outline-stroke')} onClick={() => { void dispatchEditorCommand(editor, 'outline-stroke'); setShowDrawing(false) }}>轮廓化描边</button>
               </ToolPopover>
-              <button type="button" data-tooltip="评论 (C)" aria-label="评论" aria-pressed={s.tool==='comments'} onClick={()=>chooseTool('comments')}>◉</button>
+              <button type="button" data-tooltip={`评论${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label="评论" aria-pressed={s.tool==='comments'} onClick={()=>chooseTool('comments')}>◉</button>
               <button type="button" data-tooltip="文字 (T)" aria-label="文字" aria-pressed={s.tool === 'text'} className={s.tool === 'text' ? 'active' : ''} onClick={() => chooseTool('text')}><Type size={18} /></button>
               <ToolPopover label="实用工具" icon={<UtilityIcon size={18} />} open={showUtility} onOpenChange={open => openToolbarMenu('utility', open)}
                 primary={{ label: utilityTool.label, title: `${utilityTool.label}${utilityTool.key ? ` (${utilityTool.key})` : ''}`, active: s.tool === utilityTool.id, onClick: () => chooseTool(utilityTool.id) }}>
@@ -1012,6 +1042,17 @@ export default function App() {
         </div>
       </main>
       {showAnimation && <AnimationPanel editor={editor} onClose={() => setShowAnimation(false)} />}
+      {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={fileMenuTrigger.current}
+        busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <WorkspaceRootControls bridge={desktop.workspaceRoot}
+          busy={workspaceRootBusy || !ready || desktopStatus.busy} onChoose={original => {
+            if (workspaceRootPending.current || !ready || desktopStatus.busy || !commitPendingEdits(editor)) return
+            workspaceRootPending.current = true; setWorkspaceRootBusy(true)
+            void chooseWorkspaceRoot(desktop.workspaceRoot!, original, () => setShowSettings(false))
+              .then(error => { if (error) editor.notify(`工作区切换失败，当前设计已保留：${error}`) })
+              .catch(error => editor.notify(`工作区切换失败，当前设计已保留：${String(error)}`))
+              .finally(() => { workspaceRootPending.current = false; setWorkspaceRootBusy(false) })
+          }} />}
+        onClose={() => setShowSettings(false)} />}
       {showColor && (
         <PendingEditContext.Provider value={editor} key={editor.sessionGeneration}><ColorPanel editor={editor} onClose={() => setShowColor(false)} exports={exports} /></PendingEditContext.Provider>
       )}
@@ -1070,6 +1111,7 @@ export default function App() {
           </section>
         </div>
       )}
+      <AutomationPanel editor={editor} desktop={desktop} onHistory={()=>setShowHistory(true)} />
       <footer>
         <span>
           {s.busy ? <span className="spinner" /> : <span className="footer-dot" />}

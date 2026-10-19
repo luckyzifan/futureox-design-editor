@@ -1,0 +1,50 @@
+{
+  "frontend/design-desktop/src/preparation-frame.mjs": {
+    "sha256": "bbcf500336178f981d31f141878d78f9ef4da0cca0bcea4453089d549d25fc58",
+    "bytes": 2700
+  },
+  "frontend/design-desktop/test/preparation-frame.test.mjs": {
+    "sha256": "0b58d2cdce9fa24ecb29f71cbd3b45ce5f28676495531c44420c2035549e3239",
+    "bytes": 12933
+  },
+  "frontend/design-desktop/src/preparation-worker.mjs": {
+    "sha256": "04df71a73f7657ad0e720fbbfe153a90b33170644279c1e0a62335cf82979997",
+    "bytes": 2605
+  },
+  "frontend/design-desktop/src/preparation.mjs": {
+    "sha256": "3bc8685cc77205bcf7fe818460087171e192a5352149a1eb5d201bcbcc0292c8",
+    "bytes": 4562
+  },
+  "testing/verification-next-native-transport/frame-baseline.mjs": {
+    "sha256": "bbcf500336178f981d31f141878d78f9ef4da0cca0bcea4453089d549d25fc58",
+    "bytes": 2700
+  },
+  "testing/verification-next-native-transport/benchmark-frame-allocation.mjs": {
+    "sha256": "5b3e2df772922a63019fb350e94ff9a7e7b19cd892774d07c5cfeb65c33b54b5",
+    "bytes": 1899
+  },
+  "frontend/design-client/src/generated/design-kernel/design_kernel.js": {
+    "sha256": "11aeca21feaad973b20453c604768484470575267635b7503cd158a5efe31e99",
+    "bytes": 126900
+  },
+  "frontend/design-client/public/kernel/design_kernel_bg.wasm": {
+    "sha256": "3dff5703c0b197cf26be5a94f3a5bf544c876d1950ac4118784e1c5f3abdbe21",
+    "bytes": 39280365
+  },
+  "<toolchain>/cargo-target/desktop-dev/design-prepare": {
+    "sha256": "b260d0b2ee7f34e9734aaae18de9cfa7e0d4af9a5d41c64d7a458fa03f95c0a6",
+    "bytes": 39847456
+  },
+  "testing/verification-next-native-transport/negative-control.mjs": {
+    "sha256": "0469aff00084516bb6bf86426888b2ac6011bd1b0cdb7664388402120e86df23",
+    "bytes": 1464
+  },
+  "testing/verification-next-native-transport/candidate-frame-allocation.mjs": {
+    "sha256": "126b47d0abab3b382bbac2285e959ded60eebddc62d5a80f5f9b61b22bdeeee4",
+    "bytes": 3287
+  },
+  "testing/verification-next-native-transport/REPORT.md": {
+    "sha256": "360a597afd3594a26748a9c847e687079ed40a494a38fdfb13ac53aabca92d41",
+    "bytes": 8088
+  }
+}

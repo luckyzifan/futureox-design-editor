@@ -1,0 +1,81 @@
+{
+  "scope": "Behavior-preserving extraction of synchronous SVG path parser from full document importer",
+  "gitBase": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "previousDeliveredArchiveSha256": "e7fea613c2aafbcd277dc6648bd8b425d65f18683c6ad8089577aabad4858d51",
+  "sourceChanges": [
+    "New src/path-network.ts holds byte-identical existing parser",
+    "src/import-svg.ts imports and re-exports the same function",
+    "Only pathNetwork import target changed in engine.ts and editable-network.ts"
+  ],
+  "parserFunctionSha256": "de128cda4c183d418c4641b2ea51fef040dc294091953a4b5e4250e93035ae49",
+  "tests": {
+    "focusedVitest": {
+      "status": "passed",
+      "files": 4,
+      "total": 75,
+      "passed": 75,
+      "failed": 0,
+      "pending": 0
+    },
+    "importNodeContracts": {
+      "status": "passed",
+      "total": 23,
+      "passed": 23
+    },
+    "typecheck": {
+      "status": "passed",
+      "command": "tsc --noEmit --project frontend/design-client/tsconfig.json"
+    },
+    "parserCorpus": {
+      "seed": "0x51a7c0de",
+      "generatedValid": 256,
+      "generatedMalformed": 256,
+      "explicitEdgeCases": 21,
+      "explicitMalformed": 24,
+      "boundaryCases": 3,
+      "comparison": "Exact deep equality including IDs, all coordinates/control points/topology, allocation counts, error names/messages; no rounding/tolerance"
+    },
+    "negativeControls": [
+      "One-ULP coordinate mutation",
+      "Control-point mutation",
+      "Dropped closing edge",
+      "Changed vertex ID",
+      "Changed thrown error message"
+    ]
+  },
+  "bundle": {
+    "classification": "Actual Vite production-build artifact/module-graph comparison, not measured browser startup, latency, FPS, or network transfer.",
+    "viteVersion": "8.3.0",
+    "changedSources": [
+      "import-svg.ts",
+      "path-network.ts",
+      "editable-network.ts",
+      "engine.ts"
+    ],
+    "delta": {
+      "initialStaticCodeBytes": -12171,
+      "initialStaticGzipBytes": -4629,
+      "initialStaticModuleCount": -2
+    }
+  },
+  "initialHarnessFailures": {
+    "count": 3,
+    "meaning": "No old/new mismatch. Two identical historical parser rejections were incorrectly assumed valid in the new test; one structural regex matched the word document in a comment. Tests corrected, production algorithm unchanged. Initial logs retained."
+  },
+  "notRun": [
+    "Browser/Electron cold-start or import UI",
+    "GPU performance/pixels",
+    "Full frontend suite (parent owns aggregate verification)",
+    "Kernel rebuild (unneeded for TS module extraction)"
+  ],
+  "hashes": {
+    "frontend/design-client/src/path-network.ts": "31dc9583194b3e539a3437e98b75cbf6b9806ef177986b50e303ce76d4a3ecc7",
+    "frontend/design-client/src/path-network.test.ts": "ef591d4a7b726c11928bb0162c936a62867ead88875874cdad8014feb991d14a",
+    "frontend/design-client/src/import-svg.ts": "8115675aa6c09535bb013f1f49fc0f6f0e6189a07e7d10842715fa15cf7fd415",
+    "frontend/design-client/src/editable-network.ts": "33280488175190c5c92ac558a3ac58a964b27cab68f1119915eb0801109f4eab",
+    "frontend/design-client/src/engine.ts": "5f87c69a1dbb5975341fcd23223e3dddc5ebac6488d99f51e612b4b54eb7f8a9",
+    "frontend/design-client/src/generated/design-kernel/design_kernel.js": "11aeca21feaad973b20453c604768484470575267635b7503cd158a5efe31e99",
+    "frontend/design-client/public/kernel/design_kernel_bg.wasm": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+    "frontend/design-client/public/fonts/NotoSansSC.ttf": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da"
+  }
+}

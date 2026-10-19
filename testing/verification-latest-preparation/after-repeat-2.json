@@ -1,0 +1,146 @@
+{
+  "batch": 4,
+  "profile": "optimized",
+  "rows": [
+    {
+      "cache": {
+        "builds": 4864,
+        "bytes": 9815184,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 4576,
+        "hits": 663232,
+        "pathNodes": 3500,
+        "prepareReuses": 145,
+        "preparedNodes": 3500,
+        "residentStrokes": {
+          "builds": 3500,
+          "bytes": 7266000,
+          "entries": 3500,
+          "hits": 144
+        },
+        "retainedNodes": 3499,
+        "textPaths": {
+          "bytes": 0,
+          "entries": 0,
+          "hits": 0,
+          "limit": 16777216
+        }
+      },
+      "fixtureSha256": "1f3f6a2448e227361af1eac77b4a0d7ce58f21708e020987594c86faecf03a96",
+      "nodes": 3500,
+      "p50Ms": 33.47325675,
+      "p95Ms": 40.703649500000004,
+      "packetBytes": 2715156,
+      "packetSha256": "142f8a6fa4ea49f18cf93be0c513ae7fc052f1e4e83bd9c75c7c18d22434a26c",
+      "samplesMs": [
+        25.4540055,
+        26.53626625,
+        27.16203175,
+        28.00449625,
+        28.4173885,
+        28.42757125,
+        29.9525305,
+        30.5789255,
+        32.110305749999995,
+        32.7027695,
+        33.032793,
+        33.09188725,
+        33.28252825,
+        33.415014,
+        33.468362,
+        33.47325675,
+        33.68032975,
+        34.81919,
+        34.835258,
+        35.15125775,
+        35.225905250000004,
+        35.7226515,
+        36.65687425,
+        37.401814,
+        37.814461,
+        38.404788,
+        38.577082499999996,
+        39.0058225,
+        39.99311125,
+        40.703649500000004,
+        41.0958755
+      ]
+    },
+    {
+      "cache": {
+        "builds": 5696,
+        "bytes": 11506464,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 5408,
+        "hits": 783872,
+        "pathNodes": 10000,
+        "prepareReuses": 145,
+        "preparedNodes": 10000,
+        "residentStrokes": {
+          "builds": 10001,
+          "bytes": 8503296,
+          "entries": 4096,
+          "hits": 143
+        },
+        "retainedNodes": 9999,
+        "textPaths": {
+          "bytes": 0,
+          "entries": 0,
+          "hits": 0,
+          "limit": 16777216
+        }
+      },
+      "fixtureSha256": "f63466aa2754449a9be9234e6ae7fe6e1b5dd3f4d55bebedc13e17dca3284e37",
+      "nodes": 10000,
+      "p50Ms": 40.6928175,
+      "p95Ms": 49.4152135,
+      "packetBytes": 3287236,
+      "packetSha256": "c05f8213bf1bcab4d4c72804b1e79dac4e5e2e4005358f591cdbe1dfe1e1287a",
+      "samplesMs": [
+        38.472545,
+        38.478660999999995,
+        39.137594,
+        39.29412225,
+        39.52413875,
+        39.66569975,
+        39.78762325,
+        39.87923875,
+        39.90786525,
+        39.926285,
+        40.0011775,
+        40.06314375,
+        40.44480625,
+        40.61327025,
+        40.62357075,
+        40.6928175,
+        41.0505445,
+        41.824789,
+        42.081517749999996,
+        42.199425,
+        42.51620375,
+        42.525611999999995,
+        42.63672675,
+        42.9944735,
+        43.29823675,
+        44.991665,
+        45.563955750000005,
+        47.115423250000006,
+        48.47873375,
+        49.4152135,
+        49.843028499999996
+      ]
+    }
+  ],
+  "scope": "Native CPU transform plus exact regional compilation; no GPU or presentation timings",
+  "warmupBatches": 5
+}

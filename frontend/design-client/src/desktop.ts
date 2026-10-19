@@ -6,7 +6,7 @@ export type DesktopResult<T = Record<never, never>> =
 export type DesktopFile = { pendingCount?: number; handle: string; displayName: string; documentJson?: string; warning?: string }
 export type DesktopFont = { id: string; family: string; style: string; postscript: string; index: number; sourceIndex?: number }
 export type DesktopFontData = { font: DesktopFont; data: string; index: number; sourceIndex: number; extracted: boolean }
-export type DesktopCommand = 'copy-properties'|'paste-properties'|'select-matching'|'select-inverse'| 'open' | 'openPending' | 'save' | 'saveAs' | 'new' | 'recover' | 'zoomIn' | 'zoomOut' | 'zoom100' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'copy-as-png' | 'copy-as-svg' | 'paste-to-replace' | 'paste-in-place' | 'select-all' | 'duplicate' | 'group' | 'ungroup' | 'delete' | 'zoom-fit' | 'zoom-selection'
+export type DesktopCommand = 'copy-properties'|'paste-properties'|'select-matching'|'select-inverse'| 'open' | 'openPending' | 'save' | 'saveAs' | 'new' | 'recover' | 'zoomIn' | 'zoomOut' | 'zoom100' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'copy-as-png' | 'copy-as-svg' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'select-all' | 'duplicate' | 'group' | 'ungroup' | 'delete' | 'zoom-fit' | 'zoom-selection' | 'center-selection'
 export type CatalogProject = { id: string; name: string; updatedAt: number }
 export type CatalogDirectory = { id: string; projectId: string; displayName: string; updatedAt: number; directoryHandle?: string; requiresReselection: boolean }
 export type CatalogFile = { id: string; directoryId: string; relativePath: string; size: number; modifiedAt: number; indexedAt: number }
@@ -14,6 +14,14 @@ export type WorkspaceDocument = {
   id: string; name: string; revision: number; hash: string; updatedAt: number; deleted: boolean
 }
 export type WorkspaceOpened = WorkspaceDocument & { documentJson: string }
+export type WorkspaceRootSelection = { selectionId: string; displayName: string; isDefault: boolean }
+export interface WorkspaceRootBridge {
+  status(): Promise<DesktopResult<{ displayName: string; isDefault: boolean; canSwitch: boolean }>>
+  select(): Promise<DesktopResult<WorkspaceRootSelection>>
+  useDefault(): Promise<DesktopResult<WorkspaceRootSelection>>
+  /** Requests the existing native close handshake; activation occurs only after approval. */
+  activate(request: { selectionId: string }): Promise<DesktopResult<{ restarting: boolean }>>
+}
 export interface WorkspaceBridge {
   list(request?: { includeDeleted?: boolean }): Promise<DesktopResult<{ documents: WorkspaceDocument[] }>>
   open(request: { id: string; revision?: number }): Promise<DesktopResult<WorkspaceOpened>>
@@ -73,6 +81,7 @@ export interface NativeRenderBridgeApi {
   stats(): Promise<NativeRenderReply<{ stats: { gpu_memory?: NativeGpuMemoryBreakdown } }>>
 }
 export interface DesktopBridge {
+  readonly automation?: import('./automation/bridge').DesktopAutomationTransport
   readonly documentCodec?: { encode(document: unknown): Promise<string>; decode(json: string): Promise<unknown> }
   readonly preparation?: {
     open(): Promise<string>
@@ -91,6 +100,7 @@ export interface DesktopBridge {
     list(): Promise<DesktopResult<{ fonts: DesktopFont[]; truncated: boolean; skippedCollections: number }>>
     read(request: { id: string }): Promise<DesktopResult<DesktopFontData>>
   }
+  readonly workspaceRoot?: WorkspaceRootBridge
   readonly workspace?: WorkspaceBridge
   readonly clipboard?: { read(): Promise<DesktopResult<DesktopClipboard>>; write(value: DesktopClipboard): Promise<DesktopResult> }
   readonly version: 1

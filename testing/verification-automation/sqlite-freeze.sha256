@@ -1,0 +1,6 @@
+093ac43641b41fa093a36b88ca503784827967bfc1c4469d61dc298d6e1bc54b  design-studio/crates/design-desktop-backend/src/automation.rs
+d79ab305b30f290ea70fdf40c0b96635ba206a0e4a8048d5d3843d2557e541cc  design-studio/crates/design-desktop-backend/tests/automation.rs
+ec0ed2958ae8ddb23d5807a544f94f6039d23602e9f03d5a9d151ff8e15f3e18  design-studio/crates/design-desktop-backend/src/workspace.rs
+80b4fda1145882a76b9620d87d13364d888aee153a772c3081c2918a9dac1471  design-studio/crates/design-desktop-backend/src/protocol.rs
+4a65969949b11709682c5e31bb7bb9be8c6174345464c4ce4ef5dcd09a00247c  design-studio/crates/design-desktop-backend/src/lib.rs
+9e08cd56f0ea28fb999656abd8543ac0f315d339ea19612419fc57e1dbd0b5c2  testing/automation-sqlite-benchmark.py

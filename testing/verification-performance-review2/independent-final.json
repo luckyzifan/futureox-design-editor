@@ -1,0 +1,210 @@
+{
+  "numTotalTestSuites": 4,
+  "numPassedTestSuites": 4,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 13,
+  "numPassedTests": 13,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1792420669949,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "actual Canvas MacIntel routes Sketch dimension repeats and isolates profile/focus/IME",
+          "status": "passed",
+          "title": "actual Canvas MacIntel routes Sketch dimension repeats and isolates profile/focus/IME",
+          "duration": 291.32473800000025,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "actual Canvas Win32 routes Sketch dimension repeats and isolates profile/focus/IME",
+          "status": "passed",
+          "title": "actual Canvas Win32 routes Sketch dimension repeats and isolates profile/focus/IME",
+          "duration": 108.55427000000009,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "actual Canvas uses current Select All profile, Windows shifted ordering, and reversible remove-layout",
+          "status": "passed",
+          "title": "actual Canvas uses current Select All profile, Windows shifted ordering, and reversible remove-layout",
+          "duration": 139.39379199999985,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1792420673069,
+      "endTime": 1792420673608.3938,
+      "status": "passed",
+      "message": "",
+      "name": "testing/verification-performance-review2/canvas-workflow-integration.test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "frame parent+child parent-first edits preserve the exact old snapshot-unit basis",
+          "status": "passed",
+          "title": "frame parent+child parent-first edits preserve the exact old snapshot-unit basis",
+          "duration": 430.24223900000015,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "frame parent+child child-first edits preserve the exact old snapshot-unit basis",
+          "status": "passed",
+          "title": "frame parent+child child-first edits preserve the exact old snapshot-unit basis",
+          "duration": 251.9059860000002,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "group parent+child parent-first edits preserve the exact old snapshot-unit basis",
+          "status": "passed",
+          "title": "group parent+child parent-first edits preserve the exact old snapshot-unit basis",
+          "duration": 184.09241199999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "group parent+child child-first edits preserve the exact old snapshot-unit basis",
+          "status": "passed",
+          "title": "group parent+child child-first edits preserve the exact old snapshot-unit basis",
+          "duration": 147.56671599999981,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1792420681092,
+      "endTime": 1792420682105.5667,
+      "status": "passed",
+      "message": "",
+      "name": "testing/verification-performance-review2/inspector-snapshot-basis.test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "raw root masks reject atomically without changing existing pixels, nested parent=false",
+          "status": "passed",
+          "title": "raw root masks reject atomically without changing existing pixels, nested parent=false",
+          "duration": 25.957760000000007,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "raw root masks reject atomically without changing existing pixels, nested parent=true",
+          "status": "passed",
+          "title": "raw root masks reject atomically without changing existing pixels, nested parent=true",
+          "duration": 3.7104079999999158,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "grouped masks retain actual clip pixels and later siblings, nested parent=false",
+          "status": "passed",
+          "title": "grouped masks retain actual clip pixels and later siblings, nested parent=false",
+          "duration": 8.970082000000048,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "grouped masks retain actual clip pixels and later siblings, nested parent=true",
+          "status": "passed",
+          "title": "grouped masks retain actual clip pixels and later siblings, nested parent=true",
+          "duration": 4.564830999999913,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1792420683371,
+      "endTime": 1792420683413.565,
+      "status": "passed",
+      "message": "",
+      "name": "testing/verification-performance-review2/paste-mask-isolation.test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "a valid preflight whose instance expands beyond depth limit rejects atomically and restores actual font environment",
+          "status": "passed",
+          "title": "a valid preflight whose instance expands beyond depth limit rejects atomically and restores actual font environment",
+          "duration": 4111.990169999999,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "candidate detachment preserves signed zero and typed arrays without JSON conversion",
+          "status": "passed",
+          "title": "candidate detachment preserves signed zero and typed arrays without JSON conversion",
+          "duration": 0.7531849999995757,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1792420674912,
+      "endTime": 1792420679024.7532,
+      "status": "passed",
+      "message": "",
+      "name": "testing/verification-performance-review2/paste-postlayout-fonts.test.tsx"
+    }
+  ]
+}

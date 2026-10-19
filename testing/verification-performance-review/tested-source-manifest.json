@@ -1,0 +1,102 @@
+{
+  "design-studio/crates/design-kernel/src/gpu.rs": {
+    "sha256": "827feef75e6d7ade5bdff4efe240de8212848ce83a75f76cc8f07362afd0f37f",
+    "bytes": 111711
+  },
+  "frontend/design-client/src/Canvas.tsx": {
+    "sha256": "d4760b1faea0867ff59f3c9c53a3345e37bb07f4fef7efd69337a16e0ed3a2fb",
+    "bytes": 130711
+  },
+  "frontend/design-client/src/engine.ts": {
+    "sha256": "a1edc1b2aeae8fad78afa936de5ef624577e78d74f8d6a41dc3915c7e3be76bd",
+    "bytes": 95858
+  },
+  "frontend/design-client/src/MultiSelectionInspector.tsx": {
+    "sha256": "01aee0992f0b014ef0a25e224b59a3e2b804ed042ceb38d11f93e63220edb798",
+    "bytes": 7711
+  },
+  "frontend/design-client/src/MultiStylePanel.tsx": {
+    "sha256": "272f0c260054f98792345395f8e54d239b282ca179de751c62619494ea49dcfd",
+    "bytes": 8585
+  },
+  "frontend/design-client/src/property-units.ts": {
+    "sha256": "8a008620e806b1b0b0fd28bd29f0ff50a6b0fb2469a38c897ea32bd587c62cae",
+    "bytes": 2293
+  },
+  "frontend/design-client/src/selection-properties.ts": {
+    "sha256": "cc99866e67c2d9eae92691d0474996f1ad866df6c5a0c28fb75eab546c34a289",
+    "bytes": 3909
+  },
+  "frontend/design-client/src/kernel/interaction-renderer.ts": {
+    "sha256": "e33fd5b76e153c131bd7f213a02e1e28a7a1f6db1656cb1498a6cbd00e976ec2",
+    "bytes": 47198
+  },
+  "frontend/design-client/src/kernel/interaction-scene-bounds.ts": {
+    "sha256": "9b334769f7d42448d0f1f3194347296637b41f0d0654cef79c4d2191dd918a9c",
+    "bytes": 2037
+  },
+  "frontend/design-desktop/src/preparation-frame.mjs": {
+    "sha256": "bbcf500336178f981d31f141878d78f9ef4da0cca0bcea4453089d549d25fc58",
+    "bytes": 2700
+  },
+  "frontend/design-client/src/generated/design-kernel/design_kernel.js": {
+    "sha256": "11aeca21feaad973b20453c604768484470575267635b7503cd158a5efe31e99",
+    "bytes": 126900
+  },
+  "frontend/design-client/public/kernel/design_kernel_bg.wasm": {
+    "sha256": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+    "bytes": 39289919
+  },
+  "frontend/design-client/src/property-units-context.test.ts": {
+    "sha256": "5894042bf92a0244f04f2ea21e22e4a6fca7ac66084fe90933f394afc34cc14f",
+    "bytes": 2703
+  },
+  "frontend/design-client/src/property-units.test.tsx": {
+    "sha256": "2aebf36344226f7c26cf038f954216a21fbcb942c85f493618b8ba9612e6b239",
+    "bytes": 4585
+  },
+  "frontend/design-client/src/selection-properties.test.ts": {
+    "sha256": "6c0dddfa3788c067626115756920b62c810a7ea8f908f2c483098004747dcddf",
+    "bytes": 2741
+  },
+  "frontend/design-client/src/selection-scale.test.ts": {
+    "sha256": "a39287cbe99f0f37b965fff84e35395d7ab250c47dbbd5fa45a836dc2030e12d",
+    "bytes": 5019
+  },
+  "frontend/design-client/src/workspace-ui.test.tsx": {
+    "sha256": "0f0a854c2d31bd468eae3bf536f001b9de41610e635f0519eee99155d38d1045",
+    "bytes": 10107
+  },
+  "frontend/design-client/src/multiselection-cpu-runtime.test.tsx": {
+    "sha256": "5a53199dc7068b5fbef4f32bd6d492755a466d41e1cb8395bc824a8025b91f2e",
+    "bytes": 8634
+  },
+  "frontend/design-client/src/canvas-selection-cpu.test.tsx": {
+    "sha256": "73a903eefb9b08c53e41eb1cffc3cafb922419a13ee725e20075ad8609ed4778",
+    "bytes": 17714
+  },
+  "frontend/design-client/src/interaction-ui-runtime.test.tsx": {
+    "sha256": "4ed944258db935efb50080ce3c6e4dafc85184f0fbd623f9f8de99dcdb955b5e",
+    "bytes": 14132
+  },
+  "frontend/design-client/src/canvas-drop.test.ts": {
+    "sha256": "d72357a7ff2b692aa2a453d0c29c905835256c4413efbbfadc891a03c4ee1e47",
+    "bytes": 4157
+  },
+  "frontend/design-client/src/kernel/interaction-renderer.test.ts": {
+    "sha256": "617c4cc8361a1d9c5e30e668dd098bcaeeea08da8bc30b86e42c3a4db2afca7b",
+    "bytes": 35870
+  },
+  "frontend/design-client/src/kernel/interaction-scene-bounds.test.ts": {
+    "sha256": "7f1623583f856eef8d367bab46b213a75302afccfecdd48ebfe79655e3e9b0b7",
+    "bytes": 11808
+  },
+  "frontend/design-client/src/kernel/native-preparation.test.ts": {
+    "sha256": "b3cebfa7cf539bdc718433e2d6059b710158c0e5d5129fd1829937f86c563f16",
+    "bytes": 6092
+  },
+  "frontend/design-client/src/kernel/preparation-channel.test.ts": {
+    "sha256": "a9272b45c79e0730abf5f96dc8bc015d1d45c71fd8adf5900e7462a5db538b57",
+    "bytes": 1878
+  }
+}

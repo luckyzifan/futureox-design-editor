@@ -1,0 +1,15 @@
+{
+  "scope": "Separate root-run isolated mutation experiments; not added to passing test totals",
+  "results": [
+    {
+      "mutation": "raw-event-leak",
+      "exitCode": 1,
+      "detected": true
+    },
+    {
+      "mutation": "wrong-channel",
+      "exitCode": 1,
+      "detected": true
+    }
+  ]
+}

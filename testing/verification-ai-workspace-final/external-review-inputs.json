@@ -1,0 +1,55 @@
+{
+  "inputs": [
+    {
+      "originalPath": "<batch>/review/native-switch-boundary.test.mjs",
+      "executedInput": {
+        "sha256": "9a7f38ec7354720059603575ba7663b2d9b5f1ad79010cb09102e333d36b6505",
+        "bytes": 4148,
+        "mode": "100644"
+      },
+      "sanitizedSource": "review-native-switch-boundary.test.mjs.source.txt",
+      "sanitizedSha256": "3bf86ae63c8f706183cbec6b456df8bda209f41f7980fa269b5a1339ac873b99"
+    },
+    {
+      "originalPath": "<batch>/review/settings-close-boundary.test.ts",
+      "executedInput": {
+        "sha256": "54094f915fdd0e4bcbbfc62cb2dc3790a873ec8e9a84541b36b1bec24d724adf",
+        "bytes": 8186,
+        "mode": "100644"
+      },
+      "sanitizedSource": "review-settings-close-boundary.test.ts.source.txt",
+      "sanitizedSha256": "75ec06b036dd6bdf8021d2f56510774b989c16c4db6111c5afacecd4b738169e"
+    },
+    {
+      "originalPath": "<batch>/review/vitest.config.mjs",
+      "executedInput": {
+        "sha256": "81ed9753f7b56aca8bd8e857915152fefae185b2e40c72de4dee3e9785f575b3",
+        "bytes": 272,
+        "mode": "100644"
+      },
+      "sanitizedSource": "review-vitest.config.mjs.source.txt",
+      "sanitizedSha256": "65191938f48301f8b6311df525f4d0a8686b158fd23e9069e25d3adb603a7fcb"
+    },
+    {
+      "originalPath": "<batch>/variable-review/independent.test.tsx",
+      "executedInput": {
+        "sha256": "7a4a254b4eedd6262fc4b3d2c05f275d4b331ea4f0a841b61fa6de2568440351",
+        "bytes": 19227,
+        "mode": "100644"
+      },
+      "sanitizedSource": "variable-review-independent.test.tsx.source.txt",
+      "sanitizedSha256": "9a159baf418bc8777f57e6fb3979e485f6450edf94edce0a2ef0f53235bd96a9"
+    },
+    {
+      "originalPath": "<batch>/variable-review/vitest.config.mjs",
+      "executedInput": {
+        "sha256": "30773c33cc059e3297d0ae185b2ddfe39396e43d012586f26e8aa56f423b9428",
+        "bytes": 386,
+        "mode": "100644"
+      },
+      "sanitizedSource": "variable-review-vitest.config.mjs.source.txt",
+      "sanitizedSha256": "ae4499ce5a7f9895efdc3035c57137aba71be62d23ca7cac4862803dc1ee5794"
+    }
+  ],
+  "scope": "These source views are sanitized copies of the actual frozen external review inputs. Restore placeholders to local paths before rerunning; the views themselves were not executed. Original and sanitized hashes intentionally differ."
+}

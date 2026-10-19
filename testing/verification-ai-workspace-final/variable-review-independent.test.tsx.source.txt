@@ -1,0 +1,260 @@
+// Real React DOM events + Editor/WASM. jsdom has no browser rendering or GPU.
+// @ts-expect-error jsdom is a test-only runtime dependency.
+import { JSDOM } from 'jsdom'
+import React, { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { Editor } from '<repo>/frontend/design-client/src/engine'
+import { blank, node, type DesignDocument } from '<repo>/frontend/design-client/src/model'
+import { emptySystem } from '<repo>/frontend/design-client/src/design-system'
+import { VariablesPanel } from '<repo>/frontend/design-client/src/VariablesPanel'
+import { DesignTools } from '<repo>/frontend/design-client/src/DesignTools'
+import * as editing from '<repo>/frontend/design-client/src/variable-editing'
+import { commitPendingEdits, hasPendingEdits } from '<repo>/frontend/design-client/src/pending-edits'
+import { encodeDocumentBinary, decodeDocumentBinary } from '<repo>/frontend/design-client/src/kernel/binfmt'
+
+const bootstrap = await vi.hoisted(async () => {
+  // @ts-expect-error jsdom is a test-only runtime dependency.
+  const { JSDOM } = await import('jsdom')
+  const dom = new JSDOM('<!doctype html><html><body></body></html>')
+  for (const name of ['window', 'document', 'navigator']) vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
+  return dom
+})
+bootstrap.window.close()
+let dom: any, mount: HTMLDivElement, root: Root, errors: unknown[][]
+const editors: Editor[] = []
+beforeEach(() => {
+  dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
+  for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLButtonElement', 'HTMLInputElement', 'HTMLSelectElement', 'Node', 'Event', 'KeyboardEvent'])
+    vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  errors = []
+  const original = console.error.bind(console)
+  vi.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args); original(...args) })
+  mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
+})
+afterEach(async () => {
+  await act(async () => root.unmount())
+  editors.splice(0).forEach(e => e.dispose())
+  dom.window.close(); vi.unstubAllGlobals(); vi.restoreAllMocks()
+  expect(errors).toEqual([])
+})
+function editor(doc = blank()) { const e = new Editor(doc); editors.push(e); return e }
+function fixture(count = 2, modeCount = 2) {
+  const doc = blank('Variable UI'), layer = node('rectangle', 0, 0, 10, 10), s = doc.designSystem = emptySystem()
+  doc.schemaVersion = 4
+  doc.nodes[layer.id] = layer; doc.pages[0].children = [layer.id]
+  const modes = ['Light', 'Dark', ...Array.from({ length: Math.max(0, modeCount - 2) }, (_, i) => `Mode ${i + 3}`)]
+  s.collections.theme = { name: 'Theme', modes, defaultMode: 'Light' }; s.activeModes.theme = 'Light'
+  for (let i = 0; i < count; i++) s.variables[`v${i}`] = { name: `Spacing/${String(i).padStart(4, '0')}`, collection: 'theme', kind: 'number', values: Object.fromEntries(modes.map((m, j) => [m, 10 + i + j * 70])) }
+  return { doc, layer }
+}
+const label = <T extends HTMLElement = HTMLInputElement>(name: string): T => {
+  const found = [...mount.querySelectorAll<HTMLElement>('[aria-label]')].find(e => e.getAttribute('aria-label') === name)
+  expect(found, `Missing label ${name}`).toBeTruthy(); return found as T
+}
+const button = (name: string) => {
+  const found = [...mount.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === name)
+  expect(found, `Missing button ${name}`).toBeTruthy(); return found!
+}
+function click(element: HTMLElement) { act(() => element.click()) }
+function type(field: HTMLInputElement, value: string) {
+  act(() => {
+    field.focus(); Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(field, value)
+    field.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+  })
+}
+function key(field: HTMLElement, value: string) { act(() => field.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: value, bubbles: true }))) }
+function choose(name: string, value: string) {
+  const field = label<HTMLSelectElement>(name)
+  act(() => { field.value = value; field.dispatchEvent(new dom.window.Event('change', { bubbles: true })) })
+}
+function finish(name: string, value: string) { const field = label(name); type(field, value); key(field, 'Enter') }
+
+
+
+test('same-ID reopen creates fresh editable variable fields', async () => {
+  const { doc } = fixture(), e = editor(doc)
+  await act(async () => root.render(<DesignTools editor={e} onClose={() => {}} />))
+  const epoch = e.sessionGeneration
+  act(() => { expect(e.load(structuredClone(e.state.doc))).toBe(true) })
+  expect(e.sessionGeneration).toBe(epoch + 1)
+  const field = label('Spacing/0000 Light')
+  type(field, '35'); key(field, 'Enter')
+  expect(e.state.doc.designSystem!.variables.v0.values.Light).toBe(35)
+  expect(hasPendingEdits(e)).toBe(false)
+})
+
+test('invalid variable draft vetoes actual editor document replacement, then Escape permits load', async () => {
+  const { doc } = fixture(), e = editor(doc)
+  await act(async () => root.render(<DesignTools editor={e} onClose={() => {}} />))
+  const before = e.state.doc, epoch = e.sessionGeneration, replacement = blank('Replacement')
+  const field = label('Spacing/0000 Light'); type(field, 'bad')
+  act(() => { expect(e.load(replacement)).toBe(false) })
+  expect(e.state.doc).toBe(before); expect(e.sessionGeneration).toBe(epoch)
+  expect(label('Spacing/0000 Light')).toBe(field); expect(field.value).toBe('bad')
+  key(field, 'Escape')
+  act(() => { expect(e.load(replacement)).toBe(true) })
+  expect(e.state.doc.id).toBe(replacement.id); expect(hasPendingEdits(e)).toBe(false)
+})
+
+test('equivalent numeric notation commits as a clean no-op and permits close', async () => {
+  const { doc } = fixture(), e = editor(doc), close = vi.fn()
+  await act(async () => root.render(<DesignTools editor={e} onClose={close} />))
+  const before = e.state.doc, field = label('Spacing/0000 Light')
+  type(field, '1e1'); key(field, 'Enter')
+  expect(e.state.doc).toBe(before)
+  expect(hasPendingEdits(e)).toBe(false)
+  click(button('关闭')); expect(close).toHaveBeenCalledOnce()
+})
+
+test('explicit multi-layer binding includes locked selected layers like property-panel edits', async () => {
+  const { doc, layer } = fixture(), other = node('rectangle', 30, 0, 10, 10)
+  layer.locked = true; doc.nodes[other.id] = other; doc.pages[0].children.push(other.id)
+  const e = editor(doc); e.select([layer.id, other.id])
+  await act(async () => root.render(<VariablesPanel editor={e} />))
+  choose('绑定属性', 'width'); choose('绑定变量', 'v1')
+  expect(e.state.doc.nodes[layer.id].bindings?.width).toBe('v1')
+  expect(e.state.doc.nodes[other.id].bindings?.width).toBe('v1')
+})
+
+test('prototype playback remains valid after renaming effective target mode when VariableData has a different id', async () => {
+  const { doc, layer } = fixture(); doc.schemaVersion = 12
+  doc.designSystem!.collections.other = { name: 'Other', modes: ['Light', 'Dark'], defaultMode: 'Light' }
+  doc.designSystem!.variables.other = { name: 'Other', collection: 'other', kind: 'number', values: { Light: 1, Dark: 2 } }
+  doc.prototype = { startNode: layer.id, interactions: { [layer.id]: [{ trigger: 'click', actions: [
+    { kind: 'set-variable', target: 'v0', targetVariable: 'v0', targetVariableData: { id: 'other', modeId: 'Dark' }, value: 99 },
+  ] }] } }
+  const e = editor(doc)
+  const { initialPrototype, prototypeEvent } = await import('<repo>/frontend/design-client/src/prototype')
+  expect(prototypeEvent(e.state.doc, initialPrototype(e.state.doc), layer.id, 'click').modeValues?.v0.Dark).toBe(99)
+  act(() => e.change('Rename', d => editing.renameVariableMode(d, 'theme', 'Dark', 'Night')))
+  const current = e.state.doc
+  expect(current.designSystem!.collections.theme.modes).toContain('Night')
+  expect(() => prototypeEvent(current, initialPrototype(current), layer.id, 'click')).not.toThrow()
+  expect(prototypeEvent(current, initialPrototype(current), layer.id, 'click').modeValues?.v0.Night).toBe(99)
+})
+
+test('deletion rejects mode used by effective prototype target with cross-collection VariableData', () => {
+  const { doc, layer } = fixture(); doc.schemaVersion = 12
+  doc.designSystem!.collections.other = { name: 'Other', modes: ['Light', 'Dark'], defaultMode: 'Light' }
+  doc.designSystem!.variables.other = { name: 'Other', collection: 'other', kind: 'number', values: { Light: 1, Dark: 2 } }
+  doc.prototype = { startNode: layer.id, interactions: { [layer.id]: [{ trigger: 'click', actions: [
+    { kind: 'set-variable', target: 'v0', targetVariable: 'v0', targetVariableData: { id: 'other', modeId: 'Dark' }, value: 99 },
+  ] }] } }
+  const e = editor(doc), before = e.state.doc
+  expect(editing.modeReferences(before, 'theme', 'Dark').some(r => r.includes('原型'))).toBe(true)
+  act(() => e.change('Delete in-use mode', d => editing.deleteVariableMode(d, 'theme', 'Dark')))
+  expect(e.state.doc).toBe(before); expect(e.canUndo).toBe(false)
+})
+
+test.each(['helper', 'automation'] as const)('mode rename via %s preserves inherited children and exact explicit overrides through later template edits', async route => {
+  const { doc, layer } = fixture(1); doc.schemaVersion = 6
+  const { insertInstance, stampKeys } = await import('<repo>/frontend/design-client/src/components')
+  const { originNode } = await import('<repo>/frontend/design-client/src/component-fixtures')
+  const component = node('frame', 0, 0, 200, 100)
+  component.component = { variants: {}, properties: {} }; component.children = [layer.id]
+  layer.variableModes = { theme: 'Dark' }; layer.bindings = { width: 'v0' }
+  doc.nodes[component.id] = component; doc.pages[0].children = [component.id]
+  stampKeys(doc, component.id)
+  const inherited = insertInstance(doc, component.id, doc.pages[0].id, { x: 250, y: 0 })
+  const explicit = insertInstance(doc, component.id, doc.pages[0].id, { x: 500, y: 0 })
+  const childKey = layer.componentKey!
+  doc.nodes[inherited].instance!.overrides.$root = { name: 'Unrelated inherited instance label' }
+  doc.nodes[explicit].instance!.overrides[childKey] = { variableModes: { theme: 'Dark' }, opacity: 0.45, name: 'Explicit child label' }
+  const e = editor(doc), before = e.state.doc
+  const getInherited = () => originNode(e.state.doc, inherited, childKey)
+  const getExplicit = () => originNode(e.state.doc, explicit, childKey)
+  const beforeInheritedOverrides = structuredClone(e.state.doc.nodes[inherited].instance!.overrides)
+  const expectedExplicitOverrides = structuredClone(e.state.doc.nodes[explicit].instance!.overrides)
+  expectedExplicitOverrides[childKey].variableModes = { theme: 'Night' }
+  expect(getInherited().width).toBe(80); expect(getExplicit().width).toBe(80)
+  if (route === 'helper') act(() => e.change('Rename mode', d => editing.renameVariableMode(d, 'theme', 'Dark', 'Night')))
+  else {
+    const { createDesignAutomation } = await import('<repo>/frontend/design-client/src/automation/core')
+    const { designSystemExtensions, validateDesignSystemDocument } = await import('<repo>/frontend/design-client/src/automation/design-system')
+    const api = createDesignAutomation(e, designSystemExtensions, [validateDesignSystemDocument])
+    act(() => {
+      const result = api.execute({ method: 'collection.renameMode', params: { collectionId: 'theme', mode: 'Dark', name: 'Night' }, documentId: doc.id, session: e.sessionGeneration, expectedRevision: e.state.version })
+      expect(result.ok, JSON.stringify(result)).toBe(true)
+    })
+  }
+  expect(e.state.doc.designSystem!.collections.theme.modes, e.state.message).toEqual(['Light', 'Night'])
+  expect(e.state.doc.nodes[inherited].instance!.overrides).toEqual(beforeInheritedOverrides)
+  expect(e.state.doc.nodes[explicit].instance!.overrides).toEqual(expectedExplicitOverrides)
+  expect(getInherited().variableModes).toEqual({ theme: 'Night' }); expect(getInherited().width).toBe(80)
+  expect(getExplicit().variableModes).toEqual({ theme: 'Night' }); expect(getExplicit().width).toBe(80)
+  act(() => e.change('Later template mode edit', d => { d.nodes[layer.id].variableModes = { theme: 'Light' } }))
+  expect(getInherited().variableModes).toEqual({ theme: 'Light' }); expect(getInherited().width).toBe(10)
+  expect(getExplicit().variableModes).toEqual({ theme: 'Night' }); expect(getExplicit().width).toBe(80)
+  expect(e.state.doc.nodes[inherited].instance!.overrides).toEqual(beforeInheritedOverrides)
+  expect(e.state.doc.nodes[explicit].instance!.overrides).toEqual(expectedExplicitOverrides)
+  const after = e.state.doc
+  act(() => { e.undo(); e.undo() }); expect(e.state.doc).toEqual(before)
+  act(() => { e.redo(); e.redo() }); expect(e.state.doc).toEqual(after)
+  const reopened = editor(decodeDocumentBinary(encodeDocumentBinary(after)) as DesignDocument)
+  act(() => reopened.change('Later reopened template edit', d => { d.nodes[layer.id].variableModes = { theme: 'Night' } }))
+  expect(originNode(reopened.state.doc, inherited, childKey).width).toBe(80)
+  expect(reopened.state.doc.nodes[inherited].instance!.overrides).toEqual(beforeInheritedOverrides)
+  expect(reopened.state.doc.nodes[explicit].instance!.overrides).toEqual(expectedExplicitOverrides)
+})
+
+test('intentional generated-child mode edit in the rename transaction still authors a real override', async () => {
+  const { doc, layer } = fixture(1); doc.schemaVersion = 6
+  const { insertInstance, stampKeys } = await import('<repo>/frontend/design-client/src/components')
+  const { originNode } = await import('<repo>/frontend/design-client/src/component-fixtures')
+  const component = node('frame', 0, 0, 200, 100)
+  component.component = { variants: {}, properties: {} }; component.children = [layer.id]
+  layer.variableModes = { theme: 'Dark' }; layer.bindings = { width: 'v0' }
+  doc.nodes[component.id] = component; doc.pages[0].children = [component.id]; stampKeys(doc, component.id)
+  const owner = insertInstance(doc, component.id, doc.pages[0].id, { x: 250, y: 0 }), childKey = layer.componentKey!
+  const e = editor(doc), generatedId = originNode(e.state.doc, owner, childKey).id
+  act(() => e.change('Rename and intentionally override child', d => {
+    editing.renameVariableMode(d, 'theme', 'Dark', 'Night')
+    d.nodes[generatedId].variableModes = { theme: 'Light' }
+  }))
+  expect(e.state.doc.designSystem!.collections.theme.modes, e.state.message).toEqual(['Light', 'Night'])
+  expect(e.state.doc.nodes[owner].instance!.overrides[childKey].variableModes).toEqual({ theme: 'Light' })
+  expect(originNode(e.state.doc, owner, childKey).width).toBe(10)
+  act(() => e.change('Change template values after override', d => { editing.setVariableCell(d, 'v0', 'Night', 95); d.nodes[layer.id].variableModes = { theme: 'Night' } }))
+  expect(e.state.doc.nodes[layer.id].width).toBe(95)
+  expect(originNode(e.state.doc, owner, childKey).width).toBe(10)
+})
+
+test.each(['two-collections', 'two-modes', 'value-edit', 'name-swap'] as const)('actual automation batch %s preserves inheritance or explicitly rejects atomically', async variant => {
+  const { doc, layer } = fixture(1); doc.schemaVersion = 6
+  const { insertInstance, stampKeys } = await import('<repo>/frontend/design-client/src/components')
+  const { originNode } = await import('<repo>/frontend/design-client/src/component-fixtures')
+  const { createDesignAutomation } = await import('<repo>/frontend/design-client/src/automation/core')
+  const { designSystemExtensions, validateDesignSystemDocument } = await import('<repo>/frontend/design-client/src/automation/design-system')
+  doc.designSystem!.collections.other = { name: 'Other', modes: ['Light', 'Dark'], defaultMode: 'Light' }
+  const component = node('frame', 0, 0, 200, 100)
+  component.component = { variants: {}, properties: {} }; component.children = [layer.id]
+  layer.variableModes = { theme: 'Dark' }; layer.bindings = { width: 'v0' }
+  doc.nodes[component.id] = component; doc.pages[0].children = [component.id]; stampKeys(doc, component.id)
+  const owner = insertInstance(doc, component.id, doc.pages[0].id, { x: 250, y: 0 }), childKey = layer.componentKey!, e = editor(doc)
+  const before = e.state.doc, version = e.state.version, api = createDesignAutomation(e, designSystemExtensions, [validateDesignSystemDocument])
+  const operations = variant === 'name-swap' ? [
+    { method: 'collection.renameMode', params: { collectionId: 'theme', mode: 'Dark', name: 'Temp' } },
+    { method: 'collection.renameMode', params: { collectionId: 'theme', mode: 'Light', name: 'Dark' } },
+    { method: 'collection.renameMode', params: { collectionId: 'theme', mode: 'Temp', name: 'Light' } },
+  ] : [{ method: 'collection.renameMode', params: { collectionId: 'theme', mode: 'Dark', name: 'Night' } },
+    variant === 'two-collections' ? { method: 'collection.renameMode', params: { collectionId: 'other', mode: 'Dark', name: 'Night' } } :
+      variant === 'two-modes' ? { method: 'collection.renameMode', params: { collectionId: 'theme', mode: 'Light', name: 'Day' } } :
+        { method: 'variable.setValue', params: { variableId: 'v0', mode: 'Night', value: 95 } }]
+  let result: ReturnType<typeof api.execute>
+  act(() => { result = api.execute({ method: 'batch.apply', params: { operations }, documentId: doc.id, session: e.sessionGeneration, expectedRevision: version }) })
+  if (!result!.ok) {
+    expect(e.state.doc).toBe(before); expect(e.state.version).toBe(version); expect(e.canUndo).toBe(false)
+    expect(result!.error.code + ' ' + result!.error.message).toMatch(/unsupported|separate|split|不支持|单独|分开/i)
+    return
+  }
+  expect(e.state.doc.nodes[owner].instance!.overrides).toEqual(before.nodes[owner].instance!.overrides)
+  expect(originNode(e.state.doc, owner, childKey).width).toBe(variant === 'value-edit' ? 95 : 80)
+  act(() => e.change('Later source mode after batch', d => { d.nodes[layer.id].variableModes = { theme: variant === 'two-modes' ? 'Day' : variant === 'name-swap' ? 'Dark' : 'Light' } }))
+  expect(originNode(e.state.doc, owner, childKey).width).toBe(10)
+  expect(e.state.doc.nodes[owner].instance!.overrides).toEqual(before.nodes[owner].instance!.overrides)
+})

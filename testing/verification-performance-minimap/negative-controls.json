@@ -1,0 +1,21 @@
+{
+  "runtime": "isolated source snapshot; production Canvas + React/jsdom + Editor/WASM; KernelSurface device boundary replaced",
+  "deletedComponentSource": "HEAD:frontend/design-client/src/CanvasMinimap.tsx",
+  "deletedComponentSha256": "924dcaa141811a808aaf2cc4c82311441b629b90d5fb3d606d8008b1fc2dc674",
+  "controls": [
+    {
+      "name": "restore-old-mount",
+      "exitCode": 1,
+      "expectedFailureObserved": true,
+      "mutatedCanvasSha256": "dfa987392d92a04ae19e0b7835109c1ec90edbc1a7917dab54f065990c2f9ab4",
+      "log": "restore-old-mount.log"
+    },
+    {
+      "name": "restore-hidden-after-pan",
+      "exitCode": 1,
+      "expectedFailureObserved": true,
+      "mutatedCanvasSha256": "f4f317c59a94c6ec62d74129c1af37747c5b4f3d15d7586b3649736809569fce",
+      "log": "restore-hidden-after-pan.log"
+    }
+  ]
+}

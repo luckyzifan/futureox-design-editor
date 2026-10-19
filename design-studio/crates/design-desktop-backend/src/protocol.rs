@@ -142,6 +142,12 @@ fn dispatch(
         source_hash: Option<String>,
     }
     match method {
+        method if method.starts_with("automation.") => {
+            let method = method.to_owned();
+            workspace_call(backend, |store| {
+                Box::pin(async move { crate::automation::dispatch(store, &method, params).await })
+            })
+        }
         "sketch.session.textTargets" => output(
             backend
                 .sketch_sessions

@@ -32,18 +32,29 @@ export function compositePlacement(item: { tile: RasterTile; placement?: TilePla
     }
   )
 }
-const subtract = (a: Box, b: Box): Box[] => {
-  const left = Math.max(a.left, b.left),
-    right = Math.min(a.right, b.right),
-    top = Math.max(a.top, b.top),
-    bottom = Math.min(a.bottom, b.bottom)
-  if (left >= right || top >= bottom) return [a]
-  const pieces: Box[] = []
-  if (a.top < top) pieces.push({ ...a, bottom: top })
-  if (bottom < a.bottom) pieces.push({ ...a, top: bottom })
-  if (a.left < left) pieces.push({ left: a.left, right: left, top, bottom })
-  if (right < a.right) pieces.push({ left: right, right: a.right, top, bottom })
-  return pieces
+/** Keep disjoint fragments by reference. Allocate a replacement list only
+ * when an occluder really cuts one; tiled resident grids otherwise allocate
+ * two short-lived arrays for every non-overlapping tile pair. The comparison,
+ * fragment order and arithmetic stay identical to the original subtraction. */
+const subtract = (fragments: Box[], b: Box): Box[] => {
+  let pieces: Box[] | undefined
+  for (let index = 0; index < fragments.length; index++) {
+    const a = fragments[index],
+      left = Math.max(a.left, b.left),
+      right = Math.min(a.right, b.right),
+      top = Math.max(a.top, b.top),
+      bottom = Math.min(a.bottom, b.bottom)
+    if (left >= right || top >= bottom) {
+      pieces?.push(a)
+      continue
+    }
+    pieces ??= fragments.slice(0, index)
+    if (a.top < top) pieces.push({ ...a, bottom: top })
+    if (bottom < a.bottom) pieces.push({ ...a, top: bottom })
+    if (a.left < left) pieces.push({ left: a.left, right: left, top, bottom })
+    if (right < a.right) pieces.push({ left: right, right: a.right, top, bottom })
+  }
+  return pieces ?? fragments
 }
 /** Old density layers supply holes only. Repainting every historical zoom
  * texture under an opaque newer tile wastes fill rate during camera motion. */
@@ -76,7 +87,7 @@ export function compositeDrawPlan(
     if (box.left >= box.right || box.top >= box.bottom) continue
     let fragments = [box]
     for (const occluder of covered) {
-      fragments = fragments.flatMap((f) => subtract(f, occluder))
+      fragments = subtract(fragments, occluder)
       if (!fragments.length) break
     }
     for (const clip of fragments) draws.push({ item, placement: p, clip })

@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 1,
+  "revision": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "runnerSelectedSuiteResult": "passed",
+  "selectedSuites": [
+    {
+      "id": "runner-contracts",
+      "status": "passed",
+      "category": "runner-negative-controls",
+      "files": 3,
+      "counts": {
+        "total": 23,
+        "passed": 23,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "frontend-contracts",
+      "status": "passed",
+      "category": "CPU production logic + sandboxed callbacks/source contracts/mock DOM; not native UI",
+      "files": 30,
+      "counts": {
+        "total": 300,
+        "passed": 300,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "desktop-contracts",
+      "status": "passed",
+      "category": "mock host/IPC and file-policy contracts; not Electron GUI",
+      "files": 26,
+      "counts": {
+        "total": 180,
+        "passed": 180,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "python-tools",
+      "status": "passed",
+      "category": "CPU tool unit tests",
+      "files": 3,
+      "counts": {
+        "total": 15,
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "typecheck",
+      "status": "passed",
+      "category": "static TypeScript check",
+      "files": 0
+    },
+    {
+      "id": "frontend-vitest",
+      "status": "passed",
+      "category": "real CPU WASM + pure logic + mocked DOM/driver suites; not real GPU/UI",
+      "files": 275,
+      "counts": {
+        "total": 2048,
+        "passed": 2045,
+        "failed": 0,
+        "skipped": 3
+      },
+      "reportedAssertions": 2048,
+      "skippedCases": [
+        {
+          "file": "<repo>/frontend/design-client/src/append-document.test.ts",
+          "title": "real 117 repeated three times: independent nodes, fonts, editable groups and one-step undo",
+          "status": "skipped"
+        },
+        {
+          "file": "<repo>/frontend/design-client/src/__tests__/design-file-import.test.ts",
+          "title": "external corpus: DESIGN_TEST_SKETCH",
+          "status": "skipped"
+        },
+        {
+          "file": "<repo>/frontend/design-client/src/__tests__/design-file-import.test.ts",
+          "title": "external corpus: DESIGN_TEST_FIG",
+          "status": "skipped"
+        }
+      ]
+    },
+    {
+      "id": "mcp-example",
+      "status": "passed",
+      "category": "real Editor/WASM via in-memory MCP, synthetic HTML/CSS and native-file outputs",
+      "files": 1,
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "reportedAssertions": 1,
+      "skippedCases": []
+    },
+    {
+      "id": "bun-unit",
+      "status": "passed",
+      "category": "CPU budget/policy logic; no actual GPU",
+      "files": 4,
+      "counts": {
+        "total": 31,
+        "passed": 31,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "automation-storage",
+      "status": "passed",
+      "category": "real SQLite sidecar + mocked IPC host",
+      "files": 1,
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "mcp-contracts",
+      "status": "passed",
+      "category": "in-memory protocol/transport + real stdio; no OS socket",
+      "files": 6,
+      "counts": {
+        "total": 46,
+        "passed": 46,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "native-preparation",
+      "status": "passed",
+      "category": "real native CPU binary / WASM packet + pixel comparison",
+      "files": 1,
+      "counts": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "native-sidecar",
+      "status": "passed",
+      "category": "real owned Rust processes + local SQLite; not OS dialogs",
+      "files": 2,
+      "counts": {
+        "total": 8,
+        "passed": 8,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    }
+  ],
+  "fileSelectionOverlap": {},
+  "sameTitleNodeVitestRegistrations": [
+    "32x nested patch session rejects fractional pose without changing its accepted snapshot",
+    "32x root movement preserves integer raster phase and rejects subpixel masks",
+    "32x root patch session rejects fractional pose without changing its accepted snapshot",
+    "32x rotated nested movement preserves integer raster phase and rejects subpixel masks",
+    "atlas cleanup retains shared pages and retires each physical allocation once",
+    "compiled global-raster nodes survive zoom 2.99 with origin tiles",
+    "compiled global-raster nodes survive zoom 2.99 with translated tiles",
+    "compiled global-raster nodes survive zoom 3 with origin tiles",
+    "compiled global-raster nodes survive zoom 3 with translated tiles",
+    "compiled global-raster nodes survive zoom 32 with origin tiles",
+    "compiled global-raster nodes survive zoom 32 with translated tiles",
+    "compiled global-raster nodes survive zoom 64 with origin tiles",
+    "compiled global-raster nodes survive zoom 64 with translated tiles",
+    "current image survives unrelated resource touches and is uploaded only once",
+    "image admission preserves demanded source quality (mips=false, float=false)",
+    "image admission preserves demanded source quality (mips=false, float=true)",
+    "image admission preserves demanded source quality (mips=true, float=false)",
+    "image admission preserves demanded source quality (mips=true, float=true)",
+    "image selection with mips disabled stays at level zero at every zoom",
+    "integer delta cannot certify a raster already shifted to a fractional phase",
+    "integer translation keeps stationary clipped backdrop admission and rejects foreground/replay dependencies",
+    "real paint preserves source fidelity under pressure (mips=false)",
+    "real paint preserves source fidelity under pressure (mips=true)",
+    "subpixel cached antialiasing differs from freshly evaluated coverage",
+    "translation batch rejects fractional deltas before mutating reusable node tables"
+  ],
+  "knownSharedRegistrationCount": 25,
+  "knownSharedImplementationSources": [
+    "frontend/design-client/src/kernel/gpu/renderer-regression-cases.ts",
+    "frontend/design-client/src/kernel/gpu/translation-regression-cases.ts"
+  ],
+  "countingNotes": [
+    "Counts are framework-reported test executions, not individual assertions, line coverage or proof of complete user workflows.",
+    "25 shared production-renderer cases are intentionally registered in Node and Vitest; do not sum suite counts as unique coverage.",
+    "mcp-example is a validated synthetic output demonstration and is kept separate from unit-test coverage.",
+    "Typecheck is a static gate, not an additional passing test.",
+    "Rust and performance evidence from other invocations is not included in these independent runner counts.",
+    "Additional independent review executions are reported separately, including explicit mutation witnesses. They are not a unique-behavior coverage total.",
+    "The AI-generation replay is one additional demonstration gate with 13 internal regression checks; those 13 checks are not 13 additional framework tests."
+  ],
+  "freeze": {
+    "externalExecutionInputsUnchanged": true,
+    "protectedExistingOutputsUnchanged": true,
+    "externalInputDrift": [],
+    "protectedOutputDrift": [],
+    "sourceAndTestsUnchanged": true,
+    "generatedRuntimeUnchanged": true,
+    "nativeBinariesUnchanged": true,
+    "sourceDrift": [],
+    "generatedDrift": [],
+    "nativeDrift": [],
+    "documentationOrEvidenceDrift": []
+  },
+  "limitations": [
+    "Passing only applies to the selected named suites; test files are not assertions or line coverage.",
+    "No browser, Electron GUI, GPU driver/readback, installed-app packaging, accessibility or native OS dialog was launched. Real socket tests are separate opt-in and never automatically selected.",
+    "No Windows/macOS run is inferred from Linux; consult each actual CI artifact.",
+    "Private external corpora may be explicitly skipped unless DESIGN_REQUIRE_PRIVATE_FIXTURES=1.",
+    "WASM scalar/SIMD experiments, performance benchmarks and browser check scripts remain separate explicitly requested gates.",
+    "OS socket integration was already blocked by permission (listen EPERM; escalation bwrap blocked); no bypass or retry was attempted."
+  ]
+}

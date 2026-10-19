@@ -1,0 +1,22 @@
+{
+  "baseline": "Frozen a9fb36a1 delivered source snapshot, verified against start-manifest.json; not workspace Git HEAD",
+  "baselineFiles": {
+    "Canvas.tsx": "a1497d872b2dc9c89dc409e62471f8c7ce1b27d96ddc5f5ca8f451e60ad8a26e",
+    "engine.ts": "64def6db8c1bb9563e8c2bf02044bf285a4ae840cc578092b853774f58912d5e",
+    "MultiSelectionInspector.tsx": "4f8fad145775d9ed52183cf232b2b58e09d2571e85cd931e8368ca1a47465f77",
+    "MultiStylePanel.tsx": "30e8c95595d44ec3ea9ef25698f955b6ae1d4cf7ee86c65bba1fe25b6f4d376e",
+    "property-units.ts": "3224f47417f55dc20d049512b9a3d6ab3f526e160bc8264b3c185a4bb9da1a54",
+    "selection-properties.ts": "6c3d140146163fbf47e06cb054485ab6e847ea9b206150ff7bc8a5d4b3f585d9"
+  },
+  "finalFiles": {
+    "frontend/design-client/src/Canvas.tsx": "d4760b1faea0867ff59f3c9c53a3345e37bb07f4fef7efd69337a16e0ed3a2fb",
+    "frontend/design-client/src/engine.ts": "a1edc1b2aeae8fad78afa936de5ef624577e78d74f8d6a41dc3915c7e3be76bd",
+    "frontend/design-client/src/MultiSelectionInspector.tsx": "01aee0992f0b014ef0a25e224b59a3e2b804ed042ceb38d11f93e63220edb798",
+    "frontend/design-client/src/MultiStylePanel.tsx": "272f0c260054f98792345395f8e54d239b282ca179de751c62619494ea49dcfd",
+    "frontend/design-client/src/property-units.ts": "8a008620e806b1b0b0fd28bd29f0ff50a6b0fb2469a38c897ea32bd587c62cae",
+    "frontend/design-client/src/selection-properties.ts": "cc99866e67c2d9eae92691d0474996f1ad866df6c5a0c28fb75eab546c34a289",
+    "frontend/design-client/src/canvas-selection-cpu.test.tsx": "73a903eefb9b08c53e41eb1cffc3cafb922419a13ee725e20075ad8609ed4778",
+    "frontend/design-client/src/multiselection-cpu-runtime.test.tsx": "5a53199dc7068b5fbef4f32bd6d492755a466d41e1cb8395bc824a8025b91f2e",
+    "frontend/design-client/src/property-units-context.test.ts": "5894042bf92a0244f04f2ea21e22e4a6fca7ac66084fe90933f394afc34cc14f"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "priorDeliveredZipSha256": "a9fb36a1ae40b3b30aa68a0aa5a7f2d3440c600697ab1ddae43ef0380c12c051",
+  "preimages": {
+    "frontend/design-client/src/MultiSelectionInspector.tsx": {
+      "sha256": "4f8fad145775d9ed52183cf232b2b58e09d2571e85cd931e8368ca1a47465f77",
+      "fixture": "fixtures/MultiSelectionInspector.before.tsx",
+      "fixtureChange": "import paths relocated only"
+    },
+    "frontend/design-client/src/MultiStylePanel.tsx": {
+      "sha256": "30e8c95595d44ec3ea9ef25698f955b6ae1d4cf7ee86c65bba1fe25b6f4d376e",
+      "fixture": "fixtures/MultiStylePanel.before.tsx",
+      "fixtureChange": "import paths relocated only"
+    },
+    "frontend/design-client/src/editor-commands.ts": {
+      "sha256": "0cacb28ac0c5161a629138b53a26bf86a749e1964e989ac73325af0786215681",
+      "origin": "prior delivered a9fb ZIP, verified against start-manifest"
+    },
+    "frontend/design-client/src/editor-shortcuts.ts": {
+      "sha256": "8482f75e572ba50ee300a5c66f63cedd27b04ab820a6f3181570f3bf48b35d1f",
+      "origin": "prior delivered a9fb ZIP, verified against start-manifest"
+    },
+    "frontend/design-client/src/shortcut-profiles.ts": {
+      "sha256": "f001b4c91e3db0ff0fdcf37056cbd8fa4de247cdc573826591d43aff87627068",
+      "origin": "prior delivered a9fb ZIP, verified against start-manifest"
+    },
+    "pre-selection-expansion/frontend/design-client/src/Canvas.tsx": {
+      "sha256": "b67532fbd90c7d130852f9c159c56bc9a8f1484798293cb3a7ac8257547b1ff4",
+      "origin": "captured after performance + minimap removal, before selection-workflow expansion"
+    },
+    "pre-selection-expansion/frontend/design-client/src/engine.ts": {
+      "sha256": "f19a4723382c57fff2beacfc5da53316d385e59e971641d75e16bc209d8860e4",
+      "origin": "captured after performance + minimap removal, before selection-workflow expansion"
+    }
+  }
+}

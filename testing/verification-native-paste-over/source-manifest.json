@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-19T14:28:58.217601+00:00",
+  "checkoutHead": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "baseline": "Exact immediate preimages, after existing unshipped performance/minimap/automation and Center Selection integration. HEAD alone is not the source baseline.",
+  "priorDeliveredArchiveSha256": "a9fb36a1ae40b3b30aa68a0aa5a7f2d3440c600697ab1ddae43ef0380c12c051",
+  "priorDeliveredIdentitySource": "testing/verification-performance-review2/baseline-provenance.json",
+  "files": [
+    {
+      "path": "frontend/design-desktop/src/keyboard-shortcuts.mjs",
+      "beforeSha256": "fa4ead0bbdd4e90e9c6c2351c77078cad122a32cefa2cb1196d9eb2400a9af40",
+      "afterSha256": "996ce1a6c983df682b036373d864f41465b48e3065056db16768894af6285be3"
+    },
+    {
+      "path": "frontend/design-desktop/src/main.mjs",
+      "beforeSha256": "52885f490006e3f33dfb384559f423e5c675f7bcba09a5aa70a7897439db23a6",
+      "afterSha256": "a1f24d81e5404b541ef12dde9757f5eea46a2d02621a75ebe46488687c1ce3cc"
+    },
+    {
+      "path": "frontend/design-desktop/src/preload.cjs",
+      "beforeSha256": "c5d6ca6899402d6a0aa2af297f82b335d2f306fd99be28834a4a900e906d0c3d",
+      "afterSha256": "c20a740443383f760ef3d4b41906e09ad7fa75a232762179067b025a4c3f1a62"
+    },
+    {
+      "path": "frontend/design-desktop/test/keyboard-shortcuts.test.mjs",
+      "beforeSha256": "2f4e183c68cfa4dbed07baa635ad7c1dbc0f7354bcd5e9ee4e75093e0e879da0",
+      "afterSha256": "b073d24f51fd627da0ce4491afd480dcad70c2eefe39599708a9cb805e7d3959"
+    },
+    {
+      "path": "frontend/design-desktop/test/main.test.mjs",
+      "beforeSha256": "e844bb5e53658efb7c48ab08b2df1e99f6e867fedb77ac11aa3dab52a9996795",
+      "afterSha256": "594bc35ee7cbe302a992da6bf81315ca4ba84179f59ac14f20ad46392c122827"
+    },
+    {
+      "path": "frontend/design-desktop/test/preload.test.mjs",
+      "beforeSha256": "b5762c30a588b190de884a4eae7a2bbddb0adac2c91f66f383749274466eff83",
+      "afterSha256": "2f3430e23de94c99a111022461b30914de0aa3ada755106cee5b68d3ca1886ae"
+    }
+  ]
+}

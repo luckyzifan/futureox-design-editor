@@ -1,0 +1,57 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFile, mkdir } from 'node:fs/promises'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+const sourceRoot = '<repo>/frontend/design-desktop'
+const originalUrl = pathToFileURL(path.join(sourceRoot, 'test/main.test.mjs')).href
+let fixtureSource = await readFile(path.join(sourceRoot, 'test/main.test.mjs'), 'utf8')
+fixtureSource = fixtureSource.slice(0, fixtureSource.indexOf("test('desktop zoom shortcuts"))
+assert.ok(fixtureSource.includes('state.spawn ='), 'Review harness must mock child-process spawn')
+fixtureSource = fixtureSource.replace('startupFiles = []', 'startupFiles = [], mutate = source => source')
+fixtureSource = fixtureSource.replace(/new URL\(([^\n]+?), import\.meta\.url\)/g, `new URL($1, ${JSON.stringify(originalUrl)})`)
+fixtureSource = fixtureSource.replace("let source = await readFile(src, 'utf8')", "let source = mutate(await readFile(src, 'utf8'))\n  source = source.replace('const automationBridge =', `globalThis[${JSON.stringify(key)}].roots = workspaceRoots;\\nconst automationBridge =`)")
+fixtureSource = fixtureSource.replace("path.join(os.tmpdir(), 'forma-host-')", "path.join('<batch>/review', 'forma-host-')")
+fixtureSource += '\nexport { host }\n'
+const { host } = await import(`data:text/javascript;base64,${Buffer.from(fixtureSource).toString('base64')}`)
+const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return { resolve, promise } }
+async function stage(state) {
+  const target = path.join(state.root, 'target'); await mkdir(target)
+  state.open.push({ canceled: false, filePaths: [target] })
+  const result = await state.invoke('workspace-root-select'); assert.equal(result.status, 'ok')
+  await state.invoke('workspace-root-activate', { selectionId: result.selectionId })
+  return state.sent.at(-1)[1].requestId
+}
+const removePeerGates = source => source
+  .replace("if (peerWindowId !== undefined || closePending || closeFinalizing || pendingWorkspaceRoot || quitRequested)", 'if (false)')
+  .replace("if (closePending || closeFinalizing || pendingWorkspaceRoot || quitRequested) throw Object.assign(new Error('Closing'), { code: 'BUSY' })", 'if (false) throw new Error()')
+
+for (const mutated of [false, true]) test(`${mutated ? 'negative control without peer launch fences' : 'production'}: peer launch while pointer persistence is pending`, async () => {
+  const state = await host({ mutate: mutated ? removePeerGates : source => source })
+  try {
+    const requestId = await stage(state), reached = deferred(), release = deferred()
+    const originalPersist = state.roots.persist.bind(state.roots)
+    state.roots.persist = async root => { reached.resolve(); await release.promise; return originalPersist(root) }
+    const closing = state.invoke('close-response', { requestId, allow: true })
+    await reached.promise
+    const launch = await state.invoke('live-new-window', { id: '10000000-0000-0000-0000-000000000001' })
+    if (mutated) { assert.equal(launch.status, 'ok'); assert.equal(state.children.length, 1) }
+    else { assert.equal(launch.status, 'error'); assert.equal(launch.code, 'BUSY'); assert.equal(state.children.length, 0) }
+    release.resolve()
+    assert.deepEqual(await closing, { accepted: true })
+    assert.equal(state.relaunchCalls, 1)
+  } finally { await state.dispose() }
+})
+
+test('relaunch failure rolls persisted selection back, thaws close gate, and permits a fresh selection', async () => {
+  const state = await host()
+  try {
+    const requestId = await stage(state)
+    state.relaunchFailure = true
+    assert.deepEqual(await state.invoke('close-response', { requestId, allow: true }), { accepted: false })
+    const persisted = JSON.parse(await readFile(path.join(state.root, 'workspace-selection-v1.json'), 'utf8'))
+    assert.equal(persisted.kind, 'default'); assert.equal(state.closeCalls, 1); assert.equal(state.quitCalls, 0)
+    assert.equal((await state.invoke('workspace-root-default')).status, 'ok')
+  } finally { await state.dispose() }
+})

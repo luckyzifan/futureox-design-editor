@@ -1,0 +1,170 @@
+{
+  "scope": "Static delivery checks only; not browser or product renderer acceptance",
+  "passed": 40,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "workspace: HTML contains exactly one element per native node",
+      "passed": true,
+      "count": 89
+    },
+    {
+      "name": "workspace: no duplicate element IDs",
+      "passed": true
+    },
+    {
+      "name": "workspace: no scripts or remote resource URLs",
+      "passed": true
+    },
+    {
+      "name": "workspace: local linked resource exists: styles.css",
+      "passed": true
+    },
+    {
+      "name": "workspace: packaged CSS resource exists: ../fonts/NotoSansSC.ttf",
+      "passed": true
+    },
+    {
+      "name": "workspace: exact raw API HTML hash",
+      "passed": true
+    },
+    {
+      "name": "workspace: exact raw API CSS hash",
+      "passed": true
+    },
+    {
+      "name": "workspace: exact native SVG hash",
+      "passed": true
+    },
+    {
+      "name": "workspace: native SVG geometry exists",
+      "passed": true
+    },
+    {
+      "name": "workspace: CPU preview has expected dimensions and nonblank content",
+      "passed": true
+    },
+    {
+      "name": "files: HTML contains exactly one element per native node",
+      "passed": true,
+      "count": 93
+    },
+    {
+      "name": "files: no duplicate element IDs",
+      "passed": true
+    },
+    {
+      "name": "files: no scripts or remote resource URLs",
+      "passed": true
+    },
+    {
+      "name": "files: local linked resource exists: styles.css",
+      "passed": true
+    },
+    {
+      "name": "files: packaged CSS resource exists: ../fonts/NotoSansSC.ttf",
+      "passed": true
+    },
+    {
+      "name": "files: exact raw API HTML hash",
+      "passed": true
+    },
+    {
+      "name": "files: exact raw API CSS hash",
+      "passed": true
+    },
+    {
+      "name": "files: exact native SVG hash",
+      "passed": true
+    },
+    {
+      "name": "files: native SVG geometry exists",
+      "passed": true
+    },
+    {
+      "name": "files: CPU preview has expected dimensions and nonblank content",
+      "passed": true
+    },
+    {
+      "name": "settings: HTML contains exactly one element per native node",
+      "passed": true,
+      "count": 80
+    },
+    {
+      "name": "settings: no duplicate element IDs",
+      "passed": true
+    },
+    {
+      "name": "settings: no scripts or remote resource URLs",
+      "passed": true
+    },
+    {
+      "name": "settings: local linked resource exists: styles.css",
+      "passed": true
+    },
+    {
+      "name": "settings: packaged CSS resource exists: ../fonts/NotoSansSC.ttf",
+      "passed": true
+    },
+    {
+      "name": "settings: exact raw API HTML hash",
+      "passed": true
+    },
+    {
+      "name": "settings: exact raw API CSS hash",
+      "passed": true
+    },
+    {
+      "name": "settings: exact native SVG hash",
+      "passed": true
+    },
+    {
+      "name": "settings: native SVG geometry exists",
+      "passed": true
+    },
+    {
+      "name": "settings: CPU preview has expected dimensions and nonblank content",
+      "passed": true
+    },
+    {
+      "name": "Native editable node count matches manifest",
+      "passed": true
+    },
+    {
+      "name": "Native original pages preserved",
+      "passed": true
+    },
+    {
+      "name": "Packaged font is exactly the embedded native font",
+      "passed": true
+    },
+    {
+      "name": "Font hash matches source manifest",
+      "passed": true
+    },
+    {
+      "name": "Font license and provenance are present",
+      "passed": true
+    },
+    {
+      "name": "Saved FD hash and actual bytes match manifest",
+      "passed": true
+    },
+    {
+      "name": "Chinese text remains native and in editable HTML",
+      "passed": true
+    },
+    {
+      "name": "Static HTML behavior limitation appears in generated UI",
+      "passed": true
+    },
+    {
+      "name": "Exported editable asset matches hash: forma-mark",
+      "passed": true
+    },
+    {
+      "name": "Exported editable asset matches hash: paper-stack",
+      "passed": true
+    }
+  ]
+}

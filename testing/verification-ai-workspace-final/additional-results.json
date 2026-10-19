@@ -1,0 +1,75 @@
+{
+  "stages": [
+    {
+      "id": "workspace-selection",
+      "exitCode": 0,
+      "scope": "Real owned Rust SQLite/stdio processes with temporary directory roots, restart isolation and future-schema rejection; no native GUI.",
+      "log": "workspace-selection.log",
+      "counts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "native-review",
+      "exitCode": 0,
+      "scope": "Actual main-process callbacks with mocked Electron/OS lifecycle, held asynchronous persistence, peer-fence mutation witness and relaunch rollback.",
+      "log": "native-review.log",
+      "counts": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "settings-review",
+      "exitCode": 0,
+      "scope": "Actual React/jsdom Settings portal and workspace controls, extracted App close callback, plus a mutation witness; no browser UI.",
+      "log": "settings-review.log",
+      "counts": {
+        "total": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "variables-review",
+      "exitCode": 0,
+      "scope": "Independent real Editor/WASM and React/jsdom adversarial cases, including component inheritance and atomic batch rejection.",
+      "log": "variables-review.log",
+      "counts": {
+        "total": 13,
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "ai-generation-replay",
+      "exitCode": 0,
+      "scope": "Deterministic replay of the previously agent-authored and reviewed plan through actual in-memory MCP and Editor/WASM; no new AI decision or external model provider.",
+      "log": "ai-generation-replay.log",
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "vite-build",
+      "exitCode": 0,
+      "scope": "Production bundle using unchanged rebuilt WASM; no serving, browser or GPU.",
+      "log": "vite-build.log"
+    }
+  ],
+  "counting": "Framework executions are separate; demonstration and build gates are not added to unit coverage. Mutation witness cases are explicitly named in the full logs."
+}

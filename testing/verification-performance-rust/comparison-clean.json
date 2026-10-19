@@ -1,0 +1,218 @@
+{
+  "scope": "Native CPU preparation, desktop-dev; one verified quiet old/new pair. Observational timing, not a general throughput claim.",
+  "comparisonRuns": {
+    "old": [
+      "old-1"
+    ],
+    "new": [
+      "new-2"
+    ],
+    "newReplication": [
+      "new-3"
+    ]
+  },
+  "excludedRuns": {
+    "new-1": "Pre-existing Vitest overlap before 13:48:35 UTC",
+    "old-2": "Packager checker subprocesses 13:51:11-13:51:19.721 UTC"
+  },
+  "rows": [
+    {
+      "nodes": 3000,
+      "fixtureSha256": "c33f4b661b0b55cebc7c6a303eb19a373c892c0de18892952ed405248f0bef04",
+      "packetSha256": "846ce748686ab6a85cb86cccd7f3121241e7fb0a83be3e527b4d8e21ccb7b641",
+      "packetBytes": 2331660,
+      "phases": {
+        "load": {
+          "old": {
+            "p50Ms": 29.125509,
+            "p95Ms": 33.219588
+          },
+          "new": {
+            "p50Ms": 24.71814,
+            "p95Ms": 26.453038000000003
+          },
+          "newReplication": {
+            "p50Ms": 24.676603,
+            "p95Ms": 26.855366
+          },
+          "p50ReductionPercent": 15.132332966266793
+        },
+        "firstCompile": {
+          "old": {
+            "p50Ms": 59.677386,
+            "p95Ms": 63.860769999999995
+          },
+          "new": {
+            "p50Ms": 50.288239999999995,
+            "p95Ms": 52.182498
+          },
+          "newReplication": {
+            "p50Ms": 50.192128000000004,
+            "p95Ms": 52.689093
+          },
+          "p50ReductionPercent": 15.733172361135262
+        },
+        "transform": {
+          "old": {
+            "p50Ms": 1.836495,
+            "p95Ms": 2.02002675
+          },
+          "new": {
+            "p50Ms": 0.150815,
+            "p95Ms": 0.20775549999999998
+          },
+          "newReplication": {
+            "p50Ms": 0.19850175,
+            "p95Ms": 0.32683025000000004
+          },
+          "p50ReductionPercent": 91.78788943068182
+        },
+        "compileAfterTransform": {
+          "old": {
+            "p50Ms": 17.647730499999998,
+            "p95Ms": 18.564044000000003
+          },
+          "new": {
+            "p50Ms": 18.8355665,
+            "p95Ms": 20.7809425
+          },
+          "newReplication": {
+            "p50Ms": 21.75065725,
+            "p95Ms": 24.362121000000002
+          },
+          "p50ReductionPercent": -6.730814480649516
+        },
+        "transformAndCompile": {
+          "old": {
+            "p50Ms": 19.438241249999997,
+            "p95Ms": 20.52728775
+          },
+          "new": {
+            "p50Ms": 18.9843605,
+            "p95Ms": 21.047220999999997
+          },
+          "newReplication": {
+            "p50Ms": 21.96548075,
+            "p95Ms": 24.620185000000003
+          },
+          "p50ReductionPercent": 2.3349887685954918
+        },
+        "rapidCameraCycle": {
+          "old": {
+            "p50Ms": 21.983484,
+            "p95Ms": 26.28042725
+          },
+          "new": {
+            "p50Ms": 23.72010125,
+            "p95Ms": 28.21059575
+          },
+          "newReplication": {
+            "p50Ms": 22.16229275,
+            "p95Ms": 26.229115
+          },
+          "p50ReductionPercent": -7.899645251862708
+        }
+      }
+    },
+    {
+      "nodes": 10000,
+      "fixtureSha256": "0aa3b9fae96346908c4e1e1133ebc8e5ab00a9876291aa1e00435ab9b0bf1622",
+      "packetSha256": "5e2ea991b2359a7d28b8a389a54c953f38ef00670f1bb862df34449b82f6914c",
+      "packetBytes": 3287188,
+      "phases": {
+        "load": {
+          "old": {
+            "p50Ms": 102.552171,
+            "p95Ms": 132.408294
+          },
+          "new": {
+            "p50Ms": 110.765461,
+            "p95Ms": 136.440572
+          },
+          "newReplication": {
+            "p50Ms": 103.883741,
+            "p95Ms": 109.39904200000001
+          },
+          "p50ReductionPercent": -8.008889446133715
+        },
+        "firstCompile": {
+          "old": {
+            "p50Ms": 138.51290899999998,
+            "p95Ms": 152.23786
+          },
+          "new": {
+            "p50Ms": 154.725773,
+            "p95Ms": 205.354487
+          },
+          "newReplication": {
+            "p50Ms": 132.442599,
+            "p95Ms": 150.505011
+          },
+          "p50ReductionPercent": -11.704948020404382
+        },
+        "transform": {
+          "old": {
+            "p50Ms": 6.5326795,
+            "p95Ms": 7.7014717500000005
+          },
+          "new": {
+            "p50Ms": 0.98799875,
+            "p95Ms": 1.3710585
+          },
+          "newReplication": {
+            "p50Ms": 0.6426365,
+            "p95Ms": 0.8752065
+          },
+          "p50ReductionPercent": 84.8760566012767
+        },
+        "compileAfterTransform": {
+          "old": {
+            "p50Ms": 43.34174275,
+            "p95Ms": 52.68952675
+          },
+          "new": {
+            "p50Ms": 45.15623275,
+            "p95Ms": 50.2525335
+          },
+          "newReplication": {
+            "p50Ms": 43.217611,
+            "p95Ms": 48.261067749999995
+          },
+          "p50ReductionPercent": -4.186472174102862
+        },
+        "transformAndCompile": {
+          "old": {
+            "p50Ms": 50.23361349999999,
+            "p95Ms": 60.37675975
+          },
+          "new": {
+            "p50Ms": 46.41078674999999,
+            "p95Ms": 51.01501525
+          },
+          "newReplication": {
+            "p50Ms": 43.926382000000004,
+            "p95Ms": 49.01099325
+          },
+          "p50ReductionPercent": 7.610097071754551
+        },
+        "rapidCameraCycle": {
+          "old": {
+            "p50Ms": 283.00930275,
+            "p95Ms": 349.22821749999997
+          },
+          "new": {
+            "p50Ms": 279.25743674999995,
+            "p95Ms": 384.933332
+          },
+          "newReplication": {
+            "p50Ms": 269.115418,
+            "p95Ms": 304.6673295
+          },
+          "p50ReductionPercent": 1.3257041247560442
+        }
+      }
+    }
+  ],
+  "rawSamplesPublished": false,
+  "rawSamplesNote": "Raw runs remain outside this publication. Excluded runs are preserved, not deleted. The old pooled comparison was superseded after scheduling reconciliation."
+}

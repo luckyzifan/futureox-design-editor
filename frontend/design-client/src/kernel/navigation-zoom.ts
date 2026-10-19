@@ -5,14 +5,29 @@ import type { CanvasCamera } from '../canvas-camera'
  * every intermediate scale. These are host policy values, not kernel limits. */
 export const NAVIGATION_ZOOM_SAMPLE_MS = 160
 export const NAVIGATION_ZOOM_QUIET_MS = 160
+// Sparse wheel input retains the conservative quiet window. Once a dense
+// burst has established its cadence, waiting another 160 ms only delays the
+// exact final tiles. Three recent input intervals tolerate skipped frames;
+// the floor also keeps short irregular gaps within the same gesture.
+export const NAVIGATION_ZOOM_DENSE_QUIET_MS = 48
+const CADENCE_INTERVALS = 8
+// Require the whole window before inferring dense input; a five-event wheel
+// packet is not enough evidence to speculate about the next packet gap.
+const CADENCE_REQUIRED_INTERVALS = CADENCE_INTERVALS
+const CADENCE_QUIET_MULTIPLIER = 3
+/** Experimental only: the normal React hook deliberately uses conservative
+ * settling until hardware-backed input/display measurements justify a change. */
+export type NavigationZoomOptions = { adaptiveQuiet?: boolean }
 export type NavigationZoomSample = { active: boolean; view: CanvasCamera; sequence: number }
 export class NavigationZoom {
   private target: CanvasCamera
   private changedAt = -Infinity
   private sampledAt = -Infinity
   private stableFrames = 0
+  private intervals: number[] = []
+  private resumedBeforeQuiet = false
   sample: NavigationZoomSample
-  constructor(view: CanvasCamera) {
+  constructor(view: CanvasCamera, private readonly options: NavigationZoomOptions = {}) {
     this.target = { ...view }
     this.sample = { active: false, view: { ...view }, sequence: 0 }
   }
@@ -22,6 +37,18 @@ export class NavigationZoom {
     const changed = view.zoom !== this.target.zoom
     this.target = { ...view }
     if (changed) {
+      // A short resume proves that the previous adaptive settle was early.
+      // Keep the original quiet window for this entire logical gesture, not
+      // merely until a small rolling cadence window forgets the pause. This
+      // bounds speculative exact work to one extra frame even when rendering
+      // completes faster than the next burst. Only a real quiet gap resets it.
+      if (now - this.changedAt >= NAVIGATION_ZOOM_QUIET_MS) this.resumedBeforeQuiet = false
+      else if (!this.active) this.resumedBeforeQuiet = true
+      if (!this.active) this.intervals = []
+      else if (now > this.changedAt) {
+        this.intervals.push(now - this.changedAt)
+        if (this.intervals.length > CADENCE_INTERVALS) this.intervals.shift()
+      }
       this.changedAt = now; this.stableFrames = 0
       if (!this.active) return this.publish(true, now)
     }
@@ -30,9 +57,13 @@ export class NavigationZoom {
   }
   frame(now: number): NavigationZoomSample {
     if (!this.active) return this.sample
-    if (now - this.changedAt >= NAVIGATION_ZOOM_QUIET_MS) {
-      if (++this.stableFrames >= 2) return this.publish(false, now)
-    } else this.stableFrames = 0
+    // Observe stability during the quiet interval, rather than adding another
+    // frame after it. A zoom update resets this counter, including reversals.
+    if (now > this.changedAt) this.stableFrames++
+    const quiet = !this.options.adaptiveQuiet || this.resumedBeforeQuiet || this.intervals.length < CADENCE_REQUIRED_INTERVALS ? NAVIGATION_ZOOM_QUIET_MS :
+      Math.min(NAVIGATION_ZOOM_QUIET_MS,
+        Math.max(NAVIGATION_ZOOM_DENSE_QUIET_MS, ...this.intervals.map(interval => interval * CADENCE_QUIET_MULTIPLIER)))
+    if (this.stableFrames >= 2 && now - this.changedAt >= quiet) return this.publish(false, now)
     if (now - this.sampledAt >= NAVIGATION_ZOOM_SAMPLE_MS && this.hasUnsampledView())
       return this.publish(true, now)
     return this.sample

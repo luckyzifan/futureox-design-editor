@@ -1,0 +1,247 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-10-19T14:27:24.993Z",
+  "platform": "linux",
+  "arch": "x64",
+  "node": "v24.19.0",
+  "revision": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "dirty": " M design-studio/crates/design-desktop-backend/src/lib.rs\n M design-studio/crates/design-desktop-backend/src/protocol.rs\n M design-studio/crates/design-desktop-backend/src/workspace.rs\n M design-studio/crates/design-kernel/src/gpu.rs\n M design-studio/crates/design-kernel/src/interop.rs\n M frontend/design-client/bun.lock\n M frontend/design-client/package.json\n M frontend/design-client/scripts/check-canvas-pointer-release.ts\n M frontend/design-client/src/App.tsx\n M frontend/design-client/src/Canvas.tsx\n M frontend/design-client/src/CanvasContextMenu.tsx\n D frontend/design-client/src/CanvasMinimap.tsx\n M frontend/design-client/src/EditorChrome.tsx\n M frontend/design-client/src/MultiSelectionInspector.tsx\n M frontend/design-client/src/MultiStylePanel.tsx\n M frontend/design-client/src/TextStylePanel.tsx\n M frontend/design-client/src/ViewControls.tsx\n M frontend/design-client/src/__tests__/design-file-import.test.ts\n M frontend/design-client/src/__tests__/text-justify.test.ts\n M frontend/design-client/src/canvas-menu-model.ts\n M frontend/design-client/src/canvas-navigation-check.tsx\n M frontend/design-client/src/desktop-session.ts\n M frontend/design-client/src/desktop.ts\n M frontend/design-client/src/editor-commands.ts\n M frontend/design-client/src/editor-lifecycle.test.tsx\n M frontend/design-client/src/engine.ts\n M frontend/design-client/src/export-ownership.test.mjs\n M frontend/design-client/src/import-ownership.test.mjs\n M frontend/design-client/src/kernel/gpu/composite-draw-plan.ts\n M frontend/design-client/src/kernel/interaction-renderer.test.ts\n M frontend/design-client/src/kernel/interaction-renderer.ts\n M frontend/design-client/src/kernel/module-lifecycle.test.mjs\n M frontend/design-client/src/kernel/navigation-zoom.test.ts\n M frontend/design-client/src/kernel/navigation-zoom.ts\n M frontend/design-client/src/kernel/use-navigation-zoom.test.ts\n M frontend/design-client/src/modal-keyboard.ts\n M frontend/design-client/src/model-mask-admission.test.mjs\n M frontend/design-client/src/property-units.ts\n M frontend/design-client/src/scratch-deep-detach.test.ts\n M frontend/design-client/src/selection-properties.ts\n M frontend/design-client/src/styles.css\n M frontend/design-desktop/src/main.mjs\n M frontend/design-desktop/src/preload.cjs\n M frontend/design-desktop/src/sidecar.mjs\n M frontend/design-desktop/test/main.test.mjs\n M frontend/design-desktop/test/preload.test.mjs\n M frontend/design-desktop/test/preparation-frame.test.mjs\n?? .github/\n?? design-studio/crates/design-desktop-backend/src/automation.rs\n?? design-studio/crates/design-desktop-backend/tests/automation.rs\n?? design-studio/crates/design-kernel/examples/benchmark_prepare_invalidation.rs\n?? design-studio/crates/design-kernel/examples/benchmark_prepare_reuse.rs\n?? design-studio/crates/design-kernel/tests/prepare_invalidation_equivalence.rs\n?? design-studio/crates/design-kernel/tests/sketch_automation_symbols.rs\n?? docs/\n?? frontend/design-client/SHORTCUT_PROFILES.md\n?? frontend/design-client/node_modules\n?? frontend/design-client/scripts/check-navigation-latency.mjs\n?? frontend/design-client/src/AutomationPanel.test.tsx\n?? frontend/design-client/src/AutomationPanel.tsx\n?? frontend/design-client/src/KeyboardProfileSettings.tsx\n?? frontend/design-client/src/automation/\n?? frontend/design-client/src/canvas-minimap-removal.test.tsx\n?? frontend/design-client/src/canvas-selection-cpu.test.tsx\n?? frontend/design-client/src/canvas-selection-workflows.test.tsx\n?? frontend/design-client/src/canvas-selection-workflows.ts\n?? frontend/design-client/src/canvas-workflow-shortcuts.test.ts\n?? frontend/design-client/src/canvas-workflow-shortcuts.ts\n?? frontend/design-client/src/editor-shortcuts.ts\n?? frontend/design-client/src/interaction-ui-runtime.test.tsx\n?? frontend/design-client/src/kernel/gpu/composite-draw-plan-cpu.test.mjs\n?? frontend/design-client/src/kernel/interaction-scene-bounds.test.ts\n?? frontend/design-client/src/kernel/interaction-scene-bounds.ts\n?? frontend/design-client/src/multiselection-cpu-runtime.test.tsx\n?? frontend/design-client/src/paste-over-selection.ts\n?? frontend/design-client/src/property-units-context.test.ts\n?? frontend/design-client/src/shortcut-dom.test.tsx\n?? frontend/design-client/src/shortcut-preference.ts\n?? frontend/design-client/src/shortcut-profiles.test.ts\n?? frontend/design-client/src/shortcut-profiles.ts\n?? frontend/design-desktop/src/automation-bridge.mjs\n?? frontend/design-desktop/src/keyboard-shortcuts.mjs\n?? frontend/design-desktop/test/automation-bridge-socket.test.mjs\n?? frontend/design-desktop/test/automation-bridge.test.mjs\n?? frontend/design-desktop/test/automation-storage-bridge.test.mjs\n?? frontend/design-desktop/test/keyboard-shortcuts.test.mjs\n?? frontend/design-mcp/\n?? testing/README.md\n?? testing/automation-sqlite-benchmark.py\n?? testing/fixture-policy.test.mjs\n?? testing/lib/\n?? testing/runner.test.mjs\n?? testing/verification-automation/\n?? testing/verification-canvas-selection-workflows/\n?? testing/verification-canvas-workflows-results.json\n?? testing/verification-canvas-workflows/\n?? testing/verification-latest-anti-vacuity-final/\n?? testing/verification-latest-anti-vacuity/\n?? testing/verification-latest-final/\n?? testing/verification-latest-interaction-ui/\n?? testing/verification-latest-navigation/\n?? testing/verification-latest-preparation/\n?? testing/verification-latest-shortcuts/\n?? testing/verification-native-paste-over/\n?? testing/verification-next-native-transport/\n?? testing/verification-performance-editor/\n?? testing/verification-performance-minimap/\n?? testing/verification-performance-publication/\n?? testing/verification-performance-review/\n?? testing/verification-performance-review2/\n?? testing/verification-performance-rust/\n?? testing/verification-performance-viewport/\n?? testing/verify-local.mjs\n",
+  "profile": "portable",
+  "explicitSuites": [
+    "desktop-contracts"
+  ],
+  "suites": [
+    {
+      "id": "runner-contracts",
+      "category": "runner-negative-controls",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "frontend-contracts",
+      "category": "CPU production logic + sandboxed callbacks/source contracts/mock DOM; not native UI",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "desktop-contracts",
+      "category": "mock host/IPC and file-policy contracts; not Electron GUI",
+      "status": "passed",
+      "files": [
+        {
+          "path": "frontend/design-desktop/test/automation-bridge.test.mjs",
+          "sha256": "f3a84c8b964d4235989a693774c998885cd009b0ea3e96966ab0036c7f86cd34"
+        },
+        {
+          "path": "frontend/design-desktop/test/build-inputs.test.mjs",
+          "sha256": "2e06bbb970ce594e70aa51e15e30ed7726a11e384cb8072d2745449b082bee55"
+        },
+        {
+          "path": "frontend/design-desktop/test/clipboard.test.mjs",
+          "sha256": "974673dba35b39f2d6cda00d34430b5a230342fd4dd1054ad4aaf46e8f2c04a5"
+        },
+        {
+          "path": "frontend/design-desktop/test/cpu-launch-policy.test.mjs",
+          "sha256": "58db566204dd3f714031653b82a9c5557149a9dcf18060492794c6a2682bbed8"
+        },
+        {
+          "path": "frontend/design-desktop/test/directory-grants.test.mjs",
+          "sha256": "03e9ea743ec8e1db9e0d54eb12f0ee0201b0f227e7a9c64c0a4a1ef4ec1a51b5"
+        },
+        {
+          "path": "frontend/design-desktop/test/install-sidecar.test.mjs",
+          "sha256": "17e5a1b513845d233c1b69970322c74df6c78cb670d09fdfa69ea1602e85c572"
+        },
+        {
+          "path": "frontend/design-desktop/test/kernel-admission.test.mjs",
+          "sha256": "a3e9426c3e1fdc3ffa58d8b302b596a61d4170f8fa0ddeee759ba80b193c33be"
+        },
+        {
+          "path": "frontend/design-desktop/test/keyboard-shortcuts.test.mjs",
+          "sha256": "b073d24f51fd627da0ce4491afd480dcad70c2eefe39599708a9cb805e7d3959"
+        },
+        {
+          "path": "frontend/design-desktop/test/legacy-user-data.test.mjs",
+          "sha256": "1a65875902a8adfba1b3d272f850425faf7ae34f8ba4df6f06059b9822525119"
+        },
+        {
+          "path": "frontend/design-desktop/test/main.test.mjs",
+          "sha256": "594bc35ee7cbe302a992da6bf81315ca4ba84179f59ac14f20ad46392c122827"
+        },
+        {
+          "path": "frontend/design-desktop/test/native-render-lifecycle.test.mjs",
+          "sha256": "2f885da54def6b871b9e6eec49e35ae04451af6da0b7d3a42a9a10ca9315221c"
+        },
+        {
+          "path": "frontend/design-desktop/test/native-render-queue.test.mjs",
+          "sha256": "e74e86f050753fe7cbcf3c8e1a5d0f56616b87f119d5aef63c47659402adda59"
+        },
+        {
+          "path": "frontend/design-desktop/test/preload.test.mjs",
+          "sha256": "2f3430e23de94c99a111022461b30914de0aa3ada755106cee5b68d3ca1886ae"
+        },
+        {
+          "path": "frontend/design-desktop/test/preparation-frame.test.mjs",
+          "sha256": "0b58d2cdce9fa24ecb29f71cbd3b45ce5f28676495531c44420c2035549e3239"
+        },
+        {
+          "path": "frontend/design-desktop/test/preparation-package.test.mjs",
+          "sha256": "764120c915d66380006424e05a34dea3c72b73076dcf8fb90a73e4680126d36d"
+        },
+        {
+          "path": "frontend/design-desktop/test/preparation.test.mjs",
+          "sha256": "77af4565020e08ab03e730e3a2402895cb5b0022f467ed321afc5fb9fbb13483"
+        },
+        {
+          "path": "frontend/design-desktop/test/render-check.test.mjs",
+          "sha256": "fe9040cfafa841c98d3ac2914aff95076612f800286102fea528c6862e143736"
+        },
+        {
+          "path": "frontend/design-desktop/test/security.test.mjs",
+          "sha256": "04a39ed2e761a0cb15064c259ff31e9484391587444757a80dce8134d81c3a08"
+        },
+        {
+          "path": "frontend/design-desktop/test/sidecar-lifecycle.test.mjs",
+          "sha256": "274d78bcba6fbe6f1820e3c5a4a7b7bbf2cb3e3871d12667b1ae4da0ae7b7c67"
+        },
+        {
+          "path": "frontend/design-desktop/test/sidecar.test.mjs",
+          "sha256": "934b8f667c3cf182ec7f4dff311c6504aba66ca069cb9d94067907016f488158"
+        },
+        {
+          "path": "frontend/design-desktop/test/sketch-alpha-gradient.test.mjs",
+          "sha256": "a398b1cf84cdfb6330585164dce767e5f93a4f9c5f7298d3af8691f4894e0589"
+        },
+        {
+          "path": "frontend/design-desktop/test/sketch-preview-contract.test.mjs",
+          "sha256": "95308159c3392c4481d7128a3c3b8aa77d45cd366205111392e3e61027a2c920"
+        },
+        {
+          "path": "frontend/design-desktop/test/sketch-session.test.mjs",
+          "sha256": "11778f2d0be359433ffafd1885ba30db4e6b71cda611cd879c624030a742698a"
+        },
+        {
+          "path": "frontend/design-desktop/test/wasm-identity.test.mjs",
+          "sha256": "dd40af0ab28de6da5e0b55c125c773bd316729626d0293e3f8d0628109b192cb"
+        },
+        {
+          "path": "frontend/design-desktop/test/window-state.test.mjs",
+          "sha256": "f6f1f806a9f67da7de9421dead187b45cb5e0fd44598ff13be687423ac6e8aa8"
+        }
+      ],
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+        "--test",
+        "--test-timeout=120000",
+        "--test-reporter=tap",
+        "<repository>/frontend/design-desktop/test/automation-bridge.test.mjs",
+        "<repository>/frontend/design-desktop/test/build-inputs.test.mjs",
+        "<repository>/frontend/design-desktop/test/clipboard.test.mjs",
+        "<repository>/frontend/design-desktop/test/cpu-launch-policy.test.mjs",
+        "<repository>/frontend/design-desktop/test/directory-grants.test.mjs",
+        "<repository>/frontend/design-desktop/test/install-sidecar.test.mjs",
+        "<repository>/frontend/design-desktop/test/kernel-admission.test.mjs",
+        "<repository>/frontend/design-desktop/test/keyboard-shortcuts.test.mjs",
+        "<repository>/frontend/design-desktop/test/legacy-user-data.test.mjs",
+        "<repository>/frontend/design-desktop/test/main.test.mjs",
+        "<repository>/frontend/design-desktop/test/native-render-lifecycle.test.mjs",
+        "<repository>/frontend/design-desktop/test/native-render-queue.test.mjs",
+        "<repository>/frontend/design-desktop/test/preload.test.mjs",
+        "<repository>/frontend/design-desktop/test/preparation-frame.test.mjs",
+        "<repository>/frontend/design-desktop/test/preparation-package.test.mjs",
+        "<repository>/frontend/design-desktop/test/preparation.test.mjs",
+        "<repository>/frontend/design-desktop/test/render-check.test.mjs",
+        "<repository>/frontend/design-desktop/test/security.test.mjs",
+        "<repository>/frontend/design-desktop/test/sidecar-lifecycle.test.mjs",
+        "<repository>/frontend/design-desktop/test/sidecar.test.mjs",
+        "<repository>/frontend/design-desktop/test/sketch-alpha-gradient.test.mjs",
+        "<repository>/frontend/design-desktop/test/sketch-preview-contract.test.mjs",
+        "<repository>/frontend/design-desktop/test/sketch-session.test.mjs",
+        "<repository>/frontend/design-desktop/test/wasm-identity.test.mjs",
+        "<repository>/frontend/design-desktop/test/window-state.test.mjs"
+      ],
+      "cwd": "frontend/design-desktop",
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "forceKillAttempted": false,
+      "durationMs": 3275,
+      "log": "desktop-contracts.log"
+    },
+    {
+      "id": "python-tools",
+      "category": "CPU tool unit tests",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "typecheck",
+      "category": "static TypeScript check",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "frontend-vitest",
+      "category": "real CPU WASM + pure logic + mocked DOM/driver suites; not real GPU/UI",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "mcp-example",
+      "category": "real Editor/WASM via in-memory MCP, synthetic HTML/CSS and native-file outputs",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "bun-unit",
+      "category": "CPU budget/policy logic; no actual GPU",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "rust-cpu",
+      "category": "real CPU Rust kernel + local SQLite/backend; no cloud server or GPU",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "automation-storage",
+      "category": "real SQLite sidecar + mocked IPC host",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "mcp-contracts",
+      "category": "in-memory protocol/transport + real stdio; no OS socket",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "socket-integration",
+      "category": "real OS socket IPC; explicit opt-in only, permission required",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "native-preparation",
+      "category": "real native CPU binary / WASM packet + pixel comparison",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "native-sidecar",
+      "category": "real owned Rust processes + local SQLite; not OS dialogs",
+      "status": "not-selected",
+      "files": []
+    }
+  ],
+  "limitations": [
+    "Passing only applies to the selected named suites; test files are not assertions or line coverage.",
+    "No browser, Electron GUI, GPU driver/readback, installed-app packaging, accessibility or native OS dialog was launched. Real socket tests are separate opt-in and never automatically selected.",
+    "No Windows/macOS run is inferred from Linux; consult each actual CI artifact.",
+    "Private external corpora may be explicitly skipped unless DESIGN_REQUIRE_PRIVATE_FIXTURES=1.",
+    "WASM scalar/SIMD experiments, performance benchmarks and browser check scripts remain separate explicitly requested gates."
+  ],
+  "finishedAt": "2026-10-19T14:27:28.281Z",
+  "selectedSuiteResult": "passed"
+}

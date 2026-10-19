@@ -1,0 +1,28 @@
+{
+  "platform": "Linux",
+  "architecture": "x86_64",
+  "buildKind": "debug",
+  "scope": "real stdio + SQLite synthetic metadata only; no rendering, GPU or GUI",
+  "initialStartupMs": 16.688,
+  "restartMs": 19.151,
+  "auditAppend": {
+    "samples": 1000,
+    "p50Ms": 1.172,
+    "p95Ms": 1.759,
+    "maxMs": 5.271,
+    "meanMs": 1.213
+  },
+  "filtered100RowRead": {
+    "samples": 100,
+    "p50Ms": 4.551,
+    "p95Ms": 6.573,
+    "maxMs": 9.892,
+    "meanMs": 4.896
+  },
+  "retainedAuditRows": 1000,
+  "workspaceBytesAfterClose": 258048,
+  "peakChildRssBytes": 14278656,
+  "restartVerified": true,
+  "authorizationPersisted": false,
+  "note": "Single local run, not a production SLA; 50 append warmups excluded. RSS is whole child process, not retained JSON budget."
+}

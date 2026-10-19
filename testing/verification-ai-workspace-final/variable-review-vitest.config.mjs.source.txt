@@ -1,0 +1,2 @@
+import { defineConfig } from '<repo>/frontend/design-client/node_modules/vitest/dist/config.js'
+export default defineConfig({ test: { setupFiles: ['<repo>/frontend/design-client/src/test-setup.ts'], include: ['<batch>/variable-review/*.test.tsx'], environment: 'node' } })

@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-10-19T13:02:02.315Z",
+  "platform": "linux",
+  "arch": "x64",
+  "node": "v24.19.0",
+  "revision": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "dirty": " M design-studio/crates/design-desktop-backend/src/lib.rs\n M design-studio/crates/design-desktop-backend/src/protocol.rs\n M design-studio/crates/design-desktop-backend/src/workspace.rs\n M design-studio/crates/design-kernel/src/gpu.rs\n M design-studio/crates/design-kernel/src/interop.rs\n M frontend/design-client/bun.lock\n M frontend/design-client/package.json\n M frontend/design-client/src/App.tsx\n M frontend/design-client/src/Canvas.tsx\n M frontend/design-client/src/CanvasContextMenu.tsx\n M frontend/design-client/src/EditorChrome.tsx\n M frontend/design-client/src/TextStylePanel.tsx\n M frontend/design-client/src/__tests__/design-file-import.test.ts\n M frontend/design-client/src/__tests__/text-justify.test.ts\n M frontend/design-client/src/canvas-menu-model.ts\n M frontend/design-client/src/desktop-session.ts\n M frontend/design-client/src/desktop.ts\n M frontend/design-client/src/editor-commands.ts\n M frontend/design-client/src/editor-lifecycle.test.tsx\n M frontend/design-client/src/engine.ts\n M frontend/design-client/src/export-ownership.test.mjs\n M frontend/design-client/src/import-ownership.test.mjs\n M frontend/design-client/src/kernel/module-lifecycle.test.mjs\n M frontend/design-client/src/kernel/navigation-zoom.test.ts\n M frontend/design-client/src/kernel/navigation-zoom.ts\n M frontend/design-client/src/kernel/use-navigation-zoom.test.ts\n M frontend/design-client/src/modal-keyboard.ts\n M frontend/design-client/src/model-mask-admission.test.mjs\n M frontend/design-client/src/scratch-deep-detach.test.ts\n M frontend/design-client/src/styles.css\n M frontend/design-desktop/src/main.mjs\n M frontend/design-desktop/src/preload.cjs\n M frontend/design-desktop/src/sidecar.mjs\n M frontend/design-desktop/test/main.test.mjs\n M frontend/design-desktop/test/preload.test.mjs\n?? .github/\n?? design-studio/crates/design-desktop-backend/src/automation.rs\n?? design-studio/crates/design-desktop-backend/tests/automation.rs\n?? design-studio/crates/design-kernel/examples/benchmark_prepare_reuse.rs\n?? design-studio/crates/design-kernel/tests/sketch_automation_symbols.rs\n?? docs/\n?? frontend/design-client/SHORTCUT_PROFILES.md\n?? frontend/design-client/node_modules\n?? frontend/design-client/scripts/check-navigation-latency.mjs\n?? frontend/design-client/src/AutomationPanel.test.tsx\n?? frontend/design-client/src/AutomationPanel.tsx\n?? frontend/design-client/src/KeyboardProfileSettings.tsx\n?? frontend/design-client/src/automation/\n?? frontend/design-client/src/editor-shortcuts.ts\n?? frontend/design-client/src/interaction-ui-runtime.test.tsx\n?? frontend/design-client/src/shortcut-dom.test.tsx\n?? frontend/design-client/src/shortcut-preference.ts\n?? frontend/design-client/src/shortcut-profiles.test.ts\n?? frontend/design-client/src/shortcut-profiles.ts\n?? frontend/design-desktop/src/automation-bridge.mjs\n?? frontend/design-desktop/src/keyboard-shortcuts.mjs\n?? frontend/design-desktop/test/automation-bridge-socket.test.mjs\n?? frontend/design-desktop/test/automation-bridge.test.mjs\n?? frontend/design-desktop/test/automation-storage-bridge.test.mjs\n?? frontend/design-desktop/test/keyboard-shortcuts.test.mjs\n?? frontend/design-mcp/\n?? testing/README.md\n?? testing/automation-sqlite-benchmark.py\n?? testing/fixture-policy.test.mjs\n?? testing/lib/\n?? testing/runner.test.mjs\n?? testing/verification-automation/\n?? testing/verification-latest-interaction-ui/\n?? testing/verification-latest-navigation/\n?? testing/verification-latest-preparation/\n?? testing/verification-latest-shortcuts/\n?? testing/verify-local.mjs\n",
+  "profile": "portable",
+  "explicitSuites": [
+    "runner-contracts",
+    "python-tools"
+  ],
+  "suites": [
+    {
+      "id": "runner-contracts",
+      "category": "runner-negative-controls",
+      "status": "passed",
+      "files": [
+        {
+          "path": "testing/fixture-policy.test.mjs",
+          "sha256": "66aa405515a43470ac2d6c493035f8b7484eb2be71e851131f0b28dc88c08195"
+        },
+        {
+          "path": "testing/runner.test.mjs",
+          "sha256": "9d3a8618e85fa6af32f97e8d3db2637222472c230591f00093b435aadbbc4885"
+        },
+        {
+          "path": "testing/test-entrypoints.test.mjs",
+          "sha256": "31d0b1759d4f414555c35cdd326f0247ae0575d6b7438cfcd0659c50728d5055"
+        }
+      ],
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node",
+        "--test",
+        "--test-timeout=120000",
+        "--test-reporter=tap",
+        "/workspace/shared/design-latest-20261019T1209/testing/fixture-policy.test.mjs",
+        "/workspace/shared/design-latest-20261019T1209/testing/runner.test.mjs",
+        "/workspace/shared/design-latest-20261019T1209/testing/test-entrypoints.test.mjs"
+      ],
+      "cwd": "",
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "durationMs": 686,
+      "log": "runner-contracts.log"
+    },
+    {
+      "id": "frontend-contracts",
+      "category": "CPU production logic + sandboxed callbacks/source contracts/mock DOM; not native UI",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "desktop-contracts",
+      "category": "mock host/IPC and file-policy contracts; not Electron GUI",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "python-tools",
+      "category": "CPU tool unit tests",
+      "status": "passed",
+      "files": [
+        {
+          "path": "design-studio/scripts/test_build_web.py",
+          "sha256": "6971da2180505a83004cc4f8a68697ec129ad43729c152864898e6f1b6e2c1ba"
+        },
+        {
+          "path": "design-studio/scripts/test_compare_figma_reuse.py",
+          "sha256": "bc30d3185928191029b0169f485938df805d3c565608501279b36f26a86f138f"
+        },
+        {
+          "path": "design-studio/scripts/test_figma_cpu_reference.py",
+          "sha256": "38c8cb3cfba95f933f13df8fa91a01fdc3415368b4e42b5552f098f8f83026ab"
+        }
+      ],
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-p",
+        "test_*.py"
+      ],
+      "cwd": "design-studio/scripts",
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false,
+      "durationMs": 166,
+      "log": "python-tools.log"
+    },
+    {
+      "id": "typecheck",
+      "category": "static TypeScript check",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "frontend-vitest",
+      "category": "real CPU WASM + pure logic + mocked DOM/driver suites; not real GPU/UI",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "mcp-example",
+      "category": "real Editor/WASM via in-memory MCP, synthetic HTML/CSS and native-file outputs",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "bun-unit",
+      "category": "CPU budget/policy logic; no actual GPU",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "rust-cpu",
+      "category": "real CPU Rust kernel + local SQLite/backend; no cloud server or GPU",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "automation-storage",
+      "category": "real SQLite sidecar + mocked IPC host",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "mcp-contracts",
+      "category": "in-memory protocol/transport + real stdio; no OS socket",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "socket-integration",
+      "category": "real OS socket IPC; explicit opt-in only, permission required",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "native-preparation",
+      "category": "real native CPU binary / WASM packet + pixel comparison",
+      "status": "not-selected",
+      "files": []
+    },
+    {
+      "id": "native-sidecar",
+      "category": "real owned Rust processes + local SQLite; not OS dialogs",
+      "status": "not-selected",
+      "files": []
+    }
+  ],
+  "limitations": [
+    "Passing only applies to the selected named suites; test files are not assertions or line coverage.",
+    "No browser, Electron GUI, GPU driver/readback, installed-app packaging, accessibility or native OS dialog was launched. Real socket tests are separate opt-in and never automatically selected.",
+    "No Windows/macOS run is inferred from Linux; consult each actual CI artifact.",
+    "Private external corpora may be explicitly skipped unless DESIGN_REQUIRE_PRIVATE_FIXTURES=1.",
+    "WASM scalar/SIMD experiments, performance benchmarks and browser check scripts remain separate explicitly requested gates."
+  ],
+  "finishedAt": "2026-10-19T13:02:03.173Z",
+  "selectedSuiteResult": "passed"
+}

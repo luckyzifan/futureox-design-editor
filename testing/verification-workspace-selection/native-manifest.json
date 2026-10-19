@@ -1,0 +1,28 @@
+{
+  "scope": "Native local workspace directory selection",
+  "nativeRegression": {
+    "passed": 129,
+    "failed": 0,
+    "skipped": 0,
+    "log": "native-regression.log"
+  },
+  "realSqlite": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "log": "sqlite-runtime-final-v2.log",
+    "binarySha256": "3f1e93319cb0e4022071592c04ef70783f1a489547b7726ca9833e5b0a5fd624"
+  },
+  "realGuiExecuted": false,
+  "osSocketExecuted": false,
+  "files": {
+    "frontend/design-desktop/src/workspace-roots.mjs": "5ba8cd9511a8646203f2e497d11d5276cde379045fe07136c55174286d24a49f",
+    "frontend/design-desktop/src/main.mjs": "0e1ad5b8dcd94081c5931afa22f40a3864b1ac9af1b244c35e75d2690f6208ec",
+    "frontend/design-desktop/src/preload.cjs": "2275aeec7339dd8f55559b883f1805e63bef8035da2dcd6c53621b874d2e9dc7",
+    "frontend/design-client/src/desktop.ts": "cc58d4351e8791c5dbf31f795d9ccad7b06491f8f3c50bb0a9fd5abd439af54f",
+    "frontend/design-desktop/test/workspace-roots.test.mjs": "7b6cba963012dd0101ddba2bfa6bc330f7fe5aaf1f489650cd1130c973c70d94",
+    "frontend/design-desktop/test/main.test.mjs": "ece9bf2abf4e58d01420c5b0466d4c9c5f934ca4105a44bbca5071635c433dc1",
+    "frontend/design-desktop/test/preload.test.mjs": "13e8cfe2689315de26ac260fcadc5e116695be37ce9bf29a1235ceb209d7b3c8",
+    "frontend/design-desktop/test/runtime/workspace-selection-runtime.test.mjs": "32de0f6440e8538805f2807986f2bc6cbbe84adb5954ccc872feee40a4f39d43"
+  }
+}

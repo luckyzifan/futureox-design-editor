@@ -1,0 +1,16 @@
+{
+  "status": "historical failing witness; resolved by raw-root-mask rejection",
+  "beforeFix": {
+    "passed": 1,
+    "failed": 1
+  },
+  "failures": [
+    {
+      "test": "pasted root mask preserves a later sibling, nested parent=true",
+      "messages": [
+        "AssertionError: expected [ +0, +0, +0, +0 ] to deeply equal [ 255, +0, +0, 255 ]\n    at <repository>/testing/verification-performance-review2/paste-mask-isolation.test.tsx:26:43\n    at file://<installed-dependencies>/vitest/dist/chunks/run.C5UmxDPh.js:2869:63\n    at file://<installed-dependencies>/vitest/dist/chunks/run.C5UmxDPh.js:1628:35\n    at file://<installed-dependencies>/vitest/dist/chunks/run.C5UmxDPh.js:2783:26\n    at file://<installed-dependencies>/vitest/dist/chunks/run.C5UmxDPh.js:3319:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://<installed-dependencies>/vitest/dist/chunks/run.C5UmxDPh.js:3314:10)\n    at file://<installed-dependencies>/vitest/dist/chunks/run.C5UmxDPh.js:3299:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file://<installed-dependencies>/vitest/dist/chunks/run.C5UmxDPh.js:3257:10)"
+      ]
+    }
+  ],
+  "finalWitness": "paste-mask-isolation.test.tsx; 4 passing pixel/atomicity cases"
+}

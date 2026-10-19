@@ -1,0 +1,502 @@
+{
+  "schemaVersion": 1,
+  "base": "a9fb36a1 frozen delivered source snapshot",
+  "runtime": "Node v24.19.0, real React/jsdom + Editor/WASM",
+  "scope": "Inspector mount after Editor construction and selection; excludes document opening, rendering and browser/GPU/FPS",
+  "order": [
+    "old-a",
+    "new-a",
+    "new-b",
+    "old-b"
+  ],
+  "method": "Each separate process mounts 300 selected nodes before the 3000-selected fixture. Non-retaining parent-call counter. Other workers paused heavy CPU work. Each fixture has two additional transformed ancestors. Same six source files and same prebuilt WASM/font hashes in each variant.",
+  "wasmSha256": "3dff5703c0b197cf26be5a94f3a5bf544c876d1950ac4118784e1c5f3abdbe21",
+  "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+  "cases": [
+    {
+      "selected": 300,
+      "documentNodes": 302,
+      "oldParentTraversals": [
+        3602,
+        3602
+      ],
+      "newParentTraversals": [
+        3,
+        3
+      ],
+      "oldMountMs": [
+        232.12531200000012,
+        328.9007849999998
+      ],
+      "newMountMs": [
+        95.65713300000016,
+        65.649273
+      ],
+      "oldMedianMs": 280.51304849999997,
+      "newMedianMs": 80.65320300000008,
+      "displayFieldsEqual": true
+    },
+    {
+      "selected": 3000,
+      "documentNodes": 3002,
+      "oldParentTraversals": [
+        36002,
+        36002
+      ],
+      "newParentTraversals": [
+        3,
+        3
+      ],
+      "oldMountMs": [
+        24716.918397999998,
+        25977.240133
+      ],
+      "newMountMs": [
+        97.23606199999995,
+        98.8622019999998
+      ],
+      "oldMedianMs": 25347.079265499997,
+      "newMedianMs": 98.04913199999987,
+      "displayFieldsEqual": true
+    }
+  ],
+  "inspectorRuns": {
+    "old-a": [
+      {
+        "name": "initial-multiselection",
+        "runtime": "React/jsdom + real Editor/WASM; CPU only",
+        "nodes": 302,
+        "selected": 300,
+        "durationMs": 232.12531200000012,
+        "allParentsCalls": 3602,
+        "fields": [
+          {
+            "label": "X",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "Y",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "W",
+            "value": "82.46",
+            "placeholder": ""
+          },
+          {
+            "label": "H",
+            "value": "90.2",
+            "placeholder": ""
+          },
+          {
+            "label": "旋转 °",
+            "value": "0",
+            "placeholder": ""
+          },
+          {
+            "label": "透明度 %",
+            "value": "100",
+            "placeholder": ""
+          }
+        ]
+      },
+      {
+        "name": "initial-multiselection",
+        "runtime": "React/jsdom + real Editor/WASM; CPU only",
+        "nodes": 3002,
+        "selected": 3000,
+        "durationMs": 24716.918397999998,
+        "allParentsCalls": 36002,
+        "fields": [
+          {
+            "label": "X",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "Y",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "W",
+            "value": "82.46",
+            "placeholder": ""
+          },
+          {
+            "label": "H",
+            "value": "90.2",
+            "placeholder": ""
+          },
+          {
+            "label": "旋转 °",
+            "value": "0",
+            "placeholder": ""
+          },
+          {
+            "label": "透明度 %",
+            "value": "100",
+            "placeholder": ""
+          }
+        ]
+      }
+    ],
+    "new-a": [
+      {
+        "name": "initial-multiselection",
+        "runtime": "React/jsdom + real Editor/WASM; CPU only",
+        "nodes": 302,
+        "selected": 300,
+        "durationMs": 95.65713300000016,
+        "allParentsCalls": 3,
+        "fields": [
+          {
+            "label": "X",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "Y",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "W",
+            "value": "82.46",
+            "placeholder": ""
+          },
+          {
+            "label": "H",
+            "value": "90.2",
+            "placeholder": ""
+          },
+          {
+            "label": "旋转 °",
+            "value": "0",
+            "placeholder": ""
+          },
+          {
+            "label": "透明度 %",
+            "value": "100",
+            "placeholder": ""
+          }
+        ]
+      },
+      {
+        "name": "initial-multiselection",
+        "runtime": "React/jsdom + real Editor/WASM; CPU only",
+        "nodes": 3002,
+        "selected": 3000,
+        "durationMs": 97.23606199999995,
+        "allParentsCalls": 3,
+        "fields": [
+          {
+            "label": "X",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "Y",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "W",
+            "value": "82.46",
+            "placeholder": ""
+          },
+          {
+            "label": "H",
+            "value": "90.2",
+            "placeholder": ""
+          },
+          {
+            "label": "旋转 °",
+            "value": "0",
+            "placeholder": ""
+          },
+          {
+            "label": "透明度 %",
+            "value": "100",
+            "placeholder": ""
+          }
+        ]
+      }
+    ],
+    "new-b": [
+      {
+        "name": "initial-multiselection",
+        "runtime": "React/jsdom + real Editor/WASM; CPU only",
+        "nodes": 302,
+        "selected": 300,
+        "durationMs": 65.649273,
+        "allParentsCalls": 3,
+        "fields": [
+          {
+            "label": "X",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "Y",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "W",
+            "value": "82.46",
+            "placeholder": ""
+          },
+          {
+            "label": "H",
+            "value": "90.2",
+            "placeholder": ""
+          },
+          {
+            "label": "旋转 °",
+            "value": "0",
+            "placeholder": ""
+          },
+          {
+            "label": "透明度 %",
+            "value": "100",
+            "placeholder": ""
+          }
+        ]
+      },
+      {
+        "name": "initial-multiselection",
+        "runtime": "React/jsdom + real Editor/WASM; CPU only",
+        "nodes": 3002,
+        "selected": 3000,
+        "durationMs": 98.8622019999998,
+        "allParentsCalls": 3,
+        "fields": [
+          {
+            "label": "X",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "Y",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "W",
+            "value": "82.46",
+            "placeholder": ""
+          },
+          {
+            "label": "H",
+            "value": "90.2",
+            "placeholder": ""
+          },
+          {
+            "label": "旋转 °",
+            "value": "0",
+            "placeholder": ""
+          },
+          {
+            "label": "透明度 %",
+            "value": "100",
+            "placeholder": ""
+          }
+        ]
+      }
+    ],
+    "old-b": [
+      {
+        "name": "initial-multiselection",
+        "runtime": "React/jsdom + real Editor/WASM; CPU only",
+        "nodes": 302,
+        "selected": 300,
+        "durationMs": 328.9007849999998,
+        "allParentsCalls": 3602,
+        "fields": [
+          {
+            "label": "X",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "Y",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "W",
+            "value": "82.46",
+            "placeholder": ""
+          },
+          {
+            "label": "H",
+            "value": "90.2",
+            "placeholder": ""
+          },
+          {
+            "label": "旋转 °",
+            "value": "0",
+            "placeholder": ""
+          },
+          {
+            "label": "透明度 %",
+            "value": "100",
+            "placeholder": ""
+          }
+        ]
+      },
+      {
+        "name": "initial-multiselection",
+        "runtime": "React/jsdom + real Editor/WASM; CPU only",
+        "nodes": 3002,
+        "selected": 3000,
+        "durationMs": 25977.240133,
+        "allParentsCalls": 36002,
+        "fields": [
+          {
+            "label": "X",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "Y",
+            "value": "",
+            "placeholder": "混合"
+          },
+          {
+            "label": "W",
+            "value": "82.46",
+            "placeholder": ""
+          },
+          {
+            "label": "H",
+            "value": "90.2",
+            "placeholder": ""
+          },
+          {
+            "label": "旋转 °",
+            "value": "0",
+            "placeholder": ""
+          },
+          {
+            "label": "透明度 %",
+            "value": "100",
+            "placeholder": ""
+          }
+        ]
+      }
+    ]
+  },
+  "canvasCounts": {
+    "old": [
+      {
+        "name": "resize-release",
+        "nodes": 304,
+        "selected": 300,
+        "explicitScans": 3,
+        "implicitScans": 300
+      },
+      {
+        "name": "resize-release",
+        "nodes": 3004,
+        "selected": 3000,
+        "explicitScans": 3,
+        "implicitScans": 3000
+      },
+      {
+        "name": "alt-copy-sample",
+        "selected": 16,
+        "explicitScans": 21,
+        "implicitScans": 64
+      },
+      {
+        "name": "alt-copy-off-sample",
+        "selected": 16,
+        "explicitScans": 19,
+        "implicitScans": 32
+      },
+      {
+        "name": "alt-copy-reuse-sample",
+        "selected": 16,
+        "explicitScans": 19,
+        "implicitScans": 32
+      },
+      {
+        "name": "smart-snap-sample",
+        "selected": 151,
+        "nodes": 304,
+        "selectionProbes": 1212
+      },
+      {
+        "name": "finish-multi-move",
+        "selected": 32,
+        "explicitScans": 68,
+        "implicitScans": 33
+      }
+    ],
+    "new": [
+      {
+        "name": "resize-release",
+        "nodes": 304,
+        "selected": 300,
+        "explicitScans": 3,
+        "implicitScans": 0
+      },
+      {
+        "name": "resize-release",
+        "nodes": 3004,
+        "selected": 3000,
+        "explicitScans": 3,
+        "implicitScans": 0
+      },
+      {
+        "name": "alt-copy-sample",
+        "selected": 16,
+        "explicitScans": 6,
+        "implicitScans": 32
+      },
+      {
+        "name": "alt-copy-off-sample",
+        "selected": 16,
+        "explicitScans": 4,
+        "implicitScans": 0
+      },
+      {
+        "name": "alt-copy-reuse-sample",
+        "selected": 16,
+        "explicitScans": 4,
+        "implicitScans": 0
+      },
+      {
+        "name": "smart-snap-sample",
+        "selected": 151,
+        "nodes": 304,
+        "selectionProbes": 0
+      },
+      {
+        "name": "finish-multi-move",
+        "selected": 32,
+        "explicitScans": 36,
+        "implicitScans": 33
+      }
+    ]
+  },
+  "verification": {
+    "focusedFiles": 13,
+    "focusedTestsPassed": 102,
+    "typecheck": "passed",
+    "inspectorNegativeControl": "Each old run: exactly 2 work-count failures, 2 intentionally unselected tests. Each new run: 2 passes, 2 intentionally unselected tests.",
+    "canvasNegativeControl": "5 work-count failures, 1 pass; semantic assertions preceding the work-count checks passed.",
+    "limits": [
+      "No GPU/browser/socket test, rendering-quality reduction, or WASM rebuild in this worker.",
+      "All earlier retained-spy OOM measurements are discarded as a harness artifact.",
+      "Canvas counts are deterministic; Canvas wall-clock measurements ran concurrently with other work and are not used for speed claims.",
+      "A full-suite/new-WASM cross-worker integration rerun is owned by the parent/reviewer."
+    ],
+    "additionalNodeContractsPassed": 14,
+    "reproducerValidation": "bash -n passed; wrong baseline rejected before replacement; full recorded ABBA used equivalent bounded workflow without the added JSON-report validator."
+  }
+}

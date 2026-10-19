@@ -13,7 +13,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 5;
 pub const MAX_WORKSPACE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 pub const MAX_DOCUMENTS: i64 = 10_000;
 const MAX_REVISION: i64 = 9_007_199_254_740_991;
@@ -336,6 +336,12 @@ impl WorkspaceStore {
                     .await
                     .map_err(|_| corrupt("Required local session schema is missing"))?;
             }
+            if version >= 4 {
+                crate::automation::inspect(pool).await?;
+            }
+            if version >= 5 {
+                crate::automation::inspect_edits(pool).await?;
+            }
             let broken: i64 = sqlx::query_scalar("SELECT count(*) FROM documents d LEFT JOIN revisions r ON r.document_id=d.id AND r.revision=d.head_revision WHERE r.revision IS NULL").fetch_one(pool).await.map_err(db)?;
             if broken != 0 {
                 return Err(corrupt("Workspace head references a missing revision"));
@@ -399,7 +405,24 @@ impl WorkspaceStore {
                 .await
                 .map_err(db)?;
         }
+        if version < 4 {
+            crate::automation::migrate(&mut tx).await?;
+            sqlx::query("PRAGMA user_version=4")
+                .execute(&mut *tx)
+                .await
+                .map_err(db)?;
+        }
+        if version < 5 {
+            crate::automation::migrate_edits(&mut tx).await?;
+            sqlx::query("PRAGMA user_version=5")
+                .execute(&mut *tx)
+                .await
+                .map_err(db)?;
+        }
         tx.commit().await.map_err(db)
+    }
+    pub(crate) fn automation_pool(&self) -> &SqlitePool {
+        &self.pool
     }
     pub async fn close(&self) {
         self.pool.close().await;

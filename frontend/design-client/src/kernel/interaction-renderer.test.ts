@@ -4,6 +4,7 @@ import { InteractionRenderer } from './interaction-renderer'
 import { PageTranslation } from './page-translation'
 import type { InteractionProps } from './interaction-layers'
 import {KernelClient} from './client'
+import * as geometry from '../geometry'
 
 const worker = vi.hoisted(() => ({ jobs: [] as any[], poses:[] as any[],stops:[] as number[],released:[] as number[],disposed: 0 }))
 vi.mock('./client', () => ({ KernelClient: class {
@@ -31,6 +32,91 @@ function fixture(dependent = false, zoom = 1, extent = 100) {
   owner.prepare(props, doc.pages[0].id, view, 1, 'analytic', 'webgpu')
   return { doc, root, props, owner, view }
 }
+
+test('live capture prepares 3,000 page roots without rescanning the scene for every root', () => {
+  const doc = blank(), count = 3000
+  for (let i = 0; i < count; i++) {
+    const root = node('frame', (i % 100) * 40, Math.floor(i / 100) * 40, 30, 30)
+    root.blend = 'normal'
+    if (!i) root.effects = [{ ...effect('background-blur'), radius: 2 }]
+    doc.nodes[root.id] = root; doc.pages[0].children.push(root.id)
+  }
+  const entries = geometry.scene(doc, doc.pages[0].id)
+  let identityReads = 0
+  const scene = vi.spyOn(geometry, 'scene').mockReturnValue(entries.map(entry => new Proxy(entry, {
+    get(target, key, receiver) {
+      if (key === 'id' || key === 'ancestors') identityReads++
+      return Reflect.get(target, key, receiver)
+    },
+  })))
+  const owner = new InteractionRenderer(vi.fn()); owners.push(owner)
+  try {
+    owner.prepare({ document: doc, selection: [doc.pages[0].children[0]], active: false,
+      epoch: 1, control: { current: null }, onReady() {} }, doc.pages[0].id,
+    { x: 0, y: 0, zoom: 1 }, 1, 'analytic', 'cpu', undefined, { width: 640, height: 480 })
+    expect(scene).toHaveBeenCalledOnce()
+    expect(worker.jobs).toHaveLength(1)
+    expect(worker.jobs[0].options.view.zoom).toBe(1)
+    expect(worker.jobs[0].options.interactionWindow).toEqual({ x: 112, y: 112, w: 58, h: 58 })
+    // Count actual production data access, not wall-clock time or a helper
+    // invocation. The old per-root filter performs almost 18 million reads.
+    expect(identityReads).toBeLessThan(count * 20)
+  } finally { scene.mockRestore() }
+})
+
+test.each([60, 90, 120, 144])('3,000-node %i Hz motion coalesces pending inputs and rejects replaced-selection pixels', async hz => {
+  const doc = blank(), count = 3000
+  for (let i = 0; i < count; i++) {
+    const root = node('frame', i % 100 * 40, Math.floor(i / 100) * 40, 30, 30)
+    root.blend = 'normal'
+    if (!i) root.effects = [{ ...effect('background-blur'), radius: 2 }]
+    doc.nodes[root.id] = root; doc.pages[0].children.push(root.id)
+  }
+  const shared = new KernelClient(), published: number[] = []
+  const owner = new InteractionRenderer(() => published.push(...owner.tiles.flatMap(tile => tile.gpuTile ? [tile.gpuTile] : [])), shared)
+  owners.push(owner)
+  const initial = doc.pages[0].children[0], replacement = doc.pages[0].children[1]
+  let props: InteractionProps = { document: doc, selection: [initial], active: true, epoch: 1, control: { current: null }, onReady() {} }
+  const view = { x: -.25, y: .125, zoom: 1 }, size = { width: 640, height: 480 }
+  const prepare = () => owner.prepare(props, doc.pages[0].id, view, 1, 'analytic', 'cpu', undefined, size)
+  const microtasks = async () => { for (let i = 0; i < 4; i++) await Promise.resolve() }
+  const replaceFrame = Math.floor(hz / 3), completeFrame = Math.floor(hz / 2)
+  let elapsed = 0
+  const clock = vi.spyOn(performance, 'now').mockImplementation(() => elapsed)
+  try {
+  prepare()
+  expect(worker.jobs).toHaveLength(1)
+  for (let frame = 1; frame <= hz; frame++) {
+    elapsed = frame * 1000 / hz
+    if (frame === replaceFrame) { props = { ...props, selection: [replacement] }; prepare() }
+    if (frame > replaceFrame) {
+      expect(owner.control.apply(doc, { [replacement]: { transform: [1, 0, 0, 1, 40 + elapsed / 8, -elapsed / 16] } })).not.toBeNull()
+      prepare()
+    }
+    if (frame === completeFrame) {
+      worker.jobs[0].resolve({ gpuTile: 701, bytes: new Uint8Array() }); await microtasks()
+      expect(worker.released).toContain(701)
+      expect(owner.ready).toBe(false)
+      expect(worker.jobs).toHaveLength(2)
+    }
+    expect(worker.jobs.length).toBeLessThanOrEqual(2)
+    expect(published).not.toContain(701)
+  }
+  worker.jobs[1].resolve({ gpuTile: 702, bytes: new Uint8Array() }); await microtasks()
+  expect(worker.jobs).toHaveLength(3)
+  const final = worker.jobs[2]
+  expect(final.document.nodes[replacement].transform).toEqual([1, 0, 0, 1, 165, -62.5])
+  expect(final.options.view.zoom).toBe(1)
+  final.resolve({ gpuTile: 703, bytes: new Uint8Array() }); await microtasks()
+  expect(owner.tiles[0].gpuTile).toBe(703)
+  expect(owner.error).toBe('')
+  expect(owner.presentedInput.sequence).toBe(hz - replaceFrame)
+  expect(owner.presentedInput.at).toBe(1000)
+  expect(worker.jobs).toHaveLength(3)
+  expect(published).not.toContain(701)
+  expect(published).toContain(703)
+  } finally { clock.mockRestore(); shared.dispose() }
+})
 
 test('exact tiled captures publish atomically and release partial failed replacements', async () => {
   const {doc,root,owner,view}=fixture(true)

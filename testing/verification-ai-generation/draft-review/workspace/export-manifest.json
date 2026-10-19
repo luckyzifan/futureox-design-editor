@@ -1,0 +1,553 @@
+{
+  "format": "futureox.design-code.v1",
+  "language": "html-css",
+  "nodeIdMap": {
+    "42000000-0000-4000-8000-000000000001": {
+      "elementId": "design-node-1",
+      "selector": "#design-node-1"
+    },
+    "42000000-0000-4000-8000-000000000002": {
+      "elementId": "design-node-2",
+      "selector": "#design-node-2"
+    },
+    "42000000-0000-4000-8000-000000000003": {
+      "elementId": "design-node-3",
+      "selector": "#design-node-3"
+    },
+    "42000000-0000-4000-8000-000000000004": {
+      "elementId": "design-node-4",
+      "selector": "#design-node-4"
+    },
+    "42000000-0000-4000-8000-000000000005": {
+      "elementId": "design-node-5",
+      "selector": "#design-node-5"
+    },
+    "42000000-0000-4000-8000-000000000006": {
+      "elementId": "design-node-6",
+      "selector": "#design-node-6"
+    },
+    "42000000-0000-4000-8000-000000000007": {
+      "elementId": "design-node-7",
+      "selector": "#design-node-7"
+    },
+    "42000000-0000-4000-8000-000000000008": {
+      "elementId": "design-node-8",
+      "selector": "#design-node-8"
+    },
+    "42000000-0000-4000-8000-000000000009": {
+      "elementId": "design-node-9",
+      "selector": "#design-node-9"
+    },
+    "42000000-0000-4000-8000-000000000010": {
+      "elementId": "design-node-10",
+      "selector": "#design-node-10"
+    },
+    "42000000-0000-4000-8000-000000000011": {
+      "elementId": "design-node-11",
+      "selector": "#design-node-11"
+    },
+    "42000000-0000-4000-8000-000000000012": {
+      "elementId": "design-node-12",
+      "selector": "#design-node-12"
+    },
+    "42000000-0000-4000-8000-000000000013": {
+      "elementId": "design-node-13",
+      "selector": "#design-node-13"
+    },
+    "42000000-0000-4000-8000-000000000014": {
+      "elementId": "design-node-14",
+      "selector": "#design-node-14"
+    },
+    "42000000-0000-4000-8000-000000000015": {
+      "elementId": "design-node-15",
+      "selector": "#design-node-15"
+    },
+    "42000000-0000-4000-8000-000000000016": {
+      "elementId": "design-node-16",
+      "selector": "#design-node-16"
+    },
+    "42000000-0000-4000-8000-000000000017": {
+      "elementId": "design-node-17",
+      "selector": "#design-node-17"
+    },
+    "42000000-0000-4000-8000-000000000018": {
+      "elementId": "design-node-18",
+      "selector": "#design-node-18"
+    },
+    "42000000-0000-4000-8000-000000000019": {
+      "elementId": "design-node-19",
+      "selector": "#design-node-19"
+    },
+    "42000000-0000-4000-8000-000000000020": {
+      "elementId": "design-node-20",
+      "selector": "#design-node-20"
+    },
+    "42000000-0000-4000-8000-000000000021": {
+      "elementId": "design-node-21",
+      "selector": "#design-node-21"
+    },
+    "42000000-0000-4000-8000-000000000022": {
+      "elementId": "design-node-22",
+      "selector": "#design-node-22"
+    },
+    "42000000-0000-4000-8000-000000000023": {
+      "elementId": "design-node-23",
+      "selector": "#design-node-23"
+    },
+    "42000000-0000-4000-8000-000000000024": {
+      "elementId": "design-node-24",
+      "selector": "#design-node-24"
+    },
+    "42000000-0000-4000-8000-000000000025": {
+      "elementId": "design-node-25",
+      "selector": "#design-node-25"
+    },
+    "42000000-0000-4000-8000-000000000026": {
+      "elementId": "design-node-26",
+      "selector": "#design-node-26"
+    },
+    "42000000-0000-4000-8000-000000000027": {
+      "elementId": "design-node-27",
+      "selector": "#design-node-27"
+    },
+    "42000000-0000-4000-8000-000000000028": {
+      "elementId": "design-node-28",
+      "selector": "#design-node-28"
+    },
+    "42000000-0000-4000-8000-000000000029": {
+      "elementId": "design-node-29",
+      "selector": "#design-node-29"
+    },
+    "42000000-0000-4000-8000-000000000030": {
+      "elementId": "design-node-30",
+      "selector": "#design-node-30"
+    },
+    "42000000-0000-4000-8000-000000000031": {
+      "elementId": "design-node-31",
+      "selector": "#design-node-31"
+    },
+    "42000000-0000-4000-8000-000000000032": {
+      "elementId": "design-node-32",
+      "selector": "#design-node-32"
+    },
+    "42000000-0000-4000-8000-000000000033": {
+      "elementId": "design-node-33",
+      "selector": "#design-node-33"
+    },
+    "42000000-0000-4000-8000-000000000034": {
+      "elementId": "design-node-34",
+      "selector": "#design-node-34"
+    },
+    "42000000-0000-4000-8000-000000000035": {
+      "elementId": "design-node-35",
+      "selector": "#design-node-35"
+    },
+    "42000000-0000-4000-8000-000000000036": {
+      "elementId": "design-node-36",
+      "selector": "#design-node-36"
+    },
+    "42000000-0000-4000-8000-000000000037": {
+      "elementId": "design-node-37",
+      "selector": "#design-node-37"
+    },
+    "42000000-0000-4000-8000-000000000038": {
+      "elementId": "design-node-38",
+      "selector": "#design-node-38"
+    },
+    "42000000-0000-4000-8000-000000000039": {
+      "elementId": "design-node-39",
+      "selector": "#design-node-39"
+    },
+    "42000000-0000-4000-8000-000000000040": {
+      "elementId": "design-node-40",
+      "selector": "#design-node-40"
+    },
+    "42000000-0000-4000-8000-000000000041": {
+      "elementId": "design-node-41",
+      "selector": "#design-node-41"
+    },
+    "42000000-0000-4000-8000-000000000042": {
+      "elementId": "design-node-42",
+      "selector": "#design-node-42"
+    },
+    "42000000-0000-4000-8000-000000000043": {
+      "elementId": "design-node-43",
+      "selector": "#design-node-43"
+    },
+    "42000000-0000-4000-8000-000000000044": {
+      "elementId": "design-node-44",
+      "selector": "#design-node-44"
+    },
+    "42000000-0000-4000-8000-000000000045": {
+      "elementId": "design-node-45",
+      "selector": "#design-node-45"
+    },
+    "42000000-0000-4000-8000-000000000046": {
+      "elementId": "design-node-46",
+      "selector": "#design-node-46"
+    },
+    "42000000-0000-4000-8000-000000000047": {
+      "elementId": "design-node-47",
+      "selector": "#design-node-47"
+    },
+    "42000000-0000-4000-8000-000000000048": {
+      "elementId": "design-node-48",
+      "selector": "#design-node-48"
+    },
+    "42000000-0000-4000-8000-000000000049": {
+      "elementId": "design-node-49",
+      "selector": "#design-node-49"
+    },
+    "42000000-0000-4000-8000-000000000050": {
+      "elementId": "design-node-50",
+      "selector": "#design-node-50"
+    },
+    "42000000-0000-4000-8000-000000000051": {
+      "elementId": "design-node-51",
+      "selector": "#design-node-51"
+    },
+    "42000000-0000-4000-8000-000000000052": {
+      "elementId": "design-node-52",
+      "selector": "#design-node-52"
+    },
+    "42000000-0000-4000-8000-000000000053": {
+      "elementId": "design-node-53",
+      "selector": "#design-node-53"
+    },
+    "42000000-0000-4000-8000-000000000054": {
+      "elementId": "design-node-54",
+      "selector": "#design-node-54"
+    },
+    "42000000-0000-4000-8000-000000000055": {
+      "elementId": "design-node-55",
+      "selector": "#design-node-55"
+    },
+    "42000000-0000-4000-8000-000000000056": {
+      "elementId": "design-node-56",
+      "selector": "#design-node-56"
+    },
+    "42000000-0000-4000-8000-000000000057": {
+      "elementId": "design-node-57",
+      "selector": "#design-node-57"
+    },
+    "42000000-0000-4000-8000-000000000058": {
+      "elementId": "design-node-58",
+      "selector": "#design-node-58"
+    },
+    "42000000-0000-4000-8000-000000000059": {
+      "elementId": "design-node-59",
+      "selector": "#design-node-59"
+    },
+    "42000000-0000-4000-8000-000000000060": {
+      "elementId": "design-node-60",
+      "selector": "#design-node-60"
+    },
+    "42000000-0000-4000-8000-000000000061": {
+      "elementId": "design-node-61",
+      "selector": "#design-node-61"
+    },
+    "42000000-0000-4000-8000-000000000062": {
+      "elementId": "design-node-62",
+      "selector": "#design-node-62"
+    },
+    "42000000-0000-4000-8000-000000000063": {
+      "elementId": "design-node-63",
+      "selector": "#design-node-63"
+    },
+    "42000000-0000-4000-8000-000000000064": {
+      "elementId": "design-node-64",
+      "selector": "#design-node-64"
+    },
+    "42000000-0000-4000-8000-000000000065": {
+      "elementId": "design-node-65",
+      "selector": "#design-node-65"
+    },
+    "42000000-0000-4000-8000-000000000066": {
+      "elementId": "design-node-66",
+      "selector": "#design-node-66"
+    },
+    "42000000-0000-4000-8000-000000000067": {
+      "elementId": "design-node-67",
+      "selector": "#design-node-67"
+    },
+    "42000000-0000-4000-8000-000000000068": {
+      "elementId": "design-node-68",
+      "selector": "#design-node-68"
+    },
+    "42000000-0000-4000-8000-000000000069": {
+      "elementId": "design-node-69",
+      "selector": "#design-node-69"
+    },
+    "42000000-0000-4000-8000-000000000070": {
+      "elementId": "design-node-70",
+      "selector": "#design-node-70"
+    },
+    "42000000-0000-4000-8000-000000000071": {
+      "elementId": "design-node-71",
+      "selector": "#design-node-71"
+    },
+    "42000000-0000-4000-8000-000000000072": {
+      "elementId": "design-node-72",
+      "selector": "#design-node-72"
+    },
+    "42000000-0000-4000-8000-000000000073": {
+      "elementId": "design-node-73",
+      "selector": "#design-node-73"
+    },
+    "42000000-0000-4000-8000-000000000074": {
+      "elementId": "design-node-74",
+      "selector": "#design-node-74"
+    },
+    "42000000-0000-4000-8000-000000000075": {
+      "elementId": "design-node-75",
+      "selector": "#design-node-75"
+    },
+    "42000000-0000-4000-8000-000000000076": {
+      "elementId": "design-node-76",
+      "selector": "#design-node-76"
+    },
+    "42000000-0000-4000-8000-000000000077": {
+      "elementId": "design-node-77",
+      "selector": "#design-node-77"
+    },
+    "42000000-0000-4000-8000-000000000078": {
+      "elementId": "design-node-78",
+      "selector": "#design-node-78"
+    },
+    "42000000-0000-4000-8000-000000000079": {
+      "elementId": "design-node-79",
+      "selector": "#design-node-79"
+    },
+    "42000000-0000-4000-8000-000000000080": {
+      "elementId": "design-node-80",
+      "selector": "#design-node-80"
+    },
+    "42000000-0000-4000-8000-000000000081": {
+      "elementId": "design-node-81",
+      "selector": "#design-node-81"
+    },
+    "42000000-0000-4000-8000-000000000082": {
+      "elementId": "design-node-82",
+      "selector": "#design-node-82"
+    },
+    "42000000-0000-4000-8000-000000000083": {
+      "elementId": "design-node-83",
+      "selector": "#design-node-83"
+    },
+    "42000000-0000-4000-8000-000000000084": {
+      "elementId": "design-node-84",
+      "selector": "#design-node-84"
+    },
+    "42000000-0000-4000-8000-000000000085": {
+      "elementId": "design-node-85",
+      "selector": "#design-node-85"
+    },
+    "42000000-0000-4000-8000-000000000086": {
+      "elementId": "design-node-86",
+      "selector": "#design-node-86"
+    },
+    "42000000-0000-4000-8000-000000000087": {
+      "elementId": "design-node-87",
+      "selector": "#design-node-87"
+    },
+    "42000000-0000-4000-8000-000000000088": {
+      "elementId": "design-node-88",
+      "selector": "#design-node-88"
+    },
+    "42000000-0000-4000-8000-000000000089": {
+      "elementId": "design-node-89",
+      "selector": "#design-node-89"
+    }
+  },
+  "assets": [],
+  "warnings": [
+    {
+      "code": "APPROXIMATE_HTML",
+      "message": "HTML/CSS is an editable approximation. Use preview.capture or native export for renderer-faithful pixels; no pixel-equivalence claim is made."
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000007"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000008"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000011"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000013"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000015"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000017"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000019"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000021"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000023"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000025"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000026"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000030"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000031"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000033"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000035"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000036"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000038"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000041"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000042"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000043"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000045"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000051"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000052"
+    },
+    {
+      "code": "LAYOUT_APPROXIMATION",
+      "message": "CSS flex/grid uses resolved dimensions but may size and wrap differently from the design layout engine.",
+      "nodeId": "42000000-0000-4000-8000-000000000053"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000066"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000067"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000068"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000073"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000074"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000075"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000076"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000084"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000085"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000086"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000088"
+    },
+    {
+      "code": "FONT_METRICS",
+      "message": "HTML uses installed browser fonts; embedded font binaries, native shaping, OpenType features and paragraph metrics are not exported.",
+      "nodeId": "42000000-0000-4000-8000-000000000089"
+    }
+  ],
+  "fidelity": "approximate",
+  "sourceDocumentId": "a55b9a32-4d52-40f5-8367-fe111bed758a",
+  "pageId": "b6c8fcd5-0d71-4f49-88fc-3530c50c0736",
+  "resourceOnly": true
+}

@@ -1,0 +1,55 @@
+TAP version 13
+# (node:12) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:12) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+# Subtest: disjoint resident tiles do no fragment flattening while preserving all 64 draws
+not ok 1 - disjoint resident tiles do no fragment flattening while preserving all 64 draws
+  ---
+  duration_ms: 7.029374
+  type: 'test'
+  location: '<checkout>/frontend/design-client/src/kernel/gpu/composite-draw-plan-cpu.test.mjs:33:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    disjoint tiles performed 2016 redundant fragment flattenings
+    
+    2016 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 2016
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<checkout>/frontend/design-client/src/kernel/gpu/composite-draw-plan-cpu.test.mjs:46:10)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1382:25)
+    Test.start (node:internal/test_runner/test:1242:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+  ...
+# Subtest: touching, half-open, fractional, signed-zero and degenerate rectangles retain exact metadata
+ok 2 - touching, half-open, fractional, signed-zero and degenerate rectangles retain exact metadata
+  ---
+  duration_ms: 4.371158
+  type: 'test'
+  ...
+# Subtest: 1,500 generated scenes preserve fragment, tile and sampling order byte-for-byte
+ok 3 - 1,500 generated scenes preserve fragment, tile and sampling order byte-for-byte
+  ---
+  duration_ms: 631.584477
+  type: 'test'
+  ...
+# Subtest: CPU sampled texture pixels are identical through progressive layers, blends and fractional cameras
+ok 4 - CPU sampled texture pixels are identical through progressive layers, blends and fractional cameras
+  ---
+  duration_ms: 134.283574
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 3
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 928.952108

@@ -107,7 +107,50 @@ export function stampKeys(d: DesignDocument, root: string) {
   }
   walk(root, true)
 }
+/** JSON-object key order is not identity. Arrays (including mode columns)
+ * retain order. Used only to prove an exact design-system reference migration. */
+function equivalentJson(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false
+  if (Array.isArray(a)) return a.length === (b as unknown[]).length && a.every((v, i) => equivalentJson(v, (b as unknown[])[i]))
+  const x = a as Record<string, unknown>, y = b as Record<string, unknown>, keys = Object.keys(x)
+  return keys.length === Object.keys(y).length && keys.every(key => Object.hasOwn(y, key) && equivalentJson(x[key], y[key]))
+}
+/** Prove complete bijective mode-key renames, including atomic API batches.
+ * Every changed column must replace a removed name with a fresh name at the
+ * same position, and the entire system must equal the corresponding exact
+ * values/default/active remap. Reorders, merges and value edits are ambiguous
+ * and retain normal override capture. Computed once per edit, not per node. */
+function variableModeRenames(before: DesignDocument, after: DesignDocument) {
+  const a = before.designSystem, b = after.designSystem
+  if (!a || !b || a === b) return
+  const maps = new Map<string, Map<string, string>>(), collections = { ...a.collections }
+  for (const [id, old] of Object.entries(a.collections)) {
+    const next = b.collections[id]
+    if (!next || old.modes.length !== next.modes.length) return
+    if (same(old.modes, next.modes)) continue
+    const modes = new Map<string, string>()
+    for (let i = 0; i < old.modes.length; i++) if (old.modes[i] !== next.modes[i]) {
+      const from = old.modes[i], to = next.modes[i]
+      if (next.modes.includes(from) || old.modes.includes(to)) return
+      modes.set(from, to)
+    }
+    maps.set(id, modes)
+    collections[id] = { ...old, modes: next.modes, defaultMode: modes.get(old.defaultMode) ?? old.defaultMode }
+  }
+  if (!maps.size) return
+  const variables = Object.fromEntries(Object.entries(a.variables).map(([key, v]) => {
+    const modes = maps.get(v.collection)
+    return [key, modes ? { ...v, values: Object.fromEntries(Object.entries(v.values).map(([mode, value]) => [modes.get(mode) ?? mode, value])) } : v]
+  }))
+  const activeModes = Object.fromEntries(Object.entries(a.activeModes).map(([id, mode]) => [id, maps.get(id)?.get(mode) ?? mode]))
+  if (!equivalentJson({ ...a, collections, variables, activeModes }, b)) return
+  return maps
+}
 export function captureOverrides(before: DesignDocument, d: DesignDocument) {
+  const modeRenames = variableModeRenames(before, d)
+  const changedModeCollections = new Set(Object.keys(before.designSystem?.collections || {}).filter(id =>
+    !same(before.designSystem?.collections[id].modes, d.designSystem?.collections[id]?.modes)))
   // A library release replaces its definitions. Do not turn those replacements
   // into user overrides or reject their regenerated instance children.
   const replaced = new Set<string>()
@@ -142,6 +185,15 @@ export function captureOverrides(before: DesignDocument, d: DesignDocument) {
     for (const field of overrideFields) {
       if (key === '$root' && ['transform', 'visible', 'locked', 'constraints', 'variableModes'].includes(field))
         continue
+      if (field === 'variableModes' && old.instanceOrigin && !modeRenames &&
+        !Object.hasOwn(before.nodes[owner]?.instance?.overrides[key] || {}, 'variableModes') &&
+        !Object.hasOwn(d.nodes[owner]?.instance?.overrides[key] || {}, 'variableModes') &&
+        Object.entries(old.variableModes || {}).some(([id, mode]) => changedModeCollections.has(id) && next.variableModes?.[id] !== mode))
+        throw new Error('变量模式重命名与其他设计系统修改无法安全合并；请分开操作以保留实例继承')
+      if (field === 'variableModes' && old.instanceOrigin && modeRenames && old.variableModes &&
+        !Object.hasOwn(before.nodes[owner]?.instance?.overrides[key] || {}, 'variableModes') &&
+        !Object.hasOwn(d.nodes[owner]?.instance?.overrides[key] || {}, 'variableModes') &&
+        equivalentJson(Object.fromEntries(Object.entries(old.variableModes).map(([id, mode]) => [id, modeRenames.get(id)?.get(mode) ?? mode])), next.variableModes)) continue
       if (!same(old[field], next[field]))
         changed[field] = cloneValue(
           next[field] ?? (['bindings', 'styleRefs', 'variableModes'].includes(field) ? {} : null),

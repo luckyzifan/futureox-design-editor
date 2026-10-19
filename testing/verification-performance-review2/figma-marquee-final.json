@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "scenes": 3000,
+  "comparisons": 12000,
+  "nonempty": 11486,
+  "negativeControl": {
+    "removedAncestorEligibility": 7602
+  },
+  "currentSourceSha256": "801bb516413fa6fc0f6bb9aa00e0f9e69a1ace0e1237a8a0e04eff0b579350d8",
+  "baseline": "Exact extracted pre-expansion Canvas marquee expression plus Editor.select deduplication",
+  "scope": "Existing Figma selection order and eligibility only; CPU JavaScript; no browser/GPU"
+}

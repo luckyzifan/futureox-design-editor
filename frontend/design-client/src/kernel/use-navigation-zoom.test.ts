@@ -89,3 +89,22 @@ test('unmount removes all gesture frame callbacks and visibility subscriptions',
   h.dispose()
   expect(h.pending).toBe(0); expect(h.listeners).toBe(0)
 })
+
+test('the normal hook keeps conservative 160ms settling with one live RAF subscription', () => {
+  const h = harness()
+  h.render(1)
+  for (let index = 1; index <= 20; index++) {
+    h.frame(index * 8)
+    expect(h.render(1 + index).active).toBe(true)
+    h.render(1 + index)
+    expect(h.pending).toBe(1)
+  }
+  for (let at = 168; at < 320; at += 8) {
+    h.frame(at)
+    expect(h.render(21).active).toBe(true)
+    expect(h.pending).toBe(1)
+  }
+  h.frame(320)
+  expect(h.render(21).active).toBe(false)
+  expect(h.pending).toBe(0)
+})

@@ -1,0 +1,122 @@
+{
+  "root_bounds": {
+    "nodes": 3000,
+    "baselineReads": 18000000,
+    "optimizedReads": 9000,
+    "baselineMedianMs": 201.67135700000017,
+    "optimizedMedianMs": 9.16130499999963,
+    "baseline": [
+      272.71362499999987,
+      264.99264500000027,
+      249.23825399999987,
+      226.0345699999998,
+      204.60122,
+      223.64677999999958,
+      257.2474459999994,
+      201.09726599999976,
+      200.14696300000014,
+      201.67135700000017,
+      147.56636600000002,
+      153.57706999999937,
+      148.45398600000044,
+      143.93584199999987,
+      156.88222499999938
+    ],
+    "optimized": [
+      11.542226999999912,
+      11.248352999999952,
+      8.413387000000057,
+      8.821362000000136,
+      20.6911699999996,
+      7.838458999999602,
+      7.736502000000655,
+      8.138652999999977,
+      9.405563000000257,
+      9.018699000000197,
+      10.79980500000056,
+      13.967705999999453,
+      11.075539999999819,
+      7.370724999999766,
+      9.16130499999963
+    ],
+    "cpuWasm": {
+      "options": {
+        "pageId": "bf6726a4-f45d-447b-9db6-c16137eab48c",
+        "width": 18,
+        "height": 19,
+        "view": {
+          "x": 3,
+          "y": 3,
+          "zoom": 1
+        },
+        "transparent": false,
+        "grid": false,
+        "rasterProfile": "analytic"
+      },
+      "comparedBytes": 1368,
+      "sha256": "78a3b6046e69a9b3051e00ddc77af665301f3fe67eb6f0d762c9d947d8220f35",
+      "byteDifferences": 0
+    }
+  },
+  "full_viewport": {
+    "nodes": 3016,
+    "options": {
+      "pageId": "c1b74445-a956-4b72-ad10-18db0ac158d3",
+      "width": 312,
+      "height": 284,
+      "view": {
+        "x": 45,
+        "y": 19,
+        "zoom": 1
+      },
+      "transparent": false,
+      "grid": false,
+      "rasterProfile": "analytic"
+    },
+    "comparedBytes": 354432,
+    "colors": 318,
+    "sha256": "5f9e2596bcf8590d090ea0848d484161fa071b1bbfee746f280a634d209a077e",
+    "byteDifferences": 0
+  },
+  "scope": "Root envelope preparation only. Not total interaction warm-up, raster speed, UI latency, or FPS.",
+  "cadence": [
+    {
+      "hz": 60,
+      "nodes": 3000,
+      "durationMs": 1000,
+      "renderSubmissions": 3,
+      "latestPublishedAtMs": 1000,
+      "replacedSelectionPublished": false
+    },
+    {
+      "hz": 90,
+      "nodes": 3000,
+      "durationMs": 1000,
+      "renderSubmissions": 3,
+      "latestPublishedAtMs": 1000,
+      "replacedSelectionPublished": false
+    },
+    {
+      "hz": 120,
+      "nodes": 3000,
+      "durationMs": 1000,
+      "renderSubmissions": 3,
+      "latestPublishedAtMs": 1000,
+      "replacedSelectionPublished": false
+    },
+    {
+      "hz": 144,
+      "nodes": 3000,
+      "durationMs": 1000,
+      "renderSubmissions": 3,
+      "latestPublishedAtMs": 1000,
+      "replacedSelectionPublished": false
+    }
+  ],
+  "tests": {
+    "focused": 121,
+    "finalOwned": 41,
+    "typecheck": "passed",
+    "baselineRegression": "failed as intended: 18,009,002 identity reads exceeds 60,000"
+  }
+}

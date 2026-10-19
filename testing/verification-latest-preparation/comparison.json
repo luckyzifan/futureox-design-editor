@@ -1,0 +1,57 @@
+{
+  "scope": "Native CPU only, desktop-dev opt-level 1. 62 batch-average samples per variant/node count; batch 4; ABBA order after the parent reported builds complete. Shared cloud host timings remain noisy.",
+  "rows": [
+    {
+      "nodes": 3500,
+      "before": {
+        "p50Ms": 32.504339625,
+        "p95Ms": 54.4849155,
+        "runs": [
+          36.317849,
+          31.795685749999997
+        ],
+        "samples": 62
+      },
+      "after": {
+        "p50Ms": 26.082074375,
+        "p95Ms": 31.415263999999997,
+        "runs": [
+          25.697716999999997,
+          26.71712825
+        ],
+        "samples": 62
+      },
+      "medianReductionPercent": 19.75817790514487,
+      "fixtureSha256": "1f3f6a2448e227361af1eac77b4a0d7ce58f21708e020987594c86faecf03a96",
+      "packetSha256": "142f8a6fa4ea49f18cf93be0c513ae7fc052f1e4e83bd9c75c7c18d22434a26c",
+      "packetBytes": 2715156,
+      "preparedNodes": 3500
+    },
+    {
+      "nodes": 10000,
+      "before": {
+        "p50Ms": 56.636675624999995,
+        "p95Ms": 68.4368305,
+        "runs": [
+          55.86117025,
+          57.002727500000006
+        ],
+        "samples": 62
+      },
+      "after": {
+        "p50Ms": 45.615787874999995,
+        "p95Ms": 56.2037705,
+        "runs": [
+          46.8573545,
+          45.240655999999994
+        ],
+        "samples": 62
+      },
+      "medianReductionPercent": 19.458924148322133,
+      "fixtureSha256": "f63466aa2754449a9be9234e6ae7fe6e1b5dd3f4d55bebedc13e17dca3284e37",
+      "packetSha256": "c05f8213bf1bcab4d4c72804b1e79dac4e5e2e4005358f591cdbe1dfe1e1287a",
+      "packetBytes": 3287236,
+      "preparedNodes": 10000
+    }
+  ]
+}

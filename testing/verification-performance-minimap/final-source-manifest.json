@@ -1,0 +1,38 @@
+{
+  "frontend/design-client/src/Canvas.tsx": {
+    "sha256": "b67532fbd90c7d130852f9c159c56bc9a8f1484798293cb3a7ac8257547b1ff4",
+    "bytes": 130528
+  },
+  "frontend/design-client/src/ViewControls.tsx": {
+    "sha256": "47e50dd89f40c04c5390822a697bf4ed780a8dfd831f369630c28f866ec2dc8e",
+    "bytes": 5507
+  },
+  "frontend/design-client/src/engine.ts": {
+    "sha256": "f19a4723382c57fff2beacfc5da53316d385e59e971641d75e16bc209d8860e4",
+    "bytes": 95825
+  },
+  "frontend/design-client/src/styles.css": {
+    "sha256": "e175d1da11b027da3dcf32728ca002380d9e75146a8f8eeda675b6b950a3e548",
+    "bytes": 67826
+  },
+  "frontend/design-client/src/canvas-navigation-check.tsx": {
+    "sha256": "9315a79227de68016f2d5ebaa83887a875e4b8b7fa5c26724d6128da9216260c",
+    "bytes": 7753
+  },
+  "frontend/design-client/scripts/check-canvas-pointer-release.ts": {
+    "sha256": "ed95842d69e5edc6fbcca9d52b12eaec0776d43dec48a4731e0be5724fa874a7",
+    "bytes": 28547
+  },
+  "frontend/design-client/src/canvas-minimap-removal.test.tsx": {
+    "sha256": "b5f3aa5c6932075042bf22350d71a413291f4532e4d6b8de370f42d89bb88a0f",
+    "bytes": 10116
+  },
+  "frontend/design-client/public/kernel/design_kernel_bg.wasm": {
+    "sha256": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+    "bytes": 39289919
+  },
+  "frontend/design-client/src/CanvasMinimap.tsx": {
+    "deleted": true,
+    "previousSha256": "924dcaa141811a808aaf2cc4c82311441b629b90d5fb3d606d8008b1fc2dc674"
+  }
+}

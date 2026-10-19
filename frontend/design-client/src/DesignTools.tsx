@@ -1,4 +1,6 @@
 import { modalKeyDown } from './modal-keyboard'
+import { VariablesPanel } from './VariablesPanel'
+import { commitPendingEdits } from './pending-edits'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor } from './engine'
 import { uid, defaultTextStyle, type DesignDocument } from './model'
@@ -8,9 +10,6 @@ import {
   publishLibrary,
   verifyLibrary,
   variableValue,
-  effectiveNodeVariableModes,
-  setEffectiveNodeVariableMode,
-  type VariableValue,
 } from './design-system'
 import { download } from './persistence'
 import type { Interaction, PrototypeAction } from './prototype'
@@ -20,16 +19,14 @@ import { ImportOwner, importStep } from './import-ownership'
 
 export type DesignToolsTab = 'variables' | 'styles' | 'libraries' | 'prototype'
 export function DesignTools({ editor, onClose, initialTab = 'variables', embedded = false }: { editor: Editor; onClose: () => void; initialTab?: DesignToolsTab; embedded?: boolean }) {
-  const { doc, selection } = useSyncExternalStore(editor.subscribe, editor.snapshot),
+  const { doc, selection } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     system = doc.designSystem || emptySystem(),
     n = doc.nodes[selection[0]]
   const [tab, setTab] = useState<DesignToolsTab>(initialTab),
     [name, setName] = useState(''),
-    [mode, setMode] = useState(''),
     [version, setVersion] = useState(1),
     [preview, setPreview] = useState(false),
-    [error, setError] = useState(''),
-    [property, setProperty] = useState('fills.0.color')
+    [error, setError] = useState('')
   const file = useRef<HTMLInputElement>(null)
   const [imports] = useState(() => new ImportOwner())
   useEffect(() => { imports.activate(); return () => imports.dispose() }, [imports])
@@ -62,7 +59,6 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
       editor.state.doc === before && editor.state.message !== label ? editor.state.message : '',
     )
   }
-  const selectedCollection = Object.keys(system.collections)[0]
   const parse = (kind: string, value: string) =>
     kind === 'number' ? Number(value) : kind === 'boolean' ? value === 'true' : value
   const interaction = (index: number, fn: (e: Interaction) => void) =>
@@ -85,16 +81,17 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
     if (value === undefined || value === '') delete (a as Record<string, unknown>)[key]
     else (a as Record<string, unknown>)[key] = value
   }
+  const close = () => { if (tab !== 'variables' || commitPendingEdits(editor)) onClose() }
   const accessibility = embedded
     ? { role: 'region' as const, 'aria-label': '原型属性' }
     : { role: 'dialog' as const, 'aria-modal': 'true' as const, 'aria-label': '设计系统与交互' }
   return (
     <>
       <div className={embedded ? 'embedded-design-tools' : 'feature-backdrop'}>
-        <div ref={dialog} className="design-tools" {...accessibility} tabIndex={-1} onKeyDown={embedded ? undefined : (event) => modalKeyDown(event, onClose)}>
+        <div ref={dialog} className="design-tools" {...accessibility} tabIndex={-1} onKeyDown={embedded ? undefined : (event) => modalKeyDown(event, close)}>
           {!embedded && <header>
             <strong>设计系统与交互</strong>
-            <button type="button" onClick={onClose}>
+            <button type="button" onClick={close}>
               关闭
             </button>
           </header>}
@@ -105,301 +102,13 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
               ['libraries', '组件库'],
               ['prototype', '交互原型'],
             ].map(([id, label]) => (
-              <button type="button" key={id} aria-pressed={tab === id} onClick={() => setTab(id as DesignToolsTab)}>
+              <button type="button" key={id} aria-pressed={tab === id} onClick={() => { if (tab !== 'variables' || commitPendingEdits(editor)) setTab(id as DesignToolsTab) }}>
                 {label}
               </button>
             ))}
           </nav>}
           {error && <p role="alert">{error}</p>}
-          {tab === 'variables' && (
-            <>
-              <div className="feature-row">
-                <input
-                  aria-label="集合名称"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="集合名称"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    change('新建变量集合', (s) => {
-                      const id = uid()
-                      s.collections[id] = {
-                        name: name || '主题',
-                        modes: ['Light', 'Dark'],
-                        defaultMode: 'Light',
-                      }
-                      s.activeModes[id] = 'Light'
-                    })
-                  }
-                >
-                  新建集合
-                </button>
-              </div>
-              {Object.entries(system.collections).map(([cid, c]) => (
-                <section key={cid}>
-                  <h3>{c.name}</h3>
-                  <select
-                    aria-label={`${c.name} 当前模式`}
-                    value={system.activeModes[cid] ?? c.defaultMode}
-                    onChange={(e) =>
-                      change('切换主题', (s) => {
-                        s.activeModes[cid] = e.target.value
-                      })
-                    }
-                  >
-                    {c.modes.map((m) => (
-                      <option key={m}>{m}</option>
-                    ))}
-                  </select>
-                  <input
-                    aria-label="新增模式名称"
-                    placeholder="新增模式"
-                    value={mode}
-                    onChange={(e) => setMode(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    disabled={!mode || c.modes.includes(mode)}
-                    onClick={() =>
-                      change('新增变量模式', (s) => {
-                        s.collections[cid].modes.push(mode)
-                        for (const v of Object.values(s.variables))
-                          if (v.collection === cid)
-                            v.values[mode] = structuredClone(v.values[c.defaultMode])
-                      })
-                    }
-                  >
-                    添加模式
-                  </button>
-                  {(['color', 'number', 'boolean', 'string'] as const).map((kind) => (
-                    <button
-                      type="button"
-                      key={kind}
-                      onClick={() =>
-                        change('新建变量', (s) => {
-                          s.variables[uid()] = {
-                            name: `新${kind}变量`,
-                            kind,
-                            collection: cid,
-                            values: Object.fromEntries(
-                              c.modes.map((m) => [
-                                m,
-                                kind === 'color'
-                                  ? '#7755dd'
-                                  : kind === 'number'
-                                    ? 16
-                                    : kind === 'boolean'
-                                      ? true
-                                      : '文字',
-                              ]),
-                            ),
-                          }
-                        })
-                      }
-                    >
-                      + {kind}
-                    </button>
-                  ))}
-                  {Object.entries(system.variables)
-                    .filter(([, v]) => v.collection === cid)
-                    .map(([id, v]) => (
-                      <div key={id} className="variable-row">
-                        <input
-                          aria-label="变量名称"
-                          value={v.name}
-                          onChange={(e) =>
-                            change('命名变量', (s) => {
-                              s.variables[id].name = e.target.value
-                            })
-                          }
-                        />
-                        <small>{v.kind}</small>
-                        {c.modes.map((m) => {
-                          const val = v.values[m]
-                          return (
-                            <label key={m}>
-                              {m}
-                              <select
-                                aria-label={`${v.name} ${m} 值类型`}
-                                value={typeof val === 'object' ? 'alias' : 'literal'}
-                                onChange={(e) =>
-                                  change('设置变量别名', (s) => {
-                                    const other = Object.entries(s.variables).find(
-                                      ([key, x]) => key !== id && x.kind === v.kind,
-                                    )
-                                    s.variables[id].values[m] =
-                                      e.target.value === 'alias' && other
-                                        ? { alias: other[0] }
-                                        : variableValue(s, id)
-                                  })
-                                }
-                              >
-                                <option value="literal">值</option>
-                                <option
-                                  value="alias"
-                                  disabled={
-                                    !Object.entries(system.variables).some(
-                                      ([key, x]) => key !== id && x.kind === v.kind,
-                                    )
-                                  }
-                                >
-                                  别名
-                                </option>
-                              </select>
-                              {typeof val === 'object' ? (
-                                <select
-                                  aria-label={`${v.name} ${m} 别名`}
-                                  value={val.alias}
-                                  onChange={(e) =>
-                                    change('修改别名', (s) => {
-                                      s.variables[id].values[m] = { alias: e.target.value }
-                                    })
-                                  }
-                                >
-                                  {Object.entries(system.variables)
-                                    .filter(([key, x]) => key !== id && x.kind === v.kind)
-                                    .map(([key, x]) => (
-                                      <option key={key} value={key}>
-                                        {x.name}
-                                      </option>
-                                    ))}
-                                </select>
-                              ) : (
-                                <input
-                                  aria-label={`${v.name} ${m}`}
-                                  value={String(val)}
-                                  onChange={(e) =>
-                                    change('修改变量值', (s) => {
-                                      s.variables[id].values[m] = parse(v.kind, e.target.value)
-                                    })
-                                  }
-                                />
-                              )}
-                            </label>
-                          )
-                        })}
-                      </div>
-                    ))}
-                </section>
-              ))}
-              {n && (
-                <section>
-                  <h3>{n.name} 的局部模式</h3>
-                  {Object.entries(system.collections).map(([cid, c]) => {
-                    const modes = selection.map(
-                      (id) => effectiveNodeVariableModes(doc.nodes[id])?.[cid],
-                    )
-                    const value = modes.every((mode) => mode === modes[0])
-                      ? modes[0] === undefined
-                        ? 'inherit'
-                        : `mode:${modes[0]}`
-                      : 'mixed'
-                    return (
-                      <label key={cid}>
-                        {c.name}
-                        <select
-                          aria-label={`${c.name} 图层局部模式`}
-                          value={value}
-                          onChange={(event) => {
-                            const mode = event.target.value
-                            editor.change('设置图层局部模式', (d) => {
-                              for (const id of selection)
-                                setEffectiveNodeVariableMode(
-                                  d,
-                                  id,
-                                  cid,
-                                  mode === 'inherit' ? undefined : mode.slice(5),
-                                )
-                            })
-                          }}
-                        >
-                          <option value="inherit">
-                            {selection.some((id) => {
-                              const node = doc.nodes[id]
-                              return (
-                                node.instance &&
-                                !node.instanceOrigin &&
-                                Object.hasOwn(node.instance.overrides.$root || {}, 'variableModes')
-                              )
-                            })
-                              ? '继承上级模式'
-                              : '继承上级或组件默认模式'}
-                          </option>
-                          {value === 'mixed' && (
-                            <option value="mixed" disabled>
-                              多种模式
-                            </option>
-                          )}
-                          {c.modes.map((mode) => (
-                            <option key={mode} value={`mode:${mode}`}>
-                              {mode}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )
-                  })}
-                  <h3>绑定到 {n.name}</h3>
-                  <select
-                    aria-label="绑定属性"
-                    value={property}
-                    onChange={(e) => setProperty(e.target.value)}
-                  >
-                    {[
-                      ['fills.0.color', '填充颜色'],
-                      ['fills.0.opacity', '填充透明度'],
-                      ['width', '宽度'],
-                      ['height', '高度'],
-                      ['opacity', '图层透明度'],
-                      ['visible', '图层可见性'],
-                      ['text', '文字内容'],
-                      ['fontSize', '字号'],
-                      ['layout.gap', '自动布局间距'],
-                      ['textStyle.weight', '字重'],
-                    ].map(([p, label]) => (
-                      <option key={p} value={p}>{label}</option>
-                    ))}
-                  </select>
-                  <select
-                    aria-label="绑定变量"
-                    value={n.bindings?.[property] || ''}
-                    onChange={(e) =>
-                      editor.update(
-                        selection,
-                        (n) => {
-                          n.bindings = { ...n.bindings }
-                          if (e.target.value) n.bindings[property] = e.target.value
-                          else delete n.bindings[property]
-                        },
-                        '绑定变量',
-                      )
-                    }
-                  >
-                    <option value="">未绑定</option>
-                    {Object.entries(system.variables)
-                      .filter(
-                        ([, v]) =>
-                          v.kind ===
-                          (property.endsWith('color')
-                            ? 'color'
-                            : property === 'text'
-                              ? 'string'
-                              : property === 'visible'
-                                ? 'boolean'
-                                : 'number'),
-                      )
-                      .map(([id, v]) => (
-                        <option key={id} value={id}>
-                          {v.name}
-                        </option>
-                      ))}
-                  </select>
-                </section>
-              )}
-            </>
-          )}
+          {tab === 'variables' && <VariablesPanel key={`${doc.id}:${editor.sessionGeneration}`} editor={editor} />}
           {tab === 'styles' && (
             <section>
               <input

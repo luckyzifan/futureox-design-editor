@@ -1,0 +1,945 @@
+{
+  "captureUtc": "2026-10-19T15:14:16.144095+00:00",
+  "recordedFinalRunStartUtc": "2026-10-19T15:09:10+00:00",
+  "captureMethod": "After-run SHA-256 of conservative relative-import dependency closure, plus actual WASM/font/config inputs; file modification timestamps checked against recorded run start. This is source provenance, not an executed-module trace or an atomic pre-run snapshot.",
+  "seedPaths": [
+    "frontend/design-mcp/examples/ai-generation.test.ts",
+    "frontend/design-mcp/examples/ai-generation.vitest.config.mjs",
+    "frontend/design-client/src/test-setup.ts"
+  ],
+  "files": [
+    {
+      "path": "frontend/design-client/package.json",
+      "sha256": "88b22b597e7b2cc25b964bf755c95015044fa5dcccce11ad94dc9f9396484f66",
+      "bytes": 3523,
+      "modifiedUtc": "2026-10-19T12:22:57.128824+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/public/fonts/NotoSansSC.ttf",
+      "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+      "bytes": 17772300,
+      "modifiedUtc": "2026-10-19T12:10:33.878701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/public/fonts/OFL.txt",
+      "sha256": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+      "bytes": 4388,
+      "modifiedUtc": "2026-10-19T12:10:33.878701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/public/fonts/source.json",
+      "sha256": "697be0de2092c4b4465172d78389223f5095a7c5af8073068612283cc1548886",
+      "bytes": 260,
+      "modifiedUtc": "2026-10-19T12:10:33.878701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/public/kernel/design_kernel_bg.wasm",
+      "sha256": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+      "bytes": 39289919,
+      "modifiedUtc": "2026-10-19T13:56:06.093520+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/Renderer.tsx",
+      "sha256": "7a04bac856dd5264a1ad4f1d0962e2023bcb6900fe3b2cdebd216635b9cc9570",
+      "bytes": 20738,
+      "modifiedUtc": "2026-10-19T12:10:33.888459+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/animation.ts",
+      "sha256": "3196960fb16e9ca3bd1f50c0e72c122cbc0f37be3624332363a13f05fd860c16",
+      "bytes": 9236,
+      "modifiedUtc": "2026-10-19T12:10:33.892437+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/append-document.ts",
+      "sha256": "2503ca6b576ba0671c1b6998c2cbe577b2abad9a413e4c36e643774dc212e788",
+      "bytes": 4824,
+      "modifiedUtc": "2026-10-19T12:10:33.892437+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/automation/bridge.ts",
+      "sha256": "1b499c802099e7754fcb82a00d03d80246cf33f0fdd3d4665638d9db392fb694",
+      "bytes": 11519,
+      "modifiedUtc": "2026-10-19T12:27:06.047140+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/automation/context.ts",
+      "sha256": "369a62cb126dd15210137855ad4c58c58aabd2b539adab5d2e4cd56f846254db",
+      "bytes": 22964,
+      "modifiedUtc": "2026-10-19T12:22:57.141466+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/automation/core.ts",
+      "sha256": "ab97c27c4aa316d60e8e8fb177f6dc18247a4759007078d776f50a75a3e16c81",
+      "bytes": 49486,
+      "modifiedUtc": "2026-10-19T12:27:06.047010+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/automation/design-system.ts",
+      "sha256": "e45a585fdb4e829a5ab2a9f0729ebcbfd8d8db1cfadd7d324d9d6a4206d19569",
+      "bytes": 57585,
+      "modifiedUtc": "2026-10-19T12:22:57.141891+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/automation/export.ts",
+      "sha256": "f2a5d14958ba2f9e9880b29b187ff863fe7cc2e4767e85dea332a0d00be815d5",
+      "bytes": 32487,
+      "modifiedUtc": "2026-10-19T12:22:57.142440+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/automation/index.ts",
+      "sha256": "7bbd93cddf0bda7eaee5b5b98169016d3d230bad2b77ecfedeb36f1b76a7f285",
+      "bytes": 721,
+      "modifiedUtc": "2026-10-19T12:27:06.046648+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/automation/interactions.ts",
+      "sha256": "91ff76819bf159a7fc80236343e30eb0d79ec3391a61e5beaba5a059e295dc20",
+      "bytes": 12334,
+      "modifiedUtc": "2026-10-19T12:22:57.142749+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/automation/sketch.ts",
+      "sha256": "1bae323ac5929a812fbd86739b19f96de6983d7e12f2664652b5efa16ea1319a",
+      "bytes": 11422,
+      "modifiedUtc": "2026-10-19T12:41:04.638558+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/automation/types.ts",
+      "sha256": "ebb27952e6c0ea38e255163510a85965bca253da01a98cc2bc8c75eecf7184a5",
+      "bytes": 1773,
+      "modifiedUtc": "2026-10-19T12:22:57.142938+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/board-tools.ts",
+      "sha256": "8ad18262e15a6d5a1972277565dddd7f05abd511b7db580153d2fe467892ddb1",
+      "bytes": 7287,
+      "modifiedUtc": "2026-10-19T12:10:33.892437+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/canvas-camera.ts",
+      "sha256": "6cdc305390067818a0d81593fe5b93a1f063813764d1f66a4da30a85125e3f05",
+      "bytes": 6564,
+      "modifiedUtc": "2026-10-19T12:10:33.892437+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/canvas-drop.ts",
+      "sha256": "7e736bc10b53770d063f6a829f9b056674c853286b32cd1999bd986a3e5e10ea",
+      "bytes": 3065,
+      "modifiedUtc": "2026-10-19T12:10:33.892437+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/canvas-view.ts",
+      "sha256": "40e5fe146da368e15ef7c768fe31093d459153f63ea86301d37f0298ada64ff3",
+      "bytes": 4027,
+      "modifiedUtc": "2026-10-19T12:10:33.892437+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/clipboard-semantics.ts",
+      "sha256": "1fe947cdf79570dfde505fffde9dc789a5efb244938396b00a5b7a43a6994ed3",
+      "bytes": 9814,
+      "modifiedUtc": "2026-10-19T12:10:33.892437+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/color.ts",
+      "sha256": "11209648e188e4e12545234bd1b9c55e02f7cb34356e8cb419bc9a688eddf682",
+      "bytes": 2565,
+      "modifiedUtc": "2026-10-19T12:10:33.892437+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/components.ts",
+      "sha256": "643f3ed98e49e1e632a2e9b4c9ea3d8dfa49b6528250a47290817bd06b89b48a",
+      "bytes": 31834,
+      "modifiedUtc": "2026-10-19T12:10:33.892437+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/design-system.ts",
+      "sha256": "a17d3cd8a3385aa02afce970929f3def037e1d8ddb77e94b0611021129900569",
+      "bytes": 16900,
+      "modifiedUtc": "2026-10-19T12:10:33.892437+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/desktop.ts",
+      "sha256": "cc58d4351e8791c5dbf31f795d9ccad7b06491f8f3c50bb0a9fd5abd439af54f",
+      "bytes": 11991,
+      "modifiedUtc": "2026-10-19T15:06:50.683623+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/document-admission.ts",
+      "sha256": "64e4d78fd88bf1bb1a0dc77d97d378c52f3a8d583bb46d5c74fafa8a5655aeb1",
+      "bytes": 1105,
+      "modifiedUtc": "2026-10-19T12:10:33.894701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/document-patch.ts",
+      "sha256": "c3b9987afef187186d72c657b93830c87d743a89b27e73a733e53bdf7e3b7a6e",
+      "bytes": 3687,
+      "modifiedUtc": "2026-10-19T12:10:33.894701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/draft.ts",
+      "sha256": "708635bfc60b207af3b2d2e290c3d0322b9b90a0f04233e1943ca3257c83245d",
+      "bytes": 271,
+      "modifiedUtc": "2026-10-19T12:10:33.894701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/duplicate-graph.ts",
+      "sha256": "de1f2cec15e1bf4eae47ad3030be0e076d524b8eeb25b4f2db266805a23871c0",
+      "bytes": 6512,
+      "modifiedUtc": "2026-10-19T12:10:33.894701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/editable-network.ts",
+      "sha256": "33280488175190c5c92ac558a3ac58a964b27cab68f1119915eb0801109f4eab",
+      "bytes": 3027,
+      "modifiedUtc": "2026-10-19T15:03:47.939246+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/engine.ts",
+      "sha256": "5f87c69a1dbb5975341fcd23223e3dddc5ebac6488d99f51e612b4b54eb7f8a9",
+      "bytes": 95827,
+      "modifiedUtc": "2026-10-19T15:03:47.939009+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/export.tsx",
+      "sha256": "0d3804590084e0b43e486a23ed1876455e1f1788ff8624f3cfbb75559a4f83de",
+      "bytes": 18908,
+      "modifiedUtc": "2026-10-19T12:10:33.894701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/font-matching.ts",
+      "sha256": "adcb9d946c49975eab639b3cb7a084c51e32ba9d17fb1bf4e6dd0e4efa211602",
+      "bytes": 3326,
+      "modifiedUtc": "2026-10-19T12:10:33.894701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/freehand.ts",
+      "sha256": "0ab43bf717e39926de87223ee48a0c04149951a0a1524e5c254f941b72767407",
+      "bytes": 6541,
+      "modifiedUtc": "2026-10-19T12:10:33.894701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/generated/design-kernel/design_kernel.js",
+      "sha256": "11aeca21feaad973b20453c604768484470575267635b7503cd158a5efe31e99",
+      "bytes": 126900,
+      "modifiedUtc": "2026-10-19T13:56:06.057170+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/geometry.ts",
+      "sha256": "7d63dbbac86e790fcbbd3dcab2d8b61fe4a968cec8361b4a7bc951b4f12c4f58",
+      "bytes": 17314,
+      "modifiedUtc": "2026-10-19T12:10:33.894701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/import-ownership.ts",
+      "sha256": "018b2ec5e154b4c52bfb40305149a1b6db448bf3e605a7f872979a5bd01f1dc9",
+      "bytes": 2003,
+      "modifiedUtc": "2026-10-19T12:10:33.894701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ProgressiveSurface.tsx",
+      "sha256": "02609b4d0e5980430cb83e17d689f8a0dc06dbf5ef38f1c7e59287aed38e5b84",
+      "bytes": 90869,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ResidentCompositeSurface.tsx",
+      "sha256": "27e4936c5f57ab835dc495e4769d880786afd93a940379f013e51bc4f869b49f",
+      "bytes": 14621,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/Surface.tsx",
+      "sha256": "4061b57f5bf62e5c13a2b1a94760444d3c40c618be63bf8ea20fa04e2d0bd8b5",
+      "bytes": 32730,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/TileCompositeSurface.tsx",
+      "sha256": "07e08dd844a264dbb7ba6263b7fb8d2a1a780ee35d4a814abe67330fcc3e934a",
+      "bytes": 6090,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/binfmt.ts",
+      "sha256": "870252ea6d277aca5930e7b96faad7176f1c6aeee8a622e2a1ce24bf3f376e89",
+      "bytes": 1207,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/canvas-effect-sampling.ts",
+      "sha256": "ac759b17c461ad32c0f281b4a681978d16546d07e0c1b296d2358136cf07405f",
+      "bytes": 1600,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/canvas-raster-plan.ts",
+      "sha256": "a7720f2db7ae1560ef60e20f917f84f735cba3c159b4911b329259b2d5acfd8c",
+      "bytes": 4594,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/client.ts",
+      "sha256": "12b471595f23e8dce0077c4b8d9793b502b24d790ce62adacb898cc6680760f1",
+      "bytes": 34701,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/color-presenter.ts",
+      "sha256": "fc9e2e865f9573c08e9f8151177a0a90f3a8b2a6979f5cec1a8501b50e286e48",
+      "bytes": 8418,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/content-plane.ts",
+      "sha256": "8a505c7034d16b824f846f5a7aa71c5eb160840b4a827972164b8a3133aa90cf",
+      "bytes": 688,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/coverage-priority.ts",
+      "sha256": "bea75f9b7073b48e637576fecdb769848c093b0875348a60aa874e8433f4aab2",
+      "bytes": 1290,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/coverage-retention.ts",
+      "sha256": "a19253b156866a06ece84200526dbbade3ca7ce05030946b34d36f749bbcee6a",
+      "bytes": 1111,
+      "modifiedUtc": "2026-10-19T12:10:33.898791+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/exact-tile-cache.ts",
+      "sha256": "91b0efb958c4542a4c0a70d3c98b17669d3b798ab62658cdcece2d1a08df1ab1",
+      "bytes": 3697,
+      "modifiedUtc": "2026-10-19T12:10:33.900087+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/frame-debounced-value.ts",
+      "sha256": "2e7a4ce9babae3c6a4e3a82aa4005056c2a22f7197ef86a65b9ac368c2603b8e",
+      "bytes": 1394,
+      "modifiedUtc": "2026-10-19T12:10:33.900087+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/canvas-labels.ts",
+      "sha256": "bde5bad14e9b73886b8f0f99ebe57ea2f63b97cc44f8c5156924e61692244a8d",
+      "bytes": 7661,
+      "modifiedUtc": "2026-10-19T12:10:33.900375+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/canvas-overlay.ts",
+      "sha256": "181a4e4f3a89f68b8f0cc4ea13508d689d9e7778bc6084cbcfc2f9ebee9cfce8",
+      "bytes": 6766,
+      "modifiedUtc": "2026-10-19T12:10:33.900375+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/composite-draw-plan.ts",
+      "sha256": "8d9f7ee0a4679e7e53b2c9423b2ea0be1d4c6f4fca2d6896850edc90f02a157c",
+      "bytes": 4670,
+      "modifiedUtc": "2026-10-19T14:08:08.704095+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-budget.ts",
+      "sha256": "e2f29903886ccb1e9ac355db2e0d1a26b5d9c90caacee5e97abed44b3c7000b0",
+      "bytes": 221,
+      "modifiedUtc": "2026-10-19T12:10:33.900375+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/physical-coverage.ts",
+      "sha256": "9bd884b83db1a8a1fafe7524eda4e24333058e6227d9cf82d9867cd53efcd0cd",
+      "bytes": 635,
+      "modifiedUtc": "2026-10-19T12:10:33.900375+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/presentation-quality.ts",
+      "sha256": "d2e4ab62bf0082d793362f09de3dde2456cdfd4572d63678122bde3813387d23",
+      "bytes": 2566,
+      "modifiedUtc": "2026-10-19T12:10:33.900375+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-frame.ts",
+      "sha256": "bd1d160432f29fcaf5b92b5cb24a2e39fa259e085fe387bede7183e275cc3239",
+      "bytes": 3272,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-presenter.ts",
+      "sha256": "beae5d274942f8ce15e709175828e737a5b05fb68f91ab8f302d8ae8c9d4fdc5",
+      "bytes": 20260,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-uniforms.ts",
+      "sha256": "17cad383d7b8788846de561491e86c383b1d70dcc539695eb2ae7d42521fd9d3",
+      "bytes": 1015,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/tile-compositor.ts",
+      "sha256": "755f694256e260cdc76ba82de83088f1f3b6dc7b5f5671a523ebbd8fb4766010",
+      "bytes": 8286,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/types.ts",
+      "sha256": "bbfcc3dcd9ba942297f89f168f8de43afd1da3b6bd611343bbcf7b87d41ff8e2",
+      "bytes": 12612,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/graph-history-state.ts",
+      "sha256": "32a6ad8d849b13c3ebfe8710fea333cfd17c1417c2306f96fc2ef4cfd74ce3bb",
+      "bytes": 5364,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/graph-history.ts",
+      "sha256": "0f405f3eaa292be31e744dc6cc75150417c7952da3abc08e80fa30eca21a6d1e",
+      "bytes": 702,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/graph.ts",
+      "sha256": "f05e28524f1fc564ff89efbda0a9b76306c631976d8cae90ae764d1020aca7e9",
+      "bytes": 8790,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/idle-raster-maintenance.ts",
+      "sha256": "7f2717e562785b46ba2fa09cf76df95b19e8233ad2a68ff3c7ee441a2678c0d9",
+      "bytes": 1764,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/initialization.ts",
+      "sha256": "d037d779ad7ae47de076eaaaf88ea806a594ace3af46575150b08487c83d8417",
+      "bytes": 3977,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-capture-tiles.ts",
+      "sha256": "9b8ffa1b098c10e052c4dea1cd7147c8321b649e77cfe1e8f1d1e76b52a03e8f",
+      "bytes": 1169,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-density.ts",
+      "sha256": "27afe087bc0a6781651e8587aa80bcd7b0254639fd8052cb69be9d865e3ba103",
+      "bytes": 1343,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-layers.ts",
+      "sha256": "cbe8963d62b63b79b61c20203c6cea1f0e8911461b02d07cc32ef3c5aa9f9406",
+      "bytes": 8196,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.ts",
+      "sha256": "e33fd5b76e153c131bd7f213a02e1e28a7a1f6db1656cb1498a6cbd00e976ec2",
+      "bytes": 47198,
+      "modifiedUtc": "2026-10-19T13:41:15.341463+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-scene-bounds.ts",
+      "sha256": "9b334769f7d42448d0f1f3194347296637b41f0d0654cef79c4d2191dd918a9c",
+      "bytes": 2037,
+      "modifiedUtc": "2026-10-19T13:41:13.557415+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/kernel-resources.ts",
+      "sha256": "c2cba0a807a1da382db6caf34596f48f554863507d14ae61404a5c3104dc7fb6",
+      "bytes": 725,
+      "modifiedUtc": "2026-10-19T12:10:33.902701+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/lod-snapshot-cache.ts",
+      "sha256": "7964f6bc53bb2ed8154dd3660199e64b68b448acf2e4bf8ea9018fbbdf07b259",
+      "bytes": 2269,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/module.ts",
+      "sha256": "78c255d05ffbae02aefe4a33303c38061eec49df4d8c8f8d1c8ed96c5e66e38e",
+      "bytes": 1644,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-preparation.ts",
+      "sha256": "16790d75a75f94598abc6469752c75eef8b87c4606efa563f8197bff81ab50fc",
+      "bytes": 2146,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-render-session.ts",
+      "sha256": "9b345281631d5e2a3bcbed19cc72a5f93e867214dc8c682632616050b9e5cbaa",
+      "bytes": 3547,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-zoom.ts",
+      "sha256": "6d4626dfbc2486ab491d01c95e22daf539cbc0af2ab25ad071386565fd436324",
+      "bytes": 4578,
+      "modifiedUtc": "2026-10-19T12:46:17.973215+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/op-sync.ts",
+      "sha256": "f7c14f44cb0ec42fbed84b7efb7cdec43eb0ad3cd1f31401b2ce29cae6a6130f",
+      "bytes": 14035,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/overview-coverage.ts",
+      "sha256": "3339f9ae1822084dc35eef548d8aa107ce396778c3392c9dda6a18fb07a64457",
+      "bytes": 759,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/page-translation.ts",
+      "sha256": "fd5ce58148b649dcd976672c492cad666c69033bddefa8183a251817676c668d",
+      "bytes": 13087,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/paint-damage.ts",
+      "sha256": "7691eb7150e4c98523240c231935b126396cef54554f5a3623de6b8820fe4c7a",
+      "bytes": 747,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pan-prefetch.ts",
+      "sha256": "60c963f85a4efeec1b15875b6678adf10e33c17f472eb35dd15ea83db45042f7",
+      "bytes": 2385,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/picking.ts",
+      "sha256": "fd4da6d680ae120e26286163ba649c83a9b18a6a066a440d5ae9e039450f00e4",
+      "bytes": 18201,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-channel.ts",
+      "sha256": "790ff4ea01b6efff05a6d23261acd0fcc40ce0b40316a619b1a9cbd32be22cc1",
+      "bytes": 2171,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/presentation-ownership.ts",
+      "sha256": "a91cb27d9dd85a6b534881dac81574910a928422293e3d86ca242ae46ddcae11",
+      "bytes": 660,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/presentation.ts",
+      "sha256": "b68acf6effbf59345dc17ed8399a173999e850f00d12efeb3549256f4589993d",
+      "bytes": 6946,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/progressive-quality.ts",
+      "sha256": "60dcdfe6c7d90fca3b5045b2944494f1e2a250be0ed716db2154f6c6f9cd56da",
+      "bytes": 551,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-diagnostics.ts",
+      "sha256": "f742663d974ee237390c7689e06e725bcc5e8ea721c80402652e621e13463b2c",
+      "bytes": 7404,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-mailbox.ts",
+      "sha256": "9e59c96be1046a83a48f5f2e3cba8cef4ed1a288c122fe135336b30cab85b851",
+      "bytes": 1525,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-policy.ts",
+      "sha256": "ecf7afa2c6a8a9f332015f4d88248df7db8be495debc5214275f4abb3224b0e4",
+      "bytes": 8534,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-profile.ts",
+      "sha256": "5b074fb54a1245e0e822826242ff9be31091283cb1a0a0c91b627010c7ee3296",
+      "bytes": 2896,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-quality.ts",
+      "sha256": "493364e47beb404d35368c1d8fde412573973354ed597593f9da049451f32b69",
+      "bytes": 335,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-presentation.ts",
+      "sha256": "99e63a9eb1847534eed3301025bf1306496e45d9e119ec4eb016faa8dafd8003",
+      "bytes": 3043,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-cache.ts",
+      "sha256": "eaac11a7f4ff232b51bd63a1e6618d7d07b11566abc6315bf4babb9c32577316",
+      "bytes": 11593,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-computation-key.ts",
+      "sha256": "b9780e3c3eb1689404a1d26cd12d0e3b81cce62ea53af6b5e880d1c1e6c59e0f",
+      "bytes": 2351,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-plan-aligned.ts",
+      "sha256": "58eae232314332dd8db0bebd5ccde425c978fd925b4078871fac5134826d7cfa",
+      "bytes": 8566,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-prepare-viewport.ts",
+      "sha256": "f8c72992fc61c2f8406d7bf92dab9a86c6d593dc6085033eb8f5e9a69f4b821c",
+      "bytes": 1785,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-preview.ts",
+      "sha256": "15623a9a06f9ab14e7e8ad11e1079d54449993e51e1b10a34e542637316099b4",
+      "bytes": 1928,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-scheduler.ts",
+      "sha256": "8536ae7967ef359941066bb02574de27501e5fba5811a18f5ec5941a56025296",
+      "bytes": 16203,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/translation-preview.ts",
+      "sha256": "343cee427ed5bc22dcce8b2c86a7f6fa3c69b2e6df95e05527887e3b44192727",
+      "bytes": 2656,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/use-navigation-zoom.ts",
+      "sha256": "aef1d6ed8a878d1ec0edb76f9e2e38835c5e4088a92af5c1d2d797d782ba99b5",
+      "bytes": 1952,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/use-raster-density.ts",
+      "sha256": "65ee65add951fb32f3e91f8b42c7134a17f9df4a8f61821e3b35684eb33feb00",
+      "bytes": 1481,
+      "modifiedUtc": "2026-10-19T12:10:33.906702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/use-zoom-activity.ts",
+      "sha256": "3e669b8e91a5f172a8f84d3567274be30d5bc1416f6eac3c7df006b41d9721c2",
+      "bytes": 1740,
+      "modifiedUtc": "2026-10-19T12:10:33.910702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/layout-order.ts",
+      "sha256": "28ffcca3895320c61ddbee3353de05d7236d239e9f5aa4f929fb1ee8debef4c5",
+      "bytes": 1224,
+      "modifiedUtc": "2026-10-19T12:10:33.910702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/mask-coverage.ts",
+      "sha256": "af30301cdbd3a792a7cab9b0d6f2a5f95ab09d6a5b2c561e395b6309837c7e75",
+      "bytes": 843,
+      "modifiedUtc": "2026-10-19T12:10:33.910702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/model.ts",
+      "sha256": "f4452bed2f22584b82eb0e8adccda92ee1ffa3a957f240a1677ccb976a4b87d3",
+      "bytes": 47730,
+      "modifiedUtc": "2026-10-19T12:10:33.910702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/numeric-expression.ts",
+      "sha256": "dffa90eee655487672f62be8b7d2b682ad446411bef53c7d2581104f64572637",
+      "bytes": 3226,
+      "modifiedUtc": "2026-10-19T12:10:33.910702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/path-network.ts",
+      "sha256": "31dc9583194b3e539a3437e98b75cbf6b9806ef177986b50e303ce76d4a3ecc7",
+      "bytes": 1268,
+      "modifiedUtc": "2026-10-19T15:03:47.938297+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/pending-edits.ts",
+      "sha256": "7882e38eeb3579990697b066b64c3488aaa615e5c7233e60939485aa6fc9e5b5",
+      "bytes": 1753,
+      "modifiedUtc": "2026-10-19T12:10:33.910702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/prepared-document.ts",
+      "sha256": "b58121e96e20d2a8fb28d68d7b3e92c11e7363c795f9d4115b2dd1670e7a0741",
+      "bytes": 1417,
+      "modifiedUtc": "2026-10-19T12:10:33.910702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/prototype.ts",
+      "sha256": "4eee3c45386d911d0fe93ce1d0c3a715cbcdad052aa2ed8b77c6d6b0f5f45334",
+      "bytes": 15261,
+      "modifiedUtc": "2026-10-19T12:10:33.910702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/selection-hierarchy.ts",
+      "sha256": "0233b88cfe2d86f77bd33866d675285757d1472e8b6ca3dd39a0ecabb22bb745",
+      "bytes": 4062,
+      "modifiedUtc": "2026-10-19T12:10:33.910702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/selection-scale.ts",
+      "sha256": "88744b76ce8366f27f0ed64c084a12c0f3e91d2a1f49318c24d52dca608a3cb0",
+      "bytes": 3027,
+      "modifiedUtc": "2026-10-19T12:10:33.910702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/sketch-inspection.ts",
+      "sha256": "9a6d80432a1269daa622be621103ecc28599a6308952abc451e450dcc0929416",
+      "bytes": 4255,
+      "modifiedUtc": "2026-10-19T12:10:33.914702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/stroke-profile.ts",
+      "sha256": "8fdff2cf24922c27834589b9268a4a8b75f687b35a1415a9d6fb2097d88a4dc9",
+      "bytes": 3992,
+      "modifiedUtc": "2026-10-19T12:10:33.914702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/test-setup.ts",
+      "sha256": "1602f49c4b080ef3104ab40b5f238d180709bb1f20f9e987e2bbd1f90ddb1faa",
+      "bytes": 430,
+      "modifiedUtc": "2026-10-19T12:10:33.914702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/text.ts",
+      "sha256": "381b869bf1344825c595d77af071c17f48d18b35e333aaaa8d27e440a398f04b",
+      "bytes": 3874,
+      "modifiedUtc": "2026-10-19T12:10:33.914702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/tool-activation.ts",
+      "sha256": "258f3acc0e3bdae5e64e2a21792462cbd719bc8864bd50d78ab6bfba84c4c839",
+      "bytes": 3103,
+      "modifiedUtc": "2026-10-19T12:10:33.914702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-client/src/vector.ts",
+      "sha256": "fb0ad46cc252e4c1177de5cbe4b48841156a9c4a71f859a1734ad0ddc3096333",
+      "bytes": 10320,
+      "modifiedUtc": "2026-10-19T12:10:33.914702+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-desktop/src/sketch-display-contract.mjs",
+      "sha256": "81e0eec7702d399a5e9db38e5e0c5bd090a9aa75bffcaee53590e1746c704a74",
+      "bytes": 3008,
+      "modifiedUtc": "2026-10-19T12:10:33.918932+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-desktop/src/sketch-preview-contract.mjs",
+      "sha256": "54e8bc11a8bc93fb04a1fcc5632b4f929aad3b503d8851029ea4fd19a56f7204",
+      "bytes": 11422,
+      "modifiedUtc": "2026-10-19T12:10:33.918932+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-mcp/examples/ai-generation-client.ts",
+      "sha256": "98c8e57a07bfa50f7945000e56573c2c0d8523db9d0fd0be85c055995f3bfacd",
+      "bytes": 5552,
+      "modifiedUtc": "2026-10-19T15:00:32.562549+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-mcp/examples/ai-generation-design.ts",
+      "sha256": "48720039543bec5eacf494759d67a9b12266a52452828782abd9c1ee194345ad",
+      "bytes": 14639,
+      "modifiedUtc": "2026-10-19T15:03:00.018415+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-mcp/examples/ai-generation.test.ts",
+      "sha256": "499a44ba4145075bb08b5040489fc6705d796a84cbd050cbf5eec094de58c5b6",
+      "bytes": 22039,
+      "modifiedUtc": "2026-10-19T15:09:09.592107+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-mcp/examples/ai-generation.vitest.config.mjs",
+      "sha256": "18e9dfd5b904d8e778e588ce66ea305639272d638d9aa10f053f9d7c3c448d28",
+      "bytes": 248,
+      "modifiedUtc": "2026-10-19T15:00:29.486469+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-mcp/package.json",
+      "sha256": "b202848f128e609ba61277a4a058cc544c52265812104a102eba107e4e419840",
+      "bytes": 836,
+      "modifiedUtc": "2026-10-19T12:22:57.152383+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-mcp/src/artifacts.mjs",
+      "sha256": "88b0ca90417f10bed11651627a10b8629fdb4743f03d485773ea659f82f363c2",
+      "bytes": 7366,
+      "modifiedUtc": "2026-10-19T12:36:34.168816+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-mcp/src/framing.mjs",
+      "sha256": "5bf424525ab645c80c7a7250012b56db757fa8ac7873ef678f927e3e900c4999",
+      "bytes": 2266,
+      "modifiedUtc": "2026-10-19T12:22:57.153111+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-mcp/src/operation-backend.mjs",
+      "sha256": "f3b7907478bdb4058c9298fc2ead9389e1fee6176ed62425d10c572bbe136ecc",
+      "bytes": 4203,
+      "modifiedUtc": "2026-10-19T12:22:57.153205+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-mcp/src/prompts.mjs",
+      "sha256": "9d73f7a8507a88d28df80590be62c4becba234541e2f50465c00228fc7417ed2",
+      "bytes": 3679,
+      "modifiedUtc": "2026-10-19T12:36:34.181499+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    },
+    {
+      "path": "frontend/design-mcp/src/server.mjs",
+      "sha256": "0dcc51a441118a053600d68cb5af605ddff87ab6e55ffadfc1de8a032237845e",
+      "bytes": 16339,
+      "modifiedUtc": "2026-10-19T12:39:28.525904+00:00",
+      "modifiedAfterRecordedFinalRunStart": false
+    }
+  ],
+  "unresolvedRelativeImports": [],
+  "modifiedAfterFinalRunStart": []
+}

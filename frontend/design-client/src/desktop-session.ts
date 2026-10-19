@@ -147,6 +147,7 @@ export class DesktopSession {
   private readonly unsubscribe: () => void
   private readonly unsubscribeDrafts: () => void
   private lastDirty?: boolean
+  private publishedStatus?: DesktopStatus
   private hadPending = false
   private closeSnapshot?: number
   private pristineBlankGeneration: number | null
@@ -432,7 +433,14 @@ export class DesktopSession {
       this.tabsValue = existing ? this.tabsValue.map(t => t.id === currentTab.id ? currentTab : t) : [...this.tabsValue, currentTab]
       this.tabListeners.forEach(listener => listener())
     }
-    this.onStatus(this.status)
+    // Preview documents still advance generation/recovery above, but identical
+    // status must not force App and its entire panel tree through every sample.
+    const status = this.status
+    if (!this.publishedStatus || (Object.keys(status) as (keyof DesktopStatus)[])
+      .some(key => status[key] !== this.publishedStatus![key])) {
+      this.publishedStatus = status
+      this.onStatus(status)
+    }
   }
 
   private run<T = boolean>(operation: DesktopStatus['operation'], action: () => Promise<T>): Promise<T | false> {

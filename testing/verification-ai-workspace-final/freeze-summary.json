@@ -1,0 +1,29 @@
+{
+  "beforeAt": "2026-10-19T15:31:32.941355+00:00",
+  "afterAt": "2026-10-19T15:33:47.367276+00:00",
+  "beforeCounts": {
+    "repositoryFiles": 2357,
+    "generatedAndRuntimeAssets": 8,
+    "nativeBinaries": 2
+  },
+  "afterCounts": {
+    "repositoryFiles": 2357,
+    "generatedAndRuntimeAssets": 8,
+    "nativeBinaries": 2
+  },
+  "sourceInputCount": 1891,
+  "trackedDeletions": [
+    "frontend/design-client/src/CanvasMinimap.tsx"
+  ],
+  "externalExecutionInputsUnchanged": true,
+  "protectedExistingOutputsUnchanged": true,
+  "externalInputDrift": [],
+  "protectedOutputDrift": [],
+  "sourceAndTestsUnchanged": true,
+  "generatedRuntimeUnchanged": true,
+  "nativeBinariesUnchanged": true,
+  "sourceDrift": [],
+  "generatedDrift": [],
+  "nativeDrift": [],
+  "documentationOrEvidenceDrift": []
+}

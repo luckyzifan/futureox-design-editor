@@ -1,0 +1,16 @@
+{
+  "kernel": {
+    "resultSections": 115,
+    "passed": 1185,
+    "failed": 0,
+    "ignored": 1,
+    "ignoredNote": "Cache microbenchmark; separately executed on preserved old/new binaries."
+  },
+  "backend": {
+    "resultSections": 9,
+    "passed": 83,
+    "failed": 0,
+    "ignored": 1,
+    "ignoredNote": "Existing cjk_font_multiple_revision_size_and_time_benchmark; not executed."
+  }
+}

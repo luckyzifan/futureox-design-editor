@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "sourceSha256": "9b334769f7d42448d0f1f3194347296637b41f0d0654cef79c4d2191dd918a9c",
+  "cases": 2500,
+  "entriesTested": 26247,
+  "exact": "Object.is all x/y/width/height and Map key order",
+  "negativeControl": {
+    "mutation": "drop all effect/stroke padding",
+    "failures": 2172
+  },
+  "scope": "Actual TypeScript helper + actual production union functions, frozen old renderer expression; CPU differential only, not browser/GPU pixels"
+}

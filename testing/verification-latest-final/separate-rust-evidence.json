@@ -1,0 +1,26 @@
+{
+  "scope": "Separate root-run final CPU Rust tests after the Sketch repair; log counts independently checked, not rerun or merged into the unified suite totals.",
+  "suites": [
+    {
+      "suite": "kernel",
+      "counts": {
+        "passed": 1178,
+        "failed": 0,
+        "ignored": 0
+      },
+      "evidence": "rust-kernel.log",
+      "originalLogSha256": "fb21386a97c9974cc7c261404683e4f2a6eca0063fde5e5ef26a8ed3582e426a"
+    },
+    {
+      "suite": "backend",
+      "counts": {
+        "passed": 83,
+        "failed": 0,
+        "ignored": 1
+      },
+      "evidence": "rust-backend.log",
+      "originalLogSha256": "fa0d81b8d640df6e5ffdc4d06137a304aa65b3247fe61d220c460270eb427f69"
+    }
+  ],
+  "ignoredCase": "cjk_font_multiple_revision_size_and_time_benchmark: explicit local size/time benchmark with bundled full CJK font"
+}

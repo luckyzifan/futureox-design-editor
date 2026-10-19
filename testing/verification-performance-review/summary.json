@@ -1,0 +1,36 @@
+{
+  "status": "passed",
+  "focusedVitest": {
+    "files": 13,
+    "testCases": 94,
+    "passed": 94,
+    "failed": 0,
+    "pending": 0
+  },
+  "nodePreparation": {
+    "passed": 21,
+    "failed": 0,
+    "skipped": 0
+  },
+  "newNativeWasmRuntime": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0
+  },
+  "sourceStableDuringFocusedRun": true,
+  "countsAreExecutionsNotUniqueCoverage": true,
+  "nativeExecutable": {
+    "name": "design-prepare",
+    "sha256": "e96ceab70be44597aa85200f7352c4b2131efdadf5cfc9a7d47af90eafd75ba5"
+  },
+  "wasm": {
+    "path": "frontend/design-client/public/kernel/design_kernel_bg.wasm",
+    "sha256": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+    "bytes": 39289919
+  },
+  "transportProductionUnchanged": {
+    "path": "frontend/design-desktop/src/preparation-frame.mjs",
+    "sha256": "bbcf500336178f981d31f141878d78f9ef4da0cca0bcea4453089d549d25fc58"
+  },
+  "scope": "Independent read-only source review and CPU execution; no GPU/browser/socket/OS-window execution"
+}
