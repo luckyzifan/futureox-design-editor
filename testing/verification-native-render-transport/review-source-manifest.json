@@ -1,0 +1,147 @@
+{
+  "utc": "2026-10-19T16:36:36.094940+00:00",
+  "scope": "Independent FRB1 strict-decoder and CPU transport audit; tested binary is pinned separately from later parent rebuild",
+  "gitHead": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "testedRendererSha256": "9c60f1fe772b50e9a3097dfb29f7f5a6771a664a35114f81b8d146b575320bc0",
+  "files": {
+    "/workspace/shared/design-phase2/cargo-target/debug/design-render": {
+      "sha256": "9c60f1fe772b50e9a3097dfb29f7f5a6771a664a35114f81b8d146b575320bc0",
+      "auditStartSha256": "9c60f1fe772b50e9a3097dfb29f7f5a6771a664a35114f81b8d146b575320bc0",
+      "unchangedSinceAuditStart": true
+    },
+    "design-studio/crates/design-gpu/src/main.rs": {
+      "sha256": "36b4deb1dc25f07ed2855ca45773db4e2b249e5a2585630507fc107dcee56c34",
+      "auditStartSha256": "36b4deb1dc25f07ed2855ca45773db4e2b249e5a2585630507fc107dcee56c34",
+      "unchangedSinceAuditStart": true
+    },
+    "design-studio/crates/design-gpu/src/serve_protocol.rs": {
+      "sha256": "a1b9d42201852a2ccdf217a8948368940d282ead9d64a3b3b4c289adbaefc342",
+      "auditStartSha256": "a1b9d42201852a2ccdf217a8948368940d282ead9d64a3b3b4c289adbaefc342",
+      "unchangedSinceAuditStart": true
+    },
+    "frontend/design-client/src/desktop.ts": {
+      "sha256": "efcd871d7f1e367b0a3b4a6a490145a3c10288ce4ba191b172b58432a22870c9",
+      "auditStartSha256": "efcd871d7f1e367b0a3b4a6a490145a3c10288ce4ba191b172b58432a22870c9",
+      "unchangedSinceAuditStart": true
+    },
+    "frontend/design-client/src/kernel/native-render-pixels.ts": {
+      "sha256": "6214f66648fb7d3d64566d0d37fe731f8f51cafb7132249ca645866a81d83b75",
+      "auditStartSha256": "6214f66648fb7d3d64566d0d37fe731f8f51cafb7132249ca645866a81d83b75",
+      "unchangedSinceAuditStart": true
+    },
+    "frontend/design-client/src/kernel/native-render-session.test.ts": {
+      "sha256": "1d4c3e2143f0f41559be03384c484fb7a3e248925758363e0495b6eebb154810",
+      "auditStartSha256": "1d4c3e2143f0f41559be03384c484fb7a3e248925758363e0495b6eebb154810",
+      "unchangedSinceAuditStart": true
+    },
+    "frontend/design-client/src/kernel/native-render-session.ts": {
+      "sha256": "086761eb3a2796f5df3b240482728fe915145bc0b505969c8c253bdd427219de",
+      "auditStartSha256": "086761eb3a2796f5df3b240482728fe915145bc0b505969c8c253bdd427219de",
+      "unchangedSinceAuditStart": true
+    },
+    "frontend/design-desktop/src/native-render-frame.mjs": {
+      "sha256": "ac7a164469584deb9871a1d3083aac803cda32189be213ea9fa343ad1436ff72",
+      "auditStartSha256": "bcc8a75c0199803ac5ff0605d67ae9a99e485bd7e822cbeeefdc5febe5f50ccf",
+      "unchangedSinceAuditStart": false
+    },
+    "frontend/design-desktop/src/native-render.mjs": {
+      "sha256": "8693ded4a91917eb74e7f91895eeb9971de54b8ea4870968ab20f8d3879d2b35",
+      "auditStartSha256": "8693ded4a91917eb74e7f91895eeb9971de54b8ea4870968ab20f8d3879d2b35",
+      "unchangedSinceAuditStart": true
+    },
+    "frontend/design-desktop/test/native-render-binary-queue.test.mjs": {
+      "sha256": "7c72e82de7e5b571c240f789fe0f15cee3fd13034827a5f0b33f4059f43a6b4d",
+      "auditStartSha256": "230b88207ab27aa803d8df50d6484723253537b2ce009dd14fce0cf9fd8111ee",
+      "unchangedSinceAuditStart": false
+    },
+    "frontend/design-desktop/test/native-render-frame.test.mjs": {
+      "sha256": "bf03cd70adbcaebe74eadfc2a99cf3cd7898778ca1083587ac0dfa621a0570ed",
+      "auditStartSha256": "c8a7cd46792783adf9087d19abafa27f3cb332e57077d9be578e0c0c56dd43c7",
+      "unchangedSinceAuditStart": false
+    },
+    "frontend/design-desktop/test/native-render-lifecycle.test.mjs": {
+      "sha256": "2f885da54def6b871b9e6eec49e35ae04451af6da0b7d3a42a9a10ca9315221c",
+      "auditStartSha256": "2f885da54def6b871b9e6eec49e35ae04451af6da0b7d3a42a9a10ca9315221c",
+      "unchangedSinceAuditStart": true
+    },
+    "frontend/design-desktop/test/native-render-queue.test.mjs": {
+      "sha256": "e74e86f050753fe7cbcf3c8e1a5d0f56616b87f119d5aef63c47659402adda59",
+      "auditStartSha256": "e74e86f050753fe7cbcf3c8e1a5d0f56616b87f119d5aef63c47659402adda59",
+      "unchangedSinceAuditStart": true
+    },
+    "frontend/design-desktop/test/runtime/native-render-codec-runtime.test.mjs": {
+      "sha256": "539a11514517515929f43f942770b7e56a3c0f768dbde1014afc10fb7829c4af",
+      "auditStartSha256": "539a11514517515929f43f942770b7e56a3c0f768dbde1014afc10fb7829c4af",
+      "unchangedSinceAuditStart": true
+    },
+    "frontend/design-desktop/test/runtime/native-render-runtime.test.mjs": {
+      "sha256": "17bad2cf5fddf21842f8e495257b789a28bbb43aeb32718ba7bd548434e8c4ce",
+      "auditStartSha256": "17bad2cf5fddf21842f8e495257b789a28bbb43aeb32718ba7bd548434e8c4ce",
+      "unchangedSinceAuditStart": true
+    },
+    "testing/verification-native-render-transport/PROTOCOL.md": {
+      "sha256": "2863a380fad6b41d1399860789f75031538f36e29f2df71846cccd56d45fdb1e",
+      "auditStartSha256": "2863a380fad6b41d1399860789f75031538f36e29f2df71846cccd56d45fdb1e",
+      "unchangedSinceAuditStart": true
+    },
+    "testing/verification-native-render-transport/REPORT.md": {
+      "sha256": "679682f154bd5e8768296defcee263549c64a3a9bb0924d934d698834e512a33",
+      "auditStartSha256": "ba5eca9627befa602411b18a15be1a6918c52012017f501862fa839c830bbd8a",
+      "unchangedSinceAuditStart": false
+    },
+    "testing/verification-native-render-transport/REVIEW_ADDENDUM.md": {
+      "sha256": "36b3236b52327120778049b1f84b53f11e097e2e49e781866dc9eae5968d173a",
+      "auditStartSha256": null,
+      "unchangedSinceAuditStart": null
+    },
+    "testing/verification-native-render-transport/benchmark-production.mjs": {
+      "sha256": "929438f1e4c83747c1243ed5b4195bc7cf8cf9e0bf1ffb8cf68f2c8d6c705f5e",
+      "auditStartSha256": "929438f1e4c83747c1243ed5b4195bc7cf8cf9e0bf1ffb8cf68f2c8d6c705f5e",
+      "unchangedSinceAuditStart": true
+    },
+    "testing/verification-native-render-transport/negative-control.mjs": {
+      "sha256": "a25e7db9337cf58364c371a3fb6f519f8305866770c425ac462d203e9ce36575",
+      "auditStartSha256": "5afc149cf14c9c48a98bdc246d6f314a8b8bfc0366a975ef7476b810791032a8",
+      "unchangedSinceAuditStart": false
+    },
+    "testing/verification-native-render-transport/production-benchmark.json": {
+      "sha256": "f1c331f681aabe220cb456176af78a0a38af66ebaea8b9c282361ca1434dbb61",
+      "auditStartSha256": "f1c331f681aabe220cb456176af78a0a38af66ebaea8b9c282361ca1434dbb61",
+      "unchangedSinceAuditStart": true
+    },
+    "testing/verification-native-render-transport/review-negative-control.log": {
+      "sha256": "181fcea37de96d39ed02223790d1cbab5292aef3cf3357543de86757d7402644",
+      "auditStartSha256": null,
+      "unchangedSinceAuditStart": null
+    },
+    "testing/verification-native-render-transport/review-production-benchmark.json": {
+      "sha256": "faad12f9ea891d3438f34dfddce01ec594f6f80d64f41ebbbc25f6364154b4db",
+      "auditStartSha256": null,
+      "unchangedSinceAuditStart": null
+    },
+    "testing/verification-native-render-transport/rust-codec-fixture": {
+      "sha256": "fa28ece35df215152b210326679c9cade222208357a0c4e37e9d990309d47791",
+      "auditStartSha256": "fa28ece35df215152b210326679c9cade222208357a0c4e37e9d990309d47791",
+      "unchangedSinceAuditStart": true
+    },
+    "testing/verification-native-render-transport/rust-codec-fixture.rs": {
+      "sha256": "8e8e6b7fab3c59cf96326e62004b6d28925b57813cbf3160ba7f1f9bc3516e2f",
+      "auditStartSha256": "8e8e6b7fab3c59cf96326e62004b6d28925b57813cbf3160ba7f1f9bc3516e2f",
+      "unchangedSinceAuditStart": true
+    },
+    "testing/verification-native-render-transport/rust-codec-tests": {
+      "sha256": "8cf3d2699343efd36e0ad64e737602f1f67ba0b59aee3ba89bafd78f90c5de1e",
+      "auditStartSha256": "8cf3d2699343efd36e0ad64e737602f1f67ba0b59aee3ba89bafd78f90c5de1e",
+      "unchangedSinceAuditStart": true
+    }
+  },
+  "freshBenchmarkHashesMatch": {
+    "frontend/design-desktop/src/native-render.mjs": true,
+    "frontend/design-desktop/src/native-render-frame.mjs": true,
+    "frontend/design-client/src/kernel/native-render-pixels.ts": true,
+    "design-studio/crates/design-gpu/src/serve_protocol.rs": true,
+    "testing/verification-native-render-transport/rust-codec-fixture.rs": true,
+    "testing/verification-native-render-transport/rust-codec-fixture": true
+  },
+  "completeBinaryVerificationNote": "Tested renderer SHA is the original parity-verified executable; the parent separately rebuilds and rechecks the final aggregate after unrelated kernel edits. A current observed file hash is not evidence it was executed in this audit."
+}

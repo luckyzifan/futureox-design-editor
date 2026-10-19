@@ -1,0 +1,273 @@
+--- a/frontend/design-client/src/Canvas.tsx
++++ b/frontend/design-client/src/Canvas.tsx
+@@ -1052,6 +1052,9 @@
+     // displayed camera; selection uses the displayed snapshot and live IDs.
+     // A different page/session is a separate loading boundary, never a target.
+     if (!displayedSnapshot && editor.state.tool !== 'hand' && !space.current && e.button !== 1) return
++    // Handles stop propagation and bypass the host's pointerdown handler.
++    // Retire the hover frame before its ownership is replaced by this drag.
++    cancelQueuedMove()
+     host.current!.setPointerCapture(e.pointerId)
+     const capturedView = { ...displayViewRef.current }
+     const p = screenToWorld(capturedView, screenPoint(e)),
+@@ -1792,6 +1795,7 @@
+     if (!widthNode || !editor.topSelection().includes(widthNode.id) || e.button !== 0 || !e.isPrimary || drag.current || pencil.current) return
+     if (!displayedSnapshot) return
+     if (e.ctrlKey && /Mac|iPhone|iPad/.test(navigator.platform)) return
++    cancelQueuedMove()
+     e.stopPropagation()
+     e.preventDefault()
+     host.current!.setPointerCapture(e.pointerId)
+--- a/frontend/design-client/src/SystemFontPicker.tsx
++++ b/frontend/design-client/src/SystemFontPicker.tsx
+@@ -3,9 +3,9 @@
+ import type { Editor } from './engine'
+ import type { DesignDocument } from './model'
+ import { ImportOwner, importStep } from './import-ownership'
+-import { applySelectionFont, FONT_PAGE_SIZE, searchFontChoices, matchSourceFontsInDocument } from './font-management'
++import { applySelectionFont, FONT_PAGE_SIZE, searchFontChoices, matchSourceFontsInDocument, unmatchedEditableSourceFonts } from './font-management'
+ import { commitPendingEdits } from './pending-edits'
+-import { matchFont, unmatchedSourceFonts, type FontResource } from './font-matching'
++import { matchFont, type FontResource } from './font-matching'
+ import { initializeKernelModule } from './kernel/module'
+ import { font_faces_json } from './generated/design-kernel/design_kernel'
+ 
+@@ -102,7 +102,7 @@
+     const request = owner.begin(editor); setBusy(true); setMessage('正在匹配原字体…')
+     try {
+       const { fonts } = await importStep(request, list)
+-      const names = new Set(Object.values(editor.state.doc.nodes).flatMap(n => unmatchedSourceFonts(editor.state.doc, n)))
++      const names = unmatchedEditableSourceFonts(editor.state.doc)
+       const matched = new Map<string, { id: string; resource: FontResource }>(), missing: string[] = []
+       const loaded = new Map<string, { id: string; resource: FontResource }>(), faces = new Map<string, { id: string; resource: FontResource }>()
+       for (const name of names) {
+--- a/frontend/design-client/src/font-management.ts
++++ b/frontend/design-client/src/font-management.ts
+@@ -57,6 +57,21 @@
+     } else result.targets.push({ id, style: true, runs: true })
+   }
+   return result
++}
++
++/** Read only identities the document operation is allowed to change. Locked,
++ * shared-style and inherited-only fields must not consume the resource cap. */
++export function unmatchedEditableSourceFonts(doc: DesignDocument): string[] {
++  const names = new Set<string>()
++  for (const target of fontTargets(doc, { kind: 'document' }).targets) {
++    const n = doc.nodes[target.id], source = sourceFonts(doc, n), base = n.textStyle?.fontId ?? 'default'
++    if (target.style && typeof source.style === 'string' && base === 'default') names.add(source.style)
++    if (target.runs) for (const [index, name] of Object.entries(source.runs || {})) {
++      const run = n.textRuns?.[Number(index)]
++      if (run && typeof name === 'string' && (run.fontId ?? base) === 'default') names.add(name)
++    }
++  }
++  return [...names]
+ }
+ function detachStyle(node: DesignNode) {
+   if (!node.styleRefs?.textStyle) return
+--- a/frontend/design-client/src/canvas-event-batching.test.tsx
++++ b/frontend/design-client/src/canvas-event-batching.test.tsx
+@@ -397,3 +397,37 @@
+   await act(async () => remove()); expect(editor.state.doc.pages).toHaveLength(before.pages.length - 1)
+   await act(async () => editor.undo()); expect(editor.state.doc).toEqual(before)
+ })
++
++test.each(['vertex', 'handle', 'width'] as const)('a pending hover must not discard the first %s drag frame', async kind => {
++  const n = vector(); await render([n]); await act(async () => { editor.select([n.id]); editor.set({ tool: kind === 'width' ? 'width' : 'vector' }) })
++  const target = kind === 'vertex' ? mount.querySelector('[data-testid="vector-anchor"]')! : kind === 'width' ? mount.querySelector('[data-testid^="width-"]')! : [...mount.querySelectorAll('circle')].find(e => e.getAttribute('r') === '3.5')!
++  const start = kind === 'vertex' ? { x: 100, y: 100 } : { x: 100 + Number(target.getAttribute('cx')), y: 100 + Number(target.getAttribute('cy')) }
++  if (kind === 'width') { start.x -= 100; start.y -= 100 }
++  await act(async () => pointer('pointermove', start.x, start.y))
++  await act(async () => pointer('pointerdown', start.x, start.y, {}, target))
++  const preview = vi.spyOn(editor, 'preview')
++  await act(async () => pointer('pointermove', start.x + 15.25, start.y + 12.75))
++  await flushFrames()
++  expect(preview).toHaveBeenCalledTimes(1)
++  await act(async () => pointer('pointerup', start.x + 15.25, start.y + 12.75))
++})
++
++test('a foreign pointercancel cannot retire the owner queued frame', async () => {
++  const { before, start } = await begin('vertex'), preview = vi.spyOn(editor, 'preview')
++  await act(async () => pointer('pointermove', start.x + 1.5, start.y + 2.5))
++  await act(async () => pointer('pointercancel', 700, 600, {}, host(), 99))
++  await flushFrames(); expect(preview).toHaveBeenCalledTimes(1); expect(editor.interactionActive).toBe(true)
++  await act(async () => pointer('pointerup', start.x + 3.5, start.y + 4.5))
++  await verifyHistory(before)
++})
++
++test('a stale hover cannot become a first drag input during a modifier-only transition', async () => {
++  const n = vector(), before = await render([n]); await act(async () => { editor.select([n.id]); editor.set({ tool: 'vector' }) })
++  await act(async () => pointer('pointermove', 65, 75))
++  await act(async () => pointer('pointerdown', 100, 100, {}, mount.querySelector('[data-testid="vector-anchor"]')!))
++  await act(async () => key('Control', { ctrlKey: true }))
++  expect(editor.state.doc).toBe(before)
++  await flushFrames(); expect(editor.state.doc).toBe(before)
++  await act(async () => pointer('pointerup', 100, 100, { ctrlKey: true }))
++  expect(editor.state.doc).toBe(before); expect(editor.canUndo).toBe(false)
++})
+--- a/frontend/design-client/src/FontManagementPanel.test.tsx
++++ b/frontend/design-client/src/FontManagementPanel.test.tsx
+@@ -233,3 +233,116 @@
+   expect(editor.state.doc).toBe(before); expect(editor.state.version).toBe(version)
+   expect(mount.textContent).toContain('文档最多支持 32 个字体资源')
+ })
++
++test('skipped locked original-font references must not consume the matching resource cap', async () => {
++  const { emptySystem } = await import('./design-system')
++  const { editor, ids } = fixture(35), host = nativeCatalog()
++  editor.change('Original font identities and locks', doc => {
++    doc.designSystem = emptySystem(); doc.designSystem.fontSources = Object.fromEntries(ids.map((id, index) => [id, { style: `Test-${index}` }]))
++    ids.slice(0, 34).forEach(id => { doc.nodes[id].locked = true })
++  })
++  let readIndex = 0
++  host.read.mockImplementation(async () => {
++    const bytes = new Uint8Array(fontBytes.length + 4); bytes.set(fontBytes); new DataView(bytes.buffer).setUint32(fontBytes.length, ++readIndex)
++    return { status: 'ok', ...host.data, data: Buffer.from(bytes).toString('base64') }
++  })
++  await render(editor); click(button('匹配文档原字体'))
++  await settle(() => host.read.mock.calls.length > 0 && !button('匹配文档原字体').disabled)
++  expect(editor.state.doc.nodes[ids[34]].textStyle?.fontId).not.toBe('default')
++  expect(host.read).toHaveBeenCalledTimes(1)
++})
++
++test('selection change cancels a pending native read before it can modify the old selection', async () => {
++  const { editor, ids } = fixture(2); act(() => editor.select([ids[0]]))
++  let resolve!: (value: any) => void
++  const host = nativeCatalog(() => new Promise(r => { resolve = r })); await render(editor)
++  click(button('选择本机字体')); await settle(() => !!mount.querySelector('.system-font-picker button[style]'))
++  click(mount.querySelector<HTMLButtonElement>('.system-font-picker button[style]')!)
++  const before = editor.state.doc, version = editor.state.version
++  act(() => editor.select([ids[1]]))
++  await act(async () => { resolve({ status: 'ok', ...host.data }); await new Promise(r => setTimeout(r, 10)) })
++  expect(editor.state.doc).toBe(before); expect(editor.state.version).toBe(version)
++  expect(button('选择本机字体').disabled).toBe(false)
++})
++
++test('closing a pending read and choosing again does not let the old completion overwrite the new choice', async () => {
++  const { editor, ids } = fixture(1); const resolves: ((value: any) => void)[] = []
++  const host = nativeCatalog(() => new Promise(r => { resolves.push(r) })); await render(editor)
++  click(button('选择本机字体')); await settle(() => !!mount.querySelector('.system-font-picker button[style]'))
++  click(mount.querySelector<HTMLButtonElement>('.system-font-picker button[style]')!); click(button('关闭'))
++  click(button('选择本机字体')); await settle(() => !!mount.querySelector('.system-font-picker button[style]') && !button('选择本机字体').disabled)
++  click(mount.querySelector<HTMLButtonElement>('.system-font-picker button[style]')!)
++  await act(async () => { resolves[1]({ status: 'ok', ...host.data }); await new Promise(r => setTimeout(r, 10)) })
++  const after = editor.state.doc, version = editor.state.version; expect(after.nodes[ids[0]].textStyle?.fontId).not.toBe('default')
++  await act(async () => { resolves[0]({ status: 'ok', ...host.data, data: btoa('invalid stale bytes') }); await new Promise(r => setTimeout(r, 10)) })
++  expect(editor.state.doc).toBe(after); expect(editor.state.version).toBe(version)
++  expect(mount.textContent).not.toContain('invalid stale bytes')
++})
++
++test('thirty-third resource is atomically rejected with exact history and document preserved', async () => {
++  const { editor, ids } = fixture(1)
++  editor.change('Fill valid font slots', doc => { doc.fonts = Object.fromEntries(Array.from({ length: 32 }, (_, i) => [`font-${i}`, latin])) })
++  const before = editor.state.doc, version = editor.state.version
++  const result = fonts.applySelectionFont(editor, ids, 'new-font', {}, latin)
++  expect(result.status).toBe('rejected'); expect(editor.state.doc).toBe(before); expect(editor.state.version).toBe(version)
++  expect(Object.keys(editor.state.doc.fonts!)).toHaveLength(32)
++})
++
++test('more than 32 source names sharing one byte identity do not exhaust unique resource admission', async () => {
++  const { emptySystem } = await import('./design-system')
++  const { editor, ids } = fixture(35), host = nativeCatalog()
++  editor.change('Aliased original fonts', doc => { doc.designSystem = emptySystem(); doc.designSystem.fontSources = Object.fromEntries(ids.map((id, index) => [id, { style: `Test-${index}` }])) })
++  const before = editor.state.doc
++  await render(editor); click(button('匹配文档原字体'))
++  await settle(() => host.read.mock.calls.length === 35 && !button('匹配文档原字体').disabled)
++  expect(Object.keys(editor.state.doc.fonts!)).toHaveLength(2)
++  const font = editor.state.doc.nodes[ids[0]].textStyle?.fontId; expect(font).not.toBe('default')
++  for (const id of ids) expect(editor.state.doc.nodes[id].textStyle?.fontId).toBe(font)
++  act(() => editor.undo()); expect(editor.state.doc).toEqual(before)
++})
++
++test.each(['selection', 'same-ID reopen'] as const)('delayed real font-file reading is retired by %s', async ending => {
++  const { TextStylePanel } = await import('./TextStylePanel')
++  const { editor, ids } = fixture(2); act(() => editor.select([ids[0]]))
++  function LivePanel() { const state = useSyncExternalStore(editor.subscribe, editor.panelSnapshot); return <TextStylePanel editor={editor} ids={state.selection} node={state.doc.nodes[state.selection[0]]} /> }
++  await act(async () => root.render(<LivePanel />))
++  let resolve!: (value: ArrayBuffer) => void
++  const selected = new dom.window.File([fontBytes], 'noto-latin.ttf', { type: 'font/ttf' })
++  Object.defineProperty(selected, 'arrayBuffer', { value: () => new Promise<ArrayBuffer>(r => { resolve = r }) })
++  const input = mount.querySelector<HTMLInputElement>('input[type="file"]')!
++  Object.defineProperty(input, 'files', { configurable: true, value: [selected] })
++  act(() => input.dispatchEvent(new dom.window.Event('change', { bubbles: true })))
++  expect(resolve).toBeDefined()
++  act(() => {
++    if (ending === 'selection') editor.select([ids[1]])
++    else { editor.load(structuredClone(editor.state.doc)); editor.select([ids[0]]) }
++  })
++  const before = editor.state.doc, version = editor.state.version
++  await act(async () => { resolve(fontBytes.slice().buffer); await new Promise(r => setTimeout(r, 10)) })
++  expect(editor.state.doc).toBe(before); expect(editor.state.version).toBe(version)
++})
++
++test('the final font import mutation fence rejects a same-ID reopen between the digest helper and caller continuation', async () => {
++  const { TextStylePanel } = await import('./TextStylePanel')
++  const { editor, ids } = fixture(1), before = editor.state.doc
++  const digest = await crypto.subtle.digest('SHA-256', fontBytes)
++  let resolveDigest!: (value: ArrayBuffer) => void
++  vi.spyOn(crypto.subtle, 'digest').mockImplementation(() => new Promise<ArrayBuffer>(r => { resolveDigest = r }))
++  await act(async () => root.render(<TextStylePanel editor={editor} ids={ids} node={before.nodes[ids[0]]} />))
++  const selected = new dom.window.File([fontBytes], 'noto-latin.ttf', { type: 'font/ttf' })
++  Object.defineProperty(selected, 'arrayBuffer', { value: async () => fontBytes.slice().buffer })
++  const input = mount.querySelector<HTMLInputElement>('input[type="file"]')!
++  Object.defineProperty(input, 'files', { configurable: true, value: [selected] })
++  act(() => input.dispatchEvent(new dom.window.Event('change', { bubbles: true })))
++  await settle(() => !!resolveDigest)
++  let reopened: typeof before = before, version = editor.state.version
++  await act(async () => {
++    // The helper's post-await ownership check runs first. This queued reopen
++    // then precedes the caller continuation, exercising its separate fence.
++    resolveDigest(digest)
++    queueMicrotask(() => { editor.load(structuredClone(before)); reopened = editor.state.doc; version = editor.state.version })
++    await new Promise(r => setTimeout(r, 10))
++  })
++  expect(editor.state.doc).toBe(reopened); expect(editor.state.version).toBe(version)
++  expect(Object.keys(editor.state.doc.fonts!)).toEqual(['latin'])
++})
+--- a/frontend/design-client/src/font-management.test.ts
++++ b/frontend/design-client/src/font-management.test.ts
+@@ -204,3 +204,27 @@
+   expect(editor(decodeDocumentBinary(encodeDocumentBinary(after)) as DesignDocument).state.doc).toEqual(after)
+   e.undo(); e.undo(); e.undo(); expect(e.state.doc).toEqual(before)
+ })
++
++test('source discovery filters ancestor locks, linked styles and inherited fields before native reads', async () => {
++  const { unmatchedEditableSourceFonts } = await import('./font-management')
++  const { doc, ids } = componentFixture(); doc.schemaVersion = 4; doc.designSystem = emptySystem()
++  const e = editor(doc), key = e.state.doc.nodes[ids.label].componentKey!, a = originNode(e.state.doc, ids.a, key), b = originNode(e.state.doc, ids.b, key)
++  e.updateProperties([a.id], n => { n.textRuns = [{ start: 0, end: 2, fontId: 'default', weight: 700 }] })
++  expect(e.state.doc.nodes[ids.a].instance?.overrides[key]).toHaveProperty('textRuns')
++  expect(e.state.doc.nodes[ids.a].instance?.overrides[key]).not.toHaveProperty('textStyle')
++  const group = node('group'), lockedChild = node('text'), linked = node('text'); group.locked = true; group.children = [lockedChild.id]
++  e.change('Source discovery fixture', d => {
++    d.designSystem = emptySystem(); d.designSystem.styles.body = { name: 'Body', kind: 'text', value: defaultTextStyle() }
++    linked.styleRefs = { textStyle: 'body' }
++    for (const n of [group, lockedChild, linked]) d.nodes[n.id] = n
++    d.pages[0].children.push(group.id, linked.id)
++    d.designSystem.fontSources = {
++      [ids.label]: { style: 'MasterAllowed' },
++      [a.id]: { style: 'InheritedStyleSkip', runs: { 0: 'OverrideRunAllowed' } },
++      [b.id]: { style: 'InheritedCopySkip' },
++      [lockedChild.id]: { style: 'AncestorLockedSkip' },
++      [linked.id]: { style: 'SharedStyleSkip' },
++    }
++  })
++  expect(unmatchedEditableSourceFonts(e.state.doc).sort()).toEqual(['MasterAllowed', 'OverrideRunAllowed'])
++})
+--- a/frontend/design-client/src/import-ownership.test.mjs
++++ b/frontend/design-client/src/import-ownership.test.mjs
+@@ -95,7 +95,13 @@
+   assert.match(font, /const request = imports\.begin\(editor\)/)
+   assert.match(font, /importStep\(request, \(\) => selected\.arrayBuffer\(\)\)/)
+   assert.match(font, /importStep\(request, \(\) => crypto\.subtle\.digest/)
+-  assert.match(font, /request\.assertCurrent\(\)\s+editor\.change\('导入文档字体'/)
++  const fontHandler = font.slice(font.indexOf('        onChange={async (e) => {'), font.indexOf('      <NumberField'))
++  const digest = fontHandler.indexOf('await importStep(request, () => crypto.subtle.digest')
++  const fence = fontHandler.indexOf('request.assertCurrent()')
++  const mutation = fontHandler.indexOf('applySelectionFont(editor, ids, id,')
++  assert.ok(digest >= 0 && fence > digest && mutation > fence, 'font import must fence its final helper mutation after the digest')
++  assert.doesNotMatch(fontHandler.slice(fence, mutation), /\bawait\b/, 'font mutation must follow its ownership fence synchronously')
++  assert.match(fontHandler.slice(mutation), /applySelectionFont\(editor, ids, id, \{ matchSourceFonts: true, detachSharedStyle: detachFontStyle \}, resource\)/)
+   assert.match(library, /importStep\(request, \(\) => f\.text\(\)\)/)
+   assert.match(library, /importStep\(request, \(\) => verifyLibrary\(JSON\.parse\(source\)\)\)/)
+   assert.match(library, /request\.assertCurrent\(\)\s+editor\.change\('安装组件库'/)

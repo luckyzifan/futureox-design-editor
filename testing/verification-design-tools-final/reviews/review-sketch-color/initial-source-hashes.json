@@ -1,0 +1,13 @@
+{
+  "__DESIGN_REPO__/design-studio/crates/design-kernel/src/interop.rs": "4c6a65f31c7ad8ef21e6517c2ab520beb38328166d05682b13ae02c56468f817",
+  "__DESIGN_REPO__/design-studio/crates/design-kernel/tests/sketch_color_profiles.rs": "179311dce3fe4039aae1d2819948bdb9f134c86321ff62b2383d09dc008cb863",
+  "__DESIGN_REPO__/design-studio/crates/design-kernel/src/color.rs": "0b47ef36d2553671375d7be5fe9bbc066bf2df144cf48706607eed44376c175c",
+  "__DESIGN_REPO__/design-studio/crates/design-kernel/src/blend.rs": "6b6cdc8581703b7743bc8b9c5a4d96920b54fa2d7e13e9f8dd39b329caa49465",
+  "__DESIGN_REPO__/design-studio/crates/design-kernel/src/scene.rs": "463068a0b12933490769e4c737be835a9e8c557bedc2683047167c0368d178d3",
+  "__DESIGN_REPO__/frontend/design-client/public/kernel/design_kernel_bg.wasm": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+  "__REVIEW_ROOT__/color-space/interop-before.rs": "a8bef0f743a549677cd91927ba89b1a0b14608f46a8748185ede8ff3e57fbded",
+  "__REVIEW_ROOT__/color-space/interop-color-fix.patch": "f7f726008b82cb87fffd1504556f7ca20b9211db5c8170ed4b42bf14f3edc7a1",
+  "__REVIEW_ROOT__/color-space/libfutureox_design_kernel.rlib": "9d99c23dc38749ee54a39084aaa0c5a2201c5aa84314d5115025f80a87134d31",
+  "__REVIEW_ROOT__/color-space/source-manifest.json": "edaf52cb59386e05d9a302547dc7300e08935488098123b6461dc81e35c89046",
+  "__REVIEW_ROOT__/color-space/root-cargo-check.log": "bc3a1ca8fa9c5d4a122636b4bc6e2b2136a64477a8c89ba74681ec6718d53220"
+}

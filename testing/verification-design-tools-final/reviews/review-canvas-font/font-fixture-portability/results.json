@@ -1,0 +1,78 @@
+{
+  "cases": [
+    {
+      "case": "fresh-isolated-no-historical-fixtures",
+      "exit": 0,
+      "expectedSuccess": true,
+      "passed": true
+    },
+    {
+      "case": "fresh-second-different-hashseed",
+      "exit": 0,
+      "expectedSuccess": true,
+      "passed": true
+    },
+    {
+      "case": "verified-cache-hit",
+      "exit": 0,
+      "expectedSuccess": true,
+      "passed": true
+    },
+    {
+      "case": "missing-fonttools-even-on-cache-hit",
+      "exit": 1,
+      "expectedSuccess": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-fonttools-version",
+      "exit": 1,
+      "expectedSuccess": false,
+      "passed": true
+    },
+    {
+      "case": "missing-source",
+      "exit": 1,
+      "expectedSuccess": false,
+      "passed": true
+    },
+    {
+      "case": "source-sha-mismatch",
+      "exit": 1,
+      "expectedSuccess": false,
+      "passed": true
+    },
+    {
+      "case": "reject-cache-inside-source-checkout",
+      "exit": 1,
+      "expectedSuccess": false,
+      "passed": true
+    },
+    {
+      "case": "cache-sha-mismatch-no-repair",
+      "exit": 1,
+      "expectedSuccess": false,
+      "passed": true
+    },
+    {
+      "case": "concurrent-2",
+      "exit": 0,
+      "expectedSuccess": true,
+      "passed": true
+    },
+    {
+      "case": "concurrent-1",
+      "exit": 0,
+      "expectedSuccess": true,
+      "passed": true
+    },
+    {
+      "case": "actual-node-helper-python-selection",
+      "passed": true,
+      "windowsRuntimeTested": false
+    }
+  ],
+  "allPassed": true,
+  "noSourceOrHistoricalFixtureMutation": true,
+  "generatedFontCopiesKeptInEvidence": false
+}

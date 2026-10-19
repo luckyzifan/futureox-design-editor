@@ -1,0 +1,13 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { importFig } from '__DESIGN_REPO__/frontend/design-client/src/import-fig.ts'
+import { validateDocument } from '__DESIGN_REPO__/frontend/design-client/src/model.ts'
+const repo='__DESIGN_REPO__'
+const path=repo+'/testing/fixtures/design/figma-materials-native-2026-10-08.fig'
+const bytes=new Uint8Array(readFileSync(path)), start=performance.now()
+const imported=importFig(bytes), doc=validateDocument(imported.document)
+let negative='did not reject'; try { importFig(bytes.subarray(0,12)) } catch(e) { negative=String(e) }
+const effects=Object.values(doc.nodes).flatMap(n=>n.effects.map(e=>({name:n.name,kind:e.kind,visible:e.visible,radius:e.radius,x:e.x,y:e.y,spread:e.spread,width:n.width,height:n.height,transform:n.transform})))
+const result={scope:'Existing actual FIG binary through current TS parser and model validation only. No renderer, GPU, screenshot, browser or OS socket.',path,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),parseMs:performance.now()-start,pages:doc.pages.map(p=>({name:p.name,background:p.background,roots:p.children.length})),nodes:Object.keys(doc.nodes).length,rasterProfile:doc.rasterProfile,colorManagement:doc.colorManagement??null,warnings:imported.warnings,effectCounts:effects.reduce((m,e)=>(m[e.kind]=(m[e.kind]??0)+1,m),{}),effects,masks:Object.values(doc.nodes).filter(n=>n.mask).map(n=>({name:n.name,maskType:n.maskType})),negativeControl:negative}
+writeFileSync('__REVIEW_ROOT__/import-fixture-probe.json',JSON.stringify(result,null,2)+'\n')
+console.log(JSON.stringify(result,null,2))

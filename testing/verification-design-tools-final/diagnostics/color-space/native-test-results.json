@@ -1,0 +1,66 @@
+{
+  "suites": 10,
+  "passed": 59,
+  "results": [
+    {
+      "suite": "sketch_color_profiles",
+      "compile": 0,
+      "tests": 0,
+      "passed": 7
+    },
+    {
+      "suite": "color",
+      "compile": 0,
+      "tests": 0,
+      "passed": 10
+    },
+    {
+      "suite": "image_metadata",
+      "compile": 0,
+      "tests": 0,
+      "passed": 5
+    },
+    {
+      "suite": "sketch_adaptable_color",
+      "compile": 0,
+      "tests": 0,
+      "passed": 4
+    },
+    {
+      "suite": "sketch_shared_styles",
+      "compile": 0,
+      "tests": 0,
+      "passed": 3
+    },
+    {
+      "suite": "sketch_text_attrs",
+      "compile": 0,
+      "tests": 0,
+      "passed": 3
+    },
+    {
+      "suite": "sketch_import_admission",
+      "compile": 0,
+      "tests": 0,
+      "passed": 11
+    },
+    {
+      "suite": "sketch_overrides",
+      "compile": 0,
+      "tests": 0,
+      "passed": 3
+    },
+    {
+      "suite": "sketch_automation_symbols",
+      "compile": 0,
+      "tests": 0,
+      "passed": 6
+    },
+    {
+      "suite": "image_adjust",
+      "compile": 0,
+      "tests": 0,
+      "passed": 7
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "outcome": "Three concrete defects reproduced, fixed, and independently retested. No unresolved blocker identified in the stated non-GUI scope.",
+  "findings": [
+    {
+      "id": "R1",
+      "severity": "high",
+      "title": "Schema-admitted mutation IDs poisoned subsequent manual Save",
+      "status": "fixed_retested",
+      "evidence": "initial-independent.log; second-independent.log; independent-final.log",
+      "fix_owner": "workspace owner",
+      "details": "Colon/dot IDs were accepted by JS but rejected by Rust v5. Permanent INVALID_REQUEST was retained as uncertain workspacePending, making ordinary Save retry forever. Exact grammar and explicit known pre-write rejection handling now avoid this."
+    },
+    {
+      "id": "R2",
+      "severity": "medium",
+      "title": "MCP history inaccessible beyond 100 saved revisions",
+      "status": "fixed_retested",
+      "evidence": "second-independent.log; independent-final.log",
+      "fix_owner": "workspace owner",
+      "details": "v5 produces up to 1000 rows, host rejected >100. Host now returns bounded 100-row pages with continuation based on returned tail. Independent real SQLite test enumerated all 1001 durable revisions without omission/duplication."
+    },
+    {
+      "id": "R3",
+      "severity": "medium",
+      "title": "Cancelled or closed async exports repopulated/evicted resource cache",
+      "status": "fixed_retested",
+      "evidence": "cancellation-probe.mjs pre-fix reproduction; lifecycle-final.log",
+      "fix_owner": "independent review, authorized by root",
+      "details": "Post-await closed/AbortSignal guard now precedes artifact projection; close/cancel errors retain rejection semantics. Ordinary errors and successful exact resource/image behavior unchanged."
+    }
+  ],
+  "test_runs": [
+    {
+      "name": "Independent adversarial TypeScript + real SQLite/App callbacks/JSDOM",
+      "passed": 9,
+      "failed": 0,
+      "log": "independent-final.log"
+    },
+    {
+      "name": "Independent lifecycle regressions",
+      "passed": 4,
+      "failed": 0,
+      "log": "lifecycle-final.log"
+    },
+    {
+      "name": "Existing Node MCP/native-host suites",
+      "passed": 109,
+      "failed": 0,
+      "skipped": 0,
+      "log": "node-regression.log"
+    },
+    {
+      "name": "Existing real stdio Sidecar/SQLite MCP durability suite",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "log": "sqlite-mcp-regression.log"
+    },
+    {
+      "name": "Existing client CPU/WASM, app, bridge, scope and UI suites",
+      "passed": 92,
+      "failed": 0,
+      "log": "client-regression.log"
+    },
+    {
+      "name": "Full client TypeScript typecheck",
+      "exit_code": 0,
+      "log": "typecheck.log"
+    }
+  ],
+  "total_tests_passed": 215,
+  "limits": [
+    "No browser UI/CSP enforcement, OS socket bind, GPU execution, or pixel equivalence was attempted or claimed.",
+    "Actual CPU raster verification uses real product WASM/export path with an in-process Worker message/lifetime adapter.",
+    "App integration executes the unchanged actual App.tsx effect body with real settings/workspace adapters and Editor/DesktopSession, replacing only React effect scheduling and native IPC; it is not a full App browser mount.",
+    "Existing actual-main tests replace Electron/OS/stdio boundaries; actual native dialogs/restart not exercised.",
+    "Generated app is local-only approximate HTML/CSS, with explicit session-only fallback; near-2-MiB state action failure preserves prior saved bytes and displays warning, while current-tab state may remain unsaved.",
+    "No exactly-once claim across editor/native transport/SQLite.",
+    "Panel enabled state is explicitly current-document read-only and separately displays workspace/settings grants. Enable button shorthand remains less explicit, but native approval enumerates scopes.",
+    "Hashes are the reviewed working-tree sources; later edits require affected reruns."
+  ]
+}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor } from './engine'
-import { pdfVectorIssues, type ExportTarget } from './export'
+import { pdfVectorIssues, type ExportTarget } from './export-metadata'
 import { scene, unionBounds } from './geometry'
 import { commitExportEdits } from './export-ownership'
 

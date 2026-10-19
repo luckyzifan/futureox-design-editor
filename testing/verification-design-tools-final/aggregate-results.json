@@ -1,0 +1,681 @@
+{
+  "schemaVersion": 1,
+  "revision": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "runnerSelectedSuiteResult": "passed",
+  "selectedSuites": [
+    {
+      "id": "runner-contracts",
+      "status": "passed",
+      "category": "runner-negative-controls",
+      "files": 3,
+      "counts": {
+        "total": 23,
+        "passed": 23,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "frontend-contracts",
+      "status": "passed",
+      "category": "CPU production logic + sandboxed callbacks/source contracts/mock DOM; not native UI",
+      "files": 30,
+      "counts": {
+        "total": 300,
+        "passed": 300,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "desktop-contracts",
+      "status": "passed",
+      "category": "mock host/IPC and file-policy contracts; not Electron GUI",
+      "files": 30,
+      "counts": {
+        "total": 210,
+        "passed": 210,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "python-tools",
+      "status": "passed",
+      "category": "CPU tool unit tests",
+      "files": 3,
+      "counts": {
+        "total": 15,
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "typecheck",
+      "status": "passed",
+      "category": "static TypeScript check",
+      "files": 0
+    },
+    {
+      "id": "frontend-vitest",
+      "status": "passed",
+      "category": "real CPU WASM + pure logic + mocked DOM/driver suites; not real GPU/UI",
+      "files": 291,
+      "counts": {
+        "total": 2302,
+        "passed": 2298,
+        "failed": 0,
+        "skipped": 4
+      },
+      "reportedAssertions": 2302,
+      "skippedCases": [
+        {
+          "file": "<REPO>/frontend/design-client/src/append-document.test.ts",
+          "title": "real 117 repeated three times: independent nodes, fonts, editable groups and one-step undo",
+          "status": "skipped"
+        },
+        {
+          "file": "<REPO>/frontend/design-client/src/canvas-event-batching.test.tsx",
+          "title": "reproduce direct addPage during a live vertex transaction",
+          "status": "skipped"
+        },
+        {
+          "file": "<REPO>/frontend/design-client/src/__tests__/design-file-import.test.ts",
+          "title": "external corpus: DESIGN_TEST_SKETCH",
+          "status": "skipped"
+        },
+        {
+          "file": "<REPO>/frontend/design-client/src/__tests__/design-file-import.test.ts",
+          "title": "external corpus: DESIGN_TEST_FIG",
+          "status": "skipped"
+        }
+      ]
+    },
+    {
+      "id": "mcp-example",
+      "status": "passed",
+      "category": "real Editor/WASM via in-memory MCP, synthetic HTML/CSS and native-file outputs",
+      "files": 1,
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "reportedAssertions": 1,
+      "skippedCases": []
+    },
+    {
+      "id": "bun-unit",
+      "status": "passed",
+      "category": "CPU budget/policy logic; no actual GPU",
+      "files": 4,
+      "counts": {
+        "total": 31,
+        "passed": 31,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "id": "automation-storage",
+      "status": "passed",
+      "category": "real SQLite sidecar + mocked IPC host",
+      "files": 1,
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "mcp-contracts",
+      "status": "passed",
+      "category": "in-memory protocol/transport + real stdio; no OS socket",
+      "files": 7,
+      "counts": {
+        "total": 51,
+        "passed": 51,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "native-preparation",
+      "status": "passed",
+      "category": "real native CPU binary / WASM packet + pixel comparison",
+      "files": 1,
+      "counts": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    },
+    {
+      "id": "native-sidecar",
+      "status": "passed",
+      "category": "real owned Rust processes + local SQLite; not OS dialogs",
+      "files": 2,
+      "counts": {
+        "total": 8,
+        "passed": 8,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      }
+    }
+  ],
+  "fileSelectionOverlap": {},
+  "sameTitleNodeVitestRegistrations": [
+    "32x nested patch session rejects fractional pose without changing its accepted snapshot",
+    "32x root movement preserves integer raster phase and rejects subpixel masks",
+    "32x root patch session rejects fractional pose without changing its accepted snapshot",
+    "32x rotated nested movement preserves integer raster phase and rejects subpixel masks",
+    "atlas cleanup retains shared pages and retires each physical allocation once",
+    "compiled global-raster nodes survive zoom 2.99 with origin tiles",
+    "compiled global-raster nodes survive zoom 2.99 with translated tiles",
+    "compiled global-raster nodes survive zoom 3 with origin tiles",
+    "compiled global-raster nodes survive zoom 3 with translated tiles",
+    "compiled global-raster nodes survive zoom 32 with origin tiles",
+    "compiled global-raster nodes survive zoom 32 with translated tiles",
+    "compiled global-raster nodes survive zoom 64 with origin tiles",
+    "compiled global-raster nodes survive zoom 64 with translated tiles",
+    "current image survives unrelated resource touches and is uploaded only once",
+    "image admission preserves demanded source quality (mips=false, float=false)",
+    "image admission preserves demanded source quality (mips=false, float=true)",
+    "image admission preserves demanded source quality (mips=true, float=false)",
+    "image admission preserves demanded source quality (mips=true, float=true)",
+    "image selection with mips disabled stays at level zero at every zoom",
+    "integer delta cannot certify a raster already shifted to a fractional phase",
+    "integer translation keeps stationary clipped backdrop admission and rejects foreground/replay dependencies",
+    "real paint preserves source fidelity under pressure (mips=false)",
+    "real paint preserves source fidelity under pressure (mips=true)",
+    "subpixel cached antialiasing differs from freshly evaluated coverage",
+    "translation batch rejects fractional deltas before mutating reusable node tables"
+  ],
+  "knownSharedRegistrationCount": 25,
+  "knownSharedImplementationSources": [
+    "frontend/design-client/src/kernel/gpu/renderer-regression-cases.ts",
+    "frontend/design-client/src/kernel/gpu/translation-regression-cases.ts"
+  ],
+  "countingNotes": [
+    "Counts are framework-reported test executions, not individual assertions, line coverage or proof of complete user workflows.",
+    "25 shared production-renderer cases are intentionally registered in Node and Vitest; do not sum suite counts as unique coverage.",
+    "mcp-example is a validated synthetic output demonstration and is kept separate from unit-test coverage.",
+    "Typecheck is a static gate, not an additional passing test.",
+    "Rust and performance evidence from other invocations is not included in these independent runner counts."
+  ],
+  "freeze": {
+    "externalExecutionInputsUnchanged": true,
+    "protectedExistingOutputsUnchanged": true,
+    "externalInputDrift": [],
+    "protectedOutputDrift": [],
+    "sourceAndTestsUnchanged": true,
+    "generatedRuntimeUnchanged": true,
+    "nativeBinariesUnchanged": true,
+    "sourceDrift": [],
+    "generatedDrift": [],
+    "nativeDrift": [],
+    "documentationOrEvidenceDrift": [
+      {
+        "path": "testing/verification-design-tools-final/README.md",
+        "before": {
+          "sha256": "fd0d51b4eb0e2c17794f4adaedfab41ba06e26e97168d80645a41e2d6b9010bc",
+          "bytes": 9329,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": {
+          "sha256": "c0c357a94419b0eafe1d2d99633c4033b3a86904a5232e0b84aac742af1ee4e6",
+          "bytes": 11230,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/font-fixture-restoration-qa.json",
+        "before": null,
+        "after": {
+          "sha256": "ba4d99bfe7630fe9d589e06709dc46a5ff0bc794b0ec2ea9d7ec72dd0d264366",
+          "bytes": 2955,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/provenance.json",
+        "before": {
+          "sha256": "f377bd18a53510bc232eba3745bae99fa906e5d8599eebaafd383c33d7c82e06",
+          "bytes": 109141,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": {
+          "sha256": "ebc091e205b709827aa3e00d0e365a6cbfa284ba9e4ce0a87f73ef2c1511b180",
+          "bytes": 146996,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/publication-qa.json",
+        "before": {
+          "sha256": "8cd29dae8415633afe989cddd62c66f4c986568cc50a6ea51193820f20269ac6",
+          "bytes": 26448,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": {
+          "sha256": "47cbe32904305d34a5c2dee4e9b9abb9d7a7d794d336b7c57bb1f260067a4569",
+          "bytes": 27920,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/raw-test-counts.json",
+        "before": {
+          "sha256": "6a1303436913247e0e93091110805448fb278834e62c0e62c01a52d050e5a8f5",
+          "bytes": 32065,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": {
+          "sha256": "cbb7bfd2d8f73669f6a589a89056fb480e4a929a5eb66f1d5f150fbf559b714d",
+          "bytes": 34000,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/restore-review-sources.py",
+        "before": {
+          "sha256": "7cbee8c173212d48abf458b85830c34b140888a82cad2195dd3c04ba2e54b07c",
+          "bytes": 9716,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": {
+          "sha256": "e83e495ca3deb60bb88073406f52a9019f6fe9359f7b3f35ada1ca8b14c6f136",
+          "bytes": 10008,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/ADDENDUM.json",
+        "before": null,
+        "after": {
+          "sha256": "a3129fc52c359015eb2b62f3132d6664bca01cbdffb042df24dc3501e0725ce4",
+          "bytes": 3389,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/ADDENDUM.md",
+        "before": null,
+        "after": {
+          "sha256": "b146da312e86db4de488e8614e84c193d4931ff2d15d7ce2a7fc805a868876c2",
+          "bytes": 6731,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/addendum-sha256.json",
+        "before": null,
+        "after": {
+          "sha256": "a74e2689d438b182a123fd312093dc63dc70fcdf2d7693927b7ce0da33bb0cfb",
+          "bytes": 5497,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/acceptance-inputs.json",
+        "before": null,
+        "after": {
+          "sha256": "fcf1c0fa540ffd43a3c4a3189acbdf58a34e120781c084cb7a3b00e69bd9ed72",
+          "bytes": 997,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/acceptance-outputs.json",
+        "before": null,
+        "after": {
+          "sha256": "fcf1c0fa540ffd43a3c4a3189acbdf58a34e120781c084cb7a3b00e69bd9ed72",
+          "bytes": 997,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/acceptance-vitest.json",
+        "before": null,
+        "after": {
+          "sha256": "4c33cf1f10d819e92e0b5343b32aced26edcb6a5de294c57fa8db9cadb745586",
+          "bytes": 14924,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/generated-manifest.json",
+        "before": null,
+        "after": {
+          "sha256": "52bc2c056ee3a25d12e92ab1e28ceb0d8441b7bb47f7d0b23a2f1755abc047ca",
+          "bytes": 862,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/historical-byte-equivalence.json",
+        "before": null,
+        "after": {
+          "sha256": "f85f7323fcaf1460cc04d1ff01078c12f5ef4cd0eacb9fb7c63cb3cb68c605b9",
+          "bytes": 875,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/independent_portability.py.source.txt",
+        "before": null,
+        "after": {
+          "sha256": "0644cef33eaefc96815cb5aa33426e6384acd56c6ef1ff0600745f8c076a9b80",
+          "bytes": 8353,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/inputs.json",
+        "before": null,
+        "after": {
+          "sha256": "809ad6968b9ec062397658e04d7b47705e1ac69bfba9b9893a10d3e104b2150f",
+          "bytes": 1237,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/node-helper-review.mjs.source.txt",
+        "before": null,
+        "after": {
+          "sha256": "6cee7713f7e00dd6b981e9563c0b7794b9ed693461bc719fed41768cee194c8a",
+          "bytes": 1838,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/outputs.json",
+        "before": null,
+        "after": {
+          "sha256": "809ad6968b9ec062397658e04d7b47705e1ac69bfba9b9893a10d3e104b2150f",
+          "bytes": 1237,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/parsed-font-coverage.json",
+        "before": null,
+        "after": {
+          "sha256": "76e4cf43c879905b9cc6c08a70d4dc3ce224bf0145f79a07e0a6a0e67a4392bc",
+          "bytes": 1191,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/results.json",
+        "before": null,
+        "after": {
+          "sha256": "99c6d49b6e04ce97f62cc0ba9c21e4407a2022b85e7f0ea2ace037791dc30731",
+          "bytes": 1750,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/vitest-inputs.json",
+        "before": null,
+        "after": {
+          "sha256": "8ab35395d6e55d6b7fd0b52739c34c84957198a0c6d2ac5048073eaa0a2df3ba",
+          "bytes": 997,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/vitest-outputs.json",
+        "before": null,
+        "after": {
+          "sha256": "8ab35395d6e55d6b7fd0b52739c34c84957198a0c6d2ac5048073eaa0a2df3ba",
+          "bytes": 997,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/final/vitest-results.json",
+        "before": null,
+        "after": {
+          "sha256": "22df594803eb5757d24a2776cb6b486b1f9ceb56aa1da3a5033f4661c6ad4afb",
+          "bytes": 15943,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/generated-manifest.json",
+        "before": null,
+        "after": {
+          "sha256": "52bc2c056ee3a25d12e92ab1e28ceb0d8441b7bb47f7d0b23a2f1755abc047ca",
+          "bytes": 862,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/independent_portability.py.source.txt",
+        "before": null,
+        "after": {
+          "sha256": "ee47f6afded6998c2c267c157d64242838c1aad0f6d2ab24621c2a5853bb8150",
+          "bytes": 8198,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/inputs.json",
+        "before": null,
+        "after": {
+          "sha256": "c7a7bfce2650c4783a1e9d2b0aa20149b642d825112b97e7d083d02ef432da92",
+          "bytes": 1237,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/node-helper-review.mjs.source.txt",
+        "before": null,
+        "after": {
+          "sha256": "35a09861341a5d28c0f2586f5e8dc39c6c9cb70c2c2e4b981df63fc8fcf8a8e7",
+          "bytes": 1838,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/outputs.json",
+        "before": null,
+        "after": {
+          "sha256": "c7a7bfce2650c4783a1e9d2b0aa20149b642d825112b97e7d083d02ef432da92",
+          "bytes": 1237,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/parsed-font-coverage.json",
+        "before": null,
+        "after": {
+          "sha256": "76e4cf43c879905b9cc6c08a70d4dc3ce224bf0145f79a07e0a6a0e67a4392bc",
+          "bytes": 1191,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/reviews/review-canvas-font/font-fixture-portability/results.json",
+        "before": null,
+        "after": {
+          "sha256": "3c32d8326fca1fedb982b4b8ed0c77a7b613a107483bc43a6f8a3f805d71d254",
+          "bytes": 1628,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/supplemental-publication-inventory.json",
+        "before": {
+          "sha256": "51944861f17b363abb13519480ab674c5815f17d8889189e62deb3b0f39aa08e",
+          "bytes": 84162,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": {
+          "sha256": "1c6d015f56f41dcfb4666608f38621c4545728ce1423815dbf12446476d4c62e",
+          "bytes": 91385,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-design-tools-final/supplemental-publication.sha256",
+        "before": {
+          "sha256": "e24738f23261ada7dde986e9d40eb5b8c163a840217ba65adb2de90fdf0bdf12",
+          "bytes": 21067,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        },
+        "after": {
+          "sha256": "193db9203fa2e6dc66b46c73104446b39451c41c9988f7b33a3e2a043e9eb302",
+          "bytes": 22486,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-font-fixture-portability/README.md",
+        "before": null,
+        "after": {
+          "sha256": "7b7de330917399b0f957dd55329595ba3dc5bf8cf05a17e3777ff05ad83bfe3e",
+          "bytes": 3076,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-font-fixture-portability/publication.sha256",
+        "before": null,
+        "after": {
+          "sha256": "39dd388650e5359db732c7170ae7e2dfa1684842055026c39741e2a91918e2b3",
+          "bytes": 913,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-font-fixture-portability/source-sha256.json",
+        "before": null,
+        "after": {
+          "sha256": "8593ec080675ad5a82dea0006bda2a69c30ed133d0314b2276ab6f20955c44c5",
+          "bytes": 1186,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      },
+      {
+        "path": "testing/verification-font-fixture-portability/summary.json",
+        "before": null,
+        "after": {
+          "sha256": "1958e455d463400063d20189286187c49e0b9e6496284dcd739ad8aceb5074f8",
+          "bytes": 1198,
+          "mode": "100644",
+          "category": "documentation-and-existing-evidence"
+        }
+      }
+    ]
+  },
+  "limitations": [
+    "Passing only applies to the selected named suites; test files are not assertions or line coverage.",
+    "No browser, Electron GUI, GPU driver/readback, installed-app packaging, accessibility or native OS dialog was launched. Real socket tests are separate opt-in and never automatically selected.",
+    "No Windows/macOS run is inferred from Linux; consult each actual CI artifact.",
+    "Private external corpora may be explicitly skipped unless DESIGN_REQUIRE_PRIVATE_FIXTURES=1.",
+    "WASM scalar/SIMD experiments, performance benchmarks and browser check scripts remain separate explicitly requested gates.",
+    "OS socket integration was already blocked by permission (listen EPERM; escalation bwrap blocked); no bypass or retry was attempted."
+  ],
+  "freshRustAndAdditionalExecutions": {
+    "kernel-tests": {
+      "passed": 1194,
+      "failed": 0,
+      "ignored": 1
+    },
+    "backend-tests": {
+      "passed": 83,
+      "failed": 0,
+      "ignored": 1
+    },
+    "render-codec-tests": {
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0
+    },
+    "native-render-final": {
+      "tests": 4,
+      "pass": 4,
+      "fail": 0,
+      "skipped": 0
+    },
+    "workspace-runtime": {
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "selectedWasm": {
+    "profile": "desktop-dev",
+    "simd": false,
+    "wasmOpt": false,
+    "sha256": "2c50f87de40b6e2ecc456eb053706d4e2c3c058da82aafffd1b191eddd8b039a"
+  },
+  "executionControls": {
+    "VITEST_MAX_WORKERS": 2,
+    "fixturePortability": "After attempt2 passed, test-only source generation replaced omitted local TTF dependencies. This accepted aggregate is a fresh complete rerun of that final test source.",
+    "firstAttempt": "Rejected: one unrestricted Vitest worker SIGKILL at automation/export.test.ts; 2280 passed and 4 skipped were incomplete (9 cases unexecuted). No cause beyond SIGKILL is established. All suites rerun unchanged with bounded concurrency."
+  }
+}

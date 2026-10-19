@@ -1,0 +1,45 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
+import { NativeRenderProcess, NATIVE_RENDER_MAX_PENDING } from '../src/native-render.mjs'
+function fixture(t, options={}) {
+ const child=Object.assign(new EventEmitter(),{stdin:new PassThrough(),stdout:new PassThrough(),stderr:new PassThrough(),exitCode:null,signalCode:null})
+ const writes=[],signals=[],spawns=[];child.stdin.on('data',bytes=>writes.push(JSON.parse(bytes.toString())))
+ child.kill=signal=>{signals.push(signal);queueMicrotask(()=>{child.signalCode=signal;child.emit('close')});return true}
+ const bridge=new NativeRenderProcess('/owned/design-render',undefined,'cpu',{protocol:'frb1',spawnProcess:(...args)=>{spawns.push(args);return child},...options});bridge.spawnProcess();t.after(()=>bridge.stop())
+ const reply=(value,bytes=new Uint8Array(),override={})=>{
+  const last=writes.at(-1);const metadata=Buffer.from(JSON.stringify({session:last.session,id:last.id,...value,...override}));const header=Buffer.alloc(12);header.write('FRB1');header.writeUInt32LE(metadata.length,4);header.writeUInt32LE(bytes.length,8)
+  child.stdout.write(header.subarray(0,3));child.stdout.write(header.subarray(3));child.stdout.write(metadata);if(bytes.length)child.stdout.write(bytes)
+ }
+ return{bridge,child,writes,signals,spawns,reply}
+}
+test('FRB1 is explicit, correlated and FIFO with exact owned bytes',async t=>{
+ const f=fixture(t),load=f.bridge.load('{}'),frame=f.bridge.frame({width:1,height:1}),stats=f.bridge.stats()
+ assert.deepEqual(f.spawns[0][1],['--serve','--backend','cpu','--serve-protocol','frb1']);assert.equal(f.writes.length,1)
+ f.reply({type:'loaded'});await load
+ f.reply({type:'frame',width:1,height:1,encoding:'rgba8',stats:{label:'中文'}},Uint8Array.of(0,1,254,255))
+ const value=await frame;assert.deepEqual(value.rgba,Uint8Array.of(0,1,254,255));assert.equal(value.encoding,'rgba8');assert.equal(value.rgba.byteOffset,0);assert.equal(value.rgba.buffer.byteLength,4)
+ f.reply({type:'stats',stats:{frames:1}});assert.deepEqual(await stats,{frames:1});assert.deepEqual(f.writes.map(m=>m.id),[1,2,3]);assert.equal(new Set(f.writes.map(m=>m.session)).size,1);assert.equal(f.bridge.pendingBytes,0)
+})
+test('application error keeps queue alive; foreign session/id/version closes it',async t=>{
+ const f=fixture(t),bad=assert.rejects(f.bridge.frame({}),/bad options/),next=f.bridge.stats();f.reply({type:'error',message:'bad options'});await bad;f.reply({type:'stats',stats:{ok:1}});await next;assert.equal(f.bridge.closed,false)
+ for(const patch of [{session:'foreign'},{id:99}]){const g=fixture(t);const fail=assert.rejects(g.bridge.stats(),/sequence mismatch/);const queued=assert.rejects(g.bridge.stats(),/sequence mismatch/);g.reply({type:'stats',stats:{}},undefined,patch);await Promise.all([fail,queued]);assert.equal(g.bridge.closed,true);assert.equal(g.bridge.pendingBytes,0)}
+ const g=fixture(t);const fail=assert.rejects(g.bridge.stats(),/protocol/);g.child.stdout.write(Buffer.from('FRB2\x01\0\0\0\0\0\0\0'));await fail;assert.equal(g.bridge.closed,true)
+})
+test('stop cancels partial response and queued requests with no ownership left',async t=>{
+ const f=fixture(t);const pending=Array.from({length:NATIVE_RENDER_MAX_PENDING},()=>assert.rejects(f.bridge.stats(),/Bridge stopped/));await assert.rejects(f.bridge.stats(),/queue full/)
+ f.child.stdout.write(Buffer.from('FRB'));await f.bridge.stop();await Promise.all(pending);assert.equal(f.bridge.binaryFrame,undefined);assert.equal(f.bridge.pendingBytes,0);assert.deepEqual(f.signals,['SIGTERM'])
+})
+test('deadline retires incomplete response and all queued requests',async t=>{
+ const f=fixture(t,{timeoutMs:20});const a=assert.rejects(f.bridge.stats(),/timed out/),b=assert.rejects(f.bridge.stats(),/timed out/);f.child.stdout.write(Buffer.from('FRB1'));await Promise.all([a,b]);assert.equal(f.bridge.binaryFrame,undefined);assert.equal(f.bridge.closed,true)
+})
+test('backpressure and close-after-final-response boundaries are preserved',async t=>{
+ const f=fixture(t);const write=f.child.stdin.write.bind(f.child.stdin);f.child.stdin.write=(...args)=>{write(...args);return false}
+ const a=f.bridge.stats(),b=f.bridge.stats();f.reply({type:'stats',stats:{seq:1}});await a;assert.equal(f.writes.length,1);f.child.stdin.emit('drain');assert.equal(f.writes.length,2)
+ f.child.exitCode=0;f.child.emit('exit',0,null);f.reply({type:'stats',stats:{seq:2}});f.child.emit('close');assert.deepEqual(await b,{seq:2});assert.equal(f.bridge.closed,true)
+})
+test('unknown protocol selection fails closed and legacy remains default',()=>{
+ assert.throws(()=>new NativeRenderProcess('x',undefined,'cpu',{protocol:'future'}),/Unknown/)
+ const bridge=new NativeRenderProcess('x',undefined,'cpu');assert.equal(bridge.protocol,'json')
+})

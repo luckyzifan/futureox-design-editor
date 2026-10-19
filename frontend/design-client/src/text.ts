@@ -3,7 +3,12 @@ import { defaultTextStyle, type DesignDocument, type DesignNode, type TextRun, t
 /** Inspector formatting applies to the entire layer; range formatting stays in styleTextRange. */
 export function applyWholeTextStyle(node: DesignNode, patch: Partial<TextStyle>) {
   if (node.kind !== 'text') return
-  node.textStyle = { ...defaultTextStyle(), ...node.textStyle, ...patch }
+  // Keep the existing Immer draft object. A new object made by spreading it
+  // can contain nested draft arrays, which structuredClone in component
+  // override capture cannot clone. Fill only absent defaults, then mutate.
+  node.textStyle ??= defaultTextStyle()
+  const missing = Object.fromEntries(Object.entries(defaultTextStyle()).filter(([key]) => !Object.hasOwn(node.textStyle!, key)))
+  Object.assign(node.textStyle, missing, patch)
   for (const run of node.textRuns || []) {
     if (patch.fontId !== undefined) delete run.fontId
     if (patch.weight !== undefined) delete run.weight

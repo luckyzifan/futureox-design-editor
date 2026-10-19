@@ -1,0 +1,2 @@
+{"runtime":"React/jsdom and real Editor/WASM; CPU only","name":"1000-text-font-DOM","mountMs":3.38044200000013,"editMs":423.7284450000002,"elements":26,"editorChanges":1}
+{"runtime":"real Editor/WASM, CPU only; no GPU or browser FPS claim","nodes":1000,"durationMs":430.90137300000015,"skippedLocked":0,"skippedLinked":0,"inherited":0,"visitedNodes":1000,"status":"committed","changedNodes":1000,"changedReferences":2000,"visitedRuns":3000,"message":"已替换 2000 处引用（1000 个文字图层）"}

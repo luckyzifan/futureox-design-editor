@@ -1,0 +1,5 @@
+2c50f87de40b6e2ecc456eb053706d4e2c3c058da82aafffd1b191eddd8b039a  <REPO>/frontend/design-client/src/generated/design-kernel/design_kernel_bg.wasm
+2c50f87de40b6e2ecc456eb053706d4e2c3c058da82aafffd1b191eddd8b039a  <REPO>/frontend/design-client/public/kernel/design_kernel_bg.wasm
+e26e78f88e1b1e4040f8c26284fba240a66d6e7f6feb01f8388a1dd27da6850c  <TOOLS>/cargo-target/desktop-dev/design-prepare
+3ebc574d61cff5b5573ecfbcb7f83b61fed083df8b03164b793deb6de9d78930  <TOOLS>/cargo-target/debug/futureox-design-desktop-backend
+f7b2bad65dfabcce68dbd84393f9026b5904d53d32c33fa55647dc762c9846a2  <TOOLS>/cargo-target/debug/design-render

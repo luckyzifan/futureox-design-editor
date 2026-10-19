@@ -1,0 +1,74 @@
+import assert from 'node:assert/strict'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { createHash } from 'node:crypto'
+import { importSvg, svgTransform } from '__DESIGN_REPO__/frontend/design-client/src/import-svg.ts'
+import { validateDocument } from '__DESIGN_REPO__/frontend/design-client/src/model.ts'
+import { apply, inverse } from '__DESIGN_REPO__/frontend/design-client/src/geometry.ts'
+import { initializePicking } from '__DESIGN_REPO__/frontend/design-client/src/kernel/picking.ts'
+import { VectorEngine } from '__DESIGN_REPO__/frontend/design-client/src/generated/design-kernel/design_kernel.js'
+import { encodeDocumentBinary, decodeDocumentBinary } from '__DESIGN_REPO__/frontend/design-client/src/kernel/binfmt.ts'
+const root='__DESIGN_REPO__/', out='__REVIEW_ROOT__/review-svg-import/'
+const require=createRequire(root+'frontend/design-client/package.json')
+const { JSDOM }=require('jsdom')
+const host=new JSDOM(''); globalThis.DOMParser=host.window.DOMParser; globalThis.document=host.window.document
+await initializePicking({wasm:new Uint8Array(readFileSync(root+'frontend/design-client/public/kernel/design_kernel_bg.wasm')),font:new Uint8Array(readFileSync(root+'frontend/design-client/public/fonts/NotoSansSC.ttf'))})
+let requests=0; const deny=()=>{requests++;throw Error('Network or canvas access in CPU-only fixture')}
+globalThis.fetch=deny; globalThis.XMLHttpRequest=class{ constructor(){deny()} };globalThis.WebSocket=class{ constructor(){deny()} }
+host.window.HTMLCanvasElement.prototype.getContext=deny
+const records=[], anomalies=[]
+const check=(name,fn)=>{try { const details=fn(); records.push({name,pass:true,...(details?{details}:{})})} catch(error){records.push({name,pass:false,error:String(error),stack:error.stack})}}
+const svg=(body,attrs='width="160" height="100"')=>'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '+attrs+'>'+body+'</svg>'
+const stops='<stop offset="0" stop-color="#123456"/><stop offset="1" stop-color="#abcdef"/>'
+const rect=(attrs='')=>'<rect id="shape" x="20" y="10" width="80" height="60" fill="url(#g)" '+attrs+'/>'
+const grad=(attrs='',content=stops,tag='linearGradient')=>'<'+tag+' id="g" '+attrs+'>'+content+'</'+tag+'>'
+const shape=doc=>Object.values(doc.nodes).find(n=>n.name==='shape')
+const imported=(s)=>validateDocument(importSvg(s).document)
+const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-9,a+' != '+b)
+const rgb=(pixels,x,y,w=160)=>[...pixels.slice(4*(y*w+x),4*(y*w+x)+4)]
+const render=(doc)=>{const e=new VectorEngine();try{e.load_document(JSON.stringify(doc));return e.render_rgba(JSON.stringify({pageId:doc.pages[0].id,width:160,height:100,view:{x:0,y:0,zoom:1},transparent:true,grid:false,rasterProfile:'analytic'})).slice()}finally{e.free()}}
+check('rotation degrees around nonzero center',()=>{const p=apply(svgTransform('rotate(-90 5 -3)'),{x:8,y:1});near(p.x,9);near(p.y,-6)})
+check('transform composition negative reflection',()=>{const p=apply(svgTransform('translate(8 -4), rotate(90), scale(-2 3)'),{x:2,y:3});near(p.x,-1);near(p.y,-8)})
+for(const t of ['translate(1e)','scale(1 2 3)','rotate(1,2)','matrix(1,0,0,1,0,0,)','translate(NaN)','matrix(1 0 0 1 1e308 0) translate(1e308 0)','rotate(180,1e308,1e308)'])check('reject '+t,()=>assert.throws(()=>svgTransform(t)))
+check('degree full turns and fractional adjacent values',()=>{const p=apply(svgTransform('rotate(450) translate(.5-.25)'),{x:0,y:0});near(p.x,.25);near(p.y,.5)})
+check('absolute Q/pt/pc units with viewBox',()=>{const d=imported(svg('<rect id="shape" x="101.6Q" y="72pt" width="6pc" height="1in" fill="#123456"/>','width="4in" height="4in" viewBox="0 0 192 192"'));assert.equal(shape(d).width,96);assert.deepEqual(shape(d).transform,[2,0,0,2,192,192])})
+check('viewBox nonzero origin and slice',()=>{const d=imported(svg('<rect id="shape" x="10" y="20" width="10" height="10" fill="#123456"/>','width="120" height="80" viewBox="10 20 60 80" preserveAspectRatio="xMaxYMin slice"'));assert.deepEqual(shape(d).transform,[2,0,0,2,0,0])})
+check('gradient href cross type inheritance',()=>{const d=imported(svg('<defs><linearGradient id="base" x1=".2" y1=".1" x2=".9" y2=".8">'+stops+'</linearGradient><radialGradient id="mid" href="#base"/><linearGradient id="g" href="#mid" x2=".7"/></defs>'+rect()));const m=shape(d).fills[0].transform;[.5,.7,-.7,.5,.2,.1].forEach((v,i)=>near(m[i],v))})
+check('own stops override inherited stops',()=>{const d=imported(svg('<defs><linearGradient id="base" gradientTransform="translate(.2 .1)">'+stops+'</linearGradient>'+grad('href="#base"','<stop stop-color="#fff"/>')+'</defs>'+rect()));assert.deepEqual(shape(d).fills[0].stops,[{offset:0,color:'#ffffff'},{offset:1,color:'#ffffff'}]);assert.deepEqual(shape(d).fills[0].transform,[1,0,0,1,.2,.1])})
+check('color interpolation follows gradient XML tree not href target',()=>{const d=imported(svg('<defs><linearGradient id="base" color-interpolation="linearRGB">'+stops+'</linearGradient>'+grad('href="#base"','')+'</defs>'+rect('color-interpolation="linearRGB"')));assert.equal(shape(d).fills[0].kind,'linear')})
+check('user-space percentage basis',()=>{const d=imported(svg('<defs>'+grad('gradientUnits="userSpaceOnUse" x1="25%" y1="20%" x2="75%" y2="80%"')+'</defs>'+rect('transform="scale(2 .5)"'),'width="320" height="200" viewBox="10 20 160 100"'));const m=shape(d).fills[0].transform;[1,1,-.75,80/60,.25,1/6].forEach((v,i)=>near(m[i],v))})
+check('linear affine independent point sample oracle',()=>{const d=imported(svg('<defs>'+grad('gradientUnits="userSpaceOnUse" x1="20" y1="10" x2="70" y2="40" gradientTransform="matrix(.8 .2 -.3 1.1 2 3)"')+'</defs>'+rect()));const m=shape(d).fills[0].transform;for(let t=0;t<=1;t+=.1)for(const n of [-1,0,1]){let x=20+50*t-30*n,y=10+30*t+50*n;near(apply(inverse(m),{x:(.8*x-.3*y+2-20)/80,y:(.2*x+1.1*y+3-10)/60}).x,t)}})
+check('radial affine center and radius',()=>{const d=imported(svg('<defs>'+grad('gradientUnits="userSpaceOnUse" cx="40" cy="30" r="20" gradientTransform="matrix(1 .2 .3 2 5 6)"',stops,'radialGradient')+'</defs>'+rect()));const m=shape(d).fills[0].transform;const center=apply(m,{x:.5,y:.5});near(center.x,(40+9+5-20)/80);near(center.y,(8+60+6-10)/60);const edge=apply(m,{x:1,y:.5});near(edge.x,(60+9+5-20)/80);near(edge.y,(12+60+6-10)/60)})
+check('cache isolation across imports and fill/stroke arrays',()=>{const s=svg('<defs>'+grad()+'</defs>'+rect()+'<rect id="other" width="50" height="70" fill="url(#g)" stroke="url(#g)"/>');const a=imported(s),b=imported(s);const p=shape(a).fills[0];p.stops[0].color='#000000';p.transform[0]=99;assert.equal(shape(b).fills[0].stops[0].color,'#123456');assert.equal(shape(b).fills[0].transform[0],1);const other=Object.values(a.nodes).find(n=>n.name==='other');assert.equal(other.fills[0].stops[0].color,'#123456');other.fills[0].stops[1].offset=.5;assert.equal(other.strokes[0].paint.stops[1].offset,1)})
+for(const [name,s] of [
+ ['external-gradient',svg('<defs>'+grad('href="https://invalid.example/evil.svg#g"','')+'</defs>'+rect())],
+ ['external-image',svg('<image width="10" height="10" href="https://invalid.example/evil.png"/>')],
+ ['external-use',svg('<use href="https://invalid.example/evil.svg#r"/>')],
+ ['external-fill',svg('<rect width="10" height="10" fill="url(https://invalid.example/evil.svg#g)"/>')],
+ ['external-css-url',svg('<rect width="10" height="10" style="fill:url(https://invalid.example/x)"/>')],
+ ['entity', '<!DOCTYPE svg [<!ENTITY x SYSTEM "https://invalid.example/x">]><svg>&x;</svg>'],
+ ['gradient-cycle',svg('<defs><linearGradient id="g" href="#b"/><linearGradient id="b" href="#g"/></defs>'+rect())],
+ ['alpha-stop',svg('<defs>'+grad('', '<stop stop-color="#000000" stop-opacity="50%"/>')+'</defs>'+rect())],
+ ['invalid-viewbox',svg('<rect/>','viewBox="0 0 Infinity 1"')],
+ ['unsupported-unit',svg('<rect width="10%" height="1em"/>')],
+ ['root-event',svg('<rect width="10" height="10"/>','onclick="alert(1)"')],
+ ['nested-svg',svg('<svg width="5" height="5"/>')],
+ ['bad-xml',svg('<rect width="1">')],
+ ])check(name+' rejects without network',()=>assert.throws(()=>importSvg(s)))
+check('real CPU WASM and fd roundtrip nontransparent pixels',()=>{const d=imported(svg('<defs>'+grad('gradientUnits="userSpaceOnUse" x1="20" y1="10" x2="100" y2="10" gradientTransform="skewX(20)"')+'</defs>'+rect()));const pixels=render(d);assert.ok(rgb(pixels,50,40)[3]>0);assert.notDeepEqual(rgb(pixels,30,40),rgb(pixels,90,40));const restored=validateDocument(decodeDocumentBinary(encodeDocumentBinary(d)));assert.deepEqual(render(restored),pixels);return{left:rgb(pixels,30,40),right:rgb(pixels,90,40)}})
+const candidates=[
+ ['missing function separator',()=>svgTransform('translate(10)scale(2)')],
+ ['overflow viewport',()=>importSvg(svg('<rect width="1" height="1" fill="none"/>','width="1e308" height="1" viewBox="0 0 1e-308 1" preserveAspectRatio="none"')).document],
+ ['overflow geometry',()=>importSvg(svg('<circle id="shape" r="1e308" fill="none"/>')).document],
+ ['overflow transform-geometry composition',()=>importSvg(svg('<rect id="shape" x="1e308" width="1" height="1" fill="none" transform="scale(2)"/>')).document],
+ ['gradient nested dynamic stop silently accepted',()=>imported(svg('<defs>'+grad('','<stop stop-color="#123456"><animate attributeName="stop-color" values="#123456;#ffffff" dur="1s"/></stop>')+'</defs>'+rect()))],
+ ['gradient referenced event ignored',()=>imported(svg('<defs>'+grad('onload="alert(1)"')+'</defs>'+rect()))],
+ ['root transform-origin silently accepted',()=>imported(svg('<rect id="shape" width="5" height="5" fill="#123456"/>','width="20" height="20" transform-origin="5 5"'))],
+]
+for(const [name,fn] of candidates){try {const value=fn();let valid;try{if(value?.nodes)validateDocument(value);valid=true}catch(e){valid=String(e)};anomalies.push({name,accepted:true,validation:valid,value})}catch(error){anomalies.push({name,accepted:false,error:String(error)})}}
+check('fixtures use no network/canvas',()=>assert.equal(requests,0))
+const hashes=Object.fromEntries(['import-svg.ts','import-svg-viewport.ts','svg-presentation.ts','svg-values.ts','svg-color.ts','svg-gradient.ts','path-network.ts','geometry.ts','model.ts'].map(n=>[n,createHash('sha256').update(readFileSync(root+'frontend/design-client/src/'+n)).digest('hex')]))
+const result={records,passed:records.filter(r=>r.pass).length,failed:records.filter(r=>!r.pass).length,requests,anomalies,hashes}
+writeFileSync(out+'probe-results.json',JSON.stringify(result,(_k,v)=>typeof v==='number'&&!Number.isFinite(v)?String(v):v,2)+'\n')
+console.log(JSON.stringify({...result,anomalies:anomalies.map(({value,...a})=>a)},null,2))
+host.window.close();process.exitCode=result.failed?1:0

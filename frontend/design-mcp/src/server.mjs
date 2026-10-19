@@ -201,7 +201,7 @@ export class DesignMcpServer {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {}, resources: {}, prompts: {} },
         serverInfo: SERVER_INFO,
-        instructions: 'Live Futureox Design operation API. Read capabilities and document revision before edits. Use documentId, session and expectedRevision to protect writes. Export tool responses contain metadata and expiring resource links, not inline files. Use resources/read for client-side file saving and context.get for AI inspection. No arbitrary JavaScript, shell execution, rendering or network access is exposed. Cancellation does not roll back a mutation already committed.',
+        instructions: 'Live Futureox Design operation API. Read capabilities and document revision before edits. Use documentId, session and expectedRevision to protect writes. Export tool responses contain metadata and expiring resource links, not inline files. Use resources/read for client-side file saving and context.get for AI inspection. If preview.capture is in the live catalog, it returns product CPU design-content export, not an app/GPU screenshot. Preview bytes are delivered as image content when bounded and as exact snapshot resources. No arbitrary JavaScript, shell execution, renderer reconfiguration or network access is exposed. Cancellation does not roll back a mutation already committed.',
       }
     }
     if (this.phase !== 'ready') throw new ProtocolError(-32000, 'Complete initialize and notifications/initialized first')
@@ -249,19 +249,27 @@ export class DesignMcpServer {
     if (context.signal.aborted) throw context.signal.reason
     try {
       let value = await this.backend.callTool(params.name, params.arguments ?? {}, context)
+      // A backend may finish after cancellation or disconnect. Do not repopulate
+      // a cleared cache, or evict an earlier resource for an abandoned result.
+      if (this.closed || context.signal.aborted) throw context.signal.reason ?? new Error('MCP session closed')
       if (!isRecord(value) || typeof value.ok !== 'boolean' || (value.ok && !('result' in value)) || (!value.ok && (!isRecord(value.error) || typeof value.error.message !== 'string'))) throw new Error('Backend returned an invalid operation response')
       const isError = value.ok === false
+      const unprojected = value
       const projected = this.artifacts.project(value)
       value = projected.value
       const artifacts = projected.links
-      const preview = previewImage(value, this.limits.toolResponseBytes)
       const serialized = JSON.stringify(value)
       const text = Buffer.byteLength(serialized) <= 65536 ? serialized : JSON.stringify({ ok: value.ok, method: value.method, documentId: value.documentId, session: value.session, revision: value.revision, summary: 'Inspect structuredContent metadata and resource references. File bytes are available only through explicit resources/read for saving. Prefer context.get for AI inspection.' })
-      const response = { content: [{ type: 'text', text }, ...artifacts, ...(preview ? [preview] : [])], structuredContent: value, isError }
+      const response = { content: [{ type: 'text', text }, ...artifacts], structuredContent: value, isError }
+      // Only one base64 copy enters model-facing output, as native image content.
+      // Larger captures still succeed with exact immutable resource references.
+      const imageBudget = this.limits.toolResponseBytes - 3072 - Buffer.byteLength(JSON.stringify(response))
+      const preview = previewImage(unprojected, imageBudget)
+      if (preview) response.content.push(preview)
       if (Buffer.byteLength(JSON.stringify(response)) > this.limits.toolResponseBytes - 2048) throw Object.assign(new Error('Tool result exceeds the 256 KiB model-context budget; narrow the selection or page the query. Large export bytes must be retrieved through resources/read. The operation may already have completed; inspect the revision before retrying a write.'), { code: 'result_too_large' })
       return response
     } catch (error) {
-      if (context.signal.aborted) throw error
+      if (this.closed || context.signal.aborted) throw error
       // Execution failures are tool results; malformed protocol/tool names are JSON-RPC errors.
       const value = { ok: false, error: { code: typeof error?.code === 'string' ? error.code.slice(0, 128) : 'BACKEND_ERROR', message: typeof error?.message === 'string' ? error.message.slice(0, 1024) : 'Design operation failed' } }
       return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value, isError: true }

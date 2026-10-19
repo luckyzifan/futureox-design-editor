@@ -1,0 +1,3130 @@
+{
+  "schema": 1,
+  "policy": "Additive sanitized copies. Original hashes describe untouched external bytes; published hashes describe sanitized publication bytes. Existing embedded reviewer evidence manifests retain original hashes and are not rewritten as hashes of these copies.",
+  "placeholders": {
+    "__DESIGN_REPO__": "Absolute checkout root supplied to the restore helper.",
+    "__REVIEW_ROOT__": "Fresh external restoration directory supplied to the restore helper.",
+    "__BUILD_ROOT__": "Historical external toolchain/target root. Supply an equivalent root explicitly or adapt historical compile commands to a fresh build.",
+    "__PRIOR_ZIP__": "User-provided c11 cumulative ZIP; never bundled here.",
+    "__WORKSPACE_ROOT__": "Historical parent workspace; supply only if a particular historical command needs it.",
+    "__AGENT_HOME__": "Historical home-path marker; optional explicit mapping for historical command replay."
+  },
+  "files": [
+    {
+      "published_path": "diagnostics/color-space/COVERAGE.zh-CN.md",
+      "published_sha256": "5c736454c7d199dcfe386e25ede69bfaab4d692e9fa2e94144bea7e922d43de6",
+      "published_bytes": 12008,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/COVERAGE.zh-CN.md",
+        "sha256": "5c736454c7d199dcfe386e25ede69bfaab4d692e9fa2e94144bea7e922d43de6",
+        "bytes": 12008
+      },
+      "restored_path": "color-space/COVERAGE.zh-CN.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/cargo-check.log",
+      "published_sha256": "2bce90b0b76585da28932403b87b0a6386f1802202a8593597a8aa09bb33ff1b",
+      "published_bytes": 617,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/cargo-check.log",
+        "sha256": "4970fd21ac8e9aa51bd41ad2a7a2c5551a92d410a35f6217fefe93ad36c1ba96",
+        "bytes": 647
+      },
+      "restored_path": "color-space/cargo-check.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/color-tests.log",
+      "published_sha256": "baa97975501356166fb8f5e6f8c52c1fb33872a0c2872b2e96cfc6dfff22d7c0",
+      "published_bytes": 815,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/color-tests.log",
+        "sha256": "baa97975501356166fb8f5e6f8c52c1fb33872a0c2872b2e96cfc6dfff22d7c0",
+        "bytes": 815
+      },
+      "restored_path": "color-space/color-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/image_adjust-tests.log",
+      "published_sha256": "f258518f4ae053a1a93da96fa495f42c177eed4e56088906b244f0ffc6cc78fb",
+      "published_bytes": 548,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/image_adjust-tests.log",
+        "sha256": "f258518f4ae053a1a93da96fa495f42c177eed4e56088906b244f0ffc6cc78fb",
+        "bytes": 548
+      },
+      "restored_path": "color-space/image_adjust-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/image_metadata-tests.log",
+      "published_sha256": "ac5b31423ab630d6fa143ea674153d93658d7ead8d0479e9d4546458efd2c538",
+      "published_bytes": 492,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/image_metadata-tests.log",
+        "sha256": "ac5b31423ab630d6fa143ea674153d93658d7ead8d0479e9d4546458efd2c538",
+        "bytes": 492
+      },
+      "restored_path": "color-space/image_metadata-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/native-test-results.json",
+      "published_sha256": "030db82a756c8e574b1350ca2caaf9555ef897454a8306ff903b1c74dc0a218e",
+      "published_bytes": 1110,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/native-test-results.json",
+        "sha256": "030db82a756c8e574b1350ca2caaf9555ef897454a8306ff903b1c74dc0a218e",
+        "bytes": 1110
+      },
+      "restored_path": "color-space/native-test-results.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/native-tests.log",
+      "published_sha256": "4acf6a74e87f7831c8fb85c89062c7ec52c962390c1ebf66dfd2719014873f1a",
+      "published_bytes": 575,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/native-tests.log",
+        "sha256": "4acf6a74e87f7831c8fb85c89062c7ec52c962390c1ebf66dfd2719014873f1a",
+        "bytes": 575
+      },
+      "restored_path": "color-space/native-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/probe-current-wasm.mjs.source.txt",
+      "published_sha256": "6e694742300f8df7c22bf992c7c428485a8a938eb79cd49a8b88572219327921",
+      "published_bytes": 9409,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/probe-current-wasm.mjs",
+        "sha256": "6faa27119eff1584157e412d092cf97fc099af4ff10ed4c1eacf5a61ad636a9c",
+        "bytes": 9461
+      },
+      "restored_path": "color-space/probe-current-wasm.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "diagnostics/color-space/root-cargo-check.log",
+      "published_sha256": "46881d69983448dde4c465df03df40b2e026219ed320532ec95392597c0eb8ee",
+      "published_bytes": 869,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/root-cargo-check.log",
+        "sha256": "bc3a1ca8fa9c5d4a122636b4bc6e2b2136a64477a8c89ba74681ec6718d53220",
+        "bytes": 899
+      },
+      "restored_path": "color-space/root-cargo-check.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/rustc-command.json",
+      "published_sha256": "87c92808be0b67ea25024934766eb2126c98fd471581a7a6e70bfe2fe49e95a7",
+      "published_bytes": 2512,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/rustc-command.json",
+        "sha256": "04a0c1bdbc9078fa649130c39845a3ef4e801fc1556e63928d1147ed20520abf",
+        "bytes": 2921
+      },
+      "restored_path": "color-space/rustc-command.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/sketch_adaptable_color-tests.log",
+      "published_sha256": "f9ee3f147ebe5d772454d6759f69c1f3cab382328affa24b2ab703556de21c24",
+      "published_bytes": 361,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/sketch_adaptable_color-tests.log",
+        "sha256": "f9ee3f147ebe5d772454d6759f69c1f3cab382328affa24b2ab703556de21c24",
+        "bytes": 361
+      },
+      "restored_path": "color-space/sketch_adaptable_color-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/sketch_automation_symbols-tests.log",
+      "published_sha256": "13b68f16798ee405d7d465cdda64b00b47374e1c14eff9b86f2dc536502d7282",
+      "published_bytes": 641,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/sketch_automation_symbols-tests.log",
+        "sha256": "13b68f16798ee405d7d465cdda64b00b47374e1c14eff9b86f2dc536502d7282",
+        "bytes": 641
+      },
+      "restored_path": "color-space/sketch_automation_symbols-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/sketch_color_profiles-tests.log",
+      "published_sha256": "ede12c2c58fec20ce338d27ce8d724714f556b73b8d73e7c8ed29ad967c1b50e",
+      "published_bytes": 653,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/sketch_color_profiles-tests.log",
+        "sha256": "ede12c2c58fec20ce338d27ce8d724714f556b73b8d73e7c8ed29ad967c1b50e",
+        "bytes": 653
+      },
+      "restored_path": "color-space/sketch_color_profiles-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/sketch_import_admission-tests.log",
+      "published_sha256": "c2540246be0154f74c973bb2e2d65b1eb6ec2e2012a96e18f4620c364dd6b541",
+      "published_bytes": 1001,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/sketch_import_admission-tests.log",
+        "sha256": "c2540246be0154f74c973bb2e2d65b1eb6ec2e2012a96e18f4620c364dd6b541",
+        "bytes": 1001
+      },
+      "restored_path": "color-space/sketch_import_admission-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/sketch_overrides-tests.log",
+      "published_sha256": "4e4c11472e80fd8c3d9a106f08651e57000d4a87bc4cca398ae8ba8520d160cb",
+      "published_bytes": 306,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/sketch_overrides-tests.log",
+        "sha256": "4e4c11472e80fd8c3d9a106f08651e57000d4a87bc4cca398ae8ba8520d160cb",
+        "bytes": 306
+      },
+      "restored_path": "color-space/sketch_overrides-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/sketch_shared_styles-tests.log",
+      "published_sha256": "c69cc914d378c9192e9091abb75e27b17e3462aa5ca233323e5971db2216af9d",
+      "published_bytes": 281,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/sketch_shared_styles-tests.log",
+        "sha256": "c69cc914d378c9192e9091abb75e27b17e3462aa5ca233323e5971db2216af9d",
+        "bytes": 281
+      },
+      "restored_path": "color-space/sketch_shared_styles-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/sketch_text_attrs-tests.log",
+      "published_sha256": "6469d98046137bed07ecd003bdb52f7f35729b7ba310ea850d954ec76cd5b346",
+      "published_bytes": 289,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/sketch_text_attrs-tests.log",
+        "sha256": "6469d98046137bed07ecd003bdb52f7f35729b7ba310ea850d954ec76cd5b346",
+        "bytes": 289
+      },
+      "restored_path": "color-space/sketch_text_attrs-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/source-manifest.json",
+      "published_sha256": "edaf52cb59386e05d9a302547dc7300e08935488098123b6461dc81e35c89046",
+      "published_bytes": 898,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/source-manifest.json",
+        "sha256": "edaf52cb59386e05d9a302547dc7300e08935488098123b6461dc81e35c89046",
+        "bytes": 898
+      },
+      "restored_path": "color-space/source-manifest.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/wasm-probe-results.json",
+      "published_sha256": "6ec2838c026eb61adb2f177da26a6327f0d6cf3eb8205a3817a11f6d672088c1",
+      "published_bytes": 5215,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/wasm-probe-results.json",
+        "sha256": "6ec2838c026eb61adb2f177da26a6327f0d6cf3eb8205a3817a11f6d672088c1",
+        "bytes": 5215
+      },
+      "restored_path": "color-space/wasm-probe-results.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/color-space/wasm-probe.log",
+      "published_sha256": "2fa3984f9c972d2aa8c62a1e3c47b3be921317967e7999ec6fab055f812bb913",
+      "published_bytes": 5216,
+      "original": {
+        "path": "__REVIEW_ROOT__/color-space/wasm-probe.log",
+        "sha256": "2fa3984f9c972d2aa8c62a1e3c47b3be921317967e7999ec6fab055f812bb913",
+        "bytes": 5216
+      },
+      "restored_path": "color-space/wasm-probe.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/import-background-audit-checks.json",
+      "published_sha256": "186d9ce97c588b4dce44e6aff3535295329bc495f61bc8327b46774777a20e26",
+      "published_bytes": 278,
+      "original": {
+        "path": "__REVIEW_ROOT__/import-background-audit-checks.json",
+        "sha256": "186d9ce97c588b4dce44e6aff3535295329bc495f61bc8327b46774777a20e26",
+        "bytes": 278
+      },
+      "restored_path": "import-background-audit-checks.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/import-background-audit.md",
+      "published_sha256": "72aa354cac8329f838cd2eb7d5504be445431dfcc3b74403605f42d98aa81988",
+      "published_bytes": 13805,
+      "original": {
+        "path": "__REVIEW_ROOT__/import-background-audit.md",
+        "sha256": "b7210c0ea118289e63ba79dc7406706b0fac123210306158e51e4e97e25a85a9",
+        "bytes": 13835
+      },
+      "restored_path": "import-background-audit.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/import-background-source-manifest.json",
+      "published_sha256": "a2054a606a2856444d8f1658a80a623dbba9ac09c955f4923b12b7c857d10904",
+      "published_bytes": 5085,
+      "original": {
+        "path": "__REVIEW_ROOT__/import-background-source-manifest.json",
+        "sha256": "a2054a606a2856444d8f1658a80a623dbba9ac09c955f4923b12b7c857d10904",
+        "bytes": 5085
+      },
+      "restored_path": "import-background-source-manifest.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/import-fixture-compile-probe.ts.source.txt",
+      "published_sha256": "a2858bf19bc01f78612a9cf77f258221fa8a38156669f59ae44f48f76627d15c",
+      "published_bytes": 3041,
+      "original": {
+        "path": "__REVIEW_ROOT__/import-fixture-compile-probe.ts",
+        "sha256": "119005a95129a2f60eb3a3d1fb0eb13fc27d9e2d71444582086d7da0dcfda476",
+        "bytes": 3183
+      },
+      "restored_path": "import-fixture-compile-probe.ts",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "diagnostics/import-fixture-probe.ts.source.txt",
+      "published_sha256": "092c5c15e614f354513d4ffecbd35ea56fd1fba587f38a65ee3e397f0bf6b9e6",
+      "published_bytes": 1661,
+      "original": {
+        "path": "__REVIEW_ROOT__/import-fixture-probe.ts",
+        "sha256": "4627456ce2a1f9ebbfa30b41873e5ece062f1625340f9f3ec79fe68e703d729f",
+        "bytes": 1773
+      },
+      "restored_path": "import-fixture-probe.ts",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "diagnostics/render-startup-audit.md",
+      "published_sha256": "8568dfc4718a2be4485f1acf15a2b90d68102e904f1c86caec540c23a17aa2c4",
+      "published_bytes": 13736,
+      "original": {
+        "path": "__REVIEW_ROOT__/render-startup-audit.md",
+        "sha256": "71dc860fd70ede9a30b9363a7fbbd0f2bef44359085f5ba158f90f7a1a24a151",
+        "bytes": 13766
+      },
+      "restored_path": "render-startup-audit.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "diagnostics/render-startup-source-hashes.json",
+      "published_sha256": "1ab7ad607c4b5e2cddaef417a6971d9e3bc6ea12f95a7335d96beba215b14c19",
+      "published_bytes": 4228,
+      "original": {
+        "path": "__REVIEW_ROOT__/render-startup-source-hashes.json",
+        "sha256": "3fc2ccced1df10210796a0dfba97ea9b6d782d728fddafd7080581f66c2d670b",
+        "bytes": 4258
+      },
+      "restored_path": "render-startup-source-hashes.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/REVIEW.md",
+      "published_sha256": "988e41c2dbf0d8cd8e4eae50dce212de205226bbd4ef5d80d8dd37b2bfbc9dbf",
+      "published_bytes": 8256,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/REVIEW.md",
+        "sha256": "988e41c2dbf0d8cd8e4eae50dce212de205226bbd4ef5d80d8dd37b2bfbc9dbf",
+        "bytes": 8256
+      },
+      "restored_path": "review-canvas-font/REVIEW.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/acceptance-canvas-metrics.jsonl",
+      "published_sha256": "0d54ad43c7eb87973998749c1f60f520dfc160aaf4c6603773c53bc071b59eee",
+      "published_bytes": 1489,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/acceptance-canvas-metrics.jsonl",
+        "sha256": "0d54ad43c7eb87973998749c1f60f520dfc160aaf4c6603773c53bc071b59eee",
+        "bytes": 1489
+      },
+      "restored_path": "review-canvas-font/acceptance-canvas-metrics.jsonl",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/acceptance-inputs.json",
+      "published_sha256": "c00499d2e82d5901d37c6df0097317de00b75f0cd7932c5a09f46bcb70760fbf",
+      "published_bytes": 2270,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/acceptance-inputs.json",
+        "sha256": "c00499d2e82d5901d37c6df0097317de00b75f0cd7932c5a09f46bcb70760fbf",
+        "bytes": 2270
+      },
+      "restored_path": "review-canvas-font/acceptance-inputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/acceptance-outputs.json",
+      "published_sha256": "c00499d2e82d5901d37c6df0097317de00b75f0cd7932c5a09f46bcb70760fbf",
+      "published_bytes": 2270,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/acceptance-outputs.json",
+        "sha256": "c00499d2e82d5901d37c6df0097317de00b75f0cd7932c5a09f46bcb70760fbf",
+        "bytes": 2270
+      },
+      "restored_path": "review-canvas-font/acceptance-outputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/acceptance-ownership.log",
+      "published_sha256": "26da4b99b380f54b5e6565fb62c29b47d9d46116d94c2dd7909c17cf42f23fde",
+      "published_bytes": 1611,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/acceptance-ownership.log",
+        "sha256": "26da4b99b380f54b5e6565fb62c29b47d9d46116d94c2dd7909c17cf42f23fde",
+        "bytes": 1611
+      },
+      "restored_path": "review-canvas-font/acceptance-ownership.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/acceptance-tests.json",
+      "published_sha256": "80c0758e521dcdd3b2d414e4937572ff1af9e5e6fadfbfc1b6c75fd08c07fb30",
+      "published_bytes": 32869,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/acceptance-tests.json",
+        "sha256": "21620ae6e3b437688a1c51260957d03a0fc031ecc6b2f0e62064fbac371207a6",
+        "bytes": 33109
+      },
+      "restored_path": "review-canvas-font/acceptance-tests.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/acceptance-tests.log",
+      "published_sha256": "eacd6cb7912a91cb9e372f5cd94631e36fec205435035b463681620c799e1a38",
+      "published_bytes": 17887,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/acceptance-tests.log",
+        "sha256": "bfec63e9acb8936b870ca9e9e9f637639e6637567e501a1660d7dfa15f48729e",
+        "bytes": 17939
+      },
+      "restored_path": "review-canvas-font/acceptance-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/acceptance-typecheck.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/acceptance-typecheck.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-canvas-font/acceptance-typecheck.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/baseline-Canvas.tsx.source.txt",
+      "published_sha256": "f76c5ebb374c9d90180c2ed9676fdc60c8a59285485a8070441ba69b4d16b43f",
+      "published_bytes": 136015,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/baseline-Canvas.tsx",
+        "sha256": "a8baf8e33935f02219bc02e7a3d4687d9b07e9e1e5c3d454526d9ed599a820dd",
+        "bytes": 137755
+      },
+      "restored_path": "review-canvas-font/baseline-Canvas.tsx",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/baseline-tests.json",
+      "published_sha256": "1bbfef39d22ba90b574fba92729706e830d94c795a2c63b0352a40ad7056891a",
+      "published_bytes": 1821,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/baseline-tests.json",
+        "sha256": "c5e5bd06f3c988cf7d6bbd8ff0253d71ad26b9fd1129c7a58d518116cf2e835c",
+        "bytes": 1843
+      },
+      "restored_path": "review-canvas-font/baseline-tests.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/baseline-tests.log",
+      "published_sha256": "a5daeac5bb270f5d55ee01bb5afe6cd5ff073626d44d1384b0d4fb3de8c43021",
+      "published_bytes": 735,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/baseline-tests.log",
+        "sha256": "61bf77053ceca1bfc47166ba5c7b4140e28d15fbf70f3ef9c97c782603ad1591",
+        "bytes": 779
+      },
+      "restored_path": "review-canvas-font/baseline-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/evidence-sha256.json",
+      "published_sha256": "2b87bb797ea1ecc586548bed69a7c5a74e10515d364e1f4280c00d47ac35580d",
+      "published_bytes": 6394,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/evidence-sha256.json",
+        "sha256": "2b87bb797ea1ecc586548bed69a7c5a74e10515d364e1f4280c00d47ac35580d",
+        "bytes": 6394
+      },
+      "restored_path": "review-canvas-font/evidence-sha256.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/file-ownership-behavior.json",
+      "published_sha256": "ee288306cc43f6af6b7aee4d83bba39d16274b8c08d3ebbf933f211dd0a695ff",
+      "published_bytes": 6337,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/file-ownership-behavior.json",
+        "sha256": "4d5a4a62f4f0ed1d5012a4412c4861d8a4bddc995802e59687ae6ac8caba3975",
+        "bytes": 6367
+      },
+      "restored_path": "review-canvas-font/file-ownership-behavior.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/file-ownership-behavior.log",
+      "published_sha256": "ca1a931b3f688aadc7e3599e949ed126ad8eafbe3c0766134ff36f723869b6d8",
+      "published_bytes": 2715,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/file-ownership-behavior.log",
+        "sha256": "468e5beffb6642433d470583fc9cdfe3a00b1658b2f41ab19f83a10e0262daed",
+        "bytes": 2767
+      },
+      "restored_path": "review-canvas-font/file-ownership-behavior.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/final-canvas-metrics.jsonl",
+      "published_sha256": "bb2f3ff0da7c1c0a85c9c700bf35d567387a6addd716d1d07f89e1924c0af65f",
+      "published_bytes": 1412,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/final-canvas-metrics.jsonl",
+        "sha256": "bb2f3ff0da7c1c0a85c9c700bf35d567387a6addd716d1d07f89e1924c0af65f",
+        "bytes": 1412
+      },
+      "restored_path": "review-canvas-font/final-canvas-metrics.jsonl",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/final-font-metrics.jsonl",
+      "published_sha256": "7fe0ee77151ae86383ad682335a903084921bc8d4cfc56c9bdcf9d34aa58f65e",
+      "published_bytes": 504,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/final-font-metrics.jsonl",
+        "sha256": "7fe0ee77151ae86383ad682335a903084921bc8d4cfc56c9bdcf9d34aa58f65e",
+        "bytes": 504
+      },
+      "restored_path": "review-canvas-font/final-font-metrics.jsonl",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/focused-final-inputs.json",
+      "published_sha256": "5e46e80a6a5c61085b5ecd7f10afe22d4975167252861014459eceeab5792ae2",
+      "published_bytes": 2144,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/focused-final-inputs.json",
+        "sha256": "5e46e80a6a5c61085b5ecd7f10afe22d4975167252861014459eceeab5792ae2",
+        "bytes": 2144
+      },
+      "restored_path": "review-canvas-font/focused-final-inputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/focused-final-outputs.json",
+      "published_sha256": "5e46e80a6a5c61085b5ecd7f10afe22d4975167252861014459eceeab5792ae2",
+      "published_bytes": 2144,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/focused-final-outputs.json",
+        "sha256": "5e46e80a6a5c61085b5ecd7f10afe22d4975167252861014459eceeab5792ae2",
+        "bytes": 2144
+      },
+      "restored_path": "review-canvas-font/focused-final-outputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/focused-final-tests.json",
+      "published_sha256": "31a7a1c2039e40f87c473dae115ac54df04907346b8a2da13a02ec018deb6e97",
+      "published_bytes": 31993,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/focused-final-tests.json",
+        "sha256": "39bc5e1456b1b7e27b89ec18fa63ed5089863f47ce8a9e3f6d26abdbc751c25b",
+        "bytes": 32233
+      },
+      "restored_path": "review-canvas-font/focused-final-tests.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/focused-final-tests.log",
+      "published_sha256": "ca18678be003d8c65b026792a3d32e7e46dc4e4b7fad5e5d4c050fead87e0754",
+      "published_bytes": 17538,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/focused-final-tests.log",
+        "sha256": "aa8ad37bbc77c623d76320c177f9c3b87a38fc06fd337937a7944bb66e290e53",
+        "bytes": 17590
+      },
+      "restored_path": "review-canvas-font/focused-final-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/focused-tests-fixed.json",
+      "published_sha256": "2028e6c847857b262a3a02d93fa4f807e7824caf8aaa28e0051b047fdfd69eed",
+      "published_bytes": 31328,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/focused-tests-fixed.json",
+        "sha256": "f6f39ec28c9c6ce3940fd852d67f36d2671b2f1fd592f9945b8624a70d5f255f",
+        "bytes": 31568
+      },
+      "restored_path": "review-canvas-font/focused-tests-fixed.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/focused-tests-fixed.log",
+      "published_sha256": "1fa2b5a79880bcd89a00c13335cc2b6d13b5d4d390a4366237362650cdad1f46",
+      "published_bytes": 17262,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/focused-tests-fixed.log",
+        "sha256": "b8be1119c25523282e65d07f40fb97e241d57a95aeed82bbd3a23363e4fd25b4",
+        "bytes": 17314
+      },
+      "restored_path": "review-canvas-font/focused-tests-fixed.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/focused-tests.json",
+      "published_sha256": "93e303347b3507c168108579a56f056b9e3e4eb61c0ffbab3bb9b5c66b22715b",
+      "published_bytes": 28575,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/focused-tests.json",
+        "sha256": "bc1c86da931a423a40f843a35c08c1f07a807a9ce1bea577fe90b5f60c706696",
+        "bytes": 28815
+      },
+      "restored_path": "review-canvas-font/focused-tests.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/focused-tests.log",
+      "published_sha256": "4e7b03ffa0fb43a0d24b5b187fc8ecf7a198ad5483c3fd98b0e012f0fffbdb53",
+      "published_bytes": 16151,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/focused-tests.log",
+        "sha256": "1232b5dc9969dbb51b2112803d0433286eee1b01e098417c080edef3f7623b59",
+        "bytes": 16203
+      },
+      "restored_path": "review-canvas-font/focused-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/ADDENDUM.json",
+      "published_sha256": "a3129fc52c359015eb2b62f3132d6664bca01cbdffb042df24dc3501e0725ce4",
+      "published_bytes": 3389,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/ADDENDUM.json",
+        "sha256": "a3129fc52c359015eb2b62f3132d6664bca01cbdffb042df24dc3501e0725ce4",
+        "bytes": 3389
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/ADDENDUM.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/ADDENDUM.md",
+      "published_sha256": "b146da312e86db4de488e8614e84c193d4931ff2d15d7ce2a7fc805a868876c2",
+      "published_bytes": 6731,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/ADDENDUM.md",
+        "sha256": "b146da312e86db4de488e8614e84c193d4931ff2d15d7ce2a7fc805a868876c2",
+        "bytes": 6731
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/ADDENDUM.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/addendum-sha256.json",
+      "published_sha256": "a74e2689d438b182a123fd312093dc63dc70fcdf2d7693927b7ce0da33bb0cfb",
+      "published_bytes": 5497,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/addendum-sha256.json",
+        "sha256": "a74e2689d438b182a123fd312093dc63dc70fcdf2d7693927b7ce0da33bb0cfb",
+        "bytes": 5497
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/addendum-sha256.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/ascii-stdout-before.log",
+      "published_sha256": "d820fab048b493e4a1020c45038ac879363e85b7216503d903afc57ad13d3d8e",
+      "published_bytes": 470,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/ascii-stdout-before.log",
+        "sha256": "4172a1cfacf48cce8b9b173c707b7f169c8fb9ac9b6d2a4ca20c74a4ae86c016",
+        "bytes": 530
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/ascii-stdout-before.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/cache-sha-mismatch-no-repair.log",
+      "published_sha256": "2e762fd7ac316d6b86ef51d30a4887b22f75e6d7bbbb6050875420fe7e98bfef",
+      "published_bytes": 590,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/cache-sha-mismatch-no-repair.log",
+        "sha256": "2e762fd7ac316d6b86ef51d30a4887b22f75e6d7bbbb6050875420fe7e98bfef",
+        "bytes": 590
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/cache-sha-mismatch-no-repair.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/concurrent-1.log",
+      "published_sha256": "8ba388ebeba7300a63c413445c18cf9fde6f3ac36fd930f070dc45d13e0a9e87",
+      "published_bytes": 1065,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/concurrent-1.log",
+        "sha256": "8ba388ebeba7300a63c413445c18cf9fde6f3ac36fd930f070dc45d13e0a9e87",
+        "bytes": 1065
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/concurrent-1.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/concurrent-2.log",
+      "published_sha256": "8ba388ebeba7300a63c413445c18cf9fde6f3ac36fd930f070dc45d13e0a9e87",
+      "published_bytes": 1065,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/concurrent-2.log",
+        "sha256": "8ba388ebeba7300a63c413445c18cf9fde6f3ac36fd930f070dc45d13e0a9e87",
+        "bytes": 1065
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/concurrent-2.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/acceptance-inputs.json",
+      "published_sha256": "fcf1c0fa540ffd43a3c4a3189acbdf58a34e120781c084cb7a3b00e69bd9ed72",
+      "published_bytes": 997,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/acceptance-inputs.json",
+        "sha256": "fcf1c0fa540ffd43a3c4a3189acbdf58a34e120781c084cb7a3b00e69bd9ed72",
+        "bytes": 997
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/acceptance-inputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/acceptance-outputs.json",
+      "published_sha256": "fcf1c0fa540ffd43a3c4a3189acbdf58a34e120781c084cb7a3b00e69bd9ed72",
+      "published_bytes": 997,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/acceptance-outputs.json",
+        "sha256": "fcf1c0fa540ffd43a3c4a3189acbdf58a34e120781c084cb7a3b00e69bd9ed72",
+        "bytes": 997
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/acceptance-outputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/acceptance-typecheck.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/acceptance-typecheck.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/acceptance-typecheck.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/acceptance-vitest.json",
+      "published_sha256": "4c33cf1f10d819e92e0b5343b32aced26edcb6a5de294c57fa8db9cadb745586",
+      "published_bytes": 14924,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/acceptance-vitest.json",
+        "sha256": "58eaf94d1be4005e10cd95bfe51496a92425c8c7b071c1609b28b4945e1db4a4",
+        "bytes": 15044
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/acceptance-vitest.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/acceptance-vitest.log",
+      "published_sha256": "e269c76d7f02f7b1573f67f0968e41266bbc4328887ce1ffbeda266dd50493c4",
+      "published_bytes": 7524,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/acceptance-vitest.log",
+        "sha256": "07b17d002d15b9050b3212b9e70815ef0f497fad1992fa268c7fc875c304e5fa",
+        "bytes": 7576
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/acceptance-vitest.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/ascii-stdout-transport.log",
+      "published_sha256": "f1ea2b98f5bdcd235c953ff43f61b36daf9760d71f38656e4740b0e2ea804ea1",
+      "published_bytes": 1091,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/ascii-stdout-transport.log",
+        "sha256": "f1ea2b98f5bdcd235c953ff43f61b36daf9760d71f38656e4740b0e2ea804ea1",
+        "bytes": 1091
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/ascii-stdout-transport.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/cache-sha-mismatch-no-repair.log",
+      "published_sha256": "85a920f0dd59eeb36e9fc7b2fadee9f3acc19410c4dc0359f454aa1073d7708e",
+      "published_bytes": 590,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/cache-sha-mismatch-no-repair.log",
+        "sha256": "85a920f0dd59eeb36e9fc7b2fadee9f3acc19410c4dc0359f454aa1073d7708e",
+        "bytes": 590
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/cache-sha-mismatch-no-repair.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/concurrent-1.log",
+      "published_sha256": "ba93a3a9300ab174cd7243166950ae2f18bf7975a454fc83575b846f20a5c9d4",
+      "published_bytes": 1089,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/concurrent-1.log",
+        "sha256": "ba93a3a9300ab174cd7243166950ae2f18bf7975a454fc83575b846f20a5c9d4",
+        "bytes": 1089
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/concurrent-1.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/concurrent-2.log",
+      "published_sha256": "ba93a3a9300ab174cd7243166950ae2f18bf7975a454fc83575b846f20a5c9d4",
+      "published_bytes": 1089,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/concurrent-2.log",
+        "sha256": "ba93a3a9300ab174cd7243166950ae2f18bf7975a454fc83575b846f20a5c9d4",
+        "bytes": 1089
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/concurrent-2.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/fresh-isolated-no-historical-fixtures.log",
+      "published_sha256": "c4556b90c0e653a8b5b0f7b6c04c5efdab0539fd9650484154fad3a940e2ef86",
+      "published_bytes": 1083,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/fresh-isolated-no-historical-fixtures.log",
+        "sha256": "c4556b90c0e653a8b5b0f7b6c04c5efdab0539fd9650484154fad3a940e2ef86",
+        "bytes": 1083
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/fresh-isolated-no-historical-fixtures.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/fresh-second-different-hashseed.log",
+      "published_sha256": "525f92c6fe7ff89637d1a8e582b64a5085e124b743445e77183ba1b6622d270e",
+      "published_bytes": 1083,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/fresh-second-different-hashseed.log",
+        "sha256": "525f92c6fe7ff89637d1a8e582b64a5085e124b743445e77183ba1b6622d270e",
+        "bytes": 1083
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/fresh-second-different-hashseed.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/generated-manifest.json",
+      "published_sha256": "52bc2c056ee3a25d12e92ab1e28ceb0d8441b7bb47f7d0b23a2f1755abc047ca",
+      "published_bytes": 862,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/generated-manifest.json",
+        "sha256": "52bc2c056ee3a25d12e92ab1e28ceb0d8441b7bb47f7d0b23a2f1755abc047ca",
+        "bytes": 862
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/generated-manifest.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/historical-byte-equivalence.json",
+      "published_sha256": "f85f7323fcaf1460cc04d1ff01078c12f5ef4cd0eacb9fb7c63cb3cb68c605b9",
+      "published_bytes": 875,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/historical-byte-equivalence.json",
+        "sha256": "f85f7323fcaf1460cc04d1ff01078c12f5ef4cd0eacb9fb7c63cb3cb68c605b9",
+        "bytes": 875
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/historical-byte-equivalence.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/independent_portability.py.source.txt",
+      "published_sha256": "0644cef33eaefc96815cb5aa33426e6384acd56c6ef1ff0600745f8c076a9b80",
+      "published_bytes": 8353,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/independent_portability.py",
+        "sha256": "0b315ddf3ce87ade44ee008476989c8cbe5e1ed252bcbf870e2d98b48ba89795",
+        "bytes": 8383
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/independent_portability.py",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/inputs.json",
+      "published_sha256": "809ad6968b9ec062397658e04d7b47705e1ac69bfba9b9893a10d3e104b2150f",
+      "published_bytes": 1237,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/inputs.json",
+        "sha256": "3553f20edf6d02d2456aa8f361cdd1caf8db0e578fa781bb31738cfd93692b91",
+        "bytes": 1507
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/inputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/missing-fonttools-even-on-cache-hit.log",
+      "published_sha256": "6c6cb9f3701f348316c8a9036bc7649f99024eb8e22bb725d2f80d8b8862cf42",
+      "published_bytes": 437,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/missing-fonttools-even-on-cache-hit.log",
+        "sha256": "6c6cb9f3701f348316c8a9036bc7649f99024eb8e22bb725d2f80d8b8862cf42",
+        "bytes": 437
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/missing-fonttools-even-on-cache-hit.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/missing-source.log",
+      "published_sha256": "bf20f0fb77fefaa4e20b6a2d82b7d2590720586058f160c69c47baa44b2630a7",
+      "published_bytes": 540,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/missing-source.log",
+        "sha256": "bf20f0fb77fefaa4e20b6a2d82b7d2590720586058f160c69c47baa44b2630a7",
+        "bytes": 540
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/missing-source.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/node-helper-review.log",
+      "published_sha256": "fab4d4fae38a13cef3194efed14b2243aa57fcba45166ac2fd3ca7b16383595d",
+      "published_bytes": 1203,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/node-helper-review.log",
+        "sha256": "fab4d4fae38a13cef3194efed14b2243aa57fcba45166ac2fd3ca7b16383595d",
+        "bytes": 1203
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/node-helper-review.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/node-helper-review.mjs.source.txt",
+      "published_sha256": "6cee7713f7e00dd6b981e9563c0b7794b9ed693461bc719fed41768cee194c8a",
+      "published_bytes": 1838,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/node-helper-review.mjs",
+        "sha256": "6cee7713f7e00dd6b981e9563c0b7794b9ed693461bc719fed41768cee194c8a",
+        "bytes": 1838
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/node-helper-review.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/outputs.json",
+      "published_sha256": "809ad6968b9ec062397658e04d7b47705e1ac69bfba9b9893a10d3e104b2150f",
+      "published_bytes": 1237,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/outputs.json",
+        "sha256": "3553f20edf6d02d2456aa8f361cdd1caf8db0e578fa781bb31738cfd93692b91",
+        "bytes": 1507
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/outputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/parsed-font-coverage.json",
+      "published_sha256": "76e4cf43c879905b9cc6c08a70d4dc3ce224bf0145f79a07e0a6a0e67a4392bc",
+      "published_bytes": 1191,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/parsed-font-coverage.json",
+        "sha256": "76e4cf43c879905b9cc6c08a70d4dc3ce224bf0145f79a07e0a6a0e67a4392bc",
+        "bytes": 1191
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/parsed-font-coverage.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/reject-cache-inside-source-checkout.log",
+      "published_sha256": "f82576ea16e76c923260255da1b765417ffaa5ff462e1c24e3393a5c6c148aaa",
+      "published_bytes": 339,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/reject-cache-inside-source-checkout.log",
+        "sha256": "f82576ea16e76c923260255da1b765417ffaa5ff462e1c24e3393a5c6c148aaa",
+        "bytes": 339
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/reject-cache-inside-source-checkout.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/results.json",
+      "published_sha256": "99c6d49b6e04ce97f62cc0ba9c21e4407a2022b85e7f0ea2ace037791dc30731",
+      "published_bytes": 1750,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/results.json",
+        "sha256": "99c6d49b6e04ce97f62cc0ba9c21e4407a2022b85e7f0ea2ace037791dc30731",
+        "bytes": 1750
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/results.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/run.log",
+      "published_sha256": "f79c99c49a69398b42770e3b7ac4f479f64d50b8155edb89f256375fc27ab992",
+      "published_bytes": 86,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/run.log",
+        "sha256": "f79c99c49a69398b42770e3b7ac4f479f64d50b8155edb89f256375fc27ab992",
+        "bytes": 86
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/run.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/source-sha-mismatch.log",
+      "published_sha256": "ba046126f2f76714a0593be8c090044b016afc2f4c6ba6c7739a125d7550b8d8",
+      "published_bytes": 518,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/source-sha-mismatch.log",
+        "sha256": "ba046126f2f76714a0593be8c090044b016afc2f4c6ba6c7739a125d7550b8d8",
+        "bytes": 518
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/source-sha-mismatch.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/typecheck.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/typecheck.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/typecheck.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/verified-cache-hit.log",
+      "published_sha256": "c4556b90c0e653a8b5b0f7b6c04c5efdab0539fd9650484154fad3a940e2ef86",
+      "published_bytes": 1083,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/verified-cache-hit.log",
+        "sha256": "c4556b90c0e653a8b5b0f7b6c04c5efdab0539fd9650484154fad3a940e2ef86",
+        "bytes": 1083
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/verified-cache-hit.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/vitest-inputs.json",
+      "published_sha256": "8ab35395d6e55d6b7fd0b52739c34c84957198a0c6d2ac5048073eaa0a2df3ba",
+      "published_bytes": 997,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/vitest-inputs.json",
+        "sha256": "8ab35395d6e55d6b7fd0b52739c34c84957198a0c6d2ac5048073eaa0a2df3ba",
+        "bytes": 997
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/vitest-inputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/vitest-outputs.json",
+      "published_sha256": "8ab35395d6e55d6b7fd0b52739c34c84957198a0c6d2ac5048073eaa0a2df3ba",
+      "published_bytes": 997,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/vitest-outputs.json",
+        "sha256": "8ab35395d6e55d6b7fd0b52739c34c84957198a0c6d2ac5048073eaa0a2df3ba",
+        "bytes": 997
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/vitest-outputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/vitest-results.json",
+      "published_sha256": "22df594803eb5757d24a2776cb6b486b1f9ceb56aa1da3a5033f4661c6ad4afb",
+      "published_bytes": 15943,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/vitest-results.json",
+        "sha256": "4fce0352b136a02cbe1dc1c0d0b1fba3198fec56c01a7535a52174ad37d5cf5d",
+        "bytes": 16212
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/vitest-results.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/vitest.log",
+      "published_sha256": "db4cc5a449b50813e52501fe64b664dca78ca0ee3cbe18c7c17f0282c608200a",
+      "published_bytes": 8462,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/vitest.log",
+        "sha256": "85c2cc09df954890a9bbf3874509527ddc8625d15437ab18aaf032a4b0f4e222",
+        "bytes": 8514
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/vitest.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/final/wrong-fonttools-version.log",
+      "published_sha256": "43bf8266a600376a576a111e16322d144eb204ad926d4c6372c19c6c8ae14b5d",
+      "published_bytes": 424,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/final/wrong-fonttools-version.log",
+        "sha256": "43bf8266a600376a576a111e16322d144eb204ad926d4c6372c19c6c8ae14b5d",
+        "bytes": 424
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/final/wrong-fonttools-version.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/fresh-isolated-no-historical-fixtures.log",
+      "published_sha256": "f3ed14284878f5ce215cdfc92aeb9b9318903467d25837a228495f59bca89812",
+      "published_bytes": 1059,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/fresh-isolated-no-historical-fixtures.log",
+        "sha256": "f3ed14284878f5ce215cdfc92aeb9b9318903467d25837a228495f59bca89812",
+        "bytes": 1059
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/fresh-isolated-no-historical-fixtures.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/fresh-second-different-hashseed.log",
+      "published_sha256": "cc07da73376879e0ee20c77994b6b4d7a9f901bc3407ee31e1f5f8fbf76751cf",
+      "published_bytes": 1059,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/fresh-second-different-hashseed.log",
+        "sha256": "cc07da73376879e0ee20c77994b6b4d7a9f901bc3407ee31e1f5f8fbf76751cf",
+        "bytes": 1059
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/fresh-second-different-hashseed.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/generated-manifest.json",
+      "published_sha256": "52bc2c056ee3a25d12e92ab1e28ceb0d8441b7bb47f7d0b23a2f1755abc047ca",
+      "published_bytes": 862,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/generated-manifest.json",
+        "sha256": "52bc2c056ee3a25d12e92ab1e28ceb0d8441b7bb47f7d0b23a2f1755abc047ca",
+        "bytes": 862
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/generated-manifest.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/independent_portability.py.source.txt",
+      "published_sha256": "ee47f6afded6998c2c267c157d64242838c1aad0f6d2ab24621c2a5853bb8150",
+      "published_bytes": 8198,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/independent_portability.py",
+        "sha256": "2f266ca36fa35e1370086775979777ccab003a82cb9b6547f7072677541af128",
+        "bytes": 8228
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/independent_portability.py",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/inputs.json",
+      "published_sha256": "c7a7bfce2650c4783a1e9d2b0aa20149b642d825112b97e7d083d02ef432da92",
+      "published_bytes": 1237,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/inputs.json",
+        "sha256": "65619f7e0f189d137312a7e64d6b0b0efc360a7517e57fbae2275da14b07c3ca",
+        "bytes": 1507
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/inputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/missing-fonttools-even-on-cache-hit.log",
+      "published_sha256": "fafd969490a9551c325b697196c3276f1e6ca92e6468af3a980fb74b05198034",
+      "published_bytes": 437,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/missing-fonttools-even-on-cache-hit.log",
+        "sha256": "fafd969490a9551c325b697196c3276f1e6ca92e6468af3a980fb74b05198034",
+        "bytes": 437
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/missing-fonttools-even-on-cache-hit.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/missing-source.log",
+      "published_sha256": "474ef620b16ad6a44349931750eb04a432c1506e03a1ed7d1667a5ab760ca865",
+      "published_bytes": 540,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/missing-source.log",
+        "sha256": "474ef620b16ad6a44349931750eb04a432c1506e03a1ed7d1667a5ab760ca865",
+        "bytes": 540
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/missing-source.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/node-helper-review.log",
+      "published_sha256": "fab4d4fae38a13cef3194efed14b2243aa57fcba45166ac2fd3ca7b16383595d",
+      "published_bytes": 1203,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/node-helper-review.log",
+        "sha256": "fab4d4fae38a13cef3194efed14b2243aa57fcba45166ac2fd3ca7b16383595d",
+        "bytes": 1203
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/node-helper-review.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/node-helper-review.mjs.source.txt",
+      "published_sha256": "35a09861341a5d28c0f2586f5e8dc39c6c9cb70c2c2e4b981df63fc8fcf8a8e7",
+      "published_bytes": 1838,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/node-helper-review.mjs",
+        "sha256": "35a09861341a5d28c0f2586f5e8dc39c6c9cb70c2c2e4b981df63fc8fcf8a8e7",
+        "bytes": 1838
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/node-helper-review.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/outputs.json",
+      "published_sha256": "c7a7bfce2650c4783a1e9d2b0aa20149b642d825112b97e7d083d02ef432da92",
+      "published_bytes": 1237,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/outputs.json",
+        "sha256": "65619f7e0f189d137312a7e64d6b0b0efc360a7517e57fbae2275da14b07c3ca",
+        "bytes": 1507
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/outputs.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/parsed-font-coverage.json",
+      "published_sha256": "76e4cf43c879905b9cc6c08a70d4dc3ce224bf0145f79a07e0a6a0e67a4392bc",
+      "published_bytes": 1191,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/parsed-font-coverage.json",
+        "sha256": "76e4cf43c879905b9cc6c08a70d4dc3ce224bf0145f79a07e0a6a0e67a4392bc",
+        "bytes": 1191
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/parsed-font-coverage.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/reject-cache-inside-source-checkout.log",
+      "published_sha256": "2780b3b083757071047cfe4766eaa62a306081284d3d1456dc1810edf29ac848",
+      "published_bytes": 339,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/reject-cache-inside-source-checkout.log",
+        "sha256": "2780b3b083757071047cfe4766eaa62a306081284d3d1456dc1810edf29ac848",
+        "bytes": 339
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/reject-cache-inside-source-checkout.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/results.json",
+      "published_sha256": "3c32d8326fca1fedb982b4b8ed0c77a7b613a107483bc43a6f8a3f805d71d254",
+      "published_bytes": 1628,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/results.json",
+        "sha256": "3c32d8326fca1fedb982b4b8ed0c77a7b613a107483bc43a6f8a3f805d71d254",
+        "bytes": 1628
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/results.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/run.log",
+      "published_sha256": "57d7ae75f8f542df3f46cd561a3d32f1d18c9a9873531ef92f9e085d87644b17",
+      "published_bytes": 86,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/run.log",
+        "sha256": "57d7ae75f8f542df3f46cd561a3d32f1d18c9a9873531ef92f9e085d87644b17",
+        "bytes": 86
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/run.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/source-sha-mismatch.log",
+      "published_sha256": "f61db3dbdf3af2308672e391f7678a6eec493158ee97d3180f775d41d6ed11b8",
+      "published_bytes": 518,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/source-sha-mismatch.log",
+        "sha256": "f61db3dbdf3af2308672e391f7678a6eec493158ee97d3180f775d41d6ed11b8",
+        "bytes": 518
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/source-sha-mismatch.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/verified-cache-hit.log",
+      "published_sha256": "f3ed14284878f5ce215cdfc92aeb9b9318903467d25837a228495f59bca89812",
+      "published_bytes": 1059,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/verified-cache-hit.log",
+        "sha256": "f3ed14284878f5ce215cdfc92aeb9b9318903467d25837a228495f59bca89812",
+        "bytes": 1059
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/verified-cache-hit.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/font-fixture-portability/wrong-fonttools-version.log",
+      "published_sha256": "dcc092de260704912122f7be92d7363e22f1dbc08e357a77c8d45259a8692b80",
+      "published_bytes": 424,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/font-fixture-portability/wrong-fonttools-version.log",
+        "sha256": "dcc092de260704912122f7be92d7363e22f1dbc08e357a77c8d45259a8692b80",
+        "bytes": 424
+      },
+      "restored_path": "review-canvas-font/font-fixture-portability/wrong-fonttools-version.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/import-ownership-tests-fixed.log",
+      "published_sha256": "ffc45622437e83fc54444e9d762b4f124c5fac1ef66151c34775f41b17ccd89c",
+      "published_bytes": 1611,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/import-ownership-tests-fixed.log",
+        "sha256": "ffc45622437e83fc54444e9d762b4f124c5fac1ef66151c34775f41b17ccd89c",
+        "bytes": 1611
+      },
+      "restored_path": "review-canvas-font/import-ownership-tests-fixed.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/import-ownership-tests.log",
+      "published_sha256": "ad471d883509206e752a61a80e0cad12522d3a4e894c0e375650efacd897a7c5",
+      "published_bytes": 25427,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/import-ownership-tests.log",
+        "sha256": "e6c33b3db8d7e7d8c869e27ab99c796e4ed35100e32e52fc5d3661ffd5a1dde5",
+        "bytes": 25457
+      },
+      "restored_path": "review-canvas-font/import-ownership-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/independent-canvas.test.tsx.source.txt",
+      "published_sha256": "b7b5972a56102bf55fed7c8443e5109be979dff04d75748e5ad56ca18dbd6c85",
+      "published_bytes": 10751,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/independent-canvas.test.tsx",
+        "sha256": "92332f11bd29db060a18456848e51aa1c48395c8e592a032606d47d8196ad39e",
+        "bytes": 11111
+      },
+      "restored_path": "review-canvas-font/independent-canvas.test.tsx",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/independent-font.test.tsx.source.txt",
+      "published_sha256": "e5a6f79bc119e649d3439bfbc208e643b62bf0dc4b3ee4accc8335d23696c2ba",
+      "published_bytes": 9708,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/independent-font.test.tsx",
+        "sha256": "d3349b3a54e1297d4156cb085d401ecfa25a4ea995948e442efc3b48bd36ab56",
+        "bytes": 10038
+      },
+      "restored_path": "review-canvas-font/independent-font.test.tsx",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/independent-tests-fixed.json",
+      "published_sha256": "39dbb953cfaa1f89399bd12c3412e43b9e0541ef892bdac4b3512753053edeed",
+      "published_bytes": 3430,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/independent-tests-fixed.json",
+        "sha256": "620f7f583c4f60df0bbd196bd957bef5090092be62e38b55a30938373f5ee35c",
+        "bytes": 3474
+      },
+      "restored_path": "review-canvas-font/independent-tests-fixed.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/independent-tests-fixed.log",
+      "published_sha256": "635c1df136a43feb1cb49e573cb9cabea039ec709450c15c0fdaa174609cf184",
+      "published_bytes": 1298,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/independent-tests-fixed.log",
+        "sha256": "7ceed26bfa8216473b20db397e351c47a86ed63a3efaaf6972b4cbd456285aab",
+        "bytes": 1342
+      },
+      "restored_path": "review-canvas-font/independent-tests-fixed.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/independent-tests.json",
+      "published_sha256": "f96a4f02baa1be6b7c99e01fd0c345e3de51e0bd3849a0cf4d63129cfa05d624",
+      "published_bytes": 4457,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/independent-tests.json",
+        "sha256": "6a031e9c0732f205baccfa0aaa026eeb4d55b191f917573e4d19e555c14a6fea",
+        "bytes": 4657
+      },
+      "restored_path": "review-canvas-font/independent-tests.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/independent-tests.log",
+      "published_sha256": "0a45aa4432439bd027bcec9c780d13c411cd6425a7d5d58b50159345e15cccf5",
+      "published_bytes": 3578,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/independent-tests.log",
+        "sha256": "5a22cc1fd2a9746082311caaeb413fbc7b7c043fc3a85572ab280215b30b75ae",
+        "bytes": 3622
+      },
+      "restored_path": "review-canvas-font/independent-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/negative-TextStylePanel.tsx.source.txt",
+      "published_sha256": "d3733dde1b09ff02d13715073ccff1d1d3a97d87f2006a6f30965633b677688e",
+      "published_bytes": 17422,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/negative-TextStylePanel.tsx",
+        "sha256": "386214e12628d7460b44e4bd7cc7e887981f9765a2cd26899b0dcb55354fbbbd",
+        "bytes": 17872
+      },
+      "restored_path": "review-canvas-font/negative-TextStylePanel.tsx",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/ownership-negative-control.json",
+      "published_sha256": "56dfc3f38c4aee124ffd6d05ee7e8431295606205e4acca4c3af2bfdbb550712",
+      "published_bytes": 1342,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/ownership-negative-control.json",
+        "sha256": "21fd53ca9f5c733cf3aca5db36e192d729994d53f511301aa102f59b92795cd1",
+        "bytes": 1403
+      },
+      "restored_path": "review-canvas-font/ownership-negative-control.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/ownership-negative-control.log",
+      "published_sha256": "32877f079c4f38c57c74ecb01531bd10e833fe06d1d9f6d34f9622f64ff60ccd",
+      "published_bytes": 2479,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/ownership-negative-control.log",
+        "sha256": "42e6da12e81422f8e530de456146e3a076b4a9d72d536c3c475490c866a0fc8e",
+        "bytes": 63695
+      },
+      "restored_path": "review-canvas-font/ownership-negative-control.log",
+      "transformation": "portable_path_substitution; omitted 2 embedded base64 font payload strings, with length and content hash markers",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/ownership-negative-control.test.tsx.source.txt",
+      "published_sha256": "6189598a63caac430abecb24150e7538e6c338e8b5bf5bf0f3d85191e87c4acf",
+      "published_bytes": 7412,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/ownership-negative-control.test.tsx",
+        "sha256": "b06c02a0430984fe50d8283e21a20f48fc87c288e6c39f5795899bf5ab6a31f4",
+        "bytes": 7742
+      },
+      "restored_path": "review-canvas-font/ownership-negative-control.test.tsx",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/package.json",
+      "published_sha256": "89c47db7851f89caec72da4f215ebc21cf1e294aeef3b45d2583562d846ab035",
+      "published_bytes": 33,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/package.json",
+        "sha256": "89c47db7851f89caec72da4f215ebc21cf1e294aeef3b45d2583562d846ab035",
+        "bytes": 33
+      },
+      "restored_path": "review-canvas-font/package.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/review-fixes.patch",
+      "published_sha256": "f21f3f95e89f3fb370994546c6ebc01f3fd37fa1a132e45cc02f646603697ef9",
+      "published_bytes": 18527,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/review-fixes.patch",
+        "sha256": "f21f3f95e89f3fb370994546c6ebc01f3fd37fa1a132e45cc02f646603697ef9",
+        "bytes": 18527
+      },
+      "restored_path": "review-canvas-font/review-fixes.patch",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/review-summary.json",
+      "published_sha256": "e9b0ed5e384d6f0c0cae8c1f36e4e72df2f41e4e2ff98ddf2f1844c3c1eee5a3",
+      "published_bytes": 3418,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/review-summary.json",
+        "sha256": "c0c9483fbc306babb72de902f1dabef3e2f782bf0c5f15eadff7d232e4260ee6",
+        "bytes": 3508
+      },
+      "restored_path": "review-canvas-font/review-summary.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/source-hashes-start.json",
+      "published_sha256": "a37135fcf8af75c57dc92390aae1d27df619b312ff561e6ac88a0483a2b8ed27",
+      "published_bytes": 4635,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/source-hashes-start.json",
+        "sha256": "271fdf6c07dc525e81f31cac0a275708f3a07e35ff137fdcb024c26f847fe1b9",
+        "bytes": 4725
+      },
+      "restored_path": "review-canvas-font/source-hashes-start.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/typecheck-final.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/typecheck-final.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-canvas-font/typecheck-final.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/typecheck-fixed.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/typecheck-fixed.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-canvas-font/typecheck-fixed.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/typecheck.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/typecheck.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-canvas-font/typecheck.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-canvas-font/vitest-baseline.config.ts.source.txt",
+      "published_sha256": "c26a6373c16b44b19a8aeb14506bec654df59b49a82d10616f4d19a1e4514f6b",
+      "published_bytes": 374,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/vitest-baseline.config.ts",
+        "sha256": "2bff79e0ed31e3df87715a63f747798a373493ab773457afeb27eb51ec1b2a08",
+        "bytes": 456
+      },
+      "restored_path": "review-canvas-font/vitest-baseline.config.ts",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/vitest-negative.config.ts.source.txt",
+      "published_sha256": "5254d0cff6d617e02092780d88d2857cb6d0a0949fe18ff5ed0e2223fb456721",
+      "published_bytes": 398,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/vitest-negative.config.ts",
+        "sha256": "83298ec0181c64236aa7c24cab59b9ffb8363f134ee3004196929e7883ce7084",
+        "bytes": 480
+      },
+      "restored_path": "review-canvas-font/vitest-negative.config.ts",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-canvas-font/vitest.config.ts.source.txt",
+      "published_sha256": "a369332382a6c6a8cb340e8a202b6041d4bd0bdb5cafaf26ccff7907b63db4d2",
+      "published_bytes": 247,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-canvas-font/vitest.config.ts",
+        "sha256": "454bde293d891ce4272f03c36a1d0a4e7f7178f6ce850d4320475e6e0cdb53a9",
+        "bytes": 277
+      },
+      "restored_path": "review-canvas-font/vitest.config.ts",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-mcp-export/REVIEW.md",
+      "published_sha256": "bab67a13ba89bdfb290ded7ab243937080a3edc16b7564eba7d135343ad34b35",
+      "published_bytes": 5557,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/REVIEW.md",
+        "sha256": "bab67a13ba89bdfb290ded7ab243937080a3edc16b7564eba7d135343ad34b35",
+        "bytes": 5557
+      },
+      "restored_path": "review-mcp-export/REVIEW.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/app-adversarial.log",
+      "published_sha256": "1a541ba2ebb9497b42c38302625ab71dd9602db46c4e6b8d994c7b84104fe87a",
+      "published_bytes": 619,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/app-adversarial.log",
+        "sha256": "2371a1360d27325966f350e3d0b73881ec412e3f77c6ef90f31a3d80ec153611",
+        "bytes": 641
+      },
+      "restored_path": "review-mcp-export/app-adversarial.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/app-adversarial.test.ts.source.txt",
+      "published_sha256": "ba98f88b2b0c689eca0e28ed859745d657741712fd13a48c3ed801dc0764cc18",
+      "published_bytes": 6018,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/app-adversarial.test.ts",
+        "sha256": "b1c95480fe99e4ec08bb97da6f41cf93c7a539a8da37f3d069787a625ab3ff17",
+        "bytes": 6108
+      },
+      "restored_path": "review-mcp-export/app-adversarial.test.ts",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-mcp-export/app-wiring.log",
+      "published_sha256": "79fa16e8444802a313f8b61668b63e56ca40e526b25689b76824fb6e19297034",
+      "published_bytes": 618,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/app-wiring.log",
+        "sha256": "3c4e77f7bbb9ad5efe3a7743d27988e4142433c9ce4b95ba4caf0653f1f67e37",
+        "bytes": 640
+      },
+      "restored_path": "review-mcp-export/app-wiring.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/app-wiring.test.ts.source.txt",
+      "published_sha256": "0a7328b55d33518355e0d9b80750fa9bc670223a8c1e762a5fa5b46203c3e59d",
+      "published_bytes": 6410,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/app-wiring.test.ts",
+        "sha256": "cb867b10235fab5316819e1c91c3fb92b396abb0cb4405ca25d6d248467911b5",
+        "bytes": 6650
+      },
+      "restored_path": "review-mcp-export/app-wiring.test.ts",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-mcp-export/cancellation-probe.mjs.source.txt",
+      "published_sha256": "bfd0437e9c274abcc46c6982ae7c7160d6b3b06ab07708a980273ae1a16f27ae",
+      "published_bytes": 1047,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/cancellation-probe.mjs",
+        "sha256": "12426a87c8bf8724dcd5f171ae5ffbc0b84577474aec03a7f0d089c191966a99",
+        "bytes": 1077
+      },
+      "restored_path": "review-mcp-export/cancellation-probe.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-mcp-export/client-regression.log",
+      "published_sha256": "dad4a3dc0fdbe7d91535c02023b7626bf0615f522307e01deb05660751801d3d",
+      "published_bytes": 454,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/client-regression.log",
+        "sha256": "083ac6683dda1fd507e851c81f10476f40f8fc668590c84d01347592e1e8693b",
+        "bytes": 484
+      },
+      "restored_path": "review-mcp-export/client-regression.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/independent-final.log",
+      "published_sha256": "1def8ef36a701c0351bd5e6d7500c1a5ea482a2712ed41deef400f3acd68955e",
+      "published_bytes": 2441,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/independent-final.log",
+        "sha256": "ee0fc63cce0d011666bb6b698eb7ad138b1a945df47909e825d1d71bd3f97126",
+        "bytes": 2463
+      },
+      "restored_path": "review-mcp-export/independent-final.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/independent-fixed.log",
+      "published_sha256": "019d638eb0a83b9a1a2d32e669ed9af9bf3a8e86a6032ebf664c9912f7b29266",
+      "published_bytes": 192,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/independent-fixed.log",
+        "sha256": "afabc7b573fa9d490bb5a5ea1c8f5db768c3122c66128210d6869b99741435c4",
+        "bytes": 214
+      },
+      "restored_path": "review-mcp-export/independent-fixed.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/independent.test.ts.source.txt",
+      "published_sha256": "d10e6139d8a27b31b78ca056c5c79d59ee79a167d2973bbadf2a308c57f7b321",
+      "published_bytes": 5256,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/independent.test.ts",
+        "sha256": "adc2c41d4d63b47f8e4bff0dfb5fbd3816e75a2881b19441c3d501a9333b69a4",
+        "bytes": 5440
+      },
+      "restored_path": "review-mcp-export/independent.test.ts",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-mcp-export/initial-independent.log",
+      "published_sha256": "b717b31392ef91d9ef867314bf67a77d2dbe6aa1fa03f6d8cc47685274dcb973",
+      "published_bytes": 1873,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/initial-independent.log",
+        "sha256": "f462130850c4b25949f146006e2d0a362fb877dfa22e0c3d538041acb5f8436d",
+        "bytes": 1895
+      },
+      "restored_path": "review-mcp-export/initial-independent.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/lifecycle-final.log",
+      "published_sha256": "8767a5f7c2cf9b6055329a8d7719ba7eb159f6efab0709d3a9db9e7af5649760",
+      "published_bytes": 527,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/lifecycle-final.log",
+        "sha256": "8767a5f7c2cf9b6055329a8d7719ba7eb159f6efab0709d3a9db9e7af5649760",
+        "bytes": 527
+      },
+      "restored_path": "review-mcp-export/lifecycle-final.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/lifecycle-fixed.log",
+      "published_sha256": "d820eb4bb1b4f013642143f9347a06315296a4151ac571268a2ccfb1e7ec4ada",
+      "published_bytes": 530,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/lifecycle-fixed.log",
+        "sha256": "d820eb4bb1b4f013642143f9347a06315296a4151ac571268a2ccfb1e7ec4ada",
+        "bytes": 530
+      },
+      "restored_path": "review-mcp-export/lifecycle-fixed.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/lifecycle.test.mjs.source.txt",
+      "published_sha256": "de199639adf94cc9e33e2be143cab9444d0a8fb977da5297f524310d5a3b181c",
+      "published_bytes": 3548,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/lifecycle.test.mjs",
+        "sha256": "e6fc4ffa4682854b974a4aa1b0bdb5af9b4a1055f8518fa91341cc9d7eabc60c",
+        "bytes": 3608
+      },
+      "restored_path": "review-mcp-export/lifecycle.test.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-mcp-export/node-regression.log",
+      "published_sha256": "618563d21edd48e77909b64e582b94923b7b8c55cb9d6049ef96a77bccfcb773",
+      "published_bytes": 21502,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/node-regression.log",
+        "sha256": "ed257652b7a3c803ca86b7e332a55224f668443f863f14cb2234daaf9e796a61",
+        "bytes": 23032
+      },
+      "restored_path": "review-mcp-export/node-regression.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/package.json",
+      "published_sha256": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae",
+      "published_bytes": 18,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/package.json",
+        "sha256": "1239d4d885dcad42201a27ed9324f8f0f760b78700d8db9ced39a511cffe7eae",
+        "bytes": 18
+      },
+      "restored_path": "review-mcp-export/package.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/review-summary.json",
+      "published_sha256": "78390226d5e1164572b92c6042f222c4f9c2e2f9e4c989bae4cc5798346604f2",
+      "published_bytes": 3958,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/review-summary.json",
+        "sha256": "78390226d5e1164572b92c6042f222c4f9c2e2f9e4c989bae4cc5798346604f2",
+        "bytes": 3958
+      },
+      "restored_path": "review-mcp-export/review-summary.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/second-independent.log",
+      "published_sha256": "1289a1f6d878ae803f4e2c22492ffa4158a8e2b90aa4f38ea092c2ab362c9413",
+      "published_bytes": 2970,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/second-independent.log",
+        "sha256": "08710616823ef2d762be33589b37ddd164c418826f9d3079dd8c02e43f406e6f",
+        "bytes": 3027
+      },
+      "restored_path": "review-mcp-export/second-independent.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/source-manifest.json",
+      "published_sha256": "3f5336c08df38c36be7c4318dec04438ad26675d5372a05519b76b114b6af8db",
+      "published_bytes": 4115,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/source-manifest.json",
+        "sha256": "3f5336c08df38c36be7c4318dec04438ad26675d5372a05519b76b114b6af8db",
+        "bytes": 4115
+      },
+      "restored_path": "review-mcp-export/source-manifest.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/sqlite-mcp-regression.log",
+      "published_sha256": "52b3fc90759fa4934f46f93aa53527d4e1c91f105bf854b53449aef5b15532cc",
+      "published_bytes": 447,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/sqlite-mcp-regression.log",
+        "sha256": "52b3fc90759fa4934f46f93aa53527d4e1c91f105bf854b53449aef5b15532cc",
+        "bytes": 447
+      },
+      "restored_path": "review-mcp-export/sqlite-mcp-regression.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/typecheck.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/typecheck.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-mcp-export/typecheck.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-mcp-export/vitest.config.ts.source.txt",
+      "published_sha256": "049b6b25596de27c8baa6859ce79cf51bfc07520a10424936e5de1e5a8300541",
+      "published_bytes": 236,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-mcp-export/vitest.config.ts",
+        "sha256": "f447a305a23ef9ef7b61a36bd58b968718f50f2a77b1ac6860e71419ba8046f4",
+        "bytes": 288
+      },
+      "restored_path": "review-mcp-export/vitest.config.ts",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-native-transport/REPORT.md",
+      "published_sha256": "3cb337fc2630499f56f0f42d22570df565e473d7208cc2fecbe19bac65f62f3a",
+      "published_bytes": 9542,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/REPORT.md",
+        "sha256": "932780b85920c0da847cd3adbce192b30ce8a7bc533ace2aa4b208087576848c",
+        "bytes": 9655
+      },
+      "restored_path": "review-native-transport/REPORT.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/client-tests.log",
+      "published_sha256": "fd7ea5eeaf6b4480ab5cd5849bd431faa38f5b0a226271a4f1748b5299b5bdd9",
+      "published_bytes": 186,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/client-tests.log",
+        "sha256": "3098defb1263ec56f9c6067dff13f5642d6021a3c6aad6490c2050e09953d70b",
+        "bytes": 216
+      },
+      "restored_path": "review-native-transport/client-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/decoder-fix.patch",
+      "published_sha256": "90bb6112b93b3ceff8ee457122a5947a397042350cff3c6cda24133db4e4d042",
+      "published_bytes": 2116,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/decoder-fix.patch",
+        "sha256": "c0d5a20b9a35dedef594927841fb3412675657050566df6b240276692d4cdc25",
+        "bytes": 2160
+      },
+      "restored_path": "review-native-transport/decoder-fix.patch",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/desktop-tests-after.log",
+      "published_sha256": "4cd9d8413e5f545dae4d2c8671fca190bb97ee781604403c97fcdd428b31ee5a",
+      "published_bytes": 3036,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/desktop-tests-after.log",
+        "sha256": "4cd9d8413e5f545dae4d2c8671fca190bb97ee781604403c97fcdd428b31ee5a",
+        "bytes": 3036
+      },
+      "restored_path": "review-native-transport/desktop-tests-after.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/desktop-tests-before.log",
+      "published_sha256": "130cfd9e13bcc3387b8c1b760dc12360932822a9b8949c44b32e3bbd8f4fcf70",
+      "published_bytes": 2753,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/desktop-tests-before.log",
+        "sha256": "130cfd9e13bcc3387b8c1b760dc12360932822a9b8949c44b32e3bbd8f4fcf70",
+        "bytes": 2753
+      },
+      "restored_path": "review-native-transport/desktop-tests-before.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/desktop-tests.log",
+      "published_sha256": "130cfd9e13bcc3387b8c1b760dc12360932822a9b8949c44b32e3bbd8f4fcf70",
+      "published_bytes": 2753,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/desktop-tests.log",
+        "sha256": "130cfd9e13bcc3387b8c1b760dc12360932822a9b8949c44b32e3bbd8f4fcf70",
+        "bytes": 2753
+      },
+      "restored_path": "review-native-transport/desktop-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/final-checks.log",
+      "published_sha256": "706c0fc98ba0726486f5847f31601a138e2ac45f2e54e4488de82cf5500b69ea",
+      "published_bytes": 394,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/final-checks.log",
+        "sha256": "706c0fc98ba0726486f5847f31601a138e2ac45f2e54e4488de82cf5500b69ea",
+        "bytes": 394
+      },
+      "restored_path": "review-native-transport/final-checks.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/historical-benchmark-validation.json",
+      "published_sha256": "8b0c4661f39781c10c4ad167100ecfe6c76fef1844710c1c98e4cd5c5c5261fc",
+      "published_bytes": 1537,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/historical-benchmark-validation.json",
+        "sha256": "8b0c4661f39781c10c4ad167100ecfe6c76fef1844710c1c98e4cd5c5c5261fc",
+        "bytes": 1537
+      },
+      "restored_path": "review-native-transport/historical-benchmark-validation.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/independent-boundaries-after.log",
+      "published_sha256": "d696faf790890f5c73ad11cdb8e1ca751ac24f426cde9cc319d746819f445c89",
+      "published_bytes": 1400,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/independent-boundaries-after.log",
+        "sha256": "d696faf790890f5c73ad11cdb8e1ca751ac24f426cde9cc319d746819f445c89",
+        "bytes": 1400
+      },
+      "restored_path": "review-native-transport/independent-boundaries-after.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/independent-boundaries-before.log",
+      "published_sha256": "e55833250c352ea11c1c7d836fc14281cd5290f4185155196a0e4d1b307e897c",
+      "published_bytes": 3183,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/independent-boundaries-before.log",
+        "sha256": "b044940aaa400c256f83ff70dc7e5a9c12a7360538b741cee607bd714c146e4c",
+        "bytes": 3227
+      },
+      "restored_path": "review-native-transport/independent-boundaries-before.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/independent-boundaries.log",
+      "published_sha256": "e55833250c352ea11c1c7d836fc14281cd5290f4185155196a0e4d1b307e897c",
+      "published_bytes": 3183,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/independent-boundaries.log",
+        "sha256": "b044940aaa400c256f83ff70dc7e5a9c12a7360538b741cee607bd714c146e4c",
+        "bytes": 3227
+      },
+      "restored_path": "review-native-transport/independent-boundaries.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/independent-boundaries.test.mjs.source.txt",
+      "published_sha256": "d66ae726a10d18d06c595a66a18cc2eb2d71186b12882f2856089b8acd86aed6",
+      "published_bytes": 8537,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/independent-boundaries.test.mjs",
+        "sha256": "bee443b202f101615371611f9a3ffd2fe5811c701a04dcdac7826c640290adf4",
+        "bytes": 8644
+      },
+      "restored_path": "review-native-transport/independent-boundaries.test.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-native-transport/native-render-binary-queue.before.test.mjs.source.txt",
+      "published_sha256": "230b88207ab27aa803d8df50d6484723253537b2ce009dd14fce0cf9fd8111ee",
+      "published_bytes": 4865,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/native-render-binary-queue.before.test.mjs",
+        "sha256": "230b88207ab27aa803d8df50d6484723253537b2ce009dd14fce0cf9fd8111ee",
+        "bytes": 4865
+      },
+      "restored_path": "review-native-transport/native-render-binary-queue.before.test.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-native-transport/native-render-frame.before.mjs.source.txt",
+      "published_sha256": "bcc8a75c0199803ac5ff0605d67ae9a99e485bd7e822cbeeefdc5febe5f50ccf",
+      "published_bytes": 3388,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/native-render-frame.before.mjs",
+        "sha256": "bcc8a75c0199803ac5ff0605d67ae9a99e485bd7e822cbeeefdc5febe5f50ccf",
+        "bytes": 3388
+      },
+      "restored_path": "review-native-transport/native-render-frame.before.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-native-transport/native-render-frame.before.test.mjs.source.txt",
+      "published_sha256": "c8a7cd46792783adf9087d19abafa27f3cb332e57077d9be578e0c0c56dd43c7",
+      "published_bytes": 5286,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/native-render-frame.before.test.mjs",
+        "sha256": "c8a7cd46792783adf9087d19abafa27f3cb332e57077d9be578e0c0c56dd43c7",
+        "bytes": 5286
+      },
+      "restored_path": "review-native-transport/native-render-frame.before.test.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-native-transport/negative-control-after.log",
+      "published_sha256": "181fcea37de96d39ed02223790d1cbab5292aef3cf3357543de86757d7402644",
+      "published_bytes": 3550,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/negative-control-after.log",
+        "sha256": "181fcea37de96d39ed02223790d1cbab5292aef3cf3357543de86757d7402644",
+        "bytes": 3550
+      },
+      "restored_path": "review-native-transport/negative-control-after.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/negative-control-before.log",
+      "published_sha256": "e2e73e1fc5c97263e48bb6fba6a49160a9dd34f12b995906d7deed04ea6a6955",
+      "published_bytes": 4198,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/negative-control-before.log",
+        "sha256": "e2e73e1fc5c97263e48bb6fba6a49160a9dd34f12b995906d7deed04ea6a6955",
+        "bytes": 4198
+      },
+      "restored_path": "review-native-transport/negative-control-before.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/negative-control.before.mjs.source.txt",
+      "published_sha256": "5afc149cf14c9c48a98bdc246d6f314a8b8bfc0366a975ef7476b810791032a8",
+      "published_bytes": 1242,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/negative-control.before.mjs",
+        "sha256": "5afc149cf14c9c48a98bdc246d6f314a8b8bfc0366a975ef7476b810791032a8",
+        "bytes": 1242
+      },
+      "restored_path": "review-native-transport/negative-control.before.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-native-transport/negative-control.log",
+      "published_sha256": "e2e73e1fc5c97263e48bb6fba6a49160a9dd34f12b995906d7deed04ea6a6955",
+      "published_bytes": 4198,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/negative-control.log",
+        "sha256": "e2e73e1fc5c97263e48bb6fba6a49160a9dd34f12b995906d7deed04ea6a6955",
+        "bytes": 4198
+      },
+      "restored_path": "review-native-transport/negative-control.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/production-benchmark-after.json",
+      "published_sha256": "faad12f9ea891d3438f34dfddce01ec594f6f80d64f41ebbbc25f6364154b4db",
+      "published_bytes": 29425,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/production-benchmark-after.json",
+        "sha256": "faad12f9ea891d3438f34dfddce01ec594f6f80d64f41ebbbc25f6364154b4db",
+        "bytes": 29425
+      },
+      "restored_path": "review-native-transport/production-benchmark-after.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/production-benchmark-after.log",
+      "published_sha256": "348a4211682ebc6fbe1564784abbc655f32c208988eb8bb3f160fc3f53006642",
+      "published_bytes": 402,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/production-benchmark-after.log",
+        "sha256": "348a4211682ebc6fbe1564784abbc655f32c208988eb8bb3f160fc3f53006642",
+        "bytes": 402
+      },
+      "restored_path": "review-native-transport/production-benchmark-after.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/rust-codec-build.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/rust-codec-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-native-transport/rust-codec-build.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/rust-codec-tests.log",
+      "published_sha256": "ce88655fd17e9d6a803ff17d37555b512118d607efc6d78a88c8e6eef9e4de7c",
+      "published_bytes": 453,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/rust-codec-tests.log",
+        "sha256": "ce88655fd17e9d6a803ff17d37555b512118d607efc6d78a88c8e6eef9e4de7c",
+        "bytes": 453
+      },
+      "restored_path": "review-native-transport/rust-codec-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/rust-integrated-tests.log",
+      "published_sha256": "c48456c6dc2031d098738fb75c93c612e2aea4a2a2cab71cc8ed08bd65c7ccec",
+      "published_bytes": 533,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/rust-integrated-tests.log",
+        "sha256": "c48456c6dc2031d098738fb75c93c612e2aea4a2a2cab71cc8ed08bd65c7ccec",
+        "bytes": 533
+      },
+      "restored_path": "review-native-transport/rust-integrated-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/source-hashes-before.json",
+      "published_sha256": "7b4a4af574ada9d15970030a4964f2a2fe59f8a5a3aa313e092058d2c290bee7",
+      "published_bytes": 6365,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/source-hashes-before.json",
+        "sha256": "3634321c6df2d3924342f05143d8dfc25bc6b248a400c57234bf7f77e005666c",
+        "bytes": 6412
+      },
+      "restored_path": "review-native-transport/source-hashes-before.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/source-hashes.json",
+      "published_sha256": "1b2ee2b80c0a8b04cf987fdf2ea3caa3eac4fe06ee00ac05c18e81bdbf3fa629",
+      "published_bytes": 8529,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/source-hashes.json",
+        "sha256": "4f85fa2f623710b7bf3c7d9f528c1b68b2c18c69c794f9454a80dd92a90bfa51",
+        "bytes": 8546
+      },
+      "restored_path": "review-native-transport/source-hashes.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/transport-report-before.md",
+      "published_sha256": "ba5eca9627befa602411b18a15be1a6918c52012017f501862fa839c830bbd8a",
+      "published_bytes": 8948,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/transport-report-before.md",
+        "sha256": "ba5eca9627befa602411b18a15be1a6918c52012017f501862fa839c830bbd8a",
+        "bytes": 8948
+      },
+      "restored_path": "review-native-transport/transport-report-before.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/typecheck-status.log",
+      "published_sha256": "4315d33137f8bf0ec4e7d5f377310c5a6632e65f7abb04071c77f9a7fd9a797a",
+      "published_bytes": 25,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/typecheck-status.log",
+        "sha256": "4315d33137f8bf0ec4e7d5f377310c5a6632e65f7abb04071c77f9a7fd9a797a",
+        "bytes": 25
+      },
+      "restored_path": "review-native-transport/typecheck-status.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-native-transport/typecheck.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-native-transport/typecheck.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-native-transport/typecheck.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/REVIEW-initial.md",
+      "published_sha256": "c3c7230119fe408493066435284f036bb42f4b5faeebcc00f6c7068289b6c2ed",
+      "published_bytes": 8915,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/REVIEW-initial.md",
+        "sha256": "c3c7230119fe408493066435284f036bb42f4b5faeebcc00f6c7068289b6c2ed",
+        "bytes": 8915
+      },
+      "restored_path": "review-sketch-color/REVIEW-initial.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/REVIEW.md",
+      "published_sha256": "a6422caad8ffbedb7c1d40f69097ab618bdd4cf4431533d7286641227873f9ef",
+      "published_bytes": 11772,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/REVIEW.md",
+        "sha256": "2ff7c469dde1d85b7a14152bfb4db425934d42d9e6f71861a595abc9c55b3d82",
+        "bytes": 11818
+      },
+      "restored_path": "review-sketch-color/REVIEW.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/artifact-hashes.json",
+      "published_sha256": "28bd803718f1723dddb8b4566df38fe01932ab70c8955b8873aef66069978c0f",
+      "published_bytes": 1922,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/artifact-hashes.json",
+        "sha256": "28bd803718f1723dddb8b4566df38fe01932ab70c8955b8873aef66069978c0f",
+        "bytes": 1922
+      },
+      "restored_path": "review-sketch-color/artifact-hashes.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/command-after.json",
+      "published_sha256": "698724a15be809aacb40169a2ef5c8ce33081cecf2a44cf1a398d72be63859b1",
+      "published_bytes": 633,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/command-after.json",
+        "sha256": "1104039cbed0e93d48ae8c73a0a5e0167a913a0c70bfbd801e1bd666fb8d47d1",
+        "bytes": 745
+      },
+      "restored_path": "review-sketch-color/command-after.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/command.json",
+      "published_sha256": "339e66fb4ab88dd928f0c8dfbbe67bb86e98fad9e9789a2a8fbba1d2b50ed985",
+      "published_bytes": 2535,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/command.json",
+        "sha256": "d9251ded4a900c128134b66425a8ebfeed36d70b10bf99ee26df780338444efa",
+        "bytes": 2958
+      },
+      "restored_path": "review-sketch-color/command.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/compile-after.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/compile-after.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-sketch-color/compile-after.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/compile.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/compile.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-sketch-color/compile.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/final-cargo-tests.log",
+      "published_sha256": "356e22c9243d1d9a07a4558461f6b0b05be6ac8b9e152bc91776098b617ef1b3",
+      "published_bytes": 4372,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/final-cargo-tests.log",
+        "sha256": "2a9d39ebc453608583561abd730e8a615b72f7610b86f8be0c1ba085e440a4de",
+        "bytes": 4402
+      },
+      "restored_path": "review-sketch-color/final-cargo-tests.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/final-cargo-unit.log",
+      "published_sha256": "ab457e4bbc978bb8b2a8d572250d7cf94c9b4955bbdbeb43b216a208ae817bc4",
+      "published_bytes": 458,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/final-cargo-unit.log",
+        "sha256": "6433b022cae878d3bed8889769cc422ffa59ab3e4a8214e6a52f524d583e30e8",
+        "bytes": 488
+      },
+      "restored_path": "review-sketch-color/final-cargo-unit.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/independent-after.rs.source.txt",
+      "published_sha256": "4890039fa442ee3db38bf30a1026a269a95415f705b07d427d5b7ce23a1da1f3",
+      "published_bytes": 7370,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/independent-after.rs",
+        "sha256": "4890039fa442ee3db38bf30a1026a269a95415f705b07d427d5b7ce23a1da1f3",
+        "bytes": 7370
+      },
+      "restored_path": "review-sketch-color/independent-after.rs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-sketch-color/independent.rs.source.txt",
+      "published_sha256": "452fad723afa2c59272a960c146d8e63ab7965e419b9e4dc1bb1902bbca903bf",
+      "published_bytes": 7552,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/independent.rs",
+        "sha256": "452fad723afa2c59272a960c146d8e63ab7965e419b9e4dc1bb1902bbca903bf",
+        "bytes": 7552
+      },
+      "restored_path": "review-sketch-color/independent.rs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-sketch-color/initial-source-hashes.json",
+      "published_sha256": "b5db2b233308fd787a0dbc7abf2717ee979f78b19c09ac33683f010719ad5b96",
+      "published_bytes": 1476,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/initial-source-hashes.json",
+        "sha256": "a0607466afe104e26aad243d24cb9584b4f083630fec75b44a42d2b31363d7ab",
+        "bytes": 1766
+      },
+      "restored_path": "review-sketch-color/initial-source-hashes.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/interop-before-stroke-guard.rs.source.txt",
+      "published_sha256": "4c6a65f31c7ad8ef21e6517c2ab520beb38328166d05682b13ae02c56468f817",
+      "published_bytes": 263297,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/interop-before-stroke-guard.rs",
+        "sha256": "4c6a65f31c7ad8ef21e6517c2ab520beb38328166d05682b13ae02c56468f817",
+        "bytes": 263297
+      },
+      "restored_path": "review-sketch-color/interop-before-stroke-guard.rs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-sketch-color/results-after.log",
+      "published_sha256": "f3bb15a35429920a5e0c132c28c4e4b6241a4fa92f350c42cbb0fe02f75fdd1e",
+      "published_bytes": 731,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/results-after.log",
+        "sha256": "f3bb15a35429920a5e0c132c28c4e4b6241a4fa92f350c42cbb0fe02f75fdd1e",
+        "bytes": 731
+      },
+      "restored_path": "review-sketch-color/results-after.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/results.log",
+      "published_sha256": "c67614cf900273da036600bca181b62c57f2970f7212ebf314a1cb513559363f",
+      "published_bytes": 830,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/results.log",
+        "sha256": "c67614cf900273da036600bca181b62c57f2970f7212ebf314a1cb513559363f",
+        "bytes": 830
+      },
+      "restored_path": "review-sketch-color/results.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/run.py.source.txt",
+      "published_sha256": "73d5d07396c25bbfd03ce78cf98b2beb9970d0898fef6937cc69ceb1b9599eb5",
+      "published_bytes": 1233,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/run.py",
+        "sha256": "12e49cc40965fe4494dbaf128021e2dbd8dcfd7fa03737a6e85719b556d198e0",
+        "bytes": 1324
+      },
+      "restored_path": "review-sketch-color/run.py",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-sketch-color/source-hashes.json",
+      "published_sha256": "d74e5a21b3c554ad8e157f4eec6254cb338ff7c50562a0f84b91c9395421358b",
+      "published_bytes": 440,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/source-hashes.json",
+        "sha256": "eb6e71fa126d250b3cfdb634f7b3a81a93913dd98e7bbc08c7cf277665a6ecb9",
+        "bytes": 517
+      },
+      "restored_path": "review-sketch-color/source-hashes.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/stroke-guard-tests.patch",
+      "published_sha256": "72d62754a115fc3c59aac4686fe3c0ee1eec53bcbae43e1e714f97c83a687cf0",
+      "published_bytes": 4018,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/stroke-guard-tests.patch",
+        "sha256": "ae41dea235e42923994896f34794f235aa742fd7d8e8c3c7a75e78893d9fa4ea",
+        "bytes": 4070
+      },
+      "restored_path": "review-sketch-color/stroke-guard-tests.patch",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/stroke-guard.patch",
+      "published_sha256": "67a89732a27e604615de2dbf338f5d339c86d50c479396c532c695bc7d84c356",
+      "published_bytes": 977,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/stroke-guard.patch",
+        "sha256": "e566f95aa9c3083ea31bc0d0c5ce464b51181d7f25828760dad80419c87be294",
+        "bytes": 1029
+      },
+      "restored_path": "review-sketch-color/stroke-guard.patch",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-sketch-color/tests-before-stroke-guard.rs.source.txt",
+      "published_sha256": "179311dce3fe4039aae1d2819948bdb9f134c86321ff62b2383d09dc008cb863",
+      "published_bytes": 7182,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-sketch-color/tests-before-stroke-guard.rs",
+        "sha256": "179311dce3fe4039aae1d2819948bdb9f134c86321ff62b2383d09dc008cb863",
+        "bytes": 7182
+      },
+      "restored_path": "review-sketch-color/tests-before-stroke-guard.rs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-svg-import/REVIEW.zh-CN.md",
+      "published_sha256": "4949ffac8aa8b692f515e9680a4d0777e3dccd447d74ba40ec8000596d44e6c1",
+      "published_bytes": 8389,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/REVIEW.zh-CN.md",
+        "sha256": "f29271e62e6afd0b49bca426e3bd33fdfac8e376c8406e3c3252d5127b8318a6",
+        "bytes": 8485
+      },
+      "restored_path": "review-svg-import/REVIEW.zh-CN.md",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/admission.json",
+      "published_sha256": "58ad7e21783b1533ef544279f3de565b6a3d6ca976bafea8bca7b62a1c48088a",
+      "published_bytes": 1080,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/admission.json",
+        "sha256": "58ad7e21783b1533ef544279f3de565b6a3d6ca976bafea8bca7b62a1c48088a",
+        "bytes": 1080
+      },
+      "restored_path": "review-svg-import/admission.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/admission.log",
+      "published_sha256": "ab0893b5388c36577052f1f7d9bdff61406e6b9043101234600938d27ae6e3c8",
+      "published_bytes": 1254,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/admission.log",
+        "sha256": "ab0893b5388c36577052f1f7d9bdff61406e6b9043101234600938d27ae6e3c8",
+        "bytes": 1254
+      },
+      "restored_path": "review-svg-import/admission.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/admission.mjs.source.txt",
+      "published_sha256": "b4a219d17ac3276f254db357cb4e2ba87e14078488072371416b72a958ecae2e",
+      "published_bytes": 2514,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/admission.mjs",
+        "sha256": "e6042f4c6efd7f6ec5fb5f4141d6947d61708fbe4f78c9267e07fbbff130e6e0",
+        "bytes": 2656
+      },
+      "restored_path": "review-svg-import/admission.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-svg-import/admission.old-wasm.json",
+      "published_sha256": "58ad7e21783b1533ef544279f3de565b6a3d6ca976bafea8bca7b62a1c48088a",
+      "published_bytes": 1080,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/admission.old-wasm.json",
+        "sha256": "58ad7e21783b1533ef544279f3de565b6a3d6ca976bafea8bca7b62a1c48088a",
+        "bytes": 1080
+      },
+      "restored_path": "review-svg-import/admission.old-wasm.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/admission.old-wasm.log",
+      "published_sha256": "ab0893b5388c36577052f1f7d9bdff61406e6b9043101234600938d27ae6e3c8",
+      "published_bytes": 1254,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/admission.old-wasm.log",
+        "sha256": "ab0893b5388c36577052f1f7d9bdff61406e6b9043101234600938d27ae6e3c8",
+        "bytes": 1254
+      },
+      "restored_path": "review-svg-import/admission.old-wasm.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/admission.transitional-runtime.json",
+      "published_sha256": "c40fcf656b105042319b918bf8572c341143533eb373c69f93d6633c7a046001",
+      "published_bytes": 1080,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/admission.transitional-runtime.json",
+        "sha256": "c40fcf656b105042319b918bf8572c341143533eb373c69f93d6633c7a046001",
+        "bytes": 1080
+      },
+      "restored_path": "review-svg-import/admission.transitional-runtime.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/admission.transitional-runtime.log",
+      "published_sha256": "ba6e3cf2e272400bdfc09ef0d8f9ac7b99b393079ba6f827fd2b200cdc5ee467",
+      "published_bytes": 1255,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/admission.transitional-runtime.log",
+        "sha256": "ba6e3cf2e272400bdfc09ef0d8f9ac7b99b393079ba6f827fd2b200cdc5ee467",
+        "bytes": 1255
+      },
+      "restored_path": "review-svg-import/admission.transitional-runtime.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/baseline-compare.json",
+      "published_sha256": "45ded2addbebb21ca7f0d40cc5574d27be1047956b7c698aa50c0fa7ac55e167",
+      "published_bytes": 896,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/baseline-compare.json",
+        "sha256": "45ded2addbebb21ca7f0d40cc5574d27be1047956b7c698aa50c0fa7ac55e167",
+        "bytes": 896
+      },
+      "restored_path": "review-svg-import/baseline-compare.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/baseline-compare.log",
+      "published_sha256": "61883bea476617b250395d2db743ee7082fb45a6d1175f82d618e6ff83b5164b",
+      "published_bytes": 2231,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/baseline-compare.log",
+        "sha256": "61883bea476617b250395d2db743ee7082fb45a6d1175f82d618e6ff83b5164b",
+        "bytes": 2231
+      },
+      "restored_path": "review-svg-import/baseline-compare.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/baseline-compare.mjs.source.txt",
+      "published_sha256": "132aeabf34d92d714e8ef2f22bc2c8023ca03a36d95ce0abaa01e1b4f14e7ccf",
+      "published_bytes": 6265,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/baseline-compare.mjs",
+        "sha256": "cf3821735f364ed4c8c4cfbcde0c50143867deaa03ad84b928759555c74de0a0",
+        "bytes": 6425
+      },
+      "restored_path": "review-svg-import/baseline-compare.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-svg-import/baseline-compare.old-wasm.json",
+      "published_sha256": "45ded2addbebb21ca7f0d40cc5574d27be1047956b7c698aa50c0fa7ac55e167",
+      "published_bytes": 896,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/baseline-compare.old-wasm.json",
+        "sha256": "45ded2addbebb21ca7f0d40cc5574d27be1047956b7c698aa50c0fa7ac55e167",
+        "bytes": 896
+      },
+      "restored_path": "review-svg-import/baseline-compare.old-wasm.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/baseline-compare.old-wasm.log",
+      "published_sha256": "61883bea476617b250395d2db743ee7082fb45a6d1175f82d618e6ff83b5164b",
+      "published_bytes": 2231,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/baseline-compare.old-wasm.log",
+        "sha256": "61883bea476617b250395d2db743ee7082fb45a6d1175f82d618e6ff83b5164b",
+        "bytes": 2231
+      },
+      "restored_path": "review-svg-import/baseline-compare.old-wasm.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/baseline-compare.transitional-runtime.json",
+      "published_sha256": "dc25b73b42aafc82fe649c346e2759f7b38ce3c0a6e7932d104b5924e6391386",
+      "published_bytes": 896,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/baseline-compare.transitional-runtime.json",
+        "sha256": "dc25b73b42aafc82fe649c346e2759f7b38ce3c0a6e7932d104b5924e6391386",
+        "bytes": 896
+      },
+      "restored_path": "review-svg-import/baseline-compare.transitional-runtime.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/baseline-compare.transitional-runtime.log",
+      "published_sha256": "0f60deed1dad1e4ea94cec698af715aa6a9a1bb5ebbb623e30beab23f76c1550",
+      "published_bytes": 2233,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/baseline-compare.transitional-runtime.log",
+        "sha256": "0f60deed1dad1e4ea94cec698af715aa6a9a1bb5ebbb623e30beab23f76c1550",
+        "bytes": 2233
+      },
+      "restored_path": "review-svg-import/baseline-compare.transitional-runtime.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/common-valid-differential.json",
+      "published_sha256": "0ca63cf89af94fe0de034d034652ccf34035a4ed2b1722d454a1c25a93cc7b67",
+      "published_bytes": 1054,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/common-valid-differential.json",
+        "sha256": "0ca63cf89af94fe0de034d034652ccf34035a4ed2b1722d454a1c25a93cc7b67",
+        "bytes": 1054
+      },
+      "restored_path": "review-svg-import/common-valid-differential.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/common-valid-differential.old-wasm.json",
+      "published_sha256": "0ca63cf89af94fe0de034d034652ccf34035a4ed2b1722d454a1c25a93cc7b67",
+      "published_bytes": 1054,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/common-valid-differential.old-wasm.json",
+        "sha256": "0ca63cf89af94fe0de034d034652ccf34035a4ed2b1722d454a1c25a93cc7b67",
+        "bytes": 1054
+      },
+      "restored_path": "review-svg-import/common-valid-differential.old-wasm.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/common-valid-differential.transitional-runtime.json",
+      "published_sha256": "0ca63cf89af94fe0de034d034652ccf34035a4ed2b1722d454a1c25a93cc7b67",
+      "published_bytes": 1054,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/common-valid-differential.transitional-runtime.json",
+        "sha256": "0ca63cf89af94fe0de034d034652ccf34035a4ed2b1722d454a1c25a93cc7b67",
+        "bytes": 1054
+      },
+      "restored_path": "review-svg-import/common-valid-differential.transitional-runtime.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/focused-independent.json",
+      "published_sha256": "5bf82ad532c2e99fcb139ef78d4516fb5228e79fedaae070f3bbf4d2353363b1",
+      "published_bytes": 47155,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/focused-independent.json",
+        "sha256": "1a11b3ff9e1bcf011a8cfb48af211b9bd0ac93c1f753eaa13231430dc7159891",
+        "bytes": 47395
+      },
+      "restored_path": "review-svg-import/focused-independent.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/focused-independent.log",
+      "published_sha256": "6b2bf557c3cc6cb42c8119f154107d4c4b6878c4b9128d3992930c0f6dcb39da",
+      "published_bytes": 781,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/focused-independent.log",
+        "sha256": "9d0dee6bf27c81fd0e782a8b98e82ed110cfb58719485b53df69548600ff093a",
+        "bytes": 833
+      },
+      "restored_path": "review-svg-import/focused-independent.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/manifest.json",
+      "published_sha256": "4393dbb3a124da81523074b1c07a2e2e68ecf5361aa798ccb729964057ba63f7",
+      "published_bytes": 4010,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/manifest.json",
+        "sha256": "2e4a862494920820d5839594b774dd194f66a535e49f13b789a9fad0c005505b",
+        "bytes": 4040
+      },
+      "restored_path": "review-svg-import/manifest.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/presentation-independent.log",
+      "published_sha256": "2aff3f5ed0ca9740d06cc6a6c3f19929b0e45ee404e92648b1a87d2d300949d2",
+      "published_bytes": 781,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/presentation-independent.log",
+        "sha256": "2aff3f5ed0ca9740d06cc6a6c3f19929b0e45ee404e92648b1a87d2d300949d2",
+        "bytes": 781
+      },
+      "restored_path": "review-svg-import/presentation-independent.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/probe-results.json",
+      "published_sha256": "04f83b39dc5b8a32760d532bda919b3c93e80fca3dcfb3fd5b0623a9f40dfef2",
+      "published_bytes": 5858,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/probe-results.json",
+        "sha256": "0e6ad7e271dc146d8d70938a590a6980ca080886edfab32e5bbefc06871f6d4d",
+        "bytes": 21561
+      },
+      "restored_path": "review-svg-import/probe-results.json",
+      "transformation": "portable_path_substitution; omitted 7 anomaly.value payload fields",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/probe-results.old-wasm.json",
+      "published_sha256": "04f83b39dc5b8a32760d532bda919b3c93e80fca3dcfb3fd5b0623a9f40dfef2",
+      "published_bytes": 5858,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/probe-results.old-wasm.json",
+        "sha256": "0e6ad7e271dc146d8d70938a590a6980ca080886edfab32e5bbefc06871f6d4d",
+        "bytes": 21561
+      },
+      "restored_path": "review-svg-import/probe-results.old-wasm.json",
+      "transformation": "portable_path_substitution; omitted 7 anomaly.value payload fields",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/probe-results.transitional-runtime.json",
+      "published_sha256": "44e5ee023dea8ecd0d8a24e6b058ae43a701b90ddce6f51e867a207f5b989270",
+      "published_bytes": 5858,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/probe-results.transitional-runtime.json",
+        "sha256": "9266ebe3c9b318ba7a2d0f96edb06137957f003097afd60d13972346007ab91c",
+        "bytes": 21561
+      },
+      "restored_path": "review-svg-import/probe-results.transitional-runtime.json",
+      "transformation": "portable_path_substitution; omitted 7 anomaly.value payload fields",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/probe.log",
+      "published_sha256": "ecfcbfad73e0ff5207f072fdcc47f0ef647e76cb078c6078d18590a26f79f59f",
+      "published_bytes": 5178,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/probe.log",
+        "sha256": "ecfcbfad73e0ff5207f072fdcc47f0ef647e76cb078c6078d18590a26f79f59f",
+        "bytes": 5178
+      },
+      "restored_path": "review-svg-import/probe.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/probe.mjs.source.txt",
+      "published_sha256": "5deaed9a09bcd5017c5913a3fee182b47c2f577f20868ac9115936b73294d055",
+      "published_bytes": 10730,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/probe.mjs",
+        "sha256": "4f80ef8f54c1e701211bcdf005603f4d3f9aa79eeedd0b768da9ec1f4e0187bd",
+        "bytes": 10890
+      },
+      "restored_path": "review-svg-import/probe.mjs",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": true
+    },
+    {
+      "published_path": "reviews/review-svg-import/probe.old-wasm.log",
+      "published_sha256": "ecfcbfad73e0ff5207f072fdcc47f0ef647e76cb078c6078d18590a26f79f59f",
+      "published_bytes": 5178,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/probe.old-wasm.log",
+        "sha256": "ecfcbfad73e0ff5207f072fdcc47f0ef647e76cb078c6078d18590a26f79f59f",
+        "bytes": 5178
+      },
+      "restored_path": "review-svg-import/probe.old-wasm.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/probe.transitional-runtime.log",
+      "published_sha256": "5993f4679ddfde59381b1b77540a1381d879c14434aa08461d315b6511dfa18b",
+      "published_bytes": 5178,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/probe.transitional-runtime.log",
+        "sha256": "5993f4679ddfde59381b1b77540a1381d879c14434aa08461d315b6511dfa18b",
+        "bytes": 5178
+      },
+      "restored_path": "review-svg-import/probe.transitional-runtime.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/runtime-new.after.sha256",
+      "published_sha256": "68a05f278d1eea2910a4fc24a1a54eb5667f983a75860f518d1cf0f7e96ac2fc",
+      "published_bytes": 678,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/runtime-new.after.sha256",
+        "sha256": "68a05f278d1eea2910a4fc24a1a54eb5667f983a75860f518d1cf0f7e96ac2fc",
+        "bytes": 678
+      },
+      "restored_path": "review-svg-import/runtime-new.after.sha256",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/runtime-new.before.sha256",
+      "published_sha256": "208b5bc1644a6dc83f70d4eebe3eb701b60afbf57029693428d5fadaff44ee64",
+      "published_bytes": 678,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/runtime-new.before.sha256",
+        "sha256": "208b5bc1644a6dc83f70d4eebe3eb701b60afbf57029693428d5fadaff44ee64",
+        "bytes": 678
+      },
+      "restored_path": "review-svg-import/runtime-new.before.sha256",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/runtime.sha256",
+      "published_sha256": "8f3281224e5efb729bf86a97ab7c1b031ab05fef6d51d91495d3f096d3436515",
+      "published_bytes": 678,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/runtime.sha256",
+        "sha256": "8f3281224e5efb729bf86a97ab7c1b031ab05fef6d51d91495d3f096d3436515",
+        "bytes": 678
+      },
+      "restored_path": "review-svg-import/runtime.sha256",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/sources.sha256",
+      "published_sha256": "db25ac7b73f93f7578eec917d9dffe03cc10b0eb1178f4b8b11d632fc3a91be9",
+      "published_bytes": 2571,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/sources.sha256",
+        "sha256": "db25ac7b73f93f7578eec917d9dffe03cc10b0eb1178f4b8b11d632fc3a91be9",
+        "bytes": 2571
+      },
+      "restored_path": "review-svg-import/sources.sha256",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/summary.json",
+      "published_sha256": "7964ed5ca7964f62cd24c33b85a83a6b9a385650a0619552f42dee48fada38ab",
+      "published_bytes": 1313,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/summary.json",
+        "sha256": "7964ed5ca7964f62cd24c33b85a83a6b9a385650a0619552f42dee48fada38ab",
+        "bytes": 1313
+      },
+      "restored_path": "review-svg-import/summary.json",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    },
+    {
+      "published_path": "reviews/review-svg-import/typecheck-independent.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "original": {
+        "path": "__REVIEW_ROOT__/review-svg-import/typecheck-independent.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "restored_path": "review-svg-import/typecheck-independent.log",
+      "transformation": "portable_path_substitution",
+      "dormant_source_view": false
+    }
+  ],
+  "excluded": [
+    {
+      "path": "__REVIEW_ROOT__/review-mcp-export/node_modules",
+      "reason": "Dependency link/directory is not publication evidence."
+    },
+    {
+      "path": "__REVIEW_ROOT__/review-sketch-color/independent",
+      "sha256": "7aae106842f465138415cc52dc7534db8ed167829b2b8125f950fc9d40fe1fc7",
+      "bytes": 10822488,
+      "reason": "Compiled executable or other non-text artifact; retained externally, not copied."
+    },
+    {
+      "path": "__REVIEW_ROOT__/review-sketch-color/independent-after",
+      "sha256": "679ff1e9f26096ccfdcee2affe37f6d4dff895b4a1750b71ad2a93871c28fc9f",
+      "bytes": 17055568,
+      "reason": "Compiled executable or other non-text artifact; retained externally, not copied."
+    },
+    {
+      "path": "__REVIEW_ROOT__/review-canvas-font/baseline",
+      "reason": "Dependency link/directory is not publication evidence."
+    },
+    {
+      "path": "__REVIEW_ROOT__/review-canvas-font/node_modules",
+      "reason": "Dependency link/directory is not publication evidence."
+    },
+    {
+      "path": "__REVIEW_ROOT__/review-canvas-font/pre-fix",
+      "reason": "Dependency link/directory is not publication evidence."
+    },
+    {
+      "path": "__REVIEW_ROOT__/review-native-transport/rust-codec-tests",
+      "sha256": "8cf3d2699343efd36e0ad64e737602f1f67ba0b59aee3ba89bafd78f90c5de1e",
+      "bytes": 7187952,
+      "reason": "Compiled executable or other non-text artifact; retained externally, not copied."
+    },
+    {
+      "path": "__REVIEW_ROOT__/import-fixture-probe.json",
+      "sha256": "4319ae43317d5f0ad389357b32c39d99762296d45ebdbb4653c3a9f2719152e7",
+      "bytes": 18492,
+      "reason": "Detailed document/effect payload diagnostic output omitted; counts remain in import-background-audit-checks.json and audit report; source views reproduce it."
+    },
+    {
+      "path": "__REVIEW_ROOT__/import-fixture-probe.log",
+      "sha256": "4319ae43317d5f0ad389357b32c39d99762296d45ebdbb4653c3a9f2719152e7",
+      "bytes": 18492,
+      "reason": "Detailed document/effect payload diagnostic output omitted; counts remain in import-background-audit-checks.json and audit report; source views reproduce it."
+    },
+    {
+      "path": "__REVIEW_ROOT__/import-fixture-compile-probe.json",
+      "sha256": "d824b5a9028add4bb24a9ad96a35cb44cbe8be7d3c8a87dd4fc353d45f400fcf",
+      "bytes": 11544,
+      "reason": "Detailed document/effect payload diagnostic output omitted; counts remain in import-background-audit-checks.json and audit report; source views reproduce it."
+    },
+    {
+      "path": "__REVIEW_ROOT__/import-fixture-compile-probe.log",
+      "sha256": "d824b5a9028add4bb24a9ad96a35cb44cbe8be7d3c8a87dd4fc353d45f400fcf",
+      "bytes": 11544,
+      "reason": "Detailed document/effect payload diagnostic output omitted; counts remain in import-background-audit-checks.json and audit report; source views reproduce it."
+    }
+  ],
+  "supplemental_note": "Font-fixture portability reviewer addendum is additive and separately attributed. Original 179 review/diagnostic copies remain unchanged; the top-level pre-portability review is not relabeled."
+}

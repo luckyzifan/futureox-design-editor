@@ -1,0 +1,2 @@
+import { defineConfig } from 'vitest/config'
+export default defineConfig({ resolve: { alias: [{ find: '__DESIGN_REPO__/frontend/design-client/src/TextStylePanel', replacement: '__REVIEW_ROOT__/review-canvas-font/negative-TextStylePanel.tsx' }] }, test: { setupFiles: ['__DESIGN_REPO__/frontend/design-client/src/test-setup.ts'], include: ['ownership-negative-control.test.tsx'], maxWorkers: 1 } })

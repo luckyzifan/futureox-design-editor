@@ -1,0 +1,270 @@
+{
+  "scope": "Actual existing WASM CPU only. No browser, physical display, GPU, sockets or current-source rebuilt WASM acceptance.",
+  "wasmSha256": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+  "rows": [
+    {
+      "name": "P3 red keeps negative and >1 linear components",
+      "status": "pass",
+      "value": [
+        1.2249400615692139,
+        -0.04205695912241936,
+        -0.01963755488395691,
+        1
+      ]
+    },
+    {
+      "name": "sRGB half gray uses exact sRGB transfer",
+      "status": "pass",
+      "value": [
+        0.21404117345809937,
+        0.21404117345809937,
+        0.21404117345809937,
+        1
+      ]
+    },
+    {
+      "name": "HDR alpha premultiplies once and remains extended",
+      "status": "pass",
+      "value": [
+        1,
+        -0.05000000819563866,
+        0.125,
+        0.25
+      ]
+    },
+    {
+      "name": "203-nit PQ white returns linear one",
+      "status": "pass",
+      "value": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "HLG 75-percent gray returns ~203.152 nits",
+      "status": "pass",
+      "value": [
+        1.0007494688034058,
+        1.0007494688034058,
+        1.0007494688034058,
+        1
+      ]
+    },
+    {
+      "name": "P3 assign reinterprets hex while explicit sRGB stays sRGB",
+      "status": "pass",
+      "hex": [
+        1.2249400615692139,
+        -0.04205695912241936,
+        -0.01963755488395691,
+        1
+      ],
+      "explicit": [
+        1,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "BUG: explicit P3 export to Sketch becomes black",
+      "status": "pass",
+      "bugConfirmed": true,
+      "actual": {
+        "profile": 2,
+        "color": {
+          "_class": "color",
+          "alpha": 1,
+          "blue": 0,
+          "green": 0,
+          "red": 0
+        }
+      },
+      "expected": "P3 red (1,0,0), or explicit unsupported rejection"
+    },
+    {
+      "name": "BUG: explicit sRGB export into P3 document is relabelled",
+      "status": "pass",
+      "bugConfirmed": true,
+      "actual": {
+        "profile": 2,
+        "color": {
+          "_class": "color",
+          "alpha": 1,
+          "blue": 0,
+          "green": 0,
+          "red": 1
+        }
+      },
+      "expected": "sRGB red converted to P3 coordinates, not (1,0,0)"
+    },
+    {
+      "name": "BUG: P3 transparent gradient gets explicit sRGB",
+      "status": "pass",
+      "bugConfirmed": true,
+      "documentSpace": "display-p3",
+      "stops": [
+        {
+          "offset": 0,
+          "color": "#ff0000"
+        },
+        {
+          "offset": 1,
+          "color": "color(srgb 1 0 0 / 0.5)"
+        }
+      ]
+    },
+    {
+      "name": "16-bit PNG metadata srgb",
+      "status": "pass",
+      "chunks": [
+        "IHDR",
+        "iCCP",
+        "cICP",
+        "IDAT",
+        "IEND"
+      ],
+      "cicp": [
+        1,
+        13,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "16-bit PNG metadata display-p3",
+      "status": "pass",
+      "chunks": [
+        "IHDR",
+        "iCCP",
+        "cICP",
+        "IDAT",
+        "IEND"
+      ],
+      "cicp": [
+        12,
+        13,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "16-bit PNG metadata srgb-linear",
+      "status": "pass",
+      "chunks": [
+        "IHDR",
+        "iCCP",
+        "cICP",
+        "IDAT",
+        "IEND"
+      ],
+      "cicp": [
+        1,
+        8,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "16-bit PNG metadata display-p3-linear",
+      "status": "pass",
+      "chunks": [
+        "IHDR",
+        "iCCP",
+        "cICP",
+        "IDAT",
+        "IEND"
+      ],
+      "cicp": [
+        12,
+        8,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "16-bit PNG metadata rec2100-pq",
+      "status": "pass",
+      "chunks": [
+        "IHDR",
+        "cICP",
+        "IDAT",
+        "IEND"
+      ],
+      "cicp": [
+        9,
+        16,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "16-bit PNG metadata rec2100-hlg",
+      "status": "pass",
+      "chunks": [
+        "IHDR",
+        "cICP",
+        "IDAT",
+        "IEND"
+      ],
+      "cicp": [
+        9,
+        18,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "BUG: any nonzero managed image adjustment clips HDR",
+      "status": "pass",
+      "bugConfirmed": true,
+      "before": [
+        3.999821424484253,
+        1.9999585151672363,
+        1.0000696182250977,
+        1
+      ],
+      "after": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "BUG: legacy PNG gAMA=1 plus sRGB cHRM is ignored",
+      "status": "pass",
+      "bugConfirmed": true,
+      "value": [
+        0.2158605456352234,
+        0.2158605456352234,
+        0.2158605456352234,
+        1
+      ],
+      "expected": [
+        0.5019607843137255,
+        0.5019607843137255,
+        0.5019607843137255,
+        1
+      ]
+    },
+    {
+      "name": "BUG: vector PDF embeds tagged P3 image numbers without ICC",
+      "status": "pass",
+      "bugConfirmed": true,
+      "embedded": [
+        138,
+        186,
+        101
+      ],
+      "expectedSrgb": [
+        124,
+        188,
+        89
+      ],
+      "iccBased": false
+    }
+  ]
+}

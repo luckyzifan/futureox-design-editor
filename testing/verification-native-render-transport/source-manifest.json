@@ -1,0 +1,32 @@
+{
+  "scope": "Exact source and local compiled artifacts for native-render FRB1 opt-in CPU/transport verification; no GPU execution",
+  "head": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "sources": {
+    "design-studio/crates/design-gpu/src/main.rs": "36b4deb1dc25f07ed2855ca45773db4e2b249e5a2585630507fc107dcee56c34",
+    "design-studio/crates/design-gpu/src/serve_protocol.rs": "a1b9d42201852a2ccdf217a8948368940d282ead9d64a3b3b4c289adbaefc342",
+    "frontend/design-desktop/src/native-render.mjs": "8693ded4a91917eb74e7f91895eeb9971de54b8ea4870968ab20f8d3879d2b35",
+    "frontend/design-desktop/src/native-render-frame.mjs": "bcc8a75c0199803ac5ff0605d67ae9a99e485bd7e822cbeeefdc5febe5f50ccf",
+    "frontend/design-client/src/desktop.ts": "efcd871d7f1e367b0a3b4a6a490145a3c10288ce4ba191b172b58432a22870c9",
+    "frontend/design-client/src/kernel/native-render-session.ts": "086761eb3a2796f5df3b240482728fe915145bc0b505969c8c253bdd427219de",
+    "frontend/design-client/src/kernel/native-render-pixels.ts": "6214f66648fb7d3d64566d0d37fe731f8f51cafb7132249ca645866a81d83b75",
+    "frontend/design-client/src/kernel/native-render-session.test.ts": "1d4c3e2143f0f41559be03384c484fb7a3e248925758363e0495b6eebb154810",
+    "frontend/design-desktop/test/native-render-binary-queue.test.mjs": "230b88207ab27aa803d8df50d6484723253537b2ce009dd14fce0cf9fd8111ee",
+    "frontend/design-desktop/test/native-render-frame.test.mjs": "c8a7cd46792783adf9087d19abafa27f3cb332e57077d9be578e0c0c56dd43c7",
+    "frontend/design-desktop/test/runtime/native-render-codec-runtime.test.mjs": "539a11514517515929f43f942770b7e56a3c0f768dbde1014afc10fb7829c4af",
+    "frontend/design-desktop/test/runtime/native-render-runtime.test.mjs": "17bad2cf5fddf21842f8e495257b789a28bbb43aeb32718ba7bd548434e8c4ce"
+  },
+  "compiledArtifacts": {
+    "/workspace/shared/design-phase2/cargo-target/debug/design-render": "9c60f1fe772b50e9a3097dfb29f7f5a6771a664a35114f81b8d146b575320bc0",
+    "testing/verification-native-render-transport/rust-codec-fixture": "fa28ece35df215152b210326679c9cade222208357a0c4e37e9d990309d47791",
+    "testing/verification-native-render-transport/rust-codec-tests": "8cf3d2699343efd36e0ad64e737602f1f67ba0b59aee3ba89bafd78f90c5de1e"
+  },
+  "benchmarkSourceHashesStillMatch": {
+    "frontend/design-desktop/src/native-render.mjs": true,
+    "frontend/design-desktop/src/native-render-frame.mjs": true,
+    "frontend/design-client/src/kernel/native-render-pixels.ts": true,
+    "design-studio/crates/design-gpu/src/serve_protocol.rs": true,
+    "testing/verification-native-render-transport/rust-codec-fixture.rs": true,
+    "testing/verification-native-render-transport/rust-codec-fixture": true
+  },
+  "node": "v24.19.0"
+}

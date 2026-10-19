@@ -1,0 +1,3 @@
+# Portable real-font tests. Install explicitly; the test helper never installs.
+# Python >= 3.10 is required. Exact version is checked even on a cache hit.
+fonttools==4.61.1

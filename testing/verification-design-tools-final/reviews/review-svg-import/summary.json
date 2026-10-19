@@ -1,0 +1,42 @@
+{
+  "verdict": "accept bounded SVG update; no introduced integration blocker found",
+  "productFilesChangedByReviewer": false,
+  "focusedVitest": {
+    "passed": 161,
+    "failed": 0,
+    "skipped": 0
+  },
+  "presentationContracts": {
+    "passed": 7,
+    "failed": 0
+  },
+  "typecheckExit": 0,
+  "independentProbes": {
+    "passed": 34,
+    "failed": 0
+  },
+  "commonValidPixelDifferential": {
+    "fixtures": 10,
+    "differentBytes": 0
+  },
+  "overflowAdmission": {
+    "fixtures": 3,
+    "fileAndClipboardRejected": true,
+    "existingDocumentUnchanged": true,
+    "priorClipboardPreserved": true
+  },
+  "anomaliesAllPreexisting": true,
+  "runtimeSha256": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+  "newWasmNotTested": true,
+  "benchmarkRerun": false,
+  "newWasmNotTestedMeaning": "No attributable final-artifact certification. A passing transitional rerun is excluded because the artifact changed during the batch.",
+  "transitionalBatch": {
+    "probesPassed": 34,
+    "pixelDifferentialPassed": 10,
+    "admissionPassed": true,
+    "beforeSha256": "7763b301d43cbaa14d8bd2916594739a9e04b1fbf765bdb71f48dd7bf7b61c0a",
+    "afterSha256": "faf8c90ac98452196ce3737b2957efab263bdd21c49c6203b05c526c86dfcdd6",
+    "attributableToOneArtifact": false,
+    "countedInVerdict": false
+  }
+}

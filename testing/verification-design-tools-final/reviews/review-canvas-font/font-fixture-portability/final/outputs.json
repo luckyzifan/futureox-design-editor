@@ -1,0 +1,11 @@
+{
+  "__DESIGN_REPO__/frontend/design-client/public/fonts/NotoSansSC.ttf": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+  "__DESIGN_REPO__/frontend/design-client/public/fonts/OFL.txt": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+  "__DESIGN_REPO__/testing/generate-font-fixtures.py": "0ed75834842e663f7c1c240d63277c8889b8549923227bbd163bf698b72bc79b",
+  "__DESIGN_REPO__/frontend/design-client/src/font-test-fixtures.ts": "fd43180dfc6eea128a2849048226160ff9b41fdbcd42023f8b81a93bd9fb1509",
+  "__DESIGN_REPO__/testing/font-fixtures-requirements.txt": "4888b53cd53ca3729b315a3860a6a1bd2448b0ca91c230c36d94aac2ca46ab39",
+  "__DESIGN_REPO__/testing/verification-font-batch/fixtures/OFL.txt": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+  "__DESIGN_REPO__/testing/verification-font-batch/fixtures/noto-cjk.ttf": "f34ec4428674ab1f330f992bebdc2608ff5d82c11c396302cdb7ecda09aae948",
+  "__DESIGN_REPO__/testing/verification-font-batch/fixtures/noto-latin.ttf": "1a2eb19ec8eec24de4eafdc8c2d0651995fafac092df2fb722c2a0558c76feff",
+  "__DESIGN_REPO__/testing/verification-font-batch/fixtures/provenance.json": "9fbd18e0b4adc76f44f581a2857cfe884b818c823e3529e84ffa09090240d15c"
+}

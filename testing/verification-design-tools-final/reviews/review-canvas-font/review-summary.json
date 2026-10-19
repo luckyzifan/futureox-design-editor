@@ -1,0 +1,77 @@
+{
+  "reviewedAtUtc": "2026-10-19T16:37:18.643364+00:00",
+  "scope": "Independent CPU/React DOM/WASM review, followed by parent-authorized narrow fixes; no GPU, browser, Electron or socket server launched.",
+  "baseline": {
+    "zip": "__PRIOR_ZIP__",
+    "zipSha256": "c11eb9c4f1ea87c2ae5cf4508e5fe054e0ed328779309083fc43b150c2bca686",
+    "gitBase": "71d32153e6f55b3723c99708b4c4c49ac7342e67"
+  },
+  "findings": [
+    {
+      "id": "CF-1",
+      "severity": "P2",
+      "status": "fixed",
+      "title": "Queued hover owns and discards first direct-handle drag frame",
+      "introduced": true,
+      "evidence": "3 current failures; 3 delivered-Canvas baseline passes; 3 corrected passes"
+    },
+    {
+      "id": "CF-2",
+      "severity": "P2",
+      "status": "fixed",
+      "title": "Skipped font references consume matching resource admission",
+      "introduced": "New cap/target-policy interaction; unfiltered discovery itself predates this increment",
+      "evidence": "34 locked sources plus 1 eligible target fail before fix and pass with exactly one read after fix"
+    },
+    {
+      "id": "CF-3",
+      "severity": "test-contract",
+      "status": "fixed",
+      "title": "Source ownership contract still expected the old direct editor.change import path",
+      "evidence": "16 Node ownership tests pass after precise helper-boundary update; behavioral microtask negative control fails when final ownership fence is removed"
+    }
+  ],
+  "acceptance": {
+    "vitestFiles": 8,
+    "vitestPassed": 99,
+    "vitestFailed": 0,
+    "vitestSkipped": 1,
+    "ownershipNodePassed": 16,
+    "typecheck": "passed",
+    "independentRegressionTestsPassed": 8,
+    "negativeControlExpectedFailures": 1,
+    "sourceAndRuntimeStable": true,
+    "wasmSha256": "7763b301d43cbaa14d8bd2916594739a9e04b1fbf765bdb71f48dd7bf7b61c0a"
+  },
+  "performance": {
+    "originalBenchmarkCanvasSha256": "84d00200fe8988f129675ec77866d975ce595b7f2e745df634e4cf830e53bbd3",
+    "correctedCanvasSha256": "f04c992f19561fc13973be193a6571a287a4139d6c92f5aa8eb25583e23045e3",
+    "finalTracePreviewCounts": [
+      16,
+      16,
+      16
+    ],
+    "finalTraceNotificationCounts": [
+      18,
+      18,
+      18
+    ],
+    "finalDocumentHashesMatchOriginal": true,
+    "runtimeSha256": "7763b301d43cbaa14d8bd2916594739a9e04b1fbf765bdb71f48dd7bf7b61c0a",
+    "timingClaim": "Historical A/B percentages apply only to original candidate; corrected rerun proves counts and semantic hashes, not a new speedup under concurrent build load."
+  },
+  "filesChangedByReview": [
+    "frontend/design-client/src/Canvas.tsx",
+    "frontend/design-client/src/SystemFontPicker.tsx",
+    "frontend/design-client/src/font-management.ts",
+    "frontend/design-client/src/canvas-event-batching.test.tsx",
+    "frontend/design-client/src/FontManagementPanel.test.tsx",
+    "frontend/design-client/src/font-management.test.ts",
+    "frontend/design-client/src/import-ownership.test.mjs"
+  ],
+  "remainingLimitations": [
+    "Pre-existing direct Editor.addPage during a live Canvas transaction is still an explicitly skipped opt-in reproducer. Public page topology UI is guarded.",
+    "Runtime acceptance uses the hash pinned in acceptance-inputs.json. Root full-tree aggregate must bind any subsequent replacement WASM and source changes.",
+    "No claim about native input delivery, browser/GPU performance, pixel quality, or final package completeness."
+  ]
+}

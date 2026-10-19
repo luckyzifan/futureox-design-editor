@@ -2,9 +2,11 @@
 // design-render serve-mode bridge for the Electron main process. This is the
 // .mjs port of frontend/design-client/src/kernel/electron/native-render-main.ts
 // — the desktop main process is plain ESM and cannot import the TS modules.
-// Keep the protocol in sync with native-render-bridge.ts (stdin/stdout JSON
-// lines; see that file for the exact message shapes).
+// JSON lines remain the default. CORE_NATIVE_RENDER_PROTOCOL=frb1 explicitly
+// selects versioned binary replies; legacy TypeScript bridge clients stay JSON.
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
+import { NativeRenderFrame } from './native-render-frame.mjs'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { MAX_FRAME_BYTES } from './security.mjs'
@@ -20,7 +22,12 @@ export function nativeRenderPaths(resourcesRoot) {
 }
 
 export class NativeRenderProcess {
-  constructor(binaryPath, fontPath, backend, { timeoutMs = 120_000, spawnProcess = spawn } = {}) {
+  constructor(binaryPath, fontPath, backend, { timeoutMs = 120_000, spawnProcess = spawn, protocol = 'json' } = {}) {
+    if (protocol !== 'json' && protocol !== 'frb1') throw new Error('Unknown native render protocol')
+    this.protocol = protocol
+    this.sessionId = randomUUID()
+    this.nextId = 1
+    this.binaryFrame = undefined
     this.binaryPath = binaryPath
     this.fontPath = fontPath
     this.backend = backend
@@ -42,6 +49,7 @@ export class NativeRenderProcess {
 
   spawnProcess() {
     const args = ['--serve', '--backend', this.backend]
+    if (this.protocol === 'frb1') args.push('--serve-protocol', 'frb1')
     if (this.fontPath) args.push('--font', this.fontPath)
     this.proc = this.spawn(this.binaryPath, args, { stdio: ['pipe', 'pipe', 'pipe'] })
     const fail = error => { void this.stop(error) }
@@ -59,6 +67,18 @@ export class NativeRenderProcess {
 
   consume(chunk) {
     if (this.closed) return
+    if (this.protocol === 'frb1') {
+      try {
+        if (!this.pending) throw new Error('Unsolicited native render response')
+        this.binaryFrame ||= new NativeRenderFrame()
+        if (this.binaryFrame.append(chunk)) {
+          const message = this.binaryFrame.decode({ session: this.sessionId, id: this.pending.id, kind: this.pending.kind })
+          this.binaryFrame = undefined
+          this.dispatch(message)
+        }
+      } catch (error) { void this.stop(error) }
+      return
+    }
     let offset = 0
     while (offset < chunk.length) {
       const newline = chunk.indexOf(10, offset)
@@ -109,14 +129,17 @@ export class NativeRenderProcess {
     if (!this.available) throw new Error('Native render process is not running')
     if (this.queue.length + Number(!!this.pending) >= NATIVE_RENDER_MAX_PENDING)
       return Promise.reject(new Error('Native render queue full'))
-    const frame = JSON.stringify(msg) + '\n'
+    if (!Number.isSafeInteger(this.nextId)) return Promise.reject(new Error('Native render sequence exhausted'))
+    const id = this.nextId++
+    const command = this.protocol === 'frb1' ? { ...msg, session: this.sessionId, id } : msg
+    const frame = JSON.stringify(command) + '\n'
     const bytes = Buffer.byteLength(frame)
     if (bytes - 1 > MAX_FRAME_BYTES || this.pendingBytes + bytes > NATIVE_RENDER_MAX_PENDING_BYTES)
       return Promise.reject(new Error('Native render request byte budget exceeded'))
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { void this.stop(new Error('Native render timed out')) }, this.timeoutMs)
       this.pendingBytes += bytes
-      this.queue.push({ resolve, reject, kind, frame, bytes, timer })
+      this.queue.push({ resolve, reject, kind, frame, bytes, timer, id })
       this.flush()
     })
   }
@@ -133,7 +156,7 @@ export class NativeRenderProcess {
 
   async frame(options, pan = 0) {
     const msg = await this.request('frame', { cmd: 'frame', options, pan })
-    return { width: msg.width, height: msg.height, rgba: msg.rgba, stats: msg.stats }
+    return { width: msg.width, height: msg.height, rgba: msg.rgba, stats: msg.stats, ...(this.protocol === 'frb1' ? { encoding: 'rgba8' } : {}) }
   }
 
   async stats() {
@@ -146,7 +169,7 @@ export class NativeRenderProcess {
     this.closed = true
     const child = this.proc
     this.proc = undefined
-    this.parts = []; this.bufferBytes = 0
+    this.parts = []; this.bufferBytes = 0; this.binaryFrame = undefined
     if (this.pending) this.settle(this.pending, error)
     this.pending = undefined
     for (const request of this.queue) this.settle(request, error)
@@ -207,7 +230,7 @@ export function registerNativeRender(ipcMain, { resourcesRoot, cpuOnly = false, 
   }
   const session = () => {
     if (!binaryPath) throw new Error(`design-render binary not installed at ${binary}`)
-    if (!bridge) bridge = new NativeRenderProcess(binaryPath, fontPath, backend)
+    if (!bridge) bridge = new NativeRenderProcess(binaryPath, fontPath, backend, { protocol: process.env.CORE_NATIVE_RENDER_PROTOCOL ?? 'json' })
     return bridge
   }
   const handle = (name, action) => {
@@ -229,7 +252,7 @@ export function registerNativeRender(ipcMain, { resourcesRoot, cpuOnly = false, 
   })
   handle('frame', async (options, pan) => {
     const result = await session().frame(options, typeof pan === 'number' ? pan : 0)
-    return { width: result.width, height: result.height, rgba: result.rgba, stats: result.stats }
+    return result
   })
   handle('stats', async () => ({ stats: await session().stats() }))
   handle('stop', async () => { await retire(); return {} })

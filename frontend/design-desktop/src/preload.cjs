@@ -31,7 +31,7 @@ contextBridge.exposeInMainWorld(
       recordEdit: value => invoke('automation-record-edit', value),
       respond: value => invoke('automation-response', value),
       onRequest: callback => subscribe('design-desktop:automation-request', callback,
-        value => value && typeof value.requestId === 'string' && ['capabilities', 'execute'].includes(value.kind)),
+        value => value && typeof value.requestId === 'string' && ['capabilities', 'execute', 'host'].includes(value.kind)),
       onCancel: callback => subscribe('design-desktop:automation-cancel', callback,
         value => value && typeof value.requestId === 'string'),
     }),

@@ -1,0 +1,171 @@
+{
+  "kind": "scripted-closed-loop-regression",
+  "renderer": "actual product exportImage + KernelClient + WASM VectorEngine.render_region_png",
+  "boundaries": {
+    "worker": "in-process adapter; real WASM raster and transcode",
+    "transport": "real MCP NDJSON in memory",
+    "browser": "not run",
+    "electron": "not run",
+    "osSocket": "not run",
+    "gpu": "not run",
+    "externalModel": "not used"
+  },
+  "before": {
+    "format": "futureox.design-preview.v1",
+    "documentId": "f7277ad4-994e-487b-b71b-1bb04488eafb",
+    "pageId": "e4684b13-5ea8-4f90-a45b-8295fb796d28",
+    "nodeIds": [
+      "62f852f5-8886-4f31-a9a4-f75b7a0a1916"
+    ],
+    "target": "selection",
+    "bounds": {
+      "x": -12.5,
+      "y": 8.25,
+      "width": 480,
+      "height": 280
+    },
+    "mimeType": "image/png",
+    "name": "Product CPU visual feedback-Review card@1x.png",
+    "bytes": 16165,
+    "width": 480,
+    "height": 280,
+    "scale": 1,
+    "backend": "cpu",
+    "renderer": "product-cpu-export",
+    "screenshot": false,
+    "warnings": [
+      {
+        "code": "CPU_EXPORT_PREVIEW",
+        "message": "Product CPU raster export of design content. Does not capture app chrome, selection overlays or the displayed GPU canvas; GPU/display pixel equivalence is not asserted."
+      }
+    ],
+    "session": 0,
+    "revision": 0,
+    "resourceOnly": true,
+    "sha256": "dfcf7fc7b2cadf8122906f4fc4d49c2ff73a247920b7e24c4919f80283ee36ea"
+  },
+  "after": {
+    "format": "futureox.design-preview.v1",
+    "documentId": "f7277ad4-994e-487b-b71b-1bb04488eafb",
+    "pageId": "e4684b13-5ea8-4f90-a45b-8295fb796d28",
+    "nodeIds": [
+      "62f852f5-8886-4f31-a9a4-f75b7a0a1916"
+    ],
+    "target": "selection",
+    "bounds": {
+      "x": -12.5,
+      "y": 8.25,
+      "width": 480,
+      "height": 280
+    },
+    "mimeType": "image/png",
+    "name": "Product CPU visual feedback-Review card@1x.png",
+    "bytes": 15995,
+    "width": 480,
+    "height": 280,
+    "scale": 1,
+    "backend": "cpu",
+    "renderer": "product-cpu-export",
+    "screenshot": false,
+    "warnings": [
+      {
+        "code": "CPU_EXPORT_PREVIEW",
+        "message": "Product CPU raster export of design content. Does not capture app chrome, selection overlays or the displayed GPU canvas; GPU/display pixel equivalence is not asserted."
+      }
+    ],
+    "session": 0,
+    "revision": 1,
+    "resourceOnly": true,
+    "sha256": "629f2b13b2e428062aa518f7420df465a9220d468e2c9b225eec10d2c90eb901"
+  },
+  "assertions": [
+    "inspect and guarded edit through MCP",
+    "PNG pixels changed after authored fill edit",
+    "same size and requested scale",
+    "exact image/resource bytes",
+    "no duplicate inline base64",
+    "stale revision rejected",
+    "old resources immutable",
+    "undo restores exact PNG bytes",
+    "unrelated title unchanged"
+  ],
+  "wasmSha256": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+  "transcript": [
+    {
+      "id": 1,
+      "method": "initialize",
+      "responseBytes": 911
+    },
+    {
+      "id": 2,
+      "method": "tools/call",
+      "responseBytes": 8848,
+      "tool": "design_context_get",
+      "ok": true,
+      "revision": 0
+    },
+    {
+      "id": 3,
+      "method": "tools/call",
+      "responseBytes": 24355,
+      "tool": "design_preview_capture",
+      "ok": true,
+      "revision": 0
+    },
+    {
+      "id": 4,
+      "method": "resources/read",
+      "responseBytes": 21724
+    },
+    {
+      "id": 5,
+      "method": "tools/call",
+      "responseBytes": 974,
+      "tool": "design_node_update",
+      "ok": true,
+      "revision": 1
+    },
+    {
+      "id": 6,
+      "method": "tools/call",
+      "responseBytes": 535,
+      "tool": "design_preview_capture",
+      "ok": false,
+      "revision": 1
+    },
+    {
+      "id": 7,
+      "method": "tools/call",
+      "responseBytes": 24127,
+      "tool": "design_preview_capture",
+      "ok": true,
+      "revision": 1
+    },
+    {
+      "id": 8,
+      "method": "resources/read",
+      "responseBytes": 21724
+    },
+    {
+      "id": 9,
+      "method": "resources/read",
+      "responseBytes": 21496
+    },
+    {
+      "id": 10,
+      "method": "tools/call",
+      "responseBytes": 625,
+      "tool": "design_history_undo",
+      "ok": true,
+      "revision": 2
+    },
+    {
+      "id": 11,
+      "method": "tools/call",
+      "responseBytes": 24358,
+      "tool": "design_preview_capture",
+      "ok": true,
+      "revision": 2
+    }
+  ]
+}

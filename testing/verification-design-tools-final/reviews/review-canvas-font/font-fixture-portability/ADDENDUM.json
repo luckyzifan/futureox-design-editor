@@ -1,0 +1,67 @@
+{
+  "reviewedAtUtc": "2026-10-19T16:59:37.373706+00:00",
+  "status": "passed after independently found ASCII-stdout fix and precise face-name test correction",
+  "scope": "Additive independent portability review; no product/UI changes by reviewer; no generated font bytes included in evidence or approved source ZIP",
+  "prerequisites": {
+    "pythonMinimum": "3.10",
+    "fontToolsExact": "4.61.1",
+    "actualPython": "3.12.14",
+    "actualPlatform": "Linux",
+    "source": "frontend/design-client/public/fonts/NotoSansSC.ttf",
+    "sourceSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+    "sourceBytes": 17772300,
+    "baselineLicense": "frontend/design-client/public/fonts/OFL.txt"
+  },
+  "acceptance": {
+    "independentHarnessCases": 13,
+    "vitestSuites": 4,
+    "vitestPassed": 42,
+    "vitestFailed": 0,
+    "vitestSkipped": 0,
+    "typecheck": "passed",
+    "stableSourceAndRuntime": true,
+    "noSourceOrHistoricalFixtureMutation": true,
+    "windowsRuntimeTested": false,
+    "windowsCommandDispatchSimulated": true,
+    "wasmSha256": "2c50f87de40b6e2ecc456eb053706d4e2c3c058da82aafffd1b191eddd8b039a"
+  },
+  "generatorSha256": "0ed75834842e663f7c1c240d63277c8889b8549923227bbd163bf698b72bc79b",
+  "helperSha256": "fd43180dfc6eea128a2849048226160ff9b41fdbcd42023f8b81a93bd9fb1509",
+  "generatedSubsets": [
+    {
+      "bytes": 23028,
+      "file": "noto-latin.ttf",
+      "glyphSubset": " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+      "sha256": "32924279319ac4b9bd7c2a11512be33a0f77985c54a3b97ffd4f37fa15abdceb"
+    },
+    {
+      "bytes": 7000,
+      "file": "noto-cjk.ttf",
+      "glyphSubset": " 中文测试继续文字",
+      "sha256": "d364933e29d565ae7422d38abccd6965244246a917d31e1c1c531054a77fab8e"
+    }
+  ],
+  "findings": [
+    {
+      "id": "FP-1",
+      "status": "fixed by owner",
+      "description": "Non-UTF8/ASCII subprocess stdout failed on unescaped Chinese manifest strings. Transport now uses ASCII-safe JSON while manifest file bytes remain UTF-8.",
+      "negativeEvidence": "ascii-stdout-before.log",
+      "positiveEvidence": "final/ascii-stdout-transport.log"
+    },
+    {
+      "id": "FP-2",
+      "status": "test corrected by owner",
+      "description": "Initial exact WASM family assertion expected typographic family Noto Sans SC rather than preserved legacy name1 Noto Sans SC Thin. Corrected assertion matches baseline identity; parser and shaping checks remain mandatory.",
+      "negativeEvidence": "final/vitest.log",
+      "positiveEvidence": "final/acceptance-vitest.log"
+    }
+  ],
+  "historicalComparison": "Both generated subsets differ from historical ones only in head.modified and derived checkSumAdjustment; every other SFNT table is byte-identical.",
+  "limitations": [
+    "Actual Windows/macOS execution was not performed; only Windows Python-command selection was simulated on Linux.",
+    "This new 42-test acceptance overlaps earlier font acceptance and invalidates the old source freeze for the two switched test files; do not sum overlapping counts or reuse old freeze hashes.",
+    "Root final full-tree aggregate/package verification remains separate.",
+    "Generation requires the exact baseline font and explicitly installed pinned Python dependency. Missing prerequisites fail; no auto-install, download, historical-fixture fallback or skip is allowed."
+  ]
+}

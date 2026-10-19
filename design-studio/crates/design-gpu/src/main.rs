@@ -1,6 +1,8 @@
 //! Local native renderer. Does not start a service or connect to the ecosystem.
 #![forbid(unsafe_code)]
 use base64::Engine as _;
+mod serve_protocol;
+use serve_protocol::{Correlation, Protocol, Reply};
 use futureox_design_gpu::{Backends, NativeGpu, TiledFrameHost, TileCache, encode_png};
 use futureox_design_kernel::tiled_renderer::RenderFeatureFlags;
 use futureox_design_kernel::{
@@ -39,6 +41,7 @@ struct Args {
     /// Electron native render bridge drives the renderer over stdin/stdout
     /// JSON lines instead of a one-shot batch file.
     serve: bool,
+    serve_protocol: Protocol,
 }
 fn args() -> Result<Args, String> {
     let mut input: Option<PathBuf> = None;
@@ -56,11 +59,12 @@ fn args() -> Result<Args, String> {
     let mut cpu_tiled = false;
     let mut pan_step: Option<f64> = None;
     let mut serve = false;
+    let mut serve_protocol = Protocol::Json;
     let mut args = std::env::args().skip(1);
     while let Some(key) = args.next() {
         if key == "--help" || key == "-h" {
             println!(
-                "design-render --input request.json --output result.png [--backend auto|metal|vulkan|dx12|cpu] [--font font.ttf] [--compare-cpu] [--rgba result.rgba] [--repeat 1..100] [--linear result.f32] [--color-output srgb|display-p3|rec2100-pq|rec2100-hlg] [--tone-map clip|reinhard|none] [--no-tile-cache] [--image-mips] [--cpu-tiled]\ndesign-render --serve [--backend auto|metal|vulkan|dx12|cpu] [--font font.ttf] [--cpu-tiled]\nInput JSON: {{\"document\": <design document>, \"options\": <RenderOptions>}}. Native GPU supports analytic, figma, figmaSubpixel and figmaSoftware. GPU errors are reported; CPU is an explicit backend. Repeated renders reuse the dirty tile cache (byte-identical, falls back to full frames on rejection); --image-mips enables level-selected image sampling on both engines. --cpu-tiled routes frames through the kernel's Sketch-parity CPU tiled renderer (bucket-snapped zooms assemble tile residency byte-identically; other conditions fall back to full frames and are reported).\nServe mode speaks stdin/stdout JSON lines (the Electron native render bridge protocol): {{\"cmd\":\"load\",\"document\":\"<json>\",\"font\":\"<base64, optional>\"}} -> {{\"type\":\"loaded\"}}, {{\"cmd\":\"frame\",\"options\":<RenderOptions>,\"damage\":null|[[x,y,w,h]...],\"pan\":0}} -> {{\"type\":\"frame\",\"width\":W,\"height\":H,\"rgba\":\"<base64>\",\"stats\":{{...,\"gpu_memory\":<four-bucket breakdown>}}}}, {{\"cmd\":\"stats\"}} -> {{\"type\":\"stats\",\"stats\":{{\"gpu_memory\":...}}}}, {{\"cmd\":\"stop\"}} exits; errors answer {{\"type\":\"error\",\"message\":\"...\"}} and keep the loop alive. The default serve backend is the native GPU (Metal on macOS) with the kernel's four-bucket memory ledger installed into the device; --backend cpu forces the CPU tiled host for debugging."
+                "design-render --input request.json --output result.png [--backend auto|metal|vulkan|dx12|cpu] [--font font.ttf] [--compare-cpu] [--rgba result.rgba] [--repeat 1..100] [--linear result.f32] [--color-output srgb|display-p3|rec2100-pq|rec2100-hlg] [--tone-map clip|reinhard|none] [--no-tile-cache] [--image-mips] [--cpu-tiled]\ndesign-render --serve [--serve-protocol json|frb1] [--backend auto|metal|vulkan|dx12|cpu] [--font font.ttf] [--cpu-tiled]\nInput JSON: {{\"document\": <design document>, \"options\": <RenderOptions>}}. Native GPU supports analytic, figma, figmaSubpixel and figmaSoftware. GPU errors are reported; CPU is an explicit backend. Repeated renders reuse the dirty tile cache (byte-identical, falls back to full frames on rejection); --image-mips enables level-selected image sampling on both engines. --cpu-tiled routes frames through the kernel's Sketch-parity CPU tiled renderer (bucket-snapped zooms assemble tile residency byte-identically; other conditions fall back to full frames and are reported).\nServe mode speaks stdin/stdout JSON lines (the Electron native render bridge protocol): {{\"cmd\":\"load\",\"document\":\"<json>\",\"font\":\"<base64, optional>\"}} -> {{\"type\":\"loaded\"}}, {{\"cmd\":\"frame\",\"options\":<RenderOptions>,\"damage\":null|[[x,y,w,h]...],\"pan\":0}} -> {{\"type\":\"frame\",\"width\":W,\"height\":H,\"rgba\":\"<base64>\",\"stats\":{{...,\"gpu_memory\":<four-bucket breakdown>}}}}, {{\"cmd\":\"stats\"}} -> {{\"type\":\"stats\",\"stats\":{{\"gpu_memory\":...}}}}, {{\"cmd\":\"stop\"}} exits; errors answer {{\"type\":\"error\",\"message\":\"...\"}} and keep the loop alive. The default serve backend is the native GPU (Metal on macOS) with the kernel's four-bucket memory ledger installed into the device; --backend cpu forces the CPU tiled host for debugging."
             );
             std::process::exit(0);
         }
@@ -105,6 +109,7 @@ fn args() -> Result<Args, String> {
                         .map_err(|_| "Invalid tone mapper")?,
                 )
             }
+            "--serve-protocol" => serve_protocol = Protocol::parse(&value)?,
             "--backend" => backend = value,
             "--repeat" => repeat = value.parse().map_err(|_| "Invalid repeat count")?,
             "--pan-step" => pan_step = Some(value.parse().map_err(|_| "Invalid pan step")?),
@@ -117,7 +122,7 @@ fn args() -> Result<Args, String> {
     // `--input -` is the bridge's stdin marker; it implies serve mode.
     serve = serve || input.as_ref().is_some_and(|path| path.as_os_str() == "-");
     if serve {
-        return Ok(Args{pan_step,input:PathBuf::new(),output:PathBuf::new(),font,rgba:None,linear:None,color_output:None,backend,compare:false,repeat:1,tile_cache,image_mips,cpu_tiled,serve:true});
+        return Ok(Args{pan_step,input:PathBuf::new(),output:PathBuf::new(),font,rgba:None,linear:None,color_output:None,backend,compare:false,repeat:1,tile_cache,image_mips,cpu_tiled,serve:true,serve_protocol});
     }
     let color_output = if color_space.is_some() || tone_map.is_some() {
         let space = color_space.unwrap_or_default();
@@ -132,7 +137,7 @@ fn args() -> Result<Args, String> {
     } else {
         None
     };
-    Ok(Args{pan_step,input:input.ok_or("Required: --input request.json --output result.png [--backend auto|metal|vulkan|dx12|cpu] [--font font.ttf] [--compare-cpu] [--rgba result.rgba] [--repeat 1..100]")?,output:output.ok_or("Missing --output")?,font,rgba,linear,color_output,backend,compare,repeat,tile_cache,image_mips,cpu_tiled,serve:false})
+    Ok(Args{pan_step,input:input.ok_or("Required: --input request.json --output result.png [--backend auto|metal|vulkan|dx12|cpu] [--font font.ttf] [--compare-cpu] [--rgba result.rgba] [--repeat 1..100]")?,output:output.ok_or("Missing --output")?,font,rgba,linear,color_output,backend,compare,repeat,tile_cache,image_mips,cpu_tiled,serve:false,serve_protocol})
 }
 async fn read(path: &PathBuf, limit: u64) -> Result<Vec<u8>, String> {
     let meta = tokio::fs::metadata(path).await.map_err(|e| e.to_string())?;
@@ -289,18 +294,6 @@ async fn run() -> Result<(), String> {
 // render bridge (frontend/design-client/src/kernel/native-render-bridge.ts).
 // ---------------------------------------------------------------------------
 
-fn emit(out: &mut impl std::io::Write, value: serde_json::Value) -> Result<(), String> {
-    let line = serde_json::to_string(&value).map_err(|e| e.to_string())?;
-    out.write_all(line.as_bytes())
-        .and_then(|()| out.write_all(b"\n"))
-        .and_then(|()| out.flush())
-        .map_err(|e| e.to_string())
-}
-
-fn emit_error(out: &mut impl std::io::Write, message: impl Into<String>) -> Result<(), String> {
-    emit(out, json!({"type":"error","message":message.into()}))
-}
-
 async fn serve(a: Args) -> Result<(), String> {
     let font = if let Some(path) = &a.font {
         Some(read(path, 32 * 1024 * 1024).await?)
@@ -325,7 +318,7 @@ async fn serve(a: Args) -> Result<(), String> {
     let cpu_tiled = a.cpu_tiled || gpu.is_none();
     // A single bounded blocking task owns the engine, the device and the
     // protocol loop, exactly like the batch mode's worker.
-    tokio::task::spawn_blocking(move || serve_loop(gpu, font, cpu_tiled))
+    tokio::task::spawn_blocking(move || serve_loop(gpu, font, cpu_tiled, a.serve_protocol))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -334,8 +327,9 @@ fn serve_loop(
     mut gpu: Option<NativeGpu>,
     font: Option<Vec<u8>>,
     cpu_tiled: bool,
+    protocol: Protocol,
 ) -> Result<(), String> {
-    use std::io::{BufRead, Write};
+    use std::io::{BufRead, Read, Write};
     let backend = gpu.as_ref().map(|g| g.description().backend.clone());
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
@@ -344,11 +338,24 @@ fn serve_loop(
     let mut host: Option<TiledFrameHost> = None;
     let mut frames = 0_usize;
     let mut total_render_ms = 0_f64;
-    for line in stdin.lock().lines() {
-        let line = match line {
+    let mut input = stdin.lock();
+    let mut correlation: Option<Correlation> = None;
+    loop {
+        let mut line = String::new();
+        let read = if protocol == Protocol::Frb1 {
+            input.by_ref().take((serve_protocol::MAX_REQUEST_BYTES + 2) as u64).read_line(&mut line)
+        } else {
+            input.read_line(&mut line)
+        };
+        if matches!(read, Ok(0)) { break; }
+        if protocol == Protocol::Frb1 && (line.len() > serve_protocol::MAX_REQUEST_BYTES + 1 || !line.ends_with('\n')) {
+            return Err("Native render command exceeds limit or is truncated".into());
+        }
+        let line = match read.map(|_| line) {
             Ok(line) => line,
             Err(e) => {
-                if emit_error(&mut out, format!("Stdin read failed: {e}")).is_err() {
+                if protocol == Protocol::Frb1 { return Err(format!("Stdin read failed: {e}")); }
+                if serve_protocol::emit(&mut out, protocol, Reply::error(format!("Stdin read failed: {e}")), None).is_err() {
                     break;
                 }
                 continue;
@@ -361,15 +368,19 @@ fn serve_loop(
         let message: serde_json::Value = match serde_json::from_str(line) {
             Ok(message) => message,
             Err(e) => {
-                if emit_error(&mut out, format!("Invalid command line: {e}")).is_err() {
+                if protocol == Protocol::Frb1 { return Err(format!("Invalid command line: {e}")); }
+                if serve_protocol::emit(&mut out, protocol, Reply::error(format!("Invalid command line: {e}")), None).is_err() {
                     break;
                 }
                 continue;
             }
         };
+        if protocol == Protocol::Frb1 {
+            correlation = Some(Correlation::read(&message, correlation.as_ref())?);
+        }
         let result = match message.get("cmd").and_then(|cmd| cmd.as_str()) {
             Some("load") => serve_load(&message, &font, gpu.as_mut(), cpu_tiled, &mut engine, &mut host)
-                .map(|()| json!({"type":"loaded"})),
+                .map(|()| Reply::control(json!({"type":"loaded"}))),
             Some("frame") => serve_frame(
                 &message,
                 engine.as_mut(),
@@ -381,7 +392,7 @@ fn serve_loop(
             ),
             Some("stats") => match &engine {
                 Some(engine) => serde_json::to_value(engine.gpu_memory_breakdown())
-                    .map(|gpu_memory| json!({"type":"stats","stats":{"gpu_memory":gpu_memory}}))
+                    .map(|gpu_memory| Reply::control(json!({"type":"stats","stats":{"gpu_memory":gpu_memory}})))
                     .map_err(|e| e.to_string()),
                 None => Err("Stats requested before a document was loaded".into()),
             },
@@ -389,8 +400,8 @@ fn serve_loop(
             _ => Err("Unknown command; expected load, frame, stats or stop".into()),
         };
         let written = match result {
-            Ok(reply) => emit(&mut out, reply),
-            Err(error) => emit_error(&mut out, error),
+            Ok(reply) => serve_protocol::emit(&mut out, protocol, reply, correlation.as_ref()),
+            Err(error) => serve_protocol::emit(&mut out, protocol, Reply::error(error), correlation.as_ref()),
         };
         // A dead parent closes the pipe; leave quietly instead of spinning.
         if written.is_err() {
@@ -454,7 +465,7 @@ fn serve_frame(
     backend: Option<&str>,
     frames: &mut usize,
     total_render_ms: &mut f64,
-) -> Result<serde_json::Value, String> {
+) -> Result<Reply, String> {
     let engine = engine.ok_or("Frame requested before a document was loaded")?;
     let options_value = message
         .get("options")
@@ -522,11 +533,10 @@ fn serve_frame(
         stats["tiles_cached"] = json!(0);
         stats["full_frames"] = json!(*frames);
     }
-    Ok(json!({
+    Ok(Reply { metadata: json!({
         "type":"frame",
         "width":frame.width,
         "height":frame.height,
-        "rgba":base64::engine::general_purpose::STANDARD.encode(&frame.rgba),
         "stats":stats,
-    }))
+    }), rgba: Some(frame.rgba) })
 }

@@ -1,0 +1,13 @@
+{
+  "format": "futureox.visual-review-decision.v1",
+  "source": "product-cpu-after.png",
+  "observedSha256": "629f2b13b2e428062aa518f7420df465a9220d468e2c9b225eec10d2c90eb901",
+  "observation": "The button label is visibly offset toward the left. For this synthetic review card, center the label within the existing button without changing its size, colors, or capture scale.",
+  "decision": {
+    "targetRole": "label",
+    "x": 28,
+    "width": 180,
+    "align": "center"
+  },
+  "scope": "Agent-selected visual refinement after inspecting actual product CPU pixels. This is a synthetic regression card, not a discovered product rendering defect or an external model-provider run."
+}

@@ -1,0 +1,23 @@
+[
+  {
+    "source": "<svg width=\"100\" height=\"100\"><circle r=\"1e308\" fill=\"none\"/></svg>",
+    "clipboardError": "Error: 图层数据无效：47ae2ff5-bc26-4157-add0-69c35484dcaf",
+    "fileError": "Error: 图层数据无效：772e20a1-8188-4fdf-8e00-55f526728c2f",
+    "documentUnchanged": true
+  },
+  {
+    "source": "<svg width=\"100\" height=\"100\"><rect x=\"1e308\" width=\"1\" height=\"1\" transform=\"scale(2)\" fill=\"none\"/></svg>",
+    "clipboardError": "Error: 图层数据无效：58dc3a92-5aed-4311-8bb6-4674c6e1c7ab",
+    "fileError": "Error: 图层数据无效：fc78072a-974a-49d7-ad96-36c835a520ae",
+    "documentUnchanged": true
+  },
+  {
+    "source": "<svg width=\"1e308\" height=\"1\" viewBox=\"0 0 1e-308 1\" preserveAspectRatio=\"none\"><rect width=\"1\" height=\"1\" fill=\"none\"/></svg>",
+    "clipboardError": "Error: 图层数据无效：62950ec8-1ced-419d-af5b-07f23dc278d7",
+    "fileError": "Error: 图层数据无效：b36b6972-ccc9-4783-99d1-042794721d12",
+    "documentUnchanged": true
+  },
+  {
+    "priorClipboardPreserved": true
+  }
+]

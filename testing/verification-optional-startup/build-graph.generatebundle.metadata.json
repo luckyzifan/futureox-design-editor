@@ -1,0 +1,1093 @@
+{
+  "assets/index-i7jSQBy9.js": {
+    "isEntry": true,
+    "isDynamicEntry": false,
+    "imports": [],
+    "dynamicImports": [
+      "assets/index-i7jSQBy9.js",
+      "assets/import-svg-Dhm_DdFK.js",
+      "assets/color-presenter-CRj7OA-0.js"
+    ],
+    "codeBytes": 1542360,
+    "gzipBytes": 477528,
+    "modules": {
+      "\u0000rolldown/runtime.js": {
+        "renderedLength": 1439
+      },
+      "\u0000vite/modulepreload-polyfill.js": {
+        "renderedLength": 1205
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/scheduler/cjs/scheduler.production.js": {
+        "renderedLength": 9095
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/scheduler/index.js": {
+        "renderedLength": 219
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react/cjs/react.production.js": {
+        "renderedLength": 16030
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react/index.js": {
+        "renderedLength": 207
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react-dom/cjs/react-dom.production.js": {
+        "renderedLength": 6301
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react-dom/index.js": {
+        "renderedLength": 499
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react-dom/cjs/react-dom-client.production.js": {
+        "renderedLength": 529587
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react-dom/client.js": {
+        "renderedLength": 504
+      },
+      "<snapshot>/frontend/design-client/src/kernel/render-policy.ts": {
+        "renderedLength": 1554
+      },
+      "<snapshot>/frontend/design-client/src/kernel/native-render-pixels.ts": {
+        "renderedLength": 715
+      },
+      "<snapshot>/frontend/design-client/src/kernel/native-render-session.ts": {
+        "renderedLength": 2208
+      },
+      "<snapshot>/frontend/design-client/src/desktop.ts": {
+        "renderedLength": 241
+      },
+      "<snapshot>/frontend/design-client/src/tool-registry.ts": {
+        "renderedLength": 5559
+      },
+      "<snapshot>/frontend/design-client/src/shortcut-profiles.ts": {
+        "renderedLength": 7761
+      },
+      "<snapshot>/frontend/design-client/src/shortcut-preference.ts": {
+        "renderedLength": 1746
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react/cjs/react-jsx-runtime.production.js": {
+        "renderedLength": 902
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react/jsx-runtime.js": {
+        "renderedLength": 231
+      },
+      "<snapshot>/frontend/design-client/src/KeyboardProfileSettings.tsx": {
+        "renderedLength": 1821
+      },
+      "<snapshot>/frontend/design-client/src/settings-preference.ts": {
+        "renderedLength": 4234
+      },
+      "<snapshot>/frontend/design-client/src/settings-dialog.css": {
+        "renderedLength": 0
+      },
+      "<snapshot>/frontend/design-client/src/SettingsDialog.tsx": {
+        "renderedLength": 12557
+      },
+      "<snapshot>/frontend/design-client/src/WorkspaceRootControls.tsx": {
+        "renderedLength": 2819
+      },
+      "<snapshot>/frontend/design-client/src/stroke-profile.ts": {
+        "renderedLength": 3517
+      },
+      "<snapshot>/frontend/design-client/src/color.ts": {
+        "renderedLength": 1815
+      },
+      "<snapshot>/frontend/design-client/src/model.ts": {
+        "renderedLength": 32333
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/immer/dist/immer.mjs": {
+        "renderedLength": 20399
+      },
+      "<snapshot>/frontend/design-client/src/draft.ts": {
+        "renderedLength": 288
+      },
+      "<snapshot>/frontend/design-client/src/text.ts": {
+        "renderedLength": 3408
+      },
+      "<snapshot>/frontend/design-client/src/generated/design-kernel/design_kernel.js": {
+        "renderedLength": 63133
+      },
+      "<snapshot>/frontend/design-client/src/kernel/initialization.ts": {
+        "renderedLength": 2869
+      },
+      "<snapshot>/frontend/design-client/src/kernel/module.ts": {
+        "renderedLength": 935
+      },
+      "<snapshot>/frontend/design-client/src/document-admission.ts": {
+        "renderedLength": 706
+      },
+      "<snapshot>/frontend/design-client/src/kernel/kernel-resources.ts": {
+        "renderedLength": 265
+      },
+      "<snapshot>/frontend/design-client/src/kernel/translation-preview.ts": {
+        "renderedLength": 2193
+      },
+      "<snapshot>/frontend/design-client/src/kernel/picking.ts": {
+        "renderedLength": 12049
+      },
+      "<snapshot>/frontend/design-client/src/geometry.ts": {
+        "renderedLength": 13862
+      },
+      "<snapshot>/frontend/design-client/src/components.ts": {
+        "renderedLength": 29082
+      },
+      "<snapshot>/frontend/design-client/src/design-system.ts": {
+        "renderedLength": 12004
+      },
+      "<snapshot>/frontend/design-client/src/property-clipboard.ts": {
+        "renderedLength": 4486
+      },
+      "<snapshot>/frontend/design-client/src/pending-edits.ts": {
+        "renderedLength": 1367
+      },
+      "<snapshot>/frontend/design-client/src/tool-activation.ts": {
+        "renderedLength": 3018
+      },
+      "<snapshot>/frontend/design-client/src/export-metadata.ts": {
+        "renderedLength": 1445
+      },
+      "<snapshot>/frontend/design-client/src/export-ownership.ts": {
+        "renderedLength": 3657
+      },
+      "\u0000vite/preload-helper.js": {
+        "renderedLength": 2170
+      },
+      "<snapshot>/frontend/design-client/src/clipboard-export.ts": {
+        "renderedLength": 2391
+      },
+      "<snapshot>/frontend/design-client/src/modal-keyboard.ts": {
+        "renderedLength": 1343
+      },
+      "<snapshot>/frontend/design-client/src/canvas-menu-model.ts": {
+        "renderedLength": 7246
+      },
+      "<snapshot>/frontend/design-client/src/canvas-camera.ts": {
+        "renderedLength": 3527
+      },
+      "<snapshot>/frontend/design-client/src/selection-queries.ts": {
+        "renderedLength": 2594
+      },
+      "<snapshot>/frontend/design-client/src/property-units.ts": {
+        "renderedLength": 1553
+      },
+      "<snapshot>/frontend/design-client/src/selection-hierarchy.ts": {
+        "renderedLength": 3324
+      },
+      "<snapshot>/frontend/design-client/src/canvas-view.ts": {
+        "renderedLength": 3339
+      },
+      "<snapshot>/frontend/design-client/src/selection-properties.ts": {
+        "renderedLength": 3013
+      },
+      "<snapshot>/frontend/design-client/src/canvas-workflow-shortcuts.ts": {
+        "renderedLength": 2208
+      },
+      "<snapshot>/frontend/design-client/src/clipboard-semantics.ts": {
+        "renderedLength": 7367
+      },
+      "<snapshot>/frontend/design-client/src/paste-over-selection.ts": {
+        "renderedLength": 5853
+      },
+      "<snapshot>/frontend/design-client/src/editor-commands.ts": {
+        "renderedLength": 14183
+      },
+      "<snapshot>/frontend/design-client/src/editor-shortcuts.ts": {
+        "renderedLength": 1011
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/fflate/esm/browser.js": {
+        "renderedLength": 15701
+      },
+      "<snapshot>/frontend/design-client/src/duplicate-graph.ts": {
+        "renderedLength": 5565
+      },
+      "<snapshot>/frontend/design-client/src/document-patch.ts": {
+        "renderedLength": 1596
+      },
+      "<snapshot>/frontend/design-client/src/automation/types.ts": {
+        "renderedLength": 318
+      },
+      "<snapshot>/frontend/design-client/src/automation/core.ts": {
+        "renderedLength": 46426
+      },
+      "<snapshot>/frontend/design-client/src/variable-editing.ts": {
+        "renderedLength": 10569
+      },
+      "<snapshot>/frontend/design-client/src/font-matching.ts": {
+        "renderedLength": 1576
+      },
+      "<snapshot>/frontend/design-client/src/automation/design-system.ts": {
+        "renderedLength": 51322
+      },
+      "<snapshot>/frontend/design-client/src/automation/context.ts": {
+        "renderedLength": 20676
+      },
+      "<snapshot>/frontend/design-client/src/kernel/binfmt.ts": {
+        "renderedLength": 414
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react-dom/cjs/react-dom-server-legacy.browser.production.js": {
+        "renderedLength": 216321
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react-dom/cjs/react-dom-server.browser.production.js": {
+        "renderedLength": 239435
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/react-dom/server.browser.js": {
+        "renderedLength": 512
+      },
+      "<snapshot>/frontend/design-client/src/Renderer.tsx": {
+        "renderedLength": 19320
+      },
+      "<snapshot>/frontend/design-client/src/kernel/render-diagnostics.ts": {
+        "renderedLength": 4489
+      },
+      "<snapshot>/frontend/design-client/src/kernel/gpu/resident-frame.ts": {
+        "renderedLength": 2972
+      },
+      "<snapshot>/frontend/design-client/src/kernel/render-profile.ts": {
+        "renderedLength": 2248
+      },
+      "<snapshot>/frontend/design-client/src/kernel/native-preparation.ts": {
+        "renderedLength": 1667
+      },
+      "<snapshot>/frontend/design-client/src/kernel/client.ts": {
+        "renderedLength": 17314
+      },
+      "<snapshot>/frontend/design-client/src/export.tsx": {
+        "renderedLength": 13719
+      },
+      "<snapshot>/frontend/design-client/src/append-document.ts": {
+        "renderedLength": 3839
+      },
+      "<snapshot>/frontend/design-client/src/automation/export.ts": {
+        "renderedLength": 31938
+      },
+      "<snapshot>/frontend/design-client/src/animation.ts": {
+        "renderedLength": 5517
+      },
+      "<snapshot>/frontend/design-client/src/prototype.ts": {
+        "renderedLength": 8729
+      },
+      "<snapshot>/frontend/design-client/src/automation/interactions.ts": {
+        "renderedLength": 12948
+      },
+      "<snapshot>/frontend/design-client/src/automation/sketch.ts": {
+        "renderedLength": 9102
+      },
+      "<snapshot>/frontend/design-client/src/automation/app-export-schema.ts": {
+        "renderedLength": 14361
+      },
+      "<snapshot>/frontend/design-client/src/automation/app-export-runtime.ts": {
+        "renderedLength": 11584
+      },
+      "<snapshot>/frontend/design-client/src/automation/app-export.ts": {
+        "renderedLength": 16113
+      },
+      "<snapshot>/frontend/design-client/src/automation/index.ts": {
+        "renderedLength": 395
+      },
+      "<snapshot>/frontend/design-client/src/AutomationPanel.tsx": {
+        "renderedLength": 24790
+      },
+      "<snapshot>/frontend/design-client/src/automation/bridge.ts": {
+        "renderedLength": 10738
+      },
+      "<snapshot>/frontend/design-client/src/automation/workspace-bridge.ts": {
+        "renderedLength": 4305
+      },
+      "<snapshot>/frontend/design-client/src/automation/settings-adapter.ts": {
+        "renderedLength": 5654
+      },
+      "<snapshot>/frontend/design-client/src/local-store.ts": {
+        "renderedLength": 8925
+      },
+      "<snapshot>/frontend/design-client/src/startup-preview.ts": {
+        "renderedLength": 1641
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/shared/src/utils/toKebabCase.mjs": {
+        "renderedLength": 214
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/shared/src/utils/toLucideIconData.mjs": {
+        "renderedLength": 406
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/shared/src/utils/toCamelCase.mjs": {
+        "renderedLength": 454
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/shared/src/utils/toPascalCase.mjs": {
+        "renderedLength": 263
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/shared/src/utils/mergeClasses.mjs": {
+        "renderedLength": 318
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/shared/src/build/defaultAttributes.mjs": {
+        "renderedLength": 359
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/shared/src/build/buildLucideIconNode.mjs": {
+        "renderedLength": 2648
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/shared/src/build/buildLucideIconForReact.mjs": {
+        "renderedLength": 467
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/shared/src/utils/hasA11yProp.mjs": {
+        "renderedLength": 280
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/context.mjs": {
+        "renderedLength": 232
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/Icon.mjs": {
+        "renderedLength": 1394
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/createLucideIcon.mjs": {
+        "renderedLength": 579
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/align-center-horizontal.mjs": {
+        "renderedLength": 684
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/align-center-vertical.mjs": {
+        "renderedLength": 678
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/align-end-vertical.mjs": {
+        "renderedLength": 528
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/align-horizontal-distribute-center.mjs": {
+        "renderedLength": 736
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/align-start-vertical.mjs": {
+        "renderedLength": 533
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/align-vertical-distribute-center.mjs": {
+        "renderedLength": 730
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/align-vertical-justify-center.mjs": {
+        "renderedLength": 561
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/arrow-down-to-line.mjs": {
+        "renderedLength": 436
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/arrow-up-right.mjs": {
+        "renderedLength": 357
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/arrow-up-to-line.mjs": {
+        "renderedLength": 430
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/brush.mjs": {
+        "renderedLength": 513
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/check.mjs": {
+        "renderedLength": 286
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/chevron-down.mjs": {
+        "renderedLength": 303
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/chevron-left.mjs": {
+        "renderedLength": 305
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/chevron-right.mjs": {
+        "renderedLength": 307
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/chevron-up.mjs": {
+        "renderedLength": 299
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/circle-question-mark.mjs": {
+        "renderedLength": 532
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/circle.mjs": {
+        "renderedLength": 302
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/columns-3.mjs": {
+        "renderedLength": 487
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/copy.mjs": {
+        "renderedLength": 428
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/crop.mjs": {
+        "renderedLength": 357
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/diamond.mjs": {
+        "renderedLength": 410
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/download.mjs": {
+        "renderedLength": 442
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/ellipsis.mjs": {
+        "renderedLength": 497
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/eraser.mjs": {
+        "renderedLength": 458
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/eye-off.mjs": {
+        "renderedLength": 654
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/eye.mjs": {
+        "renderedLength": 434
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/file.mjs": {
+        "renderedLength": 442
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/folder-open.mjs": {
+        "renderedLength": 465
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/frame.mjs": {
+        "renderedLength": 577
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/grid-2x2.mjs": {
+        "renderedLength": 477
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/hand.mjs": {
+        "renderedLength": 625
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/image-plus.mjs": {
+        "renderedLength": 620
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/layers.mjs": {
+        "renderedLength": 653
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/layout-dashboard.mjs": {
+        "renderedLength": 673
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/lock-open.mjs": {
+        "renderedLength": 433
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/lock.mjs": {
+        "renderedLength": 398
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/message-square.mjs": {
+        "renderedLength": 412
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/minus.mjs": {
+        "renderedLength": 279
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/mouse-pointer-2.mjs": {
+        "renderedLength": 431
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/paint-bucket.mjs": {
+        "renderedLength": 786
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/panel-left-close.mjs": {
+        "renderedLength": 509
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/panel-left-open.mjs": {
+        "renderedLength": 504
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/pen-tool.mjs": {
+        "renderedLength": 707
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/pencil.mjs": {
+        "renderedLength": 452
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/pipette.mjs": {
+        "renderedLength": 582
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/play.mjs": {
+        "renderedLength": 350
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/plus.mjs": {
+        "renderedLength": 325
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/redo-2.mjs": {
+        "renderedLength": 382
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/refresh-cw.mjs": {
+        "renderedLength": 551
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/rotate-ccw-clock.mjs": {
+        "renderedLength": 493
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/rows-3.mjs": {
+        "renderedLength": 478
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/ruler.mjs": {
+        "renderedLength": 636
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/save.mjs": {
+        "renderedLength": 529
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/scaling.mjs": {
+        "renderedLength": 511
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/scan.mjs": {
+        "renderedLength": 508
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/search.mjs": {
+        "renderedLength": 358
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/shapes.mjs": {
+        "renderedLength": 553
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/slice.mjs": {
+        "renderedLength": 361
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/sliders-horizontal.mjs": {
+        "renderedLength": 755
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/square.mjs": {
+        "renderedLength": 327
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/star.mjs": {
+        "renderedLength": 632
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/text-align-end.mjs": {
+        "renderedLength": 446
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/text-align-start.mjs": {
+        "renderedLength": 459
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/trash.mjs": {
+        "renderedLength": 584
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/triangle.mjs": {
+        "renderedLength": 344
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/triangles-centerline-dashed-horizontal.mjs": {
+        "renderedLength": 825
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/triangles-centerline-dashed-vertical.mjs": {
+        "renderedLength": 818
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/type.mjs": {
+        "renderedLength": 419
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/undo-2.mjs": {
+        "renderedLength": 380
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/users.mjs": {
+        "renderedLength": 534
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/variable.mjs": {
+        "renderedLength": 546
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/vector-square.mjs": {
+        "renderedLength": 858
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/lucide-react/dist/esm/icons/zoom-in.mjs": {
+        "renderedLength": 572
+      },
+      "<snapshot>/frontend/design-client/src/LocalWindows.tsx": {
+        "renderedLength": 6040
+      },
+      "<snapshot>/frontend/design-client/src/board-tools.ts": {
+        "renderedLength": 6445
+      },
+      "<snapshot>/frontend/design-client/src/ReviewsPanel.tsx": {
+        "renderedLength": 6577
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/svg-pathdata/dist/SVGPathDataEncoder.js": {
+        "renderedLength": 1777
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/svg-pathdata/dist/mathUtils.js": {
+        "renderedLength": 5480
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/svg-pathdata/dist/transformers/remove_collinear.js": {
+        "renderedLength": 1154
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/svg-pathdata/dist/transformers/reverse_path.js": {
+        "renderedLength": 2749
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/svg-pathdata/dist/SVGPathDataTransformer.js": {
+        "renderedLength": 16725
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/svg-pathdata/dist/TransformableSVG.js": {
+        "renderedLength": 1557
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/svg-pathdata/dist/SVGPathDataParser.js": {
+        "renderedLength": 7191
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/svg-pathdata/dist/SVGPathData.js": {
+        "renderedLength": 2262
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/svg-pathdata/dist/SVGShapes.js": {
+        "renderedLength": 0
+      },
+      "/workspace/shared/design-phase2/frontend-deps/node_modules/svg-pathdata/dist/index.js": {
+        "renderedLength": 0
+      },
+      "<snapshot>/frontend/design-client/src/path-network.ts": {
+        "renderedLength": 1118
+      },
+      "<snapshot>/frontend/design-client/src/editable-network.ts": {
+        "renderedLength": 2465
+      },
+      "<snapshot>/frontend/design-client/src/kernel/content-plane.ts": {
+        "renderedLength": 510
+      },
+      "<snapshot>/frontend/design-client/src/canvas-color-picker.ts": {
+        "renderedLength": 11841
+      },
+      "<snapshot>/frontend/design-client/src/utility-tools.tsx": {
+        "renderedLength": 15082
+      },
+      "<snapshot>/frontend/design-client/src/WorkspaceTabs.tsx": {
+        "renderedLength": 2026
+      },
+      "<snapshot>/frontend/design-client/src/pending-edit-context.ts": {
+        "renderedLength": 183
+      },
+      "<snapshot>/frontend/design-client/src/DraftInput.tsx": {
+        "renderedLength": 2865
+      },
+      "<snapshot>/frontend/design-client/src/VariablesPanel.css": {
+        "renderedLength": 0
+      },
+      "<snapshot>/frontend/design-client/src/VariablesPanel.tsx": {
+        "renderedLength": 28086
+      },
+      "<snapshot>/frontend/design-client/src/import-file-worker.ts": {
+        "renderedLength": 2153
+      },
+      "<snapshot>/frontend/design-client/src/image-import.ts": {
+        "renderedLength": 1295
+      },
+      "<snapshot>/frontend/design-client/src/persistence.ts": {
+        "renderedLength": 1709
+      },
+      "<snapshot>/frontend/design-client/src/kernel/paint-damage.ts": {
+        "renderedLength": 452
+      },
+      "<snapshot>/frontend/design-client/src/kernel/tile-cache.ts": {
+        "renderedLength": 3520
+      },
+      "<snapshot>/frontend/design-client/src/kernel/tile-scheduler.ts": {
+        "renderedLength": 7031
+      },
+      "<snapshot>/frontend/design-client/src/kernel/tile-plan-aligned.ts": {
+        "renderedLength": 4730
+      },
+      "<snapshot>/frontend/design-client/src/kernel/render-quality.ts": {
+        "renderedLength": 254
+      },
+      "<snapshot>/frontend/design-client/src/kernel/canvas-raster-plan.ts": {
+        "renderedLength": 2565
+      },
+      "<snapshot>/frontend/design-client/src/kernel/canvas-effect-sampling.ts": {
+        "renderedLength": 866
+      },
+      "<snapshot>/frontend/design-client/src/kernel/presentation.ts": {
+        "renderedLength": 3737
+      },
+      "<snapshot>/frontend/design-client/src/kernel/lod-snapshot-cache.ts": {
+        "renderedLength": 1391
+      },
+      "<snapshot>/frontend/design-client/src/kernel/tile-preview.ts": {
+        "renderedLength": 1034
+      },
+      "<snapshot>/frontend/design-client/src/kernel/interaction-density.ts": {
+        "renderedLength": 949
+      },
+      "<snapshot>/frontend/design-client/src/kernel/use-raster-density.ts": {
+        "renderedLength": 1106
+      },
+      "<snapshot>/frontend/design-client/src/kernel/frame-debounced-value.ts": {
+        "renderedLength": 1079
+      },
+      "<snapshot>/frontend/design-client/src/kernel/use-zoom-activity.ts": {
+        "renderedLength": 1214
+      },
+      "<snapshot>/frontend/design-client/src/kernel/navigation-zoom.ts": {
+        "renderedLength": 2487
+      },
+      "<snapshot>/frontend/design-client/src/kernel/use-navigation-zoom.ts": {
+        "renderedLength": 1759
+      },
+      "<snapshot>/frontend/design-client/src/kernel/render-mailbox.ts": {
+        "renderedLength": 996
+      },
+      "<snapshot>/frontend/design-client/src/kernel/idle-raster-maintenance.ts": {
+        "renderedLength": 1227
+      },
+      "<snapshot>/frontend/design-client/src/kernel/pan-prefetch.ts": {
+        "renderedLength": 2001
+      },
+      "<snapshot>/frontend/design-client/src/kernel/tile-prepare-viewport.ts": {
+        "renderedLength": 1345
+      },
+      "<snapshot>/frontend/design-client/src/kernel/gpu/composite-draw-plan.ts": {
+        "renderedLength": 3066
+      },
+      "<snapshot>/frontend/design-client/src/kernel/gpu/tile-compositor.ts": {
+        "renderedLength": 6293
+      },
+      "<snapshot>/frontend/design-client/src/kernel/gpu/canvas-overlay.ts": {
+        "renderedLength": 723
+      },
+      "<snapshot>/frontend/design-client/src/kernel/interaction-capture-tiles.ts": {
+        "renderedLength": 1037
+      },
+      "<snapshot>/frontend/design-client/src/kernel/interaction-scene-bounds.ts": {
+        "renderedLength": 1313
+      },
+      "<snapshot>/frontend/design-client/src/kernel/interaction-layers.ts": {
+        "renderedLength": 5461
+      },
+      "<snapshot>/frontend/design-client/src/kernel/interaction-renderer.ts": {
+        "renderedLength": 35227
+      },
+      "<snapshot>/frontend/design-client/src/kernel/TileCompositeSurface.tsx": {
+        "renderedLength": 5069
+      },
+      "<snapshot>/frontend/design-client/src/kernel/resident-presentation.ts": {
+        "renderedLength": 1892
+      },
+      "<snapshot>/frontend/design-client/src/kernel/page-translation.ts": {
+        "renderedLength": 10540
+      },
+      "<snapshot>/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx": {
+        "renderedLength": 10987
+      },
+      "<snapshot>/frontend/design-client/src/kernel/presentation-ownership.ts": {
+        "renderedLength": 506
+      },
+      "<snapshot>/frontend/design-client/src/kernel/gpu/display-budget.ts": {
+        "renderedLength": 273
+      },
+      "<snapshot>/frontend/design-client/src/kernel/progressive-quality.ts": {
+        "renderedLength": 310
+      },
+      "<snapshot>/frontend/design-client/src/kernel/overview-coverage.ts": {
+        "renderedLength": 377
+      },
+      "<snapshot>/frontend/design-client/src/kernel/coverage-retention.ts": {
+        "renderedLength": 733
+      },
+      "<snapshot>/frontend/design-client/src/kernel/coverage-priority.ts": {
+        "renderedLength": 980
+      },
+      "<snapshot>/frontend/design-client/src/kernel/exact-tile-cache.ts": {
+        "renderedLength": 530
+      },
+      "<snapshot>/frontend/design-client/src/kernel/tile-computation-key.ts": {
+        "renderedLength": 932
+      },
+      "<snapshot>/frontend/design-client/src/kernel/ProgressiveSurface.tsx": {
+        "renderedLength": 64023
+      },
+      "<snapshot>/frontend/design-client/src/kernel/Surface.tsx": {
+        "renderedLength": 26778
+      },
+      "<snapshot>/frontend/design-client/src/kernel/bake-session.ts": {
+        "renderedLength": 629
+      },
+      "<snapshot>/frontend/design-client/src/prototype-scroll.ts": {
+        "renderedLength": 1185
+      },
+      "<snapshot>/frontend/design-client/src/PrototypePlayer.tsx": {
+        "renderedLength": 12663
+      },
+      "<snapshot>/frontend/design-client/src/import-ownership.ts": {
+        "renderedLength": 1396
+      },
+      "<snapshot>/frontend/design-client/src/DesignTools.tsx": {
+        "renderedLength": 26526
+      },
+      "<snapshot>/frontend/design-client/src/EditorChrome.tsx": {
+        "renderedLength": 16311
+      },
+      "<snapshot>/frontend/design-client/src/WorkspaceLibrary.tsx": {
+        "renderedLength": 9692
+      },
+      "<snapshot>/frontend/design-client/src/document-history.ts": {
+        "renderedLength": 2095
+      },
+      "<snapshot>/frontend/design-client/src/DocumentHistoryDialog.tsx": {
+        "renderedLength": 8609
+      },
+      "<snapshot>/frontend/design-client/src/ImportNotice.tsx": {
+        "renderedLength": 1785
+      },
+      "<snapshot>/frontend/design-client/src/numeric-expression.ts": {
+        "renderedLength": 2902
+      },
+      "<snapshot>/frontend/design-client/src/selection-scale.ts": {
+        "renderedLength": 2236
+      },
+      "<snapshot>/frontend/design-client/src/canvas-drop.ts": {
+        "renderedLength": 2424
+      },
+      "<snapshot>/frontend/design-client/src/freehand.ts": {
+        "renderedLength": 4938
+      },
+      "<snapshot>/frontend/design-client/src/layout-order.ts": {
+        "renderedLength": 975
+      },
+      "<snapshot>/frontend/design-client/src/mask-coverage.ts": {
+        "renderedLength": 632
+      },
+      "<snapshot>/frontend/design-client/src/kernel/graph.ts": {
+        "renderedLength": 4196
+      },
+      "<snapshot>/frontend/design-client/src/kernel/op-sync.ts": {
+        "renderedLength": 9723
+      },
+      "<snapshot>/frontend/design-client/src/kernel/graph-history-state.ts": {
+        "renderedLength": 3055
+      },
+      "<snapshot>/frontend/design-client/src/kernel/graph-history.ts": {
+        "renderedLength": 296
+      },
+      "<snapshot>/frontend/design-client/src/prepared-document.ts": {
+        "renderedLength": 757
+      },
+      "<snapshot>/frontend/design-client/src/engine.ts": {
+        "renderedLength": 75774
+      },
+      "<snapshot>/frontend/design-client/src/DesktopCatalog.tsx": {
+        "renderedLength": 10215
+      },
+      "<snapshot>/frontend/design-client/src/DesktopLeaveDialog.tsx": {
+        "renderedLength": 2409
+      },
+      "<snapshot>/frontend/design-client/src/desktop-session.ts": {
+        "renderedLength": 35173
+      },
+      "<snapshot>/frontend/design-client/src/canvas-selection-workflows.ts": {
+        "renderedLength": 1325
+      },
+      "<snapshot>/frontend/design-client/src/StartupPreview.tsx": {
+        "renderedLength": 1525
+      },
+      "<snapshot>/frontend/design-client/src/retained-board-capture.ts": {
+        "renderedLength": 3436
+      },
+      "<snapshot>/frontend/design-client/src/retained-board-preview.ts": {
+        "renderedLength": 3038
+      },
+      "<snapshot>/frontend/design-client/src/kernel/gpu/image-adjust.ts": {
+        "renderedLength": 308
+      },
+      "<snapshot>/frontend/design-client/src/edit-preview.ts": {
+        "renderedLength": 4776
+      },
+      "<snapshot>/frontend/design-client/src/edit-preview-pixels.ts": {
+        "renderedLength": 896
+      },
+      "<snapshot>/frontend/design-client/src/CanvasEditPreview.tsx": {
+        "renderedLength": 10881
+      },
+      "<snapshot>/frontend/design-client/src/canvas-scrollbars.ts": {
+        "renderedLength": 1068
+      },
+      "<snapshot>/frontend/design-client/src/CanvasScrollbars.tsx": {
+        "renderedLength": 4161
+      },
+      "<snapshot>/frontend/design-client/src/selection-handles.ts": {
+        "renderedLength": 2518
+      },
+      "<snapshot>/frontend/design-client/src/canvas-measurements.ts": {
+        "renderedLength": 1539
+      },
+      "<snapshot>/frontend/design-client/src/canvas-layout-handles.ts": {
+        "renderedLength": 2950
+      },
+      "<snapshot>/frontend/design-client/src/fields.tsx": {
+        "renderedLength": 5868
+      },
+      "<snapshot>/frontend/design-client/src/CanvasLayoutHandles.tsx": {
+        "renderedLength": 5768
+      },
+      "<snapshot>/frontend/design-client/src/smart-selection.ts": {
+        "renderedLength": 4488
+      },
+      "<snapshot>/frontend/design-client/src/CanvasSmartSelection.tsx": {
+        "renderedLength": 6590
+      },
+      "<snapshot>/frontend/design-client/src/pixel-grid.ts": {
+        "renderedLength": 927
+      },
+      "<snapshot>/frontend/design-client/src/ruler-guides.ts": {
+        "renderedLength": 1698
+      },
+      "<snapshot>/frontend/design-client/src/CanvasGuides.tsx": {
+        "renderedLength": 9426
+      },
+      "<snapshot>/frontend/design-client/src/canvas-smart-guides.ts": {
+        "renderedLength": 1582
+      },
+      "<snapshot>/frontend/design-client/src/grid-overlay.ts": {
+        "renderedLength": 2847
+      },
+      "<snapshot>/frontend/design-client/src/ViewControls.tsx": {
+        "renderedLength": 7050
+      },
+      "<snapshot>/frontend/design-client/src/TextEditor.tsx": {
+        "renderedLength": 16166
+      },
+      "<snapshot>/frontend/design-client/src/vector.ts": {
+        "renderedLength": 873
+      },
+      "<snapshot>/frontend/design-client/src/image-crop.ts": {
+        "renderedLength": 1695
+      },
+      "<snapshot>/frontend/design-client/src/shape-creation.ts": {
+        "renderedLength": 3682
+      },
+      "<snapshot>/frontend/design-client/src/CanvasContextMenu.tsx": {
+        "renderedLength": 13062
+      },
+      "<snapshot>/frontend/design-client/src/canvas-pointer-intent.ts": {
+        "renderedLength": 1581
+      },
+      "<snapshot>/frontend/design-client/src/canvas-move-feedback.ts": {
+        "renderedLength": 680
+      },
+      "<snapshot>/frontend/design-client/src/canvas-published-input.ts": {
+        "renderedLength": 628
+      },
+      "<snapshot>/frontend/design-client/src/canvas-layer-feedback.ts": {
+        "renderedLength": 1250
+      },
+      "<snapshot>/frontend/design-client/src/Canvas.tsx": {
+        "renderedLength": 118959
+      },
+      "<snapshot>/frontend/design-client/src/layer-tree.ts": {
+        "renderedLength": 1102
+      },
+      "<snapshot>/frontend/design-client/src/PageList.tsx": {
+        "renderedLength": 7228
+      },
+      "<snapshot>/frontend/design-client/src/AssetsPanel.tsx": {
+        "renderedLength": 1823
+      },
+      "<snapshot>/frontend/design-client/src/layer-selection.ts": {
+        "renderedLength": 634
+      },
+      "<snapshot>/frontend/design-client/src/layer-drop.ts": {
+        "renderedLength": 1479
+      },
+      "<snapshot>/frontend/design-client/src/Layers.tsx": {
+        "renderedLength": 25281
+      },
+      "<snapshot>/frontend/design-client/src/BoardPanel.tsx": {
+        "renderedLength": 1950
+      },
+      "<snapshot>/frontend/design-client/src/AlignmentControls.tsx": {
+        "renderedLength": 2004
+      },
+      "<snapshot>/frontend/design-client/src/UnitNumberField.tsx": {
+        "renderedLength": 416
+      },
+      "<snapshot>/frontend/design-client/src/ScaleInspector.tsx": {
+        "renderedLength": 4261
+      },
+      "<snapshot>/frontend/design-client/src/NodeExportPanel.tsx": {
+        "renderedLength": 8183
+      },
+      "<snapshot>/frontend/design-client/src/ColorInput.tsx": {
+        "renderedLength": 2995
+      },
+      "<snapshot>/frontend/design-client/src/selection-colors.ts": {
+        "renderedLength": 2172
+      },
+      "<snapshot>/frontend/design-client/src/SelectionColorsPanel.tsx": {
+        "renderedLength": 1741
+      },
+      "<snapshot>/frontend/design-client/src/StrokeProfilePanel.tsx": {
+        "renderedLength": 5048
+      },
+      "<snapshot>/frontend/design-client/src/font-management.ts": {
+        "renderedLength": 7672
+      },
+      "<snapshot>/frontend/design-client/src/SystemFontPicker.tsx": {
+        "renderedLength": 9236
+      },
+      "<snapshot>/frontend/design-client/src/FontManagementPanel.tsx": {
+        "renderedLength": 5631
+      },
+      "<snapshot>/frontend/design-client/src/TextStylePanel.tsx": {
+        "renderedLength": 16588
+      },
+      "<snapshot>/frontend/design-client/src/ComponentPanel.tsx": {
+        "renderedLength": 9467
+      },
+      "<snapshot>/frontend/design-client/src/LayoutPanel.tsx": {
+        "renderedLength": 17252
+      },
+      "<snapshot>/frontend/design-client/src/MixedNumberField.tsx": {
+        "renderedLength": 1417
+      },
+      "<snapshot>/frontend/design-client/src/style-stack.ts": {
+        "renderedLength": 1211
+      },
+      "<snapshot>/frontend/design-client/src/MultiStylePanel.tsx": {
+        "renderedLength": 9824
+      },
+      "<snapshot>/frontend/design-client/src/MultiSelectionInspector.tsx": {
+        "renderedLength": 10175
+      },
+      "<snapshot>/frontend/design-client/src/Inspector.tsx": {
+        "renderedLength": 46600
+      },
+      "<snapshot>/frontend/design-client/src/animation-orchestrator.ts": {
+        "renderedLength": 12937
+      },
+      "<snapshot>/frontend/design-client/src/animation.css": {
+        "renderedLength": 0
+      },
+      "<snapshot>/frontend/design-client/src/AnimationPanel.tsx": {
+        "renderedLength": 30534
+      },
+      "<snapshot>/frontend/design-client/src/ColorPanel.tsx": {
+        "renderedLength": 7544
+      },
+      "<snapshot>/frontend/design-client/src/ExportPanel.tsx": {
+        "renderedLength": 12801
+      },
+      "<snapshot>/frontend/design-client/src/App.tsx": {
+        "renderedLength": 72900
+      },
+      "<snapshot>/frontend/design-client/src/GpuMemoryPanel.tsx": {
+        "renderedLength": 12147
+      },
+      "<snapshot>/frontend/design-client/src/RenderProfilePanel.tsx": {
+        "renderedLength": 6773
+      },
+      "<snapshot>/frontend/design-client/src/styles.css": {
+        "renderedLength": 0
+      },
+      "<snapshot>/frontend/design-client/src/main.tsx": {
+        "renderedLength": 459
+      },
+      "<snapshot>/frontend/design-client/index.html": {
+        "renderedLength": 0
+      }
+    }
+  },
+  "assets/color-presenter-CRj7OA-0.js": {
+    "isEntry": false,
+    "isDynamicEntry": true,
+    "imports": [
+      "assets/index-i7jSQBy9.js"
+    ],
+    "dynamicImports": [],
+    "codeBytes": 4982,
+    "gzipBytes": 2122,
+    "modules": {
+      "<snapshot>/frontend/design-client/src/kernel/color-presenter.ts": {
+        "renderedLength": 7040
+      }
+    }
+  },
+  "assets/import-svg-Dhm_DdFK.js": {
+    "isEntry": false,
+    "isDynamicEntry": true,
+    "imports": [
+      "assets/index-i7jSQBy9.js"
+    ],
+    "dynamicImports": [],
+    "codeBytes": 16766,
+    "gzipBytes": 6867,
+    "modules": {
+      "<snapshot>/frontend/design-client/src/svg-values.ts": {
+        "renderedLength": 1859
+      },
+      "<snapshot>/frontend/design-client/src/svg-presentation.ts": {
+        "renderedLength": 1853
+      },
+      "<snapshot>/frontend/design-client/src/import-svg-viewport.ts": {
+        "renderedLength": 1224
+      },
+      "<snapshot>/frontend/design-client/src/svg-color.ts": {
+        "renderedLength": 1490
+      },
+      "<snapshot>/frontend/design-client/src/svg-gradient.ts": {
+        "renderedLength": 5796
+      },
+      "<snapshot>/frontend/design-client/src/import-svg.ts": {
+        "renderedLength": 12945
+      }
+    }
+  }
+}

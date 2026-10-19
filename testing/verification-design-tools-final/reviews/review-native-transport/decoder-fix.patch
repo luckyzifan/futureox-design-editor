@@ -1,0 +1,31 @@
+diff --git a__REVIEW_ROOT__/review-native-transport/native-render-frame.before.mjs b/frontend/design-desktop/src/native-render-frame.mjs
+index 1718e09..689fab2 100644
+--- a__REVIEW_ROOT__/review-native-transport/native-render-frame.before.mjs
++++ b/frontend/design-desktop/src/native-render-frame.mjs
+@@ -1,6 +1,8 @@
+ // Versioned native-render responses. Retain bounded partial input, validate the
+ // complete frame, then copy pixels into exact-sized, independently owned memory.
+ // This is safe allocation; Electron invoke still clones the returned bytes.
++const MAGIC = Buffer.from('FRB1')
++const METADATA_DECODER = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+ export const MAX_METADATA_BYTES = 64 * 1024
+ export const MAX_RGBA_BYTES = 48 * 1024 * 1024
+ const MAX_PARTS = 65536
+@@ -34,7 +36,7 @@ export class NativeRenderFrame {
+     this.parts.push(chunk)
+     if (!this.expected && this.received >= 12) {
+       const header = range(this.parts, 0, 12)
+-      if (header.toString('ascii', 0, 4) !== 'FRB1') throw Error('Invalid native render protocol')
++      if (!header.subarray(0, 4).equals(MAGIC)) throw Error('Invalid native render protocol')
+       const metadata = header.readUInt32LE(4), binary = header.readUInt32LE(8)
+       if (!metadata || metadata > MAX_METADATA_BYTES || binary > MAX_RGBA_BYTES) throw Error('Native render payload exceeds limit')
+       this.expected = { metadata, binary, total: 12 + metadata + binary }
+@@ -45,7 +47,7 @@ export class NativeRenderFrame {
+   }
+   decode({ session, id, kind }) {
+     if (!this.expected || this.received !== this.expected.total) throw Error('Incomplete native render frame')
+-    const result = JSON.parse(range(this.parts, 12, this.expected.metadata).toString('utf8'))
++    const result = JSON.parse(METADATA_DECODER.decode(range(this.parts, 12, this.expected.metadata)))
+     if (!result || result.session !== session || result.id !== id) throw Error('Native render sequence mismatch')
+     if (result.type !== kind && result.type !== 'error') throw Error('Unexpected native render response')
+     if (result.type === 'frame') {

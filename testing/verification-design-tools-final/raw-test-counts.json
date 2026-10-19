@@ -1,0 +1,1251 @@
+{
+  "warning": "Literal per-run counters only. Runs overlap, some are deliberately failing negative controls, and runtime artifacts differ. Do not sum these entries or treat dormant independent source views as automatic root-suite discovery. No final aggregate is asserted.",
+  "entries": [
+    {
+      "source": "reviews/review-mcp-export/app-adversarial.log",
+      "source_sha256": "1a541ba2ebb9497b42c38302625ab71dd9602db46c4e6b8d994c7b84104fe87a",
+      "raw_count_lines": [
+        {
+          "line": 8,
+          "text": " Test Files  1 passed (1)"
+        },
+        {
+          "line": 9,
+          "text": "      Tests  5 passed (5)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-mcp-export/app-wiring.log",
+      "source_sha256": "79fa16e8444802a313f8b61668b63e56ca40e526b25689b76824fb6e19297034",
+      "raw_count_lines": [
+        {
+          "line": 8,
+          "text": " Test Files  1 passed (1)"
+        },
+        {
+          "line": 9,
+          "text": "      Tests  2 passed (2)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-mcp-export/client-regression.log",
+      "source_sha256": "dad4a3dc0fdbe7d91535c02023b7626bf0615f522307e01deb05660751801d3d",
+      "raw_count_lines": [
+        {
+          "line": 5,
+          "text": " Test Files  8 passed (8)"
+        },
+        {
+          "line": 6,
+          "text": "      Tests  92 passed (92)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-mcp-export/independent-final.log",
+      "source_sha256": "1def8ef36a701c0351bd5e6d7500c1a5ea482a2712ed41deef400f3acd68955e",
+      "raw_count_lines": [
+        {
+          "line": 26,
+          "text": " Test Files  3 passed (3)"
+        },
+        {
+          "line": 27,
+          "text": "      Tests  9 passed (9)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-mcp-export/independent-fixed.log",
+      "source_sha256": "019d638eb0a83b9a1a2d32e669ed9af9bf3a8e86a6032ebf664c9912f7b29266",
+      "raw_count_lines": [
+        {
+          "line": 5,
+          "text": " Test Files  3 passed (3)"
+        },
+        {
+          "line": 6,
+          "text": "      Tests  9 passed (9)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-mcp-export/initial-independent.log",
+      "source_sha256": "b717b31392ef91d9ef867314bf67a77d2dbe6aa1fa03f6d8cc47685274dcb973",
+      "raw_count_lines": [
+        {
+          "line": 38,
+          "text": " Test Files  1 failed (1)"
+        },
+        {
+          "line": 39,
+          "text": "      Tests  1 failed (1)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-mcp-export/lifecycle-final.log",
+      "source_sha256": "8767a5f7c2cf9b6055329a8d7719ba7eb159f6efab0709d3a9db9e7af5649760",
+      "raw_count_lines": [
+        {
+          "line": 5,
+          "text": "ℹ tests 4"
+        },
+        {
+          "line": 7,
+          "text": "ℹ pass 4"
+        },
+        {
+          "line": 8,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 9,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 10,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 11,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-mcp-export/lifecycle-fixed.log",
+      "source_sha256": "d820eb4bb1b4f013642143f9347a06315296a4151ac571268a2ccfb1e7ec4ada",
+      "raw_count_lines": [
+        {
+          "line": 5,
+          "text": "ℹ tests 4"
+        },
+        {
+          "line": 7,
+          "text": "ℹ pass 4"
+        },
+        {
+          "line": 8,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 9,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 10,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 11,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-mcp-export/node-regression.log",
+      "source_sha256": "618563d21edd48e77909b64e582b94923b7b8c55cb9d6049ef96a77bccfcb773",
+      "raw_count_lines": [
+        {
+          "line": 212,
+          "text": "ℹ tests 109"
+        },
+        {
+          "line": 214,
+          "text": "ℹ pass 109"
+        },
+        {
+          "line": 215,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 216,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 217,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 218,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-mcp-export/second-independent.log",
+      "source_sha256": "1289a1f6d878ae803f4e2c22492ffa4158a8e2b90aa4f38ea092c2ab362c9413",
+      "raw_count_lines": [
+        {
+          "line": 56,
+          "text": " Test Files  1 failed (1)"
+        },
+        {
+          "line": 57,
+          "text": "      Tests  2 failed (2)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-mcp-export/sqlite-mcp-regression.log",
+      "source_sha256": "52b3fc90759fa4934f46f93aa53527d4e1c91f105bf854b53449aef5b15532cc",
+      "raw_count_lines": [
+        {
+          "line": 3,
+          "text": "ℹ tests 1"
+        },
+        {
+          "line": 5,
+          "text": "ℹ pass 1"
+        },
+        {
+          "line": 6,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 7,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 8,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 9,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-sketch-color/final-cargo-tests.log",
+      "source_sha256": "356e22c9243d1d9a07a4558461f6b0b05be6ac8b9e152bc91776098b617ef1b3",
+      "raw_count_lines": [
+        {
+          "line": 17,
+          "text": "running 4 tests"
+        },
+        {
+          "line": 23,
+          "text": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+        },
+        {
+          "line": 27,
+          "text": "running 9 tests"
+        },
+        {
+          "line": 38,
+          "text": "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+        },
+        {
+          "line": 42,
+          "text": "running 11 tests"
+        },
+        {
+          "line": 55,
+          "text": "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.86s"
+        },
+        {
+          "line": 59,
+          "text": "running 3 tests"
+        },
+        {
+          "line": 64,
+          "text": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+        },
+        {
+          "line": 68,
+          "text": "running 3 tests"
+        },
+        {
+          "line": 73,
+          "text": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+        },
+        {
+          "line": 77,
+          "text": "running 3 tests"
+        },
+        {
+          "line": 82,
+          "text": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-sketch-color/final-cargo-unit.log",
+      "source_sha256": "ab457e4bbc978bb8b2a8d572250d7cf94c9b4955bbdbeb43b216a208ae817bc4",
+      "raw_count_lines": [
+        {
+          "line": 5,
+          "text": "running 1 test"
+        },
+        {
+          "line": 8,
+          "text": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 459 filtered out; finished in 0.01s"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-sketch-color/results-after.log",
+      "source_sha256": "f3bb15a35429920a5e0c132c28c4e4b6241a4fa92f350c42cbb0fe02f75fdd1e",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 10 tests"
+        },
+        {
+          "line": 14,
+          "text": "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-sketch-color/results.log",
+      "source_sha256": "c67614cf900273da036600bca181b62c57f2970f7212ebf314a1cb513559363f",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 10 tests"
+        },
+        {
+          "line": 15,
+          "text": "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/acceptance-ownership.log",
+      "source_sha256": "26da4b99b380f54b5e6565fb62c29b47d9d46116d94c2dd7909c17cf42f23fde",
+      "raw_count_lines": [
+        {
+          "line": 17,
+          "text": "ℹ tests 16"
+        },
+        {
+          "line": 19,
+          "text": "ℹ pass 16"
+        },
+        {
+          "line": 20,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 21,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 22,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 23,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/acceptance-tests.json",
+      "source_sha256": "80c0758e521dcdd3b2d414e4937572ff1af9e5e6fadfbfc1b6c75fd08c07fb30",
+      "raw_json_counters": {
+        "numTotalTestSuites": 8,
+        "numPassedTestSuites": 8,
+        "numFailedTestSuites": 0,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 100,
+        "numPassedTests": 99,
+        "numFailedTests": 0,
+        "numPendingTests": 1,
+        "numTodoTests": 0,
+        "success": true
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/acceptance-tests.log",
+      "source_sha256": "eacd6cb7912a91cb9e372f5cd94631e36fec205435035b463681620c799e1a38",
+      "raw_count_lines": [
+        {
+          "line": 135,
+          "text": " Test Files  8 passed (8)"
+        },
+        {
+          "line": 136,
+          "text": "      Tests  99 passed | 1 skipped (100)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/baseline-tests.json",
+      "source_sha256": "1bbfef39d22ba90b574fba92729706e830d94c795a2c63b0352a40ad7056891a",
+      "raw_json_counters": {
+        "numTotalTestSuites": 1,
+        "numPassedTestSuites": 1,
+        "numFailedTestSuites": 0,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 4,
+        "numPassedTests": 3,
+        "numFailedTests": 0,
+        "numPendingTests": 1,
+        "numTodoTests": 0,
+        "success": true
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/baseline-tests.log",
+      "source_sha256": "a5daeac5bb270f5d55ee01bb5afe6cd5ff073626d44d1384b0d4fb3de8c43021",
+      "raw_count_lines": [
+        {
+          "line": 9,
+          "text": " Test Files  1 passed (1)"
+        },
+        {
+          "line": 10,
+          "text": "      Tests  3 passed | 1 skipped (4)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/file-ownership-behavior.json",
+      "source_sha256": "ee288306cc43f6af6b7aee4d83bba39d16274b8c08d3ebbf933f211dd0a695ff",
+      "raw_json_counters": {
+        "numTotalTestSuites": 1,
+        "numPassedTestSuites": 1,
+        "numFailedTestSuites": 0,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 19,
+        "numPassedTests": 3,
+        "numFailedTests": 0,
+        "numPendingTests": 16,
+        "numTodoTests": 0,
+        "success": true
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/file-ownership-behavior.log",
+      "source_sha256": "ca1a931b3f688aadc7e3599e949ed126ad8eafbe3c0766134ff36f723869b6d8",
+      "raw_count_lines": [
+        {
+          "line": 24,
+          "text": " Test Files  1 passed (1)"
+        },
+        {
+          "line": 25,
+          "text": "      Tests  3 passed | 16 skipped (19)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/focused-final-tests.json",
+      "source_sha256": "31a7a1c2039e40f87c473dae115ac54df04907346b8a2da13a02ec018deb6e97",
+      "raw_json_counters": {
+        "numTotalTestSuites": 8,
+        "numPassedTestSuites": 8,
+        "numFailedTestSuites": 0,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 97,
+        "numPassedTests": 96,
+        "numFailedTests": 0,
+        "numPendingTests": 1,
+        "numTodoTests": 0,
+        "success": true
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/focused-final-tests.log",
+      "source_sha256": "ca18678be003d8c65b026792a3d32e7e46dc4e4b7fad5e5d4c050fead87e0754",
+      "raw_count_lines": [
+        {
+          "line": 132,
+          "text": " Test Files  8 passed (8)"
+        },
+        {
+          "line": 133,
+          "text": "      Tests  96 passed | 1 skipped (97)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/focused-tests-fixed.json",
+      "source_sha256": "2028e6c847857b262a3a02d93fa4f807e7824caf8aaa28e0051b047fdfd69eed",
+      "raw_json_counters": {
+        "numTotalTestSuites": 8,
+        "numPassedTestSuites": 8,
+        "numFailedTestSuites": 0,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 95,
+        "numPassedTests": 94,
+        "numFailedTests": 0,
+        "numPendingTests": 1,
+        "numTodoTests": 0,
+        "success": true
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/focused-tests-fixed.log",
+      "source_sha256": "1fa2b5a79880bcd89a00c13335cc2b6d13b5d4d390a4366237362650cdad1f46",
+      "raw_count_lines": [
+        {
+          "line": 130,
+          "text": " Test Files  8 passed (8)"
+        },
+        {
+          "line": 131,
+          "text": "      Tests  94 passed | 1 skipped (95)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/focused-tests.json",
+      "source_sha256": "93e303347b3507c168108579a56f056b9e3e4eb61c0ffbab3bb9b5c66b22715b",
+      "raw_json_counters": {
+        "numTotalTestSuites": 8,
+        "numPassedTestSuites": 8,
+        "numFailedTestSuites": 0,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 86,
+        "numPassedTests": 85,
+        "numFailedTests": 0,
+        "numPendingTests": 1,
+        "numTodoTests": 0,
+        "success": true
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/focused-tests.log",
+      "source_sha256": "4e7b03ffa0fb43a0d24b5b187fc8ecf7a198ad5483c3fd98b0e012f0fffbdb53",
+      "raw_count_lines": [
+        {
+          "line": 121,
+          "text": " Test Files  8 passed (8)"
+        },
+        {
+          "line": 122,
+          "text": "      Tests  85 passed | 1 skipped (86)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/import-ownership-tests-fixed.log",
+      "source_sha256": "ffc45622437e83fc54444e9d762b4f124c5fac1ef66151c34775f41b17ccd89c",
+      "raw_count_lines": [
+        {
+          "line": 17,
+          "text": "ℹ tests 16"
+        },
+        {
+          "line": 19,
+          "text": "ℹ pass 16"
+        },
+        {
+          "line": 20,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 21,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 22,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 23,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/import-ownership-tests.log",
+      "source_sha256": "ad471d883509206e752a61a80e0cad12522d3a4e894c0e375650efacd897a7c5",
+      "raw_count_lines": [
+        {
+          "line": 17,
+          "text": "ℹ tests 16"
+        },
+        {
+          "line": 19,
+          "text": "ℹ pass 15"
+        },
+        {
+          "line": 20,
+          "text": "ℹ fail 1"
+        },
+        {
+          "line": 21,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 22,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 23,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/independent-tests-fixed.json",
+      "source_sha256": "39dbb953cfaa1f89399bd12c3412e43b9e0541ef892bdac4b3512753053edeed",
+      "raw_json_counters": {
+        "numTotalTestSuites": 2,
+        "numPassedTestSuites": 2,
+        "numFailedTestSuites": 0,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 8,
+        "numPassedTests": 8,
+        "numFailedTests": 0,
+        "numPendingTests": 0,
+        "numTodoTests": 0,
+        "success": true
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/independent-tests-fixed.log",
+      "source_sha256": "635c1df136a43feb1cb49e573cb9cabea039ec709450c15c0fdaa174609cf184",
+      "raw_count_lines": [
+        {
+          "line": 13,
+          "text": " Test Files  2 passed (2)"
+        },
+        {
+          "line": 14,
+          "text": "      Tests  8 passed (8)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/independent-tests.json",
+      "source_sha256": "f96a4f02baa1be6b7c99e01fd0c345e3de51e0bd3849a0cf4d63129cfa05d624",
+      "raw_json_counters": {
+        "numTotalTestSuites": 2,
+        "numPassedTestSuites": 0,
+        "numFailedTestSuites": 2,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 8,
+        "numPassedTests": 4,
+        "numFailedTests": 4,
+        "numPendingTests": 0,
+        "numTodoTests": 0,
+        "success": false
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/independent-tests.log",
+      "source_sha256": "0a45aa4432439bd027bcec9c780d13c411cd6425a7d5d58b50159345e15cccf5",
+      "raw_count_lines": [
+        {
+          "line": 49,
+          "text": " Test Files  2 failed (2)"
+        },
+        {
+          "line": 50,
+          "text": "      Tests  4 failed | 4 passed (8)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/ownership-negative-control.json",
+      "source_sha256": "56dfc3f38c4aee124ffd6d05ee7e8431295606205e4acca4c3af2bfdbb550712",
+      "raw_json_counters": {
+        "numTotalTestSuites": 1,
+        "numPassedTestSuites": 0,
+        "numFailedTestSuites": 1,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 1,
+        "numPassedTests": 0,
+        "numFailedTests": 1,
+        "numPendingTests": 0,
+        "numTodoTests": 0,
+        "success": false
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/ownership-negative-control.log",
+      "source_sha256": "32877f079c4f38c57c74ecb01531bd10e833fe06d1d9f6d34f9622f64ff60ccd",
+      "raw_count_lines": [
+        {
+          "line": 63,
+          "text": " Test Files  1 failed (1)"
+        },
+        {
+          "line": 64,
+          "text": "      Tests  1 failed (1)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/client-tests.log",
+      "source_sha256": "fd7ea5eeaf6b4480ab5cd5849bd431faa38f5b0a226271a4f1748b5299b5bdd9",
+      "raw_count_lines": [
+        {
+          "line": 5,
+          "text": " Test Files  1 passed (1)"
+        },
+        {
+          "line": 6,
+          "text": "      Tests  2 passed (2)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/desktop-tests-after.log",
+      "source_sha256": "4cd9d8413e5f545dae4d2c8671fca190bb97ee781604403c97fcdd428b31ee5a",
+      "raw_count_lines": [
+        {
+          "line": 34,
+          "text": "ℹ tests 33"
+        },
+        {
+          "line": 36,
+          "text": "ℹ pass 33"
+        },
+        {
+          "line": 37,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 38,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 39,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 40,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/desktop-tests-before.log",
+      "source_sha256": "130cfd9e13bcc3387b8c1b760dc12360932822a9b8949c44b32e3bbd8f4fcf70",
+      "raw_count_lines": [
+        {
+          "line": 31,
+          "text": "ℹ tests 30"
+        },
+        {
+          "line": 33,
+          "text": "ℹ pass 30"
+        },
+        {
+          "line": 34,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 35,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 36,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 37,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/desktop-tests.log",
+      "source_sha256": "130cfd9e13bcc3387b8c1b760dc12360932822a9b8949c44b32e3bbd8f4fcf70",
+      "raw_count_lines": [
+        {
+          "line": 31,
+          "text": "ℹ tests 30"
+        },
+        {
+          "line": 33,
+          "text": "ℹ pass 30"
+        },
+        {
+          "line": 34,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 35,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 36,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 37,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/independent-boundaries-after.log",
+      "source_sha256": "d696faf790890f5c73ad11cdb8e1ca751ac24f426cde9cc319d746819f445c89",
+      "raw_count_lines": [
+        {
+          "line": 15,
+          "text": "ℹ tests 14"
+        },
+        {
+          "line": 17,
+          "text": "ℹ pass 14"
+        },
+        {
+          "line": 18,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 19,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 20,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 21,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/independent-boundaries-before.log",
+      "source_sha256": "e55833250c352ea11c1c7d836fc14281cd5290f4185155196a0e4d1b307e897c",
+      "raw_count_lines": [
+        {
+          "line": 14,
+          "text": "ℹ tests 13"
+        },
+        {
+          "line": 16,
+          "text": "ℹ pass 11"
+        },
+        {
+          "line": 17,
+          "text": "ℹ fail 2"
+        },
+        {
+          "line": 18,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 19,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 20,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/independent-boundaries.log",
+      "source_sha256": "e55833250c352ea11c1c7d836fc14281cd5290f4185155196a0e4d1b307e897c",
+      "raw_count_lines": [
+        {
+          "line": 14,
+          "text": "ℹ tests 13"
+        },
+        {
+          "line": 16,
+          "text": "ℹ pass 11"
+        },
+        {
+          "line": 17,
+          "text": "ℹ fail 2"
+        },
+        {
+          "line": 18,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 19,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 20,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/negative-control-after.log",
+      "source_sha256": "181fcea37de96d39ed02223790d1cbab5292aef3cf3357543de86757d7402644",
+      "raw_count_lines": [
+        {
+          "line": 230,
+          "text": "# tests 1"
+        },
+        {
+          "line": 232,
+          "text": "# pass 0"
+        },
+        {
+          "line": 233,
+          "text": "# fail 1"
+        },
+        {
+          "line": 234,
+          "text": "# cancelled 0"
+        },
+        {
+          "line": 235,
+          "text": "# skipped 0"
+        },
+        {
+          "line": 236,
+          "text": "# todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/negative-control-before.log",
+      "source_sha256": "e2e73e1fc5c97263e48bb6fba6a49160a9dd34f12b995906d7deed04ea6a6955",
+      "raw_count_lines": [
+        {
+          "line": 24,
+          "text": "ℹ tests 6"
+        },
+        {
+          "line": 26,
+          "text": "ℹ pass 5"
+        },
+        {
+          "line": 27,
+          "text": "ℹ fail 1"
+        },
+        {
+          "line": 28,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 29,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 30,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/negative-control.log",
+      "source_sha256": "e2e73e1fc5c97263e48bb6fba6a49160a9dd34f12b995906d7deed04ea6a6955",
+      "raw_count_lines": [
+        {
+          "line": 24,
+          "text": "ℹ tests 6"
+        },
+        {
+          "line": 26,
+          "text": "ℹ pass 5"
+        },
+        {
+          "line": 27,
+          "text": "ℹ fail 1"
+        },
+        {
+          "line": 28,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 29,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 30,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/rust-codec-tests.log",
+      "source_sha256": "ce88655fd17e9d6a803ff17d37555b512118d607efc6d78a88c8e6eef9e4de7c",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 5 tests"
+        },
+        {
+          "line": 9,
+          "text": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-native-transport/rust-integrated-tests.log",
+      "source_sha256": "c48456c6dc2031d098738fb75c93c612e2aea4a2a2cab71cc8ed08bd65c7ccec",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 5 tests"
+        },
+        {
+          "line": 9,
+          "text": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-svg-import/focused-independent.json",
+      "source_sha256": "5bf82ad532c2e99fcb139ef78d4516fb5228e79fedaae070f3bbf4d2353363b1",
+      "raw_json_counters": {
+        "numTotalTestSuites": 8,
+        "numPassedTestSuites": 8,
+        "numFailedTestSuites": 0,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 161,
+        "numPassedTests": 161,
+        "numFailedTests": 0,
+        "numPendingTests": 0,
+        "numTodoTests": 0,
+        "success": true
+      }
+    },
+    {
+      "source": "reviews/review-svg-import/focused-independent.log",
+      "source_sha256": "6b2bf557c3cc6cb42c8119f154107d4c4b6878c4b9128d3992930c0f6dcb39da",
+      "raw_count_lines": [
+        {
+          "line": 14,
+          "text": " Test Files  8 passed (8)"
+        },
+        {
+          "line": 15,
+          "text": "      Tests  161 passed (161)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-svg-import/presentation-independent.log",
+      "source_sha256": "2aff3f5ed0ca9740d06cc6a6c3f19929b0e45ee404e92648b1a87d2d300949d2",
+      "raw_count_lines": [
+        {
+          "line": 8,
+          "text": "ℹ tests 7"
+        },
+        {
+          "line": 10,
+          "text": "ℹ pass 7"
+        },
+        {
+          "line": 11,
+          "text": "ℹ fail 0"
+        },
+        {
+          "line": 12,
+          "text": "ℹ cancelled 0"
+        },
+        {
+          "line": 13,
+          "text": "ℹ skipped 0"
+        },
+        {
+          "line": 14,
+          "text": "ℹ todo 0"
+        }
+      ]
+    },
+    {
+      "source": "diagnostics/color-space/color-tests.log",
+      "source_sha256": "baa97975501356166fb8f5e6f8c52c1fb33872a0c2872b2e96cfc6dfff22d7c0",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 10 tests"
+        },
+        {
+          "line": 14,
+          "text": "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ]
+    },
+    {
+      "source": "diagnostics/color-space/image_adjust-tests.log",
+      "source_sha256": "f258518f4ae053a1a93da96fa495f42c177eed4e56088906b244f0ffc6cc78fb",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 7 tests"
+        },
+        {
+          "line": 11,
+          "text": "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s"
+        }
+      ]
+    },
+    {
+      "source": "diagnostics/color-space/image_metadata-tests.log",
+      "source_sha256": "ac5b31423ab630d6fa143ea674153d93658d7ead8d0479e9d4546458efd2c538",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 5 tests"
+        },
+        {
+          "line": 9,
+          "text": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ]
+    },
+    {
+      "source": "diagnostics/color-space/sketch_adaptable_color-tests.log",
+      "source_sha256": "f9ee3f147ebe5d772454d6759f69c1f3cab382328affa24b2ab703556de21c24",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 4 tests"
+        },
+        {
+          "line": 8,
+          "text": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ]
+    },
+    {
+      "source": "diagnostics/color-space/sketch_automation_symbols-tests.log",
+      "source_sha256": "13b68f16798ee405d7d465cdda64b00b47374e1c14eff9b86f2dc536502d7282",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 6 tests"
+        },
+        {
+          "line": 10,
+          "text": "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+        }
+      ]
+    },
+    {
+      "source": "diagnostics/color-space/sketch_color_profiles-tests.log",
+      "source_sha256": "ede12c2c58fec20ce338d27ce8d724714f556b73b8d73e7c8ed29ad967c1b50e",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 7 tests"
+        },
+        {
+          "line": 11,
+          "text": "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+        }
+      ]
+    },
+    {
+      "source": "diagnostics/color-space/sketch_import_admission-tests.log",
+      "source_sha256": "c2540246be0154f74c973bb2e2d65b1eb6ec2e2012a96e18f4620c364dd6b541",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 11 tests"
+        },
+        {
+          "line": 15,
+          "text": "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s"
+        }
+      ]
+    },
+    {
+      "source": "diagnostics/color-space/sketch_overrides-tests.log",
+      "source_sha256": "4e4c11472e80fd8c3d9a106f08651e57000d4a87bc4cca398ae8ba8520d160cb",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 3 tests"
+        },
+        {
+          "line": 7,
+          "text": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ]
+    },
+    {
+      "source": "diagnostics/color-space/sketch_shared_styles-tests.log",
+      "source_sha256": "c69cc914d378c9192e9091abb75e27b17e3462aa5ca233323e5971db2216af9d",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 3 tests"
+        },
+        {
+          "line": 7,
+          "text": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ]
+    },
+    {
+      "source": "diagnostics/color-space/sketch_text_attrs-tests.log",
+      "source_sha256": "6469d98046137bed07ecd003bdb52f7f35729b7ba310ea850d954ec76cd5b346",
+      "raw_count_lines": [
+        {
+          "line": 2,
+          "text": "running 3 tests"
+        },
+        {
+          "line": 7,
+          "text": "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/font-fixture-portability/final/acceptance-vitest.json",
+      "source_sha256": "4c33cf1f10d819e92e0b5343b32aced26edcb6a5de294c57fa8db9cadb745586",
+      "raw_json_counters": {
+        "numTotalTestSuites": 4,
+        "numPassedTestSuites": 4,
+        "numFailedTestSuites": 0,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 42,
+        "numPassedTests": 42,
+        "numFailedTests": 0,
+        "numPendingTests": 0,
+        "numTodoTests": 0,
+        "success": true
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/font-fixture-portability/final/acceptance-vitest.log",
+      "source_sha256": "e269c76d7f02f7b1573f67f0968e41266bbc4328887ce1ffbeda266dd50493c4",
+      "raw_count_lines": [
+        {
+          "line": 56,
+          "text": " Test Files  4 passed (4)"
+        },
+        {
+          "line": 57,
+          "text": "      Tests  42 passed (42)"
+        }
+      ]
+    },
+    {
+      "source": "reviews/review-canvas-font/font-fixture-portability/final/vitest-results.json",
+      "source_sha256": "22df594803eb5757d24a2776cb6b486b1f9ceb56aa1da3a5033f4661c6ad4afb",
+      "raw_json_counters": {
+        "numTotalTestSuites": 4,
+        "numPassedTestSuites": 3,
+        "numFailedTestSuites": 1,
+        "numPendingTestSuites": 0,
+        "numTotalTests": 42,
+        "numPassedTests": 41,
+        "numFailedTests": 1,
+        "numPendingTests": 0,
+        "numTodoTests": 0,
+        "success": false
+      }
+    },
+    {
+      "source": "reviews/review-canvas-font/font-fixture-portability/final/vitest.log",
+      "source_sha256": "db4cc5a449b50813e52501fe64b664dca78ca0ee3cbe18c7c17f0282c608200a",
+      "raw_count_lines": [
+        {
+          "line": 76,
+          "text": " Test Files  1 failed | 3 passed (4)"
+        },
+        {
+          "line": 77,
+          "text": "      Tests  1 failed | 41 passed (42)"
+        }
+      ]
+    }
+  ]
+}

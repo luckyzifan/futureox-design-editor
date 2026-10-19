@@ -1,0 +1,5 @@
+84d00200fe8988f129675ec77866d975ce595b7f2e745df634e4cf830e53bbd3  src/Canvas.tsx
+1dbbd56771f92d409114e595e6bdb9fd26d126854ef629b35d5166cb5d9fafd5  ../../testing/verification-canvas-next-performance/before/Canvas.tsx
+15287f1b009b0f4acc21f2b15f7b0efd984d83420644ab7cc68ecf1e427547c8  src/canvas-event-batching.test.tsx
+5f87c69a1dbb5975341fcd23223e3dddc5ebac6488d99f51e612b4b54eb7f8a9  src/engine.ts
+e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b  public/kernel/design_kernel_bg.wasm

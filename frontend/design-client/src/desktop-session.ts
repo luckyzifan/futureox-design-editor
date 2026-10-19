@@ -1,5 +1,6 @@
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, subscribePendingEdits } from './pending-edits'
 import type { Editor } from './engine'
+import type { WorkspaceAutomationGuard } from './automation/workspace-bridge'
 import { prepareDocumentForEditing } from './kernel/picking'
 import { prepareDocument, type PreparedDocument } from './prepared-document'
 import { blank, type DesignDocument } from './model'
@@ -20,8 +21,13 @@ export type DesktopStatus = {
   storage?: 'sqlite' | 'file'
   revision?: number
 }
-type SessionEditor = Pick<Editor, 'state' | 'subscribe' | 'load' | 'notify'> & Partial<Pick<Editor, 'interactionActive'>>
+type SessionEditor = Pick<Editor, 'state' | 'subscribe' | 'load' | 'notify'> & Partial<Pick<Editor, 'interactionActive' | 'sessionGeneration'>>
 const MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
+// These backend responses prove this request was rejected, rather than leaving
+// an uncertain write. INVALID_REQUEST validation precedes commit/transaction
+// completion; timeout, transport, storage and invalid-ack failures stay pending.
+const rejectedWorkspaceWrite = (result: DesktopResult<unknown>) => result.status !== 'ok' && result.status !== 'cancelled' &&
+  (result.status === 'conflict' || ['INVALID_REQUEST', 'WORKSPACE_CONFLICT', 'WORKSPACE_MUTATION_CONFLICT'].includes(result.code))
 
 /** Disk acknowledgements are scoped to immutable snapshots, never to the latest edit. */
 export type WorkspaceTab = { id: string; name: string; persisted: boolean }
@@ -256,6 +262,92 @@ export class DesktopSession {
 
   save(saveAs = false) { return this.run('save', () => this.saveCurrent(saveAs)) }
 
+  /** Native-confirmed MCP operations never commit/discard a pending input. Each
+   * await and the final store/adoption boundary retain the original live fence. */
+  automationWorkspace(method: 'workspace.open' | 'workspace.save' | 'workspace.restore', params: Record<string, unknown>, guard: WorkspaceAutomationGuard, signal: AbortSignal): Promise<WorkspaceDocument> {
+    const fail = (code: string, message: string): never => { throw Object.assign(new Error(message), { code }) }
+    const validId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9._:-]{1,256}$/.test(value)
+    const validMutation = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value)
+    const validRevision = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 1
+    const expected = params.expectedStorageRevision
+    if (!['workspace.open', 'workspace.save', 'workspace.restore'].includes(method) ||
+      (method !== 'workspace.save' && !validId(params.id)) ||
+      (method !== 'workspace.open' && (!validMutation(params.mutationId) || !(validRevision(expected) || method === 'workspace.save' && expected === null))) ||
+      (method === 'workspace.restore' && !validRevision(params.revision))) return Promise.reject(Object.assign(new Error('Invalid workspace automation arguments'), { code: 'INVALID_PARAMS' }))
+    if (this.active || this.operation !== 'idle' || this.workspacePending) return Promise.reject(Object.assign(new Error('Another save or unresolved write is pending'), { code: 'BUSY' }))
+    const store = this.bridge.workspace
+    if (!store) return Promise.reject(Object.assign(new Error('Local workspace storage is unavailable'), { code: 'WORKSPACE_UNAVAILABLE' }))
+    const generation = this.generation
+    const check = () => {
+      if (signal.aborted) throw signal.reason ?? Object.assign(new Error('Request cancelled'), { code: 'CANCELLED' })
+      if (this.disposed || this.closeSnapshot !== undefined || this.currentDocument.id !== guard.documentId || this.editor.sessionGeneration !== guard.session) fail('STALE_SESSION', 'The editor session changed')
+      if (!Number.isSafeInteger(guard.expectedRevision) || this.editor.state.version !== guard.expectedRevision || this.generation !== generation) fail('REVISION_CONFLICT', 'The editor or a draft changed; current content is preserved')
+      if (this.editor.state.busy) fail('BUSY', 'The editor is busy')
+      if (hasPendingEdits(this.editor)) fail('PENDING_EDITS', 'Finish pending input first; the draft is preserved')
+      if (this.editor.interactionActive) fail('INTERACTION_ACTIVE', 'Finish or cancel the current gesture')
+      if (method !== 'workspace.save' && this.dirty) fail('DIRTY_DOCUMENT', 'Save the current document before navigation or restoration')
+    }
+    try { check() } catch (error) { return Promise.reject(error) }
+    clearTimeout(this.recoveryTimer)
+    this.operation = method === 'workspace.save' ? 'save' : 'open'
+    this.publish()
+    const unwrap = <T extends WorkspaceDocument>(result: DesktopResult<T>): T => {
+      if (result.status === 'ok') return result
+      if (result.status === 'cancelled') return fail('CANCELLED', 'The workspace operation was cancelled')
+      return fail(result.code, result.message)
+    }
+    const metadata = ({ id, name, revision, hash, updatedAt, deleted }: WorkspaceDocument): WorkspaceDocument => ({ id, name, revision, hash, updatedAt, deleted })
+    const task = Promise.resolve().then(async () => {
+      await this.recoveryQueue
+      check()
+      if (this.workspacePending) fail('BUSY', 'An earlier save outcome is unresolved; settle it before another automation write')
+      if (method === 'workspace.save') {
+        if ((this.workspaceHeads.get(guard.documentId) ?? null) !== expected) fail('STORAGE_REVISION_CONFLICT', 'The saved revision changed')
+        const snapshot = await this.captureSnapshot()
+        check()
+        const submitted = { documentJson: snapshot.json, expectedRevision: expected as number | null, mutationId: params.mutationId as string, generation: snapshot.generation, id: snapshot.document.id }
+        this.workspacePending = submitted
+        const response = await store.commit({ documentJson: submitted.documentJson, expectedRevision: submitted.expectedRevision, mutationId: submitted.mutationId })
+        if (rejectedWorkspaceWrite(response)) this.workspacePending = undefined
+        const saved = unwrap(response)
+        if (saved.id !== submitted.id || !validRevision(saved.revision)) fail('INVALID_RESPONSE', 'The saved snapshot acknowledgement is invalid')
+        this.workspacePending = undefined
+        this.workspaceHeads.set(saved.id, saved.revision)
+        // Acknowledging exact older bytes never marks a newer edit as saved.
+        if (!this.disposed && this.currentDocument.id === submitted.id) {
+          this.baselineGeneration = submitted.generation; this.baselineJson = submitted.documentJson; this.baselineDocument = undefined
+          this.displayName = saved.name; this.error = undefined; this.conflict = false; this.publish()
+        }
+        check()
+        return metadata(saved)
+      }
+      const id = params.id as string
+      if (method === 'workspace.open') {
+        const opened = unwrap(await store.open({ id }))
+        check()
+        const document = await this.parse(opened.documentJson)
+        check()
+        if (!this.adoptWorkspace(document, opened)) fail('EDITOR_REJECTED', 'The editor could not adopt the saved document')
+        return metadata(opened)
+      }
+      // Validate the historical design before requesting the durable restore.
+      const historical = unwrap(await store.open({ id, revision: params.revision as number }))
+      check(); await this.parse(historical.documentJson); check()
+      const restored = unwrap(await store.restore({ id, revision: params.revision as number, expectedRevision: expected as number, mutationId: params.mutationId as string }))
+      try { check() } catch (error) { this.editor.notify('历史版本已恢复到本机库；当前画布已保留，请重新打开查看'); throw error }
+      const document = await this.parse(restored.documentJson)
+      check()
+      if (!this.adoptWorkspace(document, restored)) fail('EDITOR_REJECTED', 'The restored design could not be adopted; the current editor is preserved')
+      return metadata(restored)
+    }).finally(() => {
+      this.active = null; this.operation = 'idle'; this.publish()
+      if (this.started && this.dirty) this.scheduleRecovery()
+    })
+    this.active = task
+    return task
+  }
+
+
   saveCopy() {
     return this.run('save', async () => {
       if (!this.bridge.workspace || this.editor.interactionActive || !commitPendingEdits(this.editor)) return false
@@ -264,7 +356,7 @@ export class DesktopSession {
       const documentJson = await this.encode(document)
       const result = await this.bridge.workspace.commit({ documentJson, expectedRevision: null, mutationId: crypto.randomUUID() })
       if (result.status !== 'ok') {
-        if (result.status !== 'cancelled' && (result.status === 'conflict' || result.code === 'WORKSPACE_CONFLICT' || result.code === 'WORKSPACE_MUTATION_CONFLICT')) this.workspacePending = undefined
+        if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
         return result.status === 'cancelled' ? false : this.failed(result)
       }
       this.workspaceHeads.set(result.id, result.revision)
@@ -561,7 +653,7 @@ export class DesktopSession {
       const older = this.workspacePending
       const result = await store.commit({ documentJson: older.documentJson, expectedRevision: older.expectedRevision, mutationId: older.mutationId })
       if (result.status !== 'ok') {
-        if (result.status !== 'cancelled' && (result.status === 'conflict' || result.code === 'WORKSPACE_CONFLICT' || result.code === 'WORKSPACE_MUTATION_CONFLICT')) this.workspacePending = undefined
+        if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
         return result.status === 'cancelled' ? false : this.failed(result)
       }
       this.workspaceHeads.set(result.id, result.revision)
@@ -577,7 +669,7 @@ export class DesktopSession {
     this.workspacePending = submitted
     const result = await store.commit({ documentJson: submitted.documentJson, expectedRevision: submitted.expectedRevision, mutationId: submitted.mutationId })
     if (result.status !== 'ok') {
-      if (result.status !== 'cancelled' && (result.status === 'conflict' || result.code === 'WORKSPACE_CONFLICT')) this.workspacePending = undefined
+      if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
       return result.status === 'cancelled' ? false : this.failed(result)
     }
     if (result.id !== id || !Number.isSafeInteger(result.revision) || result.revision < 1)

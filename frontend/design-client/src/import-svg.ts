@@ -10,25 +10,32 @@ import {
   type Matrix,
   type Paint,
 } from './model'
-import { multiply, translate, rotate, apply } from './geometry'
+import { multiply, translate, rotate } from './geometry'
 import { kernelBounds } from './kernel/picking'
 import { svgPaintValue, svgPresentation, svgRootPresentation } from './svg-presentation'
 import { parseSvgViewBox, svgViewportTransform } from './import-svg-viewport'
 import { pathNetwork } from './path-network'
+import { svgAbsoluteLength, svgNumberList, svgFraction, svgStrokeDasharray } from './svg-values'
+import { svgColorParser } from './svg-color'
+import { svgGradientParser } from './svg-gradient'
 export { pathNetwork } from './path-network'
 export type ImportedDesign = { document: DesignDocument; warnings: string[] }
+const transformArities: Record<string, number[]> = { matrix: [6], translate: [1, 2], scale: [1, 2], rotate: [1, 3], skewX: [1], skewY: [1] }
 export function svgTransform(value: string): Matrix {
   let result = identity(),
-    end = 0
-  for (const match of value.matchAll(/([a-zA-Z]+)\s*\(([^)]*)\)/g)) {
-    if (value.slice(end, match.index).replace(/[\s,]/g, '')) throw new Error('SVG 变换语法无效')
-    end = match.index! + match[0].length
-    const a = match[2]
-      .trim()
-      .split(/[\s,]+/)
-      .filter(Boolean)
-      .map(Number)
-    if (a.some((x) => !Number.isFinite(x))) throw new Error('SVG 变换数值无效')
+    end = 0, count = 0
+  const source = value.trim(), operation = /([a-zA-Z]+)\s*\(([^()]*)\)/y
+  while (end < source.length) {
+    const separator = (end ? /^\s*(?:,\s*)?/ : /^\s*/).exec(source.slice(end))![0]
+    end += separator.length
+    operation.lastIndex = end
+    const match = operation.exec(source)
+    if (!match) throw new Error('SVG 变换语法无效')
+    if (++count > 20000) throw new Error('SVG 变换超过 20000 项')
+    end = operation.lastIndex
+    const a = svgNumberList(match[2], '变换', true)
+    if (Object.hasOwn(transformArities, match[1]) && !transformArities[match[1]].includes(a.length))
+      throw new Error(`SVG ${match[1]} 参数数量无效`)
     let m: Matrix
     switch (match[1]) {
       case 'matrix':
@@ -43,7 +50,7 @@ export function svgTransform(value: string): Matrix {
         break
       case 'rotate':
         m = multiply(
-          multiply(translate(a[1] || 0, a[2] || 0), rotate((a[0] * Math.PI) / 180)),
+          multiply(translate(a[1] || 0, a[2] || 0), rotate(a[0])),
           translate(-(a[1] || 0), -(a[2] || 0)),
         )
         break
@@ -57,8 +64,8 @@ export function svgTransform(value: string): Matrix {
         throw new Error(`不支持的 SVG 变换 ${match[1]}`)
     }
     result = multiply(result, m)
+    if (!result.every(Number.isFinite)) throw new Error('SVG 变换超出有限数值范围')
   }
-  if (value.slice(end).trim()) throw new Error('SVG 变换语法无效')
   return result
 }
 export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
@@ -74,37 +81,14 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
     warnings = new Set<string>()
   let count = 0
   const length = (el: Element, key: string, fallback = 0) => {
-    const s = el.getAttribute(key)
-    if (!s) return fallback
-    if (!/^[+-]?(?:\d*\.)?\d+(?:e[+-]?\d+)?(?:px)?$/i.test(s))
-      throw new Error(`SVG ${key} 需要绝对像素长度`)
-    return Number.parseFloat(s)
+    const value = el.getAttribute(key)
+    if (value === null || value === '') return fallback
+    const parsed = svgAbsoluteLength(value, key)
+    if (['width', 'height', 'r', 'rx', 'ry'].includes(key) && parsed < 0) throw new Error(`SVG ${key} 不能为负数`)
+    return parsed
   }
-  const color = (value: string) => {
-    const canvas = document.createElement('canvas'),
-      ctx = canvas.getContext('2d')!
-    ctx.fillStyle = '#010203'
-    ctx.fillStyle = value
-    const first = ctx.fillStyle
-    ctx.fillStyle = '#030201'
-    ctx.fillStyle = value
-    if (ctx.fillStyle !== first) throw new Error(`不支持的 SVG 颜色 ${value}`)
-    if (/^#[0-9a-f]{6}$/i.test(first)) return first
-    const m = String(first).match(/^rgba?\(([^)]+)\)$/)
-    if (m) {
-      const parts = m[1].split(',').map(Number)
-      if (parts[3] !== undefined && parts[3] !== 1)
-        throw new Error('请使用 fill-opacity 表达透明颜色')
-      return (
-        '#' +
-        parts
-          .slice(0, 3)
-          .map((v) => Math.round(v).toString(16).padStart(2, '0'))
-          .join('')
-      )
-    }
-    throw new Error(`不支持的 SVG 颜色 ${value}`)
-  }
+  const color = svgColorParser()
+  const gradient = svgGradientParser(xml, color, svgTransform)
   const ref = (value: string) => {
     const m = value.match(/^url\(#([^\s)]+)\)$/)
     const e = m && xml.getElementById(m[1])
@@ -117,60 +101,11 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
     box: { x: number; y: number },
     opacity: number,
   ): Paint => {
+    if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error('SVG 绘制透明度必须为 0–1')
     if (!value.startsWith('url(')) return { ...paint(color(value)), opacity }
-    const e = ref(value),
-      radial = e.localName === 'radialGradient'
-    if (!radial && e.localName !== 'linearGradient')
-      throw new Error(`不支持的 SVG 填充 ${e.localName}`)
-    const parent = e.getAttribute('href') || e.getAttribute('xlink:href'),
-      base = parent ? xml.getElementById(parent.slice(1)) : null
-    const attr = (key: string, defaultValue: string) =>
-      e.getAttribute(key) || base?.getAttribute(key) || defaultValue
-    if (attr('spreadMethod', 'pad') !== 'pad')
-      throw new Error('SVG 重复或镜像渐变暂不能无损导入；原文件未修改')
-    const coordinate = (s: string) => (s.endsWith('%') ? Number.parseFloat(s) / 100 : Number(s))
-    const user = attr('gradientUnits', 'objectBoundingBox') === 'userSpaceOnUse',
-      transform = svgTransform(attr('gradientTransform', ''))
-    const normalized = (p: { x: number; y: number }) => {
-      p = apply(transform, p)
-      return user ? { x: (p.x - box.x) / n.width, y: (p.y - box.y) / n.height } : p
-    }
-    const stops = Array.from((e.children.length ? e : base || e).children)
-      .filter((s) => s.localName === 'stop')
-      .map((s) => {
-        const inline = Object.fromEntries(
-          (s.getAttribute('style') || '')
-            .split(';')
-            .filter(Boolean)
-            .map((x) => x.split(':').map((x) => x.trim())),
-        )
-        if (Number(s.getAttribute('stop-opacity') || inline['stop-opacity'] || 1) !== 1)
-          throw new Error('当前 SVG 导入不支持独立色标透明度')
-        return {
-          offset: coordinate(s.getAttribute('offset') || '0'),
-          color: color(s.getAttribute('stop-color') || inline['stop-color'] || '#000000'),
-        }
-      })
-    if (!stops.length) throw new Error('SVG 渐变没有色标')
-    if (stops.length === 1) stops.push({ ...stops[0], offset: 1 })
-    let m: Matrix
-    if (radial) {
-      const cx = coordinate(attr('cx', '.5')),
-        cy = coordinate(attr('cy', '.5')),
-        r = coordinate(attr('r', '.5'))
-      if (attr('fx', String(cx)) !== String(cx) || attr('fy', String(cy)) !== String(cy))
-        throw new Error('当前 SVG 导入不支持偏心径向渐变')
-      const a = normalized({ x: cx - r, y: cy - r }),
-        b = normalized({ x: cx + r, y: cy - r }),
-        c = normalized({ x: cx - r, y: cy + r })
-      m = [b.x - a.x, b.y - a.y, c.x - a.x, c.y - a.y, a.x, a.y]
-    } else {
-      const a = normalized({ x: coordinate(attr('x1', '0')), y: coordinate(attr('y1', '0')) }),
-        b = normalized({ x: coordinate(attr('x2', '1')), y: coordinate(attr('y2', '0')) })
-      m = [b.x - a.x, b.y - a.y, -(b.y - a.y), b.x - a.x, a.x, a.y]
-    }
-    return { ...paint(stops[0].color, radial ? 'radial' : 'linear'), opacity, stops, transform: m }
+    return gradient(ref(value), n, box, viewport, opacity)
   }
+
   const attachMask = (
     el: Element,
     n: DesignNode,
@@ -251,7 +186,11 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
     if (Array.from(el.attributes).some((a) => /^on/i.test(a.name)))
       throw new Error('SVG 事件脚本不能导入')
     const { style, inline, opacity, display } = svgPresentation(el, inherited)
-    if (el.getAttribute('filter') || inline.filter)
+    if ((inline.transform && inline.transform !== 'none') || inline['transform-origin'] || el.hasAttribute('transform-origin'))
+      throw new Error('SVG CSS transform/transform-origin 暂不能无损导入，请转换为 transform 属性；原文件未修改')
+    const transformValue = inline.transform === 'none' ? '' : el.getAttribute('transform') || ''
+    if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error('SVG opacity 必须为 0–1')
+    if ((inline.filter || el.getAttribute('filter')) && (inline.filter || el.getAttribute('filter')) !== 'none')
       throw new Error('SVG 滤镜导入需要先展开；请使用原始矢量或 PNG')
     if (tag === 'use') {
       const href = el.getAttribute('href') || el.getAttribute('xlink:href') || ''
@@ -263,7 +202,7 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
       g.opacity = opacity
       g.visible = display !== 'none'
       g.transform = multiply(
-        svgTransform(el.getAttribute('transform') || ''),
+        svgTransform(transformValue),
         translate(length(el, 'x'), length(el, 'y')),
       )
       doc.nodes[g.id] = g
@@ -285,7 +224,7 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
     n.name = el.getAttribute('id') || tag
     n.fills = []
     n.strokes = []
-    n.transform = svgTransform(el.getAttribute('transform') || '')
+    n.transform = svgTransform(transformValue)
     n.opacity = opacity
     // visibility inherits but may be overridden below a hidden container;
     // display:none suppresses the entire subtree and cannot be overridden.
@@ -378,14 +317,16 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
         },
       ]
     } else if (style.fill !== 'none')
-      n.fills = [makePaint(svgPaintValue(style.fill || '#000000', style), n, box, Number(style['fill-opacity'] || 1))]
+      n.fills = [makePaint(svgPaintValue(style.fill || '#000000', style), n, box, svgFraction(style['fill-opacity'] || '1', 'fill-opacity'))]
     if (style.stroke && style.stroke !== 'none') {
-      const s = stroke('#000000', Number(style['stroke-width'] || 1))
-      s.paint = makePaint(svgPaintValue(style.stroke, style), n, box, Number(style['stroke-opacity'] || 1))
+      const width = svgAbsoluteLength(style['stroke-width'] || '1', 'stroke-width')
+      if (width < 0) throw new Error('SVG stroke-width 不能为负数')
+      const s = stroke('#000000', width)
+      s.paint = makePaint(svgPaintValue(style.stroke, style), n, box, svgFraction(style['stroke-opacity'] || '1', 'stroke-opacity'))
       s.cap = (style['stroke-linecap'] || 'butt') as typeof s.cap
       s.join = (style['stroke-linejoin'] || 'miter') as typeof s.join
-      s.dash = style['stroke-dasharray'] === 'none' ? '' : style['stroke-dasharray'] || ''
-      s.dashOffset = Number(style['stroke-dashoffset'] || 0)
+      s.dash = svgStrokeDasharray(style['stroke-dasharray'] || '')
+      s.dashOffset = svgAbsoluteLength(style['stroke-dashoffset'] || '0', 'stroke-dashoffset')
       n.strokes = [s]
     }
     doc.nodes[n.id] = n
@@ -400,6 +341,8 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
     length(root, 'width', vb ? vb[2] : 800),
     length(root, 'height', vb ? vb[3] : 600),
   )
+  if (frame.width <= 0 || frame.height <= 0) throw new Error('SVG 视口需要正的有限尺寸')
+  const viewport = { width: vb?.[2] ?? frame.width, height: vb?.[3] ?? frame.height }
   frame.name = name
   frame.fills = []
   frame.clip = true

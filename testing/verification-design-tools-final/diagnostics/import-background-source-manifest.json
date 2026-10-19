@@ -1,0 +1,126 @@
+{
+  "scope": "Read-only import/background audit source identities. ZIP is cumulative increment, so absent entries can be unchanged base files; absence is not a mismatch.",
+  "gitBase": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "rows": [
+    {
+      "path": "frontend/design-client/src/persistence.ts",
+      "bytes": 6668,
+      "sha256": "820f62ac38da4873fc6e51ca15bb60daf91e50702ee4bedfb640d8b20f9a4364",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "frontend/design-client/src/import-worker.ts",
+      "bytes": 2598,
+      "sha256": "15ab35859fb3be298080b6f3b565cef8e8067449d929976944b0f0f2075f4c9d",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "frontend/design-client/src/import-fig.ts",
+      "bytes": 29405,
+      "sha256": "a460375d995aee25a39a043060545d4bea91451adb2075fe3af0a824abc89051",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "frontend/design-client/src/__tests__/design-file-import.test.ts",
+      "bytes": 2598,
+      "sha256": "57763c1674426146e43bee8015b4282b52637bd85bf8ea1198309104a8d4b45f",
+      "gitBaseMatch": false
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "bytes": 171645,
+      "sha256": "a967b8e59e5301cb389bff5691f455471c6ba0b87f9df8a751c13fa05690d601",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/large-blur-probe.ts",
+      "bytes": 6250,
+      "sha256": "43436b168351c80d2fdf432623388e0395aa0f464670127469d07454c4cb3f25",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preview-tiles.ts",
+      "bytes": 6034,
+      "sha256": "276b023cc83af21e7fd5eb90bb983dd6cf84b993a0e54f1e8b277c250f1401fc",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/working-set-budget.ts",
+      "bytes": 1249,
+      "sha256": "a10a6f84e9ab2d6a3b8f87c1032305d13c300caa214cd1dee66aff7110cecfea",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu.rs",
+      "bytes": 111711,
+      "sha256": "827feef75e6d7ade5bdff4efe240de8212848ce83a75f76cc8f07362afd0f37f",
+      "gitBaseMatch": false
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/interop.rs",
+      "bytes": 260332,
+      "sha256": "a8bef0f743a549677cd91927ba89b1a0b14608f46a8748185ede8ff3e57fbded",
+      "gitBaseMatch": false
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/preview/display.rs",
+      "bytes": 28903,
+      "sha256": "b8147201d17ef7f453c0c3378df7a08f813a58ad36204d4ef6ee76bf8a22e05f",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/gpu_regional_backdrop.rs",
+      "bytes": 5822,
+      "sha256": "77f158a4da4d4b2e07c82ec0421c1903aba03fad30cf2225dbe78e5246f6cc39",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/gpu_tile_culling.rs",
+      "bytes": 14913,
+      "sha256": "1ebf379859aa5864f2b9560042b156bbb640fa59e67dea920f4afb3c9c44c13a",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "design-studio/crates/design-gpu/src/compositor.rs",
+      "bytes": 84370,
+      "sha256": "3d9aa2d33c93e2ef836824e2557cc21f77ffd49b1b82db50943706b94d24b536",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "design-studio/crates/design-gpu/src/device.rs",
+      "bytes": 55914,
+      "sha256": "ad6308fec782a35d3c462ad9dd18db0b55eaf12a2e42fb6d6677c4861a30a6bb",
+      "gitBaseMatch": true
+    },
+    {
+      "path": "frontend/design-client/public/kernel/design_kernel_bg.wasm",
+      "bytes": 39289919,
+      "sha256": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+      "gitBaseMatch": false
+    },
+    {
+      "path": "testing/fixtures/design/figma-materials-native-2026-10-08.fig",
+      "bytes": 46667,
+      "sha256": "5c9145494700f3784c967fd00c18442c57a3e7a65c722c4d2ea5b72ee13da4da",
+      "gitBaseMatch": true
+    }
+  ],
+  "historical117SourceHashMatches": {
+    "design-studio/crates/design-kernel/src/gpu.rs": false,
+    "design-studio/crates/design-kernel/tests/gpu_regional_backdrop.rs": true,
+    "design-studio/crates/design-kernel/tests/gpu_tile_culling.rs": true,
+    "frontend/design-client/src/kernel/ProgressiveSurface.tsx": true,
+    "frontend/design-client/src/kernel/progressive-damage.test.tsx": true,
+    "frontend/design-client/src/kernel/gpu/renderer.ts": true,
+    "frontend/design-client/src/kernel/gpu/webgpu.ts": true,
+    "frontend/design-client/src/kernel/gpu/types.ts": true,
+    "frontend/design-client/src/kernel/gpu/area-shader.ts": true,
+    "frontend/design-client/src/kernel/gpu/scene-index.ts": true,
+    "frontend/design-client/src/kernel/gpu/texture-prefix.ts": true,
+    "frontend/design-client/src/kernel/gpu/texture-prefix.wgsl": true,
+    "frontend/design-client/src/kernel/gpu/prefix-int128.wgsl": true,
+    "frontend/design-client/src/kernel/gpu/large-filter-admission.test.ts": true,
+    "frontend/design-client/src/kernel/gpu/large-blur-probe.ts": true,
+    "frontend/design-desktop/scripts/check-high-zoom-sketch.mjs": true
+  }
+}

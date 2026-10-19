@@ -1,0 +1,20 @@
+{
+  "frontend/design-client/src/Canvas.tsx": "f04c992f19561fc13973be193a6571a287a4139d6c92f5aa8eb25583e23045e3",
+  "frontend/design-client/src/PageList.tsx": "3e1520b9f39d6e17549d523c17bbdb14080f72e298827488c93808954407cdde",
+  "frontend/design-client/src/Layers.tsx": "525da3007f107b77bc82507df6d2c245ca9a55e1a78c2cd75bf073d1187d05ff",
+  "frontend/design-client/src/font-management.ts": "58b8a2bb6d288a6dc6df3a1f954132b2ed4d50a5f1d2166093b72b55534b4aec",
+  "frontend/design-client/src/FontManagementPanel.tsx": "6f6815019bbee4f0f20f6c75c36583004b399effe450cf32cbd8734302a02e0e",
+  "frontend/design-client/src/SystemFontPicker.tsx": "2a40080bc1aa98be1b515091a9374454d2e9bfc46350001fe3c0090cd8b874d1",
+  "frontend/design-client/src/TextStylePanel.tsx": "2776ef30afd98d29b78464b76cc0570970b9b442e3c91be24c359a53ee00ed28",
+  "frontend/design-client/src/text.ts": "0146c34f87596e4918b57c6cf910ea9f7b081f262a9215529e494a5e44a05a8e",
+  "frontend/design-client/src/components.ts": "1e21e7cdccd700bd79ab91194415c467a7226820776f04617476be6882031a45",
+  "frontend/design-client/src/engine.ts": "5f87c69a1dbb5975341fcd23223e3dddc5ebac6488d99f51e612b4b54eb7f8a9",
+  "frontend/design-client/src/import-ownership.ts": "018b2ec5e154b4c52bfb40305149a1b6db448bf3e605a7f872979a5bd01f1dc9",
+  "frontend/design-client/src/canvas-event-batching.test.tsx": "54874cc995410ef9b8647bf330541672a5b418c05b1d697e1a32a5685cab644f",
+  "frontend/design-client/src/font-management.test.ts": "4ed5c1fc5bb389739886bbcbf3d61abde344202e7c76625c4a29a17b8e4b4038",
+  "frontend/design-client/src/FontManagementPanel.test.tsx": "99303f2af6cde40de49065e24f3b505747f19c23a6de35e56017c6ebba0ebdef",
+  "frontend/design-client/public/kernel/design_kernel_bg.wasm": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
+  "frontend/design-client/src/generated/design-kernel/design_kernel.js": "11aeca21feaad973b20453c604768484470575267635b7503cd158a5efe31e99",
+  "frontend/design-client/package.json": "88b22b597e7b2cc25b964bf755c95015044fa5dcccce11ad94dc9f9396484f66",
+  "frontend/design-client/bun.lock": "937d12cef4777e4c2ee0f8b42e73bf2eff0b30879dc8a7eff244f1cf5cf2cd72"
+}

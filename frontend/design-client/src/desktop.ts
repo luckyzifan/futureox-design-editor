@@ -74,9 +74,12 @@ export type NativeRenderFrameStats = {
   backend?: string; last_render_ms?: number; draw_calls?: number; submissions?: number
   peak_texture_bytes?: number; gpu_memory?: NativeGpuMemoryBreakdown
 }
+export type NativeRenderFramePayload =
+  | { rgba: string; encoding?: undefined }
+  | { rgba: Uint8Array; encoding: 'rgba8' }
 export interface NativeRenderBridgeApi {
   load(documentJson: string): Promise<NativeRenderReply>
-  frame(options: NativeRenderFrameOptions, pan?: number): Promise<NativeRenderReply<{ width: number; height: number; rgba: string; stats: NativeRenderFrameStats }>>
+  frame(options: NativeRenderFrameOptions, pan?: number): Promise<NativeRenderReply<{ width: number; height: number; stats: NativeRenderFrameStats } & NativeRenderFramePayload>>
   stop(): Promise<NativeRenderReply>
   stats(): Promise<NativeRenderReply<{ stats: { gpu_memory?: NativeGpuMemoryBreakdown } }>>
 }

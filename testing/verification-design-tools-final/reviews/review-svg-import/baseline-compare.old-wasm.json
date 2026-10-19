@@ -1,0 +1,37 @@
+[
+  {
+    "name": "missing function separator",
+    "accepted": true,
+    "validation": true
+  },
+  {
+    "name": "overflow viewport",
+    "accepted": true,
+    "validation": "Error: 图层数据无效：e9ab1a5e-b352-4940-9073-ddd195df5d02"
+  },
+  {
+    "name": "overflow geometry",
+    "accepted": true,
+    "validation": "Error: 图层数据无效：70ac8afd-6b12-40e7-ad17-76dcdc45e210"
+  },
+  {
+    "name": "overflow transform-geometry composition",
+    "accepted": true,
+    "validation": "Error: 图层数据无效：bb4fb4c5-ab06-4390-8a4b-3a76b6b0cf4b"
+  },
+  {
+    "name": "gradient nested dynamic stop silently accepted",
+    "accepted": true,
+    "validation": true
+  },
+  {
+    "name": "gradient referenced event ignored",
+    "accepted": true,
+    "validation": true
+  },
+  {
+    "name": "root transform-origin silently accepted",
+    "accepted": true,
+    "validation": true
+  }
+]

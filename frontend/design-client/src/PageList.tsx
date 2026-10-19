@@ -21,12 +21,16 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
     return () => { document.removeEventListener('pointerdown', outside, true); window.removeEventListener('blur', blur) }
   }, [menu])
   useEffect(() => { setMenu(null); dragging.current = null }, [editor.sessionGeneration, state.doc.id])
-  const action = (fn: (id: string) => void) => {
-    if (menu && valid(menu) && commitPendingEdits(editor) && valid(menu)) fn(menu.id)
+  // Page topology cannot change underneath a captured Canvas transaction.
+  // Recheck at the action boundary: begin() may not emit a React update yet.
+  const canMutatePages = () => !editor.interactionActive && !editor.state.busy
+  const action = (fn: (id: string) => void, mutatesPages = false) => {
+    if (menu && valid(menu) && (!mutatesPages || canMutatePages()) && commitPendingEdits(editor) &&
+        valid(menu) && (!mutatesPages || canMutatePages())) fn(menu.id)
     setMenu(null)
   }
   return <>
-    <div className="pages-heading"><span>页面</span><button title="添加页面" onClick={() => { if (commitPendingEdits(editor)) { setSearch(''); editor.addPage() } }}><Plus size={15} /></button></div>
+    <div className="pages-heading"><span>页面</span><button title="添加页面" onClick={() => { if (canMutatePages() && commitPendingEdits(editor) && canMutatePages()) { setSearch(''); editor.addPage() } }}><Plus size={15} /></button></div>
     <label className="layer-search page-search"><Search size={13} /><input aria-label="搜索页面" placeholder="搜索页面…" value={search}
       onChange={event => { if (commitPendingEdits(editor)) setSearch(event.target.value) }} /></label>
     <nav className="pages" aria-label="页面列表">
@@ -34,14 +38,15 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
         const index = state.doc.pages.findIndex(value => value.id === page.id)
         return <div className="page-row" key={page.id} draggable
           onDragStart={event => {
-            if (!commitPendingEdits(editor) || editor.interactionActive) { event.preventDefault(); return }
+            if (!canMutatePages() || !commitPendingEdits(editor) || !canMutatePages()) { event.preventDefault(); return }
             dragging.current = { id: page.id, session: editor.sessionGeneration, document: editor.state.doc.id }
             event.dataTransfer.setData('application/x-forma-page', page.id); event.dataTransfer.effectAllowed = 'move'
           }} onDragEnd={() => { dragging.current = null }}
           onDragOver={event => { if (dragging.current && valid(dragging.current)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move' } }}
           onDrop={event => {
             event.preventDefault(); const payload = dragging.current; dragging.current = null
-            if (!payload || !valid(payload) || payload.id === page.id || !commitPendingEdits(editor) || !valid(payload)) return
+            if (!payload || !valid(payload) || payload.id === page.id || !canMutatePages() ||
+                !commitPendingEdits(editor) || !valid(payload) || !canMutatePages()) return
             const after = event.clientY > event.currentTarget.getBoundingClientRect().y + event.currentTarget.getBoundingClientRect().height / 2
             const at = editor.state.doc.pages.findIndex(value => value.id === page.id)
             editor.reorderPage(payload.id, after ? editor.state.doc.pages[at + 1]?.id : page.id)
@@ -61,13 +66,13 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
     {menu && createPortal(<div ref={menuRef} className="page-menu" role="menu" aria-label="页面操作" tabIndex={-1}
       style={{ position: 'fixed', left: menu.x, top: menu.y }} onKeyDown={event => modalKeyDown(event, () => setMenu(null))}>
       <button role="menuitem" onClick={() => action(onRename)}>重命名页面</button>
-      <button role="menuitem" onClick={() => action(id => editor.duplicatePage(id))}>复制页面</button>
+      <button role="menuitem" onClick={() => action(id => editor.duplicatePage(id), true)}>复制页面</button>
       <button role="menuitem" disabled={state.doc.pages[0].id === menu.id} onClick={() => action(id => {
         const at = editor.state.doc.pages.findIndex(page => page.id === id); if (at > 0) editor.reorderPage(id, editor.state.doc.pages[at - 1].id)
-      })}>页面上移</button>
+      }, true)}>页面上移</button>
       <button role="menuitem" disabled={state.doc.pages.at(-1)?.id === menu.id} onClick={() => action(id => {
         const at = editor.state.doc.pages.findIndex(page => page.id === id); editor.reorderPage(id, editor.state.doc.pages[at + 2]?.id)
-      })}>页面下移</button>
+      }, true)}>页面下移</button>
     </div>, document.body)}
   </>
 }

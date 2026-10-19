@@ -1,0 +1,10 @@
+{
+  "productAndFixtureHashesUnchangedDuringAudit": true,
+  "changedSinceSnapshot": [],
+  "parserProbeExit": "0",
+  "compileProbeExit": "0",
+  "compiledRealFigCases": 12,
+  "compiledRealFigSuccesses": 12,
+  "sourceModifiedByAudit": false,
+  "browserGpuOsSocketExecuted": false
+}

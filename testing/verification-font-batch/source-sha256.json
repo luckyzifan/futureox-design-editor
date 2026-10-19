@@ -1,0 +1,11 @@
+{
+  "frontend/design-client/src/FontManagementPanel.tsx": "6f6815019bbee4f0f20f6c75c36583004b399effe450cf32cbd8734302a02e0e",
+  "frontend/design-client/src/font-management.ts": "66fd2779399bcf961dc99333ada83b615aa85428bf24776fe044f49f7855a245",
+  "frontend/design-client/src/SystemFontPicker.tsx": "0432465275306181b4e106b397becf6964653a489c3299fe9eb05f0c1f9d05d7",
+  "frontend/design-client/src/TextStylePanel.tsx": "2776ef30afd98d29b78464b76cc0570970b9b442e3c91be24c359a53ee00ed28",
+  "frontend/design-client/src/MultiSelectionInspector.tsx": "c7bdddcc8cbf997cf11eda5c1c72b160dac8260aa86895c75e380d156c577038",
+  "frontend/design-client/src/text.ts": "0146c34f87596e4918b57c6cf910ea9f7b081f262a9215529e494a5e44a05a8e",
+  "frontend/design-client/src/FontManagementPanel.test.tsx": "58e244c29a61de0f10e5403a041bd30eb4a63330a546e1e934711cf0e54bc507",
+  "frontend/design-client/src/font-management.test.ts": "5f4e311fbd67f0b859885247c3a4d593d74041552f92a7ffb499af216cc299bd",
+  "frontend/design-client/src/TextStylePanel.test.tsx": "d2486bf1c0cfb3a2d841433eb81d22f930f060b2d621fc4ecba79ff58d6e35ed"
+}

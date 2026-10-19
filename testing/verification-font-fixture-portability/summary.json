@@ -1,0 +1,27 @@
+{
+  "status": "passed",
+  "targetedTests": 40,
+  "targetedSuites": 3,
+  "typecheckExitCode": 0,
+  "historicalEvidenceChecksumsVerified": 32,
+  "commands": {
+    "tests": "./node_modules/.bin/vitest run src/font-test-fixtures.test.ts src/font-management.test.ts src/FontManagementPanel.test.tsx --maxWorkers=2 --reporter=verbose --reporter=json --outputFile=../../testing/verification-font-fixture-portability/final-results.json",
+    "typecheck": "./node_modules/.bin/tsc --noEmit",
+    "oldEvidence": "(cd testing/verification-font-batch && sha256sum -c publication.sha256)"
+  },
+  "firstRun": {
+    "testsPassed": 39,
+    "testsFailed": 1,
+    "cause": "Test incorrectly expected typographic family name instead of preserved legacy family returned by kernel; corrected to exact Noto Sans SC Thin after comparing baseline/historical/generated name tables.",
+    "preservedLogs": [
+      "tests.log",
+      "results.json"
+    ]
+  },
+  "limits": [
+    "CPU Linux verified; actual Windows/macOS execution not claimed.",
+    "No GPU/browser FPS claim.",
+    "No generated TTFs required in source ZIP; baseline font remains prerequisite.",
+    "Full aggregate is coordinated separately by root."
+  ]
+}

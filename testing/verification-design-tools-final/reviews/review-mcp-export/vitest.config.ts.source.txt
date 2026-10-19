@@ -1,0 +1,2 @@
+import { defineConfig } from 'vitest/config'
+export default defineConfig({test:{root:'__REVIEW_ROOT__/review-mcp-export',setupFiles:['__DESIGN_REPO__/frontend/design-client/src/test-setup.ts'],include:['*.test.ts'],testTimeout:30000}})

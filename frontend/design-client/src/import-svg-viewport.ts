@@ -1,10 +1,11 @@
 import type { Matrix } from './model'
+import { svgNumberList } from './svg-values'
 
 export type SvgViewBox = [number, number, number, number]
 
 export function parseSvgViewBox(value: string | null): SvgViewBox | undefined {
   if (value === null) return undefined
-  const numbers = value.trim().split(/[\s,]+/).map(Number)
+  const numbers = svgNumberList(value, 'viewBox')
   if (numbers.length !== 4 || !numbers.every(Number.isFinite) || numbers[2] <= 0 || numbers[3] <= 0)
     throw new Error('SVG viewBox 必须包含四个有限数值和正尺寸；原文件未修改')
   return numbers as SvgViewBox

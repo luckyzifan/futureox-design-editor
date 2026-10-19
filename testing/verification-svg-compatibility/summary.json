@@ -1,0 +1,120 @@
+{
+  "scope": "SVG importer only; pathNetwork unchanged; no renderer/kernel/export edits",
+  "checks": {
+    "focusedVitest": {
+      "numTotalTests": 161,
+      "numPassedTests": 161,
+      "numFailedTests": 0,
+      "numPendingTests": 0
+    },
+    "presentationNodeContracts": {
+      "passed": 7,
+      "failed": 0
+    },
+    "typecheck": "passed"
+  },
+  "sourceHashes": {
+    "import-svg.ts": "be602125420327147555ef7ab8ce118b0511eb6891b8e50491200aed37ab2307",
+    "import-svg-viewport.ts": "67620df9dd2d9f62c2c6c9c5b4ff9ecd385614d9b7ee3f123ae689fd65494343",
+    "svg-presentation.ts": "70b7e10eecee69555b727f5b85e05b98d8257983482c383352c16844ba36a0b8",
+    "svg-values.ts": "1d9614aa8d35ce6ae646bf2db709f0f770b3fb918db5d6888426f20ddf19271c",
+    "svg-color.ts": "635dd71e4b09e322716194592eb626b943988b0e0bb4561a9286675e9d49f55a",
+    "svg-gradient.ts": "fff775cafa9e3137ee02e5decaa35f146ff68e0d8f0b493a09b7c6e8fd33debc",
+    "svg-values.test.ts": "c4fffc113585a5ea066546747fa9e9b9cdf5f05f4aa04548c9c24c8c0720e2e1",
+    "svg-color.test.ts": "41e2c5bdad16b8b396099cb9cd2d255694d85ff4a9f483b0aa58e505f0629f00",
+    "import-svg-compatibility.test.ts": "d62f13f2f89f0f8258c694b5d89a488e348b85818fc291798843540ae91b3c2a"
+  },
+  "benchmarkInputHashesMatch": true,
+  "benchmark": [
+    {
+      "name": "rectangles-no-paint-2000",
+      "beforeMedianMs": 421.68390499999987,
+      "afterMedianMs": 445.97702299999946,
+      "ratio": 1.057609782379528,
+      "allocationCounts": {
+        "before": {
+          "canvases": 0,
+          "contexts": 0,
+          "fillStyleAssignments": 0,
+          "nodes": 2001
+        },
+        "after": {
+          "canvases": 0,
+          "contexts": 0,
+          "fillStyleAssignments": 0,
+          "nodes": 2001
+        }
+      },
+      "classification": "real XML and model construction; no canvas adapter used"
+    },
+    {
+      "name": "paths-no-paint-200",
+      "beforeMedianMs": 37.49653899999976,
+      "afterMedianMs": 38.194400000000314,
+      "ratio": 1.0186113443696914,
+      "allocationCounts": {
+        "before": {
+          "canvases": 0,
+          "contexts": 0,
+          "fillStyleAssignments": 0,
+          "nodes": 201
+        },
+        "after": {
+          "canvases": 0,
+          "contexts": 0,
+          "fillStyleAssignments": 0,
+          "nodes": 201
+        }
+      },
+      "classification": "real XML + CPU WASM bounds; no canvas adapter used"
+    },
+    {
+      "name": "repeated-hex-2000",
+      "beforeMedianMs": 387.296957999999,
+      "afterMedianMs": 382.7429510000002,
+      "ratio": 0.9882415626925765,
+      "allocationCounts": {
+        "before": {
+          "canvases": 2000,
+          "contexts": 2000,
+          "fillStyleAssignments": 8000,
+          "nodes": 2001
+        },
+        "after": {
+          "canvases": 0,
+          "contexts": 0,
+          "fillStyleAssignments": 0,
+          "nodes": 2001
+        }
+      },
+      "classification": "real XML/model construction; opaque Canvas.fillStyle host double; allocation counts are deterministic, timing is not a browser/canvas result"
+    },
+    {
+      "name": "repeated-gradient-1000",
+      "beforeMedianMs": 161.57560499999818,
+      "afterMedianMs": 130.99305100000493,
+      "ratio": 0.8107229491729671,
+      "allocationCounts": {
+        "before": {
+          "canvases": 2000,
+          "contexts": 2000,
+          "fillStyleAssignments": 8000,
+          "nodes": 1001
+        },
+        "after": {
+          "canvases": 0,
+          "contexts": 0,
+          "fillStyleAssignments": 0,
+          "nodes": 1001
+        }
+      },
+      "classification": "real XML/model construction; opaque Canvas.fillStyle host double; allocation counts are deterministic, timing is not a browser/canvas result"
+    }
+  ],
+  "limitations": [
+    "No browser, GPU, external assets, OS socket or installed Figma/Sketch test.",
+    "Colored baseline benchmark uses an explicitly labeled opaque-hex Canvas host double.",
+    "Shared-host timing is noisy; no universal importer speedup claim.",
+    "Full repository aggregate validation belongs to the parent task."
+  ]
+}

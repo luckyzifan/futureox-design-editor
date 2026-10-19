@@ -1,0 +1,84 @@
+{
+  "scope": "Mounted React/jsdom production Canvas + Editor/WASM CPU event work; KernelSurface device boundary stub. Not browser FPS, GPU timing, pixels, native pointer or Electron verification.",
+  "order": [
+    "old-a",
+    "new-a",
+    "new-b",
+    "old-b"
+  ],
+  "idleWindow": "Parent coordinated other workers to hold heavy jobs; Rust build completed.",
+  "rows": [
+    {
+      "hz": 120,
+      "traceDurationMs": 250,
+      "baselinePreviewCalls": 31,
+      "candidatePreviewCalls": 16,
+      "baselineNotifications": 33,
+      "candidateNotifications": 18,
+      "baselineCpuMs": [
+        265.0102189999998,
+        238.85407900000018
+      ],
+      "candidateCpuMs": [
+        169.70855399999982,
+        145.9582690000002
+      ],
+      "meanCpuReductionPercent": 37.3508255589881,
+      "finalDocumentHash": "e3fd79d33257d34cea7b0a2d59af28db77f5b33550eb825f7c04dbe8b86e104d"
+    },
+    {
+      "hz": 240,
+      "traceDurationMs": 250,
+      "baselinePreviewCalls": 61,
+      "candidatePreviewCalls": 16,
+      "baselineNotifications": 63,
+      "candidateNotifications": 18,
+      "baselineCpuMs": [
+        458.2456219999999,
+        333.2296959999999
+      ],
+      "candidateCpuMs": [
+        135.34526400000004,
+        110.948128
+      ],
+      "meanCpuReductionPercent": 68.88173435119045,
+      "finalDocumentHash": "e3fd79d33257d34cea7b0a2d59af28db77f5b33550eb825f7c04dbe8b86e104d"
+    },
+    {
+      "hz": 1000,
+      "traceDurationMs": 250,
+      "baselinePreviewCalls": 251,
+      "candidatePreviewCalls": 16,
+      "baselineNotifications": 253,
+      "candidateNotifications": 18,
+      "baselineCpuMs": [
+        1552.3822180000006,
+        943.2283860000002
+      ],
+      "candidateCpuMs": [
+        162.4320429999998,
+        167.70342600000004
+      ],
+      "meanCpuReductionPercent": 86.77135493530706,
+      "finalDocumentHash": "e3fd79d33257d34cea7b0a2d59af28db77f5b33550eb825f7c04dbe8b86e104d"
+    }
+  ],
+  "nestedFinalDocumentHash": "dff93a6a54f16f1a8674ba39d0603c8dd4a1b65158931ce57589fd2153c2d83b",
+  "finalSourceHashes": {
+    "frontend/design-client/src/Canvas.tsx": "84d00200fe8988f129675ec77866d975ce595b7f2e745df634e4cf830e53bbd3",
+    "frontend/design-client/src/PageList.tsx": "3e1520b9f39d6e17549d523c17bbdb14080f72e298827488c93808954407cdde",
+    "frontend/design-client/src/Layers.tsx": "525da3007f107b77bc82507df6d2c245ca9a55e1a78c2cd75bf073d1187d05ff",
+    "frontend/design-client/src/canvas-event-batching.test.tsx": "a72304e68679cb46d1e1a2c19475c3a84aa391d46d8512aad0c3dd23a4ff1abd"
+  },
+  "negativeControl": "Frozen old Canvas/PageList/Layers in isolated snapshot: 7 focused checks fail as expected; candidate checks pass.",
+  "knownIndependentFailure": "Direct Editor.addPage during a live transaction fails on old and candidate; public add/duplicate/reorder/delete UI entry points are now guarded. Opt-in direct-API reproducer retained, skipped by default.",
+  "verification": {
+    "vitestFiles": 21,
+    "passedTests": 215,
+    "skippedTests": 1,
+    "failedTests": 0,
+    "typecheck": "passed",
+    "existingRenameAndShiftContracts": "24/24 passed",
+    "negativeControlExpectedFailures": 7
+  }
+}

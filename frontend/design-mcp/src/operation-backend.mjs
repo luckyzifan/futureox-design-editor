@@ -8,10 +8,11 @@ const GUARDS = {
 
 /** Converts the real shared API capabilities to MCP tools; never implements design operations. */
 export class OperationBackend {
-  constructor({ capabilities, execute, close, scope = 'write', target }) {
+  constructor({ capabilities, execute, close, scope = 'write', grants = {}, target }) {
     if (!isRecord(capabilities) || capabilities.version !== 1 || !Array.isArray(capabilities.methods) || capabilities.methods.length > 512 || typeof execute !== 'function') {
       throw new TypeError('Invalid shared design operation backend')
     }
+    if (!isRecord(grants) || Object.keys(grants).some(key => !['workspace', 'settings'].includes(key)) || Object.values(grants).some(value => !['read', 'write'].includes(value))) throw new TypeError('Invalid operation grants')
     this.execute = execute
     this.closeBackend = close
     this.capabilities = capabilities
@@ -23,7 +24,9 @@ export class OperationBackend {
         typeof method.description !== 'string' || typeof method.mutates !== 'boolean' || !isRecord(method.inputSchema) || method.inputSchema.type !== 'object') {
         throw new TypeError('Invalid shared design method descriptor')
       }
-      if (scope === 'read' && method.mutates) continue
+      if (method.grant !== undefined && !['workspace', 'settings'].includes(method.grant)) throw new TypeError('Invalid operation grant domain')
+      const effectiveScope = method.grant ? grants[method.grant] : scope
+      if (!['read', 'write'].includes(effectiveScope) || (effectiveScope === 'read' && method.mutates)) continue
       const name = `design_${method.name.replaceAll('.', '_').replaceAll('-', '_')}`
       if (this.methods.has(name)) throw new TypeError('Design method names collide after MCP normalization')
       this.methods.set(name, method)

@@ -1,0 +1,212 @@
+{
+  "records": [
+    {
+      "name": "rotation degrees around nonzero center",
+      "pass": true
+    },
+    {
+      "name": "transform composition negative reflection",
+      "pass": true
+    },
+    {
+      "name": "reject translate(1e)",
+      "pass": true
+    },
+    {
+      "name": "reject scale(1 2 3)",
+      "pass": true
+    },
+    {
+      "name": "reject rotate(1,2)",
+      "pass": true
+    },
+    {
+      "name": "reject matrix(1,0,0,1,0,0,)",
+      "pass": true
+    },
+    {
+      "name": "reject translate(NaN)",
+      "pass": true
+    },
+    {
+      "name": "reject matrix(1 0 0 1 1e308 0) translate(1e308 0)",
+      "pass": true
+    },
+    {
+      "name": "reject rotate(180,1e308,1e308)",
+      "pass": true
+    },
+    {
+      "name": "degree full turns and fractional adjacent values",
+      "pass": true
+    },
+    {
+      "name": "absolute Q/pt/pc units with viewBox",
+      "pass": true
+    },
+    {
+      "name": "viewBox nonzero origin and slice",
+      "pass": true
+    },
+    {
+      "name": "gradient href cross type inheritance",
+      "pass": true
+    },
+    {
+      "name": "own stops override inherited stops",
+      "pass": true
+    },
+    {
+      "name": "color interpolation follows gradient XML tree not href target",
+      "pass": true
+    },
+    {
+      "name": "user-space percentage basis",
+      "pass": true
+    },
+    {
+      "name": "linear affine independent point sample oracle",
+      "pass": true
+    },
+    {
+      "name": "radial affine center and radius",
+      "pass": true
+    },
+    {
+      "name": "cache isolation across imports and fill/stroke arrays",
+      "pass": true
+    },
+    {
+      "name": "external-gradient rejects without network",
+      "pass": true
+    },
+    {
+      "name": "external-image rejects without network",
+      "pass": true
+    },
+    {
+      "name": "external-use rejects without network",
+      "pass": true
+    },
+    {
+      "name": "external-fill rejects without network",
+      "pass": true
+    },
+    {
+      "name": "external-css-url rejects without network",
+      "pass": true
+    },
+    {
+      "name": "entity rejects without network",
+      "pass": true
+    },
+    {
+      "name": "gradient-cycle rejects without network",
+      "pass": true
+    },
+    {
+      "name": "alpha-stop rejects without network",
+      "pass": true
+    },
+    {
+      "name": "invalid-viewbox rejects without network",
+      "pass": true
+    },
+    {
+      "name": "unsupported-unit rejects without network",
+      "pass": true
+    },
+    {
+      "name": "root-event rejects without network",
+      "pass": true
+    },
+    {
+      "name": "nested-svg rejects without network",
+      "pass": true
+    },
+    {
+      "name": "bad-xml rejects without network",
+      "pass": true
+    },
+    {
+      "name": "real CPU WASM and fd roundtrip nontransparent pixels",
+      "pass": true,
+      "details": {
+        "left": [
+          18,
+          52,
+          86,
+          255
+        ],
+        "right": [
+          125,
+          159,
+          193,
+          255
+        ]
+      }
+    },
+    {
+      "name": "fixtures use no network/canvas",
+      "pass": true
+    }
+  ],
+  "passed": 34,
+  "failed": 0,
+  "requests": 0,
+  "anomalies": [
+    {
+      "name": "missing function separator",
+      "accepted": true,
+      "validation": true,
+      "value_omitted_for_publication": "Serialized synthetic document payload; rerun the retained source to regenerate."
+    },
+    {
+      "name": "overflow viewport",
+      "accepted": true,
+      "validation": "Error: 图层数据无效：e1ee224a-48f0-4b6a-9c79-72282013bbfe",
+      "value_omitted_for_publication": "Serialized synthetic document payload; rerun the retained source to regenerate."
+    },
+    {
+      "name": "overflow geometry",
+      "accepted": true,
+      "validation": "Error: 图层数据无效：6751d666-ff73-4a13-94ed-04b9b0e25fbd",
+      "value_omitted_for_publication": "Serialized synthetic document payload; rerun the retained source to regenerate."
+    },
+    {
+      "name": "overflow transform-geometry composition",
+      "accepted": true,
+      "validation": "Error: 图层数据无效：f11b61a6-20ba-4911-8703-9c12ae2f33a2",
+      "value_omitted_for_publication": "Serialized synthetic document payload; rerun the retained source to regenerate."
+    },
+    {
+      "name": "gradient nested dynamic stop silently accepted",
+      "accepted": true,
+      "validation": true,
+      "value_omitted_for_publication": "Serialized synthetic document payload; rerun the retained source to regenerate."
+    },
+    {
+      "name": "gradient referenced event ignored",
+      "accepted": true,
+      "validation": true,
+      "value_omitted_for_publication": "Serialized synthetic document payload; rerun the retained source to regenerate."
+    },
+    {
+      "name": "root transform-origin silently accepted",
+      "accepted": true,
+      "validation": true,
+      "value_omitted_for_publication": "Serialized synthetic document payload; rerun the retained source to regenerate."
+    }
+  ],
+  "hashes": {
+    "import-svg.ts": "be602125420327147555ef7ab8ce118b0511eb6891b8e50491200aed37ab2307",
+    "import-svg-viewport.ts": "67620df9dd2d9f62c2c6c9c5b4ff9ecd385614d9b7ee3f123ae689fd65494343",
+    "svg-presentation.ts": "70b7e10eecee69555b727f5b85e05b98d8257983482c383352c16844ba36a0b8",
+    "svg-values.ts": "1d9614aa8d35ce6ae646bf2db709f0f770b3fb918db5d6888426f20ddf19271c",
+    "svg-color.ts": "635dd71e4b09e322716194592eb626b943988b0e0bb4561a9286675e9d49f55a",
+    "svg-gradient.ts": "fff775cafa9e3137ee02e5decaa35f146ff68e0d8f0b493a09b7c6e8fd33debc",
+    "path-network.ts": "31dc9583194b3e539a3437e98b75cbf6b9806ef177986b50e303ce76d4a3ecc7",
+    "geometry.ts": "7d63dbbac86e790fcbbd3dcab2d8b61fe4a968cec8361b4a7bc951b4f12c4f58",
+    "model.ts": "f4452bed2f22584b82eb0e8adccda92ee1ffa3a957f240a1677ccb976a4b87d3"
+  }
+}

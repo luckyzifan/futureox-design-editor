@@ -1,0 +1,3 @@
+b52e7955b8fa26a17f89de9eba9d4a05f80351d5d0775f3a217131a75d88629b  frontend/design-desktop/src/native-render.mjs
+9b345281631d5e2a3bcbed19cc72a5f93e867214dc8c682632616050b9e5cbaa  frontend/design-client/src/kernel/native-render-session.ts
+5a7c0f641266c45fd96c322997a487434a3e348d70420dea532bc055a593ee86  design-studio/crates/design-gpu/src/main.rs

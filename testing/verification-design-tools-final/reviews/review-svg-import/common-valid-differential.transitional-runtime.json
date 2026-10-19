@@ -1,0 +1,62 @@
+[
+  {
+    "name": "rectangle",
+    "differentBytes": 0,
+    "totalBytes": 64000,
+    "pass": true
+  },
+  {
+    "name": "circle ellipse",
+    "differentBytes": 0,
+    "totalBytes": 64000,
+    "pass": true
+  },
+  {
+    "name": "nested style and opacity",
+    "differentBytes": 0,
+    "totalBytes": 64000,
+    "pass": true
+  },
+  {
+    "name": "currentColor",
+    "differentBytes": 0,
+    "totalBytes": 64000,
+    "pass": true
+  },
+  {
+    "name": "path cubic arc",
+    "differentBytes": 0,
+    "totalBytes": 64000,
+    "pass": true
+  },
+  {
+    "name": "dashed line",
+    "differentBytes": 0,
+    "totalBytes": 64000,
+    "pass": true
+  },
+  {
+    "name": "use",
+    "differentBytes": 0,
+    "totalBytes": 64000,
+    "pass": true
+  },
+  {
+    "name": "clip",
+    "differentBytes": 0,
+    "totalBytes": 64000,
+    "pass": true
+  },
+  {
+    "name": "bbox linear gradient",
+    "differentBytes": 0,
+    "totalBytes": 64000,
+    "pass": true
+  },
+  {
+    "name": "bbox radial gradient",
+    "differentBytes": 0,
+    "totalBytes": 64000,
+    "pass": true
+  }
+]

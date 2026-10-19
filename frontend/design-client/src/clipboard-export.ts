@@ -1,4 +1,4 @@
-import {sliceExportTarget} from './export'
+import {sliceExportTarget} from './export-metadata'
 import type { Editor } from './engine'
 import { desktopBridge } from './desktop'
 import { ExportOwner } from './export-ownership'

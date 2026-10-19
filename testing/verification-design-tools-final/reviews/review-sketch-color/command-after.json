@@ -1,0 +1,20 @@
+[
+  "__BUILD_ROOT__/rustup-home/toolchains/1.96.0-x86_64-unknown-linux-gnu/bin/rustc",
+  "--edition=2024",
+  "--test",
+  "--crate-name",
+  "independent_sketch_color_after",
+  "-C",
+  "debuginfo=0",
+  "-C",
+  "opt-level=1",
+  "-L",
+  "dependency=__BUILD_ROOT__/cargo-target/debug/deps",
+  "--extern",
+  "futureox_design_kernel=__BUILD_ROOT__/cargo-target/debug/deps/libfutureox_design_kernel.rlib",
+  "--extern",
+  "serde_json=__BUILD_ROOT__/cargo-target/debug/deps/libserde_json-2ccedcb793fa24be.rlib",
+  "__REVIEW_ROOT__/review-sketch-color/independent-after.rs",
+  "-o",
+  "__REVIEW_ROOT__/review-sketch-color/independent-after"
+]

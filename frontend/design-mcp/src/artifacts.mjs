@@ -11,8 +11,10 @@ export function previewImage(response, maxBytes = 256 * 1024) {
   const prefix = `data:${result.mimeType};base64,`
   if (!result.dataUrl.startsWith(prefix)) return
   const data = result.dataUrl.slice(prefix.length)
-  if (data.length * 2 + 4096 > maxBytes || !validBase64(data)) return
-  return { type: 'image', data, mimeType: result.mimeType }
+  if (!data || !validBase64(data)) return
+  const image = { type: 'image', data, mimeType: result.mimeType }
+  if (jsonBytes(image) > maxBytes) return
+  return image
 }
 
 /** Bounded process-local export snapshots, never a design document store.
@@ -38,7 +40,17 @@ export class ArtifactResources {
       if (!validBase64(result[field])) throw unavailable('The backend returned invalid binary export data')
       candidates.push({ field, name, mimeType, encoding: 'base64', blob: result[field] }); delete metadata[field]
     }
-    if (result.format === 'futureox.design-code.v1') {
+    if (result.format === 'futureox.design-app.v1') {
+      // Trusted exporter output is offered as inert downloadable resources.
+      // The MCP server never evaluates the exported JavaScript.
+      text('html', 'index.html', 'text/html'); text('css', 'styles.css', 'text/css')
+      text('javascript', 'app.js', 'text/javascript'); text('appJson', 'app.json', 'application/json')
+      text('readme', 'README.md', 'text/markdown')
+      if (Array.isArray(result.assets) && result.assets.length) {
+        candidates.push({ field: 'assets', name: 'assets.json', mimeType: 'application/json', encoding: 'json', text: JSON.stringify(result.assets) })
+        delete metadata.assets; metadata.assetCount = result.assets.length
+      }
+    } else if (result.format === 'futureox.design-code.v1') {
       text('html', 'design.html', 'text/html'); text('css', 'design.css', 'text/css')
       if (Array.isArray(result.assets) && result.assets.length) {
         candidates.push({ field: 'assets', name: 'assets.json', mimeType: 'application/json', encoding: 'json', text: JSON.stringify(result.assets) })
@@ -52,16 +64,17 @@ export class ArtifactResources {
       blob('base64', 'design.fd', result.mimeType)
     } else if (result.format === 'futureox.design-sketch.v1' && result.encoding === 'base64' && result.mimeType === 'application/zip') {
       blob('base64', 'design.sketch', result.mimeType)
-    } else if (result.format === 'futureox.design-preview.v1' && jsonBytes(result) > 65536 && typeof result.dataUrl === 'string' && ['image/png', 'image/jpeg', 'image/webp'].includes(result.mimeType)) {
+    } else if (result.format === 'futureox.design-preview.v1') {
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(result.mimeType) || typeof result.dataUrl !== 'string') throw unavailable('The backend returned invalid preview media')
       const prefix = `data:${result.mimeType};base64,`, data = result.dataUrl.slice(prefix.length)
-      if (!result.dataUrl.startsWith(prefix) || !validBase64(data)) throw unavailable('The backend returned invalid preview data')
+      if (!result.dataUrl.startsWith(prefix) || !data || !validBase64(data)) throw unavailable('The backend returned invalid preview data')
       candidates.push({ field: 'dataUrl', name: `preview.${result.mimeType.split('/')[1]}`, mimeType: result.mimeType, encoding: 'data-url', blob: data })
       delete metadata.dataUrl
     }
     if (!candidates.length) return { value: response, links: [] }
     if (jsonBytes(metadata) > metadataBytes) {
       candidates.push({ field: '$metadata', name: 'metadata.json', mimeType: 'application/json', encoding: 'json', text: JSON.stringify(metadata) })
-      const keep = new Set(['format', 'language', 'nativeFormat', 'encoding', 'mimeType', 'filename', 'bytes', 'schemaVersion', 'lossless', 'fidelity', 'sourceDocumentId', 'pageId', 'assetCount', 'sourceNodeCount'])
+      const keep = new Set(['format', 'language', 'nativeFormat', 'encoding', 'mimeType', 'filename', 'bytes', 'schemaVersion', 'lossless', 'fidelity', 'sourceDocumentId', 'documentId', 'pageId', 'session', 'revision', 'width', 'height', 'scale', 'bounds', 'backend', 'renderer', 'screenshot', 'target', 'assetCount', 'sourceNodeCount'])
       for (const key of Object.keys(metadata)) if (!keep.has(key)) delete metadata[key]
     }
     const prepared = candidates.map(candidate => {
@@ -71,7 +84,7 @@ export class ArtifactResources {
       const uri = `futureox-design://artifacts/${randomUUID()}/${candidate.name}`
       const content = { uri, mimeType: candidate.mimeType, ...(candidate.blob === undefined ? { text: candidate.text } : { blob: candidate.blob }) }
       if (jsonBytes({ contents: [content] }) > this.maxResponseBytes - 2048) throw unavailable('An export artifact exceeds the resource response limit')
-      const resource = { uri, name: candidate.name, mimeType: candidate.mimeType, size, description: `Actual ${response.method ?? 'design'} export, revision ${response.revision ?? 'unknown'}. Session-local; expires on eviction or disconnect. Save through resources/read; inspect the design with context.get instead of reading binary into model context.` }
+      const resource = { uri, name: candidate.name, mimeType: candidate.mimeType, size, description: `Actual ${response.method ?? 'design'} export, revision ${response.revision ?? 'unknown'}. Immutable export snapshot; never represents a later revision. MCP-session-local; expires on eviction or MCP disconnect. ${result.format === 'futureox.design-preview.v1' ? 'Display through client image rendering or save with resources/read; do not paste base64 as model text.' : 'Save through resources/read; inspect the design with context.get instead of reading binary into model context.'}` }
       return { resource, content, storageBytes, field: candidate.field, encoding: candidate.encoding }
     })
     const bytes = prepared.reduce((sum, item) => sum + item.storageBytes, 0)

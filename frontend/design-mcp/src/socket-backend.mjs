@@ -86,6 +86,7 @@ export class SocketDesignBackend {
     this.operation = new OperationBackend({
       capabilities: handshake.capabilities,
       scope: handshake.scope,
+      grants: handshake.grants ?? {},
       target: typeof handshake.documentId === 'string' && Number.isSafeInteger(handshake.session) ? { documentId: handshake.documentId, session: handshake.session } : undefined,
       execute: (request, context) => this.request('execute', request, context),
     })

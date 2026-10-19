@@ -6,6 +6,8 @@
  */
 import { desktopBridge, type NativeGpuMemoryBreakdown, type NativeRenderFrameOptions, type NativeRenderFrameStats } from '../desktop'
 import { prefersNativeBackend } from './render-policy'
+import { decodeNativeRenderPixels } from './native-render-pixels'
+export { decodeNativeRenderPixels } from './native-render-pixels'
 
 /** 与 kernel/client.ts 的后端偏好读取同一 localStorage 键。 */
 export function nativeBackendPreferred(): boolean {
@@ -41,7 +43,7 @@ export async function probeNativeRender(
   if (!loaded.ok) throw new Error(`原生文档加载失败:${loaded.error}`)
   const frame = await bridge.frame(options)
   if (!frame.ok) throw new Error(`原生帧渲染失败:${frame.error}`)
-  const rgba = Uint8Array.from(atob(frame.rgba), (c) => c.charCodeAt(0))
+  const rgba = decodeNativeRenderPixels(frame)
   const stats = await bridge.stats()
   const gpuMemory = stats.ok ? stats.stats.gpu_memory || null : frame.stats.gpu_memory || null
   return { width: frame.width, height: frame.height, rgba, stats: frame.stats, gpuMemory }

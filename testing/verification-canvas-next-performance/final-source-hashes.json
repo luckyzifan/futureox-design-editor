@@ -1,0 +1,6 @@
+{
+  "frontend/design-client/src/Canvas.tsx": "84d00200fe8988f129675ec77866d975ce595b7f2e745df634e4cf830e53bbd3",
+  "frontend/design-client/src/PageList.tsx": "3e1520b9f39d6e17549d523c17bbdb14080f72e298827488c93808954407cdde",
+  "frontend/design-client/src/Layers.tsx": "525da3007f107b77bc82507df6d2c245ca9a55e1a78c2cd75bf073d1187d05ff",
+  "frontend/design-client/src/canvas-event-batching.test.tsx": "a72304e68679cb46d1e1a2c19475c3a84aa391d46d8512aad0c3dd23a4ff1abd"
+}

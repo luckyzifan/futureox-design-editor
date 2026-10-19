@@ -1,0 +1,73 @@
+--- __REVIEW_ROOT__/review-sketch-color/tests-before-stroke-guard.rs	2026-10-20 01:33:08.692711750 +0900
++++ __DESIGN_REPO__/design-studio/crates/design-kernel/tests/sketch_color_profiles.rs	2026-10-20 01:33:13.788268426 +0900
+@@ -116,3 +116,70 @@
+     doc.design_system.as_mut().unwrap().styles.get_mut("s").unwrap().value[0]["color"]=json!("color(srgb-linear 8 0 0)");
+     assert!(export_sketch(&doc).unwrap_err().to_string().contains("outside the target"));
+ }
++
++#[test]
++fn non_solid_node_and_shared_strokes_reject_instead_of_flattening() {
++    for kind in ["linear", "radial", "angular", "diamond", "image"] {
++        for shared in [false, true] {
++            for visible in [false, true] {
++                for color in ["#123456", "color(rec2100-pq 0.5 0.5 0.5)"] {
++                    let mut doc = document("#ffffff", Some("srgb"));
++                    let mut paint = json!({"kind":kind,"color":"#000000","visible":visible});
++                    if kind == "image" {
++                        paint["image"] = json!("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGIAAQAAAAUAAQ0KLbQAAAAASUVORK5CYII=");
++                    } else {
++                        paint["stops"] = json!([
++                            {"offset":0,"color":color}, {"offset":1,"color":color}
++                        ]);
++                    }
++                    let strokes = json!([{"width":1,"paint":paint}]);
++                    if shared {
++                        doc.design_system = Some(serde_json::from_value(json!({
++                            "styles":{"s":{"name":"s","kind":"paint","value":[],"strokes":strokes}}
++                        })).unwrap());
++                    } else {
++                        doc.nodes.get_mut("n").unwrap().strokes = serde_json::from_value(strokes).unwrap();
++                    }
++                    doc.validate().unwrap();
++                    let error = export_sketch(&doc).unwrap_err().to_string();
++                    assert!(error.contains(&format!("cannot preserve {kind} stroke paints")), "{error}");
++                }
++            }
++        }
++    }
++}
++
++#[test]
++fn solid_node_and_shared_strokes_preserve_exact_legacy_fields() {
++    for profile in [None, Some("srgb"), Some("display-p3")] {
++        for shared in [false, true] {
++            for visible in [false, true] {
++                let mut doc = document("#ffffff", profile);
++                let strokes = json!([{"width":2.5,"align":"inside","cap":"square",
++                    "join":"bevel","dash":"4,2","paint":{"kind":"solid",
++                    "color":"#123456","opacity":0.25,"visible":visible}}]);
++                if shared {
++                    doc.design_system = Some(serde_json::from_value(json!({
++                        "styles":{"s":{"name":"s","kind":"paint","value":[],"strokes":strokes}}
++                    })).unwrap());
++                } else {
++                    doc.nodes.get_mut("n").unwrap().strokes = serde_json::from_value(strokes).unwrap();
++                }
++                doc.validate().unwrap();
++                let (archive, page) = parts(&export_sketch(&doc).unwrap());
++                let style = if shared { &archive["layerStyles"]["objects"][0]["style"] }
++                    else { &page["layers"][0]["style"] };
++                let border = &style["borders"][0];
++                assert_eq!(channels(&border["color"]), [18./255.,52./255.,86./255.,0.25]);
++                assert_eq!(border["fillType"], 0);
++                assert_eq!(border["isEnabled"], visible);
++                assert_eq!(border["thickness"], 2.5);
++                assert_eq!(border["position"], 1);
++                assert_eq!(border["contextSettings"]["opacity"], 1.);
++                assert_eq!(style["borderOptions"]["dashPattern"], json!([4.,2.]));
++                assert_eq!(style["borderOptions"]["lineCapStyle"], 2);
++                assert_eq!(style["borderOptions"]["lineJoinStyle"], 2);
++            }
++        }
++    }
++}
