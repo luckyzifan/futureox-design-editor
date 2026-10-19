@@ -157,3 +157,66 @@ async fn needs_free_pressure_runs_the_existing_persistent_image_reclaim() {
     assert_eq!(third.rgba,fourth.rgba);
     assert_eq!(ledger.usage().free_events,events,"historical peak must not force another eviction");
 }
+
+#[tokio::test]
+#[cfg_attr(
+    not(feature = "hardware-tests"),
+    ignore = "run with --features hardware-tests on a GPU host"
+)]
+async fn resident_images_transfer_ledgers_and_clear_on_document_reset() {
+    let mut gpu = NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    let mut engine = Engine::new();
+    engine.load_document(&image_document()).unwrap();
+    let first_ledger = engine.gpu_memory_ledger();
+    gpu.set_memory_ledger(first_ledger.clone());
+    let scene = engine.compile_gpu(&options()).unwrap();
+    let first = gpu.render(&scene).unwrap();
+    let resident = first_ledger.usage().texture_bytes;
+    assert!(resident > 0);
+
+    let next_ledger = futureox_design_kernel::memory::GpuMemoryLedger::default();
+    gpu.set_memory_ledger(next_ledger.clone());
+    assert_eq!(first_ledger.usage().texture_bytes, 0);
+    assert_eq!(next_ledger.usage().texture_bytes, resident);
+    // Reinstalling the same shared handle must neither double-count nor
+    // discard its resident allocations.
+    gpu.set_memory_ledger(next_ledger.clone());
+    assert_eq!(next_ledger.usage().texture_bytes, resident);
+
+    gpu.clear_image_cache();
+    assert_eq!(next_ledger.usage().texture_bytes, 0);
+    let reloaded = gpu.render(&scene).unwrap();
+    assert_eq!(first.rgba, reloaded.rgba);
+    assert_eq!(next_ledger.usage().texture_bytes, resident);
+    drop(gpu);
+    assert_eq!(next_ledger.usage().texture_bytes, 0);
+}
+
+#[tokio::test]
+#[cfg_attr(
+    not(feature = "hardware-tests"),
+    ignore = "run with --features hardware-tests on a GPU host"
+)]
+async fn same_image_uri_changes_storage_and_color_domain_without_stale_texels() {
+    let document: serde_json::Value = serde_json::from_str(&image_document()).unwrap();
+    let mut gpu = NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    for managed in [false, true, false] {
+        let mut document = document.clone();
+        if managed {
+            document["schemaVersion"] = json!(3);
+            document["colorManagement"] = json!({
+                "documentSpace": "srgb", "referenceWhiteNits": 203, "peakLuminanceNits": 1000
+            });
+        }
+        let mut engine = Engine::new();
+        engine.load_document(&document.to_string()).unwrap();
+        let opts = options();
+        let scene = engine.compile_gpu(&opts).unwrap();
+        let actual = gpu.render(&scene).unwrap();
+        let mut fresh_gpu = NativeGpu::new(Backends::PRIMARY).await.unwrap();
+        let expected = fresh_gpu.render(&scene).unwrap();
+        assert_eq!(actual.rgba, expected.rgba, "managed={managed}");
+        assert_eq!(actual.linear, expected.linear, "managed={managed}");
+        assert_eq!(actual.rgba, engine.render(&opts).unwrap(), "managed={managed}");
+    }
+}

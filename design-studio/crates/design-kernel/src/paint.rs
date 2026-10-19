@@ -4,6 +4,7 @@ use crate::{
     scene::{Document, Node, Paint},
 };
 use base64::Engine;
+use image::ImageDecoder;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -231,12 +232,19 @@ fn decode(
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(8192);
     limits.max_image_height = Some(8192);
-    // One 8192² RGBA8 decode is ~268 MB; admitting it lets the display-side
-    // cap below downsample oversized assets instead of rejecting the whole
-    // document (a 6000×4000 camera JPEG otherwise fails the pixel budget).
+    // Decoder allocation is bounded independently of resident float pixels.
+    // Oversized assets are rejected before decoding, never silently resized.
     limits.max_alloc = Some(320 * 1024 * 1024);
     reader.limits(limits);
     let mut decoder = reader.into_decoder().map_err(|e| e.to_string())?;
+    let (width, height) = decoder.dimensions();
+    admit_image_pixels(width, height, settings, resident)?;
+    if settings.is_none() && matches!(decoder.color_type(),
+        image::ColorType::L16 | image::ColorType::La16 | image::ColorType::Rgb16
+        | image::ColorType::Rgba16 | image::ColorType::Rgb32F | image::ColorType::Rgba32F)
+    {
+        return Err("High-precision bitmap requires a color-managed document; source bytes retained".into());
+    }
     let profile = if space.is_none() {
         crate::image_color::icc(&mut decoder)?
     } else {
@@ -245,45 +253,12 @@ fn decode(
     let orientation = crate::image_color::orientation(&mut decoder)?;
     let mut decoded = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
     decoded.apply_orientation(orientation);
-    // Display-side import cap, Figma parity: an asset larger than the resident
-    // budget joins the cache at the largest dimensions that fit instead of
-    // failing the render. The box budget is per image; cumulative residency
-    // keeps its own error below. Triangle is the deterministic scalar filter,
-    // so every backend and the CPU reference sample identical texels.
-    let allowance = if settings.is_some() {
-        8_388_608u64
-    } else {
-        16_777_216u64
-    };
-    let pixels = decoded.width() as u64 * decoded.height() as u64;
-    if pixels > allowance {
-        let scale = (allowance as f64 / pixels as f64).sqrt();
-        let target = |v: u32| ((v as f64 * scale).floor() as u32).max(1);
-        let (capped_w, capped_h) = (target(decoded.width()), target(decoded.height()));
-        decoded = image::DynamicImage::ImageRgba8(image::imageops::resize(
-            &decoded.into_rgba8(),
-            capped_w,
-            capped_h,
-            image::imageops::FilterType::Triangle,
-        ));
-    }
-    let count = decoded.width() as usize * decoded.height() as usize;
-    if resident + count
-        > if settings.is_some() {
-            8_388_608
-        } else {
-            16_777_216
-        }
-    {
-        return Err("Decoded image budget exceeded".into());
-    }
+    // Orientation can swap dimensions but cannot change the admitted count.
+    // The native-resolution base and managed 16-bit/float precision survive;
+    // mipmaps, when requested, remain separate derivatives of this base.
     // Preserve 16-bit/float input in managed documents. Untagged bitmap
     // samples are sRGB, independently of the document's vector palette.
-    let mut image = if settings.is_some() || space.is_some() || profile.is_some() {
-        decoded.into_rgba32f()
-    } else {
-        image::DynamicImage::ImageRgba8(decoded.into_rgba8()).into_rgba32f()
-    };
+    let mut image = decoded.into_rgba32f();
     if let Some(settings) = settings {
         crate::image_color::to_working(&mut image, settings, space, profile.as_deref())?;
     } else if space.is_some() || profile.is_some() {
@@ -305,6 +280,22 @@ fn decode(
         };
     }
     Ok((surface, size))
+}
+
+fn admit_image_pixels(
+    width: u32,
+    height: u32,
+    settings: Option<crate::color::ColorSettings>,
+    resident: usize,
+) -> Result<(), String> {
+    let allowance = if settings.is_some() { 8_388_608u64 } else { 16_777_216u64 };
+    let pixels = u64::from(width) * u64::from(height);
+    if pixels > allowance.saturating_sub(resident as u64) {
+        return Err(format!(
+            "Decoded image budget exceeded: {width}x{height} source pixels cannot fit without loss; automatic downsampling is disabled"
+        ));
+    }
+    Ok(())
 }
 struct ImageCoordinates {
     inverse: Transform,
@@ -1226,16 +1217,29 @@ mod tests {
     }
 
     #[test]
-    fn oversized_assets_downsample_to_the_resident_budget_instead_of_failing() {
-        // 20 MP exceeds the 16.7 MP SDR allowance; a camera-sized asset must
-        // join the cache capped, not reject the document.
-        let uri = png_uri(5000, 4000);
+    fn oversized_assets_fail_explicitly_instead_of_replacing_source_pixels() {
+        // Admission itself needs no huge fixture or decode allocation.
+        for (settings, width, height, resident) in [
+            (None, 5000, 4000, 0),
+            (Some(crate::color::ColorSettings::default()), 4096, 4096, 0),
+            (None, 2, 1, 16_777_215),
+            (None, 1, 1, usize::MAX),
+        ] {
+            let error = admit_image_pixels(width, height, settings, resident).unwrap_err();
+            assert!(error.contains("without loss"), "{error}");
+        }
+        assert!(admit_image_pixels(4096, 4096, None, 0).is_ok());
+        assert!(admit_image_pixels(4096, 2048, Some(crate::color::ColorSettings::default()), 0).is_ok());
+    }
+
+    #[test]
+    fn rejected_decode_does_not_consume_residency() {
+        let uri = png_uri(2, 1);
         let mut images = Images::default();
-        let surface = images.image(&uri).expect("capped decode succeeds");
-        let pixels = (surface.rect.w as u64) * (surface.rect.h as u64);
-        assert!(pixels <= 16_777_216, "capped pixels {pixels}");
-        assert!(surface.rect.w >= 4500 && surface.rect.h >= 3600);
-        assert_eq!(images.resident_pixels() as u64, pixels);
+        images.pixels = 16_777_215;
+        assert!(images.image(&uri).err().expect("over-budget decode must fail").contains("without loss"));
+        assert_eq!(images.resident_pixels(), 16_777_215);
+        assert!(images.cache.is_empty());
     }
 
     #[test]
@@ -1244,5 +1248,23 @@ mod tests {
         let mut images = Images::default();
         let surface = images.image(&uri).expect("decode succeeds");
         assert_eq!((surface.rect.w, surface.rect.h), (100, 80));
+        assert_eq!(surface.pixels[37], Pixel::rgba(37. / 255., 0., 128. / 255., 1.));
+    }
+
+    #[test]
+    fn managed_native_decode_preserves_adjacent_16_bit_samples() {
+        let source = image::ImageBuffer::from_fn(2, 1, |x, _| {
+            image::Rgba([32768u16 + x as u16, 16384, 8192, 65535])
+        });
+        let mut buffer = Vec::new();
+        image::DynamicImage::ImageRgba16(source)
+            .write_to(&mut std::io::Cursor::new(&mut buffer), image::ImageFormat::Png)
+            .unwrap();
+        let uri = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(buffer));
+        assert!(decode(&uri, None, 0).err().expect("SDR cannot silently discard source precision").contains("color-managed"));
+        let (surface, count) = decode(&uri, Some(crate::color::ColorSettings::default()), 0).unwrap();
+        assert_eq!((surface.rect.w, surface.rect.h, count), (2, 1, 2));
+        assert!(surface.pixels[1].0[0] > surface.pixels[0].0[0], "adjacent 16-bit samples must not collapse to RGBA8");
+        assert_eq!(surface.pixels[0].0[3], 1.);
     }
 }

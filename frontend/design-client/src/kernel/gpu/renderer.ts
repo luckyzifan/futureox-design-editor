@@ -62,34 +62,10 @@ import {
  * uploads, filter kernels and decoded images all share it. An allocation that
  * does not fit first evicts resources whose GPU commands provably completed
  * (oldest first), and only then fails explicitly. */
-// GPU memory budget for surfaces (tiles, images, effects)
-// Electron: 4GB - native app with local resources, Rust layer handles heavy lifting
-//           分层架构：Rust 层用于大图解码和处理，浏览器层用于最终合成
-// Web: 512MB - browser environment with shared GPU resources
-const getGpuMemoryBudget = (): number => {
-  if (typeof window === 'undefined') return 512 * 1024 * 1024
-
-  // Electron 本地应用：可以使用更多 GPU 内存
-  // Rust 层负责图片解码和重采样，浏览器层负责合成
-  if ((window as any).electron) {
-    // 根据系统内存自适应
-    const deviceMemory = (navigator as any).deviceMemory || 8
-    let budget: number
-    if (deviceMemory >= 32) budget = 8 * 1024 * 1024 * 1024   // 8GB
-    else if (deviceMemory >= 16) budget = 4 * 1024 * 1024 * 1024   // 4GB
-    else if (deviceMemory >= 8) budget = 2 * 1024 * 1024 * 1024    // 2GB
-    else budget = 1024 * 1024 * 1024  // 1GB fallback
-
-    console.log(`[GPU Budget] Electron detected - Device Memory: ${deviceMemory}GB, GPU Budget: ${(budget / 1024 / 1024 / 1024).toFixed(2)}GB`)
-    return budget
-  }
-
-  // Web 浏览器：保守预算
-  console.log('[GPU Budget] Web browser - GPU Budget: 512MB')
-  return 512 * 1024 * 1024
-}
-
-const SURFACE_BUDGET_BYTES = getGpuMemoryBudget()
+// Initial admission before the first scene. renderAttempt selects the actual
+// physical working-set budget. This renderer runs in a Worker on both hosts:
+// window/desktop globals and system RAM are not available-VRAM measurements.
+const SURFACE_BUDGET_BYTES = 256 * 1024 * 1024
 /** Frame-scratch reclamation starts once the ledger passes this share and
  * destroys at most one bounded batch per completed checkpoint cycle. */
 const RECLAIM_BATCH_BYTES = 48 * 1024 * 1024
@@ -182,12 +158,7 @@ export class GpuRenderer {
   /** Retained subtree pixels have their own cap; they are not scratch. */
   private get workingBytes() { return this.bytes - (this.driver.captureDisplay ? this.interactionBytes : 0) }
   private get interactionBudget() {
-    // Electron 本地应用可以用更大的交互缓存
-    const isElectron = typeof window !== 'undefined' && (window as any).electron
-    if (this.driver.captureDisplay) {
-      return isElectron ? 1024 * 1024 * 1024 : 512 * 1024 * 1024  // 1GB / 512MB
-    }
-    return isElectron ? 128 * 1024 * 1024 : 64 * 1024 * 1024  // 128MB / 64MB
+    return this.driver.captureDisplay ? 512 * 1024 * 1024 : 64 * 1024 * 1024
   }
   private interactionRoots = new Map<GpuNode, { anchor: Rect; planes: Surface[]; source?: boolean }>()
   private interactionCapturing = false
@@ -195,13 +166,6 @@ export class GpuRenderer {
   private interactionBytes = 0
   private interactionHits = 0
   private interactionInvalid = false
-
-  // Viewport culling for high-zoom performance
-  // At zoom >= 300%, enable culling to skip offscreen nodes during panning
-  private lastViewX = 0
-  private lastViewY = 0
-  private lastViewZoom = 1
-  private frameCount = 0
 
   private stationaryBackdrop?: { lease: object; key: string; plane: Surface }
   private movingBackdrop?: { lease: object; key: string; plane: Surface }
@@ -1089,33 +1053,11 @@ export class GpuRenderer {
     if (!image.bytes || image.bytes.length !== image.width * image.height * 4)
       throw new Error('无效的预乘 RGBA8 图片资源')
 
-    // 动态像素限制：Electron 本地应用 + 高倍率缩放时允许更大图片
-    // Rust 层已经处理了解码和重采样，GPU 只需要合成
-    if (level === 0 && image.width * image.height > 16_777_216) {
-      const isElectron = typeof window !== 'undefined' && (window as any).electron
-      const zoom = this.scene?.view?.zoom || 1
-
-      // Electron 高倍率场景：允许更大图片（依赖视口裁剪减少实际渲染）
-      // 32M pixels = 5657x5657, 64M pixels = 8K square
-      const pixelLimit = isElectron && zoom >= 10  // 1000%+
-        ? 67_108_864  // 64M pixels (8192x8192)
-        : isElectron && zoom >= 3  // 300%+
-        ? 33_554_432  // 32M pixels (~5657x5657)
-        : 16_777_216  // 16M pixels (4096x4096) - 默认
-
-      const pixels = image.width * image.height
-      console.log(`[Image Pixel Check] ${uri}`)
-      console.log(`  Size: ${image.width}×${image.height} = ${(pixels / 1_000_000).toFixed(2)}M pixels`)
-      console.log(`  Level: ${level}, Zoom: ${zoom.toFixed(1)}%, isElectron: ${isElectron}`)
-      console.log(`  Limit: ${(pixelLimit / 1_000_000).toFixed(2)}M pixels`)
-
-      if (pixels > pixelLimit) {
-        console.log(`  ❌ REJECTED - exceeds limit, will retry at higher mip level`)
-        // imageForAdmitted 会捕获并重试更高 level
-        throw new Error('GPU 图片像素预算超限')
-      }
-      console.log(`  ✅ ACCEPTED`)
-    }
+    // Do not silently substitute a coarser source when this admission fails.
+    // The caller must retain the error/retry contract rather than cache lower
+    // fidelity pixels as a successfully rendered native-density tile.
+    if (level === 0 && image.width * image.height > 16_777_216)
+      throw new Error('GPU 图片像素预算超限')
     if (this.overBudget(image.bytes.length)) throw new Error('GPU 图片总内存预算超限')
     if (intoAtlas && image.width <= ATLAS_MAX_IMAGE && image.height <= ATLAS_MAX_IMAGE)
       return this.writeAtlasSlot(uri, level, image.width, image.height, { bytes: bake(image.bytes) }, adjust)
@@ -1215,51 +1157,11 @@ export class GpuRenderer {
     }
     return dims
   }
-  /** Check if a node's rectangle intersects the visible viewport.
-   * At high zoom (>300%), most nodes are offscreen - skip rendering them entirely.
-   * This reduces GPU workload and improves panning performance at high magnification.
-   */
-  private isNodeVisible(nodeRect: Rect, viewportRect: Rect): boolean {
-    // Fast rejection: node is completely outside viewport
-    if (nodeRect.x + nodeRect.w < viewportRect.x) return false
-    if (nodeRect.y + nodeRect.h < viewportRect.y) return false
-    if (nodeRect.x > viewportRect.x + viewportRect.w) return false
-    if (nodeRect.y > viewportRect.y + viewportRect.h) return false
-    return true
-  }
-
-  /** Calculate the visible viewport rectangle in document coordinates.
-   * Returns undefined if viewport culling is disabled (zoom < 300%).
-   */
-  private getViewportRect(): Rect | undefined {
-    if (!this.scene.view) return undefined
-    const { x, y, zoom } = this.scene.view
-
-    // Only enable viewport culling at high zoom to reduce rendering workload
-    // At 3200%, most nodes are offscreen - culling them is a major win
-    if (zoom < 3.0) return undefined
-
-    // Use output dimensions, or fall back to extent
-    const outputW = this.scene.output?.w || this.scene.extent.w
-    const outputH = this.scene.output?.h || this.scene.extent.h
-
-    // Transform canvas size to document space
-    // Add padding to handle nodes partially visible at edges
-    const padding = 100 / zoom  // 100px padding in canvas space
-    const canvasW = outputW / zoom + padding * 2
-    const canvasH = outputH / zoom + padding * 2
-
-    return rect(x - padding, y - padding, canvasW, canvasH)
-  }
-
   /** Pure geometric level selection, mirroring the kernel sampler: the max
    * axis texel stride of the device→texel mapping, floor(log2), clamped to
    * the chain. Level 0 whenever mips are disabled (bit-identical to the
-   * historical single-tap path).
-   *
-   * CRITICAL FIX: At zoom >= 100%, ALWAYS use level 0 (full resolution) to prevent
-   * quality loss at high magnification (e.g. 3200%). Mipmap degradation is only
-   * acceptable when zooming OUT below 100%, not when zooming IN.
+   * historical single-tap path). Node and paint transforms determine texel
+   * demand; the page's zoom percentage alone cannot choose a correct level.
    */
   private imageLevel(n: GpuNode, p: GpuPaint): number {
     if (!this.imageMips || !p.image) return 0
@@ -1275,55 +1177,7 @@ export class GpuRenderer {
       new Uint32Array(dims),
       paintJson,
     )
-    const level = Math.min(raw, mipLevelsFor(dims) - 1)
-
-    // Debug logging
-    const zoom = this.scene.view.zoom
-    console.log(`[imageLevel] ${p.image}`)
-    console.log(`  Original: ${dims[0]}×${dims[1]}`)
-    console.log(`  Zoom: ${(zoom * 100).toFixed(0)}%`)
-    console.log(`  Rust computed level: ${raw} → clamped: ${level}`)
-    console.log(`  Max levels: ${mipLevelsFor(dims)}`)
-
-    return level
-  }
-  /** Admission failures a coarser mip level can cure: the standalone texture,
-   * the atlas page it would live in, or the level-0 16-megapixel guard. */
-  private static readonly imageAdmissionFailures = [
-    'GPU 浮点图片内存预算超限',
-    'GPU 图片像素预算超限',
-    'GPU 图片总内存预算超限',
-    'GPU 图集页内存预算超限',
-    'GPU 表面内存预算超限', // Field/surface budget exhaustion
-  ]
-  /** Figma-parity demand fallback: the decoded image is the ceiling of
-   * display fidelity, never a reason to fail the frame. When the
-   * geometrically selected level cannot be admitted (working-set budget,
-   * level-0 megapixel guard or a fresh atlas page), retry one step down the
-   * mip chain until a level fits — each step quarters the demand. A level
-   * that admits renders exactly as before, so every frame that succeeds
-   * today is pixel-identical; only paths that threw now soften instead. */
-  private imageForAdmitted(
-    uri: string,
-    level: number,
-    intoAtlas: boolean | undefined,
-    adjust: ImageAdjust | undefined,
-    dims: [number, number],
-  ): { image: Surface; level: number } {
-    const maxLevel = mipLevelsFor(dims) - 1
-    for (;;) {
-      try {
-        return { image: this.imageFor(uri, level, intoAtlas, adjust), level }
-      } catch (error) {
-        if (
-          level >= maxLevel ||
-          !(error instanceof Error) ||
-          !GpuRenderer.imageAdmissionFailures.some((prefix) => error.message.startsWith(prefix))
-        )
-          throw error
-        level++
-      }
-    }
+    return Math.min(raw, mipLevelsFor(dims) - 1)
   }
   /** Images evicted under budget pressure reload on demand through the same
    * deterministic decoder; a reload reproduces identical sampled bytes.
@@ -1348,35 +1202,21 @@ export class GpuRenderer {
   private async loadImages(scene: GpuScene) {
     const needed = sceneIndex(scene).images
 
-    // IMPROVED: Delete images not in scene OR unused mipmap levels
-    // We rely on touch() during rendering to mark actually-used levels via generation counter
-    const currentGen = this.generation
-
+    const pageTextures = new Set(this.atlasPages.map(page => page.texture))
     for (const [key, surface] of this.images) {
-      // Extract base URI (before # for level, ~ for adjust)
-      const baseUri = key.split('#')[0].split('~')[0]
-
-      if (!needed.has(baseUri)) {
-        // Image URI not in scene at all - delete
-        this.images.delete(key)
-        this.used.delete(surface.texture)
-        this.lastUsed.delete(surface.texture)
-        this.driver.destroy(surface.texture)
-        this.bytes -= surface.texture.bytes
-      } else if (this.lastUsed.has(surface.texture)) {
-        // Check if this level was used recently (within 5 generations)
-        const lastUse = this.lastUsed.get(surface.texture) || 0
-        const genAge = currentGen - lastUse
-        if (genAge > 5) {
-          // Wrong mipmap level (not used recently) - evict
-          this.images.delete(key)
-          this.used.delete(surface.texture)
-          this.lastUsed.delete(surface.texture)
-          this.driver.destroy(surface.texture)
-          this.bytes -= surface.texture.bytes
-        }
-      }
+      // An atlas page has one physical lifetime and ledger entry, even when
+      // some of its image slots are no longer needed by this scene.
+      if (pageTextures.has(surface.texture)) continue
+      if ([...needed].some(uri => isLevelKey(key, uri))) continue
+      this.images.delete(key)
+      this.used.delete(surface.texture)
+      this.lastUsed.delete(surface.texture)
+      this.driver.destroy(surface.texture)
+      this.bytes -= surface.texture.bytes
     }
+    // generation counts resource touches, not frames. Retain current assets
+    // across arbitrary graph work; existing pressure-driven LRU eviction owns
+    // reclamation of their old mip/adjustment variants.
     // Atlas pages retire only when none of their slots' assets remain needed.
     for (const page of [...this.atlasPages]) {
       if ([...page.entries.values()].some((uri) => needed.has(uri))) continue
@@ -1499,11 +1339,10 @@ export class GpuRenderer {
       const gridPath =
         this.driver.managed || (this.scene.coherentSamples && this.sampleIndex !== undefined)
       const intoAtlas = this.imageAtlas && gridPath
-      // The grid and the texture must agree on the admitted level; the
-      // fallback below may walk past the geometric selection under pressure.
-      const admitted = this.imageForAdmitted(uri, this.imageLevel(n, p), intoAtlas, p.adjust, this.baseDims(uri))
-      imageLevel = admitted.level
-      image = admitted.image
+      // Source fidelity and grid coordinates use the same geometric level.
+      // Memory pressure must never silently substitute a coarser image.
+      imageLevel = this.imageLevel(n, p)
+      image = this.imageFor(uri, imageLevel, intoAtlas, p.adjust)
       if (intoAtlas)
         imageOrigin = this.imageOrigins.get(this.imageKey(uri, imageLevel, true, p.adjust)) ?? [0, 0]
     }
@@ -1651,12 +1490,9 @@ export class GpuRenderer {
     const n = this.scene.nodes[id]
     if (!n || n.opacity <= 0) return target
 
-    // Viewport culling: skip nodes completely outside visible area at high zoom
-    // This dramatically improves panning performance at 3200%+ zoom
-    const viewport = this.getViewportRect()
-    if (viewport && !this.isNodeVisible(n.rect, viewport)) {
-      return target  // Node is offscreen, skip rendering entirely
-    }
+    // The kernel already culls dependency-aware bounds in global raster
+    // coordinates, including tile origins and filter halos. Do not compare
+    // n.rect to a world-space or origin-zero viewport here.
 
     if(this.optimized&&(this.driver.displayMath||import.meta.env.VITE_DESIGN_EXACT_NEUTRAL==='1'&&
        exactBlendLattice([n.rect,target.rect,...n.children.map(id=>this.scene.nodes[id]?.rect).filter((r):r is Rect=>!!r)]))&&!this.scene.coherentSamples&&
@@ -1692,7 +1528,7 @@ export class GpuRenderer {
       const mask = this.mask(direct.path),
         image =
           p.kind === 'image'
-            ? this.imageForAdmitted(p.image || '', this.imageLevel(n, p), false, p.adjust, this.baseDims(p.image || '')).image
+            ? this.imageFor(p.image || '', this.imageLevel(n, p), false, p.adjust)
             : undefined
       const u = parameters(target.rect, mask.rect, image?.rect, clip?.rect)
       this.configurePaint(u, n, p)
@@ -3186,7 +3022,6 @@ export class GpuRenderer {
     }
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
-    this.frameCount++
     this.encodeYield.begin()
     this.lastBudgetFailure = undefined
     // Surface storage is RGBA32F in both arithmetic modes. Exact desktop

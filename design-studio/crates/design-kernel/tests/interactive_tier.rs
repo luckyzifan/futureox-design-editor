@@ -1,7 +1,5 @@
-//! The interactive presentation tier: managed documents degrade exactly as
-//! measured on Figma's interactive canvas (sub-half-pixel layer blurs skip)
-//! while exports and desktop hosts keep full math. Byte contracts outside
-//! the tier are untouched by construction (default off).
+//! Normal managed display preserves full sampling/effects regardless of the
+//! legacy interactive flag. Explicit reference APIs retain their tier option.
 
 use futureox_design_kernel::render_instruction::render_trait;
 use futureox_design_kernel::{Engine, RenderOptions, View};
@@ -47,14 +45,30 @@ fn render(document: &str, interactive: bool) -> Vec<u8> {
 }
 
 #[test]
-fn interactive_tier_skips_sub_threshold_blur_on_managed_documents() {
+fn normal_managed_display_preserves_sub_threshold_blur() {
     let small = render(&doc(0.3), false);
     let small_tier = render(&doc(0.3), true);
-    assert_ne!(small, small_tier, "the tier must skip the 0.3px blur");
+    assert_eq!(small, small_tier, "normal display must preserve the 0.3px blur");
 
     let large = render(&doc(2.0), false);
     let large_tier = render(&doc(2.0), true);
     assert_eq!(large, large_tier, "above-threshold blur keeps full math");
+}
+
+#[test]
+fn normal_managed_display_propagates_errors_without_populating_degraded_tiles() {
+    let mut engine = Engine::new();
+    engine.load_document(&doc(0.3)).unwrap();
+    let mut options = frame_managed(true);
+    options.width = 8193;
+    let error = engine.render(&options).unwrap_err();
+    options.interactive_effects = false;
+    assert_eq!(error, engine.render(&options).unwrap_err());
+    assert_eq!(engine.linear_tile_cache_len(), 0);
+    // A repeated failure must not memoise a lower-quality future route.
+    options.interactive_effects = true;
+    assert_eq!(error, engine.render(&options).unwrap_err());
+    assert_eq!(engine.linear_tile_cache_len(), 0);
 }
 
 #[test]
