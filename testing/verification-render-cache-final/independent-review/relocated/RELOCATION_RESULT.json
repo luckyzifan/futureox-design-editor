@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "purpose": "Reproduce the finalized portable independent-review harnesses from a new external directory using explicit input paths.",
+  "frontend": {"testsPassed": 7, "testFilesPassed": 2, "exitCode": 0, "repository": "${REPO}", "configEnvironment": "REVIEW_REPOSITORY", "log": "portable-vitest.log"},
+  "native": {"checksPassed": 196, "exitCode": 0, "baselineSha256": "3ebc574d61cff5b5573ecfbcb7f83b61fed083df8b03164b793deb6de9d78930", "candidateSha256": "c167b2327d071b7f113c2310cb72c3b3e9219610c6b793d6f75815f8cdce6532", "environment": ["REVIEW_BASELINE_EXECUTABLE", "REVIEW_CANDIDATE_EXECUTABLE"], "transport": "stdio", "log": "portable-stdio.log", "results": "observe-randomized-results.json"},
+  "sourceCopies": "The four harness/config/test files were copied byte-exact; inputs.json records their SHA-256 values.",
+  "originalEvidenceModified": false,
+  "productSourceModified": false,
+  "newExecutableOrRuntimeBuild": false,
+  "gpuBrowserNetworkSocketUsed": false,
+  "limits": "This checks test-directory relocation against the existing source checkpoint and declared runtime inputs. It is not yet Git-base-plus-final-ZIP reconstruction or final artifact acceptance. CPU/WASM/upload-boundary checks are not actual GPU-rendered pixels or UI performance. No new performance benchmark was run.",
+  "frozen": true
+}

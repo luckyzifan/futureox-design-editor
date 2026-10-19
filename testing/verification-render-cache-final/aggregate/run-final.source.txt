@@ -1,0 +1,23 @@
+#!/bin/bash
+set -uo pipefail
+source /workspace/shared/design-phase2/rust-env.sh
+R=/workspace/shared/design-latest-20261019T1209
+O=/workspace/shared/design-performance-followup-20261019/final-verification/attempt-1
+export BUN=/workspace/shared/design-phase2/bun-tools/node_modules/@oven/bun-linux-x64/bin/bun
+export DESIGN_PREPARE_BINARY=$CARGO_TARGET_DIR/desktop-dev/design-prepare
+export CORE_DESKTOP_SIDECAR=$CARGO_TARGET_DIR/debug/futureox-design-desktop-backend
+export FUTUREOX_BACKEND_TEST_BINARY=$CORE_DESKTOP_SIDECAR
+export DESIGN_RENDER_BINARY=$CARGO_TARGET_DIR/debug/design-render
+export DESIGN_RENDER_CODEC_FIXTURE=$R/testing/verification-native-render-transport/rust-codec-fixture
+export VITEST_MAX_WORKERS=2
+capture() { python3 "$O/capture-freeze.py" --repo "$R" --output "$O/$1.json" --binary "$DESIGN_PREPARE_BINARY" --binary "$CORE_DESKTOP_SIDECAR" --binary "$DESIGN_RENDER_BINARY" --binary "$DESIGN_RENDER_CODEC_FIXTURE"; }
+run() { local name=$1; shift; "$@" > "$O/$name.log" 2>&1; local s=$?; echo "$s" > "$O/$name.exit"; echo "$name: $s"; return 0; }
+cd "$R"
+capture freeze-before || exit 98
+run unified-run node testing/verify-local.mjs --profile all --suites runner-contracts,frontend-contracts,desktop-contracts,python-tools,typecheck,frontend-vitest,mcp-example,bun-unit,automation-storage,mcp-contracts,native-preparation,native-sidecar --output "$O/run"
+run native-render-final node --test --test-timeout=120000 --test-reporter=tap frontend/design-desktop/test/runtime/native-render-codec-runtime.test.mjs frontend/design-desktop/test/runtime/native-render-runtime.test.mjs
+run workspace-runtime node --test --test-timeout=120000 --test-reporter=tap frontend/design-desktop/test/runtime/workspace-selection-runtime.test.mjs
+cd "$R/frontend/design-client"
+run vite-build node node_modules/vite/bin/vite.js build --outDir "$O/frontend-dist"
+capture freeze-after || exit 97
+printf 'finished\n' > "$O/orchestration.finished"

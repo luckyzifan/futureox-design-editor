@@ -5,7 +5,7 @@ import { unionBounds } from './geometry'
 import type { CanvasCamera, CanvasSize } from './canvas-camera'
 import { canvasScrollAxis, scrollbarCamera } from './canvas-scrollbars'
 
-export function CanvasScrollbars({ editor, entries, view, size }: { editor: Editor; entries: SceneEntry[]; view: CanvasCamera; size: CanvasSize }) {
+export function CanvasScrollbars({ editor, entries, view, size }: { editor: Editor; entries: readonly SceneEntry[]; view: CanvasCamera; size: CanvasSize }) {
   const bounds = useMemo(() => unionBounds(entries.filter(e => e.depth === 0).map(e => e.bounds)), [entries])
   const drag = useRef<{ pointer: number; key: 'x' | 'y'; start: number; axis: ReturnType<typeof canvasScrollAxis>; view: CanvasCamera; session: number; page: string } | null>(null)
   const axes = {

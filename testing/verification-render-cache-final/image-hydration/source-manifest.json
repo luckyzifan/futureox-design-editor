@@ -1,0 +1,70 @@
+{
+  "gitBase": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "sources": [
+    {
+      "path": "frontend/design-client/src/kernel/render-worker.ts",
+      "sha256": "05c5aa47aaa672bb4d3d66413d5523f21aa237c63b4b2b90dc04e5d23c6fab8c",
+      "bytes": 88937
+    },
+    {
+      "path": "frontend/design-client/src/kernel/scene-image-hydration.ts",
+      "sha256": "377f7ec28a1c139bab6f74b60e6a673d3bf17781e8469693d75d9ca9e31812fd",
+      "bytes": 6079
+    },
+    {
+      "path": "frontend/design-client/src/kernel/scene-image-hydration.test.ts",
+      "sha256": "ffc0350b40454afb300b2187fee8a1e4c846ebd033a7485300b8ea963eeaea41",
+      "bytes": 22170
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-worker-image-hydration.test.ts",
+      "sha256": "069df0b7985e00b206021b84077282a5dad5381b7dcf8904ac1c0dbbb83bbdac",
+      "bytes": 14819
+    },
+    {
+      "path": "frontend/design-client/src/kernel/decoded-image-cache.ts",
+      "sha256": "4292cdea8d7b6fe82ca9d14b2bd9ab609a9a4ef944a2cdfcd13db77b6ddcf8fe",
+      "bytes": 3345
+    },
+    {
+      "path": "frontend/design-client/src/kernel/image-mip-cache.ts",
+      "sha256": "139ee13e339f73616b25802518059ad4cb92673f20ebc62bc493734a65026b1b",
+      "bytes": 6044
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-index.ts",
+      "sha256": "fa325c420289dc2f15e1cb27776a2cefa315844c867e711255cf0a41d04ba168",
+      "bytes": 2492
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "sha256": "a967b8e59e5301cb389bff5691f455471c6ba0b87f9df8a751c13fa05690d601",
+      "bytes": 171645
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-work-queue.ts",
+      "sha256": "d6261ad4bfcfc19b63961bc2304c181c917110493d2e83062697ecfbb8436a58",
+      "bytes": 1667
+    },
+    {
+      "path": "frontend/design-client/public/kernel/design_kernel_bg.wasm",
+      "sha256": "2c50f87de40b6e2ecc456eb053706d4e2c3c058da82aafffd1b191eddd8b039a",
+      "bytes": 39288344
+    },
+    {
+      "path": "testing/verification-image-hydration-20261019/benchmark.mjs",
+      "sha256": "4e6428f9d5abae6e5518a207e2bae90a3719980532b7b484ed1910116dcee5f4",
+      "bytes": 8366
+    },
+    {
+      "path": "testing/verification-image-hydration-20261019/baseline-image-cache.txt",
+      "sha256": "518fe0433bde691a01e88cf900d13f022d9a89649e3ea94cb023a83463edb132",
+      "bytes": 3403
+    },
+    {
+      "path": "testing/verification-image-hydration-20261019/baseline-lane-resume.txt",
+      "sha256": "79b46fca0a51a0bd3ea91080c651aeec5dfde8af170fca70f0e179dea14da2f9",
+      "bytes": 530
+    }
+  ]
+}

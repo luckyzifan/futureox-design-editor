@@ -1,0 +1,269 @@
+{
+  "schemaVersion": 1,
+  "note": "CPU hydration-boundary proxy only. Production SHA keys and cache algorithms; in-memory structured-clone persistence double. Excludes disk/IndexedDB, GPU rendering and display/FPS. First ABBA cycle warmup, then 10 samples per implementation. No time-ratio acceptance threshold.",
+  "node": "v24.19.0",
+  "fixture": {
+    "documentImages": 1000,
+    "sceneDependencies": 4,
+    "variant": "linear",
+    "documentSha256": "42d5e6e1d57f04e14e84fb9dc3ddacd7c16f2f5ba7d44940b78f4ce2b7db7998",
+    "cpuPixelsSha256": "29cf5998d491d2a55b1617bf8e166463ee369e4f771a9021e1f7bfca5c7be937",
+    "packetSha256": "b0c5751faa6a164f2a7ef42498252866fc7d247dccfc0f31d102e41f5c1b84c9"
+  },
+  "wasmSha256": "2c50f87de40b6e2ecc456eb053706d4e2c3c058da82aafffd1b191eddd8b039a",
+  "sources": {
+    "frontend/design-client/src/kernel/render-worker.ts": "05c5aa47aaa672bb4d3d66413d5523f21aa237c63b4b2b90dc04e5d23c6fab8c",
+    "frontend/design-client/src/kernel/scene-image-hydration.ts": "377f7ec28a1c139bab6f74b60e6a673d3bf17781e8469693d75d9ca9e31812fd",
+    "frontend/design-client/src/kernel/decoded-image-cache.ts": "4292cdea8d7b6fe82ca9d14b2bd9ab609a9a4ef944a2cdfcd13db77b6ddcf8fe",
+    "frontend/design-client/src/kernel/image-mip-cache.ts": "139ee13e339f73616b25802518059ad4cb92673f20ebc62bc493734a65026b1b",
+    "frontend/design-client/src/kernel/gpu/scene-index.ts": "fa325c420289dc2f15e1cb27776a2cefa315844c867e711255cf0a41d04ba168",
+    "testing/verification-image-hydration-20261019/benchmark.mjs": "4e6428f9d5abae6e5518a207e2bae90a3719980532b7b484ed1910116dcee5f4"
+  },
+  "baseline": {
+    "source": "frontend/design-client/src/kernel/render-worker.ts",
+    "sourceSha256": "536bba8636d30cf866cf1503534e0fe71982b8b1790a669fde12aba2740b6f17",
+    "baselineZipSha256": "02241e7467435d4e47a79041d0fccfea234c52d1b3a3b0e46eaa8f781ff1bafb",
+    "extraction": "from const diskImageCache = through the line before // A message task yields",
+    "excerptSha256": "518fe0433bde691a01e88cf900d13f022d9a89649e3ea94cb023a83463edb132",
+    "baseCommit": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+    "availability": "Unmodified source in the required base commit; cumulative ZIP applies over that commit and does not duplicate this file."
+  },
+  "summary": {
+    "baseline": {
+      "samples": 10,
+      "medianMs": 152.83638150000002,
+      "p95Ms": 170.15346799999998,
+      "minMs": 132.4751960000001,
+      "maxMs": 170.15346799999998
+    },
+    "candidate": {
+      "samples": 10,
+      "medianMs": 0.6045864999999822,
+      "p95Ms": 3.013503000000128,
+      "minMs": 0.43585699999994176,
+      "maxMs": 3.013503000000128
+    }
+  },
+  "rows": [
+    {
+      "cycle": 1,
+      "kind": "baseline",
+      "hydrationMs": 151.70756200000005,
+      "keys": 2000,
+      "reads": 2000,
+      "payloadBytes": 20000,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 1,
+      "kind": "candidate",
+      "hydrationMs": 0.7082879999998113,
+      "keys": 4,
+      "reads": 4,
+      "payloadBytes": 64,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 1,
+      "kind": "candidate",
+      "hydrationMs": 0.610691000000088,
+      "keys": 4,
+      "reads": 4,
+      "payloadBytes": 64,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 1,
+      "kind": "baseline",
+      "hydrationMs": 166.41223600000012,
+      "keys": 2000,
+      "reads": 2000,
+      "payloadBytes": 20000,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 2,
+      "kind": "baseline",
+      "hydrationMs": 158.73584400000004,
+      "keys": 2000,
+      "reads": 2000,
+      "payloadBytes": 20000,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 2,
+      "kind": "candidate",
+      "hydrationMs": 3.013503000000128,
+      "keys": 4,
+      "reads": 4,
+      "payloadBytes": 64,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 2,
+      "kind": "candidate",
+      "hydrationMs": 1.6523510000001806,
+      "keys": 4,
+      "reads": 4,
+      "payloadBytes": 64,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 2,
+      "kind": "baseline",
+      "hydrationMs": 152.394413,
+      "keys": 2000,
+      "reads": 2000,
+      "payloadBytes": 20000,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 3,
+      "kind": "baseline",
+      "hydrationMs": 132.4751960000001,
+      "keys": 2000,
+      "reads": 2000,
+      "payloadBytes": 20000,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 3,
+      "kind": "candidate",
+      "hydrationMs": 0.6703910000001088,
+      "keys": 4,
+      "reads": 4,
+      "payloadBytes": 64,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 3,
+      "kind": "candidate",
+      "hydrationMs": 0.5301399999998466,
+      "keys": 4,
+      "reads": 4,
+      "payloadBytes": 64,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 3,
+      "kind": "baseline",
+      "hydrationMs": 154.19259399999987,
+      "keys": 2000,
+      "reads": 2000,
+      "payloadBytes": 20000,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 4,
+      "kind": "baseline",
+      "hydrationMs": 153.27835000000005,
+      "keys": 2000,
+      "reads": 2000,
+      "payloadBytes": 20000,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 4,
+      "kind": "candidate",
+      "hydrationMs": 0.558341000000155,
+      "keys": 4,
+      "reads": 4,
+      "payloadBytes": 64,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 4,
+      "kind": "candidate",
+      "hydrationMs": 0.5691480000000411,
+      "keys": 4,
+      "reads": 4,
+      "payloadBytes": 64,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 4,
+      "kind": "baseline",
+      "hydrationMs": 170.15346799999998,
+      "keys": 2000,
+      "reads": 2000,
+      "payloadBytes": 20000,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 5,
+      "kind": "baseline",
+      "hydrationMs": 137.78463599999986,
+      "keys": 2000,
+      "reads": 2000,
+      "payloadBytes": 20000,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 5,
+      "kind": "candidate",
+      "hydrationMs": 0.43585699999994176,
+      "keys": 4,
+      "reads": 4,
+      "payloadBytes": 64,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 5,
+      "kind": "candidate",
+      "hydrationMs": 0.5984819999998763,
+      "keys": 4,
+      "reads": 4,
+      "payloadBytes": 64,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    },
+    {
+      "cycle": 5,
+      "kind": "baseline",
+      "hydrationMs": 137.7976560000002,
+      "keys": 2000,
+      "reads": 2000,
+      "payloadBytes": 20000,
+      "activeReads": 0,
+      "peakActiveReads": 1,
+      "decoderCalls": 0
+    }
+  ]
+}

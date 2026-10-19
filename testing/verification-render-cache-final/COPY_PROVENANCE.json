@@ -1,0 +1,1502 @@
+{
+  "status": "Owner, root aggregate and independent relocation evidence copied; final artifact acceptance remains pending",
+  "files": [
+    {
+      "publishedPath": "image-hydration/README.md",
+      "sourcePath": "testing/verification-image-hydration-20261019/README.md",
+      "sourceSha256": "c862be4654637d2bbd8406dfc262508cfda027473bb10ee977bb63aad09e34f8",
+      "sourceBytes": 3862,
+      "publishedSha256": "c862be4654637d2bbd8406dfc262508cfda027473bb10ee977bb63aad09e34f8",
+      "publishedBytes": 3862,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "image-hydration/report.md",
+      "sourcePath": "testing/verification-image-hydration-20261019/report.md",
+      "sourceSha256": "549385441b06a95535552d7d92506218d9c42e905b67c3bf0ee381e908d92647",
+      "sourceBytes": 8649,
+      "publishedSha256": "549385441b06a95535552d7d92506218d9c42e905b67c3bf0ee381e908d92647",
+      "publishedBytes": 8649,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "image-hydration/baseline.json",
+      "sourcePath": "testing/verification-image-hydration-20261019/baseline.json",
+      "sourceSha256": "935a2d041c8e028ae0949f878add83d61b3ab07a1351cc714e78c6c5f6ecaaae",
+      "sourceBytes": 631,
+      "publishedSha256": "935a2d041c8e028ae0949f878add83d61b3ab07a1351cc714e78c6c5f6ecaaae",
+      "publishedBytes": 631,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "image-hydration/baseline-image-cache.txt",
+      "sourcePath": "testing/verification-image-hydration-20261019/baseline-image-cache.txt",
+      "sourceSha256": "518fe0433bde691a01e88cf900d13f022d9a89649e3ea94cb023a83463edb132",
+      "sourceBytes": 3403,
+      "publishedSha256": "518fe0433bde691a01e88cf900d13f022d9a89649e3ea94cb023a83463edb132",
+      "publishedBytes": 3403,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "image-hydration/baseline-lane-resume.txt",
+      "sourcePath": "testing/verification-image-hydration-20261019/baseline-lane-resume.txt",
+      "sourceSha256": "79b46fca0a51a0bd3ea91080c651aeec5dfde8af170fca70f0e179dea14da2f9",
+      "sourceBytes": 530,
+      "publishedSha256": "79b46fca0a51a0bd3ea91080c651aeec5dfde8af170fca70f0e179dea14da2f9",
+      "publishedBytes": 530,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "image-hydration/source-manifest.json",
+      "sourcePath": "testing/verification-image-hydration-20261019/source-manifest.json",
+      "sourceSha256": "e13a07d6303d819f86a8db3033e2cf7ac090546130dfe16dddbe5fff7236825a",
+      "sourceBytes": 2604,
+      "publishedSha256": "e13a07d6303d819f86a8db3033e2cf7ac090546130dfe16dddbe5fff7236825a",
+      "publishedBytes": 2604,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "image-hydration/targeted.log",
+      "sourcePath": "testing/verification-image-hydration-20261019/targeted.log",
+      "sourceSha256": "981e3e4eb693cbb062a778c05a08ed56988896678cf7f0dc1519489f54c48ed8",
+      "sourceBytes": 822,
+      "publishedSha256": "638626cdb7eef4ffcbc849bb12758d57b1df4d0a9c9339fb827615f3d996a718",
+      "publishedBytes": 748,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        },
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "image-hydration/targeted.json",
+      "sourcePath": "testing/verification-image-hydration-20261019/targeted.json",
+      "sourceSha256": "abad67f58430b4e10de285d257276424992e5804dedd3badcdb56140f4fe0818",
+      "sourceBytes": 19011,
+      "publishedSha256": "f0637b5f45f237deff60777139e98c99ed4d041f49bfb81baeb6a4f2137cbe13",
+      "publishedBytes": 18783,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 6
+        }
+      ]
+    },
+    {
+      "publishedPath": "image-hydration/typecheck.log",
+      "sourcePath": "testing/verification-image-hydration-20261019/typecheck.log",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceBytes": 0,
+      "publishedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "publishedBytes": 0,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "image-hydration/benchmark-abba.json",
+      "sourcePath": "testing/verification-image-hydration-20261019/benchmark-abba.json",
+      "sourceSha256": "697ac009d70a39eabce85ceb3ab886cf8a218f9578cbe6cb20de8e1f4356cc4f",
+      "sourceBytes": 7452,
+      "publishedSha256": "697ac009d70a39eabce85ceb3ab886cf8a218f9578cbe6cb20de8e1f4356cc4f",
+      "publishedBytes": 7452,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "image-hydration/benchmark-abba.stderr.log",
+      "sourcePath": "testing/verification-image-hydration-20261019/benchmark-abba.stderr.log",
+      "sourceSha256": "58b48f972129947fff715a80102df723ff4398934ef2760944f855bf71a9fe3a",
+      "sourceBytes": 179,
+      "publishedSha256": "58b48f972129947fff715a80102df723ff4398934ef2760944f855bf71a9fe3a",
+      "publishedBytes": 179,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "image-hydration/lane-color-real-pq-before-fix.log",
+      "sourcePath": "testing/verification-image-hydration-20261019/lane-color-real-pq-before-fix.log",
+      "sourceSha256": "628281279310ed9a774aad152d545159e4fef617d944d82455de28dc0117aa52",
+      "sourceBytes": 4068,
+      "publishedSha256": "f171f83caa559a9c85eb7c98eb3de0f2c3b0255d40c073f4b4e36fd7f162319a",
+      "publishedBytes": 4030,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "image-hydration/lane-color-negative-identity.json",
+      "sourcePath": "testing/verification-image-hydration-20261019/lane-color-negative-identity.json",
+      "sourceSha256": "95b0bd2e5a555e89c61d01c3f31674c6f7f0c22e9b1e62950cae9ddf991ff459",
+      "sourceBytes": 560,
+      "publishedSha256": "95b0bd2e5a555e89c61d01c3f31674c6f7f0c22e9b1e62950cae9ddf991ff459",
+      "publishedBytes": 560,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "image-hydration/baseline/render-worker-before-color-fix.ts",
+      "sourcePath": "${EVIDENCE_SOURCE}/image-hydration/render-worker-before-color-fix.ts",
+      "sourceSha256": "7a294621d6a8c02940537cc88104fe877368e7a23f546dd3248d4e8917d106f0",
+      "sourceBytes": 88606,
+      "publishedSha256": "7a294621d6a8c02940537cc88104fe877368e7a23f546dd3248d4e8917d106f0",
+      "publishedBytes": 88606,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/REPORT.md",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/REPORT.md",
+      "sourceSha256": "2f70c2ec54522298381aaa3af4a99a580b10b51e1156b33be7ad9be1db7dd31d",
+      "sourceBytes": 8813,
+      "publishedSha256": "2f70c2ec54522298381aaa3af4a99a580b10b51e1156b33be7ad9be1db7dd31d",
+      "publishedBytes": 8813,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/REVIEW_NOTES.md",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/REVIEW_NOTES.md",
+      "sourceSha256": "6967f873042f4a0055395abd044112dd141ed6b6ee92f8ad3f686b7b7c326a7d",
+      "sourceBytes": 3603,
+      "publishedSha256": "6967f873042f4a0055395abd044112dd141ed6b6ee92f8ad3f686b7b7c326a7d",
+      "publishedBytes": 3603,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/final-source-hashes.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/final-source-hashes.json",
+      "sourceSha256": "3b1ab93ec31e8f5e19a3670f5e17da4f45f6dbc84591b52bda3d8040a663164b",
+      "sourceBytes": 1333,
+      "publishedSha256": "3b1ab93ec31e8f5e19a3670f5e17da4f45f6dbc84591b52bda3d8040a663164b",
+      "publishedBytes": 1333,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/final-typecheck.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/final-typecheck.log",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceBytes": 0,
+      "publishedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "publishedBytes": 0,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/regression-tests.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/regression-tests.json",
+      "sourceSha256": "068435ca371e9a41d01ce87820e616b70f6244d5ffd4ac8d5bcaa3c8b69723e1",
+      "sourceBytes": 41501,
+      "publishedSha256": "d154a4466ed4e01341016d44fa4fa5de788848db1dd726c702b6179e1323a333",
+      "publishedBytes": 41311,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 5
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/regression-tests.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/regression-tests.log",
+      "sourceSha256": "b1e4f143f9e82b11186f77aed3c8bf0771f2bda3dc236e793be6199dd21220cf",
+      "sourceBytes": 112,
+      "publishedSha256": "3fb6b1df483e9ab0737c938f801fdf534c1da819327778d47b70397cda89b087",
+      "publishedBytes": 76,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/baseline-correctness.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/baseline-correctness.json",
+      "sourceSha256": "dcf558d6b750dea5bd810bf6c7b1a5661d08ed9f0ac67c1b54096bbe61878862",
+      "sourceBytes": 4073,
+      "publishedSha256": "0ad01f532ec274b8321c98c3ca24328a9a369ecf0ead1ac6907e4611ff0d8a34",
+      "publishedBytes": 4035,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/baseline-correctness.jsonl",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/baseline-correctness.jsonl",
+      "sourceSha256": "63da5c3159b28b78c632319d72f162bb6f497caef819c034cc86791f0edf5ba9",
+      "sourceBytes": 5482,
+      "publishedSha256": "63da5c3159b28b78c632319d72f162bb6f497caef819c034cc86791f0edf5ba9",
+      "publishedBytes": 5482,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/baseline-correctness.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/baseline-correctness.log",
+      "sourceSha256": "579d12e707392fb66509352c45509f712d3f9b17829c51a82cf3c539e8e83198",
+      "sourceBytes": 116,
+      "publishedSha256": "5896615781b4cb29203a695d4880c13e2db2cd66e3b8fde999148d707c8be849",
+      "publishedBytes": 80,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/candidate-correctness.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/candidate-correctness.json",
+      "sourceSha256": "67e754560cebb28470ab1ad1d722170143cfd348f44e1f1bbc5c24da080e6cc2",
+      "sourceBytes": 4084,
+      "publishedSha256": "984253e65692e78cea7b4c805e0be98e584c60b3e2b88c34675687f32a1af27d",
+      "publishedBytes": 4046,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/candidate-correctness.jsonl",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/candidate-correctness.jsonl",
+      "sourceSha256": "589e36012d5b72c5903fb74d403a455079eeb4b99cd1c7de515ae157427ceef2",
+      "sourceBytes": 5469,
+      "publishedSha256": "589e36012d5b72c5903fb74d403a455079eeb4b99cd1c7de515ae157427ceef2",
+      "publishedBytes": 5469,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/candidate-correctness.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/candidate-correctness.log",
+      "sourceSha256": "650eeb786725c7d158f6417f0152eb2add5ea1c1cf592cf5606d7e1cbdc1660d",
+      "sourceBytes": 117,
+      "publishedSha256": "fbfa37786946cd8f6e28f10ae79e9edcef17b414d0ac6e9dd0a73a764f54ec44",
+      "publishedBytes": 81,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/correctness-comparison.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/correctness-comparison.json",
+      "sourceSha256": "530e5e6e0a0b87b17afc0f05b5955984119fa34ab9353cc8e46958570c31fc23",
+      "sourceBytes": 169,
+      "publishedSha256": "530e5e6e0a0b87b17afc0f05b5955984119fa34ab9353cc8e46958570c31fc23",
+      "publishedBytes": 169,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/changes-from-delivered.patch",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/changes-from-delivered.patch",
+      "sourceSha256": "e1c8e544131313085cb47d40a5d50f86f08f9bdcaa420d8c049f9f1c9711bcd0",
+      "sourceBytes": 11602,
+      "publishedSha256": "e1c8e544131313085cb47d40a5d50f86f08f9bdcaa420d8c049f9f1c9711bcd0",
+      "publishedBytes": 11602,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/canvas-controls.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/canvas-controls.log",
+      "sourceSha256": "20c063a2ca4dd10baceb01f39d8af11f81433e892e457a3e8056e237b6494cc9",
+      "sourceBytes": 5129,
+      "publishedSha256": "8f91f53fdc5457713e3a005408364a79bf4ac2a9a218b51269bb505346207f5d",
+      "publishedBytes": 5091,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/abba/baseline-a.jsonl",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/baseline-a.jsonl",
+      "sourceSha256": "bde11ec021bebe5dff55ebf56dbfa43046185fd45a4c583f6c07b43f385e6029",
+      "sourceBytes": 5484,
+      "publishedSha256": "bde11ec021bebe5dff55ebf56dbfa43046185fd45a4c583f6c07b43f385e6029",
+      "publishedBytes": 5484,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/abba/baseline-a.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/baseline-a.log",
+      "sourceSha256": "d4f9f84bc83ebc8dd54ca9787b2621aeb4bf6f5c025db11dfb04f9b68179559e",
+      "sourceBytes": 118,
+      "publishedSha256": "28afc4708d2158f7db9eaa7e4c840d31827b029471b131a02ffdd777e8233a4e",
+      "publishedBytes": 82,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/abba/baseline-a.vitest.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/baseline-a.vitest.json",
+      "sourceSha256": "c66886fc87acad794214783f459407d12106415374d877b424e695456ecddf00",
+      "sourceBytes": 4071,
+      "publishedSha256": "4b1d79636cdfd4d8adce72e6813cebaf3621e4e18359365520104732bb2a3fb1",
+      "publishedBytes": 4033,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/abba/baseline-b.jsonl",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/baseline-b.jsonl",
+      "sourceSha256": "22c267fa595b7f3fbf2711381b20f3c2226dc8a26563bc0e926bc7e4faedc9b1",
+      "sourceBytes": 5484,
+      "publishedSha256": "22c267fa595b7f3fbf2711381b20f3c2226dc8a26563bc0e926bc7e4faedc9b1",
+      "publishedBytes": 5484,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/abba/baseline-b.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/baseline-b.log",
+      "sourceSha256": "8384eb11b4d725ebfda3ebd36557b07e084ced6b8a1589b8616f59b9892e4ce7",
+      "sourceBytes": 118,
+      "publishedSha256": "233eb63920b2fe986878699b90082c85f689c3f51a2094e7475602c41a8dc169",
+      "publishedBytes": 82,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/abba/baseline-b.vitest.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/baseline-b.vitest.json",
+      "sourceSha256": "5cafdec25cdecd3bbfa770107b8668559911882cd4ca5528956223cf29e53e1b",
+      "sourceBytes": 4085,
+      "publishedSha256": "ffbbca7b4fca231ef2dceb149d76310dc08d992ba906e0aeb4639dd02bba883d",
+      "publishedBytes": 4047,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/abba/candidate-a.jsonl",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/candidate-a.jsonl",
+      "sourceSha256": "8148a1c42befcfe35bf5e8d69c80590ff729073b62e921c82858c2df562323e9",
+      "sourceBytes": 5472,
+      "publishedSha256": "8148a1c42befcfe35bf5e8d69c80590ff729073b62e921c82858c2df562323e9",
+      "publishedBytes": 5472,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/abba/candidate-a.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/candidate-a.log",
+      "sourceSha256": "af480cb0f880fc33ddf71b6528d6bdfe9f1d906fd5632d88f6fe6e3fa27b9135",
+      "sourceBytes": 119,
+      "publishedSha256": "268bad28d27a8f640561760eb98d1edb2d21b8bf785e18cf16b11e077870a1e5",
+      "publishedBytes": 83,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/abba/candidate-a.vitest.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/candidate-a.vitest.json",
+      "sourceSha256": "a9eefa54e6e3dfef6bdfd410d69617f1ce1f5be7297593bc1b4933e7357f5794",
+      "sourceBytes": 4086,
+      "publishedSha256": "7b359e5fcc0de9d8b64a7d63c3f9bfa8ffc15ce6c0d9f1f09a74cdd1b6b29e09",
+      "publishedBytes": 4048,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/abba/candidate-b.jsonl",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/candidate-b.jsonl",
+      "sourceSha256": "71185c41c5ce8b7135668add34789070a2b8a4cd12e8f5c37884adf37074add1",
+      "sourceBytes": 5471,
+      "publishedSha256": "71185c41c5ce8b7135668add34789070a2b8a4cd12e8f5c37884adf37074add1",
+      "publishedBytes": 5471,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/abba/candidate-b.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/candidate-b.log",
+      "sourceSha256": "34f9e151bd265d1805acfb54fb46b092459491644315bae350d739d229f3a88d",
+      "sourceBytes": 119,
+      "publishedSha256": "b322f931e6d7c0d8eec3c122670c17a2dcf4fa5980031a976d50432ca224c0a1",
+      "publishedBytes": 83,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/abba/candidate-b.vitest.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/candidate-b.vitest.json",
+      "sourceSha256": "b570c976eb3a2fefea4fcf5a8b54331ee27fa7e39b63a5457f11a515ded76dea",
+      "sourceBytes": 4089,
+      "publishedSha256": "a19bddace055f3d5048576797828473942a7061995e8312a2884c01c786f3439",
+      "publishedBytes": 4051,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/abba/manifest.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/manifest.json",
+      "sourceSha256": "2d6e96fd0ff194203d8c18a681abe1906422ca9e93f0216f8b36d70c6dfc367d",
+      "sourceBytes": 5232,
+      "publishedSha256": "6cc411ab2adce5d611634915cd6f9445ac67a8a352795e883510bde4442d0792",
+      "publishedBytes": 5088,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "publishedPath": "scene-reuse/abba/summary.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/scene-reuse/abba/summary.json",
+      "sourceSha256": "fca395fcfb288c5e35d7048bd47821507bc097d8b6bfb19989d02574d6c190d2",
+      "sourceBytes": 7236,
+      "publishedSha256": "fca395fcfb288c5e35d7048bd47821507bc097d8b6bfb19989d02574d6c190d2",
+      "publishedBytes": 7236,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "scene-reuse/baseline-identity.json",
+      "sourcePath": "testing/verification-canvas-scene-reuse-20261019/baseline-identity.json",
+      "sourceSha256": "f39fe96468b4dcebada27a490dbadaf1a8e8f30ee0ea54c1042bca9ed4220bfc",
+      "sourceBytes": 1004,
+      "publishedSha256": "14dec8c236dc62469a5aebe44ad1fa521ea0056fff88112a9d56c122478b9a5e",
+      "publishedBytes": 975,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-rust-ai-next/release",
+          "publishedToken": "${PRIOR_RELEASE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "workspace-observe/report.md",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/report.md",
+      "sourceSha256": "fe54fd9351739ac9a01c2a2d7382580d413a74c1374b304875f75b41b1e4b3f3",
+      "sourceBytes": 9905,
+      "publishedSha256": "31af98e0b85095e8061989aa91a00e1ef938a5b14910091bac99d0f0fbd2e0d2",
+      "publishedBytes": 9713,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 4
+        },
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        },
+        {
+          "originalPrefix": "/workspace/shared/design-phase2",
+          "publishedToken": "${ORIGINAL_TOOLCHAIN_SETUP}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "workspace-observe/source-binary-manifest.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/source-binary-manifest.json",
+      "sourceSha256": "b701816b753c60767b737397617e3cc9b0f8597f127362acba010cf233a07950",
+      "sourceBytes": 3025,
+      "publishedSha256": "b20b1efbcc94a5feeff80a2fa1d54c6a52e6223e37e9f4a9fa691b8d24d3dcac",
+      "publishedBytes": 2553,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 2
+        },
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 11
+        }
+      ]
+    },
+    {
+      "publishedPath": "workspace-observe/workspace-observe.patch",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/workspace-observe.patch",
+      "sourceSha256": "24169b0d9f3644e76b7fd491ff4d2abc0a0fe8133194216d64720ce6a9519ed0",
+      "sourceBytes": 7952,
+      "publishedSha256": "24169b0d9f3644e76b7fd491ff4d2abc0a0fe8133194216d64720ce6a9519ed0",
+      "publishedBytes": 7952,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "workspace-observe/verify_stdio.py",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verify_stdio.py",
+      "sourceSha256": "345ab70c05a64ce1706568c9ed68cece6c454b388d8241552f96d5ca489ec70b",
+      "sourceBytes": 10335,
+      "publishedSha256": "345ab70c05a64ce1706568c9ed68cece6c454b388d8241552f96d5ca489ec70b",
+      "publishedBytes": 10335,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "workspace-observe/benchmark_stdio.py",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/benchmark_stdio.py",
+      "sourceSha256": "b5e85ed3f025e4b11b9b77c8a322e202c63a7220e5d24693c4dfb97a9e75a351",
+      "sourceBytes": 5554,
+      "publishedSha256": "b5e85ed3f025e4b11b9b77c8a322e202c63a7220e5d24693c4dfb97a9e75a351",
+      "publishedBytes": 5554,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "workspace-observe/baseline/workspace.rs",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/baseline/workspace.rs",
+      "sourceSha256": "ec0ed2958ae8ddb23d5807a544f94f6039d23602e9f03d5a9d151ff8e15f3e18",
+      "sourceBytes": 34472,
+      "publishedSha256": "ec0ed2958ae8ddb23d5807a544f94f6039d23602e9f03d5a9d151ff8e15f3e18",
+      "publishedBytes": 34472,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/backend-suite-frozen.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/backend-suite-frozen.log",
+      "sourceSha256": "92badc6284a46f0b90188f24fce927ccbc352ccc4cdbc2846ac72e9f3431d236",
+      "sourceBytes": 12444,
+      "publishedSha256": "370feb66ebd369ff6e9c5684c1e21612c1b398a0245f1c311330ab4d668ceada",
+      "publishedBytes": 12406,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/clippy-backend-frozen.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/clippy-backend-frozen.log",
+      "sourceSha256": "a06593474bcfe9035f5b58d2222758c74f427c9990b8cb8b7553893fda0fae1f",
+      "sourceBytes": 657,
+      "publishedSha256": "4f1e057c5b9fe9f04b14729b23038952f52fa486121633e27c4db52effb9630c",
+      "publishedBytes": 619,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/clippy.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/clippy.log",
+      "sourceSha256": "204ef4f905fae62925dfedf7fcc151c8ef81b9b195afc9ff9ae8ecae1d83ab92",
+      "sourceBytes": 26071,
+      "publishedSha256": "ee7c0aa83d6f15c6b1bc3a7b6d3d92c7233d47e83f9645a20994b88c76fd8cf1",
+      "publishedBytes": 25995,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/operation-counts-frozen.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/operation-counts-frozen.json",
+      "sourceSha256": "9e88dc1e5cdfdb9e3c3a8b663a0952eca7dc4b2402c238e9f8f27f8d39ec3e53",
+      "sourceBytes": 2558,
+      "publishedSha256": "9e88dc1e5cdfdb9e3c3a8b663a0952eca7dc4b2402c238e9f8f27f8d39ec3e53",
+      "publishedBytes": 2558,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/benchmark-results.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/benchmark-results.json",
+      "sourceSha256": "26aea72cf6412035ef019a832ec1f194570b0f8c9cb496870a63de5e1e169915",
+      "sourceBytes": 110587,
+      "publishedSha256": "26aea72cf6412035ef019a832ec1f194570b0f8c9cb496870a63de5e1e169915",
+      "publishedBytes": 110587,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/benchmark.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/benchmark.log",
+      "sourceSha256": "6848f4e90af9010da8731d0862dde0165e7dd8b2705a297938244fdc8e294c3f",
+      "sourceBytes": 11446,
+      "publishedSha256": "6848f4e90af9010da8731d0862dde0165e7dd8b2705a297938244fdc8e294c3f",
+      "publishedBytes": 11446,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/stdio-results.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/stdio-results.json",
+      "sourceSha256": "9b53463163a4201d8ec07f66a88b0d61fc8f83b5b28cd78ba4154e6e9d916068",
+      "sourceBytes": 1327,
+      "publishedSha256": "9b53463163a4201d8ec07f66a88b0d61fc8f83b5b28cd78ba4154e6e9d916068",
+      "publishedBytes": 1327,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/stdio.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/stdio.log",
+      "sourceSha256": "ec622469480fcdfbada0799e013f661bf66a26a94947beaa7548adabcee61cac",
+      "sourceBytes": 1173,
+      "publishedSha256": "ec622469480fcdfbada0799e013f661bf66a26a94947beaa7548adabcee61cac",
+      "publishedBytes": 1173,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/build-baseline.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/build-baseline.log",
+      "sourceSha256": "b8991603b2b0a3dba15dfd388f98b5e9ed00c045feb8bc3329fb1b465addfcf0",
+      "sourceBytes": 5944,
+      "publishedSha256": "d89d77dc05374bac2b88337e34a3e1a57cbb0369fda5bc7f462a2efe18b49d88",
+      "publishedBytes": 5830,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 3
+        }
+      ]
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/build-candidate.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/build-candidate.log",
+      "sourceSha256": "873c7abc55a70d02cc5573d8f6a42d5eb8d945bb66458c7cb64f12f561ce5688",
+      "sourceBytes": 657,
+      "publishedSha256": "4bfeb38eeee3a025c9ebd1ca975d2a24bbb5ab9ec50297220d74c704e6086628",
+      "publishedBytes": 619,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "workspace-observe/verification-20261019T1716/baseline-archive-match.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/workspace-observe/verification-20261019T1716/baseline-archive-match.json",
+      "sourceSha256": "c0fff2ddb25adf0b205f7a0cb25e596d75f16752f01892513bd16a0cdb3adfbb",
+      "sourceBytes": 423,
+      "publishedSha256": "8b1a3e557d79957c8a58b972d769e2f2186c226d807b33e6156268ee8c80d696",
+      "publishedBytes": 394,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-rust-ai-next/release",
+          "publishedToken": "${PRIOR_RELEASE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "independent-review/REVIEW.md",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/REVIEW.md",
+      "sourceSha256": "72e630072bcc8e7c283647dc729aa07db30e9140a0f59b7bb3b4589fa2fd21fe",
+      "sourceBytes": 11949,
+      "publishedSha256": "d9a6e43b968f7c75d60dfb64fdf82fcdb1a5d9f481788cf71003c40d1248ee18",
+      "publishedBytes": 11911,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "independent-review/reviewed-source-identity.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/reviewed-source-identity.json",
+      "sourceSha256": "8165854160209a4659421f59dc2e10d65f87af50997025473dceb06019981dad",
+      "sourceBytes": 2366,
+      "publishedSha256": "8165854160209a4659421f59dc2e10d65f87af50997025473dceb06019981dad",
+      "publishedBytes": 2366,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/cache-negative.test.ts",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/cache-negative.test.ts",
+      "sourceSha256": "5af7fe099f0b5c668ca68a46627dda1e5ab0d5b027b8e1d789fb85d77aaeeaf0",
+      "sourceBytes": 6976,
+      "publishedSha256": "5af7fe099f0b5c668ca68a46627dda1e5ab0d5b027b8e1d789fb85d77aaeeaf0",
+      "publishedBytes": 6976,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/worker-lane-color.test.ts",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/worker-lane-color.test.ts",
+      "sourceSha256": "9911ea45fdb13f8439b242688004e12272a013ea5a0dfa9efb6951c5b3b663b4",
+      "sourceBytes": 7016,
+      "publishedSha256": "9911ea45fdb13f8439b242688004e12272a013ea5a0dfa9efb6951c5b3b663b4",
+      "publishedBytes": 7016,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/vitest.config.mjs",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/vitest.config.mjs",
+      "sourceSha256": "bb105b1f731b63d244daa608436571ed638d27526afc1d5d8d7ed7cbe344ef6e",
+      "sourceBytes": 473,
+      "publishedSha256": "bb105b1f731b63d244daa608436571ed638d27526afc1d5d8d7ed7cbe344ef6e",
+      "publishedBytes": 473,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/verify_observe_randomized.py",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/verify_observe_randomized.py",
+      "sourceSha256": "eb530225ad8a31795d18600280f5d7b3725a3d661cc9a885f62f86eb233cc585",
+      "sourceBytes": 5916,
+      "publishedSha256": "eb530225ad8a31795d18600280f5d7b3725a3d661cc9a885f62f86eb233cc585",
+      "publishedBytes": 5916,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/vitest-final.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/vitest-final.log",
+      "sourceSha256": "1be1920fb29e15aa8899594ba16b2b05aeda84287e33efb27dee50b3ebba0e48",
+      "sourceBytes": 2686,
+      "publishedSha256": "338ade7010902471305471b7fb7f786f8970cc6d8a74aab743ddbdbde75b4830",
+      "publishedBytes": 2648,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "independent-review/observe-randomized-results.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/observe-randomized-results.json",
+      "sourceSha256": "1b2312d112d9d38d32a2ae001d3f575331cb97be08a7e8ccf6696082ba802e05",
+      "sourceBytes": 4227,
+      "publishedSha256": "1b2312d112d9d38d32a2ae001d3f575331cb97be08a7e8ccf6696082ba802e05",
+      "publishedBytes": 4227,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/observe-randomized-retry.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/observe-randomized-retry.log",
+      "sourceSha256": "70d6ac0067dc33370943aced5ae72819b340d71ec46f97e53949144a76563e0c",
+      "sourceBytes": 331,
+      "publishedSha256": "70d6ac0067dc33370943aced5ae72819b340d71ec46f97e53949144a76563e0c",
+      "publishedBytes": 331,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/observe-randomized.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/observe-randomized.log",
+      "sourceSha256": "a85144fdd93d69145aa83c53f26290b1b5c5d35a16f9f8cc8b9d37ec52e2f1e2",
+      "sourceBytes": 2080,
+      "publishedSha256": "eb82657d269adc716de9fd8daa6c600f1af0f05691498e2e1b8c3fb6cc437374",
+      "publishedBytes": 1900,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 5
+        }
+      ]
+    },
+    {
+      "publishedPath": "independent-review/lane-color-delivered-baseline-identity.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/lane-color-delivered-baseline-identity.json",
+      "sourceSha256": "cf928b9275f9bcfa6a9f1e758f7101fad9212a34c5481b012f353177221ba0bd",
+      "sourceBytes": 515,
+      "publishedSha256": "3fedfda23c4dada9198893b2b8cb8d5681f1ecc7c8a48133c21a515489104ada",
+      "publishedBytes": 486,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-rust-ai-next/release",
+          "publishedToken": "${PRIOR_RELEASE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "independent-review/lane-color-delivered-baseline-resume.txt",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/lane-color-delivered-baseline-resume.txt",
+      "sourceSha256": "15dc6c91695a59a6d6c92a595f8b63ba1302428cc27fa24f42a1bba6d87affa1",
+      "sourceBytes": 431,
+      "publishedSha256": "15dc6c91695a59a6d6c92a595f8b63ba1302428cc27fa24f42a1bba6d87affa1",
+      "publishedBytes": 431,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/lane-color-final-real-pq-baseline.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/lane-color-final-real-pq-baseline.log",
+      "sourceSha256": "32bf30cd865ff1c229822d9c8f0cd306a220637f2bee7c4c7a2333db5de37418",
+      "sourceBytes": 1930,
+      "publishedSha256": "4890b45622d6dafafa81247593d309ea70d8c08bf686526414594ba5cc29eb35",
+      "publishedBytes": 1892,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "independent-review/lane-color-fixed-resume.txt",
+      "sourcePath": "${EVIDENCE_SOURCE}/independent-review/lane-color-fixed-resume.txt",
+      "sourceSha256": "37c84e4ac50c163cd22ab9e62f943378c51b8660fa24a8cd887495b206b4afd1",
+      "sourceBytes": 861,
+      "publishedSha256": "37c84e4ac50c163cd22ab9e62f943378c51b8660fa24a8cd887495b206b4afd1",
+      "publishedBytes": 861,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/summary.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/summary.json",
+      "sourceSha256": "cc3ccf39c8e32ca246d09ae81a8778c5b0bda7d46a8b4e5a80389f35d41273ad",
+      "sourceBytes": 30609,
+      "publishedSha256": "9fc56e552c40667bf3ba93feb950e1c45f48c2390905d37742867744283fb791",
+      "publishedBytes": 30457,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "publishedPath": "aggregate/root-aggregate-acceptance.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/root-aggregate-acceptance.json",
+      "sourceSha256": "b0251c0ac0e3c8ce748fc4931dee3933691a031155488b196ea4b2e2aa4a1e7e",
+      "sourceBytes": 6144,
+      "publishedSha256": "b0251c0ac0e3c8ce748fc4931dee3933691a031155488b196ea4b2e2aa4a1e7e",
+      "publishedBytes": 6144,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/unified-run.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/unified-run.log",
+      "sourceSha256": "c7e7fc206abe2220a47895fa1d029255d516c7d3fe174db86b85617ff68484e5",
+      "sourceBytes": 1581,
+      "publishedSha256": "365a21a3308d8780526ba3745b47d76a82f8c090a098f4fceedf44f642428bb0",
+      "publishedBytes": 1545,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "aggregate/unified-run.exit",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/unified-run.exit",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "publishedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "publishedBytes": 2,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/native-render-final.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/native-render-final.log",
+      "sourceSha256": "1d904a808112632e2c8d295c34314222a7d9b114e61e5cb56f2dc5d6263655c7",
+      "sourceBytes": 1023,
+      "publishedSha256": "1d904a808112632e2c8d295c34314222a7d9b114e61e5cb56f2dc5d6263655c7",
+      "publishedBytes": 1023,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/native-render-final.exit",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/native-render-final.exit",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "publishedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "publishedBytes": 2,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/workspace-runtime.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/workspace-runtime.log",
+      "sourceSha256": "402c6fc7f83cc36dc88264f9f9677b6d42c3b8bb6e6de04d02fd45b80c6c055b",
+      "sourceBytes": 969,
+      "publishedSha256": "402c6fc7f83cc36dc88264f9f9677b6d42c3b8bb6e6de04d02fd45b80c6c055b",
+      "publishedBytes": 969,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/workspace-runtime.exit",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/workspace-runtime.exit",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "publishedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "publishedBytes": 2,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/vite-build.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/vite-build.log",
+      "sourceSha256": "2b03f290c4e354a098a877870cae5fef59ed43fa2fd704a69a28fafb4ca88ed6",
+      "sourceBytes": 2821,
+      "publishedSha256": "b1874febab55599926e759f4299f91e47a8e5be5b0ac0ecfe47fb9117c3969f9",
+      "publishedBytes": 2785,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "aggregate/vite-build.exit",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/vite-build.exit",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "publishedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "publishedBytes": 2,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run-final.source.txt",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run-final.sh",
+      "sourceSha256": "28ef7c065414f5b54c628177a957fe5a1098dc222ca10aa517567fafe4ab21e0",
+      "sourceBytes": 1945,
+      "publishedSha256": "28ef7c065414f5b54c628177a957fe5a1098dc222ca10aa517567fafe4ab21e0",
+      "publishedBytes": 1945,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run/results.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/results.json",
+      "sourceSha256": "7fd08e4cafb6a8a17ec6ddf9d3f1f0afdb804b876e82af3bbf5289e0fd67caff",
+      "sourceBytes": 99062,
+      "publishedSha256": "6918452daf014b6c4009e591d76a875d5e5188a61f4bd0945a8833b986dcbf76",
+      "publishedBytes": 95870,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 82
+        },
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 2
+        },
+        {
+          "originalPrefix": "/workspace/shared/design-phase2",
+          "publishedToken": "${ORIGINAL_TOOLCHAIN_SETUP}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "aggregate/run/runner-contracts.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/runner-contracts.log",
+      "sourceSha256": "58716967f74ef0c6c44e06423d36ff42b26a72f7661ad421effaa4513f2b38fb",
+      "sourceBytes": 5100,
+      "publishedSha256": "58716967f74ef0c6c44e06423d36ff42b26a72f7661ad421effaa4513f2b38fb",
+      "publishedBytes": 5100,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run/frontend-contracts.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/frontend-contracts.log",
+      "sourceSha256": "a25a69b2eb3fef2147b954e89f5401cbb4308a651aaeabb6305f48bf3acc0458",
+      "sourceBytes": 73019,
+      "publishedSha256": "a25a69b2eb3fef2147b954e89f5401cbb4308a651aaeabb6305f48bf3acc0458",
+      "publishedBytes": 73019,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run/desktop-contracts.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/desktop-contracts.log",
+      "sourceSha256": "9266e29edeb038da7fd871419375f7ae1923821a1207dbc019ea5bbbc18689d1",
+      "sourceBytes": 61749,
+      "publishedSha256": "9bca4a8a573a77c984d173bf67e284339b4bd4b35e04693617ff33313e1653ed",
+      "publishedBytes": 59811,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 51
+        }
+      ]
+    },
+    {
+      "publishedPath": "aggregate/run/python-tools.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/python-tools.log",
+      "sourceSha256": "474dae795f951822d9efb3cb10d4f6cb5ba05f2e84b3534f42c92c4745add0d8",
+      "sourceBytes": 114,
+      "publishedSha256": "474dae795f951822d9efb3cb10d4f6cb5ba05f2e84b3534f42c92c4745add0d8",
+      "publishedBytes": 114,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run/typecheck.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/typecheck.log",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceBytes": 0,
+      "publishedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "publishedBytes": 0,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run/frontend-vitest.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/frontend-vitest.log",
+      "sourceSha256": "c5756496cb4e60b229d81172b587c923bc9d08bfa2581e9770fb2f5dc72bd265",
+      "sourceBytes": 51479,
+      "publishedSha256": "291452e717582c387c4afc26e69ae4c4d09fd0b4fb9a89b73c7957f2338414a7",
+      "publishedBytes": 50857,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 15
+        },
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 1
+        },
+        {
+          "originalPrefix": "/workspace/shared/design-phase2",
+          "publishedToken": "${ORIGINAL_TOOLCHAIN_SETUP}",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "publishedPath": "aggregate/run/mcp-example.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/mcp-example.log",
+      "sourceSha256": "6f705eed1e4017df91927e5c4688c701930bef1518eff5458c51ba78bb4fd256",
+      "sourceBytes": 816,
+      "publishedSha256": "c0a2b133e499fa5db2c1a9f96f57de648812d0423bf22d87191f1cf80075fea8",
+      "publishedBytes": 706,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        },
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "publishedPath": "aggregate/run/mcp-example.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/mcp-example.json",
+      "sourceSha256": "8999bf628748e84d5fd58bb1a9f03813cea70f6e2d5aa0c69e2a9a71ca17c0dd",
+      "sourceBytes": 1003,
+      "publishedSha256": "dd9c825634c660594fe5f088265f77bc059cb06e8f02a0d789493715824196c7",
+      "publishedBytes": 965,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "aggregate/run/bun-unit.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/bun-unit.log",
+      "sourceSha256": "9e5821ee5a9f0a98b4f3962cab9fc9ff9605612f654ae13e3a49d7fb1bda43f7",
+      "sourceBytes": 3982,
+      "publishedSha256": "9e5821ee5a9f0a98b4f3962cab9fc9ff9605612f654ae13e3a49d7fb1bda43f7",
+      "publishedBytes": 3982,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run/automation-storage.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/automation-storage.log",
+      "sourceSha256": "c92393d72a80ac509edb6bdf7055bc01e7aaef207b7db1b2423e299cbc1269fe",
+      "sourceBytes": 371,
+      "publishedSha256": "c92393d72a80ac509edb6bdf7055bc01e7aaef207b7db1b2423e299cbc1269fe",
+      "publishedBytes": 371,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run/mcp-contracts.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/mcp-contracts.log",
+      "sourceSha256": "d3288dda48cb42f8e9bf527f9b734253c7a286f0cab524272a6ee019f70eca3d",
+      "sourceBytes": 10959,
+      "publishedSha256": "d3288dda48cb42f8e9bf527f9b734253c7a286f0cab524272a6ee019f70eca3d",
+      "publishedBytes": 10959,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run/native-preparation.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/native-preparation.log",
+      "sourceSha256": "439fdd748d596d85c7065d010a2410aa78366da39c0f988cf05fbce5b32f549b",
+      "sourceBytes": 800,
+      "publishedSha256": "439fdd748d596d85c7065d010a2410aa78366da39c0f988cf05fbce5b32f549b",
+      "publishedBytes": 800,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run/native-sidecar.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/native-sidecar.log",
+      "sourceSha256": "314983490c3cbd7d7fd48e57ee6caa14411647a5e29ed4a7891a62670f571b97",
+      "sourceBytes": 2066,
+      "publishedSha256": "314983490c3cbd7d7fd48e57ee6caa14411647a5e29ed4a7891a62670f571b97",
+      "publishedBytes": 2066,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/run/mcp-example-checks.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/attempt-1/run/mcp-example/checks.json",
+      "sourceSha256": "bb876c928ea005a9866e10f3d83eef2be604b1bfde5672034205c706894d4cc3",
+      "sourceBytes": 964,
+      "publishedSha256": "bb876c928ea005a9866e10f3d83eef2be604b1bfde5672034205c706894d4cc3",
+      "publishedBytes": 964,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/backend/backend-build.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/runtime/backend-build.log",
+      "sourceSha256": "0689e727dc12d18f94ac429cb2eb76db131fe5546b98b5211ef8e82e73f0a964",
+      "sourceBytes": 783,
+      "publishedSha256": "f5ac89f209b9307554f810bdb72b4f4c4755347927a32af00ec80f7e6116dcd7",
+      "publishedBytes": 707,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "publishedPath": "aggregate/backend/backend-build.exit",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/runtime/backend-build.exit",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "publishedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "publishedBytes": 2,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/backend/backend-tests.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/runtime/backend-tests.log",
+      "sourceSha256": "de67306106349e427161ae507e337f0c849bd7107aa50745c7f3dbe088f44f1c",
+      "sourceBytes": 9975,
+      "publishedSha256": "5783eb0c7a3df0bc93abf9954d27fbefdca8e62e5dea640a14188f63a7271db7",
+      "publishedBytes": 9937,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "aggregate/backend/backend-tests.exit",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/runtime/backend-tests.exit",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "publishedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "publishedBytes": 2,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/backend/backend.sha256",
+      "sourcePath": "${EVIDENCE_SOURCE}/final-verification/runtime/backend.sha256",
+      "sourceSha256": "06a1a53b016ad71072a31a085d7101f8e057361cf67bd18fc27a8bd23b79ee48",
+      "sourceBytes": 149,
+      "publishedSha256": "495892ecd07130a02bf8d964748bb38a27b5a93ce0ce12d7861e91cc7ea48597",
+      "publishedBytes": 145,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-phase2",
+          "publishedToken": "${ORIGINAL_TOOLCHAIN_SETUP}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "independent-review/relocated/RELOCATION_RESULT.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/RELOCATION_RESULT.json",
+      "sourceSha256": "be3fc49d8da2b9d41203f6e8cc9075062b23ff24279b4b26bf6bc490f5192ec4",
+      "sourceBytes": 1384,
+      "publishedSha256": "27673b0482e7f7040030cd5c5170c1a2c50f0440f3a22ef8807fdd8fa0b49056",
+      "publishedBytes": 1346,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "independent-review/relocated/inputs.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/inputs.json",
+      "sourceSha256": "f119c922bc6045596f8ba75d054ee23960324fb440006004c9d98e227238df10",
+      "sourceBytes": 1112,
+      "publishedSha256": "e0ad0e6cad17237f53cf393d441636fcfc5f23c4b99326205670a9795cb99606",
+      "publishedBytes": 896,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-performance-followup-20261019",
+          "publishedToken": "${EVIDENCE_SOURCE}",
+          "count": 6
+        }
+      ]
+    },
+    {
+      "publishedPath": "independent-review/relocated/portable-vitest.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/portable-vitest.log",
+      "sourceSha256": "96d86795ca7b4c6a4863ca028257f8f32b322e6eade258a949692863ca980ce9",
+      "sourceBytes": 2893,
+      "publishedSha256": "fabec46e90bb76bf294b99def3d78da6e8783cd6962a2fe59841fc52f1fe402e",
+      "publishedBytes": 2855,
+      "transformation": "non-executable text path normalization",
+      "pathTokenReplacements": [
+        {
+          "originalPrefix": "/workspace/shared/design-latest-20261019T1209",
+          "publishedToken": "${REPO}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "publishedPath": "independent-review/relocated/portable-vitest.exit",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/portable-vitest.exit",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "publishedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "publishedBytes": 2,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/relocated/portable-stdio.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/portable-stdio.log",
+      "sourceSha256": "70d6ac0067dc33370943aced5ae72819b340d71ec46f97e53949144a76563e0c",
+      "sourceBytes": 331,
+      "publishedSha256": "70d6ac0067dc33370943aced5ae72819b340d71ec46f97e53949144a76563e0c",
+      "publishedBytes": 331,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/relocated/portable-stdio.exit",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/portable-stdio.exit",
+      "sourceSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "sourceBytes": 2,
+      "publishedSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "publishedBytes": 2,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/relocated/observe-randomized-results.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/observe-randomized-results.json",
+      "sourceSha256": "1b2312d112d9d38d32a2ae001d3f575331cb97be08a7e8ccf6696082ba802e05",
+      "sourceBytes": 4227,
+      "publishedSha256": "1b2312d112d9d38d32a2ae001d3f575331cb97be08a7e8ccf6696082ba802e05",
+      "publishedBytes": 4227,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/relocated/random-baseline.stderr.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/random-baseline.stderr.log",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceBytes": 0,
+      "publishedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "publishedBytes": 0,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/relocated/random-candidate.stderr.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/random-candidate.stderr.log",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceBytes": 0,
+      "publishedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "publishedBytes": 0,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "independent-review/relocated/random-candidate-restarted.stderr.log",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/random-candidate-restarted.stderr.log",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sourceBytes": 0,
+      "publishedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "publishedBytes": 0,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    },
+    {
+      "publishedPath": "aggregate/freeze-before-after-independent.json",
+      "sourcePath": "${EVIDENCE_SOURCE}/review-release/freeze-before-after-independent.json",
+      "sourceSha256": "888513e08911cc3b656f75ea6ada1e2ed99eed446529da7f11aefb965ab5913b",
+      "sourceBytes": 21515,
+      "publishedSha256": "888513e08911cc3b656f75ea6ada1e2ed99eed446529da7f11aefb965ab5913b",
+      "publishedBytes": 21515,
+      "transformation": "byte-exact",
+      "pathTokenReplacements": []
+    }
+  ]
+}

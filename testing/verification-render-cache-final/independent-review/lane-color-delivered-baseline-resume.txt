@@ -1,0 +1,7 @@
+await queue.yieldToHigherPriority(channel === 'interaction' ? 1 : 0)
+              selectLane(channel)
+              if (preference !== requestPreference || referenceGpu !== wantsReference || solidBatchGpu !== wantsBatch) {
+                gpu?.dispose(); gpu = undefined; invalidateTileCache()
+                preference = requestPreference; referenceGpu = wantsReference; solidBatchGpu = wantsBatch
+              }
+              

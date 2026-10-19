@@ -1,0 +1,251 @@
+{
+  "status": "Owner/reviewer source identities reconciled with the accepted root CPU aggregate; final archive freeze remains separate",
+  "gitBase": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "baselineArchiveSha256": "02241e7467435d4e47a79041d0fccfea234c52d1b3a3b0e46eaa8f781ff1bafb",
+  "runtimeAndFontHashesAreMetadataOnly": true,
+  "files": {
+    "design-studio/Cargo.lock": {
+      "sha256": "0c8e9ad8643202a120acf7ce4dadf5545918d1d3b5e419238435a3f9bb36e7e9",
+      "bytes": 82839,
+      "evidence": [
+        "declared source-only reproduction prerequisite"
+      ]
+    },
+    "design-studio/crates/design-desktop-backend/src/workspace.rs": {
+      "sha256": "a55d4660ef678779c4780215682cb3a33f456d7ad16dd5e68373ba17e5312f11",
+      "bytes": 38939,
+      "evidence": [
+        "independent-review/reviewed-source-identity.json",
+        "workspace-observe/source-binary-manifest.json"
+      ]
+    },
+    "design-studio/crates/design-desktop-backend/src/workspace_observe_tests.rs": {
+      "sha256": "ccdd6b32854fde839b078ff5e1cc4be222bff9697cec3bd0d678bedd35a466ee",
+      "bytes": 18134,
+      "evidence": [
+        "workspace-observe/source-binary-manifest.json"
+      ]
+    },
+    "design-studio/scripts/build-web.py": {
+      "sha256": "b99b4929424445c89502b8c31ba757dc94050d3e8ace307c2da19fee29691462",
+      "bytes": 5927,
+      "evidence": [
+        "declared source-only reproduction prerequisite"
+      ]
+    },
+    "frontend/design-client/bun.lock": {
+      "sha256": "937d12cef4777e4c2ee0f8b42e73bf2eff0b30879dc8a7eff244f1cf5cf2cd72",
+      "bytes": 41787,
+      "evidence": [
+        "declared source-only reproduction prerequisite"
+      ]
+    },
+    "frontend/design-client/public/fonts/NotoSansSC.ttf": {
+      "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+      "bytes": 17772300,
+      "evidence": [
+        "declared source-only reproduction prerequisite"
+      ]
+    },
+    "frontend/design-client/public/kernel/design_kernel_bg.wasm": {
+      "sha256": "2c50f87de40b6e2ecc456eb053706d4e2c3c058da82aafffd1b191eddd8b039a",
+      "bytes": 39288344,
+      "evidence": [
+        "image-hydration/source-manifest.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/Canvas.tsx": {
+      "sha256": "5c1ae83578e25df889dd55467732e48945e124672275f49c839b650edff107dc",
+      "bytes": 134659,
+      "evidence": [
+        "scene-reuse/final-source-hashes.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/CanvasScrollbars.tsx": {
+      "sha256": "70193d5da2a5a04080fbf3d04df32b8290e40ad6b6543ce37bcb6aedfd6e00a1",
+      "bytes": 4319,
+      "evidence": [
+        "scene-reuse/final-source-hashes.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/canvas-scene-reuse-cpu.test.tsx": {
+      "sha256": "22b33966e32027c864ac0d3faaa56754d8f2ab2cdd438165cf22ca0380242829",
+      "bytes": 13821,
+      "evidence": [
+        "scene-reuse/final-source-hashes.json"
+      ]
+    },
+    "frontend/design-client/src/canvas-scene-snapshots.test.ts": {
+      "sha256": "6c02b66de57dd953c1240e64f26ea9235bae6ec1ca1f4f414bcbc5d52033c846",
+      "bytes": 13268,
+      "evidence": [
+        "scene-reuse/final-source-hashes.json"
+      ]
+    },
+    "frontend/design-client/src/canvas-scene-snapshots.ts": {
+      "sha256": "63b0037a47848d5607cf32956f5678a3fc5ecec863a7a4060e361cfd0c94f716",
+      "bytes": 4077,
+      "evidence": [
+        "scene-reuse/final-source-hashes.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/engine.ts": {
+      "sha256": "5f87c69a1dbb5975341fcd23223e3dddc5ebac6488d99f51e612b4b54eb7f8a9",
+      "bytes": 95827,
+      "evidence": [
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/font-test-fixtures.ts": {
+      "sha256": "fd43180dfc6eea128a2849048226160ff9b41fdbcd42023f8b81a93bd9fb1509",
+      "bytes": 2869,
+      "evidence": [
+        "declared source-only reproduction prerequisite"
+      ]
+    },
+    "frontend/design-client/src/geometry.ts": {
+      "sha256": "7d63dbbac86e790fcbbd3dcab2d8b61fe4a968cec8361b4a7bc951b4f12c4f58",
+      "bytes": 17314,
+      "evidence": [
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/kernel/decoded-image-cache.ts": {
+      "sha256": "4292cdea8d7b6fe82ca9d14b2bd9ab609a9a4ef944a2cdfcd13db77b6ddcf8fe",
+      "bytes": 3345,
+      "evidence": [
+        "image-hydration/source-manifest.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/kernel/gpu/renderer.ts": {
+      "sha256": "a967b8e59e5301cb389bff5691f455471c6ba0b87f9df8a751c13fa05690d601",
+      "bytes": 171645,
+      "evidence": [
+        "image-hydration/source-manifest.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/kernel/gpu/scene-index.ts": {
+      "sha256": "fa325c420289dc2f15e1cb27776a2cefa315844c867e711255cf0a41d04ba168",
+      "bytes": 2492,
+      "evidence": [
+        "image-hydration/source-manifest.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/kernel/image-mip-cache.ts": {
+      "sha256": "139ee13e339f73616b25802518059ad4cb92673f20ebc62bc493734a65026b1b",
+      "bytes": 6044,
+      "evidence": [
+        "image-hydration/source-manifest.json"
+      ]
+    },
+    "frontend/design-client/src/kernel/picking.ts": {
+      "sha256": "fa0e1c893368c28b725e835a9734e98b24e881b1938c4291f15801af2d79a4a4",
+      "bytes": 18687,
+      "evidence": [
+        "scene-reuse/final-source-hashes.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/kernel/render-work-queue.ts": {
+      "sha256": "d6261ad4bfcfc19b63961bc2304c181c917110493d2e83062697ecfbb8436a58",
+      "bytes": 1667,
+      "evidence": [
+        "image-hydration/source-manifest.json"
+      ]
+    },
+    "frontend/design-client/src/kernel/render-worker-image-hydration.test.ts": {
+      "sha256": "069df0b7985e00b206021b84077282a5dad5381b7dcf8904ac1c0dbbb83bbdac",
+      "bytes": 14819,
+      "evidence": [
+        "image-hydration/source-manifest.json"
+      ]
+    },
+    "frontend/design-client/src/kernel/render-worker.ts": {
+      "sha256": "05c5aa47aaa672bb4d3d66413d5523f21aa237c63b4b2b90dc04e5d23c6fab8c",
+      "bytes": 88937,
+      "evidence": [
+        "image-hydration/source-manifest.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/kernel/scene-image-hydration.test.ts": {
+      "sha256": "ffc0350b40454afb300b2187fee8a1e4c846ebd033a7485300b8ea963eeaea41",
+      "bytes": 22170,
+      "evidence": [
+        "image-hydration/source-manifest.json"
+      ]
+    },
+    "frontend/design-client/src/kernel/scene-image-hydration.ts": {
+      "sha256": "377f7ec28a1c139bab6f74b60e6a673d3bf17781e8469693d75d9ca9e31812fd",
+      "bytes": 6079,
+      "evidence": [
+        "image-hydration/source-manifest.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/src/ruler-guides.ts": {
+      "sha256": "f28355c6f7e912c6b48d72aa98f87690dbeeff49086762c1f1b3c3b28569ebb8",
+      "bytes": 1662,
+      "evidence": [
+        "scene-reuse/final-source-hashes.json",
+        "independent-review/reviewed-source-identity.json"
+      ]
+    },
+    "frontend/design-client/vitest.scene-reuse.config.ts": {
+      "sha256": "6d5ce57d586f7ad0b4bf54621b4f1faaf09bed70dbdec94154c74c8dd7ff6591",
+      "bytes": 1109,
+      "evidence": [
+        "scene-reuse/final-source-hashes.json"
+      ]
+    },
+    "testing/font-fixtures-requirements.txt": {
+      "sha256": "4888b53cd53ca3729b315a3860a6a1bd2448b0ca91c230c36d94aac2ca46ab39",
+      "bytes": 174,
+      "evidence": [
+        "declared source-only reproduction prerequisite"
+      ]
+    },
+    "testing/generate-font-fixtures.py": {
+      "sha256": "0ed75834842e663f7c1c240d63277c8889b8549923227bbd163bf698b72bc79b",
+      "bytes": 7172,
+      "evidence": [
+        "declared source-only reproduction prerequisite"
+      ]
+    },
+    "testing/verification-canvas-scene-reuse-20261019/run-abba.py": {
+      "sha256": "ba84e88f6f03fcadd6bae35f913c295798aba0d8e0ac661452db93feb28e7fbe",
+      "bytes": 5196,
+      "evidence": [
+        "scene-reuse/final-source-hashes.json"
+      ]
+    },
+    "testing/verification-image-hydration-20261019/baseline-image-cache.txt": {
+      "sha256": "518fe0433bde691a01e88cf900d13f022d9a89649e3ea94cb023a83463edb132",
+      "bytes": 3403,
+      "evidence": [
+        "image-hydration/source-manifest.json"
+      ]
+    },
+    "testing/verification-image-hydration-20261019/baseline-lane-resume.txt": {
+      "sha256": "79b46fca0a51a0bd3ea91080c651aeec5dfde8af170fca70f0e179dea14da2f9",
+      "bytes": 530,
+      "evidence": [
+        "image-hydration/source-manifest.json"
+      ]
+    },
+    "testing/verification-image-hydration-20261019/benchmark.mjs": {
+      "sha256": "4e6428f9d5abae6e5518a207e2bae90a3719980532b7b484ed1910116dcee5f4",
+      "bytes": 8366,
+      "evidence": [
+        "image-hydration/source-manifest.json"
+      ]
+    }
+  }
+}

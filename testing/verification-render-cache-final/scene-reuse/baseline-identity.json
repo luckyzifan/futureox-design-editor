@@ -1,0 +1,27 @@
+{
+  "baselineZip": "${PRIOR_RELEASE}/futureox-desgin-design-tools-performance-cumulative-20261019.zip",
+  "zipSha256": "02241e7467435d4e47a79041d0fccfea234c52d1b3a3b0e46eaa8f781ff1bafb",
+  "gitBase": "71d32153e6f55b3723c99708b4c4c49ac7342e67",
+  "files": [
+    {
+      "file": "frontend/design-client/src/Canvas.tsx",
+      "source": "zip",
+      "sha256": "f04c992f19561fc13973be193a6571a287a4139d6c92f5aa8eb25583e23045e3"
+    },
+    {
+      "file": "frontend/design-client/src/geometry.ts",
+      "source": "git-base",
+      "sha256": "7d63dbbac86e790fcbbd3dcab2d8b61fe4a968cec8361b4a7bc951b4f12c4f58"
+    },
+    {
+      "file": "frontend/design-client/src/engine.ts",
+      "source": "zip",
+      "sha256": "5f87c69a1dbb5975341fcd23223e3dddc5ebac6488d99f51e612b4b54eb7f8a9"
+    },
+    {
+      "file": "frontend/design-client/src/kernel/picking.ts",
+      "source": "git-base",
+      "sha256": "fd4da6d680ae120e26286163ba649c83a9b18a6a066a440d5ae9e039450f00e4"
+    }
+  ]
+}

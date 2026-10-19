@@ -1,0 +1,277 @@
+{
+  "inputsUnchanged": true,
+  "comparisons": [
+    {
+      "kind": "fixed-displayed-preview",
+      "shape": "sparse",
+      "nodes": 3000,
+      "samples": 50,
+      "baselineMs": [
+        1523.7200370000014,
+        1615.5264999999995
+      ],
+      "candidateMs": [
+        1389.7887870000022,
+        1257.0385939999965
+      ],
+      "meanReductionPercent": 15.685902658367802,
+      "sceneBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "indexBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "nodeVisits": {
+        "baseline": 300000,
+        "candidate": 150000
+      },
+      "cells": {
+        "baseline": 82100,
+        "candidate": 41050
+      },
+      "cellReferences": {
+        "baseline": 347900,
+        "candidate": 173950
+      },
+      "largeEntries": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "exactFinalHashes": {
+        "finalDocumentHash": "dd6eafb1343a866f0164a55e0e6945ce96b32249641903c081a50cf82fb8cdb2",
+        "finalEntriesHash": "3d8c3d4d5374451709de874af274e02f30671d0b695b6c4357e5c71b342f3f43",
+        "baselineSnapshotHash": "a735bcc5861454d492b9f9e14031c75dc421e0a525d54cb7883a5d08040582ad"
+      }
+    },
+    {
+      "kind": "fixed-displayed-preview",
+      "shape": "sparse",
+      "nodes": 10000,
+      "samples": 50,
+      "baselineMs": [
+        5590.261336999993,
+        5056.628826000001
+      ],
+      "candidateMs": [
+        4520.594237999997,
+        4680.748723000001
+      ],
+      "meanReductionPercent": 13.577177747390978,
+      "sceneBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "indexBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "nodeVisits": {
+        "baseline": 1000000,
+        "candidate": 500000
+      },
+      "cells": {
+        "baseline": 274100,
+        "candidate": 137050
+      },
+      "cellReferences": {
+        "baseline": 1159800,
+        "candidate": 579900
+      },
+      "largeEntries": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "exactFinalHashes": {
+        "finalDocumentHash": "24f5330c26fd861cc8f361633e84314466a6da962186de490a3096e7bc48a830",
+        "finalEntriesHash": "e5515f92518f3a2bc5442b3d9f4ae5969903f3439033795dea04313129f9b2fa",
+        "baselineSnapshotHash": "332490e6805cf2b683999ad323bf4986ecba8c945bc29a7bac87023b51c34f25"
+      }
+    },
+    {
+      "kind": "fixed-displayed-preview",
+      "shape": "dense",
+      "nodes": 3000,
+      "samples": 50,
+      "baselineMs": [
+        1512.7552080000023,
+        1296.4359720000066
+      ],
+      "candidateMs": [
+        1204.5847769999946,
+        1308.487714000008
+      ],
+      "meanReductionPercent": 10.541065738359801,
+      "sceneBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "indexBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "nodeVisits": {
+        "baseline": 300000,
+        "candidate": 150000
+      },
+      "cells": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "cellReferences": {
+        "baseline": 300000,
+        "candidate": 150000
+      },
+      "largeEntries": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "exactFinalHashes": {
+        "finalDocumentHash": "d237fcae77fa1708db43d2ab95ba5ed29437b538dafd5a3630e2572340d0f0cd",
+        "finalEntriesHash": "a2b2cb5e69415c65d0e0347ceb5ed4240f0366cf7fe4c3c149874615acf12d76",
+        "baselineSnapshotHash": "1d30ed68a0b7770d98c72e65846ec57ce0490cbf72776d6aeff7f0b4912107ae"
+      }
+    },
+    {
+      "kind": "fixed-displayed-preview",
+      "shape": "dense",
+      "nodes": 10000,
+      "samples": 50,
+      "baselineMs": [
+        6292.621017000001,
+        6913.135867999992
+      ],
+      "candidateMs": [
+        5558.580473999993,
+        6154.603887000007
+      ],
+      "meanReductionPercent": 11.30243830018831,
+      "sceneBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "indexBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "nodeVisits": {
+        "baseline": 1000000,
+        "candidate": 500000
+      },
+      "cells": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "cellReferences": {
+        "baseline": 1000000,
+        "candidate": 500000
+      },
+      "largeEntries": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "exactFinalHashes": {
+        "finalDocumentHash": "71969c172fe48468d9596179b8d0acf0b81686e3d131b7e3a107df50158e52f1",
+        "finalEntriesHash": "096bf8a5c71b7171d9c26ac802f6e5d13231cc0d6beaf68a01bd406317974b09",
+        "baselineSnapshotHash": "c1d44feed4376faa04fe05b9f398e9416ab728b516a65dad601505254b27e8bf"
+      }
+    },
+    {
+      "kind": "fixed-displayed-preview",
+      "shape": "deep",
+      "nodes": 3000,
+      "samples": 50,
+      "baselineMs": [
+        1815.1144490000115,
+        1681.3450039999807
+      ],
+      "candidateMs": [
+        1588.0173949999953,
+        1439.4495699999934
+      ],
+      "meanReductionPercent": 13.413354117337295,
+      "sceneBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "indexBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "nodeVisits": {
+        "baseline": 301600,
+        "candidate": 150800
+      },
+      "cells": {
+        "baseline": 82100,
+        "candidate": 41050
+      },
+      "cellReferences": {
+        "baseline": 371400,
+        "candidate": 185700
+      },
+      "largeEntries": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "exactFinalHashes": {
+        "finalDocumentHash": "f037d1e345bcac14330c5c2e5357b15e100bda0e30f640126c65d68ce6a8b2d0",
+        "finalEntriesHash": "850cfeff8ee6e4d1bb842546bceac4fce6bed2c2fdcb6184d9794c79d525eb86",
+        "baselineSnapshotHash": "d337f27b04f27ebda8bd155978f2d21314484b9c5d1bd7cb3fe1fde005f2f116"
+      }
+    },
+    {
+      "kind": "fixed-displayed-preview",
+      "shape": "deep",
+      "nodes": 10000,
+      "samples": 50,
+      "baselineMs": [
+        7264.101243999998,
+        7616.762353999984
+      ],
+      "candidateMs": [
+        6197.139735000019,
+        6522.131648999992
+      ],
+      "meanReductionPercent": 14.525986343228714,
+      "sceneBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "indexBuilds": {
+        "baseline": 100,
+        "candidate": 50
+      },
+      "nodeVisits": {
+        "baseline": 1001600,
+        "candidate": 500800
+      },
+      "cells": {
+        "baseline": 271200,
+        "candidate": 135600
+      },
+      "cellReferences": {
+        "baseline": 1231900,
+        "candidate": 615950
+      },
+      "largeEntries": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "exactFinalHashes": {
+        "finalDocumentHash": "04306111cb2356191a8d07f3aa78d4f01e073fc9a7307cd10c567fcefdded7f4",
+        "finalEntriesHash": "055952db0f32ac13ff60dffe2c02c408955bb73288ff1bdfd52afd1a0be2fbb6",
+        "baselineSnapshotHash": "4f3ba889d075a1c2deef3f670d38b0b080c927f1a5d242e6eb4527bb194b415f"
+      }
+    },
+    {
+      "kind": "history-page-reopen",
+      "exactAcrossAllRuns": true
+    },
+    {
+      "kind": "local-shape-preview-release",
+      "exactAcrossAllRuns": true
+    }
+  ]
+}

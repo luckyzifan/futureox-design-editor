@@ -18,6 +18,10 @@ import type { DesignNode, Point, DesignDocument, Bounds, Matrix } from '../model
 import { defaultLayout, defaultSizing, validateVariableModes } from '../model'
 import { translationOnlyChanges } from './translation-preview'
 let ready = false
+// Opaque identity avoids counter wraparound and does not retain font resources.
+// Canvas snapshots must not survive a changed main-thread font environment.
+let geometryEpoch: object = {}
+export const pickingGeometryEpoch = () => geometryEpoch
 const initialization = new InitializationGate()
 const cache = new WeakMap<DesignNode, string>()
 const boundsCache = new WeakMap<DesignNode, { key: string; value: Bounds | null }>()
@@ -86,9 +90,11 @@ export function kernelPdfVector(
   // module's loadedFonts tracking in step for later kernelLayout calls.
   if (loadedFonts !== document.fonts) {
     layoutEngine.load_document_fonts(JSON.stringify(document.fonts || {}))
+    geometryEpoch = {}
     loadedFonts = document.fonts
   }
   layoutEngine.load_document(JSON.stringify(document))
+  geometryEpoch = {}
   return new Uint8Array(
     layoutEngine.export_pdf_vector(
       JSON.stringify({ pageId, width, height, view: { x: 0, y: 0, zoom: 1 }, transparent, grid: false }),
@@ -113,6 +119,7 @@ export function initializePicking(resources?: { wasm: Uint8Array; font: Uint8Arr
       lease.commit(() => {
         layoutEngine = engine
         ready = true
+        geometryEpoch = {}
       })
     } catch (error) {
       engine.free()
@@ -139,6 +146,9 @@ export function activateDocumentFonts(input: DesignDocument) {
   if (loadedFonts !== input.fonts) {
     if (!ready || !layoutEngine) throw new Error('字体内核尚未就绪')
     layoutEngine.load_document_fonts(JSON.stringify(input.fonts || {}))
+    // The kernel stages font resources before replacing its environment;
+    // failed loads keep both the old environment and this epoch intact.
+    geometryEpoch = {}
     loadedFonts = input.fonts
     // Font identity is part of outline geometry, including unchanged text nodes.
     for (const n of Object.values(input.nodes)) invalidateGeometry(n)

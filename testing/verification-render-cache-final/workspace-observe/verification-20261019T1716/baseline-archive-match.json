@@ -1,0 +1,7 @@
+{
+  "zip": "${PRIOR_RELEASE}/futureox-desgin-design-tools-performance-cumulative-20261019.zip",
+  "member": "files/design-studio/crates/design-desktop-backend/src/workspace.rs",
+  "archived_workspace_sha256": "ec0ed2958ae8ddb23d5807a544f94f6039d23602e9f03d5a9d151ff8e15f3e18",
+  "baseline_workspace_sha256": "ec0ed2958ae8ddb23d5807a544f94f6039d23602e9f03d5a9d151ff8e15f3e18",
+  "match": true
+}

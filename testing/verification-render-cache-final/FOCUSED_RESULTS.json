@@ -1,0 +1,137 @@
+{
+  "status": "Focused owner and independent checkpoint results; final selected aggregate is recorded separately in AGGREGATE_RESULTS.json",
+  "doNotSumFrameworkCounts": true,
+  "imageHydration": {
+    "vitest": {
+      "numTotalTests": 55,
+      "numPassedTests": 55,
+      "numFailedTests": 0,
+      "numPendingTests": 0,
+      "success": true
+    },
+    "source": "image-hydration/targeted.json",
+    "files": [
+      {
+        "name": "${REPO}/frontend/design-client/src/kernel/decoded-image-cache.test.ts",
+        "passed": 6
+      },
+      {
+        "name": "${REPO}/frontend/design-client/src/kernel/image-mip-cache-storage.test.ts",
+        "passed": 3
+      },
+      {
+        "name": "${REPO}/frontend/design-client/src/kernel/image-mip-cache.test.ts",
+        "passed": 3
+      },
+      {
+        "name": "${REPO}/frontend/design-client/src/kernel/render-work-queue.test.ts",
+        "passed": 4
+      },
+      {
+        "name": "${REPO}/frontend/design-client/src/kernel/render-worker-image-hydration.test.ts",
+        "passed": 11
+      },
+      {
+        "name": "${REPO}/frontend/design-client/src/kernel/scene-image-hydration.test.ts",
+        "passed": 28
+      }
+    ],
+    "typecheck": "passed with empty diagnostic log",
+    "abbaMeasuredRows": 20,
+    "abbaSamplesPerVariant": 10,
+    "abbaOrder": "5 recorded ABBA cycles after 1 warmup cycle",
+    "readCounts": {
+      "baseline": 2000,
+      "candidate": 4
+    },
+    "returnedPayloadBytes": {
+      "baseline": 20000,
+      "candidate": 64
+    },
+    "negativeControl": {
+      "failed": 2,
+      "deliberatelyUnselected": 9,
+      "source": "image-hydration/lane-color-real-pq-before-fix.log"
+    },
+    "limit": "Hydration CPU-path proxy, structured-clone persistence double; no real IDB/GPU/display/FPS claim"
+  },
+  "canvasSceneReuse": {
+    "vitest": {
+      "numTotalTests": 122,
+      "numPassedTests": 121,
+      "numFailedTests": 0,
+      "numPendingTests": 1,
+      "success": true
+    },
+    "source": "scene-reuse/regression-tests.json",
+    "baselineAndCandidateSeparateCorrectnessRuns": {
+      "eachPassed": 9,
+      "eachFailed": 0
+    },
+    "abbaRuns": [
+      {
+        "label": "baseline-a",
+        "passed": 9,
+        "exitCode": 0
+      },
+      {
+        "label": "candidate-a",
+        "passed": 9,
+        "exitCode": 0
+      },
+      {
+        "label": "candidate-b",
+        "passed": 9,
+        "exitCode": 0
+      },
+      {
+        "label": "baseline-b",
+        "passed": 9,
+        "exitCode": 0
+      }
+    ],
+    "abbaInputsUnchanged": true,
+    "oldDisplayBuildsPer50Previews": {
+      "baseline": 50,
+      "candidate": 0
+    },
+    "totalSceneAndIndexBuildsEachPer50Previews": {
+      "baseline": 100,
+      "candidate": 50
+    },
+    "limit": "Mounted Canvas/Editor CPU elapsed, mock DOM/render host; no GPU or input-to-display claim"
+  },
+  "workspaceObserve": {
+    "backendTests": {
+      "passed": 90,
+      "failed": 0,
+      "ignored": 1,
+      "source": "workspace-observe/verification-20261019T1716/backend-suite-frozen.log"
+    },
+    "stdioOracleChecks": 34,
+    "independentOracleChecks": 196,
+    "abbaBatches": 36,
+    "rawPerObserveWallSamples": 5160,
+    "clippyBackendNoDeps": "passed",
+    "clippyIncludingDependencies": "blocked by 31 existing design-kernel errors; raw clippy.log retained",
+    "profile": "Cargo dev opt-level=0, debug=0; CPU production methods through stdio",
+    "schemaVersion": 5,
+    "limit": "Every poll retains SQL query/equality. Child process CPU is 10 ms ticks; stdio wall includes harness parse. No release-profile/UI/GPU claim"
+  },
+  "independentReview": {
+    "vitest": {
+      "passed": 7,
+      "failed": 0,
+      "files": 2,
+      "source": "independent-review/vitest-final.log"
+    },
+    "stdioOracleChecks": 196,
+    "negativeControl": {
+      "failed": 2,
+      "deliberatelyUnselected": 1,
+      "source": "independent-review/lane-color-final-real-pq-baseline.log"
+    },
+    "unresolvedBlockersWithinReviewedScope": 0,
+    "limit": "Checkpoint review does not replace final aggregate or GPU/device acceptance"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/cache-negative.test.ts": "5af7fe099f0b5c668ca68a46627dda1e5ab0d5b027b8e1d789fb85d77aaeeaf0",
+  "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/verify_observe_randomized.py": "eb530225ad8a31795d18600280f5d7b3725a3d661cc9a885f62f86eb233cc585",
+  "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/worker-lane-color.test.ts": "9911ea45fdb13f8439b242688004e12272a013ea5a0dfa9efb6951c5b3b663b4",
+  "${EVIDENCE_SOURCE}/review-release/relocated-review-attempt-1/vitest.config.mjs": "bb105b1f731b63d244daa608436571ed638d27526afc1d5d8d7ed7cbe344ef6e",
+  "${EVIDENCE_SOURCE}/workspace-observe/baseline/backend": "3ebc574d61cff5b5573ecfbcb7f83b61fed083df8b03164b793deb6de9d78930",
+  "${EVIDENCE_SOURCE}/workspace-observe/candidate/backend-bench": "c167b2327d071b7f113c2310cb72c3b3e9219610c6b793d6f75815f8cdce6532"
+}
