@@ -3,6 +3,7 @@ import path from 'node:path'
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { chmod, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { WorkspaceAutomationHost, isWorkspaceAutomationMethod, permitsAutomationMethod, validAutomationGrants } from './workspace-automation.mjs'
 
 export const AUTOMATION_PROTOCOL_VERSION = 1
 export const MAX_AUTOMATION_FRAME_BYTES = 32 * 1024 * 1024
@@ -31,7 +32,7 @@ function validateEditor(value) {
   if (!ownKeys(value, ['documentId', 'session', 'name', 'methods']) || typeof value.documentId !== 'string' || !value.documentId || value.documentId.length > 256 || !Number.isSafeInteger(value.session) || value.session < 0 || typeof value.name !== 'string' || value.name.length > 256 || !Array.isArray(value.methods) || value.methods.length > 256) throw fail('INVALID_EDITOR', 'Invalid editor registration')
   const names = new Set()
   for (const method of value.methods) {
-    if (!plain(method) || !validMethod(method.name) || typeof method.mutates !== 'boolean' || names.has(method.name)) throw fail('INVALID_EDITOR', 'Invalid automation method')
+    if (!plain(method) || !validMethod(method.name) || typeof method.mutates !== 'boolean' || method.grant !== undefined || names.has(method.name)) throw fail('INVALID_EDITOR', 'Invalid automation method')
     names.add(method.name)
   }
   if (Buffer.byteLength(JSON.stringify(value)) > MAX_AUTOMATION_FRAME_BYTES) throw fail('FRAME_TOO_LARGE', 'Editor registration exceeds the limit')
@@ -40,8 +41,9 @@ function validateEditor(value) {
 
 /** Ephemeral, explicitly enabled local endpoint. No TCP, discovery file, or durable credential. */
 export class LocalAutomationBridge {
-  constructor({ dispatch, onChange = () => {}, onAudit = () => {}, timeoutMs = REQUEST_TIMEOUT_MS, frameBytes = MAX_AUTOMATION_FRAME_BYTES, temporaryRoot = tmpdir() }) {
+  constructor({ dispatch, workspaceHost, onChange = () => {}, onAudit = () => {}, timeoutMs = REQUEST_TIMEOUT_MS, frameBytes = MAX_AUTOMATION_FRAME_BYTES, temporaryRoot = tmpdir() }) {
     this.dispatch = dispatch
+    this.workspaceHost = workspaceHost
     this.onChange = onChange
     this.onAudit = onAudit
     this.journal = []
@@ -66,7 +68,7 @@ export class LocalAutomationBridge {
   status() {
     const state = this.active
     return {
-      enabled: Boolean(state), ...(state ? { scope: state.scope, sessionId: state.sessionId, documentId: state.editor.documentId, session: state.editor.session } : {}),
+      enabled: Boolean(state), ...(state ? { scope: state.scope, grants: state.grants ?? {}, sessionId: state.sessionId, documentId: state.editor.documentId, session: state.editor.session } : {}),
       ...(this.editor ? { editor: { documentId: this.editor.documentId, session: this.editor.session, name: this.editor.name } } : {}),
       connectedClients: state?.sockets.size ?? 0, pendingRequests: state?.pending.size ?? 0, journal: this.journal.map(entry => ({ ...entry })),
     }
@@ -83,10 +85,11 @@ export class LocalAutomationBridge {
   connection() {
     const state = this.active
     if (!state) return null
-    return { protocolVersion: AUTOMATION_PROTOCOL_VERSION, endpoint: state.endpoint, token: state.token, sessionId: state.sessionId, scope: state.scope, documentId: state.editor.documentId, session: state.editor.session }
+    return { protocolVersion: AUTOMATION_PROTOCOL_VERSION, endpoint: state.endpoint, token: state.token, sessionId: state.sessionId, scope: state.scope, grants: state.grants ?? {}, documentId: state.editor.documentId, session: state.editor.session }
   }
 
-  async enable(scope, expectedEditor = this.editor) {
+  async enable(scope, expectedEditor = this.editor, grants = {}) {
+    if (!validAutomationGrants(grants) || (Object.keys(grants).length && !this.workspaceHost)) throw fail('INVALID_SCOPE', 'Workspace/settings automation is unavailable')
     if (!['read', 'write'].includes(scope)) throw fail('INVALID_SCOPE', 'Choose read or write access')
     if (!expectedEditor || expectedEditor !== this.editor) throw fail('NO_EDITOR', 'Select a live editor first')
     await this.close()
@@ -101,9 +104,10 @@ export class LocalAutomationBridge {
       await chmod(directory, 0o700)
       endpoint = path.join(directory, 'bridge.sock')
     }
-    const state = { sessionId, token, scope, endpoint, directory, editor: expectedEditor, sockets: new Set(), pending: new Set(), server: null }
+    const state = { sessionId, token, scope, grants: { ...grants }, endpoint, directory, editor: expectedEditor, sockets: new Set(), pending: new Set(), server: null }
     state.server = net.createServer(socket => this.accept(state, socket))
     try {
+      if (Object.keys(grants).length) await this.workspaceHost.grant(sessionId, grants)
       await new Promise((resolve, reject) => {
         state.server.once('error', reject)
         state.server.listen(endpoint, () => { state.server.removeListener('error', reject); resolve() })
@@ -112,9 +116,10 @@ export class LocalAutomationBridge {
       if (directory) await chmod(endpoint, 0o600)
       if (generation !== this.generation || expectedEditor !== this.editor) throw fail('STALE_SESSION', 'The editor changed while enabling automation')
       this.active = state
-      this.audit(state, { method: 'bridge.enable', status: 'ok' })
-      return { protocolVersion: AUTOMATION_PROTOCOL_VERSION, endpoint, sessionId, token, scope, documentId: expectedEditor.documentId, session: expectedEditor.session }
+      this.audit(state, { method: 'bridge.enable', status: 'ok', summary: `Document: ${scope}; workspace: ${grants.workspace ?? 'none'}; settings: ${grants.settings ?? 'none'}` })
+      return { protocolVersion: AUTOMATION_PROTOCOL_VERSION, endpoint, sessionId, token, scope, grants: { ...grants }, documentId: expectedEditor.documentId, session: expectedEditor.session }
     } catch (error) {
+      this.workspaceHost?.revoke(sessionId)
       for (const socket of state.sockets) socket.destroy()
       await new Promise(resolve => state.server.close(resolve))
       if (directory) await rm(directory, { recursive: true, force: true })
@@ -127,6 +132,7 @@ export class LocalAutomationBridge {
     const state = this.active
     this.active = null // revoke synchronously before any awaited cleanup
     if (state) {
+      this.workspaceHost?.revoke(state.sessionId)
       this.audit(state, { method: 'bridge.disable', status: 'ok' })
       for (const pending of state.pending) pending.abort(fail('SESSION_CLOSED', 'Local automation was disabled'))
       for (const socket of state.sockets) socket.destroy()
@@ -168,7 +174,7 @@ export class LocalAutomationBridge {
       this.onChange()
       try {
         const result = await Promise.race([
-          Promise.resolve().then(() => { if (controller.signal.aborted) throw controller.signal.reason; return this.dispatch({ kind, request, scope: state.scope, sessionId: state.sessionId, documentId: state.editor.documentId, session: state.editor.session, deadline: Date.now() + this.timeoutMs }, controller.signal) }),
+          Promise.resolve().then(() => { if (controller.signal.aborted) throw controller.signal.reason; const payload = { kind, request, scope: state.scope, sessionId: state.sessionId, documentId: state.editor.documentId, session: state.editor.session, deadline: Date.now() + this.timeoutMs }; return kind === 'execute' && isWorkspaceAutomationMethod(request?.method) ? this.workspaceHost.execute(payload, controller.signal) : this.dispatch(payload, controller.signal) }),
           new Promise((_, reject) => controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true })),
         ])
         if (this.active !== state) throw fail('SESSION_CLOSED', 'Local automation was disabled')
@@ -203,25 +209,25 @@ export class LocalAutomationBridge {
           authenticating = true
           const result = await dispatch(id, 'capabilities')
           authenticated = true; clearTimeout(authTimer)
-          send({ id, result: { ...result, ...(result?.capabilities ? { capabilities: { ...result.capabilities, methods: result.capabilities.methods.filter(method => state.scope === 'write' || !method.mutates) } } : {}), protocolVersion: AUTOMATION_PROTOCOL_VERSION, sessionId: state.sessionId, scope: state.scope } })
+          send({ id, result: { ...result, ...(result?.capabilities ? { capabilities: { ...result.capabilities, methods: [...result.capabilities.methods.filter(method => !isWorkspaceAutomationMethod(method.name) && permitsAutomationMethod(method, state.scope)), ...(this.workspaceHost?.methods(state.sessionId) ?? [])] } } : {}), protocolVersion: AUTOMATION_PROTOCOL_VERSION, sessionId: state.sessionId, scope: state.scope, grants: state.grants ?? {} } })
           return
         }
         if (message.method === 'capabilities') {
           if (message.params !== undefined && !ownKeys(message.params, [])) throw fail('INVALID_REQUEST', 'Capabilities takes no arguments after authentication')
           const result = await dispatch(id, 'capabilities')
-          send({ id, result: { ...result, ...(result?.capabilities ? { capabilities: { ...result.capabilities, methods: result.capabilities.methods.filter(method => state.scope === 'write' || !method.mutates) } } : {}), protocolVersion: AUTOMATION_PROTOCOL_VERSION, sessionId: state.sessionId, scope: state.scope } })
+          send({ id, result: { ...result, ...(result?.capabilities ? { capabilities: { ...result.capabilities, methods: [...result.capabilities.methods.filter(method => !isWorkspaceAutomationMethod(method.name) && permitsAutomationMethod(method, state.scope)), ...(this.workspaceHost?.methods(state.sessionId) ?? [])] } } : {}), protocolVersion: AUTOMATION_PROTOCOL_VERSION, sessionId: state.sessionId, scope: state.scope, grants: state.grants ?? {} } })
           return
         }
         if (message.method !== 'execute') throw fail('METHOD_NOT_FOUND', 'Unknown bridge method')
         const request = message.params
         if (!ownKeys(request, ['id', 'method', 'params', 'expectedRevision', 'documentId', 'session']) || !validMethod(request.method)) throw fail('INVALID_REQUEST', 'Invalid automation request')
-        const method = state.editor.methods.find(entry => entry.name === request.method)
+        const method = [...state.editor.methods.filter(entry => !isWorkspaceAutomationMethod(entry.name)), ...(this.workspaceHost?.methods(state.sessionId) ?? [])].find(entry => entry.name === request.method)
         if (!method) throw fail('METHOD_NOT_FOUND', 'Unknown design automation method')
-        if (method.mutates && state.scope !== 'write') throw fail('PERMISSION_DENIED', 'This connection only permits reading')
+        if (!permitsAutomationMethod(method, state.scope, state.grants)) throw fail('PERMISSION_DENIED', 'This connection only permits reading')
         if (request.documentId !== state.editor.documentId || request.session !== state.editor.session) throw fail('STALE_SESSION', 'Every request must target the explicitly selected document and session')
         if (method.mutates && (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision < 0)) throw fail('REVISION_REQUIRED', 'Writes require the observed expectedRevision')
         const result = await dispatch(id, 'execute', request, frameBytes)
-        this.audit(state, { method: request.method, requestId: id, status: result?.ok === false ? 'error' : 'ok', ...(result?.ok === false ? { code: result.error?.code || 'API_ERROR' } : {}), ...(Number.isSafeInteger(result?.revision) ? { revision: result.revision } : {}), durationMs: Date.now() - started })
+        this.audit(state, { method: request.method, scope: method.grant ? state.grants[method.grant] : state.scope, requestId: id, status: result?.ok === false ? 'error' : 'ok', ...(result?.ok === false ? { code: result.error?.code || 'API_ERROR' } : {}), ...(Number.isSafeInteger(result?.revision) ? { revision: result.revision } : {}), durationMs: Date.now() - started })
         audited = true
         send({ id, result }, LARGE_OUTPUT_METHODS.has(request.method))
       } catch (error) {
@@ -257,7 +263,7 @@ export class LocalAutomationBridge {
 }
 
 /** Only trusted main-frame IPC can bind the live editor or answer a host request. */
-export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dialog, clipboard, audit, storage }) {
+export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dialog, clipboard, audit, storage, workspace }) {
   const requests = new Map()
   let dialogOpen = false
   let auditError, statusTimer
@@ -290,10 +296,7 @@ export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dia
     })()
     return true
   }
-  const bridge = new LocalAutomationBridge({
-    onChange: changed,
-    onAudit: enqueueAudit,
-    dispatch: (payload, signal) => new Promise((resolve, reject) => {
+  const dispatchRenderer = (payload, signal) => new Promise((resolve, reject) => {
       const window = getWindow()
       if (!window || window.isDestroyed() || signal.aborted) { reject(fail('NO_EDITOR', 'No live editor is available')); return }
       const requestId = randomUUID()
@@ -305,8 +308,17 @@ export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dia
       signal.addEventListener('abort', abort, { once: true })
       requests.set(requestId, { resolve, reject, cleanup: () => signal.removeEventListener('abort', abort) })
       window.webContents.send('design-desktop:automation-request', { ...payload, requestId })
-    }),
-  })
+    })
+  const workspaceHost = workspace ? new WorkspaceAutomationHost({ ...workspace, storage, dispatch: dispatchRenderer,
+    confirm: async (_action, detail) => {
+      const window = getWindow()
+      if (!window || window.isDestroyed()) return false
+      const answer = await dialog.showMessageBox(window, { type: 'question', title: 'Local workspace automation', message: detail.message,
+        buttons: ['Cancel', 'Allow this action'], defaultId: 0, cancelId: 0, noLink: true })
+      return answer.response === 1
+    },
+  }) : undefined
+  const bridge = new LocalAutomationBridge({ dispatch: dispatchRenderer, workspaceHost, onChange: changed, onAudit: enqueueAudit })
   let editIdentity = '', editRevision = 0
   ipcMain.handle('design-desktop:automation-register', (event, value) => {
     assertSender(event, getWindow())
@@ -336,19 +348,22 @@ export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dia
     let timer
     try { await Promise.race([auditDrain, new Promise(resolve => { timer = setTimeout(resolve, 2_000) })]) } finally { clearTimeout(timer) }
   }
-  const enable = async scope => {
+  const enable = async (scope, grants = {}) => {
     if (dialogOpen) return
     dialogOpen = true
     try {
       const editor = bridge.editor, window = getWindow()
       if (!editor || !window || window.isDestroyed()) throw fail('NO_EDITOR', 'Open a design before enabling local automation.')
+      const rootAtPrompt = Object.keys(grants).length ? workspace?.getRoot() : undefined
+      const rootInfo = rootAtPrompt ? await workspace.status() : undefined
       const confirmation = await dialog.showMessageBox(window, {
         type: 'question', title: 'Local design automation', message: `Allow ${scope === 'write' ? 'read and edit' : 'read-only'} access to “${editor.name || editor.documentId}”?`,
-        detail: 'Only local clients with the temporary connection details can connect. Access ends when disabled, the design changes, or this window closes. Edit access can change the open document through undoable design commands. No file-system, shell, or network commands are exposed.',
+        detail: `${Object.keys(grants).length ? `Additional explicitly selected access for workspace “${String(rootInfo?.displayName ?? 'current workspace').slice(0, 256)}”: ${Object.entries(grants).map(([area, level]) => `${area}: ${level}`).join(', ')}. Workspace access is bound to the current root; workspace changes and history restoration require separate confirmations. ` : ''}Only local clients with the temporary connection details can connect. Access ends when disabled, the design changes, or this window closes. Edit access can change the open document through undoable design commands. No arbitrary file-system, shell, or network commands are exposed.`,
         buttons: ['Cancel', 'Enable for this design'], defaultId: 0, cancelId: 0,
       })
       if (confirmation.response !== 1) return
-      const config = await bridge.enable(scope, editor)
+      if (rootAtPrompt && workspace.getRoot() !== rootAtPrompt) throw fail('WRONG_ROOT', 'The workspace changed during confirmation; review and enable again')
+      const config = await bridge.enable(scope, editor, grants)
       const copy = await dialog.showMessageBox(window, {
         type: 'info', title: 'Local automation enabled', message: `${scope === 'write' ? 'Read and edit' : 'Read-only'} access is enabled for this design.`,
         detail: `Keep these temporary connection details private. Configure the stdio adapter with this JSON:\n\n${JSON.stringify(config, null, 2)}`,
@@ -391,7 +406,13 @@ export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dia
     },
     'storage-status': value => { if (value !== undefined) throw fail('INVALID_REQUEST', 'Unexpected storage status arguments'); return persisted('automation.status', {}) },
     status: value => { if (value !== undefined) throw fail('INVALID_REQUEST', 'Unexpected status arguments'); return getStatus() },
-    enable: async value => { if (!ownKeys(value, ['scope']) || !['read', 'write'].includes(value.scope)) throw fail('INVALID_REQUEST', 'Choose read or write scope'); await enable(value.scope); return getStatus() },
+    enable: async value => {
+      if (!ownKeys(value, ['scope', 'workspaceScope', 'settingsScope']) || !['read', 'write'].includes(value.scope) ||
+        [value.workspaceScope, value.settingsScope].some(scope => scope !== undefined && !['read', 'write'].includes(scope))) throw fail('INVALID_REQUEST', 'Choose explicit read or write scopes')
+      const grants = { ...(value.workspaceScope ? { workspace: value.workspaceScope } : {}), ...(value.settingsScope ? { settings: value.settingsScope } : {}) }
+      if (Object.keys(grants).length && !workspaceHost) throw fail('UNAVAILABLE', 'Workspace/settings automation is unavailable')
+      await enable(value.scope, grants); return getStatus()
+    },
     disable: async value => { if (value !== undefined) throw fail('INVALID_REQUEST', 'Unexpected disable arguments'); await bridge.close(); return getStatus() },
     'copy-connection': value => {
       if (value !== undefined) throw fail('INVALID_REQUEST', 'Unexpected connection arguments')

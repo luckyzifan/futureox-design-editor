@@ -375,19 +375,24 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (moveFrame.current !== null) cancelAnimationFrame(moveFrame.current)
     moveFrame.current = null; queuedMove.current = null; queuedInputAt.current = 0
   }
-  useEffect(() => cancelQueuedMove, [])
+  useLayoutEffect(() => cancelQueuedMove, [editor, editor.sessionGeneration, state.page])
   const queuePointerMove = (event: React.PointerEvent) => {
     const active = drag.current
     const hover = !active && !pencil.current && !utility.active()
-    if (!hover && (!active || !['move','resize','scale','rotate','parameter'].includes(active.kind))) { moveCallback.current(event); return }
+    // These previews are functions of the captured gesture baseline and latest
+    // pointer. Pen construction (vertex without a node), freehand and utility
+    // tools accumulate samples and must continue receiving every input event.
+    const latestOnly = active && (['move','resize','scale','rotate','parameter','handle','width','crop','marquee','zoom'].includes(active.kind) ||
+      active.kind === 'vertex' && !!active.node)
+    if (!hover && !latestOnly) { moveCallback.current(event); return }
     if (active && event.pointerId !== active.pointerId) return
     const session = editor.sessionGeneration, page = editor.state.page
     queuedMove.current = { event, at: performance.now() }
     if (moveFrame.current === null) moveFrame.current = requestAnimationFrame(() => {
       moveFrame.current = null
       const next = queuedMove.current; queuedMove.current = null
-      const valid = active ? drag.current?.pointerId === next?.event.pointerId &&
-        drag.current?.session === active.session && drag.current?.page === active.page : !drag.current && !pencil.current && !utility.active()
+      const valid = active ? drag.current === active && active.pointerId === next?.event.pointerId
+        : !drag.current && !pencil.current && !utility.active()
       if (next && valid && session === editor.sessionGeneration && page === editor.state.page) {
         queuedInputAt.current = next.at; moveCallback.current(next.event); queuedInputAt.current = 0
       }
@@ -615,7 +620,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const measurementBounds = measurementTarget && displayedSnapshot
     ? displayedIndex?.entries.find(e=>e.id===measurementTarget)?.bounds : null
   const measurements = useMemo(() => measurementBounds ? measureBounds(selectionBox,measurementBounds) : [], [selectionBox,measurementBounds])
-  const transformHandles = selectionHandles(selectionCorners, zoom)
+  const transformHandles = useMemo(() => selectionHandles(selectionCorners, zoom), [selectionCorners, zoom])
   const ownedDrag = drag.current?.session === editor.sessionGeneration && drag.current.page === state.page
     ? drag.current : null
   const capturedTransform = !!ownedDrag && ['move', 'resize', 'scale', 'rotate', 'pivot', 'parameter'].includes(ownedDrag.kind)
@@ -747,7 +752,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         setMeasureKeys({alt:e.altKey,deep:e.metaKey||e.ctrlKey})
         if (e.altKey) setCursor(cursorPoint.current)
       }
-      if (['Shift', 'Alt', 'Control'].includes(e.key) && replayDragModifiers(e)) return
+      if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
       if(utility.active() && e.key!=='Escape'){e.preventDefault();return}
       // X is a momentary selection override, never a persistent tool switch.
       // Keep it out of text/IME/modal handling and don't toggle on repeats.
@@ -813,6 +818,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
       if (e.key === 'Escape') {
         e.preventDefault()
+        cancelQueuedMove()
         marqueeHeld.current = false; setMarqueeKeyHeld(false)
         const cancelOnly = !!drag.current || !!pencil.current || !!penRef.current || editor.state.tool !== 'select'
         flushView()
@@ -918,12 +924,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const up = (e: KeyboardEvent) => {
       if (e.code === 'KeyX' || e.key.toLowerCase() === 'x') { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
       if(['Alt','Meta','Control'].includes(e.key))setMeasureKeys({alt:e.altKey,deep:e.metaKey||e.ctrlKey})
-      if (['Shift', 'Alt', 'Control'].includes(e.key) && replayDragModifiers(e)) return
+      if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
       if (e.code === 'Space') { space.current = false; setSpaceHeld(false) }
       if (drag.current?.kind === 'create' && ['Shift', 'Alt'].includes(e.key))
         updateCreation(drag.current, { shift: e.shiftKey, alt: e.altKey })
     }
     const blur = () => {
+      cancelQueuedMove()
       wheelModifiers.current = { ctrl: false, meta: false }
       setMeasureKeys({alt:false,deep:false})
       if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
@@ -1045,6 +1052,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // displayed camera; selection uses the displayed snapshot and live IDs.
     // A different page/session is a separate loading boundary, never a target.
     if (!displayedSnapshot && editor.state.tool !== 'hand' && !space.current && e.button !== 1) return
+    // Handles stop propagation and bypass the host's pointerdown handler.
+    // Retire the hover frame before its ownership is replaced by this drag.
+    cancelQueuedMove()
     host.current!.setPointerCapture(e.pointerId)
     const capturedView = { ...displayViewRef.current }
     const p = screenToWorld(capturedView, screenPoint(e)),
@@ -1771,14 +1781,21 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   )
   function replayDragModifiers(event: KeyboardEvent) {
     const active = drag.current
-    if (!active?.lastInput || !['move', 'resize', 'scale', 'rotate', 'parameter'].includes(active.kind)) return false
-    move({ ...active.lastInput, shiftKey: event.shiftKey, altKey: event.altKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey })
+    if (!active || !['move', 'resize', 'scale', 'rotate', 'parameter', 'width', 'handle', 'vertex'].includes(active.kind) ||
+        active.kind === 'vertex' && !active.node) return false
+    // A key can arrive before the first animation frame. Consume that latest
+    // owner sample now, so an older queued modifier state cannot overwrite it.
+    const input = queuedMove.current?.event || active.lastInput
+    if (!input || input.pointerId !== active.pointerId) return false
+    cancelQueuedMove()
+    move({ ...input, shiftKey: event.shiftKey, altKey: event.altKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey })
     return true
   }
   function startWidth(e: React.PointerEvent, h: StrokeHandle, side: 'left' | 'right') {
     if (!widthNode || !editor.topSelection().includes(widthNode.id) || e.button !== 0 || !e.isPrimary || drag.current || pencil.current) return
     if (!displayedSnapshot) return
     if (e.ctrlKey && /Mac|iPhone|iPad/.test(navigator.platform)) return
+    cancelQueuedMove()
     e.stopPropagation()
     e.preventDefault()
     host.current!.setPointerCapture(e.pointerId)
@@ -1878,6 +1895,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         utility.cancel(e.pointerId)
         if (pencil.current && e.pointerId !== pencil.current.input.pointerId) return
         if (drag.current && e.pointerId !== drag.current.pointerId) return
+        cancelQueuedMove()
         if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
         flushView()
         cancelPencil()
@@ -1891,6 +1909,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if(utility.active())utility.cancel(e.pointerId)
         if (pencil.current?.input.pointerId === e.pointerId) cancelPencil()
         if (drag.current?.pointerId === e.pointerId) {
+          cancelQueuedMove()
           if(drag.current.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
           flushView()
           editor.cancel(); drag.current = null; setPanning(false); setShapePreview(null); setRubber(null); setGuides({})

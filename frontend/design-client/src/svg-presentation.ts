@@ -1,3 +1,5 @@
+import { svgFraction } from './svg-values.ts'
+
 type SvgAttributes = { getAttribute(name: string): string | null }
 export type SvgStyle = Record<string, string>
 
@@ -22,7 +24,7 @@ export function svgPresentation(element: SvgAttributes, inherited: SvgStyle = {}
   return {
     style,
     inline,
-    opacity: Number(inline.opacity || element.getAttribute('opacity') || 1),
+    opacity: svgFraction(inline.opacity || element.getAttribute('opacity') || '1', 'opacity'),
     display: inline.display || element.getAttribute('display') || '',
   }
 }
@@ -45,3 +47,4 @@ export function svgRootPresentation(root: SvgAttributes) {
   }
   return presentation
 }
+

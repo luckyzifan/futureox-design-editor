@@ -1,3 +1,4 @@
+import { FontManagementPanel } from './FontManagementPanel'
 import { MultiStylePanel } from './MultiStylePanel'
 import {smartSelection,smartSpacing} from './smart-selection'
 import { AlignmentControls } from './AlignmentControls'
@@ -55,6 +56,7 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
       </section>
       {smart&&<section><h3>智能选择</h3><div className="field-grid">{(['x','y'] as const).filter(axis=>smart[axis].length>1).map(axis=><NumberField key={axis} label={axis==='x'?'水平间距':'垂直间距'} value={axis==='x'?smart.gapX:smart.gapY} min={0} onChange={value=>{const patches=smartSpacing(editor.state.doc,smart,axis,value);editor.change('调整智能选区间距',d=>{for(const [id,patch] of Object.entries(patches))Object.assign(d.nodes[id],patch)})}}/>)}</div></section>}
       <SelectionColorsPanel editor={editor} />
+      {nodes.some(n => n.kind === 'text') && <FontManagementPanel editor={editor} ids={ids} />}
       {nodes.every(n => n.kind === 'text') && <section aria-label="多选文字"><h3>文字</h3>
         <MixedNumberField label="字号" min={1} max={4096}
           value={commonValue(nodes.map(n => n.fontSize * readUnits(n.id).style))}

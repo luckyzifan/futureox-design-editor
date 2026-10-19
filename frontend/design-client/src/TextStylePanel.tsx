@@ -1,6 +1,9 @@
 import { UnitNumberField } from './UnitNumberField'
 import { propertyUnits } from './property-units'
 import { SystemFontPicker } from './SystemFontPicker'
+import { FontManagementPanel } from './FontManagementPanel'
+import { applySelectionFont } from './font-management'
+import { commitPendingEdits, pendingEditsChanged, registerPendingEdit } from './pending-edits'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ImportOwner, importStep } from './import-ownership'
 import { defaultTextStyle, defaultSizing, type DesignDocument, type DesignNode, type TextStyle } from './model'
@@ -14,7 +17,7 @@ export function parseCommaList(text: string) {
 }
 
 export { unmatchedSourceFonts as unmatchedSketchFonts } from './font-matching'
-import { unmatchedSourceFonts as unmatchedSketchFonts, applyMatchedFonts } from './font-matching'
+import { unmatchedSourceFonts as unmatchedSketchFonts } from './font-matching'
 import { font_faces_json } from './generated/design-kernel/design_kernel'
 import { initializeKernelModule } from './kernel/module'
 /** Kernel limits: at most 16 toggles, each at most 32 characters. */
@@ -59,6 +62,9 @@ export function TextStylePanel({
   const unmatchedFonts = unmatchedSketchFonts(doc, node)
   const [imports] = useState(() => new ImportOwner())
   useEffect(() => { imports.activate(); return () => imports.dispose() }, [imports])
+  const [detachFontStyle, setDetachFontStyle] = useState(false)
+  const fontTargetsKey = ids.join('\0')
+  useEffect(() => { imports.invalidate(); setDetachFontStyle(false) }, [imports, editor, fontTargetsKey])
   const file = useRef<HTMLInputElement>(null),
     style = { ...defaultTextStyle(), ...node.textStyle }
   // Drafts for the comma-list fields stay local until blur; the effect
@@ -97,10 +103,35 @@ export function TextStylePanel({
       },
       '修改文字排版',
     )
+  // These pre-existing list/axis inputs keep local drafts. Font application,
+  // replacement, save and navigation must honor them just like DraftInput.
+  const composing = useRef(false), draftSession = useRef(editor.sessionGeneration)
+  const draftRows = JSON.stringify(variationRows)
+  const committedRows = JSON.stringify((style.variations ?? []).map(v => ({ tag: v.tag, value: String(v.value) })))
+  const draftsDirty = () => composing.current || featuresDraft !== featuresValue || fallbacksDraft !== fallbacksValue || draftRows !== committedRows
+  if (!draftsDirty()) draftSession.current = editor.sessionGeneration
+  const pending = useRef<{ dirty: () => boolean; commit: () => boolean }>({ dirty: () => false, commit: () => true })
+  pending.current = { dirty: draftsDirty, commit: () => {
+    if (composing.current || draftSession.current !== editor.sessionGeneration || featuresHint || fallbacksHint || variationsHint) return false
+    const patch: Partial<TextStyle> = {}
+    if (featuresDraft !== featuresValue) patch.features = featuresItems.length ? featuresItems : undefined
+    if (fallbacksDraft !== fallbacksValue) patch.fallbacks = fallbacksItems
+    if (draftRows !== committedRows) patch.variations = toVariations(variationRows)
+    if (Object.keys(patch).length) {
+      update(patch)
+      const next = editor.state.doc.nodes[node.id]?.textStyle
+      if (!next || Object.keys(patch).some(key => JSON.stringify(next[key as keyof TextStyle] ?? []) !== JSON.stringify(patch[key as keyof TextStyle] ?? []))) return false
+    }
+    setFeaturesDraft(featuresItems.join(',')); setFallbacksDraft(fallbacksItems.join(','))
+    setVariationRows(toVariations(variationRows).map(v => ({ tag: v.tag, value: String(v.value) })))
+    return true
+  } }
+  useEffect(() => registerPendingEdit(editor, { dirty: () => pending.current.dirty(), commit: () => pending.current.commit() }), [editor])
+  useEffect(() => { pendingEditsChanged(editor) }, [editor, featuresDraft, fallbacksDraft, draftRows])
   const hint = (text: string) =>
     text ? <p role="alert" style={{ color: '#bf3d34', margin: 0 }}>{text}</p> : null
   return (
-    <div className="text-style-panel">
+    <div className="text-style-panel" onCompositionStartCapture={() => { composing.current = true; pendingEditsChanged(editor) }} onCompositionEndCapture={() => { composing.current = false; pendingEditsChanged(editor) }}>
       <label className="labeled-select">文字尺寸
         <select aria-label="文字尺寸模式" value={node.sizing?.width === 'hug' ? 'width' : node.sizing?.height === 'hug' ? 'height' : 'fixed'}
           onChange={event => {
@@ -118,7 +149,7 @@ export function TextStylePanel({
         <select
           aria-label="文字字体"
           value={style.fontId}
-          onChange={(e) => update({ fontId: e.target.value })}
+          onChange={(e) => applySelectionFont(editor, ids, e.target.value, { detachSharedStyle: detachFontStyle })}
         >
           <option value="default">Noto Sans SC（内置）</option>
           {Object.entries(doc.fonts || {}).map(([id, font]) => (
@@ -129,8 +160,9 @@ export function TextStylePanel({
         </select>
       </label>
       {unmatchedFonts.length > 0 && <p role="status" aria-label="原字体匹配状态">原字体未匹配：{unmatchedFonts.join('、')}。当前使用 Noto Sans SC，可选择本机字体或导入字体替换。</p>}
-      <SystemFontPicker editor={editor} ids={ids} />
-      <button onClick={() => { imports.invalidate(); file.current?.click() }}>导入 TTF / OTF 字体</button>
+      <SystemFontPicker editor={editor} ids={ids} detachSharedStyle={detachFontStyle} />
+      <details><summary>字体管理与批量替换</summary><FontManagementPanel editor={editor} ids={ids} includeNative={false} detachSharedStyle={detachFontStyle} onDetachSharedStyleChange={setDetachFontStyle} /></details>
+      <button onClick={() => { if (commitPendingEdits(editor)) { imports.invalidate(); file.current?.click() } }}>导入 TTF / OTF 字体</button>
       <input
         ref={file}
         type="file"
@@ -139,8 +171,8 @@ export function TextStylePanel({
         onChange={async (e) => {
           const selected = e.currentTarget.files?.[0]
           e.currentTarget.value = ''
+          if (!selected || !commitPendingEdits(editor)) return
           const request = imports.begin(editor)
-          if (!selected) return
           try {
             if (selected.size > 20 * 1024 * 1024) throw new Error('字体文件超过 20 MB')
             const bytes = new Uint8Array(await importStep(request, () => selected.arrayBuffer()))
@@ -155,23 +187,15 @@ export function TextStylePanel({
             for (let i = 0; i < bytes.length; i += 32768)
               binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
             request.assertCurrent()
-            editor.change('导入文档字体', (d) => {
-              const resource = {
-                family: `${face.family} ${face.style}`.trim().slice(0, 200),
-                postscript: face.postscript, index: face.index, data: btoa(binary),
-              }
-              d.fonts = {
-                ...d.fonts,
-                [id]: resource,
-              }
-              if (face.postscript) applyMatchedFonts(d, new Map([[face.postscript, { id, resource }]]))
-              for (const target of ids)
-                if (d.nodes[target]?.kind === 'text')
-                  applyWholeTextStyle(d.nodes[target], { fontId: id })
-            })
+            const resource = {
+              family: `${face.family} ${face.style}`.trim().slice(0, 200),
+              postscript: face.postscript, index: face.index, data: btoa(binary),
+            }
+            const result = applySelectionFont(editor, ids, id, { matchSourceFonts: true, detachSharedStyle: detachFontStyle }, resource)
+            if (result.status === 'blocked' || result.status === 'rejected') editor.notify(result.message)
           } catch (error) {
             if (request.isCurrent()) editor.notify(String(error))
-          }
+          } finally { request.finish() }
         }}
       />
       <NumberField
@@ -247,7 +271,7 @@ export function TextStylePanel({
           placeholder="-liga,kern,ss01"
           value={featuresDraft}
           onChange={(e) => setFeaturesDraft(e.currentTarget.value)}
-          onBlur={() => { if (!featuresHint) update({ features: featuresItems.length ? featuresItems : undefined }) }}
+          onBlur={() => { pending.current.commit() }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
         />
       </label>
@@ -306,7 +330,7 @@ export function TextStylePanel({
           placeholder="逗号分隔字体资源 id"
           value={fallbacksDraft}
           onChange={(e) => setFallbacksDraft(e.currentTarget.value)}
-          onBlur={() => { update({ fallbacks: fallbacksHint ? [] : fallbacksItems }) }}
+          onBlur={() => { pending.current.commit() }}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
         />
       </label>
@@ -318,8 +342,5 @@ export function TextStylePanel({
       .map((r) => ({ tag: r.tag.trim(), value: Number(r.value) }))
       .filter((v) => variationTagValid(v.tag) && Number.isFinite(v.value))
   }
-  function commitVariations() {
-    if (variationsHint) return
-    update({ variations: variationRows.length ? toVariations(variationRows) : undefined })
-  }
+  function commitVariations() { pending.current.commit() }
 }

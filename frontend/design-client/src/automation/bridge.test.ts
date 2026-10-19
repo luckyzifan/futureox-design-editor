@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Editor } from '../engine'
 import { blank, node } from '../model'
-import { attachDesktopAutomation, type DesktopAutomationRequest, type DesktopAutomationTransport } from './bridge'
+import { attachDesktopAutomation, type DesktopAutomationRequest, type DesktopAutomationTransport, type BridgeDependencies } from './bridge'
 import type { AutomationResponse } from './types'
 import type { captureDesignPreview } from './export'
 const cleanups: Array<() => void> = []
 afterEach(() => { cleanups.splice(0).reverse().forEach(fn => fn()); vi.restoreAllMocks() })
-function fixture(capturePreview?: typeof captureDesignPreview) {
+function fixture(capturePreview?: typeof captureDesignPreview, host?: BridgeDependencies['host']) {
   const document = blank('Live automation'), rectangle = node('rectangle', 10, 20, 100, 60)
   document.nodes[rectangle.id] = rectangle; document.pages[0].children.push(rectangle.id)
   const editor = new Editor(document); cleanups.push(() => editor.dispose())
@@ -19,7 +19,7 @@ function fixture(capturePreview?: typeof captureDesignPreview) {
     onRequest: (callback: typeof receive) => { receive = callback; return () => { receive = undefined } },
     onCancel: (callback: typeof cancel) => { cancel = callback; return () => { cancel = undefined } },
   } as unknown as DesktopAutomationTransport
-  const dispose = attachDesktopAutomation(editor, transport, { capturePreview }); cleanups.push(dispose)
+  const dispose = attachDesktopAutomation(editor, transport, { capturePreview, host }); cleanups.push(dispose)
   const envelope = (scope: 'read' | 'write' = 'read'): DesktopAutomationRequest => ({ requestId: `request-${++serial}`, kind: 'execute', sessionId: 'authorized-local-session', scope, documentId: editor.state.doc.id, session: editor.sessionGeneration, deadline: Date.now() + 15_000 })
   const send = (payload: DesktopAutomationRequest) => { const promise = new Promise<unknown>(resolve => waiters.set(payload.requestId, resolve)); receive!(payload); return promise }
   const call = (method: string, params: Record<string, unknown> = {}, scope: 'read' | 'write' = 'read', overrides: Partial<DesktopAutomationRequest> = {}) => {
@@ -29,7 +29,7 @@ function fixture(capturePreview?: typeof captureDesignPreview) {
   return { editor, rectangle, register, respond, recordEdit, dispose, send, call, envelope, cancel: (requestId: string) => cancel?.({ requestId }) }
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
-const previewResult = { format: 'futureox.design-preview.v1', pageId: 'page', nodeIds: [], mimeType: 'image/png', name: 'test.png', dataUrl: 'data:image/png;base64,AAAA', width: 1, height: 1, scale: 1, backend: undefined, warnings: [] }
+const previewResult = { format: 'futureox.design-preview.v1', pageId: 'page', nodeIds: [], mimeType: 'image/png', name: 'test.png', dataUrl: 'data:image/png;base64,AAAA', width: 1, height: 1, scale: 1, backend: 'cpu' as const, documentId: 'doc', target: 'page' as const, bounds: { x: 0, y: 0, width: 1, height: 1 }, bytes: 3, renderer: 'product-cpu-export', screenshot: false, warnings: [] }
 describe('live renderer automation bridge', () => {
   it('registers the real registry and exposes read-only capabilities/current fences', async () => {
     const f = fixture()
@@ -103,5 +103,85 @@ describe('live renderer automation bridge', () => {
       expect(response.ok).toBe(false); if (!response.ok) expect(response.error.code).toBe('INVALID_PARAMS')
     }
     expect(capture).not.toHaveBeenCalled()
+  })
+})
+
+describe('preview lifecycle and truthful capabilities', () => {
+  it('reports the CPU export capability consistently through both capability paths', async () => {
+    const f = fixture()
+    const negotiated = await f.send({ ...f.envelope(), kind: 'capabilities' }) as any
+    const called = await f.call('api.capabilities') as any
+    expect(called.ok).toBe(true)
+    expect(called.result.preview).toEqual(negotiated.capabilities.preview)
+    expect(called.result.preview).toMatchObject({ renderer: 'product-cpu-export', backend: 'cpu', screenshot: false, gpuDisplayPixelEquivalence: false })
+    expect(called.result.methods.some((method: any) => method.name === 'preview.capture')).toBe(true)
+    expect(called.result.methods.every((method: any) => !method.mutates)).toBe(true)
+  })
+  it('uses the active page, includes capture fences, and does not mutate or reduce scale', async () => {
+    const capture = vi.fn(async () => previewResult) as unknown as typeof captureDesignPreview, f = fixture(capture)
+    f.editor.addPage()
+    const document = f.editor.state.doc, version = f.editor.state.version
+    const result = await f.call('preview.capture', { scale: 4 }) as any
+    expect(vi.mocked(capture).mock.calls[0][1]).toMatchObject({ pageId: f.editor.state.page, scale: 4 })
+    expect(result.result).toMatchObject({ documentId: document.id, session: f.editor.sessionGeneration, revision: version })
+    expect(f.editor.state.doc).toBe(document); expect(f.editor.state.version).toBe(version)
+  })
+  it('rejects implicit active-page races but honors an explicit page target', async () => {
+    const gate = deferred<typeof previewResult>(), capture = vi.fn(() => gate.promise) as unknown as typeof captureDesignPreview, f = fixture(capture)
+    const oldPage = f.editor.state.page
+    f.editor.addPage(); const newPage = f.editor.state.page
+    const pending = f.call('preview.capture')
+    f.editor.set({ page: oldPage }); gate.resolve(previewResult)
+    expect(await pending).toMatchObject({ ok: false, error: { code: 'STALE_PAGE' } })
+    const explicit = f.call('preview.capture', { pageId: newPage })
+    f.editor.set({ page: newPage })
+    expect(await explicit).toMatchObject({ ok: true })
+  })
+  it('times out a non-settling renderer and keeps the bridge available for a retry', async () => {
+    let signal: AbortSignal | undefined
+    const capture = vi.fn((_document, options) => { signal = options?.signal; return new Promise(() => {}) }) as unknown as typeof captureDesignPreview
+    const f = fixture(capture)
+    expect(await f.call('preview.capture', {}, 'read', { deadline: Date.now() + 25 })).toMatchObject({ ok: false, error: { code: 'TIMEOUT' } })
+    expect(signal?.aborted).toBe(true)
+    expect(await f.call('document.get')).toMatchObject({ ok: true })
+  })
+  it('preserves renderer failure details without manufacturing substitute pixels', async () => {
+    const capture = vi.fn(async () => { throw Object.assign(new Error('Raster unavailable'), { code: 'renderer_unavailable', details: { backend: 'cpu' } }) }) as unknown as typeof captureDesignPreview
+    const f = fixture(capture), document = f.editor.state.doc
+    const result = await f.call('preview.capture')
+    expect(result).toMatchObject({ ok: false, error: { code: 'renderer_unavailable', details: { backend: 'cpu' } } })
+    expect('result' in result).toBe(false); expect(f.editor.state.doc).toBe(document)
+  })
+  it('rejects empty/oversized identifiers and empty selections before capture', async () => {
+    const capture = vi.fn(async () => previewResult) as unknown as typeof captureDesignPreview, f = fixture(capture)
+    for (const params of [{ pageId: '' }, { pageId: 'x'.repeat(513) }, { nodeIds: [] }, { nodeIds: [''] }, { nodeIds: ['x'.repeat(513)] }])
+      expect(await f.call('preview.capture', params)).toMatchObject({ ok: false, error: { code: 'INVALID_PARAMS' } })
+    expect(capture).not.toHaveBeenCalled()
+  })
+})
+
+describe('native host-operation adapter', () => {
+  it('dispatches only installed host adapters, returns raw success and preserves transport errors', async () => {
+    const unavailable = fixture()
+    expect(await unavailable.send({ ...unavailable.envelope(), kind: 'host', hostOperation: { method: 'workspace.current', params: {} } })).toMatchObject({ transportError: { code: 'HOST_UNAVAILABLE' } })
+    const execute = vi.fn(async () => ({ current: 'opaque' })), f = fixture(undefined, { execute })
+    expect(await f.send({ ...f.envelope(), kind: 'host', hostOperation: { method: 'workspace.current', params: {} } })).toEqual({ current: 'opaque' })
+    expect(execute).toHaveBeenCalledTimes(1)
+    execute.mockRejectedValueOnce(Object.assign(new Error('Grant denied'), { code: 'PERMISSION_DENIED' }))
+    expect(await f.send({ ...f.envelope(), kind: 'host', hostOperation: { method: 'workspace.current', params: {} } })).toMatchObject({ transportError: { code: 'PERMISSION_DENIED', message: 'Grant denied' } })
+    expect(await f.send({ ...f.envelope(), kind: 'host', documentId: 'foreign', hostOperation: { method: 'workspace.current', params: {} } })).toMatchObject({ transportError: { code: 'STALE_SESSION' } })
+    expect(execute).toHaveBeenCalledTimes(2)
+  })
+  it('aborts native async work on deadline and rechecks a switched session', async () => {
+    let signal: AbortSignal | undefined
+    const execute = vi.fn((_payload, value: AbortSignal) => { signal = value; return new Promise(() => {}) })
+    const f = fixture(undefined, { execute })
+    expect(await f.send({ ...f.envelope(), kind: 'host', deadline: Date.now() + 25, hostOperation: { method: 'workspace.current', params: {} } })).toMatchObject({ transportError: { code: 'TIMEOUT' } })
+    expect(signal?.aborted).toBe(true)
+    const gate = deferred<unknown>()
+    execute.mockImplementationOnce(() => gate.promise)
+    const pending = f.send({ ...f.envelope(), kind: 'host', hostOperation: { method: 'workspace.open', params: {} } })
+    f.editor.load(blank('Other document')); gate.resolve({ opened: true })
+    expect(await pending).toMatchObject({ transportError: { code: 'STALE_SESSION' } })
   })
 })

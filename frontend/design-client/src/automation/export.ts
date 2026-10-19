@@ -2,7 +2,7 @@ import { encodeDocumentBinary, decodeDocumentBinary } from '../kernel/binfmt'
 import { svgSource } from '../export'
 import { appendDocument } from '../append-document'
 import { validateDocument } from '../model'
-import { kernelLayout, prepareDocumentForEditing } from '../kernel/picking'
+import { kernelLayout, kernelExportPlan, prepareDocumentForEditing } from '../kernel/picking'
 import type { DesignDocument, DesignNode, Paint, TextRun } from '../model'
 import { AutomationError, type AutomationExtension, type AutomationContext } from './types'
 import {
@@ -309,33 +309,45 @@ export function exportDesignSvg(document: DesignDocument, input: CodeExportOptio
   return { format: 'futureox.design-vector.v1', mimeType: 'image/svg+xml', filename: 'design.svg', content: result.source, bounds: result.box, sourceNodeIds: selected.roots, warnings: [{ code: 'SVG_NODE_MAPPING', message: 'Source root IDs identify this export scope. Native SVG path and definition IDs are internal and are not a DOM editing API.' }] }
 }
 
+export const PREVIEW_LIMITS = Object.freeze({ pixels: EXPORT_LIMITS.previewPixels, maxSide: 16384, responseBytes: EXPORT_LIMITS.bytes, envelopeBytes: 64 * 1024, nodeIds: 256, minScale: 0.1, maxScale: 4 })
 export type PreviewOptions = Pick<ContextOptions, 'pageId' | 'nodeIds'> & { format?: 'png' | 'jpeg' | 'webp'; scale?: number; signal?: AbortSignal }
-/** This calls the existing real raster exporter. No DOM mock, placeholder image,
- * reimplementation or fidelity downgrade is used when the renderer is unavailable. */
+/** Actual product CPU raster export, not the displayed GPU canvas or app chrome.
+ * Never falls back to SVG/DOM rasterization when the product renderer fails. */
 export async function captureDesignPreview(document: DesignDocument, options: PreviewOptions = {}) {
+  options.signal?.throwIfAborted()
   const selection = contextEntries(document, { ...options, maxDepth: 0 })
   const format = options.format ?? 'png', scale = options.scale ?? 1
   if (!['png', 'jpeg', 'webp'].includes(format)) throw new AutomationError('invalid_params', 'Preview format must be png, jpeg or webp')
-  if (typeof scale !== 'number' || !Number.isFinite(scale) || scale < 0.1 || scale > 4) throw new AutomationError('invalid_params', 'Preview scale must be between 0.1 and 4')
-  options.signal?.throwIfAborted()
+  if (typeof scale !== 'number' || !Number.isFinite(scale) || scale < PREVIEW_LIMITS.minScale || scale > PREVIEW_LIMITS.maxScale) throw new AutomationError('invalid_params', 'Preview scale must be between 0.1 and 4')
+  if (options.nodeIds && options.nodeIds.length > PREVIEW_LIMITS.nodeIds) throw new AutomationError('invalid_params', 'Preview supports at most 256 node ids')
   const { exportImage, targetBounds } = await import('../export')
   options.signal?.throwIfAborted()
   const prepared = kernelLayout(document)
   const target = options.nodeIds ? { kind: 'selection' as const, nodeIds: selection.roots } : { kind: 'page' as const, padding: 0 }
   const bounds = targetBounds(prepared, selection.page.id, target)
-  if (Math.ceil(bounds.width * scale) * Math.ceil(bounds.height * scale) > EXPORT_LIMITS.previewPixels) throw new AutomationError('invalid_params', 'Preview exceeds 16 megapixels; select a smaller region or explicit lower scale')
+  const plannedWidth = Math.ceil(bounds.width * scale), plannedHeight = Math.ceil(bounds.height * scale)
+  if (![plannedWidth, plannedHeight].every(Number.isSafeInteger) || plannedWidth > PREVIEW_LIMITS.maxSide || plannedHeight > PREVIEW_LIMITS.maxSide || plannedWidth * plannedHeight > PREVIEW_LIMITS.pixels) throw new AutomationError('preview_limit', 'Preview exceeds 16 megapixels or 16384 pixels per side; select a smaller region or explicit lower scale')
+  const { width, height } = kernelExportPlan(bounds, scale)
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1 || width * height > PREVIEW_LIMITS.pixels) throw new AutomationError('preview_limit', 'Preview exceeds 16 megapixels; select a smaller region or explicit lower scale')
+  if (typeof Worker !== 'function') throw new AutomationError('renderer_unavailable', 'Product CPU export requires the mounted renderer Worker runtime; no substitute image was generated')
   const result = await exportImage(prepared, selection.page.id, format, scale, undefined, options.signal, target)
   options.signal?.throwIfAborted()
-  if (result.blob.size > EXPORT_LIMITS.bytes) throw new AutomationError('invalid_params', 'Preview exceeds the 8 MiB automation response limit')
+  if (result.backend !== 'cpu' || result.blob.type !== `image/${format}` || result.width !== width || result.height !== height) throw new AutomationError('invalid_preview', 'Product export returned inconsistent renderer, media type or dimensions')
+  // The transport carries base64, not raw binary. Reserve envelope/ID metadata
+  // before reading or expanding the Blob, then check the exact serialized result.
+  if (!result.blob.size || 4 * Math.ceil(result.blob.size / 3) > PREVIEW_LIMITS.responseBytes - PREVIEW_LIMITS.envelopeBytes) throw new AutomationError('response_limit', 'Encoded preview exceeds the 8 MiB transport budget; lower scale or narrow the selection')
   const bytes = new Uint8Array(await result.blob.arrayBuffer())
-  let binary = ''
-  for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
-  return {
-    format: 'futureox.design-preview.v1', pageId: selection.page.id, nodeIds: selection.roots,
-    mimeType: result.blob.type, name: result.name, dataUrl: `data:${result.blob.type};base64,${btoa(binary)}`,
-    width: result.width ?? Math.ceil(bounds.width * scale), height: result.height ?? Math.ceil(bounds.height * scale), scale,
-    backend: result.backend, warnings: [] as DesignAutomationWarning[],
+  options.signal?.throwIfAborted()
+  const preview = {
+    format: 'futureox.design-preview.v1', documentId: document.id, pageId: selection.page.id, nodeIds: selection.roots,
+    target: target.kind, bounds, mimeType: result.blob.type, name: result.name, bytes: bytes.byteLength,
+    dataUrl: `data:${result.blob.type};base64,${bytesToBase64(bytes)}`, width, height, scale,
+    backend: result.backend, renderer: 'product-cpu-export', screenshot: false,
+    warnings: [{ code: 'CPU_EXPORT_PREVIEW', message: 'Product CPU raster export of design content. Does not capture app chrome, selection overlays or the displayed GPU canvas; GPU/display pixel equivalence is not asserted.' }] as DesignAutomationWarning[],
   }
+  if (new TextEncoder().encode(JSON.stringify(preview)).byteLength > PREVIEW_LIMITS.responseBytes - PREVIEW_LIMITS.envelopeBytes) throw new AutomationError('response_limit', 'Preview metadata and encoded pixels exceed the transport budget; lower scale or narrow the selection')
+  options.signal?.throwIfAborted()
+  return preview
 }
 export const exportExtensions: AutomationExtension[] = [
   { name: 'vector.export', description: 'Export real editable SVG using existing native geometry and font outlines. Rejects unsupported effects or unsafe resources; never substitutes a fake screenshot.', mutates: false,

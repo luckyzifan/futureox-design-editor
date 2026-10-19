@@ -33,13 +33,15 @@ export function sandboxedCodePreview(result: ReturnType<typeof exportDesignCode>
   const policy=`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'">`
   return result.html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/gi,'').replace('<link rel="stylesheet" href="styles.css">',()=>`<style>${css}</style>`).replace('<head>',()=>`<head>${policy}`)
 }
-export function AutomationPanel({editor,desktop,onHistory}:{editor:Editor;desktop:DesktopBridge|null|undefined;onHistory?:()=>void}) {
-  const [open,setOpen]=useState(false)
-  return <><button type="button" onClick={()=>setOpen(true)}>AI / MCP</button>{open&&<AutomationDialog editor={editor} desktop={desktop} onHistory={onHistory} onClose={()=>setOpen(false)}/>}</>
-}
+// Compatibility entry: callers keep the same public button component while
+// App imports its lightweight launcher without loading this optional dialog.
+export { AutomationPanel } from './AutomationPanelLauncher'
 export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Editor;desktop:DesktopBridge|null|undefined;onClose:()=>void;onHistory?:()=>void}) {
   const api=useMemo(()=>createEditorDesignAutomation(editor),[editor])
   const [status,setStatus]=useState<AutomationBridgeStatus|null>(null)
+  const [workspaceScope,setWorkspaceScope]=useState<'none'|'read'|'write'>('none'),[settingsScope,setSettingsScope]=useState<'none'|'read'|'write'>('none')
+  const selectedScopes=()=>({...workspaceScope==='none'?{}:{workspaceScope},...settingsScope==='none'?{}:{settingsScope}})
+  const scopeLabel=(scope?:'read'|'write')=>scope==='write'?'读写':scope==='read'?'只读':'未授权'
   const [auditSource,setAuditSource]=useState<'all'|'user'|'automation'>('all'),[currentDocOnly,setCurrentDocOnly]=useState(true)
   const [auditRows,setAuditRows]=useState<AutomationAuditRecord[]>([]),[nextAudit,setNextAudit]=useState<number|null>(null)
   const [config,setConfig]=useState<AutomationConfig|null>(null)
@@ -91,9 +93,13 @@ export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Edit
     <h2>设计 API 与 MCP <button autoFocus aria-label="关闭设计 API 与 MCP" onClick={onClose}>关闭</button></h2>
     <p>当前文档：{editor.state.doc.name}。共享编辑 API 支持原子修改、撤销、版本冲突检查。模型服务需由你的 AI 客户端提供。</p>
     <fieldset disabled={busy}><legend>本地 MCP 连接</legend>
-      {bridge?<><p role="status">{status?.enabled?`已启用 · ${status.scope==='write'?'可读写':'只读'} · ${status.connectedClients} 个连接`:'未启用'}；文档切换将撤销连接授权。</p>
-        <button onClick={()=>void task(async()=>setStatus(await bridge.enable({scope:'read'})))}>启用只读</button>
-        <button onClick={()=>void task(async()=>setStatus(await bridge.enable({scope:'write'})))}>启用读写</button>
+      {bridge?<><p role="status">{status?.enabled?`已启用 · 当前文档${status.scope==='write'?'可读写':'只读'} · ${status.connectedClients} 个连接`:'未启用'}；文档切换将撤销连接授权。</p>
+        {status?.enabled&&<p>已授权范围：工作区{scopeLabel(status.grants?.workspace)} · 应用设置{scopeLabel(status.grants?.settings)}</p>}
+        <label>工作区与文档库 <select aria-label="工作区 MCP 权限" value={workspaceScope} onChange={event=>setWorkspaceScope(event.target.value as typeof workspaceScope)}><option value="none">不授权</option><option value="read">只读</option><option value="write">读写</option></select></label>
+        <label>应用偏好 <select aria-label="设置 MCP 权限" value={settingsScope} onChange={event=>setSettingsScope(event.target.value as typeof settingsScope)}><option value="none">不授权</option><option value="read">只读</option><option value="write">读写</option></select></label>
+        <p>附加范围默认不授权。选择后需点击启用并通过原生确认；访问授权绑定当前工作区，应用偏好仍按当前应用配置保存。切换文档、恢复历史和工作区重启会再次确认，未保存内容或输入草稿会阻止切换。</p>
+        <button onClick={()=>void task(async()=>setStatus(await bridge.enable({scope:'read',...selectedScopes()})))}>启用只读</button>
+        <button onClick={()=>void task(async()=>setStatus(await bridge.enable({scope:'write',...selectedScopes()})))}>启用读写</button>
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>setStatus(await bridge.disable()))}>停用</button>
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>{const r=await bridge.copyConnection();setResult(r.copied?'连接配置已复制，请仅粘贴到可信本地 AI 客户端。不要分享其中的临时凭据。':'未复制连接配置')})}>复制连接配置</button>
       </>:<p>Web 版可使用下方编辑 API、检查和导出；本地外部 MCP 连接需要 Electron 桌面版。</p>}
@@ -131,7 +137,7 @@ export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Edit
     {html&&<iframe title="HTML 隔离预览" sandbox="" srcDoc={html} style={{width:'100%',height:400,border:'1px solid #999'}}/>}
     <details><summary>AI 调用说明</summary><p>先获取 api.capabilities 和 context.get；写操作携带 documentId、session、expectedRevision。使用 batch.apply 一次提交关联修改，调用 design.check 和 preview.capture 检查结果，按节点 ID 局部调整。遇到版本冲突重新读取，不能盲目覆盖。建议每次最多 5 轮修正；不能将启发式检查等同于审美或像素验收。</p><p>HTML 是可编辑近似表达；原生 JSON 保留设计结构。字体、素材或效果无法导出时查看警告。</p></details>
     <label>筛选工具 <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="node / component / variable / export"/></label>
-    <p>{methods.length} 个共享编辑工具；桌面 MCP 另提供 preview.capture 异步截图工具。</p>
+    <p>{methods.length} 个共享编辑工具；桌面 MCP 另提供 preview.capture 异步预览；显式授权后另有 10 个工作区与设置工具。</p>
     {methods.map(m=><details key={m.name}><summary>{m.name} · {m.mutates?'修改':'读取'}</summary><p>{m.description}</p><pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(m.inputSchema,null,2)}</pre></details>)}
     {!!result&&<details open><summary>操作结果（最多显示 30,000 字符）</summary><pre style={{whiteSpace:'pre-wrap',maxHeight:300,overflow:'auto'}}>{result}</pre></details>}
     {!!status?.journal.length&&<details><summary>近期执行记录</summary>{status.journal.slice(-50).reverse().map(entry=><p key={entry.id}>{entry.method} · {entry.status} {entry.code??''} {entry.durationMs===undefined?'':`${entry.durationMs.toFixed(1)} ms`}</p>)}</details>}

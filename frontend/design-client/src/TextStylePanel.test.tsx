@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import React from 'react'
 import { readFile } from 'node:fs/promises'
 import { Editor } from './engine'
-import { blank, node, validateDocument } from './model'
+import { blank, defaultTextStyle, node, validateDocument } from './model'
 import { emptySystem } from './design-system'
 import {
   TextStylePanel,
@@ -186,12 +186,15 @@ test('writing mode toggles vertical and clearing returns to the unset default', 
 test('fallbacks require known font resource ids before committing', async () => {
   await loadFontFixture()
   const f = fixture(), h = harness()
+  f.editor.updateProperties([f.text.id], n => { n.textStyle = { ...defaultTextStyle(), fallbacks: ['font1'] } })
+  const before = f.editor.state.doc
   let tree = panel(f, h)
   find(tree, byLabel('后备字体')).props.onChange({ currentTarget: { value: 'font1, missing' } })
   tree = panel(f, h)
   expect(JSON.stringify(tree)).toContain('missing 不存在')
   find(tree, byLabel('后备字体')).props.onBlur()
-  expect(f.editor.state.doc.nodes[f.text.id].textStyle?.fallbacks).toEqual([])
+  expect(f.editor.state.doc).toBe(before)
+  expect(f.editor.state.doc.nodes[f.text.id].textStyle?.fallbacks).toEqual(['font1'])
   tree = panel(f, h)
   find(tree, byLabel('后备字体')).props.onChange({ currentTarget: { value: 'default, font1' } })
   tree = panel(f, h)

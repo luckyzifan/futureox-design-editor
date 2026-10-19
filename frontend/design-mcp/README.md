@@ -118,3 +118,32 @@ FUTUREOX_MCP_EXAMPLE_DIR=/absolute/output/directory node_modules/.bin/vitest run
 ```
 
 This example is separate from the adapter/source distribution. `raw-api.html` and `export.css` preserve exact code-export output. The example packager extracts the actual embedded font with its unchanged SIL OFL license and adds an explicit `@font-face` plus a self-only font CSP to `index.html`/`styles.css`. This font packaging is sample glue: `code.export` itself does not export font binaries. The static pages have no authentication or live data behavior. The manifest records measured timings, export warnings and the absence of GPU/browser acceptance testing.
+
+### Product CPU preview feedback
+
+`design_preview_capture` now exposes document/page/root IDs, session/revision,
+world bounds, exact pixel dimensions, requested scale, byte count and CPU renderer
+provenance. Its default page is the active page. Supply the observed revision to
+avoid capturing a newer edit; active-page navigation during an implicit-page
+capture is rejected. Captures are cancelled on session change, cancellation or
+deadline, and return explicit renderer/budget failures without substitute images.
+
+The capture is a real product **CPU raster export of design content**. It is not an
+application-window screenshot and does not assert equality with the displayed GPU
+canvas. The requested resolution is never silently reduced. Pixel/side limits and
+the 8 MiB base64-inclusive transport limit are disclosed in live capabilities.
+
+Every preview has an immutable image resource. Small previews also appear once as
+native MCP image content; large previews remain full resolution in `resources/read`.
+Clients should display that image to the model for visual feedback, not paste raw
+base64 into text. If a client cannot display images/resources, report that visual
+inspection is blocked. Context or geometry checks alone are not a visual review.
+Old resources retain the original revision until eviction or MCP disconnect.
+
+The permitted CPU regression, actual agent-selected visual refinement and native
+acceptance checklist are documented in
+`testing/verification-visual-feedback/README.md`. Browser, Electron, OS transport
+and GPU presentation were not exercised by that CPU-only harness. The manual
+read-only native helper is `examples/capture-native-preview.mjs`; its default help
+path does not access credentials or start native work. Run its explicit `--run`
+mode only in an authorized desktop environment with an already-enabled bridge.
