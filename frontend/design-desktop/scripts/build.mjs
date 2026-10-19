@@ -35,6 +35,14 @@ run(
   ],
   path.join(core, 'frontend/design-client'),
 )
+// 'debug' needs no flag (cargo dev profile); 'desktop-dev' and 'release' are
+// selected explicitly. Artifacts land in target/<profile>/ for all three.
+const cargoProfileFlags =
+  profile === 'release'
+    ? ['--release']
+    : profile === 'desktop-dev'
+      ? ['--profile', 'desktop-dev']
+      : []
 run(
   'cargo',
   [
@@ -48,7 +56,7 @@ run(
     'futureox-design-gpu',
     '-p',
     'futureox-design-kernel',
-    ...(profile === 'release' ? ['--release'] : []),
+    ...cargoProfileFlags,
   ],
   design,
 )

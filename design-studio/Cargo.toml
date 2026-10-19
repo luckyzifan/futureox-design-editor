@@ -46,5 +46,16 @@ debug = 0
 lto = "thin"
 codegen-units = 1
 
+# Desktop dev iteration (`bun run dev` → build.mjs --fast): keep release-shaped
+# artifacts (no debuginfo, stripped) but drop Thin LTO and the single codegen
+# unit, which are what make the release build of the kernel take minutes.
+# Packaging still builds [profile.release].
+[profile.desktop-dev]
+inherits = "release"
+opt-level = 1
+lto = false
+codegen-units = 16
+incremental = true
+
 [patch.crates-io]
 moxcms = { path = "../vendor/moxcms" }

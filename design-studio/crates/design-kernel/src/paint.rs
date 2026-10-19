@@ -231,7 +231,10 @@ fn decode(
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(8192);
     limits.max_image_height = Some(8192);
-    limits.max_alloc = Some(128 * 1024 * 1024);
+    // One 8192² RGBA8 decode is ~268 MB; admitting it lets the display-side
+    // cap below downsample oversized assets instead of rejecting the whole
+    // document (a 6000×4000 camera JPEG otherwise fails the pixel budget).
+    limits.max_alloc = Some(320 * 1024 * 1024);
     reader.limits(limits);
     let mut decoder = reader.into_decoder().map_err(|e| e.to_string())?;
     let profile = if space.is_none() {
@@ -242,6 +245,28 @@ fn decode(
     let orientation = crate::image_color::orientation(&mut decoder)?;
     let mut decoded = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
     decoded.apply_orientation(orientation);
+    // Display-side import cap, Figma parity: an asset larger than the resident
+    // budget joins the cache at the largest dimensions that fit instead of
+    // failing the render. The box budget is per image; cumulative residency
+    // keeps its own error below. Triangle is the deterministic scalar filter,
+    // so every backend and the CPU reference sample identical texels.
+    let allowance = if settings.is_some() {
+        8_388_608u64
+    } else {
+        16_777_216u64
+    };
+    let pixels = decoded.width() as u64 * decoded.height() as u64;
+    if pixels > allowance {
+        let scale = (allowance as f64 / pixels as f64).sqrt();
+        let target = |v: u32| ((v as f64 * scale).floor() as u32).max(1);
+        let (capped_w, capped_h) = (target(decoded.width()), target(decoded.height()));
+        decoded = image::DynamicImage::ImageRgba8(image::imageops::resize(
+            &decoded.into_rgba8(),
+            capped_w,
+            capped_h,
+            image::imageops::FilterType::Triangle,
+        ));
+    }
     let count = decoded.width() as usize * decoded.height() as usize;
     if resident + count
         > if settings.is_some() {
@@ -1181,4 +1206,43 @@ fn premultiply_byte_color(color: Pixel, opacity: f32) -> Pixel {
             ((v * 255.).round_ties_even() * opacity.clamp(0., 1.)).round_ties_even() / 255.
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn png_uri(width: u32, height: u32) -> String {
+        let mut buffer = Vec::new();
+        image::DynamicImage::ImageRgba8(image::RgbaImage::from_fn(width, height, |x, y| {
+            image::Rgba([(x % 256) as u8, (y % 256) as u8, 128, 255])
+        }))
+        .write_to(&mut std::io::Cursor::new(&mut buffer), image::ImageFormat::Png)
+        .unwrap();
+        format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(buffer)
+        )
+    }
+
+    #[test]
+    fn oversized_assets_downsample_to_the_resident_budget_instead_of_failing() {
+        // 20 MP exceeds the 16.7 MP SDR allowance; a camera-sized asset must
+        // join the cache capped, not reject the document.
+        let uri = png_uri(5000, 4000);
+        let mut images = Images::default();
+        let surface = images.image(&uri).expect("capped decode succeeds");
+        let pixels = (surface.rect.w as u64) * (surface.rect.h as u64);
+        assert!(pixels <= 16_777_216, "capped pixels {pixels}");
+        assert!(surface.rect.w >= 4500 && surface.rect.h >= 3600);
+        assert_eq!(images.resident_pixels() as u64, pixels);
+    }
+
+    #[test]
+    fn within_budget_assets_keep_their_native_dimensions() {
+        let uri = png_uri(100, 80);
+        let mut images = Images::default();
+        let surface = images.image(&uri).expect("decode succeeds");
+        assert_eq!((surface.rect.w, surface.rect.h), (100, 80));
+    }
 }

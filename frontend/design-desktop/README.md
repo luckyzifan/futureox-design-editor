@@ -27,11 +27,11 @@ Prerequisites: the repository's Rust toolchain and `wasm32-unknown-unknown` targ
 `wasm-bindgen-cli` **0.2.128**, Bun **1.4.0+**, Node **24+**, and supported OS display libraries.
 Electron is pinned to **44.7.0** and the official packager to **20.3.0**.
 
-From `frontend/`:
+Each package owns its lockfile; there is no workspace-level install. From `frontend/`:
 
 ```sh
+cd design-client && bun install --frozen-lockfile && cd ../design-desktop
 bun install --frozen-lockfile
-cd design-desktop
 bun run install:runtime
 bun run dev
 ```
@@ -43,8 +43,11 @@ sidecar, then starts Electron. It serves bundled files via `design-app://app/`, 
 localhost Vite server. For existing build caches, set `CARGO_TARGET_DIR` before building;
 `WASM_BINDGEN` may point to the exact installed binding-generator executable.
 
-Native builds now default to `release` (Thin LTO and one codegen unit). Use
-`node scripts/build.mjs --debug` explicitly for a debug native build. The backend
+Native builds default to `release` (Thin LTO and one codegen unit). `bun run dev` passes
+`--fast` instead, which selects the `desktop-dev` Cargo profile (opt-level 1, no LTO,
+16 codegen units, incremental): much faster compiles at adequate runtime speed for daily
+editing. Use `node scripts/build.mjs --debug` explicitly for a debug native build, and
+`--release` for anything you package. The backend
 and GPU utility are built in one Cargo invocation; generated WASM remains a release build.
 
 ```sh

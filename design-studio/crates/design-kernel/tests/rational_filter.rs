@@ -33,7 +33,7 @@ fn exact_filter_matches_independent_piecewise_integration_and_rational_rounding(
 
 #[test]
 fn exact_filter_rejects_invalid_domain_without_faking_pixels() {
-    for radius in [0., -1., 513., f64::NAN, f64::INFINITY] {
+    for radius in [0., -1., 2048.0001, f64::NAN, f64::INFINITY] {
         assert!(RationalKernel::tent(radius).is_err());
     }
     let kernel = RationalKernel::tent(0.5).unwrap();

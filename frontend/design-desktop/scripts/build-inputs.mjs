@@ -16,8 +16,8 @@ export const BUILD_DIRECTORIES = [
   'vendor/moxcms/src',
 ]
 export const BUILD_FILES = [
-  'frontend/package.json',
-  'frontend/bun.lock',
+  'frontend/design-client/bun.lock',
+  'frontend/design-desktop/bun.lock',
   'frontend/design-client/package.json',
   'frontend/design-client/vite.config.ts',
   'frontend/design-client/tsconfig.json',
@@ -35,8 +35,11 @@ export const BUILD_FILES = [
 ]
 
 export function buildProfile(args) {
-  if (args.includes('--debug') && args.includes('--release')) throw Error('Choose --debug or --release')
-  return args.includes('--debug') ? 'debug' : 'release'
+  const chosen = ['--debug', '--fast', '--release'].filter((flag) => args.includes(flag))
+  if (chosen.length > 1) throw Error(`Choose one of --debug, --fast or --release (got ${chosen.join(' + ')})`)
+  if (chosen[0] === '--debug') return 'debug'
+  if (chosen[0] === '--fast') return 'desktop-dev'
+  return 'release'
 }
 
 export async function buildInputs(core) {
