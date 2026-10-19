@@ -139,3 +139,15 @@ test('large-result reservations prevent small open requests multiplying response
   await Promise.all([pending, health])
   await client.stop()
 })
+
+test('lost replies classify every native Sketch mutation as an uncertain outcome', async () => {
+  const methods = ['open', 'rename', 'resizeLegacyContainer', 'setTextOverride', 'setLeafFrame', 'undo', 'redo', 'saveAs', 'close']
+  for (const name of methods) {
+    const fixture = fake({ respond: false })
+    const client = new Sidecar('/trusted/backend', '/trusted/recovery', fixture)
+    const pending = client.request(`sketch.session.${name}`).catch(error => error)
+    client.fail(Object.assign(new Error('Response lost'), { code: 'BACKEND_UNAVAILABLE' }))
+    assert.equal((await pending).outcomeUnknown, true, name)
+    await client.stop()
+  }
+})

@@ -1,0 +1,48 @@
+{
+  "base_commit": "d9a9038a2c015db0d1ee9a21734f9b906f4c2c49",
+  "verified_utc": "2026-10-19T08:45:00Z",
+  "runtime": "Node.js v24.19.0",
+  "scope": "targeted production-module contracts; not GPU pixel acceptance",
+  "groups": [
+    {
+      "name": "frontend-contracts",
+      "pass": 38,
+      "fail": 0,
+      "log": "frontend-contracts.log"
+    },
+    {
+      "name": "renderer-contracts",
+      "pass": 17,
+      "fail": 0,
+      "log": "renderer-contracts.log"
+    },
+    {
+      "name": "desktop-contracts",
+      "pass": 68,
+      "fail": 0,
+      "log": "desktop-contracts.log"
+    },
+    {
+      "name": "runner-contracts",
+      "pass": 12,
+      "fail": 0,
+      "log": "runner-contracts.log"
+    }
+  ],
+  "total_pass": 135,
+  "total_fail": 0,
+  "not_run": [
+    "Rust compilation and unit tests: cargo/rustc unavailable",
+    "Vitest suite and TypeScript typecheck: dependencies/generated WASM unavailable",
+    "Real WebGPU/Electron UI pixel comparisons and benchmarks",
+    "Full regression suite / cross-platform packaging"
+  ],
+  "negative_control": {
+    "scope": "same17renderer contract cases against original HEAD renderer with explicit driver/WASM boundary doubles",
+    "original_pass": 8,
+    "original_fail": 9,
+    "fixed_pass": 17,
+    "fixed_fail": 0
+  },
+  "log_redaction": "Repository absolute path replaced with <REPO>; result counts unchanged"
+}

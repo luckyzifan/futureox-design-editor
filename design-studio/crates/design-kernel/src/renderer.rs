@@ -36,11 +36,9 @@ pub struct RenderOptions {
     pub pixel_preview: Option<u8>,
     #[serde(default)]
     pub raster_profile: crate::fidelity::RasterProfile,
-    /// Interactive presentation tier (web canvas default): managed
-    /// documents degrade exactly as measured on Figma's interactive canvas —
-    /// sub-threshold layer blurs skip (`radius < 0.5` at screen density) —
-    /// so exact frames stay deliverable inside the wasm compositing budget.
-    /// Desktop hosts and every export path leave this off (full math).
+    /// Legacy interactive tier for explicit reference/compile APIs. Normal
+    /// managed display through `render` always preserves full sampling and
+    /// effects, and reports resource errors instead of silently degrading.
     #[serde(default)]
     pub interactive_effects: bool,
     /// Canvas chrome tier: paint the checkerboard under content instead of
@@ -171,14 +169,11 @@ pub struct Engine {
     /// The exact `render_linear` path never touches this cache.
     linear_tiles: std::collections::HashMap<(usize, [i32; 2]), (u64, std::sync::Arc<Vec<Pixel>>)>,
     linear_tiles_order: Vec<(usize, [i32; 2])>,
-    linear_tiles_options: Option<crate::render_instruction::InstructionOptions>,
-    /// Scopes that already failed the exact render under compositing
-    /// pressure — later frames go straight to the degraded tier.
-    degraded_scopes: std::collections::HashSet<String>,
-    /// Quality-probe flag: while set, `linear_rect_pixels` ignores the
-    /// interactive tier's single-plane gate and renders correlated samples —
-    /// the full-quality attempt of the adaptive managed-interactive route.
-    coherent_probe: bool,
+    linear_tiles_options: Option<(
+        String,
+        crate::render_instruction::InstructionOptions,
+        crate::render_instruction::ColorSpaceId,
+    )>,
     /// Bumped whenever the document or fonts change the flattened-geometry
     /// lineage, keying the camera-scoped prepare cache in `gpu.rs`.
     pub(crate) geo_revision: u64,
@@ -221,8 +216,6 @@ impl Engine {
             linear_tiles: std::collections::HashMap::new(),
             linear_tiles_order: Vec::new(),
             linear_tiles_options: None,
-            degraded_scopes: std::collections::HashSet::new(),
-            coherent_probe: false,
             geo_revision: 0,
             camera_prepare: None,
             camera_residency: crate::gpu::CameraResidency::default(),
@@ -262,11 +255,9 @@ impl Engine {
     pub fn image_mips(&self) -> bool {
         self.images.mips_enabled()
     }
-    pub fn clear_degraded_scopes(&mut self) {
-        self.degraded_scopes.clear();
-    }
+    /// Compatibility hook: normal display no longer memoises quality loss.
+    pub fn clear_degraded_scopes(&mut self) {}
     pub fn load_document(&mut self, json: &str) -> Result<(), String> {
-        self.degraded_scopes.clear();
         if json.len() > 32 * 1024 * 1024 {
             return Err("Document exceeds 32 MB".into());
         }
@@ -277,7 +268,6 @@ impl Engine {
         &mut self,
         patch: &crate::editing::DocumentPatch,
     ) -> Result<(), String> {
-        self.degraded_scopes.clear();
         self.apply_document_patch_with_damage(patch).map(|_| ())
     }
     pub fn apply_document_patch_with_damage(
@@ -753,10 +743,7 @@ impl Engine {
                 .as_ref()
                 .and_then(|d| d.color_management)
                 .ok_or("Missing color settings")?;
-            let linear = if options.interactive_effects
-                && !options.checkerboard
-                && options.pixel_preview.is_none()
-            {
+            let linear = if options.interactive_effects {
                 self.render_managed_interactive(options)?
             } else {
                 self.render_linear(options)?
@@ -1075,55 +1062,63 @@ impl Engine {
         rendered
     }
 
-    /// Premultiplied extended linear sRGB. Values above 1 and below 0 survive
-    /// all layer/filter operations. No display encoding is applied here.
-    /// Interactive-tier linear render with tile residency (Figma's reuse
-    /// behaviour): world-anchored 512² f32 tiles at the zoom bucket, cached
-    /// by content revision; pans and repeats re-raster nothing. Snapped
-    /// integer cameras stitch byte-identically to the exact `render_linear`;
-    /// off-bucket zooms resample in premultiplied linear space (the tier's
-    /// documented degradation). Exports never route here.
-    /// Adaptive managed-interactive rendering: try the exact correlated
-    /// render first (full quality whenever it fits), degrade to the reused
-    /// single-plane tier only under compositing pressure, and memoise the
-    /// degradation per scope so frames never repeat the doomed attempt.
+    /// Normal display preserves full sampling and effects, including under
+    /// compositing pressure. Resource errors are surfaced, never converted
+    /// into an implicit single-plane or reduced-effect frame.
     fn render_managed_interactive(&mut self, options: &RenderOptions) -> Result<Vec<Pixel>, String> {
-        let scope = format!(
-            "{:?}|{}x{}|{:?}|{}",
-            options.raster_profile,
-            options.width,
-            options.height,
-            options.view.zoom,
-            options.checkerboard
-        );
-        if !self.degraded_scopes.contains(&scope) {
-            self.coherent_probe = true;
-            let attempt = self.render_linear(options);
-            self.coherent_probe = false;
-            match attempt {
-                Ok(pixels) => return Ok(pixels),
-                Err(error) if error.contains("Compositing memory budget exceeded") => {
-                    self.degraded_scopes.insert(scope);
-                }
-                Err(error) => return Err(error),
-            }
-        }
-        self.render_linear_reused(options)
+        let mut exact = options.clone();
+        exact.interactive_effects = false;
+        self.render_linear(&exact)
     }
 
+    /// Explicit reference/reuse API. Normal display never selects this as an
+    /// allocation-error fallback. The caller's requested raster/effect tier is
+    /// retained; only exact-aligned cameras reuse cached pixels.
     pub fn render_linear_reused(&mut self, options: &RenderOptions) -> Result<Vec<Pixel>, String> {
+        // Resampling a previously rasterised tile changes edge coverage. Keep
+        // fractional cameras, animation, preview and screen-anchored chrome on
+        // the exact path instead of silently lowering their fidelity.
+        if options.pixel_preview.is_some()
+            || options.animation.is_some()
+            || self.animation_sample.is_some()
+            || options.checkerboard
+            || options.view.x.fract() != 0.
+            || options.view.y.fract() != 0.
+            || options.view.zoom != crate::tile_stack::exact_bucket_scale(options.view.zoom)
+        {
+            return self.render_linear(options);
+        }
+        self.prepare_frame(options)?;
+        self.resolve_layout()?;
+        if self.color_settings().is_none() {
+            return Err("Float rendering requires document color management".into());
+        }
+        if options.width == 0
+            || options.height == 0
+            || options.width > 8192
+            || options.height > 8192
+            || u64::from(options.width) * u64::from(options.height) > 8_388_608
+        {
+            return Err(format!(
+                "Float frame exceeds 8192 per side / 8 million pixels (got {}x{})", options.width, options.height
+            ));
+        }
         let instruction = self.render_instruction_for(options)?;
         let level = instruction.level_scale;
         let zoom = options.view.zoom;
         let width = options.width as usize;
         let height = options.height as usize;
         let revision = self.geo_revision;
-        // Cache is single-options: any option change (transparent, grid,
-        // profile, chrome, tier) invalidates residency wholesale.
-        if self.linear_tiles_options.as_ref() != Some(&instruction.options) {
+        // Page and colour identity matter even when content revision is equal.
+        let identity = (
+            instruction.page_id.clone(),
+            instruction.options.clone(),
+            instruction.color_space.clone(),
+        );
+        if self.linear_tiles_options.as_ref() != Some(&identity) {
             self.linear_tiles.clear();
             self.linear_tiles_order.clear();
-            self.linear_tiles_options = Some(instruction.options.clone());
+            self.linear_tiles_options = Some(identity);
         }
         let side = 512usize;
         let level_index = crate::tiled_renderer::level_index_for_scale(level);
@@ -1134,104 +1129,54 @@ impl Engine {
             crate::tile_level::LEVEL_TILE_LIMIT,
             [0., 0.],
         )?;
-        let mut missing = Vec::new();
-        for address in &addresses {
+        let mut out = vec![Pixel::default(); width * height];
+        for address in addresses {
+            let key = (level_index, address);
             let cached = self
                 .linear_tiles
-                .get(&(level_index, *address))
-                .is_some_and(|(rev, _)| *rev == revision);
-            if !cached {
-                missing.push(*address);
-            }
-        }
-        for address in missing {
-            let mut tile_options = options.clone();
-            tile_options.view = View {
-                x: -(address[0] as f64) * tile_world * level,
-                y: -(address[1] as f64) * tile_world * level,
-                zoom: level,
+                .get(&key)
+                .filter(|(rev, _)| *rev == revision)
+                .map(|(_, pixels)| Arc::clone(pixels));
+            let pixels = if let Some(pixels) = cached {
+                pixels
+            } else {
+                let mut tile_options = options.clone();
+                tile_options.view = View {
+                    x: -(address[0] as f64) * tile_world * level,
+                    y: -(address[1] as f64) * tile_world * level,
+                    zoom: level,
+                };
+                tile_options.width = side as u32;
+                tile_options.height = side as u32;
+                let pixels = Arc::new(self.linear_rect_pixels(&tile_options, 0, 0, side as u32, side as u32)?);
+                self.linear_tiles.insert(key, (revision, Arc::clone(&pixels)));
+                pixels
             };
-            tile_options.width = side as u32;
-            tile_options.height = side as u32;
-            let pixels = self.linear_rect_pixels(&tile_options, 0, 0, side as u32, side as u32)?;
-            self.linear_tiles
-                .insert((level_index, address), (revision, std::sync::Arc::new(pixels)));
-            self.linear_tiles_order.push((level_index, address));
-        }
-        while self.linear_tiles_order.len() > 24 {
-            let evict = self.linear_tiles_order.remove(0);
-            self.linear_tiles.remove(&evict);
-        }
-        // Assemble: snapped = integer block stitch; off-bucket = bilinear in
-        // premultiplied linear space.
-        let snapped = (zoom - level).abs() <= f64::EPSILON * 4. * zoom.max(1.);
-        let mut out = vec![Pixel::default(); width * height];
-        for address in &addresses {
-            let Some((_, pixels)) = self.linear_tiles.get(&(level_index, *address)) else {
-                continue;
-            };
+            // One LRU record per key, including a tile rebuilt at a new
+            // revision. An old duplicate must not evict its replacement.
+            self.linear_tiles_order.retain(|old| *old != key);
+            self.linear_tiles_order.push(key);
             let wx = address[0] as f64 * tile_world;
             let wy = address[1] as f64 * tile_world;
             let dx0 = wx * zoom + options.view.x;
             let dy0 = wy * zoom + options.view.y;
-            let dx1 = (wx + tile_world) * zoom + options.view.x;
-            let dy1 = (wy + tile_world) * zoom + options.view.y;
-            if snapped {
-                let dx = dx0.round() as i64;
-                let dy = dy0.round() as i64;
-                let x0 = dx.max(0) as usize;
-                let y0 = dy.max(0) as usize;
-                let x1 = ((dx + side as i64).min(width as i64)).max(x0 as i64) as usize;
-                let y1 = ((dy + side as i64).min(height as i64)).max(y0 as i64) as usize;
-                for row in y0..y1 {
-                    let src = ((row as i64 - dy) as usize) * side;
-                    let dst = row * width + x0;
-                    let span = x1 - x0;
-                    out[dst..dst + span].copy_from_slice(&pixels[src..src + span]);
-                }
-            } else {
-                let x0 = (((dx0 - 0.5).ceil() as i64).max(0)) as usize;
-                let y0 = (((dy0 - 0.5).ceil() as i64).max(0)) as usize;
-                let x1 = (((dx1 - 0.5).ceil() as i64).min(width as i64)) as usize;
-                let y1 = (((dy1 - 0.5).ceil() as i64).min(height as i64)) as usize;
-                let ratio = level / zoom;
-                for py in y0..y1 {
-                    let ly = (py as f64 + 0.5 - options.view.y) * ratio - wy * level;
-                    for px in x0..x1 {
-                        let lx = (px as f64 + 0.5 - options.view.x) * ratio - wx * level;
-                        let cx = (lx - 0.5).clamp(0., side as f64 - 1.);
-                        let cy = (ly - 0.5).clamp(0., side as f64 - 1.);
-                        let ix = cx as usize;
-                        let iy = cy as usize;
-                        let jx = (ix + 1).min(side - 1);
-                        let jy = (iy + 1).min(side - 1);
-                        let fx = (cx - ix as f64) as f32;
-                        let fy = (cy - iy as f64) as f32;
-                        let acc = |ox: usize, oy: usize, w: f32| -> [f32; 4] {
-                            let p = pixels[oy * side + ox].0;
-                            [p[0] * p[3] * w, p[1] * p[3] * w, p[2] * p[3] * w, p[3] * w]
-                        };
-                        let mut value = [0f32; 4];
-                        for (ox, oy, w) in [
-                            (ix, iy, (1. - fx) * (1. - fy)),
-                            (jx, iy, fx * (1. - fy)),
-                            (ix, jy, (1. - fx) * fy),
-                            (jx, jy, fx * fy),
-                        ] {
-                            let c = acc(ox, oy, w);
-                            value[0] += c[0];
-                            value[1] += c[1];
-                            value[2] += c[2];
-                            value[3] += c[3];
-                        }
-                        let a = value[3];
-                        out[py * width + px] = Pixel(if a > 0. {
-                            [value[0] / a, value[1] / a, value[2] / a, a]
-                        } else {
-                            [0.; 4]
-                        });
-                    }
-                }
+            let dx = dx0.round() as i64;
+            let dy = dy0.round() as i64;
+            let x0 = dx.clamp(0, width as i64) as usize;
+            let y0 = dy.clamp(0, height as i64) as usize;
+            let x1 = (dx + side as i64).clamp(x0 as i64, width as i64) as usize;
+            let y1 = (dy + side as i64).clamp(y0 as i64, height as i64) as usize;
+            for row in y0..y1 {
+                let src = ((row as i64 - dy) as usize) * side + (x0 as i64 - dx) as usize;
+                let dst = row * width + x0;
+                let span = x1 - x0;
+                out[dst..dst + span].copy_from_slice(&pixels[src..src + span]);
+            }
+            // Assemble before eviction: a viewport can contain more than the
+            // retained 24 tiles and must still present every visible pixel.
+            while self.linear_tiles_order.len() > 24 {
+                let evict = self.linear_tiles_order.remove(0);
+                self.linear_tiles.remove(&evict);
             }
         }
         Ok(out)
@@ -1315,8 +1260,7 @@ impl Engine {
             w * density,
             h * density,
         );
-        let coherent = self.coherent_probe
-            || crate::fidelity::coherent_samples(
+        let coherent = crate::fidelity::coherent_samples(
                 self.doc.as_ref().unwrap_or_else(|| panic!("document loaded")),
                 options,
             );
@@ -1696,8 +1640,6 @@ impl Engine {
             linear_tiles: std::collections::HashMap::new(),
             linear_tiles_order: Vec::new(),
             linear_tiles_options: None,
-            degraded_scopes: std::collections::HashSet::new(),
-            coherent_probe: false,
             geo_revision: self.geo_revision,
             camera_prepare: None,
             camera_residency: crate::gpu::CameraResidency::default(),
@@ -2986,3 +2928,7 @@ mod gpu_ledger_tests;
 #[cfg(test)]
 #[path = "renderer_tests/translation_retention.rs"]
 mod translation_retention_tests;
+
+#[cfg(test)]
+#[path = "renderer_tests/linear_tile_residency.rs"]
+mod linear_tile_residency_tests;

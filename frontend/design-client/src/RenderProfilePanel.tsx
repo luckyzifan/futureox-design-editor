@@ -29,8 +29,9 @@ export function RenderProfilePanel() {
   const extent = Math.max(attributed, sample?.total ?? 0, 0.001)
   const colors = ['#eebd64', '#f28f62', '#df7272', '#ad86c8']
   const exportTrace = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ schema: 1, units: 'ms', kind: 'stage-attribution',
-      note: '阶段壁钟耗时；并行编译可与编码重叠，不等于 CPU 采样栈或屏幕光子延迟。', samples }, null, 2)], { type: 'application/json' }))
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ schema: 2, units: 'ms', kind: 'stage-attribution',
+      note: '阶段壁钟耗时；并行编译可与编码重叠，不等于 CPU 采样栈或屏幕光子延迟。',
+      samples: renderProfile.snapshot(), diagnostics: renderProfile.diagnostics() }, null, 2)], { type: 'application/json' }))
     const a = document.createElement('a'); a.href = url; a.download = 'render-profile.json'; a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
@@ -38,10 +39,11 @@ export function RenderProfilePanel() {
     <div style={{display:'flex',gap:12,alignItems:'center',marginBottom:10}}>
       <strong style={{flex:1}}>渲染性能 · 阶段火焰图</strong>
       <button onClick={() => { if (paused) { renderProfile.start(); setSelection(null) } else renderProfile.pause(); setPaused(!paused); setSamples(renderProfile.snapshot()) }}>{paused?'重新录制':'暂停'}</button>
-      <button onClick={exportTrace} disabled={!samples.length}>导出 JSON</button>
+      <button onClick={exportTrace} disabled={!samples.length && !renderProfile.diagnostics().samples.length}>导出 JSON</button>
       <button aria-label="关闭渲染性能火焰图" onClick={() => setOpen(false)}>关闭</button>
     </div>
     <p>⌘ / Ctrl ⇧ P · 最多保留 512 次结果。横宽表示阶段耗时，子层包含在父层内；不是调用栈采样或时间轴。</p>
+    <p>诊断日志记录缩放、DPR、请求与发布采样密度、缓存命中和错误分类；不记录文档内容、图片地址或原始错误文本。关闭面板即停止记录。</p>
     <select aria-label="渲染样本" value={selection ?? ''} onChange={e=>setSelection(e.target.value===''?null:Number(e.target.value))} style={{width:'100%',marginBottom:10}}>
       <option value="">跟随最新结果</option>
       {samples.map((s,i)=><option key={`${s.at}-${i}`} value={i}>{i+1} · {s.kind} · {s.total.toFixed(1)} ms</option>)}

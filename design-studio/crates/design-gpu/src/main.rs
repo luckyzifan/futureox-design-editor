@@ -430,12 +430,11 @@ fn serve_load(
             ..RenderFeatureFlags::default()
         });
     }
-    // Install the new engine's ledger into the allocating device before its
-    // first compose, so every frame reports real four-bucket facts. Frames
-    // already constructed keep the previous handle (documented on
-    // NativeGpu::set_memory_ledger), which is exactly the reload semantics:
-    // a fresh document starts a fresh ledger.
+    // The old document's CPU/GPU image residency must not survive into a
+    // fresh engine's decode budget or memory ledger. Do this only after the
+    // replacement document has loaded successfully.
     if let Some(gpu) = gpu {
+        gpu.clear_image_cache();
         gpu.set_memory_ledger(engine.gpu_memory_ledger());
     }
     *host_slot = if cpu_tiled {

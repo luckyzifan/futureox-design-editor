@@ -1,3 +1,5 @@
+import { renderDiagnostics } from './render-diagnostics.ts'
+
 /** Bounded, opt-in stage attribution. Durations are wall-clock measurements,
  * not sampled JS stacks or input-to-photon latency. GPU waits belong to graph
  * time and must never be added to it a second time. */
@@ -12,10 +14,11 @@ const finite = (n: unknown) => typeof n === 'number' && Number.isFinite(n) ? Mat
 let recording = false
 const samples: RenderProfileSample[] = []
 export const renderProfile = {
-  start() { samples.length = 0; recording = true },
-  pause() { recording = false },
+  start() { samples.length = 0; recording = true; renderDiagnostics.start() },
+  pause() { recording = false; renderDiagnostics.pause() },
   get recording() { return recording },
   snapshot() { return samples.slice() },
+  diagnostics() { return renderDiagnostics.report() },
 }
 export function recordRenderProfile(kind: string, result: Record<string, unknown>, elapsed?: number) {
   if (!recording) return

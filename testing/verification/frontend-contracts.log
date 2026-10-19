@@ -1,0 +1,46 @@
+✔ preserves exact original bytes and intrinsic dimensions without a canvas (2.859018ms)
+✔ PNG, JPEG and WebP retain their original encoded payload (0.645934ms)
+✔ accepts exact pixel limit and never marks an asset resized (0.527104ms)
+✔ rejects oversized assets instead of downsampling or lossy reencoding (0.861969ms)
+✔ honors smaller managed-image admission limits (0.516118ms)
+✔ rejects invalid budgets before browser decoding (0.735948ms)
+✔ rejects unsupported type and oversized encoded files (1.438868ms)
+✔ propagates read failure without logging source data (0.415406ms)
+✔ settles aborted reads (0.462808ms)
+✔ propagates decode failure without accepting an asset (0.446032ms)
+✔ rejects invalid decoded dimensions (0.337168ms)
+✔ rejects zero intrinsic size rather than using layout dimensions (0.316907ms)
+✔ rejects oversized data URIs without decoding or reencoding (0.305661ms)
+✔ other-page effects do not disable the current page reusable zoom density (1.154209ms)
+✔ detached effect definitions do not change page sampling (0.174403ms)
+✔ hidden nodes and the complete subtree of hidden ancestors do not change page sampling (0.243417ms)
+✔ each visible filtering effect in nested page content preserves native-density scheduling (0.177087ms)
+✔ disabled effects and unrelated material effects keep existing sampling eligibility (0.15286ms)
+✔ offscreen effects remain conservative because shadow and blur support can reach the viewport (0.114923ms)
+✔ unknown pages and missing child references are harmless (0.199451ms)
+✔ shared descendants and malformed cycles cannot cause unbounded traversal (0.195955ms)
+✔ visible instances retain exact scheduling even with no authored children (0.24573ms)
+✔ shared styles retain exact scheduling before kernel effect resolution (0.359361ms)
+✔ hidden instances and style references do not affect visible page content (0.142304ms)
+✔ integer analytic: routes original options to exact CPU renderer (1.057874ms)
+✔ page switch: routes original options to exact CPU renderer (0.140252ms)
+✔ fractional high zoom: routes original options to exact CPU renderer (0.134703ms)
+✔ animation and checkerboard: routes original options to exact CPU renderer (0.103156ms)
+✔ managed document: routes original options to exact CPU renderer (0.077747ms)
+✔ exact rendering failure is propagated, never hidden by cached pixels (0.402877ms)
+✔ actual recorder is disabled by default and pause prevents new samples (2.107946ms)
+✔ zoom request, cache result, fresh pixels and failure retain exact scalars (0.767286ms)
+✔ ring stays bounded, reports dropped entries, and restart resets it (3.382296ms)
+✔ unknown keys, raw errors, document IDs and image payloads cannot enter exports (0.578091ms)
+✔ invalid numeric fields are omitted, zero timings and cache counts are preserved (0.326262ms)
+✔ snapshot and report cannot mutate retained samples (0.288725ms)
+✔ error classifier returns only bounded codes and handles non-errors (0.485251ms)
+✔ existing render profile controls both journals; restart/pause are shared (0.47129ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 157.125939
