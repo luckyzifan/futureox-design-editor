@@ -4,8 +4,8 @@ import { desktopPet } from './desktop-pet'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, subscribePendingEdits } from './pending-edits'
 import type { Editor } from './engine'
 import type { WorkspaceAutomationGuard } from './automation/workspace-bridge'
-import { prepareDocumentForEditing } from './kernel/picking'
-import { prepareDocument, type PreparedDocument } from './prepared-document'
+import { prepareDocument, takePreparedDocument, forkPreparedDocument, type PreparedDocument } from './prepared-document'
+import { documentStage, documentStageAsync, DocumentStage } from './document-lifecycle-diagnostics'
 import { blank, type DesignDocument } from './model'
 import type { DesktopBridge, DesktopFile, DesktopResult, WorkspaceDocument, WorkspaceOpened } from './desktop'
 
@@ -74,17 +74,23 @@ export class DesktopSession {
   openWorkspace(id: string) {
     return this.run('open', async () => {
       if (!this.bridge.workspace) return false
-      const result = await this.bridge.workspace.open({ id })
+      const result = { ...await documentStageAsync(DocumentStage.read, () => this.bridge.workspace!.open({ id })) }
       if (result.status !== 'ok') return result.status === 'cancelled' ? false : this.failed(result)
-      await this.parse(result.documentJson)
-      const approved = await this.leave('open')
+      const prepared = await this.parse(result.documentJson)
+      this.assertWorkspace(prepared, result, id)
+      const approved = await documentStageAsync(DocumentStage.leave, () => this.leave('open'))
       if (!this.authorized(approved)) return false
       // A Save decision can advance this very document while the first read
       // waits for the leave dialog. Adopt a fresh immutable head, never that stale read.
-      const latest = await this.bridge.workspace.open({ id })
+      const latest = { ...await documentStageAsync(DocumentStage.freshRead, () => this.bridge.workspace!.open({ id })) }
       if (!this.authorized(approved)) return false
       if (latest.status !== 'ok') return latest.status === 'cancelled' ? false : this.failed(latest)
-      const document = await this.parse(latest.documentJson)
+      // Revision/hash labels alone are not proof. Exact immutable source bytes
+      // retain schema/admission ownership across the leave/save await.
+      const document = latest.documentJson === result.documentJson
+        ? documentStage(DocumentStage.reuse, () => prepared, latest.documentJson.length)
+        : await this.parse(latest.documentJson)
+      this.assertWorkspace(document, latest, id)
       return this.authorized(approved) && this.adoptWorkspace(document, latest)
     })
   }
@@ -105,14 +111,14 @@ export class DesktopSession {
       }
       const document = await this.parse(result.documentJson)
       if (!this.authorized(approved)) return false
-      return this.adoptWorkspace(document, result) ? { document, revision: result.revision } : false
+      return this.adoptWorkspace(document, result) ? { document: this.editor.state.doc, revision: result.revision } : false
     })
   }
   /** Reads one workspace revision for read-only preview; never adopts it into the editor. */
   async readWorkspaceRevision(id: string, revision: number): Promise<{ document: DesignDocument; updatedAt: number } | null> {
     if (!this.bridge.workspace) throw new Error('本机文档库不可用')
     const result = await this.bridge.workspace.open({ id, revision })
-    if (result.status === 'ok') return { document: await this.parse(result.documentJson), updatedAt: result.updatedAt }
+    if (result.status === 'ok') return { document: takePreparedDocument(await this.parse(result.documentJson))!, updatedAt: result.updatedAt }
     if (result.status === 'cancelled' || result.code === 'WORKSPACE_NOT_FOUND') return null
     const message = result.message
     this.failed(result)
@@ -129,9 +135,12 @@ export class DesktopSession {
     if(this.disposed||this.closeSnapshot!==undefined||id!==this.currentDocument.id||this.generation!==generation||version!==this.editor.state.version||this.dirty||(this.editor.interactionActive||this.editor.state.busy)||hasPendingEdits(this.editor))return false
     return this.adoptWorkspace(document,result,true)
   }
-  private adoptWorkspace(document: DesignDocument, result: WorkspaceOpened,preserveView=false) {
-    if (document.id !== result.id || !Number.isSafeInteger(result.revision) || result.revision < 1)
+  private assertWorkspace(document: DesignDocument | PreparedDocument, result: WorkspaceOpened, requestedId = result.id) {
+    if (document.id !== result.id || result.id !== requestedId || result.deleted || !Number.isSafeInteger(result.revision) || result.revision < 1)
       throw new Error('本机文档版本响应无效')
+  }
+  private adoptWorkspace(document: DesignDocument | PreparedDocument, result: WorkspaceOpened,preserveView=false) {
+    this.assertWorkspace(document, result)
     if (!this.load(document, true, undefined, result.name,preserveView)) return false
     this.workspaceHeads.set(result.id, result.revision)
     this.publish()
@@ -194,7 +203,7 @@ export class DesktopSession {
   // lazy byte equality recognizes undo-to-saved without serializing in the render hot path.
   get dirty() { return hasPendingEdits(this.editor) || this.baselineGeneration !== this.generation }
   private encode(document: DesignDocument) {
-    return this.bridge.documentCodec?.encode(document) ?? Promise.resolve(JSON.stringify(document))
+    return documentStageAsync(DocumentStage.encode, () => this.bridge.documentCodec?.encode(document) ?? Promise.resolve(JSON.stringify(document)))
   }
   private async captureSnapshot() {
     const generation=this.generation, document=this.currentDocument
@@ -420,7 +429,7 @@ export class DesktopSession {
         if (existing.status === 'ok') {
           // Opening a portable file is an import. Never replace an existing
           // local document merely because its external copy shares an ID.
-          document = { ...document, id: crypto.randomUUID() }
+          document = forkPreparedDocument(document)
           importedCopy = true
         } else if (existing.status !== 'error' || existing.code !== 'WORKSPACE_NOT_FOUND') {
           return existing.status === 'cancelled' ? false : this.failed(existing)
@@ -449,7 +458,7 @@ export class DesktopSession {
   replace(document: DesignDocument, canAdopt: () => boolean = () => true) {
     return this.run('new', async () => {
       if (!canAdopt()) return false
-      const prepared = prepareDocument(document)
+      const prepared = documentStage(DocumentStage.prepare, () => prepareDocument(document))
       const approved = await this.leave('new')
       if (!this.authorized(approved) || !canAdopt()) return false
       if (!this.load(prepared, false)) return false
@@ -562,7 +571,7 @@ export class DesktopSession {
     let completed = false
     const task = Promise.resolve().then(async () => {
       // A native dialog must not race an older journal write through the host's exclusive gate.
-      await this.recoveryQueue
+      await documentStageAsync(DocumentStage.recoveryWait, () => this.recoveryQueue)
       return action()
     }).catch((error: unknown) => {
       trace.result(ActionOutcome.rejected, ActionReason.validation)
@@ -581,10 +590,13 @@ export class DesktopSession {
 
   private async parse(json: unknown) {
     if (typeof json !== 'string') throw new Error('原生文件响应缺少设计内容')
-    if (this.bridge.documentCodec) return prepareDocumentForEditing(await this.bridge.documentCodec.decode(json))
-    if (new TextEncoder().encode(json).byteLength > MAX_DOCUMENT_BYTES)
-      throw new Error('文件超过 32 MiB')
-    return prepareDocumentForEditing(JSON.parse(json))
+    const decoded = await documentStageAsync(DocumentStage.decode, async () => {
+      if (this.bridge.documentCodec) return this.bridge.documentCodec.decode(json)
+      if (new TextEncoder().encode(json).byteLength > MAX_DOCUMENT_BYTES)
+        throw new Error('文件超过 32 MiB')
+      return JSON.parse(json)
+    }, json.length)
+    return documentStage(DocumentStage.prepare, () => prepareDocument(decoded), json.length)
   }
 
   private isDefaultBlank(document: DesignDocument) {
@@ -599,7 +611,7 @@ export class DesktopSession {
 
   private load(document: DesignDocument | PreparedDocument, persisted: boolean, handle?: string, name?: string,preserveView=false) {
     this.suppressObservation = true
-    try { if (!this.editor.load(document,preserveView)) return false } finally { this.suppressObservation = false }
+    try { if (!documentStage(DocumentStage.adoption, () => this.editor.load(document,preserveView))) return false } finally { this.suppressObservation = false }
     const previousId = this.currentDocument.id
     if (previousId !== this.editor.state.doc.id && !this.workspaceHeads.has(previousId))
       this.tabsValue = this.tabsValue.filter(t => t.id !== previousId)
@@ -668,7 +680,7 @@ export class DesktopSession {
     // A newer edit first settles the older idempotent request, then submits its own revision.
     if (this.workspacePending) {
       const older = this.workspacePending
-      const result = await store.commit({ documentJson: older.documentJson, expectedRevision: older.expectedRevision, mutationId: older.mutationId })
+      const result = await documentStageAsync(DocumentStage.save, () => store.commit({ documentJson: older.documentJson, expectedRevision: older.expectedRevision, mutationId: older.mutationId }), older.documentJson.length)
       if (result.status !== 'ok') {
         if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
         return result.status === 'cancelled' ? false : this.failed(result)
@@ -685,7 +697,7 @@ export class DesktopSession {
     }
     const submitted = { documentJson: snapshot, expectedRevision: this.workspaceHeads.get(id) ?? null, mutationId: crypto.randomUUID(), generation, id }
     this.workspacePending = submitted
-    const result = await store.commit({ documentJson: submitted.documentJson, expectedRevision: submitted.expectedRevision, mutationId: submitted.mutationId })
+    const result = await documentStageAsync(DocumentStage.save, () => store.commit({ documentJson: submitted.documentJson, expectedRevision: submitted.expectedRevision, mutationId: submitted.mutationId }), submitted.documentJson.length)
     if (result.status !== 'ok') {
       if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
       return result.status === 'cancelled' ? false : this.failed(result)
@@ -745,7 +757,7 @@ export class DesktopSession {
     return true
   }
 
-  private async restore(document: DesignDocument, recovery: { displayName: string; recoveryHandle: string }, confirmedSnapshot: number) {
+  private async restore(document: PreparedDocument, recovery: { displayName: string; recoveryHandle: string }, confirmedSnapshot: number) {
     if (!recovery.recoveryHandle) throw new Error('恢复副本响应无效')
     this.recoveryPaused = true
     clearTimeout(this.recoveryTimer)
@@ -761,7 +773,7 @@ export class DesktopSession {
       // A recovery journal has no trusted SQLite base revision. Adopt an
       // independent document so saving cannot overwrite a later durable head
       // or become stuck in create-only conflicts after a process restart.
-      const restored = this.supportsWorkspace ? { ...document, id: crypto.randomUUID() } : document
+      const restored = this.supportsWorkspace ? forkPreparedDocument(document) : document
       if (!this.load(restored, false, undefined, recovery.displayName)) return false
       this.recoveryHandles.add(recovery.recoveryHandle)
       return true
@@ -790,7 +802,7 @@ export class DesktopSession {
   private updateRecovery(discardSnapshot?: number) {
     clearTimeout(this.recoveryTimer)
     // Compute the snapshot when this queued operation starts, not before an older write finishes.
-    const next = this.recoveryQueue.then(async () => {
+    const next = this.recoveryQueue.then(() => documentStageAsync(DocumentStage.recovery, async () => {
       if (this.disposed || this.recoveryPaused) return
       await this.reconcileBaseline()
       if (this.bridge.workspace && this.dirty && discardSnapshot !== this.generation &&
@@ -830,7 +842,7 @@ export class DesktopSession {
         this.recoveryWarning = warning
         this.publish()
       }
-    }).catch((error: unknown) => {
+    })).catch((error: unknown) => {
       this.editor.notify(`恢复副本写入失败；请手动保存设计：${String(error)}`)
     })
     this.recoveryQueue = next
