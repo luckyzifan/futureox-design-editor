@@ -129,7 +129,7 @@ export function initializePicking(resources?: { wasm: Uint8Array; font: Uint8Arr
   })
 }
 /** All file-opening paths share the same forward-only schema normalization. */
-export function prepareDocumentForEditing(value: unknown): DesignDocument {
+export function prepareDocumentForEditing(value: unknown, captureValidatedJson?: (json: string) => void): DesignDocument {
   const original = documentStage(DocumentStage.admission, () => admitDocumentSync(value))
   const prepared = documentStage(DocumentStage.layout, () => kernelLayout({
     ...original,
@@ -140,7 +140,9 @@ export function prepareDocumentForEditing(value: unknown): DesignDocument {
   // Otherwise the first synchronous bounds/selection query can tear down React.
   documentStage(DocumentStage.derivedValidation, () => {
     for(const n of Object.values(prepared.nodes))if(n.pathOffset||n.vectorBrush)kernelBounds(n)
-    validateKernelDocument(JSON.stringify(prepared))
+    const json = JSON.stringify(prepared)
+    validateKernelDocument(json)
+    captureValidatedJson?.(json)
   })
   return prepared
 }

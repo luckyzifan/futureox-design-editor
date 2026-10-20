@@ -436,7 +436,11 @@ export class GpuRenderer {
   private fieldBuilds = 0
   private fieldBuildMs = 0
   private fieldUploadBytes = 0
-  private materialFields = new CoverageCache(32 * 1024 * 1024, 64, texture => {
+  // Streamed filters produce many small exact sample-coordinate fields. Two
+  // revisited views can exceed 64 entries without approaching the 32 MiB limit.
+  // Retain their bounded LRU working set; current-frame pins and byte budget
+  // still control eviction and admission independently of this entry ceiling.
+  private materialFields = new CoverageCache(32 * 1024 * 1024, 256, texture => {
     this.busy.delete(texture)
     this.used.delete(texture)
     this.lastUsed.delete(texture)
