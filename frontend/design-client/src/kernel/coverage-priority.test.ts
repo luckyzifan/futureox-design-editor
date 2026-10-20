@@ -18,3 +18,24 @@ test('a full lower-density layer preserves normal distance priority', () => {
   expect(prioritizeUncoveredTiles(tiles, planTiles(viewport, .25), viewport)).toBe(tiles)
   expect(prioritizeUncoveredTiles(tiles, [], viewport)).toBe(tiles)
 })
+
+test('coarse-only edges precede centre pixels already supplied at native density', () => {
+  const viewport = { x: 0, y: 0, width: 1536, height: 512 }
+  const tiles = planTiles(viewport, 1)
+  const left = tiles.find(tile => tile.x < 0)!, centre = tiles.find(tile => tile.x === 511)!, right = tiles.find(tile => tile.x > 511)!
+  const overview = planTiles(viewport, 1 / 32)
+  // Simulate centre-first camera planning with a differently keyed old sharp
+  // centre, and very coarse coverage everywhere else.
+  const oldCentre = { ...centre, key: 'old-sharp-centre' }
+  expect(prioritizeUncoveredTiles([centre, left, right], [...overview, oldCentre], viewport))
+    .toEqual([left, right, centre])
+})
+
+test('true holes still precede coarse-only coverage and adequate-density refinement', () => {
+  const viewport = { x: 0, y: 0, width: 1536, height: 512 }
+  const tiles = planTiles(viewport, 1)
+  const [left, centre, right] = [tiles.find(tile => tile.x < 0)!, tiles.find(tile => tile.x === 511)!, tiles.find(tile => tile.x > 511)!]
+  const coarseRight = { key: 'coarse-right', x: 32, y: 0, width: 16, height: 16, zoom: 1 / 32, gutter: 0 }
+  expect(prioritizeUncoveredTiles([centre, right, left], [{ ...centre, key: 'old-centre' }, coarseRight], viewport))
+    .toEqual([left, right, centre])
+})

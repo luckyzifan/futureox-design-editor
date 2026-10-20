@@ -1,4 +1,4 @@
-import { createRenderDiagnostics, sanitizeRecord, PREFIX } from './render-terminal-diagnostics.mjs'
+import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch, PREFIX } from './render-terminal-diagnostics.mjs'
 import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
 import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
@@ -35,7 +35,7 @@ import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legac
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 
-const renderDiagnosticsEnabled = !app.isPackaged && process.env.CORE_RENDER_DIAGNOSTICS === '1'
+const renderDiagnosticsEnabled = !app.isPackaged && ['1','detail'].includes(process.env.CORE_RENDER_DIAGNOSTICS)
 const terminalDiagnostics=createRenderDiagnostics({enabled:renderDiagnosticsEnabled,source:'host',session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
 const smoke = process.argv.includes('--desktop-smoke')
 const cpuOnly = process.argv.includes('--core-cpu-only') || smoke
@@ -997,7 +997,7 @@ async function buildWindow() {
     backgroundColor: '#191919',
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
-      additionalArguments: [...(cpuOnly ? ['--core-cpu-only'] : []),...(renderDiagnosticsEnabled?['--core-render-diagnostics']:[])],
+      additionalArguments: [...(cpuOnly ? ['--core-cpu-only'] : []),...(renderDiagnosticsEnabled?['--core-render-diagnostics',...(process.env.CORE_RENDER_DIAGNOSTICS==='detail'?['--core-render-diagnostics-detail']:[])]:[])],
       session: isolated,
       nodeIntegration: false,
       nodeIntegrationInWorker: false,
@@ -1022,8 +1022,8 @@ async function buildWindow() {
 
   // Forward renderer console logs to terminal (for debugging)
   window.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    if(renderDiagnosticsEnabled && message.startsWith(PREFIX) && message.length < 8192) {
-      try { const record=sanitizeRecord(JSON.parse(message.slice(PREFIX.length))); if(record) console.log(PREFIX+JSON.stringify(record)) } catch {}
+    if(renderDiagnosticsEnabled && message.startsWith(PREFIX) && message.length < 262144) {
+      try { const value=JSON.parse(message.slice(PREFIX.length)); if(value.batch){const batch=sanitizeBatch(value.batch);if(batch.length)console.log(PREFIX+JSON.stringify({batch}))}else{const record=sanitizeRecord(value); if(record) console.log(PREFIX+JSON.stringify(record))} } catch {}
       return
     }
     if (message.includes('[imageLevel]') || message.includes('[Image Pixel Check]') || message.includes('GPU')) {

@@ -49,6 +49,8 @@ export type PresentedFrame = ExactPresentation & {
   preview?: boolean
 }
 export type SurfaceProps = {
+  /** Opaque Canvas identity for opt-in numeric input diagnostics only. */
+  navigationInputOwner?: object
   overlay?: { document: DesignDocument; pageId: string; epoch: number; commands: import('./gpu/canvas-overlay').CanvasOverlay }
   interaction?: import('./interaction-layers').InteractionProps
   interactionPreview?: boolean
@@ -367,6 +369,10 @@ export function ReferenceSurface(
       presenters.current = [null, null]
     }
   }, [])
+  useEffect(() => {
+    if (client.current && props.navigationInputOwner && !props.paused && props.visible !== false)
+      return client.current.bindNavigationInput(props.navigationInputOwner)
+  }, [props.navigationInputOwner, props.paused, props.visible])
   useEffect(() => {
     displayFailure.current = null
   }, [backend, document.colorManagement])

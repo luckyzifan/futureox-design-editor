@@ -1,4 +1,5 @@
-import { createRenderDiagnostics, sanitizeRecord, sanitizeFields as sanitizeRecordFields, PREFIX } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
+import { bindNavigationInput, NavigationInputTrace } from './navigation-input'
+import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch, renderRequestCategories, renderResultReason, sanitizeFields as sanitizeRecordFields, PREFIX } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { recordRenderDiagnostic, renderBudgetDiagnostic, renderErrorWithBudget } from './render-diagnostics'
 import type { RasterTile } from './tile-cache'
@@ -325,9 +326,16 @@ export class KernelClient {
   private diagnosticSession = Math.floor(Math.random() * 1e12)
   private terminalDiagnostics = createRenderDiagnostics({
     enabled: typeof window !== 'undefined' && (window as unknown as {coreDesktop?:{renderDiagnostics?:boolean}}).coreDesktop?.renderDiagnostics === true,
+    detail: typeof window !== 'undefined' && (window as unknown as {coreDesktop?:{renderDiagnosticsDetail?:boolean}}).coreDesktop?.renderDiagnosticsDetail === true,
+    batchSink: batch=>console.log(PREFIX+JSON.stringify({batch})),
     session: this.diagnosticSession, source: 'main', sink: record => console.log(PREFIX + JSON.stringify(record)),
   })
   private navigationJournal = new NavigationJournal()
+  private inputTrace = new NavigationInputTrace(this.navigationJournal, this.terminalDiagnostics)
+  bindNavigationInput(owner: object) {
+    const unbind = bindNavigationInput(owner, this.inputTrace)
+    return () => { unbind(); this.inputTrace.reset() }
+  }
   /** Explicit diagnostic control only. No per-frame IPC, readback or GPU
    * fence. Worker and main clocks must be aligned by their timeOrigin. */
   async navigationCapture(action: 'start' | 'stop' | 'snapshot', options?: { capacity?: number; durationMs?: number }) {
@@ -344,6 +352,7 @@ export class KernelClient {
     } catch (error) { this.navigationJournal.stop(4); throw error }
   }
 
+  recordViewportDiagnostic(fields: Record<string,number|boolean>) { if(this.terminalDiagnostics.detail)this.terminalDiagnostics.record('viewport-state',fields) }
   onPresentation?: (stats: Record<string, unknown>) => void
   presentationInputOwner?:string
   private presentationAttached = false
@@ -353,8 +362,9 @@ export class KernelClient {
   }
   present(frame: import('./gpu/resident-presenter').ResidentFrame) {
     const sequence = ++this.displaySequence
-    this.terminalDiagnostics.record('camera-request',{sequence,x:frame.view.x,y:frame.view.y,zoom:frame.view.zoom,width:frame.width,height:frame.height})
-    if (this.navigationJournal.recording) this.navigationJournal.record(2, { sequence, x: frame.view.x, y: frame.view.y, zoom: frame.view.zoom })
+    const input = this.inputTrace.correlation(frame.view)
+    this.terminalDiagnostics.record('camera-request',{...input,sequence,x:frame.view.x,y:frame.view.y,zoom:frame.view.zoom,width:frame.width,height:frame.height})
+    if (this.navigationJournal.recording) this.navigationJournal.record(2, { ...input, sequence, x: frame.view.x, y: frame.view.y, zoom: frame.view.zoom })
     this.worker?.postMessage({ command: 'display-frame', sequence, frame:residentFrameMessage(frame) })
   }
   async readContentPixel(u:number,v:number,expected?:import('./resident-presentation').ResidentAcknowledgement){const result=await this.request({command:'display-read-pixel',u,v,expected});if(!result.contentPixel)throw Error('Missing document sample');return result.contentPixel}
@@ -414,7 +424,7 @@ export class KernelClient {
     if (this.worker || this.disposed) return
     const worker = new Worker(new URL('./render-worker.ts', import.meta.url), { type: 'module' })
     this.worker = worker
-    if (this.terminalDiagnostics.enabled) worker.postMessage({command:'terminal-diagnostics',session:this.diagnosticSession})
+    if (this.terminalDiagnostics.enabled) worker.postMessage({command:'terminal-diagnostics',session:this.diagnosticSession,detail:this.terminalDiagnostics.detail})
     if (desktopHost?.preparation) {
       const channel = new MessageChannel()
       const native = connectNativePreparation(desktopHost.preparation, channel.port1, error => {
@@ -433,6 +443,13 @@ export class KernelClient {
       preparation.onerror = event => { if (this.preparationWorker === preparation) this.reset(new Error(event.message || 'CPU 准备线程失败')) }
     }
     worker.onmessage = (e) => {
+      if(e.data.renderDiagnostics) {
+        if(this.terminalDiagnostics.enabled && this.worker===worker) {
+          const batch=sanitizeBatch(e.data.renderDiagnostics).filter(row=>row.session===this.diagnosticSession)
+          if(batch.length)console.log(PREFIX+JSON.stringify({batch}))
+        }
+        return
+      }
       if (e.data.renderDiagnostic) {
         if (this.terminalDiagnostics.enabled && this.worker === worker) {
           const record = sanitizeRecord(e.data.renderDiagnostic)
@@ -503,7 +520,7 @@ export class KernelClient {
         }
         return
       }
-      this.terminalDiagnostics.record(e.data.error ? 'error' : 'result',{...sanitizeRecordFields(e.data),requestId:e.data.id,reasonCode:e.data.error?1:0,milliseconds:performance.now()-p.started})
+      this.terminalDiagnostics.record(e.data.error ? 'error' : 'result',{...sanitizeRecordFields(e.data),requestId:e.data.id,reasonCode:renderResultReason(e.data.error),milliseconds:performance.now()-p.started})
       clearTimeout(p.timer)
       this.pending.delete(e.data.id)
       if (e.data.error) {
@@ -794,6 +811,7 @@ export class KernelClient {
     // the API cancellation point as well as sending the worker control message.
     for (const [id, pending] of this.pending) {
       if (!pending.preview || pending.channel !== channel) continue
+      this.terminalDiagnostics.record('cancel',{requestId:id,reasonCode:2,channel:channel==='interaction'?1:0,generation:this.previewEpochs[channel],fillGeneration:this.tileFillEpoch})
       clearTimeout(pending.timer)
       this.pending.delete(id)
       pending.reject(new Error('PREVIEW_CANCELLED'))
@@ -805,7 +823,7 @@ export class KernelClient {
     const id = ++this.next
     return new Promise((resolve, reject) => {
       const options = (payload as { options?: KernelOptions }).options
-      if(options) this.terminalDiagnostics.record('request',{requestId:id,x:options.view?.x,y:options.view?.y,zoom:options.view?.zoom,width:options.width,height:options.height})
+      this.terminalDiagnostics.record('request',{...renderRequestCategories(payload),requestId:id,x:options?.view?.x,y:options?.view?.y,zoom:options?.view?.zoom,width:options?.width,height:options?.height})
       const preview = !!options?.tileViewport || options?.livePreview === true
       const timer = setTimeout(() => {
         // Reject this attempt. A subsequent user/render request starts a fresh

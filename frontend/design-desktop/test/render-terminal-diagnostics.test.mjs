@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { MessageChannel } from 'node:worker_threads'
-import {createRenderDiagnostics,sanitizeRecord,sanitizeFields,PREFIX,setGpuDiagnosticSink,recordGpuDiagnostic} from '../src/render-terminal-diagnostics.mjs'
+import {createRenderDiagnostics,renderRequestCategories,renderResultReason,sanitizeRecord,sanitizeFields,PREFIX,setGpuDiagnosticSink,recordGpuDiagnostic} from '../src/render-terminal-diagnostics.mjs'
 test('schema rejects arbitrary content, nonfinite numbers and forged enums',()=>{
   const secret={text:'private document',path:'/private/file',url:'https://secret',stack:'credential',images:['image'],requestId:4,zoom:NaN,width:Infinity,cached:true}
   assert.deepEqual(sanitizeFields(secret),{requestId:4,cached:1})
@@ -41,9 +41,48 @@ test('Electron activation and worker relay are explicitly gated; no added GPU wa
   const main=readFileSync(new URL('../src/main.mjs',import.meta.url),'utf8')
   const client=readFileSync(new URL('../../design-client/src/kernel/client.ts',import.meta.url),'utf8')
   const worker=readFileSync(new URL('../../design-client/src/kernel/render-worker.ts',import.meta.url),'utf8')
-  assert(main.includes("!app.isPackaged && process.env.CORE_RENDER_DIAGNOSTICS === '1'"))
-  assert(main.includes('sanitizeRecord(JSON.parse(message.slice(PREFIX.length)))'))
+  assert(main.includes("!app.isPackaged && ['1','detail'].includes(process.env.CORE_RENDER_DIAGNOSTICS)"))
+  assert(main.includes('sanitizeBatch(value.batch)'))
   assert(client.includes("if (this.terminalDiagnostics.enabled) worker.postMessage({command:'terminal-diagnostics'"))
   assert(client.includes('record.session === this.diagnosticSession'))
   assert(worker.includes('sink:record=>self.postMessage({renderDiagnostic:record})'))
+})
+
+test('detail retains event timestamps and request lifecycle in batched bounded ring',()=>{
+  const batches=[];let flush;let time=10
+  const d=createRenderDiagnostics({enabled:true,detail:true,session:2,source:'worker',now:()=>time++,batchSink:b=>batches.push(b),schedule:f=>{flush=f;return 1},cancel:()=>{}})
+  for(const event of ['queue-enqueue','queue-start','compile-start','compile','prepare-wait','queue-end'])d.record(event,{requestId:9})
+  assert.equal(batches.length,0);flush()
+  assert.deepEqual(batches[0].map(r=>r.event),['queue-enqueue','queue-start','compile-start','compile','prepare-wait','queue-end'])
+  assert.deepEqual(batches[0].map(r=>r.at),[10,11,12,13,14,15])
+  batches.length=0
+  for(let i=0;i<2000;i++)d.record('camera-input',{inputSequence:i,path:'secret'})
+  flush();const rows=batches.flat();assert.equal(rows.length,513);assert(batches.every(b=>b.length<=64))
+  assert.equal(rows.at(-1).dropped,1488);assert.equal(rows[0].inputSequence,1488)
+  assert(!JSON.stringify(rows).includes('secret'));d.close()
+})
+test('detail enables bounded production coverage measurement without enabling GPU profiling',()=>{
+  const presenter=readFileSync(new URL('../../design-client/src/kernel/gpu/resident-presenter.ts',import.meta.url),'utf8')
+  assert(presenter.includes('gpuDiagnosticsDetail() && coverageAt-this.diagnosticCoverageAt>=250'))
+  assert(presenter.includes('coverageMeasured:measureCoverage'))
+  assert(presenter.includes('measureCoverage ? physicalCoverage'))
+})
+
+test('request purpose is scalar and separates transient, settled, coverage and readback work',()=>{
+  const transient=renderRequestCategories({options:{renderIntent:'preview',livePreview:true,pageId:'secret'},channel:'interaction',document:'secret'})
+  assert.equal(transient.purpose,1);assert.equal(transient.channel,1);assert.equal(transient.preview,true);assert.equal(transient.finalRequest,false)
+  const settled=renderRequestCategories({options:{renderIntent:'settled',tileViewport:[],coverageTiles:true},readback:true})
+  assert.equal(settled.purpose,2);assert.equal(settled.finalRequest,true);assert.equal(settled.tileViewport,true);assert.equal(settled.coverageTiles,true);assert.equal(settled.readback,true)
+  assert.equal(renderRequestCategories({options:{},png:true}).purpose,4)
+  assert.equal(renderRequestCategories({command:'gpu-memory'}).commandCode,5)
+  assert.equal(renderRequestCategories({command:'untrusted-label'}).commandCode,0)
+  assert.equal(renderRequestCategories({command:'gpu-memory'}).channel,2)
+  assert(!JSON.stringify(transient).includes('secret'))
+  assert.equal(sanitizeFields(transient).purpose,1)
+})
+test('only exact cancellation sentinel is intentional cancellation',()=>{
+  assert.equal(renderResultReason('PREVIEW_CANCELLED'),5)
+  assert.equal(renderResultReason('GPU lost'),1)
+  assert.equal(renderResultReason('error PREVIEW_CANCELLED elsewhere'),1)
+  assert.equal(renderResultReason(undefined),0)
 })
