@@ -136,6 +136,7 @@ impl DocumentPatch {
                 }
             };
         }
+        field!(fd_compatibility, "fdCompatibility");
         field!(schema_version, "schemaVersion");
         field!(name, "name");
         field!(pages, "pages");
@@ -165,6 +166,7 @@ impl DocumentPatch {
                 };
             }
             match key.as_str() {
+                "fdCompatibility" => set!(fd_compatibility),
                 "schemaVersion" => set!(schema_version),
                 "reviews" => {
                     if value.is_null() {

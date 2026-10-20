@@ -241,7 +241,7 @@ fn shared_style_adaptable_colors_ride_container_fidelity() {
     let out = export_sketch(&doc).unwrap();
     let files = read_zip_public(&out).unwrap();
     let document: Value = serde_json::from_slice(&files["document.json"]).unwrap();
-    let style = &document["layerStyles"]["objects"][0]["style"];
+    let style = &document["layerStyles"]["objects"][0]["value"];
     assert_eq!(style["fills"][0]["color"], style_color);
     assert_eq!(
         style["updatableColors"],

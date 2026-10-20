@@ -2,6 +2,7 @@ import type { Editor, EditorEditEvent } from '../engine'
 import type { AutomationCapabilities, AutomationMethod, AutomationRequest, AutomationResponse } from './types'
 import { createEditorDesignAutomation } from './index'
 import { captureDesignPreview, PREVIEW_LIMITS } from './export'
+import { captureRaster, rasterMethods, rasterParams, RASTER_LIMITS } from './raster'
 
 const MAX_MESSAGE_BYTES = 32 * 1024 * 1024
 const STANDARD_MESSAGE_BYTES = 8 * 1024 * 1024
@@ -65,6 +66,7 @@ interface AutomationApi {
 export interface BridgeDependencies {
   api?: AutomationApi
   capturePreview?: typeof captureDesignPreview
+  captureRaster?: typeof captureRaster
   host?: { execute(payload: DesktopAutomationRequest, signal: AbortSignal): Promise<unknown> }
 }
 const bridgeError = (code: string, message: string) => Object.assign(new Error(message), { code })
@@ -74,8 +76,12 @@ const bridgeError = (code: string, message: string) => Object.assign(new Error(m
 export function attachDesktopAutomation(editor: Editor, transport: DesktopAutomationTransport, dependencies: BridgeDependencies = {}): () => void {
   const api = dependencies.api ?? createEditorDesignAutomation(editor)
   const capture = dependencies.capturePreview ?? captureDesignPreview
-  const methods = [...api.methods().filter(method => method.name !== previewMethod.name), previewMethod]
-  const capabilities = (scope: 'read' | 'write') => ({ ...api.capabilities(), methods: methods.filter(method => scope === 'write' || !method.mutates), preview: { renderer: 'product-cpu-export', backend: 'cpu', formats: ['png', 'jpeg', 'webp'], screenshot: false, gpuDisplayPixelEquivalence: false, runtime: typeof Worker === 'function' ? 'worker-available-unprobed' : 'worker-unavailable', limits: PREVIEW_LIMITS, transport: 'MCP image content when within tool budget; exact bytes in session-local resources' } })
+  const methods = [...api.methods().filter(method => method.name !== previewMethod.name && !rasterMethods.some(r => r.name === method.name)), previewMethod, ...rasterMethods]
+  const raster = dependencies.captureRaster ?? captureRaster
+  const artifacts = new Map<string, { blob: Blob; owner: string; expires: number; revision: number }>()
+  let rasterBusy = false
+  const pruneArtifacts = () => { for (const [id, a] of artifacts) if (a.expires <= Date.now()) artifacts.delete(id) }
+  const capabilities = (scope: 'read' | 'write') => ({ ...api.capabilities(), raster: { renderer: 'product-cpu-export', backend: 'cpu', limits: RASTER_LIMITS, pngTransparency: 'preserved', jpegQuality: 100, webpCompression: 'lossless', transport: 'session-local handles; raster.read chunks; raster.release' }, methods: methods.filter(method => scope === 'write' || !method.mutates), preview: { renderer: 'product-cpu-export', backend: 'cpu', formats: ['png', 'jpeg', 'webp'], screenshot: false, gpuDisplayPixelEquivalence: false, runtime: typeof Worker === 'function' ? 'worker-available-unprobed' : 'worker-unavailable', limits: PREVIEW_LIMITS, transport: 'MCP image content when within tool budget; exact bytes in session-local resources' } })
   const active = new Map<string, AbortController>()
   let disposed = false
   let identity = ''
@@ -83,6 +89,7 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
   const register = () => {
     if (disposed || identity === currentIdentity()) return
     identity = currentIdentity()
+    artifacts.clear()
     for (const controller of active.values()) controller.abort(bridgeError('STALE_SESSION', 'The selected design session changed'))
     // No paths, tokens, socket addresses, or generic IPC enter this renderer.
     void transport.register({ documentId: editor.state.doc.id, session: editor.sessionGeneration, name: editor.state.doc.name.slice(0, 256), methods })
@@ -148,6 +155,52 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
         await respond(payload.requestId, validated.ok ? { ...validated, result: capabilities(payload.scope) } : validated)
         return
       }
+      if (request.method === 'raster.read' || request.method === 'raster.release') {
+        const params = request.params ?? {}
+        const keys = request.method === 'raster.read' ? ['artifactId', 'offset', 'length'] : ['artifactId']
+        if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(k => !keys.includes(k)) || typeof params.artifactId !== 'string' || params.artifactId.length > 512) throw bridgeError('INVALID_PARAMS', 'Invalid raster artifact arguments')
+        pruneArtifacts()
+        const artifact = artifacts.get(params.artifactId)
+        if (!artifact || artifact.owner !== payload.sessionId) throw bridgeError('ARTIFACT_NOT_FOUND', 'Raster artifact expired or belongs to another session')
+        if (request.method === 'raster.release') {
+          check(); artifacts.delete(params.artifactId)
+          await respond(payload.requestId, { ...envelope, ok: true, result: { released: true } }); return
+        }
+        const offset = params.offset ?? 0, length = params.length ?? RASTER_LIMITS.chunkBytes
+        if (!Number.isSafeInteger(offset) || (offset as number) < 0 || (offset as number) >= artifact.blob.size || !Number.isSafeInteger(length) || (length as number) < 1 || (length as number) > RASTER_LIMITS.chunkBytes) throw bridgeError('INVALID_PARAMS', 'Invalid raster byte range')
+        const bytes = await runAsync(async () => new Uint8Array(await artifact.blob.slice(offset as number, (offset as number) + (length as number)).arrayBuffer()))
+        check()
+        if (artifact.expires <= Date.now() || artifacts.get(params.artifactId) !== artifact) throw bridgeError('ARTIFACT_NOT_FOUND', 'Raster artifact expired or was released during retrieval')
+        let binary = ''; for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
+        await respond(payload.requestId, { ...envelope, ok: true, result: { artifactId: params.artifactId, encoding: 'base64', base64: btoa(binary), offset, nextOffset: (offset as number) + bytes.length, totalBytes: artifact.blob.size, mimeType: artifact.blob.type, sourceRevision: artifact.revision } }); return
+      }
+      if (request.method === 'raster.export') {
+        if (request.expectedRevision !== undefined && (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision !== revision)) throw bridgeError('REVISION_CONFLICT', 'The design revision changed')
+        const params = request.params ?? {}, options = rasterParams(params)
+        pruneArtifacts()
+        if (artifacts.size + options.scales.length > RASTER_LIMITS.artifacts) throw bridgeError('ARTIFACT_LIMIT', 'Release earlier raster artifacts before exporting another batch')
+        if (rasterBusy) throw bridgeError('BUSY', 'A raster export is already running; retry after completion')
+        rasterBusy = true
+        // Keep the slot until actual renderer settlement, including after a timeout.
+        // Cancellation cannot permit overlapping unbounded background renders.
+        const work = () => raster(structuredClone(editor.state.doc), { ...params, pageId: params.pageId ?? pageId }, controller.signal).finally(() => { rasterBusy = false })
+        let result: Awaited<ReturnType<typeof captureRaster>>
+        try { result = await runAsync(work) } catch (error) { if (!controller.signal.aborted) rasterBusy = false; throw error }
+        check()
+        if (editor.state.version !== revision) throw bridgeError('STALE_REVISION', 'The document changed during raster export')
+        if (params.pageId === undefined && editor.state.page !== pageId) throw bridgeError('STALE_PAGE', 'The active page changed during raster export')
+        pruneArtifacts()
+        const total = [...artifacts.values()].reduce((sum, a) => sum + a.blob.size, 0) + result.assets.reduce((sum, a) => sum + a.blob.size, 0)
+        if (artifacts.size + result.assets.length > RASTER_LIMITS.artifacts || total > RASTER_LIMITS.bytes) throw bridgeError('ARTIFACT_LIMIT', 'Raster artifact storage is full; release earlier artifacts or export a smaller batch')
+        const expires = Date.now() + RASTER_LIMITS.lifetimeMs
+        const files = result.assets.map(({ blob, ...metadata }) => {
+          const artifactId = crypto.randomUUID()
+          artifacts.set(artifactId, { blob, owner: payload.sessionId, expires, revision })
+          return { ...metadata, artifactId, bytes: blob.size, mimeType: blob.type, expiresAt: expires, chunkBytes: RASTER_LIMITS.chunkBytes }
+        })
+        const { assets: _assets, ...metadata } = result
+        await respond(payload.requestId, { ...envelope, ok: true, result: { ...metadata, format: 'futureox.design-raster.v1', documentId, session, revision, files, limits: RASTER_LIMITS } }); return
+      }
       if (request.method !== 'preview.capture') {
         // The shared API owns validation, fenced atomic writes and history.
         // This path is synchronous: no partially-applied asynchronous edits.
@@ -191,6 +244,7 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
     unsubscribeRequest(); unsubscribeCancel(); unsubscribeEditor(); unsubscribeEdits()
     for (const controller of active.values()) controller.abort(bridgeError('SESSION_CLOSED', 'The editor was unmounted'))
     active.clear()
+    artifacts.clear()
     void transport.register(null).catch(() => {})
   }
 }

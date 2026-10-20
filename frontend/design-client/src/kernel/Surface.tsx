@@ -338,7 +338,7 @@ export function ReferenceSurface(
             .join('；'),
         )
         setStatus(
-          `${result.backend === 'webgpu' ? 'WebGPU' : result.backend === 'webgl2' ? 'WebGL 2' : 'CPU'} · ${result.milliseconds.toFixed(0)} ms · ${result.stats.nodes} 图层${result.reason ? ' · 已降级' : ''}${request.document.colorManagement ? ` · 浮点 · ${colorDisplay ? `${presenters.current[slot]?.space}${presenters.current[slot]?.hdr ? ' HDR' : ' SDR'}` : 'sRGB SDR 预览'}` : ''}`,
+          `${result.backend === 'webgpu' ? 'WebGPU' : result.backend === 'webgl2' ? 'WebGL 2' : 'CPU'} · ${result.milliseconds.toFixed(0)} ms · ${result.stats.nodes} 图层${result.reason ? ' · 已降级' : ''}${request.document.colorManagement ? ` · 浮点 · ${colorDisplay ? `${presenters.current[slot]?.space}${presenters.current[slot]?.hdr ? ' HDR' : ' SDR'}` : 'sRGB SDR 预览（HDR/浮点文档数据保留）'}` : ''}`,
         )
       } catch (e) {
         if (current()) {

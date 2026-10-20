@@ -7,7 +7,8 @@ import { AutomationError, type AutomationContext, type AutomationExtension } fro
 import type { DesignAutomationWarning } from './context'
 
 /** The shared Rust codec enforces ZIP32, path/duplicate checks, CRCs, 4096
- * entries, 16 MiB per entry, 64 MiB expansion and a 200:1 compression ceiling.
+ * entries, 16 MiB per entry (40 MiB for document.json with inline fonts),
+ * 64 MiB expansion and a 200:1 compression ceiling.
  * These are additional JSON transport/admission limits, not a second codec. */
 export const SKETCH_LIMITS = Object.freeze({
   transferBytes: 32 * 1024 * 1024 - 64 * 1024,
@@ -20,7 +21,12 @@ const compatibility: DesignAutomationWarning = {
 }
 const fonts: DesignAutomationWarning = {
   code: 'SKETCH_FONT_RESOURCES',
-  message: 'The Sketch codec exports font names, not embedded font binaries. Imported fonts without supported embedded resources use the app default; font metrics and line breaks can change.',
+  message: 'Fonts without embedded resources, including the app default, depend on fonts available in the receiving app; substitution can change metrics and line breaks. Caller-authorized document fonts are embedded as official Sketch fontReferences with their original bytes.',
+}
+function hasUnembeddedTextFonts(document: DesignDocument) {
+  const embedded = (id: string | undefined) => !!id && id !== 'default' && !!document.fonts?.[id]
+  return Object.values(document.nodes).some(node => node.kind === 'text' &&
+    (!embedded(node.textStyle?.fontId) || node.textRuns?.some(run => run.fontId !== undefined && !embedded(run.fontId))))
 }
 function requireKernel() {
   if (!kernelModuleReady()) throw new AutomationError('kernel_not_ready', 'The shared Sketch codec is not initialized; wait for the editor to finish loading')
@@ -111,7 +117,7 @@ export function importSketchDocument(document: DesignDocument, params: Record<st
     }
   }
   const warnings: DesignAutomationWarning[] = [{ ...compatibility }, ...codecWarnings(report.warnings), ...sourceFontWarnings(report.document)]
-  if (Object.values(report.document.nodes).some(node => node.kind === 'text')) warnings.push({ ...fonts })
+  if (hasUnembeddedTextFonts(report.document)) warnings.push({ ...fonts })
   const omittedSourceContainers = Object.keys(report.document.designSystem?.sketchContainers ?? {}).sort()
   if (omittedSourceContainers.length) warnings.push({
     code: 'SKETCH_APPEND_SOURCE_METADATA',
@@ -142,11 +148,12 @@ export function exportSketchDocument(document: DesignDocument) {
     throw new AutomationError('response_limit', 'Sketch archive exceeds the 32 MiB base64 transfer budget (64 KiB reserved)')
   const reopened = readArchive(bytes)
   const warnings = [{ ...compatibility }, ...codecWarnings(reopened.warnings)]
-  if (Object.keys(document.fonts ?? {}).length || Object.values(document.nodes).some(node => node.kind === 'text')) warnings.push({ ...fonts })
+  if (hasUnembeddedTextFonts(document)) warnings.push({ ...fonts })
   return {
     format: 'futureox.design-sketch.v1', sourceFormat: 'sketch', filename: 'design.sketch',
     mimeType: 'application/zip', encoding: 'base64', base64: bytesToBase64(bytes), bytes: bytes.byteLength,
     sourceDocumentId: document.id, sourceNodeCount: Object.keys(document.nodes).length,
+    embeddedFontCount: Object.keys(document.fonts ?? {}).length,
     fidelity: 'compatibility', lossless: false, warnings,
   }
 }
@@ -154,6 +161,6 @@ export function exportSketchDocument(document: DesignDocument) {
 export const sketchExtensions: AutomationExtension[] = [
   { name: 'sketch.import', description: 'Append a real local Sketch ZIP supplied as base64 using the shared binary codec and native ID-remapping transaction. Returns editable nodeIdMap and explicit fidelity/font/source-metadata limitations. No network or filesystem access.', mutates: true,
     inputSchema: { type: 'object', required: ['base64'], properties: { base64: { type: 'string', minLength: 4, maxLength: SKETCH_LIMITS.transferBytes }, name: { type: 'string', minLength: 1, maxLength: 200 }, pageId: { type: 'string' } }, additionalProperties: false }, execute: importSketchDocument },
-  { name: 'sketch.export', description: 'Export the whole authored document as a real Sketch ZIP through the shared binary codec, then verify it reopens. Preserves rigid placement; rejects scaled/sheared affine placement. Returns bounded base64 and explicit compatibility limitations; not a lossless Sketch, font-binary or pixel-fidelity guarantee.', mutates: false,
+  { name: 'sketch.export', description: 'Export the whole authored document as a real Sketch ZIP through the shared binary codec, then verify it reopens. Preserves rigid placement; rejects scaled/sheared affine placement. Returns bounded base64 and explicit compatibility limitations; Embeds caller-authorized document font binaries using official fontReferences; unembedded/default fonts can substitute. Not a lossless Sketch or pixel-fidelity guarantee.', mutates: false,
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }, execute: exportSketchDocument },
 ]

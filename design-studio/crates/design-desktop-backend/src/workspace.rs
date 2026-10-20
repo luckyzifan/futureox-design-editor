@@ -23,8 +23,21 @@ const HISTORY_PAGE: i64 = 1000;
 const MAX_HEADS_CACHE_BYTES: usize = 4 * 1024 * 1024;
 
 fn db(error: sqlx::Error) -> BackendError {
+    // SQLite extended result codes retain the primary code in the low byte.
+    // Contention is retryable; preserve the same mutationId after an uncertain
+    // response so a committed receipt is replayed instead of duplicating edits.
+    let busy = matches!(&error, sqlx::Error::PoolTimedOut)
+        || error
+            .as_database_error()
+            .and_then(|e| e.code())
+            .and_then(|code| code.parse::<i32>().ok())
+            .is_some_and(|code| matches!(code & 0xff, 5 | 6));
     BackendError::new(
-        "WORKSPACE_ERROR",
+        if busy {
+            "WORKSPACE_BUSY"
+        } else {
+            "WORKSPACE_ERROR"
+        },
         format!("Local document transaction failed: {error}"),
     )
 }
@@ -145,6 +158,74 @@ async fn opened(
     Ok(Opened { entry, document })
 }
 
+fn prepare_database_file(path: &Path) -> Result<()> {
+    if !path.is_absolute() || path.as_os_str().len() > MAX_PATH_BYTES {
+        return Err(invalid(
+            "Workspace requires a bounded absolute app-owned path",
+        ));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid("Workspace parent is missing"))?;
+    if parent
+        .canonicalize()
+        .map_err(|e| BackendError::io("Cannot resolve workspace parent", e))?
+        != parent
+        || !parent.is_dir()
+    {
+        return Err(invalid("Workspace parent must be a canonical directory"));
+    }
+    // SQLite may create journal/WAL files; never follow pre-existing leaf links.
+    for candidate in [
+        path.to_path_buf(),
+        path.with_file_name(format!(
+            "{}-wal",
+            path.file_name().unwrap().to_string_lossy()
+        )),
+        path.with_file_name(format!(
+            "{}-shm",
+            path.file_name().unwrap().to_string_lossy()
+        )),
+        path.with_file_name(format!(
+            "{}-journal",
+            path.file_name().unwrap().to_string_lossy()
+        )),
+    ] {
+        match fs::symlink_metadata(&candidate) {
+            Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
+                return Err(invalid(
+                    "Workspace database and journals must be regular files",
+                ));
+            }
+            Ok(metadata) if candidate == path && metadata.len() > MAX_WORKSPACE_BYTES => {
+                return Err(BackendError::new(
+                    "WORKSPACE_FULL",
+                    "Workspace exceeds the 4 GiB budget; database retained",
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(BackendError::io("Cannot inspect workspace file", error)),
+        }
+    }
+    let mut create = fs::OpenOptions::new();
+    create.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        create.mode(0o600);
+    }
+    match create.open(path) {
+        Ok(file) => {
+            file.sync_all()
+                .map_err(|e| BackendError::io("Cannot sync workspace file", e))?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(BackendError::io("Cannot create private workspace", error)),
+    }
+    Ok(())
+}
+
 pub struct WorkspaceStore {
     pool: SqlitePool,
     heads_cache: Mutex<HeadsCache>,
@@ -193,70 +274,17 @@ impl WorkspaceStore {
     /// The app chooses this path; it is never accepted from authored documents.
     /// Opening a corrupt, unrelated or future-version DB does not repair/reset it.
     pub async fn open(path: &Path) -> Result<Self> {
-        if !path.is_absolute() || path.as_os_str().len() > MAX_PATH_BYTES {
-            return Err(invalid(
-                "Workspace requires a bounded absolute app-owned path",
-            ));
-        }
-        let parent = path
-            .parent()
-            .ok_or_else(|| invalid("Workspace parent is missing"))?;
-        if parent
-            .canonicalize()
-            .map_err(|e| BackendError::io("Cannot resolve workspace parent", e))?
-            != parent
-            || !parent.is_dir()
-        {
-            return Err(invalid("Workspace parent must be a canonical directory"));
-        }
-        // SQLite may create journal/WAL files; never follow pre-existing leaf links.
-        for candidate in [
-            path.to_path_buf(),
-            path.with_file_name(format!(
-                "{}-wal",
-                path.file_name().unwrap().to_string_lossy()
-            )),
-            path.with_file_name(format!(
-                "{}-shm",
-                path.file_name().unwrap().to_string_lossy()
-            )),
-            path.with_file_name(format!(
-                "{}-journal",
-                path.file_name().unwrap().to_string_lossy()
-            )),
-        ] {
-            match fs::symlink_metadata(&candidate) {
-                Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
-                    return Err(invalid(
-                        "Workspace database and journals must be regular files",
-                    ));
-                }
-                Ok(metadata) if candidate == path && metadata.len() > MAX_WORKSPACE_BYTES => {
-                    return Err(BackendError::new(
-                        "WORKSPACE_FULL",
-                        "Workspace exceeds the 4 GiB budget; database retained",
-                    ));
-                }
-                Ok(_) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(BackendError::io("Cannot inspect workspace file", error)),
-            }
-        }
-        let mut create = fs::OpenOptions::new();
-        create.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            create.mode(0o600);
-        }
-        match create.open(path) {
-            Ok(file) => {
-                file.sync_all()
-                    .map_err(|e| BackendError::io("Cannot sync workspace file", e))?;
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(BackendError::io("Cannot create private workspace", error)),
-        }
+        // Filesystem metadata, creation and fsync must not block a Tokio worker,
+        // including callers other than the desktop executable.
+        let owned_path = path.to_path_buf();
+        tokio::task::spawn_blocking(move || prepare_database_file(&owned_path))
+            .await
+            .map_err(|error| {
+                BackendError::new(
+                    "WORKSPACE_ERROR",
+                    format!("Database preflight task failed: {error}"),
+                )
+            })??;
         let options = SqliteConnectOptions::new()
             .filename(path)
             .create_if_missing(false)

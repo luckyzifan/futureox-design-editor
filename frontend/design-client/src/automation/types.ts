@@ -26,6 +26,9 @@ export interface AutomationMethod {
 /** Extensions are trusted application code, never script supplied by a caller.
  * A mutating extension edits only its supplied isolated draft in place. */
 export interface AutomationExtension extends AutomationMethod {
+  /** Trusted syntax-only expansion. Must be synchronous and side-effect free.
+   * Dispatcher schema-checks and authorizes each leaf; recursive expansion is rejected. */
+  expand?(params: Record<string, unknown>): { method: string; params?: Record<string, unknown> }[]
   execute(document: DesignDocument, params: Record<string, unknown>, context: AutomationContext): unknown
 }
 export interface AutomationCapabilities {

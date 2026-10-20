@@ -142,6 +142,7 @@ test('each save files one revision snapshot and retention keeps only the newest 
 test('restoreRevision writes the old snapshot as a new head revision labelled 恢复自 rN', async () => {
   fakeIndexedDb()
   let document = blank('第一版')
+  document.fdCompatibility = { contractVersion: 1, requiredCapabilities: [], extensions: { 'org.example/history': { preserved: true } } }
   let record = await localSave(document, 0)
   document = { ...document, name: '第二版' }
   record = await localSave(document, record.revision)
@@ -158,6 +159,7 @@ test('restoreRevision writes the old snapshot as a new head revision labelled �
   const reopened = await localOpen(document.id)
   expect(reopened?.revision).toBe(4)
   expect(reopened?.document.name).toBe('第一版')
+  expect(reopened?.document.fdCompatibility).toEqual(document.fdCompatibility)
   const snapshot = await getRevision(document.id, 4)
   expect(snapshot?.document.name).toBe('第一版')
 })
@@ -169,4 +171,17 @@ test('missing or invalid revisions are reported, never fabricated', async () => 
   expect(await getRevision(document.id, 99)).toBeNull()
   await expect(getRevision(document.id, 0)).rejects.toThrow('历史版本号无效')
   await expect(restoreRevision(document.id, 99)).rejects.toThrow('不存在')
+})
+
+test('restore rejects a stale viewed head, preserves newer head and all snapshots', async () => {
+  fakeIndexedDb()
+  const document = blank('Original')
+  await localSave(document, 0)
+  await localSave({ ...document, name: 'Viewed head' }, 1)
+  await localSave({ ...document, name: 'Concurrent edit' }, 2)
+  await expect(restoreRevision(document.id, 1, 2)).rejects.toThrow('另一标签页')
+  expect((await localOpen(document.id))?.document.name).toBe('Concurrent edit')
+  expect(await listRevisions(document.id)).toHaveLength(3)
+  expect((await restoreRevision(document.id, 1, 3)).revision).toBe(4)
+  expect((await getRevision(document.id, 3))?.document.name).toBe('Concurrent edit')
 })

@@ -8,14 +8,14 @@ const filename = process.env.CORE_DESKTOP_TEST_SOURCE
   ? new URL('preload.cjs', process.env.CORE_DESKTOP_TEST_SOURCE)
   : new URL('../src/preload.cjs', import.meta.url)
 const source = await readFile(filename, 'utf8')
-function load(argv = []) {
+function load(argv = [], reply = { status: 'ok' }) {
   const events = new EventEmitter()
   const calls = []
   let api
   const ipcRenderer = Object.assign(events, {
     invoke: async (...args) => {
       calls.push(args)
-      return { status: 'ok' }
+      return reply
     },
   })
   const contextBridge = {
@@ -42,6 +42,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
     Object.keys(api).sort(),
     [
       'version',
+      'diagnostics',
       'automation',
       'rendererReady',
       'workspace',
@@ -312,4 +313,19 @@ test('workspace root selection is a frozen capability and never forwards rendere
     ['design-desktop:workspace-root-default', undefined],
     ['design-desktop:workspace-root-activate', { selectionId: 'opaque' }],
   ])
+})
+
+ test('diagnostics API has only fixed read/write channels', async () => {
+  const {api, calls} = load()
+  assert.equal(Object.isFrozen(api.diagnostics), true)
+  await api.diagnostics.read(); await api.diagnostics.write('safe-json')
+  assert.deepEqual(calls, [['design-desktop:diagnostics-read', undefined], ['design-desktop:diagnostics-write', 'safe-json']])
+ })
+
+test('handled desktop failures notify diagnostics while storage failures do not recurse', async () => {
+  const {api} = load([], {status:'error',code:'BACKEND_TIMEOUT',message:'private file path'})
+  const records=[];const stop=api.diagnostics.onError(value=>records.push(value))
+  await api.openDocument();await api.diagnostics.read();await api.diagnostics.write('{}')
+  assert.equal(records.length,1);assert.equal(records[0].code,'BACKEND_TIMEOUT');assert.equal(records[0].message,undefined)
+  stop();await api.openDocument();assert.equal(records.length,1)
 })

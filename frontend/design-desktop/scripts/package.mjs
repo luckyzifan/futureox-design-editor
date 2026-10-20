@@ -1,6 +1,6 @@
 import { packager } from '@electron/packager'
 import { cp, mkdir, rm, readFile, writeFile } from 'node:fs/promises'
-import { createReadStream } from 'node:fs'
+import { createReadStream, existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -19,7 +19,10 @@ const bundleId = local ? 'com.futureox.desgin.local' : exact ? 'com.futureox.des
 const staging = path.join(root, 'dist/package-app')
 await rm(staging, { recursive: true, force: true })
 await mkdir(staging, { recursive: true })
+await cp(path.join(root, 'assets'), path.join(staging, 'assets'), { recursive: true })
 await cp(path.join(root, 'src'), path.join(staging, 'src'), { recursive: true })
+if (existsSync(path.join(root, 'dist/renderer/fidelity'))) throw new Error('Reference fixtures found in renderer output; rebuild before packaging')
+if (existsSync(path.join(root, 'dist/renderer/figma-blur-verify.html'))) throw new Error('Experimental verification page found in renderer output; rebuild before packaging')
 await cp(path.join(root, 'dist/renderer'), path.join(staging, 'renderer'), { recursive: true })
 const metadata = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))
 const electronZipDir = process.env.ELECTRON_ZIP_DIR
@@ -54,6 +57,7 @@ const outputs = await packager({
   dir: staging,
   name: packageName,
   appBundleId: bundleId,
+  icon: path.join(root, 'assets/branding', `futureox-desgin.${process.platform === 'darwin' ? 'icns' : process.platform === 'win32' ? 'ico' : 'png'}`),
   extendInfo: {
     NSHighResolutionCapable: true,
     CFBundleDocumentTypes: [{ CFBundleTypeName: 'futureox-desgin Document', CFBundleTypeRole: 'Editor',

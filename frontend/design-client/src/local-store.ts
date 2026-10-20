@@ -262,11 +262,12 @@ export async function getRevision(
 export async function restoreRevision(
   documentId: string,
   revision: number,
+  expectedRevision?: number,
 ): Promise<LocalRecord> {
   const snapshot = await getRevision(documentId, revision)
   if (!snapshot) throw new Error(`历史版本 r${revision} 不存在；请刷新列表后重试`)
-  const head = await localOpen(documentId)
-  return localSave(snapshot.document, head?.revision || 0, `恢复自 r${revision}`)
+  const headRevision = expectedRevision ?? (await localOpen(documentId))?.revision ?? 0
+  return localSave(snapshot.document, headRevision, `恢复自 r${revision}`)
 }
 export async function localSelect(id: string) {
   const db = await openLocalDatabase()

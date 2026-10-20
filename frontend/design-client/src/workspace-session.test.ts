@@ -131,3 +131,11 @@ it('local view refresh cannot overwrite an edit begun while its read is pending'
  const pending=f.session.refreshLocalHead(id,2);f.rename('Unsaved local edit');gate.resolve({...ok,...row,revision:2,documentJson:JSON.stringify({...f.editor.state.doc,name:'Remote edit'})})
  expect(await pending).toBe(false);expect(f.editor.state.doc.name).toBe('Unsaved local edit');expect(f.session.dirty).toBe(true)
 })
+
+it('history restore rejects an older viewed head even after this session saves again', async () => {
+  const f = fixture(); await f.session.start(); await f.session.save()
+  f.rename('Later saved edit'); await f.session.save()
+  expect(await f.session.restoreWorkspace(f.editor.state.doc.id, 1, 1)).toBe(false)
+  expect(f.store.restore).not.toHaveBeenCalled()
+  expect(f.editor.state.doc.name).toBe('Later saved edit')
+})

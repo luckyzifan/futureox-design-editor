@@ -73,7 +73,7 @@ describe('real Editor automation boundary', () => {
     const { editor, n, call } = fixture(), version = editor.state.version
     expect(success(call('node.update', { ids: [n.id], patch: { name: n.name } })).noChange).toBe(true)
     expect(editor.state.version).toBe(version)
-    failure(call('node.update', { ids: [n.id], patch: { width: -5 } }), 'commit_failed')
+    failure(call('node.update', { ids: [n.id], patch: { width: -5 } }), 'invalid_params')
     expect(editor.state.doc.nodes[n.id].width).toBe(30)
   })
   it('requires revision/document/session fences', () => {

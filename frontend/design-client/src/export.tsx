@@ -1,3 +1,4 @@
+import { roundSvgCoordinates } from './export-options'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Scene } from './Renderer'
 import { scene, unionBounds, boxPoints, apply, bounds as pointBounds, inverse, multiply, translate } from './geometry'
@@ -218,7 +219,7 @@ export async function exportVisualSvg(doc: DesignDocument, pageId: string, scale
   )
   return { name: `${doc.name}-visual.svg`, blob: new Blob([source], { type: 'image/svg+xml' }) }
 }
-export function svgSource(doc: DesignDocument, pageId: string, target: ExportTarget = {kind:'page'}, scale = 1) {
+export function svgSource(doc: DesignDocument, pageId: string, target: ExportTarget = {kind:'page'}, scale = 1, precision?: number, textMode: 'outlines' | 'editable' = 'outlines') {
   doc = projectSlice(kernelLayout(doc),pageId,target)
   const b = targetBounds(doc, pageId, target)
   if(!Number.isFinite(scale) || scale<0.001 || scale>128) throw new Error('导出倍率必须在 0.001–128 之间')
@@ -239,10 +240,10 @@ export function svgSource(doc: DesignDocument, pageId: string, target: ExportTar
       viewBox={`${b.x} ${b.y} ${b.width} ${b.height}`}
     >
       <title>{doc.name}</title>
-      <Scene doc={doc} pageId={pageId} exporting />
+      <Scene doc={doc} pageId={pageId} exporting textMode={textMode} />
     </svg>,
   )
-  return { source, box: b, issues: svgExportIssues(doc, pageId) }
+  return { source: roundSvgCoordinates(source, precision), box: b, issues: svgExportIssues(doc, pageId) }
 }
 /** True-vector PDF: paths, axial/radial gradients, image fills and text
  * outlines become native PDF objects at design scale (one MediaBox point per

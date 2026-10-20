@@ -152,31 +152,47 @@ export class ResidentPresenter {
         GPUTextureUsage.COPY_DST |
         GPUTextureUsage.COPY_SRC,
     })
-    const id = ++nextTexture
-    const bind = this.device.createBindGroup({
-      layout: this.layout,
-      entries: [
-        { binding: 0, resource: { buffer: this.uniforms, size: 48 } },
-        { binding: 1, resource: texture.createView() },
-        { binding: 2, resource: this.sampler },
-      ],
-    })
-    this.textures.set(id, { texture, bytes, bind })
-    this.bytes += bytes
-    this.captures++
-    return { id, texture }
+    try {
+      const id = ++nextTexture
+      const bind = this.device.createBindGroup({
+        layout: this.layout,
+        entries: [
+          { binding: 0, resource: { buffer: this.uniforms, size: 48 } },
+          { binding: 1, resource: texture.createView() },
+          { binding: 2, resource: this.sampler },
+        ],
+      })
+      this.textures.set(id, { texture, bytes, bind })
+      this.bytes += bytes
+      this.captures++
+      return { id, texture }
+    } catch (error) {
+      // Registration has not completed, so release(ids) cannot find this yet.
+      texture.destroy()
+      throw error
+    }
   }
+
   import(bitmap: ImageBitmap) {
-    const capture = this.capture(bitmap.width, bitmap.height)
-    this.device.queue.copyExternalImageToTexture(
-      { source: bitmap },
-      { texture: capture.texture, premultipliedAlpha: true },
-      [bitmap.width, bitmap.height],
-    )
-    bitmap.close()
-    this.imports++
-    return capture.id
+    let capture: ReturnType<ResidentPresenter['capture']> | undefined
+    try {
+      capture = this.capture(bitmap.width, bitmap.height)
+      this.device.queue.copyExternalImageToTexture(
+        { source: bitmap },
+        { texture: capture.texture, premultipliedAlpha: true },
+        [bitmap.width, bitmap.height],
+      )
+      this.imports++
+      return capture.id
+    } catch (error) {
+      if (capture) this.release([capture.id])
+      throw error
+    } finally {
+      // Ownership arrives here even when resident admission rejects the copy.
+      bitmap.close()
+    }
   }
+
   release(ids: number[]) {
     for (const id of ids) {
       const entry = this.textures.get(id)

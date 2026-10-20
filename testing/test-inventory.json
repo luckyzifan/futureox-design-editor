@@ -7744,7 +7744,7 @@
       }
     },
     {
-      "path": "frontend/design-client/src/kernel/gpu/figma-blur.test.ts",
+      "path": "frontend/design-client/src/kernel/gpu/paired-tent-blur.test.ts",
       "scope": "project",
       "categories": [
         "named-test-file"

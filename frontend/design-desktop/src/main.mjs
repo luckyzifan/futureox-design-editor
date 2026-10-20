@@ -1,3 +1,4 @@
+import { diagnosticFileAdapter } from './diagnostic-file.mjs'
 import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
 import { registerAutomationBridge } from './automation-bridge.mjs'
 import { SketchSessionHost } from './sketch-session.mjs'
@@ -289,6 +290,14 @@ function sendCommand(command) {
   }
   window.webContents.send('design-desktop:command', command)
 }
+const diagnosticFiles = diagnosticFileAdapter(path.join(app.getPath('userData'), 'diagnostics'))
+let diagnosticWritePending = false
+register('diagnostics-read', async () => ({ok:true, data:await diagnosticFiles.read()}), false)
+register('diagnostics-write', async value => {
+  if (diagnosticWritePending) return {ok:false, error:{code:'BUSY'}}
+  diagnosticWritePending = true
+  try { await diagnosticFiles.write(value); return {ok:true} } finally { diagnosticWritePending = false }
+}, false)
 register('renderer-ready', (value) => {
   if (value !== undefined) throw new Error('Unexpected arguments')
   rendererReady = true
@@ -954,7 +963,10 @@ async function buildWindow() {
   })
   sessionConfigured = true
   }
+  const brandIcon = path.resolve(here, '../assets/branding', process.platform === 'win32' ? 'futureox-desgin.ico' : process.platform === 'darwin' ? 'futureox-desgin-macos.png' : 'futureox-desgin.png')
+  if (process.platform === 'darwin') app.dock?.setIcon(brandIcon)
   window = new BrowserWindow({
+    icon: brandIcon,
     ...placement.bounds,
     minWidth: placement.minWidth,
     minHeight: placement.minHeight,

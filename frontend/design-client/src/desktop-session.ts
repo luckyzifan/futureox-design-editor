@@ -82,6 +82,10 @@ export class DesktopSession {
   restoreWorkspace(id: string, revision: number, expectedRevision: number): Promise<false | { document: DesignDocument; revision: number }> {
     return this.run('open', async () => {
       if (!this.bridge.workspace) return false
+      // A newer save since the history list was viewed must not silently widen
+      // the user's restore authorization. A Save choice below may advance it.
+      if (expectedRevision > 0 && (this.workspaceHeads.get(id) || 0) > expectedRevision)
+        return this.failed({ status: 'conflict', code: 'WORKSPACE_CONFLICT', message: '历史列表已过期，请刷新后再恢复；当前画布已保留' })
       const approved = await this.leave('open')
       if (!this.authorized(approved)) return false
       const result = await this.bridge.workspace.restore({ id, revision, expectedRevision: Math.max(expectedRevision, this.workspaceHeads.get(id) || 0), mutationId: crypto.randomUUID() })

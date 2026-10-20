@@ -329,12 +329,22 @@ pub fn render_with_raster(
     linear: bool,
     software: bool,
 ) -> Result<Surface, String> {
+    render_region_with_raster(backdrop, backdrop.rect, backdrop.rect, shape, matrix, glass, sample, linear, software)
+}
+
+/// Evaluate only requested output, keeping the uncropped geometry domain.
+/// `backdrop` may contain only the rays' certified input region.
+pub(crate) fn render_region_with_raster(
+    backdrop: &Surface, basis: Rect, output: Rect, shape: GlassShape,
+    matrix: Transform, glass: &GlassParameters, sample: Option<usize>,
+    linear: bool, software: bool,
+) -> Result<Surface, String> {
     let software = software && !linear;
-    let geometry = Geometry::with_raster(backdrop.rect, shape, matrix, glass, sample, software)?;
-    let mut result = backdrop.new_like(backdrop.rect)?;
+    let geometry = Geometry::with_raster(basis, shape, matrix, glass, sample, software)?;
+    let mut result = backdrop.new_like(output)?;
     let dispersion = glass.chromatic_aberration();
-    for y in backdrop.rect.y..backdrop.rect.bottom() {
-        for x in backdrop.rect.x..backdrop.rect.right() {
+    for y in output.y..output.bottom() {
+        for x in output.x..output.right() {
             let params = geometry.at(x, y, glass);
             let ray = |factor: f32| {
                 let delta: [f32; 2] =
@@ -363,7 +373,7 @@ pub fn render_with_raster(
                 ))
             };
             let pixel = shade(params, dispersion, false, ray);
-            result.pixels[backdrop.rect.index(x, y).expect("glass output")] = if linear {
+            result.pixels[output.index(x, y).expect("glass output")] = if linear {
                 pixel
             } else {
                 encode_with_raster(pixel, software)
@@ -371,6 +381,29 @@ pub fn render_with_raster(
         }
     }
     Ok(result)
+}
+
+/// Exact integer sample coverage, including every dispersion ray and all four
+/// bilinear neighbours. Reuse shading's factor sequence, not a halo estimate.
+pub(crate) fn input_region(
+    basis: Rect, output: Rect, shape: GlassShape, matrix: Transform,
+    glass: &GlassParameters, sample: Option<usize>,
+) -> Result<Rect, String> {
+    let geometry = Geometry::with_raster(basis, shape, matrix, glass, sample, false)?;
+    let bounds = std::cell::Cell::new(Rect::new(0, 0, 0, 0));
+    for y in output.y..output.bottom() {
+        for x in output.x..output.right() {
+            let params = geometry.at(x, y, glass);
+            shade(params, glass.chromatic_aberration(), false, |factor| {
+                let delta: [f32; 2] = std::array::from_fn(|i| geometry.offset[i] + params[i] * factor);
+                let ix = x + delta[0].floor() as i32;
+                let iy = y + delta[1].floor() as i32;
+                bounds.set(bounds.get().union(Rect::new(ix, iy, 2, 2).intersect(basis)));
+                Pixel::default()
+            });
+        }
+    }
+    Ok(bounds.get())
 }
 
 /// Colour remains local to each backend. This entry replays the verified

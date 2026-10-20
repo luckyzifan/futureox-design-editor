@@ -31,6 +31,10 @@ export class NavigationZoom {
     this.target = { ...view }
     this.sample = { active: false, view: { ...view }, sequence: 0 }
   }
+  /** Diagnostic snapshot only; never drives scheduling or adds a timer. */
+  pendingAge(now: number) {
+    return this.active && this.hasUnsampledView() ? Math.max(0, now - this.sampledAt) : 0
+  }
   get active() { return this.sample.active }
   get zoom() { return this.target.zoom }
   update(view: CanvasCamera, now: number): NavigationZoomSample {

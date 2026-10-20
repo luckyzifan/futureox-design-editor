@@ -48,7 +48,7 @@ test.each([false, true])('preview then settled shadows retain the compositor con
   u[16] = 6
   // Imported shadows used to populate these spare lanes, which accidentally
   // selected the unrelated canvas-chrome shader after filter preparation.
-  u[44] = 1; u[48] = 16
+  u[44] = 1; u[48] = 16; u[59] = 1; u[60] = 1
   for (const preview of [true, false]) {
     Object.assign(driver, { displayFilters: preview })
     expect(() => driver.pass(texture(), u, [texture(), texture()])).not.toThrow()
@@ -61,39 +61,35 @@ test('ordinary canvas preparation compiles no experimental shadow or chrome prog
   Object.assign(driver, { pairDisplayTaps: true })
   await driver.prepareFilters()
   const labels = device.createShaderModule.mock.calls.map(([descriptor]) => descriptor.label)
-  expect(labels).toContain('Canvas integrated tent')
-  expect(labels).toContain('Paired integrated display filter')
-  expect(labels).not.toContain('Figma paired tent')
-  expect(labels).not.toContain('Figma SDF shadow')
-  expect(labels).not.toContain('Figma canvas chrome')
-  expect(labels).not.toContain('Figma shadow blur')
+  expect(labels.sort()).toEqual(['Canvas integrated tent', 'Paired integrated display filter'].sort())
 })
 
-test('explicit paired blur binds a texture view and its initialized sampler', async () => {
-  const { driver, device, texture } = fixture(true)
-  await driver.prepareFilters(false, true)
+test('integrated paired display binds source and kernel views with its initialized sampler', async () => {
+  const { driver, device, passes, texture } = fixture(true)
+  Object.assign(driver, { pairDisplayTaps: true })
+  await driver.prepareFilters()
   const u = parameters({ x: 0, y: 0, w: 32, h: 32 })
-  u[16] = 22; u[36] = 4; u[40] = 8
-  expect(() => driver.pass(texture(), u, [texture()])).not.toThrow()
+  u[16] = 22; u[36] = 4
+  expect(() => driver.pass(texture(), u, [texture(), texture()])).not.toThrow()
+  expect(passes.at(-1)).toEqual({ label: 'Paired integrated display filter' })
   const descriptor = device.createBindGroup.mock.calls.at(-1)![0]
   expect(Array.from(descriptor.entries).map(entry => entry.resource)).toEqual([
-    { buffer: {} }, { kind: 'sampler' }, { kind: 'view' },
+    { buffer: {} }, { kind: 'sampler' }, { kind: 'view' }, { kind: 'view' },
   ])
 })
 
-test('an incomplete optional filter never publishes a pipeline with missing bindings', async () => {
-  const { driver, device, passes, texture } = fixture(true)
-  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-  device.createSampler.mockImplementationOnce(() => { throw new Error('Sampler allocation failed') })
-  await driver.prepareFilters(false, true)
-  expect(warning).toHaveBeenCalledWith(expect.stringContaining('integrated tent'), expect.any(Error))
+test.each([false, true])('retired prototype flags cannot divert integrated filtering (filterable=%s)', async filterable => {
+  const { driver, device, passes, texture } = fixture(filterable)
+  Object.assign(driver, { pairDisplayTaps: true })
+  await driver.prepareFilters()
   const u = parameters({ x: 0, y: 0, w: 32, h: 32 })
-  u[16] = 22; u[36] = 4; u[40] = 8
-  expect(() => driver.pass(texture(), u, [texture()])).not.toThrow()
+  u[16] = 22; u[36] = 4; u[40] = 8; u[45] = 1
+  expect(() => driver.pass(texture(), u, [texture(), texture()])).not.toThrow()
   expect(passes.at(-1)).toEqual({ label: 'Canvas integrated tent' })
-  await driver.prepareFilters(false, true)
-  expect(() => driver.pass(texture(), u, [texture()])).not.toThrow()
-  expect(passes.at(-1)).toEqual({ label: 'Figma paired tent' })
+  const labels = device.createShaderModule.mock.calls.map(([descriptor]) => descriptor.label)
+  expect(labels.sort()).toEqual((filterable
+    ? ['Canvas integrated tent', 'Paired integrated display filter']
+    : ['Canvas integrated tent']).sort())
 })
 
 test('paired display fallback remains complete and does not repeatedly rebuild a failed program', async () => {

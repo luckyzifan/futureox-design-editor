@@ -4,6 +4,13 @@ use std::io::{Cursor, Read, Write};
 
 pub(crate) const MAX_ENTRIES: usize = 4096;
 pub(crate) const MAX_ENTRY_BYTES: u64 = 16 * 1024 * 1024;
+// Official MSFontData is inline base64 in document.json: 24 MiB of
+// bounded font data needs 32 MiB before document metadata. Other entries
+// keep the tighter limit; the total archive budget still applies.
+pub(crate) const MAX_DOCUMENT_BYTES: u64 = 40 * 1024 * 1024;
+fn entry_limit(name: &str) -> u64 {
+    if name == "document.json" { MAX_DOCUMENT_BYTES } else { MAX_ENTRY_BYTES }
+}
 pub(crate) const MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RATIO: u64 = 200;
 const RATIO_FLOOR: u64 = 4096;
@@ -82,7 +89,8 @@ pub(crate) fn read(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
             continue;
         }
         let size = file.size();
-        if size > MAX_ENTRY_BYTES {
+        let limit = entry_limit(&name);
+        if size > limit {
             return Err(Error::Limit("entry bytes"));
         }
         if size > RATIO_FLOOR && size > file.compressed_size().max(1).saturating_mul(MAX_RATIO) {
@@ -94,7 +102,7 @@ pub(crate) fn read(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
         }
         let mut data = Vec::new();
         file.by_ref()
-            .take(MAX_ENTRY_BYTES + 1)
+            .take(limit + 1)
             .read_to_end(&mut data)
             .map_err(|e| Error::Archive(e.to_string()))?;
         if data.len() as u64 != size {
@@ -119,7 +127,7 @@ pub(crate) fn write(files: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>> {
         if !safe_path(name) {
             return Err(Error::Invalid("unsafe archive path".into()));
         }
-        if data.len() as u64 > MAX_ENTRY_BYTES {
+        if data.len() as u64 > entry_limit(name) {
             return Err(Error::Limit("entry bytes"));
         }
         total += data.len() as u64;

@@ -6,6 +6,7 @@ import path from 'node:path'
 
 export const BUILD_DIRECTORIES = [
   'frontend/design-desktop/src',
+  'frontend/design-desktop/assets',
   'frontend/design-desktop/scripts',
   'frontend/design-client/src',
   'frontend/design-client/public',
@@ -20,6 +21,8 @@ export const BUILD_FILES = [
   'frontend/design-desktop/bun.lock',
   'frontend/design-client/package.json',
   'frontend/design-client/vite.config.ts',
+  'frontend/design-client/scripts/production-public.mjs',
+  'THIRD_PARTY_NOTICES.md',
   'frontend/design-client/tsconfig.json',
   'frontend/design-client/index.html',
   'frontend/design-desktop/package.json',

@@ -14,6 +14,7 @@ import { residentFrameSignature } from './gpu/resident-frame'
 import type { InteractionProps } from './interaction-layers'
 import { InteractionRenderer } from './interaction-renderer'
 import { PageTranslation } from './page-translation'
+import { settleResidentImport } from './resident-import-ownership'
 
 export function ResidentCompositeSurface(props: {
   client: KernelClient
@@ -48,7 +49,8 @@ export function ResidentCompositeSurface(props: {
     usePageTranslation = useRef(false)
   const repaint = useRef(() => {}),
     attached = useRef(false)
-  const importing = useRef(new Set<number>())
+  const importing = useRef(new Map<number, object>())
+  const importSession = useRef<object>({})
   const interactionStarted = useRef(false)
   const inputTrace = useRef<{ sequence: number; latency: number }[]>([])
   const inputScope=useRef(crypto.randomUUID()),inputOwner=useRef('')
@@ -84,22 +86,23 @@ export function ResidentCompositeSurface(props: {
           p.onFailure(`GPU 驻留显示缺少纹理或像素: ${tile.key}`)
           return
         }
-        importing.current.add(tile.serial)
-        void p.client.importPresentation(tile).then(
-          (id) => {
-            importing.current.delete(tile.serial)
-            if (!attached.current) {
-              p.client.releasePresented([id])
-              return
-            }
-            tile.gpuTile = id
-            repaint.current()
-          },
-          (error) => {
-            importing.current.delete(tile.serial)
-            if (attached.current) p.onFailure(String(error))
-          },
-        )
+        const token = {}, session = importSession.current
+        importing.current.set(tile.serial, token)
+        const owns = () => {
+          const current = latest.current
+          const active = usePageTranslation.current || pageTranslation.current?.handingOff && !interaction.current?.ready
+            ? pageTranslation.current : interaction.current
+          return attached.current && importSession.current === session && current.client === p.client &&
+            (current.items.some(item => item.tile === tile) || !!active?.tiles.includes(tile))
+        }
+        void settleResidentImport(p.client.importPresentation(tile), owns,
+          id => { tile.gpuTile = id; repaint.current() },
+          id => p.client.releasePresented([id]),
+          error => { if (owns()) latest.current.onFailure(String(error)) },
+          () => {
+            // An older completion must not clear a new session's import.
+            if (importing.current.get(tile.serial) === token) importing.current.delete(tile.serial)
+          })
         continue
       }
       published.current.set(tile.serial, { key: tile.key, gpuTile: tile.gpuTile })
@@ -263,6 +266,8 @@ export function ResidentCompositeSurface(props: {
       actualPresentation.current=undefined
       lastFrameSignature.current = ''
       attached.current = false
+      importSession.current = {}
+      importing.current.clear()
       interaction.current?.dispose()
       interaction.current = null
       p.client.onPresentation = undefined

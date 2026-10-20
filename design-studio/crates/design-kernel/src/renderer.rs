@@ -886,6 +886,12 @@ impl Engine {
         extra_halo: i32,
         budget: Budget,
     ) -> Result<Vec<Surface>, String> {
+        self.render_surfaces_regions(options, synchronized, viewport, extra_halo, budget, true)
+    }
+    fn render_surfaces_regions(
+        &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
+        extra_halo: i32, budget: Budget, regional: bool,
+    ) -> Result<Vec<Surface>, String> {
         let coverage_compatible =
             options.raster_profile != crate::fidelity::RasterProfile::Analytic;
         let compatible = coverage_compatible
@@ -1054,8 +1060,17 @@ impl Engine {
             }
             Ok(targets.into_iter().collect())
         } else {
-            for root in &page.children {
-                painter.node(root, &mut target, None)?;
+            // Reverse paint order: earlier layers must retain every input read
+            // by later backdrop consumers, not merely their own visible output.
+            let mut needed = viewport;
+            let mut outputs = Vec::with_capacity(page.children.len());
+            for root in page.children.iter().rev() {
+                let output = if regional && painter.bounded_node(root) { needed } else { extent };
+                if regional { needed = needed.union(painter.leaf_backdrop_input(root, output)?); }
+                outputs.push(output);
+            }
+            for (root, output) in page.children.iter().zip(outputs.into_iter().rev()) {
+                painter.node_region(root, &mut target, None, regional.then_some(output), extent)?;
             }
             Ok(vec![target])
         };
@@ -2280,12 +2295,19 @@ impl Painter<'_> {
         layer: &mut Surface,
         extra: impl Fn(i32, i32) -> f32,
     ) -> Result<(), String> {
+        let basis = layer.rect.intersect(mask.rect);
+        self.paint_region(n, p, m, mask, layer, basis, extra)
+    }
+    fn paint_region(
+        &mut self, n: &Node, p: &Paint, m: Transform, mask: &Mask,
+        layer: &mut Surface, basis: Rect, extra: impl Fn(i32, i32) -> f32,
+    ) -> Result<(), String> {
         if !p.visible {
             return Ok(());
         }
         let blend_mode=crate::blend::BlendMode::from_name(&p.blend);
         let r = layer.rect.intersect(mask.rect);
-        let mut sampler = Sampler::new(p, n, m, r, self.images)?;
+        let mut sampler = Sampler::new(p, n, m, basis, self.images)?;
         sampler.prepare_sampled(p, r, !self.compatible)?;
         let solid = sampler.solid();
         let direct_constant = if self.compatible && self.sample.is_some() && p.blend == "normal" {
@@ -2623,12 +2645,61 @@ impl Painter<'_> {
         self.stats.effect_layers += 1;
         Ok(planes)
     }
+    // The regional Gaussian proof is analytic and unmanaged. Unsupported
+    // effects and mask subtrees keep their original full-domain evaluation.
+    fn bounded_node(&self, id: &str) -> bool {
+        let n = &self.doc.nodes[id];
+        if !n.visible || n.opacity <= 0. { return true; }
+        !self.coverage_compatible && self.doc.color_management.is_none()
+            && !n.mask && self.doc.mask_child(n).is_none()
+            && n.render_children().iter().all(|child| self.bounded_node(child))
+            && n.effects.iter().filter(|e| e.visible).all(|e| {
+                n.backdrop_effect().is_some_and(|b| std::ptr::eq(e, b))
+                    && (e.kind != "glass" || (e.glass.is_some()
+                        && crate::optics::GlassShape::from_node(n).is_some()))
+            })
+    }
+    fn regional_children(&self, children: &[String], output: Rect) -> Result<(Rect, Vec<Rect>), String> {
+        let mut needed = output;
+        let mut outputs = Vec::with_capacity(children.len());
+        for child in children.iter().rev() {
+            outputs.push(needed);
+            needed = needed.union(self.leaf_backdrop_input(child, needed)?);
+        }
+        outputs.reverse();
+        Ok((needed, outputs))
+    }
+    fn leaf_backdrop_input(&self, id: &str, output: Rect) -> Result<Rect, String> {
+        let n = &self.doc.nodes[id];
+        if !n.visible || n.opacity <= 0. { return Ok(output); }
+        if !self.bounded_node(id) { return Ok(self.extent); }
+        let p = &self.prepared[id];
+        let basis = p.bounds.intersect(self.extent);
+        let output = output.intersect(basis);
+        if output.empty() { return Ok(output); }
+        let (working, _) = self.regional_children(n.render_children(), output)?;
+        let working = working.intersect(basis);
+        let mut input = if n.passes_backdrop() { working } else { output };
+        if let Some(fx) = n.backdrop_effect() {
+            let samples = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref()) {
+                crate::optics::input_region(basis, working, shape, p.matrix, glass, None)?
+            } else { working };
+            let sigma = fx.backdrop_radius() * p.matrix.max_scale() / 2.;
+            let support: u32 = effects::gaussian_box_radii(sigma)?.into_iter().sum();
+            input = input.union(samples.expand(support as i32).intersect(basis));
+        }
+        Ok(input)
+    }
     fn node(&mut self, id: &str, target: &mut Surface, clip: Option<&Mask>) -> Result<(), String> {
+        let original_target = target.rect;
+        self.node_region(id, target, clip, None, original_target)
+    }
+    fn node_region(&mut self, id: &str, target: &mut Surface, clip: Option<&Mask>, output: Option<Rect>, original_target: Rect) -> Result<(), String> {
         let n = &self.doc.nodes[id];
         if !n.visible || n.opacity <= 0. {
             return Ok(());
         }
-        let Some(layer) = self.node_layer(id, target, true)? else {
+        let Some(layer) = self.node_layer(id, target, true, output, original_target)? else {
             return Ok(());
         };
         if n.passes_backdrop() {
@@ -2659,6 +2730,8 @@ impl Painter<'_> {
         id: &str,
         target: &Surface,
         apply_effects: bool,
+        output: Option<Rect>,
+        original_target: Rect,
     ) -> Result<Option<Surface>, String> {
         let n = &self.doc.nodes[id];
         if !n.visible {
@@ -2675,10 +2748,20 @@ impl Painter<'_> {
                     "blur" | "shadow" | "inner-shadow" | "glass" | "texture"
                 )
         });
-        let r = prepared
+        let basis = prepared
             .bounds
-            .intersect(if filtered { self.extent } else { target.rect })
+            .intersect(if filtered { self.extent } else { original_target })
             .intersect(self.extent);
+        // Preparation can reject a clipped frame without preparing descendants.
+        // Do not run dependency planning inside that already-culled subtree.
+        if basis.empty() {
+            self.stats.culled += 1;
+            return Ok(None);
+        }
+        let bounded = output.is_some() && self.bounded_node(id);
+        let r = if bounded {
+            self.regional_children(n.render_children(), basis.intersect(output.unwrap()))?.0.intersect(basis)
+        } else { basis };
         if r.empty() {
             self.stats.culled += 1;
             return Ok(None);
@@ -2701,14 +2784,23 @@ impl Painter<'_> {
             n.network.as_ref().is_none_or(|g| g.fill_rule == "evenodd") && n.kind != "text",
         )?;
         if let Some(fx) = n.backdrop_effect().filter(|_| apply_effects) {
-            let copy = effects::copy_region(target, r)?;
-            let blurred = self
-                .blur_filter(fx.backdrop_radius() * scale)
-                .apply(&copy)?;
+            let blurred = if bounded {
+                let samples = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref()) {
+                    crate::optics::input_region(basis, r, shape, m, glass, None)?
+                } else { r };
+                effects::gaussian_region(target, basis, samples, fx.backdrop_radius() * scale / 2.)?
+            } else {
+                let copy = effects::copy_region(target, r)?;
+                self.blur_filter(fx.backdrop_radius() * scale).apply(&copy)?
+            };
             let background = if let Some((shape, glass)) =
                 crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref())
             {
-                crate::optics::render(&blurred, shape, m, glass, None, !self.compatible)?
+                if bounded {
+                    crate::optics::render_region_with_raster(&blurred, basis, r, shape, m, glass, None, !self.compatible, false)?
+                } else {
+                    crate::optics::render(&blurred, shape, m, glass, None, !self.compatible)?
+                }
             } else if fx.kind == "glass" {
                 let mut geometry = self.allocate(r)?;
                 for y in r.y..r.bottom() {
@@ -2734,7 +2826,11 @@ impl Painter<'_> {
             }
         }
         for paint in &n.fills {
-            self.paint(n, paint, m, &fill, &mut layer, |_, _| 1.)?;
+            if bounded {
+                self.paint_region(n, paint, m, &fill, &mut layer, basis.intersect(prepared.fill_program_bounds), |_, _| 1.)?;
+            } else {
+                self.paint(n, paint, m, &fill, &mut layer, |_, _| 1.)?;
+            }
         }
         let mask_id = self.doc.mask_child(n).map(|m| &m.id);
         let mut mask_surface = None;
@@ -2774,6 +2870,12 @@ impl Painter<'_> {
                     layer.quantize_rgba8();
                 }
             }
+        } else if bounded {
+            let children: Vec<String> = n.render_children().to_vec();
+            let (_, outputs) = self.regional_children(&children, basis.intersect(output.unwrap()))?;
+            for (child, region) in children.iter().zip(outputs) {
+                self.node_region(child, &mut layer, child_mask, Some(region), basis)?;
+            }
         } else {
             for child in n.render_children() {
                 self.node(child, &mut layer, child_mask)?;
@@ -2784,7 +2886,9 @@ impl Painter<'_> {
                 continue;
             }
             let mask = self.rasterize(&prepared.strokes[i], r, false)?;
-            self.paint(n, &s.paint, m, &mask, &mut layer, |x, y| {
+            let paint_basis = if bounded { basis.intersect(prepared.stroke_program_bounds[i]) }
+                else { layer.rect.intersect(mask.rect) };
+            self.paint_region(n, &s.paint, m, &mask, &mut layer, paint_basis, |x, y| {
                 match s.align.as_str() {
                     "inside" => fill.at(x, y),
                     "outside" => 1. - fill.at(x, y),

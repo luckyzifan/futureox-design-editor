@@ -1,3 +1,5 @@
+import { interfacePreference } from './interface-preference'
+import { CameraState } from './camera-state'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasLayoutGrids,hasImageAdjusts,hasPatternTiles } from './model'
 import { inferred_layout_json } from './generated/design-kernel/design_kernel'
 import { selectionScaleFrame, scaleAnchor, scaleSelectionTransforms } from './selection-scale'
@@ -15,7 +17,7 @@ import { editableNetwork } from './editable-network'
 import { defaultPencil, defaultBrush, defaultMarker, defaultTape, type PencilSettings } from './freehand'
 import { wrappedInsertion } from './layout-order'
 import { isEmptyLeafAlphaMask } from './mask-coverage'
-import { deeperSelectionHit, interactivePath, navigateSelection, shallowSelectionHit } from './selection-hierarchy'
+import { deeperSelectionHit, interactivePath, marqueeScope, navigateSelection, shallowSelectionHit } from './selection-hierarchy'
 import * as Components from './components'
 import type { ComponentProperty } from './model'
 import {
@@ -191,6 +193,13 @@ export class Editor {
     /** Internal capability; never accepted from serialized clipboard payloads. */
     sourceSession?: number
   } | null = null
+  private readonly cameraState = new CameraState(undefined, () => interfacePreference.getSnapshot().rememberViewport)
+  private releaseCameraLifecycle: (() => void) | undefined
+  restoredCamera = false
+  private saveCamera = () => {
+    this.cameraState.remember(this.state.doc.id, this.state.page, this.effectiveView())
+    this.cameraState.flush()
+  }
   private sessionEpoch = 0
   get sessionGeneration() { return this.sessionEpoch }
   get interactionActive() { return this.transaction !== null }
@@ -227,6 +236,12 @@ export class Editor {
       editingVertex: null, editingVertices: [],
       renamingLayer: null,
       version: 0,
+    }
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' &&
+        typeof window.removeEventListener === 'function') {
+      const remove = window.removeEventListener.bind(window)
+      window.addEventListener('pagehide', this.saveCamera)
+      this.releaseCameraLifecycle = () => remove('pagehide', this.saveCamera)
     }
   }
   private editListeners = new Set<(event: EditorEditEvent) => void>()
@@ -295,6 +310,18 @@ export class Editor {
     // A direct camera write supersedes any coalesced wheel write still parked
     // in this frame — otherwise the rAF commit would silently roll the caller's
     // zoom back to the pre-click wheel camera.
+    const navigationChanged = (patch.page !== undefined && patch.page !== this.state.page) ||
+      (patch.doc !== undefined && patch.doc.id !== this.state.doc.id)
+    if (navigationChanged) {
+      this.cameraState.remember(this.state.doc.id, this.state.page, this.effectiveView())
+      this.discardPendingView()
+      if (patch.view === undefined) {
+        const doc = patch.doc || this.state.doc
+        const page = patch.page || this.state.page
+        const saved = this.cameraState.recall(doc.id, doc.pages.map(p => p.id), page, interfacePreference.getSnapshot().rememberViewport)
+        patch = { ...patch, view: saved?.view || { x: 40, y: 40, zoom: 1 } }
+      }
+    }
     if (patch.view !== undefined) this.discardPendingView()
     const next = { ...this.state, ...patch }
     if(next.page!==this.state.page||next.doc.id!==this.state.doc.id){this.pointerLocation=null;this.pointerScreen=null}
@@ -304,6 +331,8 @@ export class Editor {
       next.hoverSource = null
     }
     this.state = next
+    if (patch.view !== undefined || navigationChanged)
+      this.cameraState.remember(next.doc.id, next.page, next.view)
     for (const fn of this.listeners) fn()
   }
   notify(message: string) {
@@ -414,13 +443,16 @@ export class Editor {
       const d = produceDraft(authored, (draft) => {
         draft.schemaVersion = Math.max(2, draft.schemaVersion) as 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
         draft.rasterProfile ??= before.doc.rasterProfile || 'analytic'
+        // Before component/dependency cleanup, only root schema/profile fields
+        // have changed. Inspect finalized authored nodes here to avoid creating
+        // Immer proxies for every untouched node during legacy admission.
         // Schema promotion is monotonic. Once a version is supported, scanning
         // every Immer node again cannot change it. Full validation still runs
         // after dependency cleanup and authoritative layout below.
         if (draft.schemaVersion < 4 && (
           draft.designSystem ||
           draft.prototype ||
-          Object.values(draft.nodes).some(
+          Object.values(authored.nodes).some(
             (n) =>
               n.booleanOperation ||
               n.maskType ||
@@ -437,7 +469,7 @@ export class Editor {
         ))
           draft.schemaVersion = Math.max(draft.schemaVersion, 4) as 4 | 5 | 6 | 7 | 8 | 9 | 10
         if (draft.schemaVersion < 5 && (
-          Object.values(draft.nodes).some((n) => n.effects.some((e) => e.glass || e.texture)) ||
+          Object.values(authored.nodes).some((n) => n.effects.some((e) => e.glass || e.texture)) ||
           draft.animations?.some((c) =>
             c.tracks.some((t) =>
               t.keyframes.some((k) => k.value.effects.some((e) => e.glass || e.texture)),
@@ -614,10 +646,15 @@ export class Editor {
     if (this.disposed) return false
     if (!commitPendingEdits(this)) return false
     const previous=this.state
+    const previousView = this.effectiveView()
     const doc = takePreparedDocument(value) || prepareDocumentForEditing(value)
+    this.cameraState.remember(previous.doc.id, previous.page, previousView)
+    const saved = !preserveView && interfacePreference.getSnapshot().rememberViewport
+      ? this.cameraState.recall(doc.id, doc.pages.map(p => p.id)) : undefined
+    this.restoredCamera = !!saved
     this.sessionEpoch++
     if (this.revealRequest) this.consumeReveal(this.revealRequest.nonce)
-    this.preservedViewSession=preserveView?this.sessionEpoch:-1
+    this.preservedViewSession=(preserveView || saved)?this.sessionEpoch:-1
     this.geometryJob?.cancel()
     this.undoStack = []
     this.redoStack = []
@@ -626,12 +663,12 @@ export class Editor {
     this.transaction = null
     this.set({
       doc,
-      page:preserveView&&doc.pages.some(p=>p.id===previous.page)?previous.page:doc.pages[0].id,
+      page:saved?.pageId || (preserveView&&doc.pages.some(p=>p.id===previous.page)?previous.page:doc.pages[0].id),
       selection:preserveView?previous.selection.filter(id=>!!doc.nodes[id]):[],
       hover: null,
       hoverSource: null,
       tool: 'select', commentSelection:undefined, commentDraft:undefined,
-      view:preserveView?previous.view:{x:40,y:40,zoom:1},
+      view:saved?.view || (preserveView?previousView:{x:40,y:40,zoom:1}),
       version: this.state.version + 1,
       message: '设计已打开',
       busy: false,
@@ -700,6 +737,23 @@ export class Editor {
         .filter((e) => ids.has(e.id))
         .map((e) => e.bounds),
     )
+  }
+  /** Within an entered container, prefer the small editable target shown by
+   * hover over overlapping backing shapes. Keep unopened hierarchy boundaries,
+   * explicit deep picking, and foreground objects outside that scope intact. */
+  selectionHit(p: Point, deep = false, index?: SpatialIndex, zoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
+    if (deep) return this.hit(p, true, index, zoom, snapshot)
+    const document = snapshot?.document || this.state.doc, page = snapshot?.pageId || this.state.page
+    const parents = this.pickContext(document).parents
+    const scope = marqueeScope(document, page, this.state.selection)
+    const front = this.hit(p, true, index, zoom, snapshot)
+    if (!front) return null
+    const path = interactivePath(document, page, front, false, parents)
+    const within = scope !== page && path.includes(scope)
+    const target = within ? this.hit(p, true, index, zoom, snapshot,
+      n => interactivePath(document, page, n.id, false, parents).includes(scope), 'smallest') || front : front
+    return shallowSelectionHit(document, this.state.selection, target,
+      interactivePath(document, page, target, false, parents), parents)
   }
   /** Hover identifies the smallest eligible object within the front board,
    * independently of the hierarchy used by click/drag selection. */
@@ -2019,6 +2073,9 @@ export class Editor {
   }
   dispose() {
     if (this.disposed) return
+    this.saveCamera()
+    this.releaseCameraLifecycle?.()
+    this.releaseCameraLifecycle = undefined
     this.disposed = true
     this.sessionEpoch++
     this.geometryJob?.cancel()

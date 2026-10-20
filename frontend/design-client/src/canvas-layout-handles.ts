@@ -1,5 +1,5 @@
-import type {AutoLayout,Bounds,DesignDocument,Point} from './model'
-import {apply,boxPoints,bounds,worldMatrix} from './geometry'
+import type {AutoLayout,DesignDocument,Point} from './model'
+import {apply,boxPoints,bounds} from './geometry'
 export type LayoutHandle={key:string;point:Point;axis:'x'|'y';padding?:number;property?:'gap'|'lineGap';sign:number;value:number}
 export function layoutHandles(doc:DesignDocument,id:string):LayoutHandle[]{
   const n=doc.nodes[id],l=n?.layout;if(!n||!l||l.mode==='none')return []

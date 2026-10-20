@@ -31,6 +31,6 @@ export function useNavigationZoom(view: CanvasCamera, identity: string, enabled:
   const sameOwner = owner.current === identity
   // The input render must suppress exact work before its layout effect
   // publishes the first sampled preview of this gesture.
-  return { suspended: !visible, active: enabled && sameOwner && (published.active || state.current.zoom !== view.zoom),
+  return { suspended: !visible, pendingAgeMs: enabled ? state.current.pendingAge(performance.now()) : 0, active: enabled && sameOwner && (published.active || state.current.zoom !== view.zoom),
     sample: enabled && sameOwner && published.active ? published : undefined }
 }

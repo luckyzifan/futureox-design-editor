@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { ImportOwner, importStep } from './import-ownership.ts'
+import { recordLocalError, localDiagnostics } from './local-diagnostics.ts'
 
 function deferred() {
   let resolve, reject
@@ -137,13 +138,17 @@ function switchHarness() {
   const callback = source.slice(start, stop).replace(header, 'async function switchDocument(document, record, preserveCurrent = true, request) {')
   const lifecycle = source.match(/  useEffect\(\(\) => \{\n    switchLifetime\.current\+\+[\s\S]*?\n  \}, \[fileImports\]\)/g)
   assert.equal(lifecycle?.length, 1, 'import lifecycle callback missing or ambiguous')
-  const current = editor(), fileImports = new ImportOwner(), changes = [], notices = []
+  const current = editor(), fileImports = new ImportOwner(), changes = [], notices = [], diagnostics = []
   current.state.version = 0
   current.notify = message => notices.push(message)
   current.load = prepared => { current.state = { doc: prepared.snapshot(), version: 0 }; current.sessionGeneration++; return true }
   let cleanup
   const context = vm.createContext({
     editor: current, fileImports, desktopSession: undefined, ready: true,
+    recordLocalError: (...args) => {
+      diagnostics.push(args)
+      return recordLocalError(...args)
+    },
     switchLifetime: { current: 0 }, switchGate: { current: null },
     useEffect: setup => { cleanup = setup() },
     commitPendingEdits: () => true, cancelPendingOperations: () => {}, hasPendingEdits: () => false,
@@ -158,7 +163,7 @@ function switchHarness() {
   const setup = () => vm.runInContext(lifecycle[0], context)
   setup()
   const switchDocument = vm.runInContext(`${callback}\nswitchDocument`, context)
-  return { context, current, fileImports, changes, notices, switchDocument, setup, cleanup: () => cleanup() }
+  return { context, current, fileImports, changes, notices, diagnostics, switchDocument, setup, cleanup: () => cleanup() }
 }
 
 for (const invalidate of ['new selection', 'same-ID reopening']) {
@@ -170,8 +175,11 @@ for (const invalidate of ['new selection', 'same-ID reopening']) {
     await Promise.race([entered.promise, pending.then(() => { throw new Error('switch callback returned before expected storage boundary') })])
     if (invalidate === 'new selection') h.fileImports.invalidate()
     else h.current.sessionGeneration++
-    storage.reject(new Error('old storage failure'))
+    const failure = new Error('old storage failure')
+    storage.reject(failure)
     assert.equal(await pending, false)
+    assert.deepEqual(h.diagnostics, [['workspace', failure, 'STORAGE_ERROR']])
+    assert.equal(localDiagnostics.snapshot().records.at(-1).code, 'STORAGE_ERROR')
     assert.deepEqual(h.notices, [])
     assert.equal(h.current.state.doc.id, 'same-document')
     assert.equal(h.context.switchGate.current, null)
@@ -181,10 +189,13 @@ for (const invalidate of ['new selection', 'same-ID reopening']) {
 
 test('the actual switch catch still reports a current post-adoption localSelect failure', async () => {
   const h = switchHarness()
-  h.context.localSelect = async () => { throw new Error('current selection write failed') }
+  const failure = new Error('current selection write failed')
+  h.context.localSelect = async () => { throw failure }
   assert.equal(await h.switchDocument({ id: 'imported' }, undefined, false, h.fileImports.begin(h.current)), false)
   assert.equal(h.current.state.doc.id, 'imported')
   assert.deepEqual(h.notices, ['Error: current selection write failed'])
+  assert.deepEqual(h.diagnostics, [['workspace', failure, 'STORAGE_ERROR']])
+  assert.equal(localDiagnostics.snapshot().records.at(-1).component, 'workspace')
 })
 
 test('actual cleanup fences old finally and catch from a remounted replacement operation', async () => {
@@ -200,8 +211,10 @@ test('actual cleanup fences old finally and catch from a remounted replacement o
   const b = h.switchDocument({ id: 'B' }, undefined, false, h.fileImports.begin(h.current))
   await Promise.race([enteredB.promise, b.then(() => { throw new Error('new switch returned before expected storage boundary') })])
   const operationB = h.context.switchGate.current
-  storageA.reject(new Error('unmounted storage failure'))
+  const failure = new Error('unmounted storage failure')
+  storageA.reject(failure)
   assert.equal(await a, false)
+  assert.deepEqual(h.diagnostics, [['workspace', failure, 'STORAGE_ERROR']])
   assert.equal(h.context.switchGate.current, operationB)
   assert.deepEqual(h.notices, [])
   assert.deepEqual(h.changes, [['setSwitching', true], ['setSwitching', true]])

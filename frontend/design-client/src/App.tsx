@@ -1,9 +1,12 @@
+import { recordLocalError } from './local-diagnostics'
 import { keyboardNudgeActive, keyboardNudgeOwnsKey } from './keyboard-nudge-gesture'
 import { BatchRenameDialog } from './BatchRenameDialog'
 import { NativeSketchDialog } from './NativeSketchDialog'
 import { nativeSketchCapabilities } from './native-sketch-capabilities'
 import { alignmentAvailability, alignSelection } from './alignment-availability'
 import { SettingsDialog } from './SettingsDialog'
+import { PanelResizeHandle, useAdaptivePanels } from './AdaptivePanels'
+import { interfaceText, interfacePreference } from './interface-preference'
 import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
@@ -184,9 +187,13 @@ export default function App() {
   const [showColor, setShowColor] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const [showAnimation, setShowAnimation] = useState(false)
-  const [showLayers, setShowLayers] = useState(() => window.innerWidth > 900)
+  const adaptivePanels = useAdaptivePanels()
+  const showLayers = adaptivePanels.leftOpen
+  const setShowLayers = adaptivePanels.setLeftOpen
+  const panelText = interfaceText[adaptivePanels.preferences.locale]
   const [uiMinimized, setUiMinimized] = useState(false)
-  const [showInspector, setShowInspector] = useState(() => window.innerWidth > 900)
+  const showInspector = adaptivePanels.rightOpen
+  const setShowInspector = adaptivePanels.setRightOpen
   const [desktop] = useState(desktopBridge)
   const [editor] = useState(() => new Editor(blank()))
   useEffect(() => bindEditorSettings(editor), [editor])
@@ -352,7 +359,7 @@ export default function App() {
   useEffect(() => {
     const minimize = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat || event.keyCode === 229 || (shortcutPlatform() === 'mac' ? (!event.metaKey || event.ctrlKey) : (!event.ctrlKey || event.metaKey)) || !event.shiftKey || event.code !== 'Backslash' ||
-          event.altKey || event.isComposing || editor.interactionActive || modalOwnsKeyboard(event.target) ||
+          event.altKey || event.isComposing || editor.interactionActive || hasPendingEdits(editor) || modalOwnsKeyboard(event.target) ||
           (event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable],[role="menu"]')) return
       event.preventDefault()
       setUiMinimized(value => !value)
@@ -409,14 +416,17 @@ export default function App() {
     const preview = readStartupPreview().then(value => {
       if (active) setStartupPreview(value)
       return value
-    }).catch(error => { console.warn('[startup-preview] 读取预览失败', error); return undefined })
+    }).catch(error => { recordLocalError('storage', error, 'STORAGE_ERROR'); console.warn('[startup-preview] 读取预览失败', error); return undefined })
     Promise.all([initializePicking(), localOpen(), preview])
       .then(([, record, preview]) => {
         if (!active) return
         if (record && editor.state.doc === startup && editor.sessionGeneration === startupSession && !hasPendingEdits(editor)) {
-          const restoreView = preview?.documentId === record.document.id && preview.revision === record.revision && record.document.pages.some(p => p.id === preview.pageId)
-          if (editor.load(record.document, restoreView)) {
-            if (restoreView) editor.set({ page: preview.pageId, view: preview.view })
+          const restoreView = interfacePreference.getSnapshot().rememberViewport && preview?.documentId === record.document.id && preview.revision === record.revision && record.document.pages.some(p => p.id === preview.pageId)
+          if (editor.load(record.document)) {
+            if (restoreView && !editor.restoredCamera) {
+              editor.preservedViewSession = editor.sessionGeneration
+              editor.set({ page: preview.pageId, view: preview.view })
+            }
             else setStartupPreview(undefined)
             saver.open(record, editor.state.version)
           }
@@ -425,6 +435,7 @@ export default function App() {
       })
       .catch((e) => {
         if (!active) return
+        recordLocalError('workspace', e, 'STORAGE_ERROR')
         setSaved('本地恢复失败')
         editor.notify(`本地恢复失败，自动保存已暂停：${e.message}`)
       })
@@ -443,7 +454,7 @@ export default function App() {
         .then(async () => {
           if (editor.state.doc.id === snapshot.id) await localSelect(snapshot.id)
         })
-        .catch((e) => editor.notify(String(e)))
+        .catch((e) => { recordLocalError('workspace', e, 'STORAGE_ERROR'); editor.notify(String(e)) })
     }, 350)
     return () => clearTimeout(timer)
   }, [s.version, ready, desktopSession])
@@ -521,6 +532,7 @@ export default function App() {
       setReady(true)
       return true
     } catch (e) {
+      recordLocalError('workspace', e, 'STORAGE_ERROR')
       if (ownsSession()) editor.notify(String(e))
       return false
     } finally {
@@ -536,6 +548,7 @@ export default function App() {
       setLocalFiles(await localList())
       setMenu(false)
     } catch (e) {
+      recordLocalError('workspace', e, 'STORAGE_ERROR')
       editor.notify(String(e))
     }
   }
@@ -644,6 +657,7 @@ export default function App() {
   }
   return (
     <div
+      style={adaptivePanels.style}
       className={`app-shell editor-shell ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'chrome-hide-inspector'} ${uiMinimized ? 'chrome-minimized' : ''}`}
       data-history-backend={editor.historyBackend} data-history-operation={editor.historyOperationMode} data-history-frame-bytes={editor.historyFrameBytes}
       data-desktop-ready={desktopSession ? String(ready) : undefined}
@@ -653,7 +667,7 @@ export default function App() {
       onDragOverCapture={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault()}}
       onDropCapture={e=>{
         const files=[...e.dataTransfer.files]
-        const designFiles=files.filter(f=>/\.(fd|json|svg|fig|sketch|pdf)$/i.test(f.name))
+        const designFiles=files.filter(f=>/\.(fd|json|svg|svgz|fig|sketch|pdf)$/i.test(f.name))
         const imageFiles=files.filter(f=>/\.(png|jpe?g|webp)$/i.test(f.name))
         if(!designFiles.length&&!imageFiles.length)return
         e.preventDefault();e.stopPropagation()
@@ -698,8 +712,8 @@ export default function App() {
       )}
       <header className="editor-header">
         <button ref={fileMenuTrigger} className="brand" aria-label="文件菜单" aria-expanded={menu} onClick={() => setMenu(!menu)}>
-          <span className="brand-mark">f</span>
-          <strong>futureox-desgin</strong>
+          <img className="brand-mark" src="/branding/futureox-desgin.svg" width="28" height="28" alt="" aria-hidden="true" />
+          <strong>Futureox Design</strong>
           <ChevronDown size={13} />
         </button>
         <span className="header-divider" />
@@ -723,7 +737,7 @@ export default function App() {
           />
           <span className="draft-badge">本地</span>
           <button type="button" aria-label={uiMinimized ? '展开界面' : '收起界面'} title={`收起 / 展开界面 (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
-            aria-pressed={uiMinimized} onClick={() => setUiMinimized(value => !value)}>
+            aria-pressed={uiMinimized} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setUiMinimized(value => !value) }}>
             {uiMinimized ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
 
@@ -756,13 +770,13 @@ export default function App() {
           >
             历史版本
           </button>
-          <button title="图层面板" aria-label="图层面板" onClick={() => setShowLayers((v) => !v)}>
+          <button title={panelText.left} aria-label={panelText.left} aria-expanded={showLayers} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setShowLayers((v) => !v) }}>
             <LayersIcon size={16} />
           </button>
           <button
-            title="属性面板"
-            aria-label="属性面板"
-            onClick={() => setShowInspector((v) => !v)}
+            title={panelText.right}
+            aria-label={panelText.right}
+            aria-expanded={showInspector} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setShowInspector((v) => !v) }}
           >
             <VectorSquare size={16} />
           </button>
@@ -941,7 +955,7 @@ export default function App() {
       <input
         ref={file}
         type="file"
-        accept=".fd,.json,.svg,.fig,.sketch,.pdf,.png,.jpg,.jpeg,.webp"
+        accept=".fd,.json,.svg,.svgz,.fig,.sketch,.pdf,.png,.jpg,.jpeg,.webp"
         hidden
         onChange={async (e) => {
           const f = e.currentTarget.files?.[0]
@@ -964,10 +978,18 @@ export default function App() {
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}
       {showHistory && (
         <DocumentHistoryDialog
+          key={s.doc.id}
           session={desktopSession}
           documentId={s.doc.id}
           documentName={s.doc.name}
           unsaved={desktopSession ? desktopStatus.dirty : saver.dirty}
+          beforeLocalRestore={() => {
+            if (hasPendingEdits(editor) || editor.interactionActive || editor.state.busy || switchGate.current)
+              throw new Error('请先完成当前输入或操作，再恢复历史版本；当前修改已保留')
+            const version = editor.state.version, generation = editor.sessionGeneration
+            return () => editor.state.version === version && editor.sessionGeneration === generation &&
+              !hasPendingEdits(editor) && !editor.interactionActive && !editor.state.busy && !switchGate.current
+          }}
           onLocalAdopt={async (record) => {
             if (desktopSession) return false
             const opened = await switchDocument(record.document, { ...record, updatedAt: Date.now() }, false)
@@ -978,10 +1000,13 @@ export default function App() {
         />
       )}
       <main className={`editor-workspace ${showLayers && !uiMinimized ? '' : 'hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'hide-inspector'} ${uiMinimized ? 'ui-minimized' : ''}`} >
-        <WorkspaceRail section={workspaceSection} onSection={(section) => { setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false) }}
+        <WorkspaceRail section={workspaceSection} onSection={(section) => {
+          if (editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return
+          setWorkspaceSection(section); setShowLayers(true); setUiMinimized(false)
+        }}
           onFiles={() => { if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else if (desktopSession) setShowCatalog(true); else void openLocalFiles() }}
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
-        <Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} />
+        <div className="adaptive-layers-shell"><Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} /><PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
         <div className="canvas-workspace">
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
           <Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready}
@@ -1060,6 +1085,7 @@ export default function App() {
           </DesignToolbar>
         </div>
         <div className="properties-workspace">
+          <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
           <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label="属性工作区" onKeyDown={(event) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault(); event.stopPropagation()
@@ -1067,8 +1093,8 @@ export default function App() {
             setPropertiesTab(next)
             document.getElementById(`${next}-properties-tab`)?.focus()
           }}>
-            <button type="button" role="tab" id="design-properties-tab" tabIndex={propertiesTab === 'design' ? 0 : -1} aria-selected={propertiesTab === 'design'} aria-controls="design-properties" onClick={() => setPropertiesTab('design')}>设计</button>
-            <button type="button" role="tab" id="prototype-properties-tab" tabIndex={propertiesTab === 'prototype' ? 0 : -1} aria-selected={propertiesTab === 'prototype'} aria-controls="prototype-properties" onClick={() => setPropertiesTab('prototype')}>原型</button>
+            <button type="button" role="tab" id="design-properties-tab" tabIndex={propertiesTab === 'design' ? 0 : -1} aria-selected={propertiesTab === 'design'} aria-controls="design-properties" onClick={() => setPropertiesTab('design')}>{panelText.design}</button>
+            <button type="button" role="tab" id="prototype-properties-tab" tabIndex={propertiesTab === 'prototype' ? 0 : -1} aria-selected={propertiesTab === 'prototype'} aria-controls="prototype-properties" onClick={() => setPropertiesTab('prototype')}>{panelText.prototype}</button>
             </div><div ref={setZoomHost} className="properties-zoom" />
           </div>
           <div className="properties-content" id={`${propertiesTab}-properties`} role="tabpanel" aria-labelledby={`${propertiesTab}-properties-tab`}>
@@ -1127,7 +1153,7 @@ export default function App() {
                     const request = fileImports.begin(editor)
                     void importStep(request, () => localOpen(entry.id))
                       .then((record) => record && switchDocument(record.document, record, true, request))
-                      .catch((e) => { if (request.isCurrent()) editor.notify(String(e)) })
+                      .catch((e) => { recordLocalError('workspace', e, 'STORAGE_ERROR'); if (request.isCurrent()) editor.notify(String(e)) })
                   }}
                 >
                   {entry.name}
@@ -1139,7 +1165,7 @@ export default function App() {
                   onClick={() =>
                     void localTrash(entry.id, !entry.deleted)
                       .then(openLocalFiles)
-                      .catch((e) => editor.notify(String(e)))
+                      .catch((e) => { recordLocalError('workspace', e, 'STORAGE_ERROR'); editor.notify(String(e)) })
                   }
                 >
                   {entry.deleted ? '恢复' : '移入回收站'}

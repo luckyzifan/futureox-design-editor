@@ -556,3 +556,21 @@ fn binary_forma_is_default_and_legacy_json_is_still_opened_losslessly() {
         "INVALID_DOCUMENT"
     );
 }
+
+#[test]
+fn fd_extension_metadata_roundtrips_and_required_semantics_never_replace_original() {
+    let f = Fixture::new();
+    let mut doc = document();
+    doc["fdCompatibility"] = json!({"contractVersion":1,"requiredCapabilities":[],"extensions":{
+        "org.example/metadata":{"nested":[null,true,1.25,"文字"],"url":"file:///inert"}
+    }});
+    let saved = f.backend.save(&f.path(), &doc, None).unwrap();
+    assert_eq!(f.backend.open(&f.path()).unwrap().document, doc);
+    let original = fs::read(f.path()).unwrap();
+    doc["fdCompatibility"]["requiredCapabilities"] = json!(["org.example/render"]);
+    assert_eq!(f.backend.save(&f.path(), &doc, Some(&saved.hash)).unwrap_err().code, "INVALID_DOCUMENT");
+    assert_eq!(fs::read(f.path()).unwrap(), original);
+    let incoming = f.root.join("unknown-required.fd");
+    fs::write(&incoming, serde_json::to_vec(&doc).unwrap()).unwrap();
+    assert_eq!(f.backend.open(&incoming).unwrap_err().code, "INVALID_DOCUMENT");
+}
