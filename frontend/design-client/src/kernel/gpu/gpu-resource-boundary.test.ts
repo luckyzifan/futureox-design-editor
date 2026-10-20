@@ -586,3 +586,24 @@ test('same-device park/revive preserves lifecycle incarnation without another cr
     expect(records.filter(row=>row.event==='device-lifecycle'&&[5,6,7].includes(row.fields.devicePhase)).map(row=>row.fields.deviceIncarnation)).toEqual([created,created,created])
   }finally{if(driver)(driver as any).destroyDeviceNow();setGpuDiagnosticSink(undefined)}
 })
+
+test('actual driver park and revive preserve the same presenter payload ledger and reservations', async()=>{
+  const made=await createDriver(true),driver=made.driver,device=(driver as any).device
+  device.createRenderPipeline=(descriptor:any)=>descriptor
+  device.createSampler=()=>({})
+  const context={configure(){},unconfigure(){}}
+  const canvas={width:16,height:16,getContext:()=>context} as unknown as OffscreenCanvas
+  driver.attachPresenter(canvas,()=>{})
+  const presenter=(driver as any).presenter,payload=presenter.payload
+  presenter.capture(16,16)
+  const output=payload.reserve(256,'capture'),before=presenter.payloadStats
+  ;(driver as any).poolKey='payload-park-revive'
+  try {
+    driver.dispose()
+    expect((driver as any).presenter).toBe(presenter)
+    const revived=await (WebGpuDriver as any).reviveParked('payload-park-revive')
+    expect(revived).toBe(driver);expect((driver as any).presenter.payload).toBe(payload)
+    expect(presenter.payloadStats).toEqual(before)
+    payload.cancel(output)
+  } finally { (driver as any).destroyDeviceNow() }
+})

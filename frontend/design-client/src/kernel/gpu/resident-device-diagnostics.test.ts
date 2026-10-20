@@ -52,7 +52,9 @@ function fixture(){
     transferToImageBitmap(){const resource=this.current!;this.current=undefined;resource.owner='transferred-bitmap';return{width:this.width,height:this.height,close:()=>resource.destroy()}}
   }
   vi.stubGlobal('OffscreenCanvas',MockCanvas)
-  const device={queue,limits:{maxTextureDimension2D:16384},createBindGroupLayout:()=>({}),createShaderModule:()=>({}),createPipelineLayout:()=>({}),
+  let lose!: (info: {reason:string;message:string}) => void
+  const lost = new Promise<{reason:string;message:string}>(resolve => { lose=resolve })
+  const device={queue,lost,limits:{maxTextureDimension2D:16384},createBindGroupLayout:()=>({}),createShaderModule:()=>({}),createPipelineLayout:()=>({}),
     createRenderPipeline:()=>({getBindGroupLayout:()=>({})}),createSampler:()=>({}),
     createBuffer:({size}:{size:number})=>new Resource(queue,size,'owned-buffer'),
     createTexture:({size,format}:{size:number[];format:string})=>new Resource(queue,size[0]*size[1]*(format==='rgba16float'?8:4),'owned-texture',size[0],size[1]),
@@ -69,21 +71,22 @@ function fixture(){
     }}
   const canvas=new MockCanvas(16,16);canvas.owner='display-canvas'
   const presenter=new ResidentPresenter(device as unknown as GPUDevice,canvas as unknown as OffscreenCanvas,'rgba8unorm',report=>reports.push(report))
-  return{queue,presenter,device,canvas,canvases,reports}
+  return{queue,presenter,device,canvas,canvases,reports,lose}
 }
 function frame(id?:number,width=16,height=16):ResidentFrame{
   return{items:id===undefined?[]:[{active:true,layer:0,gutter:0,tile:{gpuTile:id,serial:id,width,height,zoom:1,x:0,y:0}as any}],
     view:{x:0,y:0,zoom:1},width,height,dpr:1,allowEmpty:true}
 }
 
-test('presenter diagnostics identify the same device and observe pending capture/readback without reserving or fencing extra work',async()=>{
+test('presenter diagnostics identify the same device and observe pending capture/readback with bounded payload reservations',async()=>{
   const f=fixture(),driverOwner={},driverFields=registerDeviceDiagnosticOwner(driverOwner,f.device,1)
   f.presenter.draw(frame())
   const report=f.reports.find(row=>row.compositorFrames===1)!
-  expect(report).toMatchObject({deviceIncarnation:driverFields.deviceIncarnation,deviceWorkerScope:driverFields.deviceWorkerScope,deviceScope:2,deviceCounterMask:7})
-  expect(report).not.toHaveProperty('deviceRetiringPayloadBytes')
+  expect(report).toMatchObject({deviceIncarnation:driverFields.deviceIncarnation,deviceWorkerScope:driverFields.deviceWorkerScope,deviceScope:2,deviceCounterMask:15})
+  expect(report.deviceRetiringPayloadBytes).toBe(0)
   const before=f.queue.epoch,capture=f.presenter.captureContentBitmap(),read=f.presenter.readContentPixel(.5,.5)
   expect(f.presenter.diagnosticFields()).toMatchObject({devicePendingCaptures:1,devicePendingReadbacks:1,devicePendingCapturePayloadBytes:1024})
+  await Promise.resolve()
   expect(f.queue.epoch-before).toBe(2)
   expect(f.queue.fences).toHaveLength(2) // existing export fence and mock mapAsync, no observer fence
   f.queue.completeThrough(f.queue.epoch)
@@ -93,6 +96,7 @@ test('presenter diagnostics identify the same device and observe pending capture
 test('diagnostic counts unwind even when original export cleanup throws',async()=>{
   const f=fixture();f.presenter.draw(frame())
   const pending=f.presenter.captureContentBitmap(),failure=Error('original unconfigure failure')
+  await Promise.resolve()
   vi.spyOn(f.canvases.at(-1)!.context,'unconfigure').mockImplementation(()=>{throw failure})
   f.queue.completeThrough(f.queue.epoch)
   await expect(pending).rejects.toBe(failure)
