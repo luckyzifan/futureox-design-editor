@@ -1,0 +1,434 @@
+diff --git a/frontend/design-client/src/kernel/gpu/prefix-band.test.ts b/frontend/design-client/src/kernel/gpu/prefix-band.test.ts
+index 7a8324a..fa0f891 100644
+--- a/frontend/design-client/src/kernel/gpu/prefix-band.test.ts
++++ b/frontend/design-client/src/kernel/gpu/prefix-band.test.ts
+@@ -1,8 +1,10 @@
+ import { expect, test } from 'vitest'
+-import { prefixAlignedStrip, prefixBandSize, PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES } from './prefix-band'
++import { prefixAlignedStrip, prefixBandSize, parallelPrefixChunks, PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES } from './prefix-band'
+ 
+ test('3484-wide 117 support fills two 29-line bands within the original 64-row ceiling',()=>{
+   expect(prefixBandSize(3484)).toBe(29)
++  expect(parallelPrefixChunks(3484)).toBe(14)
++  expect(16 + prefixBandSize(3484) * (16 + 32 * parallelPrefixChunks(3484))).toBe(13472)
+   expect(prefixAlignedStrip(3484)).toBe(58)
+   const bands=(rows:number,strip:number)=>{let count=0;for(let y=0;y<rows;y+=strip)count+=Math.ceil(Math.min(strip,rows-y)/29);return count}
+   expect((bands(3484,64)+bands(1032,64))*4).toBe(848)
+@@ -13,11 +15,24 @@ test('every supported length stays inside all scratch planes and the strip ceili
+   const band=prefixBandSize(length),strip=prefixAlignedStrip(length)
+   expect(band*(length+1)*32).toBeLessThanOrEqual(PREFIX_BYTES)
+   expect(band*length*8).toBeLessThanOrEqual(RESULT_BYTES)
+-  expect(band*16+16).toBeLessThanOrEqual(METADATA_BYTES)
++  expect(band*(16+32*parallelPrefixChunks(length))+16).toBeLessThanOrEqual(METADATA_BYTES)
+   expect(strip).toBeGreaterThan(0);expect(strip).toBeLessThanOrEqual(64)
+   if(band<=64)expect(strip%band).toBe(0)
+  }
+ })
++test('short rows retain their old layout, long chunk totals have independent bounded storage',()=>{
++ expect(PREFIX_BYTES+RESULT_BYTES+METADATA_BYTES+READBACK_BYTES).toBe(4*1024*1024)
++ for(const length of [1,255,256,257,511]) {
++  expect(parallelPrefixChunks(length)).toBe(0)
++  expect(prefixBandSize(length)).toBe(Math.min(Math.floor(PREFIX_BYTES/(32*(length+1))),
++    Math.floor(RESULT_BYTES/(8*length)),Math.floor((METADATA_BYTES-16)/16),255))
++ }
++ expect(parallelPrefixChunks(512)).toBe(2)
++ expect(parallelPrefixChunks(513)).toBe(3)
++ expect(prefixBandSize(513)).toBe(146)
++ expect(parallelPrefixChunks(16384)).toBe(64)
++ for(const length of [512,513,3484,16384])expect(prefixBandSize(length,2)).toBe(2)
++})
+ test('unsupported lengths preserve the bounded 64-row fallback',()=>{
+  for(const length of [0,-1,NaN,Infinity,1.5,16385]){
+   expect(prefixBandSize(length)).toBe(0);expect(prefixAlignedStrip(length)).toBe(64)
+diff --git a/frontend/design-client/src/kernel/gpu/prefix-band.ts b/frontend/design-client/src/kernel/gpu/prefix-band.ts
+index 90426bf..0394485 100644
+--- a/frontend/design-client/src/kernel/gpu/prefix-band.ts
++++ b/frontend/design-client/src/kernel/gpu/prefix-band.ts
+@@ -3,10 +3,18 @@ export const PREFIX_BYTES = 3275776
+ export const RESULT_BYTES = 901120
+ export const METADATA_BYTES = 16384
+ export const READBACK_BYTES = 1024
++export const PREFIX_CHUNK_SIZE = 256
++/** Short rows retain the single-dispatch scan. Long rows store one exact
++ * sum/moment carry per chunk after the unchanged 16-byte line headers. */
++export function parallelPrefixChunks(length: number) {
++  return Number.isSafeInteger(length) && length >= 512 && length <= 16384
++    ? Math.ceil(length / PREFIX_CHUNK_SIZE) : 0
++}
+ export function prefixBandSize(length: number, maxBandLines = 255) {
+   if (!Number.isSafeInteger(length) || length < 1 || length > 16384) return 0
++  const metadataPerLine = 16 + 32 * parallelPrefixChunks(length)
+   return Math.min(Math.floor(PREFIX_BYTES / (32 * (length + 1))),
+-    Math.floor(RESULT_BYTES / (8 * length)), Math.floor((METADATA_BYTES - 16) / 16), maxBandLines)
++    Math.floor(RESULT_BYTES / (8 * length)), Math.floor((METADATA_BYTES - 16) / metadataPerLine), maxBandLines)
+ }
+ /** Keep the established strip memory ceiling while avoiding a nearly-empty
+  * extra prefix band at the end of every source strip. No source support or
+diff --git a/frontend/design-client/src/kernel/gpu/texture-prefix-scan.test.ts b/frontend/design-client/src/kernel/gpu/texture-prefix-scan.test.ts
+index 85f16dd..8340eb8 100644
+--- a/frontend/design-client/src/kernel/gpu/texture-prefix-scan.test.ts
++++ b/frontend/design-client/src/kernel/gpu/texture-prefix-scan.test.ts
+@@ -10,22 +10,29 @@ const wrap=(value:bigint)=>value&mask128
+ const begin=shader.indexOf('  scanSums[lane]=value;')
+ const end=shader.indexOf('  let total=PrefixPair(',begin)
+ if(begin<0||end<begin)throw Error('Production prefix scan block not found')
+-const source=shader.slice(begin,end)
++const translate=(source:string)=>source
+   .replace(/\b(\d+)u\b/g,'$1')
+   .replace(/\bvar\b/g,'let')
+   .replace(/stride=stride\/2\b/g,'stride=Math.floor(stride/2)')
+-  .replace(/workgroupBarrier\(\);/g,'yield;')
++  .replace(/(?:workgroupBarrier|storageBarrier)\(\);/g,'yield;')
+ type Invocation=Generator<void,void,unknown>
+-const makeInvocation=new Function('scanSums','scanMoments','prefix_add','prefix_mul_u32','PrefixInt',
+-  `return function* (lane,value,j){${source}}`) as (
++type ScanFactory=(
+     sums:bigint[],moments:bigint[],add:(a:bigint,b:bigint)=>bigint,
+     mul:(a:bigint,b:number)=>bigint,integer:(value:number)=>bigint,
+   )=>((lane:number,value:bigint,j:number)=>Invocation)
++const compileScan=(source:string)=>new Function('scanSums','scanMoments','prefix_add','prefix_mul_u32','PrefixInt',
++  `return function* (lane,value,j){${translate(source)}}`) as ScanFactory
++const makeInvocation=compileScan(shader.slice(begin,end))
++const parallelStart=shader.indexOf('fn prefixChunkScan(')
++const parallelBegin=shader.indexOf('  scanSums[lane]=value;',parallelStart)
++const parallelEnd=shader.indexOf('  let total=PrefixPair(',parallelBegin)
++if(parallelStart<0||parallelBegin<parallelStart||parallelEnd<parallelBegin)throw Error('Production chunk scan block not found')
++const makeParallelInvocation=compileScan(shader.slice(parallelBegin,parallelEnd))
+ 
+-function scanChunk(values:bigint[],start:number,order:number[]){
++function scanChunk(values:bigint[],start:number,order:number[],factory=makeInvocation){
+   const sums=Array<bigint>(256).fill(0n),moments=Array<bigint>(256).fill(0n)
+   let additions=0
+-  const invoke=makeInvocation(sums,moments,(a,b)=>{additions++;return wrap(a+b)},
++  const invoke=factory(sums,moments,(a,b)=>{additions++;return wrap(a+b)},
+     (a,b)=>wrap(a*BigInt(b)),value=>BigInt(value))
+   const lanes=Array.from({length:256},(_,lane)=>invoke(lane,wrap(values[lane]??0n),start+lane))
+   let barriers=0
+@@ -109,3 +116,101 @@ test('unsupported-row classification and scalar fallback remain outside the opti
+   expect(shader.slice(0,begin)).toContain('if(24+i32(span)+weightedBits+3>123){reason=5u;}')
+   expect(shader.slice(end)).toContain('return vec4<f32>(exactFilterChannel(p,direction,PREFIX_CHANNEL));')
+ })
++
++const carryStart=shader.indexOf('fn prefixChunkCarry(')
++const carryBegin=shader.indexOf(' carrySums[lane]=sum;',carryStart)
++const carryEnd=shader.indexOf(' if(lane<chunks){prefixMetadata.lines[base+lane*2u]=carrySums[lane]',carryBegin)
++if(carryStart<0||carryBegin<carryStart||carryEnd<carryBegin)throw Error('Production chunk carry block not found')
++const makeCarryInvocation=new Function('carrySums','carryMoments','prefix_add','PrefixInt',
++  `return function* (lane,sum,moment){${translate(shader.slice(carryBegin,carryEnd))}}`) as
++  (sums:bigint[],moments:bigint[],add:(a:bigint,b:bigint)=>bigint,integer:(value:number)=>bigint)=>
++    ((lane:number,sum:bigint,moment:bigint)=>Invocation)
++
++function chunkCarries(totals:{sum:bigint;moment:bigint}[],reverseOrder:boolean){
++  const sums=Array<bigint>(64).fill(0n),moments=Array<bigint>(64).fill(0n)
++  const invoke=makeCarryInvocation(sums,moments,(a,b)=>wrap(a+b),BigInt)
++  const lanes=Array.from({length:64},(_,lane)=>invoke(lane,totals[lane]?.sum??0n,totals[lane]?.moment??0n))
++  const order=Array.from({length:64},(_,lane)=>lane)
++  if(reverseOrder)order.reverse()
++  for(let barrier=0;;barrier++){
++    const completed=order.map(lane=>lanes[lane].next().done===true)
++    if(completed.every(Boolean))break
++    expect(completed.some(Boolean)).toBe(false)
++    if(barrier>20)throw Error('Chunk carry scan failed to finish')
++  }
++  return totals.map((_,index)=>({sum:sums[index],moment:moments[index]}))
++}
++
++function body(name:string){
++  const at=shader.indexOf(`fn ${name}(`),start=shader.indexOf('{',at)
++  if(at<0||start<0)throw Error(`Missing production function ${name}`)
++  let depth=1,index=start+1
++  for(;depth&&index<shader.length;index++){
++    if(shader[index]==='{')depth++
++    else if(shader[index]==='}')depth--
++  }
++  if(depth)throw Error(`Unclosed production function ${name}`)
++  return shader.slice(start+1,index-1).replace(/\b(\d+)u\b/g,'$1')
++    .replace(/\(\(index-1\)\/256\)/g,'Math.floor((index-1)/256)')
++}
++type Pair={sum:bigint;moment:bigint}
++type Line={base:number;chunkBase:number}
++const pairBody=body('prefixPairAt'),valueBody=body('prefixValueAt')
++const makeLookups=new Function('prefixes','prefixMetadata','u','prefix_add','prefix_sub','PrefixPair',`
++ function prefixPairAt(line,index){${pairBody}}
++ function prefixValueAt(line,index){${valueBody}}
++ return {prefixPairAt,prefixValueAt};
++`) as (prefixes:Pair[],metadata:{lines:bigint[]},uniform:(index:number)=>{w:number},
++  add:(a:bigint,b:bigint)=>bigint,sub:(a:bigint,b:bigint)=>bigint,pair:(sum:bigint,moment:bigint)=>Pair)=>
++  {prefixPairAt(line:Line,index:number):Pair;prefixValueAt(line:Line,index:number):bigint}
++
++function parallelLine(values:bigint[],reverseChunks:boolean){
++  const count=3,lineIndex=2,length=values.length,chunks=Math.ceil(length/256)
++  const address={base:lineIndex*(length+1),chunkBase:count+lineIndex*chunks*2}
++  const prefixes=Array.from({length:count*(length+1)},()=>({sum:0n,moment:0n}))
++  const totals:Pair[]=Array.from({length:chunks},()=>({sum:0n,moment:0n}))
++  const order=Array.from({length:chunks},(_,index)=>index)
++  if(reverseChunks)order.reverse()
++  for(const index of order){
++    const start=index*256,chunk=scanChunk(values.slice(start,start+256),start,permuted,makeParallelInvocation)
++    for(let lane=0;lane<256&&start+lane<length;lane++)
++      prefixes[address.base+start+lane+1]={sum:chunk.sums[lane],moment:chunk.moments[lane]}
++    totals[index]={sum:chunk.sums[255],moment:chunk.moments[255]}
++  }
++  const carries=chunkCarries(totals,reverseChunks)
++  const metadata={lines:Array<bigint>(count+count*chunks*2).fill(0n)}
++  carries.forEach((carry,index)=>{
++    metadata.lines[address.chunkBase+index*2]=carry.sum
++    metadata.lines[address.chunkBase+index*2+1]=carry.moment
++  })
++  const lookups=makeLookups(prefixes,metadata,()=>({w:1}),(a,b)=>wrap(a+b),(a,b)=>wrap(a-b),(sum,moment)=>({sum,moment}))
++  const pairs=Array.from({length:length+1},(_,index)=>lookups.prefixPairAt(address,index))
++  const recovered=values.map((_,index)=>lookups.prefixValueAt(address,index))
++  return {pairs,recovered}
++}
++
++test.each([512,513,767,768,769,1024,3484,16384])(
++  'parallel production chunks/carries/lookups reproduce every scalar prefix and sample at length %i',length=>{
++    const values=Array.from({length},(_,index)=>index%19===0?0n:
++      (index%3===0?-1n:1n)*((1n<<60n)+BigInt((index*2654435761)>>>0)))
++    const expected=scalarOracle(values)
++    const actual=parallelLine(values,true)
++    expect(actual.pairs[0]).toEqual({sum:0n,moment:0n})
++    expect(actual.pairs.slice(1).map(pair=>pair.sum)).toEqual(expected.sums)
++    expect(actual.pairs.slice(1).map(pair=>pair.moment)).toEqual(expected.moments)
++    expect(actual.recovered).toEqual(values.map(wrap))
++  },
++)
++
++test('chunk boundaries, cancellation and partial last chunks retain exact zero/large signed values',()=>{
++  for(const values of [
++    Array<bigint>(770).fill(0n),
++    Array.from({length:770},(_,i)=>[1n<<63n,-(1n<<63n),1n,-1n][i%4]),
++    Array.from({length:770},(_,i)=>i===255?(1n<<120n)-1n:i===256?-((1n<<120n)-1n):0n),
++  ]){
++    const expected=scalarOracle(values),actual=parallelLine(values,false)
++    expect(actual.pairs.slice(1).map(pair=>pair.sum)).toEqual(expected.sums)
++    expect(actual.pairs.slice(1).map(pair=>pair.moment)).toEqual(expected.moments)
++    expect(actual.recovered).toEqual(values.map(wrap))
++  }
++})
+diff --git a/frontend/design-client/src/kernel/gpu/texture-prefix.ts b/frontend/design-client/src/kernel/gpu/texture-prefix.ts
+index 6f89247..e659b9e 100644
+--- a/frontend/design-client/src/kernel/gpu/texture-prefix.ts
++++ b/frontend/design-client/src/kernel/gpu/texture-prefix.ts
+@@ -1,4 +1,4 @@
+-import { PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES, prefixBandSize } from './prefix-band'
++import { PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES, prefixBandSize, parallelPrefixChunks } from './prefix-band'
+ import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
+ /// <reference types="@webgpu/types" />
+ /** Exact tent filtering, including fractional radii and cropped outputs,
+@@ -16,6 +16,8 @@ export class TexturePrefix {
+   private sourceLayout: GPUBindGroupLayout
+   private scratchGroup?: GPUBindGroup
+   private scan!: GPUComputePipeline
++  private chunkScan!: GPUComputePipeline
++  private chunkCarry!: GPUComputePipeline
+   private solve!: GPUComputePipeline
+   lastRenderPasses = 0
+   lastComputePasses = 0
+@@ -116,6 +118,14 @@ export class TexturePrefix {
+       layout,
+       compute: { module, entryPoint: 'prefixScan' },
+     })
++    this.chunkScan = await this.device.createComputePipelineAsync({
++      layout,
++      compute: { module, entryPoint: 'prefixChunkScan' },
++    })
++    this.chunkCarry = await this.device.createComputePipelineAsync({
++      layout,
++      compute: { module, entryPoint: 'prefixChunkCarry' },
++    })
+     this.solve = await this.device.createComputePipelineAsync({
+       layout,
+       compute: { module, entryPoint: 'prefixSolve' },
+@@ -246,6 +256,7 @@ export class TexturePrefix {
+     const crossOffset = axis === 0 ? rect.y - base[5] : rect.x - base[4]
+     const rational = !Number.isInteger(originalRadius) || originalRadius > 512
+     const bandSize = prefixBandSize(length, maxBandLines)
++    const chunks = parallelPrefixChunks(length)
+     let drawn = false
+     for (let channel = 0; channel < 4; channel++) {
+       if (!(channels & (1 << channel))) continue
+@@ -253,7 +264,7 @@ export class TexturePrefix {
+         const count = Math.min(bandSize, lineCount - first)
+         const u = base.slice()
+         u.set([length, first, count, axis], 192)
+-        u.set([channel, rational ? Math.floor(originalRadius) - 1 : originalRadius, rational ? 1 : 0, 0], 196)
++        u.set([channel, rational ? Math.floor(originalRadius) - 1 : originalRadius, rational ? 1 : 0, chunks ? 1 : 0], 196)
+         u.set([offset, outputLength, crossOffset, 0], 200)
+         const group = this.device.createBindGroup({
+           layout: this.sourceLayout,
+@@ -273,6 +284,23 @@ export class TexturePrefix {
+         scan.setBindGroup(1, this.scratchGroup)
+         scan.dispatchWorkgroups(count)
+         scan.end()
++        if (chunks) {
++          // Separate dispatches retain device-wide ordering: complete-line
++          // admission -> independent chunks -> exclusive chunk carries -> solve.
++          // No CPU completion fence or extra scratch allocation is introduced.
++          const chunkScan = encoder.beginComputePass()
++          chunkScan.setPipeline(this.chunkScan)
++          chunkScan.setBindGroup(0, group)
++          chunkScan.setBindGroup(1, this.scratchGroup)
++          chunkScan.dispatchWorkgroups(chunks, count)
++          chunkScan.end()
++          const chunkCarry = encoder.beginComputePass()
++          chunkCarry.setPipeline(this.chunkCarry)
++          chunkCarry.setBindGroup(0, group)
++          chunkCarry.setBindGroup(1, this.scratchGroup)
++          chunkCarry.dispatchWorkgroups(count)
++          chunkCarry.end()
++        }
+         const solve = encoder.beginComputePass()
+         solve.setPipeline(this.solve)
+         solve.setBindGroup(0, group)
+@@ -298,7 +326,7 @@ export class TexturePrefix {
+         resolve.end()
+         drawn = true
+         this.lastRenderPasses++
+-        this.lastComputePasses += 2
++        this.lastComputePasses += chunks ? 4 : 2
+       }
+     }
+     return true
+diff --git a/frontend/design-client/src/kernel/gpu/texture-prefix.wgsl b/frontend/design-client/src/kernel/gpu/texture-prefix.wgsl
+index 7267e3e..b2af854 100644
+--- a/frontend/design-client/src/kernel/gpu/texture-prefix.wgsl
++++ b/frontend/design-client/src/kernel/gpu/texture-prefix.wgsl
+@@ -9,7 +9,7 @@ struct PrefixMetadata {
+ @group(1) @binding(1) var<storage,read_write> prefixMetadata:PrefixMetadata;
+ @group(1) @binding(2) var<storage,read_write> prefixResults:array<vec2<u32>>;
+ // Mode22 uniform contract: u48=(length,first,count,axis),
+-// u49=(channel,integer-radius or linear-interior reach,rational flag,0).
++// u49=(channel,integer-radius or linear-interior reach,rational flag,parallel chunks).
+ // u50=(output offset along source axis,output length,cross-axis offset,0).
+ fn prefixPixel(x:u32,line:u32)->vec2<i32>{
+  if(u(48u).w<0.5){return vec2<i32>(i32(x),i32(line));}
+@@ -70,6 +70,9 @@ fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_i
+   }
+  }
+  workgroupBarrier();
++ // Long rows use this dispatch only for full-line admission. Chunk scans
++ // share precisely this exponent quantum and the original decline decision.
++ if(u(49u).w>0.5){return;}
+  let base=localLine*(length+1u);
+  for(var chunk=0u;chunk<length;chunk=chunk+256u){
+   let j=chunk+lane;var value=PrefixInt(0u);
+@@ -104,12 +107,104 @@ fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_i
+   workgroupBarrier();if(lane==255u){scanCarry=total;}workgroupBarrier();
+  }
+ }
+-fn prefixPairAt(base:u32,index:u32)->PrefixPair{return prefixes[base+index];}
+-fn prefixValueAt(base:u32,index:u32)->PrefixInt{return prefix_sub(prefixPairAt(base,index+1u).sum,prefixPairAt(base,index).sum);}
+-fn prefixValueOrZero(base:u32,index:i32,length:u32)->PrefixInt{
+- if(index<0||index>=i32(length)){return PrefixInt(0u);}return prefixValueAt(base,u32(index));
++fn prefixChunkCount(length:u32)->u32{return (length+255u)/256u;}
++fn prefixChunkBase(line:u32,length:u32,count:u32)->u32{return count+line*prefixChunkCount(length)*2u;}
++@compute @workgroup_size(256)
++fn prefixChunkScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_index) lane:u32){
++ let length=u32(u(48u).x);let first=u32(u(48u).y);let count=u32(u(48u).z);let chunk=group.x;let localLine=group.y;
++ if(localLine>=count||chunk>=prefixChunkCount(length)){return;}
++ let lineInfo=prefixMetadata.lines[localLine];let channel=u32(u(49u).x);let j=chunk*256u+lane;
++ var value=PrefixInt(0u);
++ if(j<length&&lineInfo.z!=0u){let bits=bitcast<u32>(textureLoad(sourceA,prefixPixel(j,first+localLine+u32(u(50u).z)),0)[channel]);value=prefix_sample(bits,lineInfo.x);}
++  scanSums[lane]=value;let moment=prefix_mul_u32(value,j);scanMoments[lane]=moment;workgroupBarrier();
++  for(var stride=1u;stride<256u;stride=stride*2u){
++   let index=(lane+1u)*stride*2u-1u;
++   if(index<256u){
++    scanSums[index]=prefix_add(scanSums[index],scanSums[index-stride]);
++    scanMoments[index]=prefix_add(scanMoments[index],scanMoments[index-stride]);
++   }
++   workgroupBarrier();
++  }
++  if(lane==0u){scanSums[255u]=PrefixInt(0u);scanMoments[255u]=PrefixInt(0u);}
++  workgroupBarrier();
++  for(var stride=128u;stride>0u;stride=stride/2u){
++   let index=(lane+1u)*stride*2u-1u;
++   if(index<256u){
++    let leftSum=scanSums[index-stride];let leftMoment=scanMoments[index-stride];
++    let parentSum=scanSums[index];let parentMoment=scanMoments[index];
++    scanSums[index-stride]=parentSum;scanMoments[index-stride]=parentMoment;
++    scanSums[index]=prefix_add(parentSum,leftSum);scanMoments[index]=prefix_add(parentMoment,leftMoment);
++   }
++   workgroupBarrier();
++  }
++  scanSums[lane]=prefix_add(scanSums[lane],value);scanMoments[lane]=prefix_add(scanMoments[lane],moment);
++  let total=PrefixPair(scanSums[lane],scanMoments[lane]);
++ if(j<length){prefixes[localLine*(length+1u)+j+1u]=total;}
++ // Padded lanes are exact zero, so lane 255 also holds the partial last
++ // chunk's complete total. Metadata planes follow all count line headers.
++ if(lane==255u){let at=prefixChunkBase(localLine,length,count)+chunk*2u;prefixMetadata.lines[at]=total.sum;prefixMetadata.lines[at+1u]=total.moment;}
++}
++var<workgroup> carrySums:array<PrefixInt,64>;
++var<workgroup> carryMoments:array<PrefixInt,64>;
++@compute @workgroup_size(64)
++fn prefixChunkCarry(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_index) lane:u32){
++ let localLine=group.x;let length=u32(u(48u).x);let count=u32(u(48u).z);
++ if(localLine>=count){return;}
++ let chunks=prefixChunkCount(length);let base=prefixChunkBase(localLine,length,count);
++ var sum=PrefixInt(0u);var moment=PrefixInt(0u);
++ if(lane<chunks){sum=prefixMetadata.lines[base+lane*2u];moment=prefixMetadata.lines[base+lane*2u+1u];}
++ // Exclusive scan of at most 64 complete chunk totals. All rows and every
++ // channel keep the same full-line quantum and absolute moment indices.
++ carrySums[lane]=sum;carryMoments[lane]=moment;workgroupBarrier();
++ for(var stride=1u;stride<64u;stride=stride*2u){
++  let index=(lane+1u)*stride*2u-1u;
++  if(index<64u){
++   carrySums[index]=prefix_add(carrySums[index],carrySums[index-stride]);
++   carryMoments[index]=prefix_add(carryMoments[index],carryMoments[index-stride]);
++  }
++  workgroupBarrier();
++ }
++ if(lane==0u){carrySums[63u]=PrefixInt(0u);carryMoments[63u]=PrefixInt(0u);}
++ workgroupBarrier();
++ for(var stride=32u;stride>0u;stride=stride/2u){
++  let index=(lane+1u)*stride*2u-1u;
++  if(index<64u){
++   let leftSum=carrySums[index-stride];let leftMoment=carryMoments[index-stride];
++   let parentSum=carrySums[index];let parentMoment=carryMoments[index];
++   carrySums[index-stride]=parentSum;carryMoments[index-stride]=parentMoment;
++   carrySums[index]=prefix_add(parentSum,leftSum);carryMoments[index]=prefix_add(parentMoment,leftMoment);
++  }
++  workgroupBarrier();
++ }
++ // Carries replace totals in the same storage range. Complete every lane's
++ // storage read before that range is overwritten, in addition to the
++ // workgroup-memory barriers used by the scan itself.
++ storageBarrier();
++ if(lane<chunks){prefixMetadata.lines[base+lane*2u]=carrySums[lane];prefixMetadata.lines[base+lane*2u+1u]=carryMoments[lane];}
++}
++struct PrefixLine { base:u32, chunkBase:u32 }
++fn prefixPairAt(line:PrefixLine,index:u32)->PrefixPair{
++ let value=prefixes[line.base+index];
++ if(u(49u).w<0.5||index==0u){return value;}
++ // Prefix k contains samples 0..k-1, so k=256 belongs to chunk zero.
++ let at=line.chunkBase+((index-1u)/256u)*2u;
++ return PrefixPair(prefix_add(value.sum,prefixMetadata.lines[at]),prefix_add(value.moment,prefixMetadata.lines[at+1u]));
++}
++fn prefixValueAt(line:PrefixLine,index:u32)->PrefixInt{
++ if(u(49u).w>0.5){
++  // Chunk carry cancels in adjacent local prefixes. At a chunk's first
++  // sample the preceding local prefix is exactly zero. Avoid extra carry
++  // loads/additions for the centre and fractional-radius boundary samples.
++  let after=prefixes[line.base+index+1u].sum;
++  if(index%256u==0u){return after;}
++  return prefix_sub(after,prefixes[line.base+index].sum);
++ }
++ return prefix_sub(prefixPairAt(line,index+1u).sum,prefixPairAt(line,index).sum);
++}
++fn prefixValueOrZero(line:PrefixLine,index:i32,length:u32)->PrefixInt{
++ if(index<0||index>=i32(length)){return PrefixInt(0u);}return prefixValueAt(line,u32(index));
+ }
+-fn prefixRational(base:u32,x:u32,length:u32,interior:u32,quantum:i32)->vec2<u32>{
++fn prefixRational(base:PrefixLine,x:u32,length:u32,interior:u32,quantum:i32)->vec2<u32>{
+  let center=prefixCoefficient(0u);let slope=prefix_sub(prefixCoefficient(1u),prefixCoefficient(2u));
+  let intercept=prefix_add(prefixCoefficient(1u),slope);
+  let lo=u32(max(0,i32(x)-i32(interior)));let hi=min(length,x+interior+1u);
+@@ -132,7 +227,7 @@ fn prefixSolve(@builtin(global_invocation_id) id:vec3<u32>){
+  let outputLength=u32(u(50u).y);
+  if(localLine>=count||id.x>=outputLength){return;}let resultIndex=localLine*outputLength+id.x;
+  prefixResults[resultIndex]=vec2<u32>(0u);let lineInfo=prefixMetadata.lines[localLine];if(lineInfo.z==0u){return;}
+- let base=localLine*(length+1u);let left=u32(max(0,i32(x)-i32(radius)+1));let right=min(length,x+radius);
++ let base=PrefixLine(localLine*(length+1u),prefixChunkBase(localLine,length,count));let left=u32(max(0,i32(x)-i32(radius)+1));let right=min(length,x+radius);
+  if(u(49u).z>0.5){prefixResults[resultIndex]=prefixRational(base,x,length,radius,i32(lineInfo.x)-150);return;}
+  let before=prefixPairAt(base,left);let center=prefixPairAt(base,x+1u);let after=prefixPairAt(base,right);
+  let a=prefix_mul_i32(prefix_sub(center.sum,before.sum),i32(radius)-i32(x));
