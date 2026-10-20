@@ -17,7 +17,6 @@ import { font_faces_json } from '../generated/design-kernel/design_kernel'
 import { AutomationError, type AutomationContext, type AutomationExtension } from './types'
 
 type Params = Record<string, unknown>
-type Collection = DesignSystem['collections'][string]
 type Variable = DesignSystem['variables'][string]
 type Style = DesignSystem['styles'][string]
 const forbidden = new Set(['__proto__', 'constructor', 'prototype'])

@@ -284,6 +284,57 @@ pub fn calculate_node_measurements(
     measurement::calculate_measurements(doc, target_id)
 }
 
+/// A single backdrop stage over local solid paints has no transitive spatial
+/// dependency. Certify its actual ray/filter inputs inside the root's existing
+/// halo before omitting the export-only duplicate padding. General graphs keep
+/// the old padding guard, including multiple consumers, masks and sample planes.
+fn single_backdrop_covered_by_root_halo(
+    doc: &crate::scene::Document, page: &crate::scene::Page,
+    camera: crate::math::Transform, tile: crate::math::Rect,
+) -> bool {
+    use crate::{math::{Rect, Transform}, scene::{Effect, Node}};
+    fn visit<'a>(doc: &'a crate::scene::Document, id: &str, parent: Transform,
+        consumer: &mut Option<(&'a Node, &'a Effect, Transform)>) -> bool {
+        let n = &doc.nodes[id];
+        if !n.visible || n.opacity <= 0. { return true; }
+        let matrix = parent.concat(n.transform);
+        if matrix.inverse().is_err() || n.mask || doc.mask_child(n).is_some()
+            || n.fills.iter().chain(n.strokes.iter().map(|s| &s.paint))
+                .any(|p| p.visible && p.kind != "solid") {
+            return false;
+        }
+        let backdrop = n.backdrop_effect();
+        if n.effects.iter().filter(|e| e.visible).any(|e| {
+            !backdrop.is_some_and(|b| std::ptr::eq(e, b))
+        }) { return false; }
+        if let Some(effect) = backdrop {
+            if consumer.is_some() || (effect.kind == "glass" &&
+                (effect.glass.is_none() || crate::optics::GlassShape::from_node(n).is_none())) {
+                return false;
+            }
+            *consumer = Some((n, effect, matrix));
+        }
+        n.render_children().iter().all(|child| visit(doc, child, matrix, consumer))
+    }
+    let mut consumer = None;
+    if !page.children.iter().all(|id| visit(doc, id, camera, &mut consumer)) { return false; }
+    let Some((node, effect, matrix)) = consumer else { return false; };
+    let halo = crate::geometry_snapshot::effect_halo(node, matrix);
+    if !(0..=2048).contains(&halo) { return false; }
+    let sigma = effect.backdrop_radius() * matrix.max_scale() / 2.;
+    let Ok(radii) = crate::effects::gaussian_box_radii(sigma) else { return false; };
+    let source = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(node).zip(effect.glass.as_ref()) {
+        // Ordinary inverses were certified above, so changing this validation
+        // rectangle cannot change inverse selection or coordinate phase.
+        let Ok(samples) = crate::optics::input_region(tile.expand(2048), tile, shape, matrix, glass, None) else { return false; };
+        samples
+    } else { tile };
+    let support = radii.into_iter().sum::<u32>() as i32;
+    let required = source.expand(support);
+    let retained: Rect = tile.expand(halo);
+    required.intersect(retained) == required
+}
+
 pub(crate) fn backdrop_padding(
     engine: &Engine,
     options: &RenderOptions,
@@ -323,6 +374,11 @@ pub(crate) fn backdrop_padding(
             .ok_or("Page not found")?;
         let v = options.view;
         let camera = Transform([v.zoom, 0., 0., v.zoom, v.x, v.y]);
+        if options.raster_profile == crate::fidelity::RasterProfile::Analytic
+            && doc.color_management.is_none()
+            && single_backdrop_covered_by_root_halo(doc, page, camera, tile) {
+            return Ok(0);
+        }
         for id in &page.children {
             // render_surfaces_with_budget_inner admits at most 2048 SOURCE
             // pixels of combined support. Export profiles double both axes;

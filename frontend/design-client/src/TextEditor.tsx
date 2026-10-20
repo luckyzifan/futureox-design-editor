@@ -127,6 +127,7 @@ export function CanvasTextEditor({
   node,
   editor,
   matrix,
+  viewport = { width: 1000, height: 800 },
   onClose,
 }: {
   onPreview: (node:DesignNode|null)=>void
@@ -134,13 +135,16 @@ export function CanvasTextEditor({
   node: DesignNode
   editor: Editor
   matrix: Matrix
+  viewport?: { width: number; height: number }
   onClose: () => void
 }) {
   const [draft, setDraft] = useState(() => structuredClone(node)),
     [selection, setSelection] = useState<[number, number]>([0, node.text.length]),
-    [error, setError] = useState('')
+    [error, setError] = useState(''),
+    [toolbarSize, setToolbarSize] = useState({ width: 760, height: 44 })
   const input = useRef<HTMLTextAreaElement>(null),
     root = useRef<HTMLDivElement>(null),
+    toolbar = useRef<HTMLDivElement>(null),
     composing = useRef(false),
     done = useRef(false),
     original = useRef(node),
@@ -149,6 +153,18 @@ export function CanvasTextEditor({
     anchor = useRef<number | null>(null),
     latest = useRef(draft)
   latest.current = draft
+  useLayoutEffect(() => {
+    const element = toolbar.current
+    if (!element) return
+    const measure = () => {
+      const { width, height } = element.getBoundingClientRect()
+      if (width && height) setToolbarSize(old => old.width === width && old.height === height ? old : { width, height })
+    }
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
+    observer?.observe(element)
+    return () => observer?.disconnect()
+  }, [viewport.width, viewport.height])
   useLayoutEffect(()=>{onPreview(draft);return()=>onPreview(null)},[draft,onPreview])
   let layout: ReturnType<typeof kernelTextLayout> | undefined
   try {
@@ -329,21 +345,21 @@ export function CanvasTextEditor({
   )
   const runFontId = activeRun?.fontId ?? '',
     runWeight = activeRun?.weight ?? draft.textStyle?.weight ?? 400
+  // Matrix maps document coordinates into canvas CSS pixels. Only the anchor
+  // uses it: controls remain outside the transformed text surface.
+  const selectionPoint = point(selection[0])
+  const screenAnchor = apply(matrix, selectionPoint)
+  const screenBelow = apply(matrix, { x: selectionPoint.x, y: selectionPoint.y + selectionPoint.height })
+  const toolbarWidth = Math.min(toolbarSize.width, Math.max(0, viewport.width - 16))
+  const toolbarLeft = Math.max(8, Math.min(viewport.width - toolbarWidth - 8, screenAnchor.x))
+  const preferredTop = screenAnchor.y - toolbarSize.height - 8
+  const toolbarTop = Math.max(8, Math.min(viewport.height - toolbarSize.height - 8,
+    preferredTop >= 8 ? preferredTop : screenBelow.y + 8))
   return (
     <div
       ref={root}
       className="rich-text-editor"
-      style={{
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        transformOrigin: '0 0',
-        transform: `matrix(${matrix.join(',')})`,
-        width: draft.width,
-        minHeight: Math.max(draft.height, layout?.height || 0),
-        zIndex: 20,
-        background: 'transparent',
-      }}
+      style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none' }}
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
       onFocus={() => { blurred.current = false }}
@@ -352,9 +368,16 @@ export function CanvasTextEditor({
       }}
     >
       <div
+        ref={toolbar}
         className="rich-text-toolbar"
+        role="toolbar"
+        aria-label="文字格式"
+        style={{ zIndex: 21, left: toolbarLeft, top: toolbarTop, maxWidth: Math.max(0, viewport.width - 16), maxHeight: Math.max(0, viewport.height - 16), pointerEvents: 'auto' }}
+        onMouseDown={(e) => {
+          if ((e.target as HTMLElement).closest('button')) e.preventDefault()
+        }}
         onPointerDown={(e) => {
-          if ((e.target as HTMLElement).tagName === 'BUTTON') e.preventDefault()
+          if ((e.target as HTMLElement).closest('button')) e.preventDefault()
         }}
       >
         <button type="button" title="下划线" onClick={() => style({ underline: true })}>
@@ -429,6 +452,20 @@ export function CanvasTextEditor({
           取消
         </button>
       </div>
+      <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        transformOrigin: '0 0',
+        transform: `matrix(${matrix.join(',')})`,
+        width: draft.width,
+        minHeight: Math.max(draft.height, layout?.height || 0),
+        zIndex: 20,
+        background: 'transparent',
+        pointerEvents: 'auto',
+      }}
+      >
       <svg
         width={draft.width}
         height={Math.max(draft.height, layout?.height || 0)}
@@ -499,7 +536,8 @@ export function CanvasTextEditor({
           }
         }}
       />
-      {error && <div role="alert">{error}</div>}
+      </div>
+      {error && <div role="alert" style={{ position: 'absolute', left: toolbarLeft, top: toolbarTop + toolbarSize.height, pointerEvents: 'auto' }}>{error}</div>}
     </div>
   )
 }

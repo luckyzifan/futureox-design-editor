@@ -1220,7 +1220,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         ? target.closest('[data-frame-title]')?.getAttribute('data-frame-title') : null
       const title = frameTitleHit(s.doc,s.page,titleId)
       if(titleId&&!title){host.current?.releasePointerCapture(e.pointerId);return}
-      const hit = title || displayedHit(p, e.metaKey || e.ctrlKey || s.tool === 'vector')
+      const hit = title || (displayedSnapshot && displayedIndex
+        ? editor.selectionHit(p, e.metaKey || e.ctrlKey || s.tool === 'vector', displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null)
       const groupIntent = selectedGroupDragIntent(
         s.selection.length === 1 && ids.length === 1 ? s.doc.nodes[ids[0]] : null,
         hit,
@@ -2003,6 +2004,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }} onClose={() => { setContextMenu(null); host.current?.focus({ preventScroll: true }) }} />}
       {textEdit && state.doc.nodes[textEdit] && (
         <CanvasTextEditor
+          viewport={size}
           onPreview={setTextPreview}
           key={`${editor.sessionGeneration}:${state.doc.id}:${textEdit}`}
           document={state.doc}

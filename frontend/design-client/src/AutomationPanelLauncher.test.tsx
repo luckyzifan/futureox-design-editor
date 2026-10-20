@@ -136,7 +136,13 @@ test('history callback still closes and returns focus before opening the destina
 test('production uses the lightweight entry and preserves all dialog code and desktop registration wiring', () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
   const previous = read('../../../testing/verification-optional-startup/AutomationPanel.before.tsx'), current = read('./AutomationPanel.tsx')
-  expect(current.slice(current.indexOf('export function AutomationDialog('))).toBe(previous.slice(previous.indexOf('export function AutomationDialog(')))
+  const retained = previous.slice(previous.indexOf('export function AutomationDialog('))
+  const before = 'download(out.filename,out.content,out.mimeType)'
+  const after = 'download(out.filename,out.content ?? Uint8Array.from(atob(out.base64!), c => c.charCodeAt(0)),out.mimeType)'
+  expect(retained.split(before)).toHaveLength(2)
+  // SVGZ resource support is the sole permitted dialog-body change. Retain
+  // the immutable old source rather than regenerating a passing baseline.
+  expect(current.slice(current.indexOf('export function AutomationDialog('))).toBe(retained.replace(before, after))
   const app = read('./App.tsx'), oldApp = read('../../../testing/verification-optional-startup/App.before.tsx')
   const start = "  useEffect(() => {\n    if (!ready || !desktop?.automation) return"
   const end = '  }, [ready, desktop, editor, desktopSession])'

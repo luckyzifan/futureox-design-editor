@@ -41,6 +41,8 @@ fn cover() -> String {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fd_compatibility: Option<crate::fd_extensions::FdCompatibility>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reviews: Vec<crate::reviews::Review>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1209,6 +1211,7 @@ impl Document {
         Ok(())
     }
     pub fn validate(&self) -> Result<(), String> {
+        if let Some(compatibility) = &self.fd_compatibility { compatibility.validate()?; }
         crate::reviews::validate(self)?;
         crate::connectors::validate(self)?;
         let has_gradient = self

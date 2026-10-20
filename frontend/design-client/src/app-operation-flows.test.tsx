@@ -128,3 +128,29 @@ test('native undo finalizes only the owned keyboard nudge, while modal text comm
   await act(async () => { command('delete'); command('copy') }); expect(editor!.state.doc).toEqual(before)
   expect(performTextCommand).toHaveBeenCalledTimes(6)
 })
+
+test('mounted App workspace rail preserves section on pending-input veto, busy state and active interaction', async () => {
+  const { registerPendingEdit } = await import('./pending-edits')
+  await render(); expect(editor).toBeDefined()
+  const assets = () => document.querySelector<HTMLButtonElement>('.workspace-rail [title="组件与资源"]')!
+  const layers = () => document.querySelector<HTMLButtonElement>('.workspace-rail [title="页面与图层"]')!
+  let valid = false, dirty = true
+  const commit = vi.fn(() => { if (valid) dirty = false; return valid })
+  const unregister = registerPendingEdit(editor!, { dirty: () => dirty, commit })
+  try {
+    await act(async () => assets().click())
+    expect(commit).toHaveBeenCalledOnce(); expect(layers().getAttribute('aria-pressed')).toBe('true')
+    expect(dirty).toBe(true)
+    await act(async () => editor!.set({ busy: true }))
+    await act(async () => assets().click())
+    expect(commit).toHaveBeenCalledOnce(); expect(layers().getAttribute('aria-pressed')).toBe('true')
+    await act(async () => { editor!.set({ busy: false }); editor!.begin('Active pointer input') })
+    await act(async () => assets().click())
+    expect(commit).toHaveBeenCalledOnce(); expect(layers().getAttribute('aria-pressed')).toBe('true')
+    await act(async () => editor!.cancel())
+    valid = true
+    await act(async () => assets().click())
+    expect(commit).toHaveBeenCalledTimes(2); expect(assets().getAttribute('aria-pressed')).toBe('true')
+    expect(dirty).toBe(false); expect(editor!.canUndo).toBe(false)
+  } finally { unregister() }
+})

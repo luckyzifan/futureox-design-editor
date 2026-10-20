@@ -251,10 +251,11 @@ export interface Driver {
     bindGroupHits?: number
     bindGroupCacheSize?: number
     dynamicUniformBindings?: boolean
+    queueWaits?: import('./queue-wait-stats').QueueWaitSnapshot
     deviceLost: boolean
   }
   prepareFilterPass?(target: Texture, uniforms: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number): void
-  abortFrameAndReleaseFilterScratch?(): Promise<void>
+  abortFrameAndReleaseFilterScratch?(reason?: 'admission' | 'cancel'): Promise<void>
   readonly certifiedFilter?: boolean
   readonly exactSolidPaintOver?: boolean
   readonly managed?: boolean
@@ -271,7 +272,7 @@ export interface Driver {
   prepareFilters?(prefixUseful?: boolean): Promise<void>
   begin(vertices: Float32Array, curves?: Float32Array): void
   /** Complete prior commands before reclaiming frame-local scratch textures. */
-  checkpoint?(): Promise<void>
+  checkpoint?(reason?: import('./queue-wait-stats').QueueWaitReason): Promise<void>
   /** Raw premultiplied storage; used by exact Rust f64 effect composition. */
   readSurface?(source: Texture): Promise<Float32Array>
   create(width: number, height: number): Texture

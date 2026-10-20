@@ -193,8 +193,7 @@ export function prototypeEase(kind: PrototypeEasing | undefined, t: number): num
           (Math.cos(wo * time) + (zeta * omega * Math.sin(wo * time)) / wo)
       )
     }
-    const w = omega * Math.sqrt(zeta * zeta - 1),
-      r1 = -omega * (zeta - Math.sqrt(zeta * zeta - 1)),
+    const r1 = -omega * (zeta - Math.sqrt(zeta * zeta - 1)),
       r2 = -omega * (zeta + Math.sqrt(zeta * zeta - 1))
     return 1 - (r2 * Math.exp(r1 * time) - r1 * Math.exp(r2 * time)) / (r2 - r1)
   }

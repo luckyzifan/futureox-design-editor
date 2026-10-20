@@ -1,3 +1,4 @@
+import { validateFdCompatibility, type FdCompatibility } from './fd-extensions'
 import { validStroke, validProfiles } from './stroke-profile'
 import type { AnimationClip } from './animation'
 import { validColor, validColorSettings, type ColorSettings } from './color'
@@ -341,6 +342,7 @@ export type ComponentInstance = {
 export type Page = { id: string; name: string; children: string[]; background: string; guides?:RulerGuide[] }
 export type LocalReview = {id:string;pageId:string;position:Point;nodeId?:string;kind:'comment'|'annotation';resolved:boolean;messages:{id:string;author:string;text:string;createdAt:number}[]}
 export type DesignDocument = {
+  fdCompatibility?: FdCompatibility | null
   reviews?: LocalReview[]
   designSystem?: import('./design-system').DesignSystem
   prototype?: import('./prototype').Prototype
@@ -645,6 +647,7 @@ export function validateDocument(value: unknown): DesignDocument {
     !isObject(value.nodes)
   )
     throw new Error('无效的设计文件或不支持的格式版本')
+  validateFdCompatibility(value.fdCompatibility)
   const d = value as unknown as DesignDocument
   let guideCount=0
   const validateGuides=(guides:unknown,frame=true)=>{

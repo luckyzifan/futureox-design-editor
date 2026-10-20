@@ -7,9 +7,14 @@ import { commitPendingEdits, registerPendingEdit, hasPendingEdits } from './pend
 
 const source = readFileSync(new URL('./Layers.tsx', import.meta.url), 'utf8')
 const pageListSource = readFileSync(new URL('./PageList.tsx', import.meta.url), 'utf8')
-const start = '  function renameIntendedPage(', end = '  const rows = useMemo('
+// Stop before the first hook after the callback. The row cache added a hook
+// ahead of `rows`; including it would execute React code in this callback VM.
+// Keep the actual rename body and every assertion unchanged; no hook/cache mock.
+const start = '  function renameIntendedPage(', end = '  const rowCache = useMemo('
 assert.equal(source.split(start).length, 2); assert.equal(source.split(end).length, 2)
-const script = stripTypeScriptTypes(`${source.slice(source.indexOf(start), source.indexOf(end))}\nrenameIntendedPage`)
+const callbackSource = source.slice(source.indexOf(start), source.indexOf(end))
+assert.doesNotMatch(callbackSource, /\buseMemo\s*\(/)
+const script = stripTypeScriptTypes(`${callbackSource}\nrenameIntendedPage`)
 function boundary() {
   const listeners = new Set(), prompts = [], changes = [], messages = []
   const editor = {

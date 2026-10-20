@@ -422,6 +422,7 @@ mod tests {
             reviews: Vec::new(),
             design_system: None,
             prototype: None,
+            fd_compatibility: None,
             schema_version: 1,
             color_management: None,
             raster_profile: None,
@@ -464,6 +465,42 @@ mod tests {
         doc.nodes.insert("p1".into(), page);
         doc.nodes.insert("n1".into(), frame);
         doc
+    }
+
+    #[test]
+    fn fd_extensions_survive_typed_binary_admission_and_history() {
+        let mut doc = document();
+        doc.nodes.remove("p1"); // Codec fixture has a synthetic page node; authored graph must not.
+        doc.fd_compatibility = Some(serde_json::from_value(serde_json::json!({
+            "contractVersion":1,"requiredCapabilities":[],"extensions":{
+                "org.example/metadata":{"array":[null,true,1.25,"文字"],"url":"file:///inert"}
+            }
+        })).unwrap());
+        doc.validate().unwrap();
+        let metadata = doc.fd_compatibility.clone();
+        crate::layout::resolve(&mut doc, &crate::font::Fonts::new()).unwrap();
+        assert_eq!(doc.fd_compatibility, metadata);
+        crate::validate_document_json(&serde_json::to_string(&doc).unwrap()).unwrap();
+        assert_eq!(decode(&encode(&doc)).unwrap().fd_compatibility, doc.fd_compatibility);
+        let mut editor = crate::editing::DocumentEditor::new(doc.clone()).unwrap();
+        let mut changed = doc.clone(); changed.name = "Renamed".into();
+        editor.apply(0, crate::editing::DocumentPatch::between(&doc, &changed).unwrap()).unwrap();
+        assert_eq!(editor.document().fd_compatibility, doc.fd_compatibility);
+        editor.undo().unwrap(); editor.redo().unwrap();
+        assert_eq!(editor.document().fd_compatibility, doc.fd_compatibility);
+        // Envelope changes participate in typed history too; unknown required semantics cannot commit.
+        let mut invalid = editor.document().clone();
+        invalid.fd_compatibility.as_mut().unwrap().required_capabilities.push("org.example/render".into());
+        let patch = crate::editing::DocumentPatch::between(editor.document(), &invalid).unwrap();
+        assert!(editor.apply(editor.revision(), patch).is_err());
+        assert_eq!(editor.document().fd_compatibility, doc.fd_compatibility);
+        assert!(crate::validate_document_json(&serde_json::to_string(&invalid).unwrap()).is_err());
+        let mut changed_metadata = editor.document().clone();
+        changed_metadata.fd_compatibility.as_mut().unwrap().extensions.insert("org.example/new".into(), serde_json::json!({"safe":true}));
+        editor.apply(editor.revision(), crate::editing::DocumentPatch::between(editor.document(), &changed_metadata).unwrap()).unwrap();
+        assert_eq!(editor.document().fd_compatibility, changed_metadata.fd_compatibility);
+        editor.undo().unwrap(); assert_eq!(editor.document().fd_compatibility, doc.fd_compatibility);
+        editor.redo().unwrap(); assert_eq!(editor.document().fd_compatibility, changed_metadata.fd_compatibility);
     }
 
     #[test]

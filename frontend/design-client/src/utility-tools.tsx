@@ -1,7 +1,7 @@
 import { boardObjects, resizeBoardObjects, boardToolNames, type BoardTool } from './board-tools'
 import { reviewPoint } from './ReviewsPanel'
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import type { Editor, Tool, View } from './engine'
+import type { Editor, Tool } from './engine'
 import { type Point, type DesignNode, type ConnectorEndpoint, paint, node, stroke, uid } from './model'
 import { apply, inverse, worldMatrix, allParents, scene, pointInContours } from './geometry'
 import { editableNetwork, materializeEditableNetwork } from './editable-network'

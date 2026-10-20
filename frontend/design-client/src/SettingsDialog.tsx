@@ -1,3 +1,6 @@
+import { InterfaceSettings } from './AdaptivePanels'
+import { interfacePreference } from './interface-preference'
+import { LocalDiagnosticsPanel } from './LocalDiagnosticsPanel'
 import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from './engine'
@@ -8,9 +11,9 @@ import { shortcutPreference } from './shortcut-preference'
 import { settingsPreference, useSettingsPersistence, type CanvasSetting } from './settings-preference'
 import './settings-dialog.css'
 
-type SettingsSection = 'input' | 'canvas' | 'saving'
+type SettingsSection = 'input' | 'canvas' | 'saving' | 'diagnostics'
 const sections: { id: SettingsSection; label: string }[] = [
-  { id: 'input', label: '操作习惯' }, { id: 'canvas', label: '画布辅助' }, { id: 'saving', label: '保存与范围' },
+  { id: 'input', label: '操作习惯' }, { id: 'canvas', label: '画布辅助' }, { id: 'saving', label: '保存与范围' }, { id: 'diagnostics', label: '错误日志' },
 ]
 const canvasControls: { key: CanvasSetting; label: string; detail: string }[] = [
   { key: 'snap', label: '智能吸附', detail: '移动图层时对齐附近图层与参考线。' },
@@ -78,12 +81,13 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
     return persisted
   }
   const restoreDefaults = () => {
+    const interfaceSaved = interfacePreference.reset()
     const canvasSaved = settingsPreference.reset()
     const keyboardSaved = shortcutPreference.set('figma-like')
     const nudgeSaved = nudgePreference.reset()
     const wheelSaved = setWheel(false)
     setKeyboardReset(value => value + 1)
-    setMessage(canvasSaved && keyboardSaved && nudgeSaved && wheelSaved ? '已恢复当前配置的偏好默认值。' : '已恢复默认值；部分偏好仅在本次会话生效。')
+    setMessage(interfaceSaved && canvasSaved && keyboardSaved && nudgeSaved && wheelSaved ? '已恢复当前配置的偏好默认值。' : '已恢复默认值；部分偏好仅在本次会话生效。')
   }
 
   return createPortal(<div ref={backdrop} className="settings-backdrop"
@@ -132,6 +136,7 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
             <p className="settings-help" id={`${id}-wheel-help`}>关闭时，滚轮平移；Ctrl / ⌘＋滚轮及触控板捏合仍可缩放。空格拖动或 H 手形工具平移。</p>
           </section>
           <section role="tabpanel" id={`${id}-panel-canvas`} aria-labelledby={`${id}-tab-canvas`} hidden={section !== 'canvas'}>
+            <InterfaceSettings />
             <h3>显示与吸附</h3>
             <p className="settings-help">与画布视图菜单共用同一组偏好。切换显示辅助不会修改文档内容或历史记录。</p>
             {canvasControls.map(({ key, label, detail }) => <div className="settings-control" key={key}>
@@ -148,7 +153,10 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
             <p className="settings-help">以上是当前保存机制的说明，间隔不可在此调整。待完成的输入、拖动、恢复失败或存储错误可能延后保存，请以工作区保存状态和错误提示为准。</p>
             <h3>偏好与文档</h3>
             <p>本页偏好保存在当前应用配置中，不会同步到其他设备。{desktop ? '独立打开的本地窗口使用各自配置，偏好不保证跨窗口共享或在新窗口中恢复。' : '使用其他浏览器或清除网站数据后，需要重新设置。'}文档色彩设置、页面背景与参考线内容属于各自文档，仍在对应文档工具中编辑。</p>
-            <p className="settings-help">恢复默认值只重置本页的快捷键、微移步长、滚轮行为和画布辅助偏好，不删除文档或修改渲染精度。</p>
+            <p className="settings-help">恢复默认值只重置本页的快捷键、微移步长、滚轮行为、画布辅助及界面偏好，不删除文档或修改渲染精度。</p>
+          </section>
+          <section role="tabpanel" id={`${id}-panel-diagnostics`} aria-labelledby={`${id}-tab-diagnostics`} hidden={section !== 'diagnostics'}>
+            {section === 'diagnostics' && <LocalDiagnosticsPanel />}
           </section>
         </div>
       </div>

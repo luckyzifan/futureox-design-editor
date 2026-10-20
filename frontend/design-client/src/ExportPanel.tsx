@@ -1,3 +1,4 @@
+import { validateSvgOptions, svgFileBytes } from './export-options'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor } from './engine'
 import { pdfVectorIssues, type ExportTarget } from './export-metadata'
@@ -17,8 +18,13 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
       : { x: 0, y: 0, width: 24, height: 24 }
     return { x: String(b.x), y: String(b.y), width: String(b.width), height: String(b.height) }
   })
-  const [format, setFormat] = useState<'png'|'jpeg'|'webp'|'pdf'|'pdf-vector'>('png')
+  const [format, setFormat] = useState<'png'|'jpeg'|'webp'|'pdf'|'pdf-vector'|'svg'>('png')
+  const [svgScale, setSvgScale] = useState('1')
+  const [textMode, setTextMode] = useState<'outlines' | 'editable'>('outlines')
+  const [precision, setPrecision] = useState('')
+  const [compression, setCompression] = useState<'none' | 'gzip'>('none')
   const [scales, setScales] = useState([1, 2, 3])
+  const [customScale, setCustomScale] = useState('')
   const [assets, setAssets] = useState<Asset[]>([])
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
@@ -123,6 +129,19 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
       if (kind === 'slice' && Object.values(region).some((value) => !value.trim()))
         throw new Error('请填写完整的切片坐标和尺寸')
       if (kind === 'page' && !padding.trim()) throw new Error('请填写页面留白')
+      if (format === 'svg') {
+        if (!svgScale.trim()) throw new Error('请填写 SVG 视口倍率')
+        const options = validateSvgOptions({ scale: Number(svgScale), precision: precision === '' ? undefined : Number(precision), compression, textMode })
+        const { svgSource, filename } = await import('./export')
+        const result = svgSource(document, page, target, options.scale, options.precision, options.textMode)
+        if (result.issues.length) throw new Error(`SVG 无法保留这些效果：${result.issues.join('、')}；请选择原生文件或位图导出`)
+        const bytes = svgFileBytes(result.source, options.compression)
+        const url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type: 'image/svg+xml' }))
+        urls.current.push(url)
+        setAssets([{ name: `${filename(document.name)}.${options.compression === 'gzip' ? 'svgz' : 'svg'}`, url, width: result.box.width * options.scale, height: result.box.height * options.scale, scale: options.scale, pdf: false, pdfVector: false }])
+        setStatus(`已生成 SVG${options.compression === 'gzip' ? 'Z（无损 gzip 压缩）' : ''}${options.precision === undefined ? '' : '；坐标已按所选精度进行有损舍入'}`)
+        return
+      }
       if (format === 'pdf-vector') {
         // Vector PDF is resolution-independent; one file covers every scale.
         const { exportPdfVector } = await import('./export')
@@ -152,7 +171,7 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
       const results = await exportRasterBatch(
         document,
         page,
-        [...scales].sort(),
+        [...scales].sort((a, b) => a - b),
         target,
         undefined,
         controller.signal,
@@ -204,8 +223,17 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
           </button>
         </header>
         <label>格式 <select aria-label="导出图像格式" value={format} disabled={busy} onChange={e=>setFormat(e.target.value as typeof format)}>
-          <option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP（无损）</option><option value="pdf">PDF（精确位图）</option><option value="pdf-vector" disabled={vectorIssues.length>0}>PDF（矢量）</option>
+          <option value="svg">SVG / SVGZ（矢量）</option><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP（无损）</option><option value="pdf">PDF（精确位图）</option><option value="pdf-vector" disabled={vectorIssues.length>0}>PDF（矢量）</option>
         </select></label>
+        {format === 'svg' && <fieldset disabled={busy}>
+          <legend>SVG 矢量选项</legend>
+          <label>视口倍率 <input aria-label="SVG 视口倍率" type="number" min="0.001" max="128" step="any" value={svgScale} onChange={e => setSvgScale(e.target.value)} /></label>
+          <label>文字模式 <select aria-label="SVG 文字模式" value={textMode} onChange={e => setTextMode(e.target.value as typeof textMode)}><option value="outlines">轮廓（保持外观）</option><option value="editable">可编辑文字（需要对应字体）</option></select></label>
+          {textMode === 'editable' && <p>字体不会嵌入；缺失字体、回退和浏览器排版可能改变外观。高级文字样式需使用轮廓模式。</p>}
+          <label>坐标精度 <select aria-label="SVG 坐标精度" value={precision} onChange={e => setPrecision(e.target.value)}><option value="">保留原始精度</option>{[0,1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n} 位小数（有损）</option>)}</select></label>
+          <label>压缩 <select aria-label="SVG 压缩" value={compression} onChange={e => setCompression(e.target.value as typeof compression)}><option value="none">无（.svg）</option><option value="gzip">无损 gzip（.svgz）</option></select></label>
+          <p>倍率仅改变矢量视口尺寸，不是像素分辨率。精度舍入会改变几何形状；无损 gzip 不改变解压后的 SVG。FD 和 Sketch 原生文件不使用这些矢量选项。</p>
+        </fieldset>}
         {format==='jpeg'&&<p>JPEG 为有损格式，使用质量 100，透明区域填充为白色。</p>}
         {format==='pdf'&&<p>PDF 保留当前导出倍率的像素与透明度，页面按设计尺寸保存；使用 futureox-desgin 文件继续编辑图层。</p>}
         {format==='pdf-vector'&&<p>矢量 PDF 把路径、渐变与文字轮廓写为原生 PDF 对象，按设计尺寸保存（1 设计单位 = 1 pt）。</p>}
@@ -276,9 +304,9 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
                 : '包含可见内容和效果，页面留白可设为 0。'}
           </p>
         </fieldset>
-        <fieldset disabled={busy || format === 'pdf-vector'}>
+        <fieldset disabled={busy || format === 'pdf-vector' || format === 'svg'}>
           <legend>倍率</legend>
-          {[1, 2, 3].map((scale) => (
+          {[...new Set([1, 2, 3, ...scales])].sort((a, b) => a - b).map((scale) => (
             <label key={scale}>
               <input
                 type="checkbox"
@@ -294,14 +322,21 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
               {scale}x
             </label>
           ))}
+          <label>自定义倍率 <input aria-label="自定义导出倍率" type="number" min="0.001" max="128" step="any" value={customScale} onChange={e => setCustomScale(e.target.value)} /></label>
+          <button type="button" onClick={() => {
+            const value = Number(customScale)
+            if (!customScale.trim() || !Number.isFinite(value) || value < .001 || value > 128) { setStatus('自定义倍率必须在 0.001–128 之间'); return }
+            if (!scales.includes(value) && scales.length >= 16) { setStatus('最多选择 16 个导出倍率'); return }
+            setScales([...new Set([...scales, value])]); setCustomScale(''); setStatus('')
+          }}>添加倍率</button>
         </fieldset>
         <p>
-          {format === 'pdf-vector'
+          {format === 'svg' ? 'SVG 是分辨率无关的矢量输出；SVGZ 可下载后使用支持 gzip 的查看器打开。' : format === 'pdf-vector'
             ? '矢量输出与倍率无关，文件按设计尺寸保存。'
             : '像素尺寸向上取整，不拉伸内容；不受画布缩放或设备 DPR 影响。小数尾像素覆盖范围会向右、向下扩展。'}
         </p>
         <div className="feature-row">
-          <button type="button" disabled={busy || (format !== 'pdf-vector' && !scales.length)} onClick={() => void generate()}>
+          <button type="button" disabled={busy || (format !== 'pdf-vector' && format !== 'svg' && !scales.length)} onClick={() => void generate()}>
             生成 {format === 'pdf-vector' ? 'PDF（矢量）' : format.toUpperCase()}
           </button>
           {busy && (
@@ -324,7 +359,7 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
         <div className="export-assets">
           {assets.map((asset) => (
             <figure key={asset.scale}>
-              {asset.pdf ? <span>{asset.pdfVector ? 'PDF · 矢量' : 'PDF · 精确位图'}</span> : <img src={asset.url} alt={`${asset.scale}x 切图预览`} />}
+              {asset.name.endsWith('.svgz') ? <span>SVGZ · 矢量</span> : asset.pdf ? <span>{asset.pdfVector ? 'PDF · 矢量' : 'PDF · 精确位图'}</span> : <img src={asset.url} alt={`${asset.scale}x 切图预览`} />}
               <figcaption>
                 {asset.width} × {asset.height} {asset.pdfVector ? 'pt' : 'px'}
               </figcaption>

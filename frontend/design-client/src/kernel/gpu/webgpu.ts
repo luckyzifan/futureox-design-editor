@@ -1,3 +1,4 @@
+import { QueueWaitStats, type QueueWaitReason } from './queue-wait-stats'
 import { textureByteLength } from './texture-byte-length'
 /// <reference types="@webgpu/types" />
 import vectorShader from '../../../../../design-studio/crates/design-kernel/shaders/vector.wgsl?raw'
@@ -13,10 +14,6 @@ import { imageCoordinateSource } from './image-coordinate-source'
 import { scalarCoverageSource, SCALAR_COVERAGE_UNIFORM } from './scalar-coverage'
 import { ResidentPresenter, type ResidentFrame } from './resident-presenter'
 import { isDisplayBudgetError } from './display-budget'
-import { figmaBlurWgsl } from './figma-blur-wgsl'
-import { figmaShadowBlurWgsl } from './figma-shadow-blur-wgsl'
-import { figmaCanvasChromeWgsl } from './figma-canvas-chrome-wgsl'
-import { figmaSdfShadowWgsl } from './figma-sdf-shadow-wgsl'
 import byteSamplingShader from '../../../../../design-studio/crates/design-kernel/shaders/byte-sampling.wgsl?raw'
 import { areaShaderWgsl } from './area-shader'
 import type { Driver, Texture, PathMesh, Rect, GpuScene } from './types'
@@ -47,6 +44,10 @@ type ParkedDriver = {
   reaper: ReturnType<typeof setTimeout>
 }
 export class WebGpuDriver implements Driver {
+  private queueWaitStats = new QueueWaitStats(import.meta.env.VITE_DESIGN_QUEUE_WAIT_TIMING === '1')
+  private waitForQueue(reason: QueueWaitReason) {
+    return this.queueWaitStats.wait(reason, () => this.device.queue.onSubmittedWorkDone(), () => this.lost)
+  }
   private bindingCache = new GpuBindingCache()
   // Rollout gate until real-device validation and timings are available. The
   // static-offset route remains an exact negative control for bisection.
@@ -80,7 +81,7 @@ export class WebGpuDriver implements Driver {
   async readContentPixel(u:number,v:number,expected?:import('../resident-presentation').ResidentAcknowledgement){if(!this.presenter)throw Error('No resident display');return this.presenter.readContentPixel(u,v,expected)}
   async captureContentBitmap(){if(!this.presenter)throw Error('No resident display');return this.presenter.captureContentBitmap()}
   importPresented(bitmap: ImageBitmap) {
-    if (!this.presenter) throw Error('No resident display')
+    if (!this.presenter) { bitmap.close(); throw Error('No resident display') }
     return this.presenter.import(bitmap)
   }
   readonly supportsDisplayFilters = true
@@ -91,17 +92,10 @@ export class WebGpuDriver implements Driver {
   readonly exactShadowOver = true
   private displayFilters = false
   private displayFilterPipeline?: GPURenderPipeline
-  /** Figma-faithful paired-tent blur: needs hardware linear
-   * filtering, so it carries its own filterable bind layout beside the
-   * unfilterable-float exact compositor layout. */
-  private figmaBlur?: { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout; sampler: GPUSampler }
   private pairedDisplay?: { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout; sampler: GPUSampler }
   private pairDisplayTaps = true
   pairedFilterPasses = 0
   private pairedDisplayFailed = false
-  private figmaShadowBlur?: GPURenderPipeline
-  private figmaCanvasChrome?: GPURenderPipeline
-  private figmaSdfShadow?: GPURenderPipeline
   private softwareRaster = false
   readonly name = 'webgpu' as const
   readonly exactSolidPaintOver = true
@@ -109,6 +103,7 @@ export class WebGpuDriver implements Driver {
   description = 'WebGPU'
   lost = false
   drawCalls = 0
+  private mergedExactFilterPasses = 0
   triangles = 0
   commandSubmissions = 0
   private presentationSubmissions = 0
@@ -257,12 +252,14 @@ export class WebGpuDriver implements Driver {
   private async initialize() {
     if (!navigator.gpu) throw new Error('浏览器未提供 WebGPU')
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' })
+      .catch(error => { throw new Error(`GPU_UNAVAILABLE: ${String(error)}`, { cause: error }) })
     if (!adapter) throw new Error('没有可用的 WebGPU 适配器')
     const timing = import.meta.env.DEV && import.meta.env.VITE_DESIGN_GPU_TIMINGS === '1'
     if (timing && !adapter.features.has('timestamp-query')) throw new Error('GPU timestamp queries unavailable')
     const requiredFeatures: GPUFeatureName[] = timing ? ['timestamp-query'] : []
     if (adapter.features.has('float32-filterable')) requiredFeatures.push('float32-filterable')
     this.device = await adapter.requestDevice({ requiredFeatures })
+      .catch(error => { throw new Error(`GPU_UNAVAILABLE: ${String(error)}`, { cause: error }) })
     if (this.dynamicUniformBindings) {
       const alignment = this.device.limits.minUniformBufferOffsetAlignment
       if (!Number.isInteger(alignment) || alignment < 1 || 1024 % alignment !== 0)
@@ -583,8 +580,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.encoder = this.device.createCommandEncoder()
     this.blank = this.create(1, 1)
     this.clear(this.blank)
-    this.device.queue.submit([this.encoder.finish()])
-    await this.device.queue.onSubmittedWorkDone()
+    this.queueWaitStats.submit(() => this.device.queue.submit([this.encoder.finish()]))
+    await this.waitForQueue('initialization')
     this.initialized = true
   }
   async prepareScene(scene: GpuScene) {
@@ -622,7 +619,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     }
     await this.pipelines.prepare(pending)
   }
-  async prepareFilters(prefixUseful = false, experimentalEffects = false) {
+  async prepareFilters(prefixUseful = false) {
     if (this.managed && this.displayFilters) {
       if (this.pairDisplayTaps && !this.pairedDisplay && !this.pairedDisplayFailed && this.device.features.has('float32-filterable')) {
         try {
@@ -650,70 +647,6 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
           vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', targets: [{ format: this.layerFormat }] },
           primitive: { topology: 'triangle-list' },
         })
-      }
-      if (experimentalEffects && !this.figmaBlur && this.device.features.has('float32-filterable')) {
-        try {
-          const blurLayout = this.device.createBindGroupLayout({ entries: [
-            { binding: 0, visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX, buffer: { type: 'uniform', minBindingSize: 1024 } },
-            { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
-            { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-          ] })
-          const module = this.device.createShaderModule({ code: figmaBlurWgsl, label: 'Figma paired tent' })
-          const errors = (await module.getCompilationInfo()).messages.filter((m) => m.type === 'error')
-          if (errors.length) throw new Error(errors.map((m) => `${m.lineNum}:${m.message}`).join('\n'))
-          const pipeline = await this.device.createRenderPipelineAsync({
-            layout: this.device.createPipelineLayout({ bindGroupLayouts: [blurLayout] }),
-            vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', targets: [{ format: this.layerFormat }] },
-            primitive: { topology: 'triangle-list' },
-          })
-          const sampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
-          // Publish the pipeline only together with every binding it needs.
-          this.figmaBlur = { pipeline, layout: blurLayout, sampler }
-        } catch (error) {
-          console.warn('Paired blur unavailable; using integrated tent filter', error)
-        }
-      }
-      // SDF shadow: pure SDF math, reuses figmaBlur layout
-      if (experimentalEffects && !this.figmaSdfShadow && this.figmaBlur) {
-        try {
-          const module = this.device.createShaderModule({ code: figmaSdfShadowWgsl, label: 'Figma SDF shadow' })
-          const info = await module.getCompilationInfo()
-          if (info.messages.some((m) => m.type === 'error')) throw new Error('SDF compile error')
-          this.figmaSdfShadow = await this.device.createRenderPipelineAsync({
-            layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.figmaBlur.layout] }),
-            vertex: { module, entryPoint: 'quad' },
-            fragment: { module, entryPoint: 'fragment', targets: [{ format: this.layerFormat }] },
-            primitive: { topology: 'triangle-list' },
-          })
-        } catch { this.figmaSdfShadow = undefined }
-      }
-      // Canvas chrome: checkerboard/dot background
-      if (experimentalEffects && !this.figmaCanvasChrome && this.figmaBlur) {
-        try {
-          const module = this.device.createShaderModule({ code: figmaCanvasChromeWgsl, label: 'Figma canvas chrome' })
-          const info = await module.getCompilationInfo()
-          if (info.messages.some((m) => m.type === 'error')) throw new Error('chrome compile error')
-          this.figmaCanvasChrome = await this.device.createRenderPipelineAsync({
-            layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.figmaBlur.layout] }),
-            vertex: { module, entryPoint: 'quad' },
-            fragment: { module, entryPoint: 'fragment', targets: [{ format: this.layerFormat }] },
-            primitive: { topology: 'triangle-list' },
-          })
-        } catch { this.figmaCanvasChrome = undefined }
-      }
-      // Shadow blur: scalar tent with packing ladder
-      if (experimentalEffects && !this.figmaShadowBlur && this.figmaBlur) {
-        try {
-          const module = this.device.createShaderModule({ code: figmaShadowBlurWgsl, label: 'Figma shadow blur' })
-          const info = await module.getCompilationInfo()
-          if (info.messages.some((m) => m.type === 'error')) throw new Error('shadow blur compile error')
-          this.figmaShadowBlur = await this.device.createRenderPipelineAsync({
-            layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.figmaBlur.layout] }),
-            vertex: { module, entryPoint: 'quad' },
-            fragment: { module, entryPoint: 'fragment', targets: [{ format: this.layerFormat }] },
-            primitive: { topology: 'triangle-list' },
-          })
-        } catch { this.figmaShadowBlur = undefined }
       }
       return
     }
@@ -747,13 +680,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.prefix!.resetCounters(this.encoder)
     this.frameScratchBytes = Math.max(this.frameScratchBytes, this.prefix!.scratchBytes)
   }
-  async abortFrameAndReleaseFilterScratch() {
+  async abortFrameAndReleaseFilterScratch(reason: 'admission' | 'cancel' = 'admission') {
     this.closeOver()
     // Abandon recorded commands; already submitted commands retain their
     // resources until this explicit completion boundary.
     this.encoder = this.device.createCommandEncoder()
     const epoch = this.resourceEpoch
-    await this.device.queue.onSubmittedWorkDone()
+    await this.waitForQueue(reason)
     if (!this.lost) this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
     if (this.frameScopeOpen) {
       const error = await this.device.popErrorScope(); this.frameScopeOpen = false
@@ -772,6 +705,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (this.disposed || this.lost) throw new Error('WebGPU 设备已丢失')
     this.resourceEpoch++
     this.drawCalls = 0
+    this.mergedExactFilterPasses = 0
     this.finishTransientBytes = 0
     this.frameScratchBytes = 0
     this.timingRows = []
@@ -808,7 +742,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         // until completion; subsequent queue writes append only new programs.
         const encoder=this.device.createCommandEncoder()
         encoder.copyBufferToBuffer(previous!,0,this.curves,0,Math.min(previous!.size,this.curveCapacity))
-        this.device.queue.submit([encoder.finish()]);this.commandSubmissions++
+        this.queueWaitStats.submit(() => this.device.queue.submit([encoder.finish()]));this.commandSubmissions++
       }
       previous?.destroy()
     }
@@ -1081,7 +1015,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   private submitCommands() {
     this.closeOver()
     this.uploadUniforms()
-    this.device.queue.submit([this.encoder.finish()])
+    this.queueWaitStats.submit(() => this.device.queue.submit([this.encoder.finish()]))
     this.commandSubmissions++
     this.encoder = this.device.createCommandEncoder()
     // Queue writes and submissions execute in order. Reuse this bounded arena
@@ -1092,14 +1026,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.uploadedOffset = 0
   }
   async readSurface(source: Texture): Promise<Float32Array> {
-    await this.checkpoint()
+    await this.checkpoint('readback')
     const width=source.width,height=source.height,floating=source.bytes===width*height*16,bpp=floating?16:4
     const stride=Math.ceil(width*bpp/256)*256
     const buffer=this.device.createBuffer({size:stride*height,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ})
     try {
       const encoder=this.device.createCommandEncoder()
       encoder.copyTextureToBuffer({texture:source.resource as GPUTexture},{buffer,bytesPerRow:stride},[width,height])
-      this.device.queue.submit([encoder.finish()]);this.commandSubmissions++
+      this.queueWaitStats.submit(() => this.device.queue.submit([encoder.finish()]));this.commandSubmissions++
       await buffer.mapAsync(GPUMapMode.READ)
       const raw=new Uint8Array(buffer.getMappedRange()),packed=new Uint8Array(width*height*bpp)
       for(let y=0;y<height;y++)packed.set(raw.subarray(y*stride,y*stride+width*bpp),y*width*bpp)
@@ -1107,10 +1041,10 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       return floating?new Float32Array(packed.buffer):Float32Array.from(packed,v=>v/255)
     } finally { buffer.destroy() }
   }
-  async checkpoint() {
+  async checkpoint(reason: QueueWaitReason = 'checkpoint') {
     this.submitCommands()
     const epoch = this.resourceEpoch
-    await this.device.queue.onSubmittedWorkDone()
+    await this.waitForQueue(reason)
     if (this.lost) throw new Error('GPU 设备已丢失')
     // The current frame may encode more reads after this checkpoint. Only
     // earlier frames are eligible for immutable-resource eviction.
@@ -1243,10 +1177,21 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
           { color, depth, high, low } = this.maskBuffer(w, h, density),
           u = parameters({ x: 0, y: 0, w, h })
         u.set([x, y], 4)
-        const bind = this.device.createBindGroup({
+        const uniform = this.uniform(u)
+        const create = () => this.device.createBindGroup({
           layout: this.maskLayout,
-          entries: [{ binding: 0, resource: this.uniform(u) }],
+          entries: [{ binding: 0, resource: uniform }],
         })
+        // Only descriptors are reused: every tile still writes its exact
+        // uniforms. Fixed offsets remain part of the key even when the main
+        // compositor uses dynamic bindings; maskLayout has no dynamic offset.
+        let bind: GPUBindGroup
+        if (import.meta.env.VITE_DESIGN_BINDING_CACHE === '0') {
+          this.bindingCache.groupCreates++
+          bind = create()
+        } else {
+          bind = this.bindingCache.group([this.maskLayout, uniform.buffer], uniform.offset, create)
+        }
         const pass = this.encoder.beginRenderPass({
           colorAttachments: [
             {
@@ -1384,93 +1329,6 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       pass.setPipeline(this.pairedDisplay.pipeline); pass.setBindGroup(0, bind); pass.draw(3); pass.end()
       this.drawCalls++; this.pairedFilterPasses++; return
     }
-    // The paired blur consumes an explicit count/spacing contract. Its point-tent
-    // kernel is not interchangeable with our integrated pixel-area weights.
-    // Ordinary canvas filters retain those weights via displayFilterWgsl;
-    // paired sampling requires an explicitly supplied count, never a guessed
-    // radius * sqrt(6) conversion.
-    if (displayFilter && this.figmaBlur && u[40] > 0 && channels === 15 && !region) {
-      const figmaBind = this.device.createBindGroup({
-        layout: this.figmaBlur.layout,
-        entries: [
-          { binding: 0, resource: this.uniform(u) },
-          { binding: 1, resource: this.figmaBlur.sampler },
-          { binding: 2, resource: this.bindingCache.view(((inputs[0] || this.blank).resource as GPUTexture)) },
-        ],
-      })
-      const figmaPass = this.encoder.beginRenderPass({
-        colorAttachments: [{
-          view: this.bindingCache.view((target.resource as GPUTexture)),
-          loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0],
-        }],
-      })
-      figmaPass.setPipeline(this.figmaBlur.pipeline)
-      figmaPass.setBindGroup(0, figmaBind)
-      figmaPass.draw(3)
-      figmaPass.end()
-      this.drawCalls++
-      return
-    }
-    // SDF shadow: mode 6 + u[44]>0 = SDF params flag
-    if (this.figmaSdfShadow && u[16] === 6 && u[59] === 1 && !region) {
-      const bind = this.device.createBindGroup({
-        layout: this.figmaBlur!.layout,
-        entries: [
-          { binding: 0, resource: this.uniform(u) },
-          { binding: 1, resource: this.figmaBlur!.sampler },
-          { binding: 2, resource: (inputs[0] || this.blank).resource as GPUTexture },
-        ],
-      })
-      const rp = this.encoder.beginRenderPass({
-        colorAttachments: [{ view: this.bindingCache.view((target.resource as GPUTexture)), loadOp: 'clear', storeOp: 'store', clearValue: [0,0,0,0] }],
-      })
-      rp.setPipeline(this.figmaSdfShadow)
-      rp.setBindGroup(0, bind)
-      rp.draw(3)
-      rp.end()
-      this.drawCalls++
-      return
-    }
-    // Canvas chrome: mode 6 + u[48]>0 = checkerboardStyle
-    if (this.figmaCanvasChrome && u[16] === 6 && u[60] === 1 && !region) {
-      const bind = this.device.createBindGroup({
-        layout: this.figmaBlur!.layout,
-        entries: [
-          { binding: 0, resource: this.uniform(u) },
-          { binding: 1, resource: this.figmaBlur!.sampler },
-          { binding: 2, resource: (inputs[0] || this.blank).resource as GPUTexture },
-        ],
-      })
-      const rp = this.encoder.beginRenderPass({
-        colorAttachments: [{ view: this.bindingCache.view((target.resource as GPUTexture)), loadOp: 'clear', storeOp: 'store', clearValue: [0,0,0,0] }],
-      })
-      rp.setPipeline(this.figmaCanvasChrome)
-      rp.setBindGroup(0, bind)
-      rp.draw(3)
-      rp.end()
-      this.drawCalls++
-      return
-    }
-    // Shadow blur: displayFilter + mode 22 + shadow flag
-    if (this.figmaShadowBlur && displayFilter && u[16] === 22 && u[45] > 0 && !region) {
-      const bind = this.device.createBindGroup({
-        layout: this.figmaBlur!.layout,
-        entries: [
-          { binding: 0, resource: this.uniform(u) },
-          { binding: 1, resource: this.figmaBlur!.sampler },
-          { binding: 2, resource: (inputs[0] || this.blank).resource as GPUTexture },
-        ],
-      })
-      const rp = this.encoder.beginRenderPass({
-        colorAttachments: [{ view: this.bindingCache.view((target.resource as GPUTexture)), loadOp: 'clear', storeOp: 'store', clearValue: [0,0,0,0] }],
-      })
-      rp.setPipeline(this.figmaShadowBlur)
-      rp.setBindGroup(0, bind)
-      rp.draw(3)
-      rp.end()
-      this.drawCalls++
-      return
-    }
     // Mode 6 composites a shadow from source + blurred alpha. The standalone
     // SDF/chrome shaders have different uniforms and cannot share this mode;
     // spare uniform lanes must never select them or require optional samplers.
@@ -1482,6 +1340,29 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       this.managed && u[16] === 0 ? (integerCentres ? this.copyCornerPipeline! : this.copyPipeline!) :
       this.managed ? this.modePipelines.get(u[16])! : this.paintPipeline]
     if (!pipelines.length || pipelines.some((pipeline) => !pipeline)) throw new Error(`Exact compositor pipeline ${u[16]} not prepared`)
+    // The exact channel pipelines read only source textures, never this
+    // attachment, and write disjoint channels without blending. Keep their
+    // four reducers/draws in the original order, but clear/store the shared
+    // attachment once. No arithmetic, sampler, or filter support changes.
+    // Scissored/partial-channel work and per-channel timestamp probes retain
+    // the established clear/load and query boundaries below.
+    if (this.managed && u[16] === 22 && !displayFilter && !target.scalarCoverage &&
+        !target.binaryCoverage && pipelines === this.filterPipelines && pipelines.length === 4 &&
+        channels === 15 && !region && !this.timingQueries) {
+      const pass = this.encoder.beginRenderPass({ colorAttachments: [{
+        view: this.bindingCache.view(target.resource as GPUTexture),
+        loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0],
+      }] })
+      for (const pipeline of pipelines) {
+        pass.setPipeline(pipeline)
+        pass.setBindGroup(0, bind.group, bind.offsets)
+        pass.draw(3)
+        this.drawCalls++
+      }
+      pass.end()
+      this.mergedExactFilterPasses++
+      return
+    }
     let drawn = false
     for (let channel = 0; channel < pipelines.length; channel++) {
     if (this.managed && u[16] === 22 && !displayFilter && !target.scalarCoverage && !(channels & (1 << channel))) continue
@@ -1632,15 +1513,20 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       this.encoder.copyBufferToBuffer(timingResolve, 0, timingRead, 0, size)
     }
     this.uploadUniforms()
-    this.device.queue.submit([this.encoder.finish()])
+    this.queueWaitStats.submit(() => this.device.queue.submit([this.encoder.finish()]))
     this.commandSubmissions++
     // Presentation-only tiles stay on the GPU timeline. Submitted commands
     // retain their resources; subsequent uploads are ordered by the queue.
     // Readbacks/probes still fence before reading or reusing mapped storage.
-    if (readback || timingRead || this.prefix?.scratchBytes || this.interactionPresentation &&
-        (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') || ++this.presentationSubmissions >= 4) {
+    // Primary trigger uses the original short-circuit order, including the
+    // periodic counter increment only when no earlier trigger applies.
+    const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' :
+      this.prefix?.scratchBytes ? 'prefix-scratch' : this.interactionPresentation &&
+        (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') ? 'interaction' :
+        ++this.presentationSubmissions >= 4 ? 'periodic' : undefined
+    if (waitReason) {
       const epoch = this.resourceEpoch
-      await this.device.queue.onSubmittedWorkDone()
+      await this.waitForQueue(waitReason)
       if (!this.lost) this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
       this.presentationSubmissions = 0
     }
@@ -1736,6 +1622,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       solidBufferBytes: this.solidBuffer?.size ?? 0,
       uniformBufferBytes: this.uniforms?.size ?? 0,
       deviceLost: this.lost,
+      queueWaits: this.queueWaitStats.snapshot(this.resourceEpoch, this.completedResourceEpoch),
       pipelineBuilds: this.pipelines.builds, pipelineBuildMs: this.pipelines.buildMs, pipelineReady: this.pipelines.ready,
       passTimings: this.passTimings,
       textureViewCreates: this.bindingCache.viewCreates,
@@ -1743,6 +1630,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       bindGroupHits: this.bindingCache.groupHits,
       bindGroupCacheSize: this.bindingCache.size,
       dynamicUniformBindings: this.dynamicUniformBindings,
+      mergedExactFilterPasses: this.mergedExactFilterPasses,
     }
   }
   async loseDeviceForTesting() {
@@ -1803,7 +1691,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   private reclaimForPark(): Promise<void> {
     return (async () => {
       try {
-        await this.device.queue.onSubmittedWorkDone()
+        await this.waitForQueue('park')
       } catch {
         /* A device lost mid-fence reclaims itself; nothing left to do. */
       }
@@ -1834,9 +1722,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.encoder = this.device.createCommandEncoder()
     this.blank = this.create(1, 1)
     this.clear(this.blank)
-    this.device.queue.submit([this.encoder.finish()])
+    this.queueWaitStats.submit(() => this.device.queue.submit([this.encoder.finish()]))
     this.commandSubmissions = 1
-    await this.device.queue.onSubmittedWorkDone()
+    await this.waitForQueue('initialization')
   }
   /** Reclaim frame-scoped resources: textures, MSAA/transient scratch, geometry
    * and solid buffers, and per-frame counters. Call only after submitted

@@ -1,3 +1,4 @@
+import { gzipSync, gunzipSync } from 'node:zlib'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { ArtifactResources } from '../src/artifacts.mjs'
@@ -104,4 +105,19 @@ test('resource admission counts JSON escaping and the complete read-response env
   const accepted = resources.project({ ok: true, result: { format: 'futureox.design-document.v1', mimeType: 'application/json', content: 'Q'.repeat(1700) } })
   const response = { jsonrpc: '2.0', id: '\0'.repeat(256), result: resources.read(accepted.links[0].uri) }
   assert.ok(Buffer.byteLength(JSON.stringify(response) + '\n') <= 4096)
+})
+
+test('SVGZ exports become exact binary resources with precision metadata preserved', () => {
+  const resources = new ArtifactResources(), source = '<svg><title>矢量</title></svg>'
+  const bytes = gzipSync(source), base64 = bytes.toString('base64')
+  const response = { ok: true, method: 'vector.export', result: { format: 'futureox.design-vector.v1', mimeType: 'image/svg+xml', filename: 'design.svgz', encoding: 'base64', base64, options: { scale: 2, precision: 3, compression: 'gzip' }, precisionLossy: true } }
+  const output = resources.project(response)
+  assert.equal(output.links.length, 1)
+  const link = output.links[0]
+  assert.equal(link.name, 'design.svgz')
+  const blob = resources.read(link.uri).contents[0].blob
+  assert.equal(blob, base64); assert.equal(gunzipSync(Buffer.from(blob, 'base64')).toString(), source)
+  assert.equal(output.value.result.base64, undefined)
+  assert.equal(output.value.result.precisionLossy, true)
+  assert.deepEqual(output.value.result.options, response.result.options)
 })

@@ -1,4 +1,5 @@
 import { initializeKernelModule } from './module'
+import { shouldUseExactCpuFallback } from './cpu-fallback'
 import { allowsResidentSdr } from './render-policy'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SurfaceProps } from './Surface'
@@ -621,6 +622,11 @@ export function ProgressiveSurfaceImpl(
       }))
       setFailure(message)
       latestContext.current.onRenderFailure?.()
+      if (shouldUseExactCpuFallback(latestContext.current.backend, message)) {
+        clearTimeout(displayRetries.current.timer)
+        latestContext.current.onFallback(String(message))
+        return
+      }
       const key = activePlanKey.current
       if (displayRetries.current.key !== key) {
         clearTimeout(displayRetries.current.timer)
@@ -965,9 +971,12 @@ export function ProgressiveSurfaceImpl(
       recordRenderDiagnostic({ kind: 'error', zoom: view.zoom, dpr,
         requestedDensity: view.zoom * dpr, errorCode: renderDiagnosticError(error) })
       if (String(error).includes('PREVIEW_CANCELLED')) return
-      if (backend === 'auto' && String(error).includes('PREVIEW_CPU_FALLBACK:'))
+      // Recovery changes the renderer, not the fact that this GPU request failed.
+      // Keep failure observers informed before handing off to the CPU surface.
+      latestContext.current.onRenderFailure?.()
+      if (shouldUseExactCpuFallback(backend, error))
         props.onFallback(String(error))
-      else { setFailure(String(error)); latestContext.current.onRenderFailure?.() }
+      else setFailure(String(error))
     }
     let runAttempts = 0
     let navigationRequest: string | undefined
@@ -1496,9 +1505,12 @@ export function ProgressiveSurfaceImpl(
         data-cached-preview-tiles={cachedPreviewCount}
         data-overview-tiles={visible.filter(tile => tile.overview && ready.current.has(tile.key)).length}
         data-overview-reuses={overviewReuses.current}
+        data-resident-eligible={String(residentDisplay)}
+        data-resident-reason={!singleCanvas ? 'single-canvas-unavailable' : !allowsResidentSdr(renderExecutionPolicy, backend) ? 'policy-or-backend' : !navigator.gpu ? 'webgpu-unavailable' : import.meta.env.VITE_DESIGN_RESIDENT_DISPLAY === '0' ? 'disabled' : 'eligible'}
         data-motion-preview={String(motionPreview)}
         data-motion-raster-scale={renderScale}
         data-camera-moving={String(cameraMoving)}
+        data-navigation-pending-age-ms={navigationZoom.pendingAgeMs}
         data-navigation-zoom-active={String(navigationZoom.active)}
         data-navigation-zoom-sequence={navigationZoom.sample?.sequence || 0}
         data-viewport-preview-tiles={visible.filter(tile=>tile.viewportPreview&&cachedPreviewTile(tile)).length}

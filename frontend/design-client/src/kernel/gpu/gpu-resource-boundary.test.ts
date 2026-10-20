@@ -246,6 +246,8 @@ test('completed epochs distinguish async finish, fences, rejected waits, abort a
     expect(driver.resourceEpoch).toBe(i)
     expect(driver.completedResourceEpoch).toBe(i === 4 ? 4 : 0)
   }
+  expect(driver.stats().queueWaits.reasons.periodic.completed).toBe(1)
+  expect(driver.stats().queueWaits.pendingResourceEpochs).toBe(0)
   driver.begin(new Float32Array(0)); driver.clear(target)
   boundary.rejectWait(true)
   await expect(driver.checkpoint()).rejects.toThrow('completion rejection')
@@ -401,4 +403,56 @@ test('a driver without completion epochs keeps per-attempt ownership despite the
   expect(renderer.kernelCache.size).toBe(0)
   expect(boundary.counts().textureUploads).toBe(2)
   renderer.dispose(); expect(boundary.live.size).toBe(0)
+})
+
+test('production queue telemetry preserves deferred checkpoint epochs and exports bounded snapshots', async () => {
+  const { boundary, driver } = await createDriver(true)
+  driver.begin(new Float32Array(0))
+  boundary.holdWait()
+  const wait = driver.checkpoint('admission')
+  const pending = driver.stats().queueWaits
+  expect(pending).toMatchObject({ pending: 1, resourceEpoch: 1, completedResourceEpoch: 0, pendingResourceEpochs: 1 })
+  expect(pending.reasons.admission).toMatchObject({ started: 1, completed: 0, pending: 1 })
+  boundary.releaseWait(); await wait
+  expect(driver.completedResourceEpoch).toBe(0) // Current-frame reads may still follow.
+  expect(driver.stats().queueWaits.reasons.admission).toMatchObject({ completed: 1, pending: 0 })
+  boundary.rejectWait(true)
+  await expect(driver.checkpoint('readback')).rejects.toThrow('completion rejection')
+  expect(driver.stats().queueWaits.reasons.readback.rejected).toBe(1)
+  expect(driver.completedResourceEpoch).toBe(0)
+  boundary.rejectWait(false)
+  await driver.abortFrameAndReleaseFilterScratch('cancel')
+  const final = driver.stats().queueWaits
+  expect(final.reasons.cancel.completed).toBe(1)
+  expect(final.pendingResourceEpochs).toBe(0)
+  expect(final.submitCalls).toBe(boundary.counts().submissions)
+  expect(JSON.parse(JSON.stringify(final))).toEqual(final)
+  driver.dispose()
+})
+
+test('interaction fence reason retains periodic short-circuit cadence and native opt-out', async () => {
+  const { driver } = await createDriver(true)
+  const target = driver.create(8, 8)
+  const internals = driver as any
+  const finish = async () => {
+    driver.begin(new Float32Array(0)); driver.clear(target)
+    await driver.finish(target, empty.extent, 8, 8, false, undefined, false)
+  }
+  // Set after begin: begin reads interaction flags from prepared scene state.
+  const interactionFinish = async () => {
+    driver.begin(new Float32Array(0)); driver.clear(target)
+    internals.interactionPresentation = true
+    await driver.finish(target, empty.extent, 8, 8, false, undefined, false)
+  }
+  await finish(); expect(internals.presentationSubmissions).toBe(1)
+  await interactionFinish()
+  expect(driver.stats().queueWaits.reasons.interaction.completed).toBe(1)
+  expect(internals.presentationSubmissions).toBe(0)
+  vi.stubEnv('VITE_DESIGN_NATIVE_PIPELINE', '1')
+  internals.nativeInteractionPresentation = true
+  await interactionFinish()
+  expect(driver.stats().queueWaits.reasons.interaction.completed).toBe(1)
+  expect(internals.presentationSubmissions).toBe(1)
+  await driver.abortFrameAndReleaseFilterScratch()
+  driver.dispose()
 })

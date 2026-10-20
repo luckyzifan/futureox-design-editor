@@ -189,3 +189,33 @@ describe('existing vector and raster adapters', () => {
     await expect(captureDesignPreview(document)).rejects.toThrow('megapixels')
   })
 })
+
+it('MCP vector export validates type-specific options and returns real gzip/precision output', async () => {
+  const { gunzipSync } = await import('fflate')
+  const { document } = fixture(), editor = new Editor(document), api = createDesignAutomation(editor, exportExtensions)
+  const result = api.execute({ method: 'vector.export', params: { pageId: document.pages[0].id, scale: 2, precision: 3, compression: 'gzip' } })
+  expect(result.ok).toBe(true)
+  if (!result.ok) return
+  const out = result.result as { filename: string; base64: string; options: object; precisionLossy: boolean; warnings: { code: string }[] }
+  expect(out.filename).toBe('design.svgz'); expect(out.precisionLossy).toBe(true)
+  expect(out.options).toEqual({ scale: 2, precision: 3, compression: 'gzip', textMode: 'outlines' })
+  expect(out.warnings.some(w => w.code === 'SVG_PRECISION_LOSS')).toBe(true)
+  expect(new TextDecoder().decode(gunzipSync(Uint8Array.from(atob(out.base64), c => c.charCodeAt(0))))).toContain('<svg')
+  for (const [method, params] of [['vector.export', { precision: 9 }], ['vector.export', { quality: 90 }], ['vector.export', { compression: 'zip' }], ['document.export', { format: 'fd', precision: 2 }], ['document.export', { format: 'fd', compression: 'gzip' }]] as const) expect(api.execute({ method, params }).ok).toBe(false)
+  editor.dispose()
+})
+
+it('FD component instance nodeIdMap points to committed materialized descendants', () => {
+  const source = componentFixture().doc, editor = new Editor(blank()), api = createDesignAutomation(editor, exportExtensions)
+  try {
+    const read = api.execute({ method: 'document.export' })
+    const response = api.execute({ method: 'document.import', documentId: read.documentId, session: read.session, expectedRevision: read.revision, params: { format: 'fd', base64: exportBinaryDocument(source).base64 } })
+    expect(response.ok, JSON.stringify(response)).toBe(true); if (!response.ok) return
+    const result = response.result as { operations: { result: { nodeIdMap: Record<string, string>; createdIds: string[] } }[] }
+    const imported = result.operations[0].result
+    expect(Object.keys(imported.nodeIdMap).length).toBeGreaterThan(10)
+    for (const id of Object.values(imported.nodeIdMap)) expect(editor.state.doc.nodes[id], id).toBeDefined()
+    for (const id of imported.createdIds) expect(editor.state.doc.nodes[id], id).toBeDefined()
+    editor.undo(); expect(Object.keys(editor.state.doc.nodes)).toHaveLength(0)
+  } finally { api.dispose(); editor.dispose() }
+})

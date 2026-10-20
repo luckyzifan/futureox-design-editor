@@ -1,3 +1,4 @@
+import { certifyLayerTransition } from './layer-row-transition'
 import type { DesignDocument, DesignNode } from './model'
 export type DocumentPatch = {
   nodes: Record<string, DesignNode | null>
@@ -64,6 +65,7 @@ export function documentPatch(before: DesignDocument, after: DesignDocument): Do
         (after as unknown as Record<string, unknown>)[key]
     )
       fields[key] = (after as unknown as Record<string, unknown>)[key] ?? null
+  certifyLayerTransition(before, after, nodes)
   return { nodes, fields }
 }
 /** Normalise a kernel-round-tripped node: drop explicit null optionals. */

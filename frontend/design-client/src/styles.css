@@ -6,9 +6,9 @@
   --workspace-muted: #666e79;
   --workspace-border: #e2e5e9;
   --workspace-hover: #f1f3f5;
-  --workspace-accent: #1674e8;
-  --workspace-accent-hover: #0864d4;
-  --workspace-selected: #e8f2ff;
+  --workspace-accent: #3459d4;
+  --workspace-accent-hover: #2747b6;
+  --workspace-selected: #eaf0ff;
   --workspace-field: #f5f6f8;
   --workspace-danger: #b63a42;
   --workspace-inspector-width: 280px;
@@ -1374,7 +1374,7 @@ footer button {
   padding-right: 8px;
 }
 
-.feature-backdrop{position:fixed;inset:0;z-index:100;background:#17192388;display:flex;align-items:center;justify-content:center;padding:32px}.design-tools,.prototype-player{background:var(--panel,#fff);color:var(--text,#20202b);border-radius:12px;padding:20px;max-width:1100px;max-height:90vh;overflow:auto;box-shadow:0 20px 70px #0005}.design-tools{width:900px}.design-tools header,.prototype-player header,.feature-row,.design-tools nav{display:flex;gap:10px;align-items:center;margin-bottom:14px}.design-tools header strong,.prototype-player header strong{flex:1}.design-tools section{border-top:1px solid #ddd;padding:16px 0}.design-tools input,.design-tools select{padding:6px;border:1px solid #ccc;border-radius:5px;margin:4px;max-width:220px}.design-tools button,.prototype-player header button,.rich-text-toolbar button{padding:6px 10px;border:1px solid #ddd;border-radius:5px;background:#f5f5f9;cursor:pointer}.design-tools button[aria-pressed=true]{background:var(--workspace-selected);color:var(--workspace-accent)}.variable-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 0}.variable-row label{display:flex;align-items:center}.interaction-card{border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0}.prototype-hotspot{opacity:0;border:0;cursor:pointer;background:transparent}.prototype-hotspot:focus-visible{opacity:.2;background:var(--workspace-accent)}.rich-text-toolbar{position:absolute;bottom:100%;left:0;display:flex;align-items:center;gap:4px;white-space:nowrap;background:white;padding:6px;box-shadow:0 2px 12px #0003}.rich-text-toolbar input{max-width:110px}.rich-text-toolbar input[type=number]{width:55px}@keyframes prototype-enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.feature-backdrop{position:fixed;inset:0;z-index:100;background:#17192388;display:flex;align-items:center;justify-content:center;padding:32px}.design-tools,.prototype-player{background:var(--panel,#fff);color:var(--text,#20202b);border-radius:12px;padding:20px;max-width:1100px;max-height:90vh;overflow:auto;box-shadow:0 20px 70px #0005}.design-tools{width:900px}.design-tools header,.prototype-player header,.feature-row,.design-tools nav{display:flex;gap:10px;align-items:center;margin-bottom:14px}.design-tools header strong,.prototype-player header strong{flex:1}.design-tools section{border-top:1px solid #ddd;padding:16px 0}.design-tools input,.design-tools select{padding:6px;border:1px solid #ccc;border-radius:5px;margin:4px;max-width:220px}.design-tools button,.prototype-player header button,.rich-text-toolbar button{padding:6px 10px;border:1px solid #ddd;border-radius:5px;background:#f5f5f9;cursor:pointer}.design-tools button[aria-pressed=true]{background:var(--workspace-selected);color:var(--workspace-accent)}.variable-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 0}.variable-row label{display:flex;align-items:center}.interaction-card{border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0}.prototype-hotspot{opacity:0;border:0;cursor:pointer;background:transparent}.prototype-hotspot:focus-visible{opacity:.2;background:var(--workspace-accent)}.rich-text-toolbar{position:absolute;box-sizing:border-box;width:760px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;white-space:nowrap;background:white;padding:6px;border-radius:8px;overflow:auto;font-size:12px;box-shadow:0 2px 12px #0003}.rich-text-toolbar select{max-width:160px}.rich-text-toolbar>*{flex-shrink:0}.rich-text-toolbar input{max-width:110px}.rich-text-toolbar input[type=number]{width:55px}@keyframes prototype-enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @keyframes prototype-plan-enter{from{opacity:0;transform:translate(var(--enter-dx,0),var(--enter-dy,4px))}to{opacity:1;transform:none}}
 @keyframes prototype-flip{from{transform:translate(var(--flip-from-x,0),var(--flip-from-y,0))}to{transform:var(--flip-to,none)}}
 
@@ -1766,3 +1766,47 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
 .keyboard-profile-settings label { font-weight: 600; }
 .keyboard-profile-settings select { width: 100%; min-height: 32px; }
 .keyboard-profile-settings small { line-height: 1.5; color: var(--text-muted, #666); }
+
+/* Original vector brand: never recolor or crop the shared app icon. */
+.brand-mark, .editor-header .brand-mark { display: block; width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; background: transparent; border-radius: 0; }
+
+/* Adaptive design-tool chrome. Width drags change only the shell, not document data. */
+.editor-shell .adaptive-layers-shell { grid-column: 2; grid-row: 3; position: relative; min-height: 0; width: var(--workspace-layers-width, 248px); display: flex; }
+.editor-shell .adaptive-layers-shell .layers-panel { width: 100%; min-width: 0; max-width: none; }
+.editor-shell.chrome-hide-layers .adaptive-layers-shell { display: none; }
+.editor-shell .properties-workspace { position: relative; min-width: 0; }
+.panel-resize-handle { position: absolute; top: 0; bottom: 0; width: 8px; z-index: 40; touch-action: none; cursor: col-resize; }
+.panel-resize-left { right: -4px; }
+.panel-resize-right { left: -4px; }
+.panel-resize-handle:hover, .panel-resize-handle:focus-visible { background: var(--workspace-selected); outline: 1px solid var(--workspace-accent); }
+.panel-resize-handle[aria-disabled=true] { cursor: default; }
+.editor-shell .floating-toolbar { border: 1px solid var(--workspace-border); border-radius: 14px; background: var(--workspace-panel); box-shadow: 0 3px 12px #18202c14; backdrop-filter: none; max-width: calc(100% - 24px); }
+.editor-shell .floating-toolbar button { transition: background-color 120ms ease, color 120ms ease; }
+@media (max-width: 900px) {
+  .editor-shell { --workspace-panel-cap: calc(100vw - 80px); grid-template-columns: 48px 0 minmax(0, 1fr) 0 !important; }
+  .editor-shell .workspace-rail, .editor-shell .editor-header > .brand { width: 48px; }
+  .editor-shell .adaptive-layers-shell { grid-column: 3; grid-row: 3; align-self: stretch; justify-self: start; z-index: 35; width: min(var(--workspace-layers-width), calc(100vw - 80px)); border: 1px solid var(--workspace-border); border-radius: 8px; }
+  .editor-shell .properties-workspace { grid-column: 3; grid-row: 3; justify-self: end; z-index: 36; width: min(var(--workspace-inspector-width), calc(100vw - 80px)); padding-top: 0; border: 1px solid var(--workspace-border); border-radius: 8px; }
+  .editor-shell .editor-header .document-title { grid-column: 3; width: min(220px, 45vw); justify-self: start; margin: 8px; border-radius: 8px; }
+  .editor-shell .editor-header .header-right { grid-column: 3; justify-self: end; width: auto; margin: 8px; border-radius: 8px; }
+  .editor-shell .header-right .save-status { display: none; }
+  .editor-shell .panel-resize-handle { display: none; }
+}
+@media (max-width: 560px) {
+  .editor-shell .floating-toolbar { bottom: 10px; height: auto; min-height: 44px; padding: 4px; border-radius: 12px; }
+  .editor-shell .floating-toolbar .tool-group { gap: 0; flex-wrap: wrap; justify-content: center; }
+  .editor-shell .editor-header .document-title { width: min(160px, 40vw); }
+  .editor-shell .header-right > .primary { padding: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-shell *, .settings-backdrop *, .modal-backdrop * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .settings-backdrop *, html[data-reduced-motion=true] .modal-backdrop * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+
+/* Short, finite entrance transitions; no timers or continuously animated chrome. */
+@keyframes panel-enter-left { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes panel-enter-right { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes interface-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.editor-shell .adaptive-layers-shell { animation: panel-enter-left 140ms ease-out; }
+.editor-shell .properties-workspace { animation: panel-enter-right 140ms ease-out; }
+.settings-dialog { animation: interface-enter 160ms ease-out; }

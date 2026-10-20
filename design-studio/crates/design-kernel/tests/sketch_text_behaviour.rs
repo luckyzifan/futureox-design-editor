@@ -148,7 +148,7 @@ fn absent_kernel_text_style_exports_flexible_instead_of_enabling_soft_wrap() {
 }
 
 #[test]
-fn live_no_wrap_edit_overrides_retained_fixed_height_source_mode() {
+fn live_no_wrap_edit_preserves_fixed_height_native_sizing() {
     let mut document = import(Some(2), "14:37:30", 36.);
     assert_eq!(
         exported_text(&document)["textBehaviour"],
@@ -166,8 +166,8 @@ fn live_no_wrap_edit_overrides_retained_fixed_height_source_mode() {
     let exported = interop::export_sketch(&document).unwrap();
     assert_eq!(
         exported_text(&document)["textBehaviour"],
-        0,
-        "live style wins over source metadata"
+        2,
+        "wrap edits do not erase authored fixed extents"
     );
     let reopened = interop::import_sketch_report(&exported).unwrap().document;
     let node = &reopened.nodes["caption"];
@@ -180,4 +180,70 @@ fn live_no_wrap_edit_overrides_retained_fixed_height_source_mode() {
             .len(),
         1
     );
+}
+
+#[test]
+fn authored_fixed_boxes_preserve_geometry_after_real_layout_with_or_without_own_metadata() {
+    use futureox_design_kernel::layout::{self, Sizing};
+    let fonts = fonts();
+    for sizing in [None, Some(Sizing::default())] {
+        for text in ["F", "A long overflowing caption that exceeds its box", "AB\nCD\n"] {
+            for wrap in [false, true] {
+                let mut document = import(Some(2), text, 20.);
+                let node = document.nodes.get_mut("caption").unwrap();
+                node.sizing = sizing.clone();
+                node.height = 33.6;
+                node.text_style.as_mut().unwrap().wrap = wrap;
+                // A source-layout signature must not conceal authored dimensions.
+                document.design_system = None;
+                let layer = exported_text(&document);
+                assert_eq!(layer["textBehaviour"], 2, "fixed extents cannot export Flexible");
+                let exported = interop::export_sketch(&document).unwrap();
+                let report = interop::import_sketch_report(&exported).unwrap();
+                assert_eq!(report.warnings.iter().any(|warning|
+                    warning.contains("text-wrap-in-userInfo-native-sketch-may-wrap-differently")), !wrap);
+                for strip_metadata in [false, true] {
+                    let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
+                    for (name, bytes) in interop::read_zip_public(&exported).unwrap() {
+                        let bytes = if strip_metadata && name.starts_with("pages/") {
+                            let mut page: Value = serde_json::from_slice(&bytes).unwrap();
+                            page["layers"][0].as_object_mut().unwrap().remove("userInfo");
+                            serde_json::to_vec(&page).unwrap()
+                        } else { bytes };
+                        archive.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+                        archive.write_all(&bytes).unwrap();
+                    }
+                    let mut reopened = interop::import_sketch_report(&archive.finish().unwrap().into_inner()).unwrap().document;
+                    layout::resolve(&mut reopened, &fonts).unwrap();
+                    let node = reopened.nodes.values().find(|n| n.kind == "text").unwrap();
+                    assert_eq!((node.width, node.height), (20., 33.6));
+                    assert_eq!(node.text_style.as_ref().unwrap().wrap, if strip_metadata { true } else { wrap });
+                    assert_eq!(node.text, text);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn live_sizing_edits_choose_native_modes_independently_of_wrap() {
+    use futureox_design_kernel::layout::{SizeMode, Sizing};
+    for (width, height, code) in [
+        (SizeMode::Hug, SizeMode::Hug, 0),
+        (SizeMode::Fixed, SizeMode::Hug, 1),
+        (SizeMode::Fixed, SizeMode::Fixed, 2),
+    ] {
+        for wrap in [false, true] {
+            let mut document = import(Some(2), "AB\nCD", 80.);
+            let node = document.nodes.get_mut("caption").unwrap();
+            node.sizing = Some(Sizing { width, height, ..Default::default() });
+            node.text_style.as_mut().unwrap().wrap = wrap;
+            assert_eq!(exported_text(&document)["textBehaviour"], code);
+            let reopened = interop::import_sketch_report(&interop::export_sketch(&document).unwrap()).unwrap().document;
+            let node = &reopened.nodes["caption"];
+            let sizing = node.sizing.as_ref().unwrap();
+            assert_eq!((sizing.width, sizing.height), (width, height));
+            assert_eq!(node.text_style.as_ref().unwrap().wrap, wrap);
+        }
+    }
 }

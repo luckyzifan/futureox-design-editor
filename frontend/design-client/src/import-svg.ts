@@ -1,3 +1,4 @@
+import { readEditableSvgText, EDITABLE_TEXT_WARNING } from './svg-editable-text'
 import {
   blank,
   node,
@@ -68,7 +69,7 @@ export function svgTransform(value: string): Matrix {
   }
   return result
 }
-export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
+export function importSvg(source: string, name = '导入 SVG', fonts?: DesignDocument['fonts']): ImportedDesign {
   if (source.length > 16 * 1024 * 1024 || /<!DOCTYPE|<!ENTITY/i.test(source))
     throw new Error('SVG 大小或声明不受支持')
   const xml = new DOMParser().parseFromString(source, 'image/svg+xml'),
@@ -79,7 +80,12 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
   const rootPresentation = svgRootPresentation(root)
   const doc = blank(name),
     warnings = new Set<string>()
+  doc.fonts = fonts
+  let editableText = false
   let count = 0
+  const admitElement = (depth: number) => {
+    if (depth > 64 || ++count > 20000) throw new Error('SVG 节点或层级超限')
+  }
   const length = (el: Element, key: string, fallback = 0) => {
     const value = el.getAttribute(key)
     if (value === null || value === '') return fallback
@@ -176,7 +182,7 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
     inherited: Record<string, string>,
     depth = 0,
   ): string | undefined => {
-    if (depth > 64 || ++count > 20000) throw new Error('SVG 节点或层级超限')
+    admitElement(depth)
     const tag = el.localName
     if (['defs', 'title', 'desc', 'metadata'].includes(tag)) return
     if (tag === 'svg')
@@ -262,18 +268,24 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
       box.x = length(el, 'cx') - rx
       box.y = length(el, 'cy') - ry
     } else if (tag === 'text') {
-      if (el.children.length) throw new Error('SVG tspan 请先转换为轮廓或拆分文本图层')
-      n.text = el.textContent || ''
-      n.fontSize = Number.parseFloat(style['font-size'] || '16')
-      n.textStyle = { ...defaultTextStyle(), weight: Number(style['font-weight']) || 400 }
-      n.width = Math.max(1, n.text.length * n.fontSize)
-      n.height = n.fontSize * 1.35
-      box.x = length(el, 'x')
-      box.y = length(el, 'y') - n.fontSize
-      if (style['font-family'])
-        warnings.add(`字体 ${style['font-family']} 需要在导入后匹配；当前使用内置字体`)
-      if (style['text-anchor'] && style['text-anchor'] !== 'start')
-        warnings.add('SVG 文本锚点需要检查')
+      if (readEditableSvgText(el, n, fonts, relativeDepth => admitElement(depth + relativeDepth))) {
+        editableText = true
+        warnings.add(EDITABLE_TEXT_WARNING)
+        warnings.add('Editable SVG imports its validated text model; unavailable font IDs use the built-in font. Visual equivalence is not guaranteed.')
+      } else {
+        if (el.children.length) throw new Error('SVG tspan 请先转换为轮廓或拆分文本图层')
+        n.text = el.textContent || ''
+        n.fontSize = Number.parseFloat(style['font-size'] || '16')
+        n.textStyle = { ...defaultTextStyle(), weight: Number(style['font-weight']) || 400 }
+        n.width = Math.max(1, n.text.length * n.fontSize)
+        n.height = n.fontSize * 1.35
+        box.x = length(el, 'x')
+        box.y = length(el, 'y') - n.fontSize
+        if (style['font-family'])
+          warnings.add(`字体 ${style['font-family']} 需要在导入后匹配；当前使用内置字体`)
+        if (style['text-anchor'] && style['text-anchor'] !== 'start')
+          warnings.add('SVG 文本锚点需要检查')
+      }
     } else {
       let data = el.getAttribute('d') || ''
       if (tag === 'line')
@@ -357,6 +369,6 @@ export function importSvg(source: string, name = '导入 SVG'): ImportedDesign {
     const m = svgViewportTransform(vb, frame.width, frame.height, root.getAttribute('preserveAspectRatio'))
     for (const id of frame.children) doc.nodes[id].transform = multiply(m, doc.nodes[id].transform)
   }
-  doc.schemaVersion = 4
+  doc.schemaVersion = editableText ? 15 : 4
   return { document: doc, warnings: [...warnings] }
 }

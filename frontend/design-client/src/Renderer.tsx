@@ -1,3 +1,4 @@
+import { EditableSvgText } from './svg-editable-text'
 import { kernelTextLayout, kernelStrokePaths, kernelSvgPaths } from './kernel/picking'
 import React, { useMemo, useRef } from 'react'
 import { maskChild } from './model'
@@ -197,12 +198,12 @@ function Filter({ id, effects }: { id: string; effects: Effect[] }) {
     </filter>
   )
 }
-const Surface = React.memo(function Surface({ n }: { n: DesignNode }) {
+const Surface = React.memo(function Surface({ n, fonts, textMode }: { n: DesignNode; fonts?: DesignDocument['fonts']; textMode?: 'outlines' | 'editable' }) {
   const fillD = shapeD(n, true),
     strokeD = shapeD(n)
   const expanded = n.strokes.some((s) => (s.widthProfile?.length || (s.startMarker && s.startMarker !== 'none') || (s.endMarker && s.endMarker !== 'none'))) ? kernelStrokePaths(n) : null
   const shape = (props: React.SVGProps<SVGPathElement>, key: string) =>
-    n.kind === 'text' && props.fill !== 'none' && n.textRuns?.some(r=>r.color||r.underline||r.strikethrough||r.link) ? <g key={key}>{kernelTextLayout(n).spans.map((span,i)=>span.link?<a key={i} href={span.link} target="_blank" rel="noopener noreferrer"><path d={span.path} {...props} fill={span.color||props.fill}/></a>:<path key={i} d={span.path} {...props} fill={span.color||props.fill}/>)}</g> : n.kind === 'text' && !kernelSvgPaths(n) ? (
+    n.kind === 'text' && textMode === 'editable' ? <EditableSvgText key={key} n={n} fonts={fonts} paintProps={props} /> : n.kind === 'text' && props.fill !== 'none' && n.textRuns?.some(r=>r.color||r.underline||r.strikethrough||r.link) ? <g key={key}>{kernelTextLayout(n).spans.map((span,i)=>span.link?<a key={i} href={span.link} target="_blank" rel="noopener noreferrer"><path d={span.path} {...props} fill={span.color||props.fill}/></a>:<path key={i} d={span.path} {...props} fill={span.color||props.fill}/>)}</g> : n.kind === 'text' && !kernelSvgPaths(n) ? (
       <text
         key={key}
         {...(props as unknown as React.SVGProps<SVGTextElement>)}
@@ -272,10 +273,10 @@ const Surface = React.memo(function Surface({ n }: { n: DesignNode }) {
     </>
   )
 })
-type Props = { doc: DesignDocument; pageId: string; viewport?: Bounds; exporting?: boolean; retainedNodeId?: string }
-export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId }: Props) {
+type Props = { doc: DesignDocument; pageId: string; viewport?: Bounds; exporting?: boolean; retainedNodeId?: string; textMode?: 'outlines' | 'editable' }
+export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId, textMode = 'outlines' }: Props) {
   const page = doc.pages.find((p) => p.id === pageId)!
-  const definitions = useRef(new Map<string, {node:DesignNode; children:string; mask:DesignNode|undefined; fonts:DesignDocument['fonts']; element:React.ReactNode}>())
+  const definitions = useRef(new Map<string, {node:DesignNode; children:string; mask:DesignNode|undefined; fonts:DesignDocument['fonts']; textMode: 'outlines' | 'editable'; element:React.ReactNode}>())
   const parents = useMemo(() => allParents(doc), [doc])
   const retainedBranches = useMemo(() => {
     const ids = new Set<string>()
@@ -375,7 +376,7 @@ export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId
           const old = definitions.current.get(id)
           // Ordinary definitions use local geometry and references to child
           // definitions. A parent translation does not change either.
-          if (!background && old?.node === n && old.children === children && old.mask === mask && old.fonts === doc.fonts) return old.element
+          if (!background && old?.node === n && old.children === children && old.mask === mask && old.fonts === doc.fonts && old.textMode === textMode) return old.element
           const element = (
             <React.Fragment key={id}>
               {n.fills
@@ -459,7 +460,7 @@ export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId
                 </>
               )}
               <g id={`surface-${id}`}>
-                <Surface n={n} />
+                <Surface n={n} fonts={doc.fonts} textMode={textMode} />
               </g>
               <g
                 id={`visual-${id}`}
@@ -498,7 +499,7 @@ export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId
               </g>
             </React.Fragment>
           )
-          definitions.current.set(id, {node:n,children,mask,fonts:doc.fonts,element})
+          definitions.current.set(id, {node:n,children,mask,fonts:doc.fonts,textMode,element})
           return element
         })}
       </defs>

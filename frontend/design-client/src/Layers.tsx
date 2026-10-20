@@ -1,9 +1,9 @@
 import { dispatchEditorCommand } from './editor-commands'
-import { layerTreeRows } from './layer-tree'
+import { LayerRowsCache } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
 import { AssetsPanel } from './AssetsPanel'
-import { useMemo, useState, useSyncExternalStore, useRef, useEffect } from 'react'
+import { useMemo, useState, useSyncExternalStore, useRef, useEffect, useId } from 'react'
 import {
   Plus,
   ChevronDown,
@@ -34,7 +34,13 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const renderSession = editor.sessionGeneration
   const [localTab, setLocalTab] = useState<WorkspaceSection>('layers')
-  const tab = section || localTab, setTab = (next: WorkspaceSection) => { setLocalTab(next); onSection?.(next) }
+  const tab = section || localTab, tabId = useId()
+  const setTab = (next: WorkspaceSection) => {
+    if (next === tab) return true
+    if (editor.interactionActive || editor.state.busy || !commitPendingEdits(editor)) return false
+    setLocalTab(next); onSection?.(next)
+    return true
+  }
   const [collapsed, setCollapsed] = useState(new Set<string>()),
     [search, setSearch] = useState(''),
     [scroll, setScroll] = useState(0),
@@ -143,7 +149,9 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
       })
     } finally { unsubscribe() }
   }
-  const rows = useMemo(() => layerTreeRows(s.doc, s.page, collapsed, search), [s.doc, s.page, collapsed, search])
+  // A session owns one cache; unmount/editor replacement releases it.
+  const rowCache = useMemo(() => new LayerRowsCache(), [editor, renderSession])
+  const rows = useMemo(() => rowCache.read(s.doc, s.page, collapsed, search), [rowCache, s.doc, s.page, collapsed, search])
 
   useEffect(() => {
     const id = reveal.current
@@ -213,12 +221,19 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
         </button>
       </div>
       <div className="layer-heading">
-        <button aria-pressed={tab === 'layers'} onClick={() => setTab('layers')}>
-          图层
-        </button>
-        <button aria-pressed={tab === 'assets'} onClick={() => setTab('assets')}>
-          组件
-        </button>
+        <div role="tablist" aria-label="侧栏内容" style={{ display: 'contents' }}>
+          {(['layers', 'assets'] as const).map((name, index) => <button key={name} type="button"
+            id={`${tabId}-${name}-tab`} role="tab" aria-selected={tab === name} aria-pressed={tab === name}
+            aria-controls={`${tabId}-${name}-panel`} tabIndex={tab === name ? 0 : -1}
+            onClick={() => setTab(name)} onKeyDown={event => {
+              if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+              const next = event.key === 'Home' ? 'layers' : event.key === 'End' ? 'assets' :
+                event.key === 'ArrowLeft' || event.key === 'ArrowRight' ? (index === 0 ? 'assets' : 'layers') : null
+              if (!next) return
+              event.preventDefault(); event.stopPropagation()
+              if (setTab(next)) document.getElementById(`${tabId}-${next}-tab`)?.focus()
+            }}>{name === 'layers' ? '图层' : '组件'}</button>)}
+        </div>
         <button title="折叠全部图层" onClick={() => {
           const parents = allParents(s.doc), keep = new Set(s.selection)
           for (const id of s.selection) for (let parent = parents.get(id); parent && s.doc.nodes[parent]; parent = parents.get(parent)) keep.add(parent)
@@ -226,7 +241,12 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
         }}><ChevronDown size={13} /></button>
         <span>{rows.length}</span>
       </div>
-      {tab === 'assets' && <AssetsPanel editor={editor} />}
+      <div id={`${tabId}-assets-panel`} role="tabpanel" aria-labelledby={`${tabId}-assets-tab`}
+        style={{ display: tab === 'assets' ? 'contents' : 'none' }}>
+        {tab === 'assets' && <AssetsPanel editor={editor} />}
+      </div>
+      <div id={`${tabId}-layers-panel`} role="tabpanel" aria-labelledby={`${tabId}-layers-tab`}
+        style={{ display: tab === 'layers' ? 'contents' : 'none' }}>
       <label className="layer-search" style={{ display: tab === 'assets' ? 'none' : undefined }}>
         <Search size={13} />
         <input
@@ -432,6 +452,7 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
             )
           })}
         </div>
+      </div>
       </div>
       <div className="layer-footer">
         <button onClick={() => editor.group()} disabled={!s.selection.length}>

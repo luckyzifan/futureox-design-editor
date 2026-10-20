@@ -8,7 +8,6 @@ import {
   defaultTextStyle,
   type DesignNode,
   type DesignDocument,
-  type Point,
   type Bounds,
 } from './model'
 import type { Editor } from './engine'

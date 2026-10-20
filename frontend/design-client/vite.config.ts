@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { productionPublicAssets } from './scripts/production-public.mjs'
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), productionPublicAssets()],
   server: {
     port: 1430,
     proxy: {

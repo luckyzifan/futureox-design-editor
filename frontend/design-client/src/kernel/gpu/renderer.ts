@@ -144,10 +144,15 @@ export function mipLevelsFor(dims: [number, number]): number {
 }
 export class GpuRenderer {
   private encodeYield = new EncodeYield()
+  private frameCurrent?: () => boolean
+  private checkFrameCurrent() {
+    if (this.frameCurrent && !this.frameCurrent()) throw new Error('PREVIEW_CANCELLED')
+  }
   private yieldEncoding() {
-    const pause = this.encodeYield.checkpoint(this.driver.captureDisplay === true)
+    this.checkFrameCurrent()
+    const pause = this.encodeYield.checkpoint(this.driver.captureDisplay === true || !!this.frameCurrent)
     if (pause && import.meta.env.VITE_DESIGN_ENCODE_SUBMIT !== '0') this.driver.submitPending?.()
-    return pause
+    return pause?.then(() => { this.checkFrameCurrent() })
   }
   lastBudgetFailure?: RenderBudgetDiagnostic
   private frameBudget = SURFACE_BUDGET_BYTES
@@ -1678,6 +1683,7 @@ export class GpuRenderer {
     if(missing)await this.reclaimScratch(r.w*r.h*16*missing)
   }
   private async reclaimScratch(required = 0) {
+    this.checkFrameCurrent()
     const pressure = required > 0 && this.workingBytes + required > this.frameBudget
     // The shared worker replaces two former 256 MiB raster owners. Keep the
     // active interaction working set warm below its bounded pressure line.
@@ -1707,7 +1713,7 @@ export class GpuRenderer {
     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
     const resourceLimit = pressure ? 4096 : RECLAIM_BATCH_RESOURCES
     const checkpointStart = performance.now()
-    await this.driver.checkpoint()
+    await this.driver.checkpoint('admission')
     this.checkpointMs += performance.now() - checkpointStart
     // Every surface still needed by an ancestor is in busy. GPU commands that
     // used a released surface or an upload have completed at this boundary.
@@ -3159,15 +3165,18 @@ export class GpuRenderer {
     }
     return layer
   }
-  async abortFrameAndReleaseFilterScratch() {
+  async abortFrameAndReleaseFilterScratch(reason: 'admission' | 'cancel' = 'admission') {
     const abort = this.driver.abortFrameAndReleaseFilterScratch
     if (!abort) throw new Error('GPU frame abort is unavailable')
     const reserved = this.driver.scratchBytes || 0
-    try { await abort.call(this.driver) }
+    try { await abort.call(this.driver, reason) }
     finally { this.bytes += (this.driver.scratchBytes || 0) - reserved }
   }
-  async render(scene: GpuScene, readback = false, present = true) {
-    try { return await this.renderAttempt(scene, readback, present) }
+  async render(scene: GpuScene, readback = false, present = true, isCurrent?: () => boolean) {
+    // Cancellation requires an explicit encoder-abandon/completion boundary.
+    // WebGL and older drivers retain their existing completed-frame checks.
+    this.frameCurrent = this.driver.abortFrameAndReleaseFilterScratch ? isCurrent : undefined
+    try { this.checkFrameCurrent(); return await this.renderAttempt(scene, readback, present) }
     catch (error) {
       const reserved = this.driver.scratchBytes || 0
       if (!(error instanceof Error) || error.message !== 'GPU 表面内存预算超限' || !reserved || !this.driver.abortFrameAndReleaseFilterScratch) throw error
@@ -3179,7 +3188,7 @@ export class GpuRenderer {
       console.debug('DESIGN_GPU_PREFIX_BUDGET_FALLBACK ' + JSON.stringify({ reserved, extent: scene.extent }))
       try { return await this.renderAttempt(scene, readback, present) }
       finally { this.prefixAllowed = true }
-    }
+    } finally { this.frameCurrent = undefined }
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
     this.encodeYield.begin()
@@ -3274,6 +3283,7 @@ export class GpuRenderer {
     const curves = scene.curves instanceof Float32Array ? scene.curves : new Float32Array(scene.curves || [])
     this.curveBits = new Uint32Array(curves.buffer, curves.byteOffset, curves.length)
     this.hybridEffects = 0
+    this.checkFrameCurrent()
     this.driver.begin(vertices, curves)
     this.masks.clear()
     this.independentSampleNodes.clear()
@@ -3356,6 +3366,8 @@ export class GpuRenderer {
           target = clipped
         }
       }
+      const pause = this.yieldEncoding()
+      if (pause) await pause
       const graphMs = performance.now() - started,
         finishStart = performance.now()
       const finishingScratch = this.driver.scratchBytes || 0
@@ -3419,6 +3431,13 @@ export class GpuRenderer {
         backend: this.driver.name,
         description: this.driver.description,
       }
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PREVIEW_CANCELLED') {
+        // Never pool/destroy frame resources while submitted commands still
+        // reference them. This leaves the separately owned presented frame alive.
+        await this.abortFrameAndReleaseFilterScratch('cancel')
+      }
+      throw error
     } finally {
       for (const surface of this.constantTargets.values()) this.release(surface)
       this.constantTargets.clear()

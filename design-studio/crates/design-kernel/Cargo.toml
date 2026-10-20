@@ -22,6 +22,7 @@ unicode-bidi.workspace = true
 unicode-linebreak.workspace = true
 unicode-segmentation.workspace = true
 sha2.workspace = true
+sha1 = "0.10"
 im.workspace = true
 lz4_flex.workspace = true
 zip.workspace = true

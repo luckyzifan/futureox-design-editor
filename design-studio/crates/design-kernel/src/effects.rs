@@ -324,7 +324,87 @@ fn tent_blur_impl(
     }
     Ok(current)
 }
-fn box_pass(input: &Surface, r: i32, horizontal: bool) -> Result<Surface, String> {
+fn box_pass_in_place(input: &mut Surface, r: i32, horizontal: bool) -> Result<(), String> {
+    let rect = input.rect;
+    if r <= 0 {
+        return Ok(());
+    }
+    let (lines, len) = if horizontal {
+        (rect.h as i32, rect.w as i32)
+    } else {
+        (rect.w as i32, rect.h as i32)
+    };
+    let denominator = f64::from(2 * r + 1);
+    let kernel = crate::rational_filter::RationalKernel::uniform_box(r as u32)?;
+    let _scratch = input.reserve_scratch::<f32>((2 * r + 1) as usize)?;
+    let mut taps = vec![0.; (2 * r + 1) as usize];
+    // Every pass reads only its own scanline. Preserve that line before writing
+    // it back: identical samples and operation order, O(max(width,height)) scratch
+    // instead of a second full RGBA32F surface. Outside samples remain transparent.
+    let _line_allocation = input.reserve_scratch::<Pixel>(len as usize)?;
+    let mut source_line = vec![Pixel::default(); len as usize];
+    for line in 0..lines {
+        for at in 0..len {
+            source_line[at as usize] = if horizontal {
+                input.at(rect.x + at, rect.y + line)
+            } else {
+                input.at(rect.x + line, rect.y + at)
+            };
+        }
+        let sample = |at: i32| {
+            if at >= 0 && at < len { source_line[at as usize] } else { Pixel::default() }
+        };
+        // Higham's gamma_n bound for an ordered sum: at most n operations
+        // over n terms of magnitude <= M. 8*eps*n^2*M also encloses the
+        // endpoint/division rounding below. Accept only when both interval
+        // endpoints round to the same binary32; otherwise use exact rationals.
+        let magnitude = (0..len).fold([0_f64; 4], |mut m, at| {
+            for (c, value) in sample(at).0.iter().enumerate() {
+                m[c] = m[c].max(f64::from(*value).abs());
+            }
+            m
+        });
+        let operations = f64::from(2 * r + 1 + 2 * len);
+        let error = magnitude.map(|m| 8. * f64::EPSILON * operations * operations * m);
+        let mut sum = [0_f64; 4];
+        for k in -r..=r {
+            let p = sample(k);
+            for (i, s) in sum.iter_mut().enumerate() {
+                *s += f64::from(p.0[i]);
+            }
+        }
+        for at in 0..len {
+            let index = if horizontal {
+                line as usize * rect.w as usize + at as usize
+            } else {
+                at as usize * rect.w as usize + line as usize
+            };
+            let mut channels = [0.; 4];
+            for c in 0..4 {
+                let lo = ((sum[c] - error[c]) / denominator).clamp(0., 1.) as f32;
+                let hi = ((sum[c] + error[c]) / denominator).clamp(0., 1.) as f32;
+                channels[c] = if lo.to_bits() == hi.to_bits() {
+                    lo
+                } else {
+                    for (i, tap) in taps.iter_mut().enumerate() {
+                        *tap = sample(at - r + i as i32).0[c];
+                    }
+                    kernel.convolve(&taps)?.clamp(0., 1.)
+                };
+            }
+            input.pixels[index] = Pixel(channels);
+            let remove = sample(at - r);
+            let add = sample(at + r + 1);
+            for (i, s) in sum.iter_mut().enumerate() {
+                *s += f64::from(add.0[i]);
+                *s -= f64::from(remove.0[i]);
+            }
+        }
+    }
+    Ok(())
+}
+#[cfg(test)]
+fn box_pass_reference(input: &Surface, r: i32, horizontal: bool) -> Result<Surface, String> {
     let rect = input.rect;
     if r <= 0 {
         return input.try_clone();
@@ -424,16 +504,30 @@ pub fn gaussian_box_radii(sigma: f64) -> Result<[u32; 3], String> {
 }
 // Premultiplied three-box Gaussian; certified sliding sums, exact tie fallback.
 pub fn blur(surface: &Surface, sigma: f64) -> Result<Surface, String> {
-    let mut out = surface.try_clone()?;
+    blur_owned(surface.try_clone()?, sigma)
+}
+fn blur_owned(mut out: Surface, sigma: f64) -> Result<Surface, String> {
     for radius in gaussian_box_radii(sigma)? {
         if radius == 0 {
             continue;
         }
-        out = box_pass(&out, radius as i32, true)?;
-        out = box_pass(&out, radius as i32, false)?;
+        box_pass_in_place(&mut out, radius as i32, true)?;
+        box_pass_in_place(&mut out, radius as i32, false)?;
     }
     Ok(out)
 }
+/// Gaussian region with the same transparent boundary and binary32 result as
+/// full-domain evaluation. Each pass is a correctly rounded rational box;
+/// therefore cropping cannot change accumulation rounding. The summed support
+/// shields requested pixels from every artificial intermediate boundary.
+pub(crate) fn gaussian_region(
+    source: &Surface, domain: Rect, output: Rect, sigma: f64,
+) -> Result<Surface, String> {
+    let support: u32 = gaussian_box_radii(sigma)?.into_iter().sum();
+    let capture = output.expand(support as i32).intersect(domain);
+    blur_owned(copy_region(source, capture)?, sigma)
+}
+
 pub fn morphology_alpha(input: &Surface, r: i32, dilate: bool) -> Result<Surface, String> {
     use std::collections::VecDeque;
     let mut src = input.try_clone()?;
@@ -513,7 +607,7 @@ pub(crate) fn shadow_with_filter(
     inner: bool,
 ) -> Result<Surface, String> {
     let alpha = shadow_alpha(surface, filter, spread, inner)?;
-    color_shadow_linear(surface, &alpha, color, dx, dy, inner)
+    color_shadow_linear_owned(surface, alpha, color, dx, dy, inner)
 }
 
 pub(crate) fn shadow_alpha(
@@ -533,7 +627,12 @@ pub(crate) fn shadow_alpha(
             if inner { spread < 0. } else { spread > 0. },
         )?;
     }
-    filter.apply(&alpha)
+    match filter {
+        // Alpha is no longer needed after filtering. Consume it rather than
+        // retaining an additional full surface through all six Gaussian passes.
+        BlurFilter::Gaussian(sigma) => blur_owned(alpha, sigma),
+        _ => filter.apply(&alpha),
+    }
 }
 
 /// Keep the filter boundary in byte space until the final quantization. Going
@@ -587,6 +686,36 @@ pub(crate) fn color_shadow_rgba8(
         }
     }
     Ok(out)
+}
+
+// The alpha buffer has no further readers in shadow_with_filter. Traverse
+// against the vertical translation so all nonzero bilinear taps are still
+// original alpha. Stage a complete output row before overwriting any horizontal
+// taps. This preserves the existing sampler, including fractional offsets.
+fn color_shadow_linear_owned(
+    surface: &Surface,
+    mut alpha: Surface,
+    color: Pixel,
+    dx: f64,
+    dy: f64,
+    inner: bool,
+) -> Result<Surface, String> {
+    debug_assert_eq!(surface.rect, alpha.rect);
+    let rect = alpha.rect;
+    let _scratch = alpha.reserve_scratch::<Pixel>(rect.w as usize)?;
+    let mut row = vec![Pixel::default(); rect.w as usize];
+    for line in 0..rect.h as i32 {
+        let y = if dy > 0. { rect.bottom() - 1 - line } else { rect.y + line };
+        for (at, pixel) in row.iter_mut().enumerate() {
+            let x = rect.x + at as i32;
+            let b = alpha.sample_linear(f64::from(x) + 0.5 - dx, f64::from(y) + 0.5 - dy).0[3];
+            let coverage = if inner { surface.at(x, y).0[3] * (1. - b) } else { b };
+            *pixel = color.opacity(coverage);
+        }
+        let start = (y - rect.y) as usize * rect.w as usize;
+        alpha.pixels[start..start + rect.w as usize].copy_from_slice(&row);
+    }
+    Ok(alpha)
 }
 
 pub(crate) fn color_shadow_linear(
@@ -889,5 +1018,135 @@ mod gradient_blur_pipeline_tests {
         let a = target.pixels[rect.index(5, 1).unwrap()].0;
         let b = target.pixels[rect.index(5, 9).unwrap()].0;
         assert_eq!(a, b);
+    }
+}
+
+#[cfg(test)]
+mod gaussian_scanline_memory_tests {
+    use super::*;
+    use crate::memory::Budget;
+
+    #[test]
+    fn gaussian_region_matches_full_domain_bits_at_edges_and_negative_origins() {
+        let domain = Rect::new(-19, -27, 71, 63);
+        let mut source = Surface::new(domain).unwrap();
+        for (i, p) in source.pixels.iter_mut().enumerate() {
+            *p = Pixel(std::array::from_fn(|c| ((i * 73 + c * 19) % 1024) as f32 / 1023.));
+        }
+        for sigma in [0., 0.09, 0.5, 1., 2.25, 7.5] {
+            let reference = blur(&source, sigma).unwrap();
+            for output in [Rect::new(-19,-27,13,11), Rect::new(-3,-4,17,19), Rect::new(40,29,12,7)] {
+                let actual = gaussian_region(&source, domain, output, sigma).unwrap();
+                for y in output.y..output.bottom() { for x in output.x..output.right() {
+                    assert_eq!(actual.at(x,y).0.map(f32::to_bits), reference.at(x,y).0.map(f32::to_bits), "sigma={sigma} ({x},{y})");
+                }}
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "large real CPU high-zoom regression; run explicitly"]
+    fn high_zoom_shadow_renders_at_3200_percent_under_production_budget() {
+        use crate::renderer::{Engine, RenderOptions};
+        use serde_json::json;
+        let mut engine = Engine::new();
+        engine.load_document(&json!({
+            "schemaVersion":5,"id":"d","name":"Shadow budget",
+            "pages":[{"id":"p","name":"p","children":["a"],"background":"#ffffff"}],
+            "nodes":{"a":{"id":"a","kind":"rectangle","transform":[1,0,0,1,70,80],
+                "width":700,"height":570,"fills":[{"kind":"solid","color":"#8073dd"}],
+                "effects":[{"kind":"shadow","radius":8,"x":0,"y":8,"spread":0,"color":"#172033","opacity":0.25}]}}
+        }).to_string()).unwrap();
+        let options: RenderOptions = serde_json::from_value(json!({
+            "pageId":"p","width":640,"height":480,"transparent":false,
+            "rasterProfile":"analytic","view":{"zoom":32,"x":320-150*32,"y":240-140*32}
+        })).unwrap();
+        let pixels = engine.render(&options).unwrap();
+        assert_eq!(pixels.len(), 640 * 480 * 4);
+        let ledger = engine.compositing_ledger();
+        assert_eq!(ledger.budget_rejections, 0);
+        assert!(ledger.scene_peak_bytes <= crate::memory::COMPOSITING_BYTES);
+        eprintln!("3200% direct peak={} bytes", ledger.scene_peak_bytes);
+        let crop = engine.render_device_rect(&options, 213, 157, 31, 27).unwrap();
+        for row in 0..27 {
+            assert_eq!(&crop[row*31*4..(row+1)*31*4],
+                &pixels[((row+157)*640+213)*4..((row+157)*640+244)*4]);
+        }
+        let _frame = engine.render_tiled_frame(&options, None).unwrap();
+        assert_eq!(engine.compositing_ledger().budget_rejections, 0);
+    }
+
+    #[test]
+    fn consuming_shadow_color_matches_bilinear_reference_for_all_directions() {
+        let mut source = Surface::new(Rect::new(-7, 13, 19, 17)).unwrap();
+        for (i, p) in source.pixels.iter_mut().enumerate() {
+            *p = Pixel([0., 0., 0., ((i * 71) % 256) as f32 / 255.]);
+        }
+        for dx in [-23., -1.25, -0.2, 0., 0.125, 2., 37.] {
+            for dy in [-20., -2., -0.125, 0., f64::MIN_POSITIVE, 0.2, 1.25, 21.] {
+                for inner in [false, true] {
+                    let color = Pixel::rgba(0.1, 0.7, 0.3, 0.37);
+                    let expected = color_shadow_linear(&source, &source, color, dx, dy, inner).unwrap();
+                    let actual = color_shadow_linear_owned(&source, source.try_clone().unwrap(), color, dx, dy, inner).unwrap();
+                    for (a, b) in actual.pixels.iter().zip(&expected.pixels) {
+                        assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits), "dx={dx}, dy={dy}, inner={inner}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn in_place_box_matches_original_bits_including_edges_and_ties() {
+        for (w, h) in [(1, 1), (1, 17), (19, 1), (13, 11)] {
+            let mut source = Surface::new(Rect::new(-17, 23, w, h)).unwrap();
+            for (i, pixel) in source.pixels.iter_mut().enumerate() {
+                *pixel = Pixel(std::array::from_fn(|c| {
+                    let bits = [0.0_f32, 1., 0.5, f32::from_bits(1), 1. / 255., 0.12345679];
+                    bits[(i * 7 + c * 3 + i / 3) % bits.len()]
+                }));
+            }
+            for radius in [1, 2, 8, 32, 128] {
+                for horizontal in [false, true] {
+                    let expected = box_pass_reference(&source, radius, horizontal).unwrap();
+                    let mut actual = source.try_clone().unwrap();
+                    box_pass_in_place(&mut actual, radius, horizontal).unwrap();
+                    for (a, b) in actual.pixels.iter().zip(&expected.pixels) {
+                        assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shadow_gaussian_fits_two_surfaces_plus_scanline_without_quality_change() {
+        let rect = Rect::new(-31, 11, 64, 48);
+        let surface_bytes = 64 * 48 * std::mem::size_of::<Pixel>();
+        let budget = Budget::new(2 * surface_bytes + 64 * 16 + 257 * 4);
+        let mut source = Surface::new_in(rect, &budget).unwrap();
+        for (i, p) in source.pixels.iter_mut().enumerate() {
+            *p = Pixel([0.2, 0.1, 0.3, ((i * 17) % 256) as f32 / 255.]);
+        }
+        // The original clone + out-of-place pass cannot fit this bound.
+        let alpha = source.try_clone().unwrap();
+        assert!(box_pass_reference(&alpha, 8, true).is_err());
+        drop(alpha);
+        let actual = shadow_alpha(&source, BlurFilter::Gaussian(4.), 0., false).unwrap();
+        let mut expected = Surface::new(rect).unwrap();
+        for (dst, src) in expected.pixels.iter_mut().zip(&source.pixels) {
+            *dst = Pixel([0., 0., 0., src.0[3]]);
+        }
+        for radius in gaussian_box_radii(4.).unwrap() {
+            expected = box_pass_reference(&expected, radius as i32, true).unwrap();
+            expected = box_pass_reference(&expected, radius as i32, false).unwrap();
+        }
+        for (a, b) in actual.pixels.iter().zip(&expected.pixels) {
+            assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits));
+        }
+        assert!(budget.usage().peak_bytes <= 2 * surface_bytes + 64 * 16 + 257 * 4);
+        drop(actual);
+        drop(source);
+        assert_eq!(budget.usage().live_bytes, 0);
     }
 }

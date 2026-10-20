@@ -130,45 +130,60 @@ async fn configure_connection(
     Ok(())
 }
 
+fn prepare_database_file(path: &Path) -> Result<()> {
+    if !path.is_absolute() || path.as_os_str().len() > MAX_PATH_BYTES {
+        return Err(BackendError::new(
+            "INVALID_PATH",
+            "Catalog requires an absolute app-owned path",
+        ));
+    }
+    let parent = path.parent().ok_or_else(stale)?;
+    lineage(parent)?;
+    if let Ok(m) = fs::symlink_metadata(path) {
+        if !m.is_file() || m.file_type().is_symlink() {
+            return Err(stale());
+        }
+        if m.len() > MAX_CATALOG_BYTES {
+            return Err(BackendError::new(
+                "CATALOG_TOO_LARGE",
+                "Catalog exceeds 32 MiB; database preserved",
+            ));
+        }
+    }
+    // Create the app-owned metadata file privately. Never replace existing
+    // bytes when SQLite reports a corrupt or future schema.
+    let mut create = fs::OpenOptions::new();
+    create.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        create.mode(0o600);
+    }
+    match create.open(path) {
+        Ok(file) => drop(file),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(BackendError::io("Cannot create private catalog", e)),
+    }
+    Ok(())
+}
+
 pub struct Catalog {
     pool: SqlitePool,
     grants: Mutex<HashMap<String, Vec<Identity>>>,
 }
 impl Catalog {
     pub async fn open(path: &Path) -> Result<Self> {
-        if !path.is_absolute() || path.as_os_str().len() > MAX_PATH_BYTES {
-            return Err(BackendError::new(
-                "INVALID_PATH",
-                "Catalog requires an absolute app-owned path",
-            ));
-        }
-        let parent = path.parent().ok_or_else(stale)?;
-        lineage(parent)?;
-        if let Ok(m) = fs::symlink_metadata(path) {
-            if !m.is_file() || m.file_type().is_symlink() {
-                return Err(stale());
-            }
-            if m.len() > MAX_CATALOG_BYTES {
-                return Err(BackendError::new(
-                    "CATALOG_TOO_LARGE",
-                    "Catalog exceeds 32 MiB; database preserved",
-                ));
-            }
-        }
-        // Create the app-owned metadata file privately. Never replace existing
-        // bytes when SQLite reports a corrupt or future schema.
-        let mut create = fs::OpenOptions::new();
-        create.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            create.mode(0o600);
-        }
-        match create.open(path) {
-            Ok(file) => drop(file),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(BackendError::io("Cannot create private catalog", e)),
-        }
+        // Filesystem metadata, creation and fsync must not block a Tokio worker,
+        // including callers other than the desktop executable.
+        let owned_path = path.to_path_buf();
+        tokio::task::spawn_blocking(move || prepare_database_file(&owned_path))
+            .await
+            .map_err(|error| {
+                BackendError::new(
+                    "CATALOG_ERROR",
+                    format!("Database preflight task failed: {error}"),
+                )
+            })??;
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .min_connections(1)

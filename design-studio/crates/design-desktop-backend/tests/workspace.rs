@@ -214,6 +214,22 @@ async fn failed_sql_commit_rolls_back_snapshot_head_and_idempotency_receipt() {
             .len(),
         1
     );
+    let receipts: i64 = sqlx::query_scalar("SELECT count(*) FROM mutations WHERE mutation_id='c2'")
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(receipts, 0);
+    // A reconnect verifies rollback on disk, rather than only the same pool.
+    store.close().await;
+    let store = WorkspaceStore::open(&f.db()).await.unwrap();
+    assert_eq!(store.read(ID, None).await.unwrap().document, document());
+    assert_eq!(
+        store.revisions(ID, None).await.unwrap()["revisions"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
     conn.execute("DROP TRIGGER fail_receipt").await.unwrap();
     assert_eq!(
         store.commit(&next, Some(1), "c2").await.unwrap().revision,
@@ -605,4 +621,108 @@ async fn local_views_publish_peer_cursors_and_change_notifications_across_stores
     assert_eq!(update["peers"].as_array().unwrap().len(), 0);
     a.close().await;
     b.close().await;
+}
+
+// A real external SQLite writer holds the lock, while a current-thread Tokio
+// runtime must continue polling timers. No socket, mocked database or GPU.
+#[tokio::test(flavor = "current_thread")]
+async fn sqlite_busy_is_retryable_and_does_not_block_tokio_or_lose_acknowledged_data() {
+    use std::time::Duration;
+    let f = Fixture::new();
+    let store = WorkspaceStore::open(&f.db()).await.unwrap();
+    let first = store
+        .commit(&document(), None, "busy-create")
+        .await
+        .unwrap();
+    let mut external = f.connection().await;
+    external.execute("BEGIN IMMEDIATE").await.unwrap();
+    let mut next = document();
+    next["name"] = json!("after contention");
+    let ticks = std::cell::Cell::new(0usize);
+    let commit = store.commit(&next, Some(1), "busy-retry");
+    tokio::pin!(commit);
+    let error = loop {
+        tokio::select! {
+            result = &mut commit => break result.unwrap_err(),
+            _ = tokio::time::sleep(Duration::from_millis(10)) => ticks.set(ticks.get() + 1),
+        }
+    };
+    assert_eq!(error.code, "WORKSPACE_BUSY");
+    assert!(
+        ticks.get() >= 10,
+        "SQLite busy wait blocked the async runtime"
+    );
+    external.execute("ROLLBACK").await.unwrap();
+    assert_eq!(store.read(ID, None).await.unwrap().entry, first);
+    let second = store.commit(&next, Some(1), "busy-retry").await.unwrap();
+    external.close().await.unwrap();
+    store.close().await;
+    let reopened = WorkspaceStore::open(&f.db()).await.unwrap();
+    assert_eq!(
+        reopened.read(ID, Some(1)).await.unwrap().document,
+        document()
+    );
+    assert_eq!(reopened.read(ID, None).await.unwrap().document, next);
+    assert_eq!(
+        reopened.commit(&next, Some(1), "busy-retry").await.unwrap(),
+        second
+    );
+    reopened.close().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cancelled_lock_wait_has_no_partial_revision_and_identical_retry_is_safe() {
+    use std::time::Duration;
+    let f = Fixture::new();
+    let store = WorkspaceStore::open(&f.db()).await.unwrap();
+    store
+        .commit(&document(), None, "cancel-create")
+        .await
+        .unwrap();
+    let mut external = f.connection().await;
+    external.execute("BEGIN IMMEDIATE").await.unwrap();
+    let mut next = document();
+    next["name"] = json!("retry after cancellation");
+    // timeout drops the public API future while SQLite's worker is waiting to
+    // begin. It does not claim that an already committed mutation was undone.
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            store.commit(&next, Some(1), "cancel-retry"),
+        )
+        .await
+        .is_err()
+    );
+    external.execute("ROLLBACK").await.unwrap();
+    // The next acquisition also proves the cancelled begin released its lock.
+    let head = tokio::time::timeout(Duration::from_secs(5), store.read(ID, None))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(head.entry.revision, 1);
+    let receipt: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM mutations WHERE mutation_id='cancel-retry'")
+            .fetch_one(&mut external)
+            .await
+            .unwrap();
+    assert_eq!(receipt, 0);
+    let committed = store.commit(&next, Some(1), "cancel-retry").await.unwrap();
+    external.close().await.unwrap();
+    store.close().await;
+    let reopened = WorkspaceStore::open(&f.db()).await.unwrap();
+    assert_eq!(
+        reopened
+            .commit(&next, Some(1), "cancel-retry")
+            .await
+            .unwrap(),
+        committed
+    );
+    assert_eq!(
+        reopened.revisions(ID, None).await.unwrap()["revisions"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    reopened.close().await;
 }

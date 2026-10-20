@@ -1945,6 +1945,7 @@ pub fn document_from_canvas(
         reviews: Vec::new(),
         design_system: None,
         prototype: None,
+        fd_compatibility: None,
         schema_version: 1,
         color_management: None,
         raster_profile: None,

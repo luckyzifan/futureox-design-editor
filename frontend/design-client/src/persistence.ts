@@ -31,10 +31,12 @@ export async function readDesignFile(file:File, signal?:AbortSignal):Promise<imp
     const format = /\.sketch$/i.test(file.name) ? 'sketch' : /\.pdf$/i.test(file.name) ? 'pdf' : 'fig'
     return importFileInWorker(bytes, file.name.replace(/\.(fig|sketch|pdf)$/i, ''), format, signal)
   }
-  if (!/\.(fd|json|svg)$/i.test(file.name)) throw new Error('请选择 .fd、Sketch、JSON、SVG、FIG 或 PDF 文件')
-  if(/\.svg$/i.test(file.name)) {
+  if (!/\.(fd|json|svg|svgz)$/i.test(file.name)) throw new Error('请选择 .fd、Sketch、JSON、SVG、FIG 或 PDF 文件')
+  if(/\.svgz?$/i.test(file.name)) {
     const {importSvg}=await import('./import-svg')
-    const result=importSvg(await file.text(),file.name.replace(/\.svg$/i,''));validateDocument(result.document);return result
+    const { decodeSvgFileBytes } = await import('./export-options')
+    const bytes = new Uint8Array(await file.arrayBuffer()); signal?.throwIfAborted()
+    const result=importSvg(decodeSvgFileBytes(bytes, /\.svgz$/i.test(file.name)),file.name.replace(/\.svgz?$/i,''));validateDocument(result.document);return result
   }
   const bytes=new Uint8Array(await file.arrayBuffer())
   const binary=bytes[0]===70 && bytes[1]===88 && bytes[2]===68 && bytes[3]===75

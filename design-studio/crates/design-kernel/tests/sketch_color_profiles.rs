@@ -112,7 +112,7 @@ fn shared_paint_style_colors_cannot_silently_turn_black() {
     let mut doc=document("#ffffff",Some("display-p3"));
     doc.design_system=Some(serde_json::from_value(json!({"styles":{"s":{"name":"P3","kind":"paint","value":[{"kind":"solid","color":"color(display-p3 1 0 0 / 0.25)"}]}}})).unwrap());
     let (archive,_)=parts(&export_sketch(&doc).unwrap());
-    assert_eq!(channels(&archive["layerStyles"]["objects"][0]["style"]["fills"][0]["color"]),[1.,0.,0.,0.25]);
+    assert_eq!(channels(&archive["layerStyles"]["objects"][0]["value"]["fills"][0]["color"]),[1.,0.,0.,0.25]);
     doc.design_system.as_mut().unwrap().styles.get_mut("s").unwrap().value[0]["color"]=json!("color(srgb-linear 8 0 0)");
     assert!(export_sketch(&doc).unwrap_err().to_string().contains("outside the target"));
 }
@@ -167,7 +167,7 @@ fn solid_node_and_shared_strokes_preserve_exact_legacy_fields() {
                 }
                 doc.validate().unwrap();
                 let (archive, page) = parts(&export_sketch(&doc).unwrap());
-                let style = if shared { &archive["layerStyles"]["objects"][0]["style"] }
+                let style = if shared { &archive["layerStyles"]["objects"][0]["value"] }
                     else { &page["layers"][0]["style"] };
                 let border = &style["borders"][0];
                 assert_eq!(channels(&border["color"]), [18./255.,52./255.,86./255.,0.25]);

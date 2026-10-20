@@ -138,3 +138,22 @@ fn emitted_symbol_and_override_references_work_without_futureox_private_metadata
     components::resolve(&mut native).unwrap();
     assert!(native.nodes.values().any(|node| node.text == "Native override"));
 }
+
+#[test]
+fn fixed_box_text_override_keeps_geometry_after_export_import_and_layout() {
+    use futureox_design_kernel::{font::Fonts, layout};
+    let mut doc = interop::import_sketch_report(&archive(native_symbols())).unwrap().document;
+    let label = doc.nodes.get_mut("label").unwrap();
+    label.sizing = None;
+    label.text_style.as_mut().unwrap().wrap = false;
+    let bytes = interop::export_sketch(&doc).unwrap();
+    let mut reopened = interop::import_sketch_report(&bytes).unwrap().document;
+    components::resolve(&mut reopened).unwrap();
+    let mut fonts = Fonts::new();
+    fonts.load(&std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../frontend/design-client/public/fonts/NotoSansSC.ttf")).unwrap()).unwrap();
+    layout::resolve(&mut reopened, &fonts).unwrap();
+    let overridden = reopened.nodes.values().find(|node| node.text == "Native override").unwrap();
+    assert_eq!((overridden.width, overridden.height), (140., 40.));
+    assert!(!overridden.text_style.as_ref().unwrap().wrap);
+}

@@ -98,10 +98,9 @@ export function createDocumentHistory(session?: HistorySession | null): Document
       const record: LocalRecord | null = await getRevision(documentId, revision)
       return record && { document: record.document, revision, createdAt: record.updatedAt }
     },
-    async restore(documentId, revision) {
-      // IndexedDB has no concurrent writer protocol, so the durable restore
-      // result is returned for the caller to adopt into the editing session.
-      const record = await restoreRevision(documentId, revision)
+    async restore(documentId, revision, expectedRevision) {
+      // Compare the viewed head inside the same transaction as the new snapshot.
+      const record = await restoreRevision(documentId, revision, expectedRevision)
       return { restored: true, document: record.document, revision: record.revision, adopted: false }
     },
   }

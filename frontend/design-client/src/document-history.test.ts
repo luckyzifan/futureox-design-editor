@@ -40,10 +40,10 @@ describe('local route delegates to the IndexedDB revision store', () => {
     })
     expect((await history.load('local-document', 2))?.document.name).toBe('本地快照')
     expect(await history.load('local-document', 1)).toBeNull()
-    const restored = await history.restore('local-document', 2)
+    const restored = await history.restore('local-document', 2, 7)
     // Durable but not adopted: the caller must load it into the editor itself.
     expect(restored).toEqual({ restored: true, document: expect.objectContaining({ name: '本地恢复' }), revision: 3, adopted: false })
-    expect(restoreRevision).toHaveBeenCalledWith('local-document', 2)
+    expect(restoreRevision).toHaveBeenCalledWith('local-document', 2, 7)
   })
 })
 

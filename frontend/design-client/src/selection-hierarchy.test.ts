@@ -114,9 +114,11 @@ test('generated component descendants keep the instance boundary and parent navi
   const label = originNode(editor.state.doc, ids.a, editor.state.doc.nodes[ids.label].componentKey!)
   const p = apply(worldMatrix(editor.state.doc, label.id), { x: 2, y: 2 })
   expect(editor.hit(p)).toBe(ids.a)
+  expect(editor.selectionHit(p)).toBe(ids.a)
   expect(editor.hit(p, true)).toBe(label.id)
   editor.select([ids.a])
   expect(editor.selectDeeper(p)).toEqual({ id: label.id, changed: true })
+  expect(editor.selectionHit(p)).toBe(label.id)
   expect(editor.selectParent()).toBe(true)
   expect(editor.state.selection).toEqual([ids.a])
 })
@@ -134,4 +136,51 @@ test('selection atomically retires stale canvas ancestor hover while preserving 
   editor.hoverLayer(b.id, 'layers'); editor.select([a.id])
   expect(editor.state.hover).toBe(b.id); expect(editor.state.hoverSource).toBe('layers')
   expect(editor.state.doc).toBe(original); expect(editor.state.version).toBe(version); expect(editor.canUndo).toBe(false)
+})
+
+function overlappingFixture() {
+  const document = blank(), frame = node('frame', 0, 0, 400, 300),
+    small = node('rectangle', 40, 40, 40, 30), backing = node('rectangle', 20, 20, 300, 200)
+  frame.children = [small.id, backing.id]
+  document.nodes = Object.fromEntries([frame, small, backing].map(n => [n.id, n]))
+  document.pages[0].children = [frame.id]
+  const editor = new Editor(document); editors.push(editor)
+  return { editor, frame, small, backing, p: { x: 50, y: 50 } }
+}
+
+test('entered container click agrees with small-target hover without globally entering selected frames', () => {
+  const { editor, frame, small, backing, p } = overlappingFixture()
+  expect(editor.selectionHit(p)).toBe(frame.id)
+  editor.select([frame.id]); expect(editor.selectionHit(p)).toBe(frame.id)
+  editor.select([small.id])
+  expect(editor.hit(p)).toBe(backing.id)
+  expect(editor.hoverHit(p)).toBe(small.id)
+  expect(editor.selectionHit(p)).toBe(small.id)
+  expect(editor.selectionHit(p, true)).toBe(backing.id)
+  editor.selectParent(); expect(editor.selectionHit(p)).toBe(frame.id)
+  expect(editor.canUndo).toBe(false)
+})
+
+test('scoped picking preserves unopened groups and foreground boards', () => {
+  const { editor, frame, small, backing, p } = overlappingFixture()
+  const group = node('group', 0, 0, 100, 100)
+  editor.change('Nest small target', d => {
+    group.children = [small.id]; d.nodes[group.id] = group; d.nodes[frame.id].children = [group.id, backing.id]
+  })
+  editor.select([backing.id]); expect(editor.selectionHit(p)).toBe(group.id)
+  const front = node('frame', 0, 0, 400, 300)
+  editor.change('Foreground board', d => { d.nodes[front.id] = front; d.pages[0].children.push(front.id) })
+  editor.select([small.id]); expect(editor.selectionHit(p)).toBe(front.id)
+})
+
+test('scoped picking excludes hidden, inherited locked, and clipped children', () => {
+  const { editor, frame, small, backing, p } = overlappingFixture()
+  editor.select([backing.id])
+  editor.update([small.id], { visible: false }); expect(editor.selectionHit(p)).toBe(backing.id)
+  editor.update([small.id], { visible: true, locked: true }); expect(editor.selectionHit(p)).toBe(backing.id)
+  editor.update([small.id], { locked: false }, '切换锁定')
+  editor.update([frame.id], { width: 30, height: 30, clip: true })
+  expect(editor.selectionHit(p)).toBeNull()
+  editor.update([frame.id], { width: 400, height: 300, locked: true }, '切换锁定')
+  expect(editor.selectionHit(p)).toBeNull()
 })

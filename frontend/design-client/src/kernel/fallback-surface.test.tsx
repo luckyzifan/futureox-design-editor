@@ -205,3 +205,24 @@ test('navigation queue invalidates immediately on document edits and advances af
   child(tree, ProgressiveSurface).props.onPresentation({ ...moved, epoch: 0, pixelRatio: 2, managed: false })
   expect(render(edited).props['data-presentation-ready']).toBe('false')
 })
+
+test('no-adapter recovery is one-way and never accepts a superseded CPU frame', () => {
+  vi.stubGlobal('window', { devicePixelRatio: 2 })
+  const document = blank(), render = harness()
+  const props: SurfaceProps = { document, pageId: document.pages[0].id, width: 900, height: 650,
+    view: { x: 0, y: 0, zoom: 1 }, grid: false }
+  let tree = render(props)
+  const fallback = child(tree, ProgressiveSurface).props.onFallback
+  fallback('没有可用的 WebGPU 适配器'); fallback('GPU device lost')
+  tree = render(props)
+  expect(tree.props['data-fallback-reason']).toBe('没有可用的 WebGPU 适配器')
+  const replacement = { ...props, document: { ...document, name: 'new revision' }, presentationEpoch: 2 }
+  tree = render(replacement)
+  child(tree, ReferenceSurface).props.onPresentation({ ...props, epoch: 0, pixelRatio: 2, managed: false, computeBackend: 'cpu' })
+  expect(render(replacement).props['data-presentation-ready']).toBe('false')
+  child(tree, ReferenceSurface).props.onPresentation({ ...replacement, epoch: 2, pixelRatio: 2, managed: false, computeBackend: 'cpu' })
+  tree = render(replacement)
+  expect(tree.props['data-fallback-phase']).toBe('cpu')
+  expect(tree.props['data-presentation-ready']).toBe('true')
+  expect(child(tree, ProgressiveSurface)).toBeUndefined()
+})

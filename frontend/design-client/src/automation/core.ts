@@ -1,6 +1,9 @@
+import { NODE_FIELDS, OPTIONAL_NODE_FIELDS, nodePatchSchema as patchSchema } from './node-input-descriptors'
+import { bulkExtensions } from './bulk'
 /** Authored-document automation. This module owns no renderer or second history.
  * Every successful batch enters the existing Editor.change boundary exactly once. */
 import type { Editor } from '../engine'
+import { LocalAutomationPermissions, type AutomationPermissionPolicy } from './permissions'
 import { hasPendingEdits } from '../pending-edits'
 import { detachMissing } from '../components'
 import { granularExtensions, PREFLIGHT_METHODS } from './granular'
@@ -20,22 +23,11 @@ const RECEIPT_LIMIT = 128, RECEIPT_BYTES = 32 * 1024 * 1024
 const MAX_BATCH = 500, MAX_BYTES = 32 * 1024 * 1024, DEFAULT_MAX_BYTES = 8 * 1024 * 1024, MAX_RESULTS = 1000
 const FORBIDDEN = new Set(['__proto__', 'prototype', 'constructor'])
 const KINDS: Kind[] = ['slice', 'frame', 'section', 'group', 'rectangle', 'ellipse', 'polygon', 'star', 'line', 'vector', 'text']
-const NODE_FIELDS = new Set([
-  'name', 'transform', 'width', 'height', 'visible', 'locked', 'opacity', 'blend', 'fills', 'strokes', 'effects',
-  'radii', 'smoothing', 'clip', 'mask', 'maskType', 'points', 'innerRadius', 'network', 'text', 'fontSize',
-  'textStyle', 'textRuns', 'layout', 'sizing', 'constraints', 'layoutGrid', 'guides', 'arc', 'cornerRadius',
-  'constrainProportions', 'booleanOperation', 'exportSettings', 'textPath', 'pathOffset', 'connector', 'board',
-])
-const OPTIONAL_NODE_FIELDS = new Set(['network', 'textStyle', 'textRuns', 'layout', 'sizing', 'constraints',
-  'layoutGrid', 'guides', 'arc', 'cornerRadius', 'constrainProportions', 'booleanOperation', 'exportSettings',
-  'textPath', 'pathOffset', 'connector', 'board', 'maskType'])
 const stringSchema = { type: 'string', minLength: 1, maxLength: 128 }
 const idsSchema = { type: 'array', items: stringSchema, minItems: 1, maxItems: MAX_RESULTS, uniqueItems: true }
 const indexSchema = { type: 'integer', minimum: 0, maximum: 20000 }
 const objectSchema = { type: 'object' }
 const numberSchema = { type: 'number', minimum: -1e7, maximum: 1e7 }
-const patchSchema = { type: 'object', additionalProperties: false,
-  properties: Object.fromEntries([...NODE_FIELDS].map(key => [key, {}])) }
 function schema(properties: Record<string, unknown> = {}, required: string[] = []): Record<string, unknown> {
   return { type: 'object', properties, required, additionalProperties: false }
 }
@@ -338,7 +330,7 @@ const coreExtensions: AutomationExtension[] = [
     return { ids: selected }
   }),
   operation('text.set', 'Set text, font size, text style and rich-text runs on text nodes; provided styles merge with existing style.', schema({ ids: idsSchema,
-    text: { type: 'string', maxLength: 1_000_000 }, fontSize: { type: 'number', minimum: 0.01, maximum: 10000 }, textStyle: objectSchema, textRuns: { type: 'array', maxItems: 10000 } }, ['ids']), true, (doc, p) => {
+    text: { type: 'string', maxLength: 100_000 }, fontSize: { type: 'number', minimum: 1, maximum: 4096 }, textStyle: objectSchema, textRuns: { type: 'array', maxItems: 4096 } }, ['ids']), true, (doc, p) => {
     const selected = ids(p.ids)
     if (!['text', 'fontSize', 'textStyle', 'textRuns'].some(key => Object.hasOwn(p, key))) fail('invalid_params', 'Supply at least one text property')
     for (const id of selected) {
@@ -354,9 +346,9 @@ const coreExtensions: AutomationExtension[] = [
     return { ids: selected }
   }),
   operation('style.set', 'Set node paint, stroke, effect, opacity, blend and corner properties. This is authored style data, not shared-style publication.', schema({ ids: idsSchema,
-    fills: { type: 'array', maxItems: 32 }, strokes: { type: 'array', maxItems: 32 }, effects: { type: 'array', maxItems: 32 }, opacity: { type: 'number', minimum: 0, maximum: 1 }, blend: { type: 'string' }, radii: { type: 'array', minItems: 4, maxItems: 4, items: numberSchema }, smoothing: { type: 'number', minimum: 0, maximum: 1 } }, ['ids']), true,
+    fills: { type: 'array', maxItems: 16 }, strokes: { type: 'array', maxItems: 16 }, effects: { type: 'array', maxItems: 16 }, opacity: { type: 'number', minimum: 0, maximum: 1 }, blend: { type: 'string' }, radii: { type: 'array', minItems: 4, maxItems: 4, items: numberSchema }, smoothing: { type: 'number', minimum: 0, maximum: 1 } }, ['ids']), true,
     (doc, p) => { const selected = ids(p.ids), { ids: _ids, ...patch } = p; if (!Object.keys(patch).length) fail('invalid_params', 'Supply a style property'); selected.forEach(id => patchNode(doc, getNode(doc, id), patch)); return { ids: selected } }),
-  operation('effects.set', 'Replace authored effect stacks on explicit nodes.', schema({ ids: idsSchema, effects: { type: 'array', maxItems: 32 } }, ['ids', 'effects']), true,
+  operation('effects.set', 'Replace authored effect stacks on explicit nodes.', schema({ ids: idsSchema, effects: { type: 'array', maxItems: 16 } }, ['ids', 'effects']), true,
     (doc, p) => { const selected = ids(p.ids); selected.forEach(id => patchNode(doc, getNode(doc, id), { effects: p.effects })); return { ids: selected } }),
 ]
 coreExtensions.push(
@@ -459,7 +451,7 @@ const specialMethods: AutomationMethod[] = [
   { name: 'history.redo', description: 'Redo one native editor history entry.', mutates: true, inputSchema: schema() },
   { name: 'batch.apply', description: 'Apply up to 500 operations atomically as one native undo entry. No partial state is published on failure. Optional mutationId returns a session-local idempotency receipt for exact retries, including after a lost response. Successful receipts are never silently evicted.', mutates: true,
     inputSchema: schema({ operations: operationsSchema, label: { type: 'string', minLength: 1, maxLength: 200 }, mutationId: mutationIdSchema }, ['operations']) },
-  { name: 'batch.preflight', description: 'Read-only authored-change staging for node.patch, layout.patch, paint.patch, text.styleRange, text.replaceRange and variable.bind/unbind only. Checks schemas, structural/resource constraints and expected leaves; returns a bounded authored diff. Derived layout, component overrides, kernel validation and final history commit are deferred. This is not a pixel preview or a guarantee that commit will succeed. Does not consume mutation receipts.', mutates: false,
+  { name: 'batch.preflight', description: 'Read-only authored-change staging for node.patch, layout.patch, paint.patch, text.styleRange, text.replaceRange, their registered bulk wrappers, and variable.bind/unbind only. Checks schemas, structural/resource constraints and expected leaves; returns a bounded authored diff. Derived layout, component overrides, kernel validation and final history commit are deferred. This is not a pixel preview or a guarantee that commit will succeed. Does not consume mutation receipts.', mutates: false,
     inputSchema: schema({ operations: operationsSchema }, ['operations']) },
 ]
 function safeUrls(value: unknown): void {
@@ -503,26 +495,41 @@ function canonicalJson(value: unknown): string {
 export class DesignAutomationApi {
   private readonly registry = new Map<string, AutomationExtension>()
   private readonly descriptors = new Map<string, AutomationMethod>()
+  private readonly permissions?: LocalAutomationPermissions
   private disposed = false
   private receiptOwner = ''
   private receiptBytes = 0
   private readonly receipts = new Map<string, { fingerprint: string; result: Record<string, unknown> }>()
   constructor(readonly editor: Editor, extensions: AutomationExtension[] = [],
-    private readonly validators: ((document: DesignDocument) => void)[] = []) {
+    private readonly validators: ((document: DesignDocument) => void)[] = [], permissions?: AutomationPermissionPolicy) {
+    this.permissions = permissions === undefined ? undefined : new LocalAutomationPermissions(permissions)
     for (const entry of [...coreExtensions, ...granularExtensions, ...extensions]) {
       if (!/^[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]*)+$/.test(entry.name)) throw new Error(`Invalid automation method name: ${entry.name}`)
       if (this.registry.has(entry.name) || specialMethods.some(m => m.name === entry.name)) throw new Error(`Duplicate automation method: ${entry.name}`)
       this.registry.set(entry.name, entry)
-      const { execute: _execute, ...descriptor } = entry
+      const { execute: _execute, expand: _expand, ...descriptor } = entry
       this.descriptors.set(entry.name, descriptor)
     }
     for (const descriptor of specialMethods) this.descriptors.set(descriptor.name, descriptor)
   }
   dispose(): void { this.disposed = true; this.receipts.clear(); this.receiptBytes = 0 }
-  methods(): AutomationMethod[] { return structuredClone([...this.descriptors.values()].sort((a, b) => a.name.localeCompare(b.name))) }
+  private allowed(method: AutomationMethod | undefined): boolean {
+    return !!method && (!this.permissions || this.permissions.allows(method, {
+      documentId: this.editor.state.doc.id, session: this.editor.sessionGeneration,
+    }))
+  }
+  private authorize(method: string): void {
+    if (!this.descriptors.has(method)) fail('unsupported_method', `Unsupported automation method: ${method}`)
+    if (!this.allowed(this.descriptors.get(method))) fail('permission_denied', `Operation is not granted for this document session: ${method}`)
+  }
+  methods(): AutomationMethod[] { return structuredClone([...this.descriptors.values()].filter(method => this.allowed(method)).sort((a, b) => a.name.localeCompare(b.name))) }
+  private preflightMethods(): string[] {
+    return [...PREFLIGHT_METHODS, ...bulkExtensions.filter(entry => this.registry.get(entry.name) === entry).map(entry => entry.name)]
+      .filter(name => this.allowed(this.descriptors.get(name)))
+  }
   capabilities(): AutomationCapabilities {
     return { version: 1, methods: this.methods(), limits: { maxBatchOperations: MAX_BATCH, maxRequestBytes: MAX_BYTES, defaultMaxRequestBytes: DEFAULT_MAX_BYTES, maxQueryResults: MAX_RESULTS },
-      editing: { granular: granularExtensions.map(method => method.name), preflight: { validation: 'authored-only', derivedResolution: 'deferred', authoritativeCommitValidationRequired: true, methods: [...PREFLIGHT_METHODS] }, changeSummary: CHANGE_SUMMARY_LIMITS, idempotency: { method: 'batch.apply', scope: 'document-session', maxReceipts: 128, maxSerializedBytes: RECEIPT_BYTES } },
+      editing: { bulk: bulkExtensions.filter(entry => this.registry.get(entry.name) === entry && this.allowed(entry)).map(entry => entry.name), maxExpandedOperations: 500, granular: granularExtensions.filter(method => this.allowed(method)).map(method => method.name), preflight: { validation: 'authored-only', derivedResolution: 'deferred', authoritativeCommitValidationRequired: true, methods: this.preflightMethods() }, changeSummary: CHANGE_SUMMARY_LIMITS, idempotency: { method: 'batch.apply', scope: 'document-session', maxReceipts: 128, maxSerializedBytes: RECEIPT_BYTES } },
       unsupported: ['Arbitrary JavaScript/eval or plugin execution', 'Remote Figma file/account/publishing APIs',
         'Host filesystem or network access from operation arguments', 'Renderer or GPU reconfiguration',
         'Font downloading or operating-system font installation', 'Cross-document atomic transactions'] }
@@ -555,6 +562,31 @@ export class DesignAutomationApi {
     const selection = ctx.selection.filter(id => allowed.has(id))
     if (this.editor.state.page !== pageId) this.editor.switchPage(pageId)
     if (!equalValue(this.editor.state.selection, selection)) this.editor.select(selection)
+  }
+  private expandOperations(operations: { method: string; params?: Record<string, unknown> }[], preflight: boolean) {
+    const expanded: { method: string; params?: Record<string, unknown> }[] = []
+    for (const item of operations) {
+      this.authorize(item.method)
+      const entry = this.entry(item.method)
+      if (!entry.mutates) fail('invalid_operation', 'Read operations are not accepted inside a mutation batch')
+      checkSchema(item.params || {}, entry.inputSchema)
+      if (preflight && !PREFLIGHT_METHODS.has(item.method) && !bulkExtensions.includes(entry))
+        fail('unsupported_preflight_operation', `Authored-only preflight does not support ${item.method}`)
+      const leaves = entry.expand ? entry.expand(structuredClone(item.params || {})) : [item]
+      if (!Array.isArray(leaves) || !leaves.length || expanded.length + leaves.length > 500)
+        fail('invalid_params', 'A request must contain 1–500 expanded mutation operations')
+      for (const leaf of leaves) {
+        this.authorize(leaf.method)
+        const target = this.entry(leaf.method)
+        if (target.expand) fail('invalid_operation', 'Recursive operation expansion is not supported')
+        if (!target.mutates) fail('invalid_operation', 'Expanded operations must be mutations')
+        checkSchema(leaf.params || {}, target.inputSchema)
+        if (preflight && !PREFLIGHT_METHODS.has(leaf.method))
+          fail('unsupported_preflight_operation', `Authored-only preflight does not support ${leaf.method}`)
+        expanded.push(leaf)
+      }
+    }
+    return expanded
   }
   private stage(operations: { method: string; params?: Record<string, unknown> }[], preflight = false) {
     const before = this.editor.state.doc, candidate = structuredClone(before), ctx = this.context()
@@ -600,9 +632,9 @@ export class DesignAutomationApi {
       changedIds: Object.keys(candidate.nodes).filter(id => !equalValue(before.nodes[id], candidate.nodes[id])),
       validation: 'authored-only', derivedResolution: 'deferred', authoritativeCommitValidationRequired: true,
       noAuthoredChange: equalValue(before, candidate), pageId: ctx.pageId, selection: ctx.selection,
-      supportedMethods: [...PREFLIGHT_METHODS], receiptConsumed: false }
+      supportedMethods: this.preflightMethods(), receiptConsumed: false }
   }
-  private mutate(request: AutomationRequest, operations: { method: string; params?: Record<string, unknown> }[], label: string, fingerprintBytes?: number): unknown {
+  private mutate(request: AutomationRequest, operations: { method: string; params?: Record<string, unknown> }[], label: string, fingerprintBytes?: number, originalOperations: { method: string }[] = []): unknown {
     const { before, candidate, ctx, results } = this.stage(operations)
     const version = this.editor.state.version
     if (fingerprintBytes !== undefined && this.receiptBytes + fingerprintBytes + receiptResultBound(before, candidate, ctx, results) > RECEIPT_BYTES)
@@ -610,6 +642,8 @@ export class DesignAutomationApi {
     // Synchronous staging may invoke trusted extensions; re-check ownership and
     // pending input immediately before the one authoritative commit boundary.
     this.requireFence(request, true)
+    this.authorize(request.method)
+    for (const operation of [...originalOperations, ...operations]) this.authorize(operation.method)
     if (!equalValue(before, candidate)) {
       const changeResult = this.editor.change(label, draft => {
         if (draft.id !== candidate.id) fail('document_mismatch', 'Cannot replace the document identity')
@@ -651,6 +685,17 @@ export class DesignAutomationApi {
       const descriptor = this.descriptors.get(request.method)
       if (!descriptor) fail('unsupported_method', `Unsupported automation method: ${request.method}`)
       checkSchema(params, descriptor.inputSchema)
+      // Authorization precedes receipt replay, history, reads and draft execution.
+      // Preauthorize the entire batch so even trusted extension callbacks cannot
+      // run when a later operation is denied. Staging still owns atomic commit.
+      this.authorize(request.method)
+      if (request.method === 'batch.apply' || request.method === 'batch.preflight') {
+        for (const item of params.operations as { method: string }[]) this.authorize(item.method)
+      }
+      const isBatch = request.method === 'batch.apply' || request.method === 'batch.preflight'
+      const originalOperations = isBatch ? params.operations as { method: string; params?: Record<string, unknown> }[]
+        : descriptor.mutates && !request.method.startsWith('history.') ? [{ method: request.method, params }] : undefined
+      const operations = originalOperations ? this.expandOperations(originalOperations, request.method === 'batch.preflight') : undefined
       const owner = `${this.editor.state.doc.id}:${this.editor.sessionGeneration}`
       if (owner !== this.receiptOwner) { this.receipts.clear(); this.receiptBytes = 0; this.receiptOwner = owner }
       let fingerprint: string | undefined, mutationId: string | undefined
@@ -680,10 +725,10 @@ export class DesignAutomationApi {
         if (possible && this.editor.state.version === version) fail('commit_failed', this.editor.state.message)
         result = { noChange: this.editor.state.version === version, canUndo: this.editor.canUndo, canRedo: this.editor.canRedo,
           pageId: this.editor.state.page, selection: [...this.editor.state.selection] }
-      } else if (request.method === 'batch.preflight') result = this.preflight(params.operations as { method: string; params?: Record<string, unknown> }[])
+      } else if (request.method === 'batch.preflight') result = this.preflight(operations!)
       else if (request.method === 'batch.apply') {
-        result = this.mutate(request, params.operations as { method: string; params?: Record<string, unknown> }[], params.label === undefined ? 'AI design batch' : text(params.label, 'label', 200), fingerprint === undefined ? undefined : new TextEncoder().encode(fingerprint).byteLength)
-      } else if (descriptor.mutates) result = this.mutate(request, [{ method: request.method, params }], `AI: ${request.method}`)
+        result = this.mutate(request, operations!, params.label === undefined ? 'AI design batch' : text(params.label, 'label', 200), fingerprint === undefined ? undefined : new TextEncoder().encode(fingerprint).byteLength, originalOperations)
+      } else if (descriptor.mutates) result = this.mutate(request, operations!, `AI: ${request.method}`, undefined, originalOperations)
       else {
         const snapshot = structuredClone(this.editor.state.doc)
         result = this.entry(request.method).execute(snapshot, params, this.context())
@@ -704,6 +749,6 @@ export class DesignAutomationApi {
     }
   }
 }
-export function createDesignAutomation(editor: Editor, extensions: AutomationExtension[] = [], validators: ((document: DesignDocument) => void)[] = []): DesignAutomationApi {
-  return new DesignAutomationApi(editor, extensions, validators)
+export function createDesignAutomation(editor: Editor, extensions: AutomationExtension[] = [], validators: ((document: DesignDocument) => void)[] = [], permissions?: AutomationPermissionPolicy): DesignAutomationApi {
+  return new DesignAutomationApi(editor, extensions, validators, permissions)
 }
