@@ -336,8 +336,15 @@ describe('browser startup and switching fences', () => {
     vi.spyOn(localStore, 'localOpen').mockImplementation(() => new Promise((done) => { resolve = done }))
     const h = harness(); let tree = h.render(() => App())
     const preventDefault = vi.fn(), stopPropagation = vi.fn()
-    tree.props.onKeyDownCapture({ nativeEvent: { isComposing: false, keyCode: 0 }, target: { closest: () => true }, preventDefault, stopPropagation })
-    expect(preventDefault).toHaveBeenCalled()
+    tree.props.onKeyDownCapture({ nativeEvent: { isComposing: false, keyCode: 0 }, target: { closest: (selector: string) => selector === 'input,textarea,select,.rich-text-editor' }, preventDefault, stopPropagation })
+    expect(preventDefault).toHaveBeenCalledOnce()
+    expect(stopPropagation).toHaveBeenCalledOnce()
+    // Home preference input is intentionally available while restore waits;
+    // editor/document input above must remain blocked by the same root handler.
+    preventDefault.mockClear(); stopPropagation.mockClear()
+    tree.props.onKeyDownCapture({ nativeEvent: { isComposing: false, keyCode: 0 },
+      target: { closest: (selector: string) => selector === '.local-home,.settings-backdrop' }, preventDefault, stopPropagation })
+    expect(preventDefault).not.toHaveBeenCalled(); expect(stopPropagation).not.toHaveBeenCalled()
     h.effects((fn) => String(fn).includes('Promise.all'))
     find(tree, (el) => el.props?.['aria-label'] === '文档名称').props.onChange({ target: { value: 'Early edit' } })
     resolve({ document: blank('Recovered late'), revision: 1, updatedAt: Date.now() })

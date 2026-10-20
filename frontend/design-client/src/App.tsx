@@ -1,3 +1,8 @@
+import { FramePresetPanel } from './FramePresetPanel'
+import { LocalHome, HomeCanvasGate } from './LocalHome'
+import { localHomeSource, admitHomeDocumentCommand } from './local-home-source'
+import { ownedPropertyPreviewTarget } from './property-preview'
+import { hasCanvasColorPicker } from './canvas-color-picker'
 import { appendImageFiles, captureImageImportAnchor, StaleImageImport } from './append-image-files'
 import { beginEditorAction } from './editor-action-route'
 import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
@@ -119,6 +124,7 @@ import { AnimationPanel } from './AnimationPanel'
 import { ColorPanel } from './ColorPanel'
 import { ExportPanel } from './ExportPanel'
 import { download, exportDocument, readDesignFile } from './persistence'
+import { createImportedCopy } from './import-identity'
 import { exportSketchInWorker } from './import-file-worker'
 import { ImportOwner, importStep, type ImportRequest } from './import-ownership'
 import { ExportOwner, commitExportEdits, type ExportRequest } from './export-ownership'
@@ -158,6 +164,9 @@ export default function App() {
   const tools = useMemo(() => toolItems.map(tool => ({ ...tool, key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext])
   const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext])
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)
+  const [showHome, setShowHome] = useState(true)
+  const [startupError, setStartupError] = useState('')
+  const homeSettingsFocus = useRef<HTMLElement | null>(null)
   const [showTools, setShowTools] = useState(false)
   const [showCatalog, setShowCatalog] = useState(false)
   const [showWorkspaceLibrary, setShowWorkspaceLibrary] = useState(false)
@@ -184,6 +193,7 @@ export default function App() {
   const [showMove, setShowMove] = useState(false)
   const [showShapes, setShowShapes] = useState(false)
   const [showRegions, setShowRegions] = useState(false)
+  const [showFramePresets, setShowFramePresets] = useState(false)
   const [showDrawing, setShowDrawing] = useState(false)
   const [showUtility, setShowUtility] = useState(false)
   const [lastShapeTool, setLastShapeTool] = useState<Tool>('rectangle')
@@ -261,7 +271,7 @@ export default function App() {
     try {
       const imported = await importStep(request, () => readDesignFile(f, request.signal))
       request.assertCurrent()
-      const document = { ...imported.document, id: uid() }
+      const document = createImportedCopy(imported.document)
       if (mode === 'append') {
         if (!commitPendingEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
         request.assertCurrent()
@@ -353,10 +363,14 @@ export default function App() {
   )
   const file = useRef<HTMLInputElement>(null)
   const capturePreview = useCallback(async (document: DesignDocument, version: number, pixels: PreviewPixels) => {
+    // A property preview may begin while the bitmap/encoding promise is pending.
+    // Do not label its pixels as a durable authored revision or startup preview.
+    const authored = () => !editor.propertyPreviewActive && editor.authoredDocument === document && editor.state.version === version
+    if (!authored()) return
     if (saver.durableRevision(document.id, version) === undefined) await saver.save(document, version)
     const revision = saver.durableRevision(document.id, version)
-    if (revision !== undefined) await writeStartupPreview({ ...pixels, documentId: document.id, revision })
-  }, [saver])
+    if (revision !== undefined && authored()) await writeStartupPreview({ ...pixels, documentId: document.id, revision })
+  }, [saver, editor])
   const localWindows=useLocalWindows(editor,desktopSession,ready)
   useEffect(() => {
     const input = file.current
@@ -377,7 +391,7 @@ export default function App() {
         await desktopSession.start()
         if (active) setReady(true)
       }).catch((e) => {
-        if (active) editor.notify(`设计内核载入失败：${String(e)}`)
+        if (active) { setStartupError(`设计内核载入失败：${String(e)}`); editor.notify(`设计内核载入失败：${String(e)}`) }
       })
       return () => { active = false; desktopSession.dispose() }
     }
@@ -407,6 +421,7 @@ export default function App() {
         if (!active) return
         recordLocalError('workspace', e, 'STORAGE_ERROR')
         setSaved('本地恢复失败')
+        setStartupError('本地恢复失败，文档操作和自动保存已暂停。')
         editor.notify(`本地恢复失败，自动保存已暂停：${e.message}`)
       })
     return () => {
@@ -415,7 +430,7 @@ export default function App() {
   }, [editor, desktopSession, saver])
   useEffect(() => {
     if (!ready || desktopSession) return
-    const snapshot = s.doc
+    const snapshot = editor.authoredDocument
     saver.observe(snapshot, s.version)
     if (!saver.dirty) return
     const timer = setTimeout(() => {
@@ -449,13 +464,14 @@ export default function App() {
     trace.result(ActionOutcome.cancelled, ActionReason.unobserved)
     try {
     if (request && !request.isCurrent()) return false
+    if (!editor.settleOwnedPropertyPreview('navigation')) return false
     if (desktopSession ? desktopSession.status.busy : (!ready || switchGate.current || !commitPendingEdits(editor))) return false
     const adoption = request || fileImports.begin(editor)
     if (!adoption.isCurrent()) return false
     if (desktopSession) {
       const opened = await desktopSession.replace(document, adoption.isCurrent)
       if (opened && adoption.isLatest()) setMenu(false)
-      if (opened) trace.result(ActionOutcome.observed)
+      if (opened) { trace.result(ActionOutcome.observed); setShowHome(false) }
       return opened
     }
     cancelPendingOperations(editor)
@@ -503,6 +519,7 @@ export default function App() {
       if (!ownsSession()) return false
       setMenu(false)
       setLocalFiles(null)
+      setShowHome(false)
       setReady(true)
       trace.result(ActionOutcome.observed)
       return true
@@ -557,18 +574,29 @@ export default function App() {
     }).catch(error => editor.notify(String(error)))
   }, [ready, desktop, editor])
   const openSettings = useCallback(() => {
-    if (!ready || switching || desktopStatus.transitioning || editor.interactionActive || modalOwnsKeyboard(document.activeElement)) return
+    if ((!ready && !showHome) || switching || (desktopStatus.transitioning && ready) || editor.interactionActive || modalOwnsKeyboard(document.activeElement)) return
     if (!commitPendingEdits(editor)) return
     setMenu(false)
     setShowSettings(true)
-  }, [ready, switching, desktopStatus.transitioning, editor])
+  }, [ready, switching, desktopStatus.transitioning, editor, showHome])
   useEffect(() => {
     const command = (name: DesktopCommand) => {
       if (name === 'settings') { openSettings(); return }
+      if (showHome) {
+        if (!admitHomeDocumentCommand(name, { ready, switching, busy: desktopStatus.busy,
+          transitioning: desktopStatus.transitioning, interactionActive: editor.interactionActive,
+          modalOwnsFocus: modalOwnsKeyboard(document.activeElement) })) return
+        if (!commitPendingEdits(editor)) return
+        if (name === 'new') void switchDocument(blank())
+        else if (name === 'open') void openHomeFile().then(result => { if (result === true) resumeEditor() }).catch(error => editor.notify(String(error)))
+        else if (name === 'openPending' && desktopSession) void desktopSession.openPending().then(opened => { if (opened) resumeEditor() }).catch(error => editor.notify(String(error)))
+        return
+      }
       if (!ready || !desktopSession) return
       // Native editor/text commands retain the dispatcher's focused-input routing.
       // File commands must not act on the .fd document behind an independent modal.
-      if (['open', 'openPending', 'new', 'recover', 'save', 'saveAs'].includes(name) && modalOwnsKeyboard(document.activeElement)) return
+      if (['open', 'openPending', 'new', 'recover', 'save', 'saveAs'].includes(name) && modalOwnsKeyboard(document.activeElement) &&
+        !ownedPropertyPreviewTarget(editor, document.activeElement)) return
       // Electron can consume the DOM shortcut before Canvas sees it. Complete
       // only our keyboard-owned edit, never another pending pointer gesture.
       if (keyboardNudgeActive(editor) && !commitPendingEdits(editor)) return
@@ -587,13 +615,14 @@ export default function App() {
       if (settingsMod && e.key === ',' && !e.shiftKey && !e.altKey && !e.repeat && !e.isComposing && e.keyCode !== 229 && !e.defaultPrevented) {
         e.preventDefault(); openSettings(); return
       }
-      if (!ready || e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.repeat || e.altKey || shortcutTargetOwnsKeyboard(e.target)) return
+      const propertySave = e.key.toLowerCase() === 's' && ownedPropertyPreviewTarget(editor, e.target)
+      if (!ready || e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.repeat || e.altKey || (shortcutTargetOwnsKeyboard(e.target) && !propertySave)) return
       if (shortcutPlatform() === 'mac' ? (!e.metaKey || e.ctrlKey) : (!e.ctrlKey || e.metaKey)) return
       const key = e.key.toLowerCase()
       if (key === 's') {
         e.preventDefault()
         if (desktopSession) command(e.shiftKey ? 'saveAs' : 'save')
-        else if (commitPendingEdits(editor)) exportDocument(editor.state.doc)
+        else if (editor.settleOwnedPropertyPreview('save') && !editor.interactionActive && commitPendingEdits(editor)) exportDocument(editor.authoredDocument)
       } else if (desktopSession && key === 'o') {
         e.preventDefault(); command('open')
       } else if (desktopSession && key === 'n') {
@@ -619,7 +648,43 @@ export default function App() {
         })
     })
     return () => { window.removeEventListener('keydown', shortcut); offCommand?.(); offClose?.() }
-  }, [editor, desktopSession, desktop, ready, fileImports, openSettings])
+  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning])
+  function resumeEditor() {
+    if (!ready) return
+    setShowHome(false)
+    requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="canvas"]')?.focus({preventScroll:true}))
+  }
+  function enterHome() {
+    if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return
+    setMenu(false); setShowMove(false); setShowRegions(false); setShowShapes(false); setShowDrawing(false); setShowUtility(false)
+    setShowHome(true)
+  }
+  async function openHomeFile(): Promise<boolean | 'pending'> {
+    if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return false
+    fileImports.invalidate()
+    if (desktopSession) {
+      const opened = await desktopSession.open()
+      if (!opened && desktopSession.status.error) throw new Error(desktopSession.status.error)
+      return opened
+    }
+    importMode.current = 'open'
+    file.current?.click()
+    return 'pending'
+  }
+  const homeSource = localHomeSource(desktopSession, {
+    list: localList,
+    open: async id => {
+      if (!ready || switching || editor.interactionActive || !commitPendingEdits(editor)) return false
+      const request = fileImports.begin(editor)
+      try {
+        const record = await importStep(request, () => localOpen(id))
+        if (!record) throw new Error('本机设计已不存在，请刷新列表')
+        const opened = await switchDocument(record.document, record, true, request)
+        if (!opened && request.isCurrent()) throw new Error('打开未完成，当前设计已保留')
+        return opened
+      } finally { request.finish() }
+    },
+  })
   const focusCanvas = () => document.querySelector<HTMLElement>('[data-testid="canvas"]')?.focus({ preventScroll: true })
   const chooseTool = (tool: Tool) => { void activateTool(editor,tool);focusCanvas() }
   const openToolbarMenu = (name: 'move' | 'regions' | 'shapes' | 'drawing' | 'commands' | 'utility', open: boolean) => {
@@ -629,7 +694,7 @@ export default function App() {
   }
   const action = (label: string, Icon: typeof Square, fn: () => void, disabled = false, menuItem = false) => (
     <button type="button" title={menuItem ? label : undefined} data-tooltip={menuItem ? undefined : label === '撤销' ? `撤销 (${shortcutLabel('undo', shortcutContext)})` : label === '重做' ? `重做 (${shortcutLabel('redo', shortcutContext)})` : label}
-      aria-label={label} role={menuItem ? 'menuitem' : undefined} tabIndex={menuItem ? -1 : undefined} disabled={disabled}
+      aria-label={label} data-property-preview-undo={label === '撤销' ? '' : undefined} role={menuItem ? 'menuitem' : undefined} tabIndex={menuItem ? -1 : undefined} disabled={disabled}
       onClick={() => { focusCanvas(); fn() }}>
       <Icon size={16} />
     </button>
@@ -652,14 +717,16 @@ export default function App() {
   return (
     <div
       style={adaptivePanels.style}
-      className={`app-shell editor-shell ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'chrome-hide-inspector'} ${uiMinimized ? 'chrome-minimized' : ''}`}
+      className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'chrome-hide-inspector'} ${uiMinimized ? 'chrome-minimized' : ''}`}
       data-history-backend={editor.historyBackend} data-history-operation={editor.historyOperationMode} data-history-frame-bytes={editor.historyFrameBytes}
       data-desktop-ready={desktopSession ? String(ready) : undefined}
       data-editor-ready={String(ready)}
       data-color-picking={s.tool==='eyedropper'}
       aria-busy={switching || desktopStatus.busy}
+      onKeyUp={e=>{if(showHome)e.stopPropagation()}}
       onDragOverCapture={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault()}}
       onDropCapture={e=>{
+        if(showHome){e.preventDefault();e.stopPropagation();return}
         const files=[...e.dataTransfer.files]
         const designFiles=files.filter(f=>/\.(fd|json|svg|svgz|fig|sketch|pdf)$/i.test(f.name))
         const imageFiles=files.filter(f=>/\.(png|jpe?g|webp)$/i.test(f.name))
@@ -674,9 +741,15 @@ export default function App() {
       }}
       onPointerDownCapture={(e) => {
         const target = e.target as Element
+        if (editor.propertyPreviewActive) {
+          // The popover owns its fields; its canvas sampler reads pixels only.
+          if (target.closest('[data-property-preview], [data-property-preview-undo]') || (hasCanvasColorPicker(editor) && target.closest('[data-testid="canvas"]'))) return
+          if (!editor.settleOwnedPropertyPreview('outside')) { e.preventDefault(); e.stopPropagation(); return }
+        }
         if (editor.interactionActive && (!target.closest('[data-testid="canvas"]') || target.closest('button,input,select,textarea,.canvas-controls'))) {
           e.preventDefault(); e.stopPropagation(); return
         }
+        if (showHome && target.closest('.local-home,.settings-backdrop')) return
         const penCanvas = editor.state.tool === 'pen' && target.closest('[data-testid="canvas"]') && !target.closest('button,input,select,textarea')
         if (!penCanvas && target !== document.activeElement && !target.closest('.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
@@ -687,7 +760,9 @@ export default function App() {
         }
       }}
       onKeyDownCapture={(e) => {
+        if ((e.target as Element).closest('[data-property-preview]')) return
         if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
+        if (showHome && (e.target as Element).closest('.local-home,.settings-backdrop')) return
         const penCanvas = editor.state.tool === 'pen' && (e.target as Element).closest('[data-testid="canvas"]')
         const nudgeKey = keyboardNudgeOwnsKey(editor, e.nativeEvent) && !shortcutTargetOwnsKeyboard(e.target)
         if (!penCanvas && !nudgeKey && !(e.target as Element).closest('input,textarea,select,.rich-text-editor') && !commitPendingEdits(editor)) {
@@ -699,11 +774,17 @@ export default function App() {
         }
       }}
     >
-      {(!ready || switching || (desktopStatus.transitioning && !desktopPrompt)) && (
+      {!showHome && (!ready || switching || (desktopStatus.transitioning && !desktopPrompt)) && (
         <div className="document-transition" role="status">
           {desktopSession ? '正在处理本机设计文件…' : '正在保存并打开设计…'}
         </div>
       )}
+      {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} busy={switching || desktopStatus.busy}
+        currentName={s.doc.name} onResume={resumeEditor} onNew={() => switchDocument(blank())}
+        onOpenFile={openHomeFile} onSettings={() => {
+          homeSettingsFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+          openSettings()
+        }} />}
       <header className="editor-header">
         <button ref={fileMenuTrigger} className="brand" aria-label="文件菜单" aria-expanded={menu} onClick={() => setMenu(!menu)}>
           <img className="brand-mark" src="/branding/futureox-desgin.svg" width="28" height="28" alt="" aria-hidden="true" />
@@ -819,6 +900,7 @@ export default function App() {
         <>
           <div className="menu-scrim" onClick={() => setMenu(false)} />
           <div className="file-menu">
+            <button type="button" onClick={enterHome}><FolderOpen size={15} />本机首页</button>
             <button type="button" onClick={openSettings}><SettingsIcon size={15} />设置</button>
             <button
               onClick={() => {
@@ -915,7 +997,7 @@ export default function App() {
             <button
               onClick={() => {
                 if (desktopSession) void desktopSession.save()
-                else if (commitPendingEdits(editor)) exportDocument(editor.state.doc)
+                else if (editor.settleOwnedPropertyPreview('save') && !editor.interactionActive && commitPendingEdits(editor)) exportDocument(editor.authoredDocument)
                 setMenu(false)
               }}
             >
@@ -974,6 +1056,7 @@ export default function App() {
       {showTools&&<DesignTools editor={editor} onClose={()=>setShowTools(false)}/>}
       {showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}
+      {showFramePresets && <FramePresetPanel editor={editor} onClose={() => setShowFramePresets(false)} />}
       {showHistory && (
         <DocumentHistoryDialog
           key={s.doc.id}
@@ -1007,10 +1090,10 @@ export default function App() {
         <div className="adaptive-layers-shell"><Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} /><PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
         <div className="canvas-workspace">
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
-          <Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready}
+          <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready}
             startupPreview={startupPreview} onCapturePreview={desktopSession ? undefined : capturePreview}
-            zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} />
-          <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || editor.interactionActive}>
+            zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} /></HomeCanvasGate>
+          <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || (editor.interactionActive && !editor.propertyPreviewActive)}>
             <div className="tool-group">
               <ToolPopover label="移动工具" icon={<MoveIcon size={18} />} open={showMove} onOpenChange={open => openToolbarMenu('move', open)}
                 primary={{ label: moveTool.label, title: `${moveTool.label}${moveTool.key ? ` (${moveTool.key})` : ''}`, active: s.tool === moveTool.id, onClick: () => chooseTool(moveTool.id) }}>
@@ -1023,6 +1106,7 @@ export default function App() {
                 {(['frame', 'section', 'slice'] as const).map(id => tools.find(tool => tool.id === id)!).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={regionTool.id === id} onClick={() => { chooseTool(id); setShowRegions(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
+                <button type="button" role="menuitem" tabIndex={-1} onClick={() => { if (!commitPendingEdits(editor)) return; setShowRegions(false); setShowFramePresets(true) }}>设备与尺寸预设…</button>
               </ToolPopover>
               <ToolPopover label="形状工具" icon={<ShapeIcon size={18} />} open={showShapes} onOpenChange={open => openToolbarMenu('shapes', open)}
                 primary={{ label: shapeTool.label, title: `${shapeTool.label}${shapeTool.key ? ` (${shapeTool.key})` : ''}`, active: s.tool === shapeTool.id, onClick: () => chooseTool(shapeTool.id) }}>
@@ -1106,8 +1190,8 @@ export default function App() {
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
       {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} />}
       {showAnimation && <AnimationPanel editor={editor} onClose={() => setShowAnimation(false)} />}
-      {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={fileMenuTrigger.current}
-        busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <WorkspaceRootControls bridge={desktop.workspaceRoot}
+      {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={showHome ? homeSettingsFocus.current : fileMenuTrigger.current}
+        busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <>{!ready && <p role="status">设计尚未就绪，暂不能切换工作区目录。</p>}<WorkspaceRootControls bridge={desktop.workspaceRoot}
           busy={workspaceRootBusy || !ready || desktopStatus.busy} onChoose={original => {
             if (workspaceRootPending.current || !ready || desktopStatus.busy || !commitPendingEdits(editor)) return
             workspaceRootPending.current = true; setWorkspaceRootBusy(true)
@@ -1115,7 +1199,7 @@ export default function App() {
               .then(error => { if (error) editor.notify(`工作区切换失败，当前设计已保留：${error}`) })
               .catch(error => editor.notify(`工作区切换失败，当前设计已保留：${String(error)}`))
               .finally(() => { workspaceRootPending.current = false; setWorkspaceRootBusy(false) })
-          }} />}
+          }} /></>}
         onClose={() => setShowSettings(false)} />}
       {showColor && (
         <PendingEditContext.Provider value={editor} key={editor.sessionGeneration}><ColorPanel editor={editor} onClose={() => setShowColor(false)} exports={exports} /></PendingEditContext.Provider>

@@ -4,6 +4,7 @@ import type { Point } from './model'
 import { blank } from './model'
 import { Editor } from './engine'
 import { ViewControls } from './ViewControls'
+import { interfacePreference, interfaceText } from './interface-preference'
 import {
   CANVAS_ZOOM_MIN,
   CANVAS_ZOOM_MAX,
@@ -268,7 +269,8 @@ test('equivalent wheel modes produce the same anchored zoom for mouse and trackp
   closePoint(worldToScreen(results[0], point), anchor)
 })
 
-test('repeated control clicks use the latest camera before a React rerender without changing the document', () => {
+test.each(['zh-CN', 'en'] as const)('repeated control clicks use the latest camera before a React rerender without changing the document, locale=%s', locale => {
+  interfacePreference.set({ locale })
   const editor = new Editor(blank())
   const initial = { x: -1e7 + 0.125, y: 1e7 + 0.625, zoom: 1 }
   editor.set({ view: initial })
@@ -281,7 +283,7 @@ test('repeated control clicks use the latest camera before a React rerender with
   const internals = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
   const old = internals.H
   let controls: ReturnType<typeof ViewControls>
-  internals.H = { useRef: (current: unknown) => ({ current }), useEffect() {} }
+  internals.H = { useRef: (current: unknown) => ({ current }), useEffect() {}, useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot() }
   try { controls = ViewControls({ editor, size, fit: () => {} }) } finally { internals.H = old }
   const button = (title: string) => {
     const find = (children: ReactNode): (() => void) | undefined => {
@@ -297,8 +299,8 @@ test('repeated control clicks use the latest camera before a React rerender with
     if (handler) return handler
     throw new Error(`Missing zoom button: ${title}`)
   }
-  const zoomIn = button('放大')
-  const zoomOut = button('缩小')
+  const zoomIn = button(interfaceText[locale].zoomIn)
+  const zoomOut = button(interfaceText[locale].zoomOut)
   for (let i = 0; i < 3; i++) zoomIn()
   expect(editor.state.view.zoom).toBe(2 ** 3)
   closePoint(worldToScreen(editor.state.view, point), anchor)
@@ -306,6 +308,7 @@ test('repeated control clicks use the latest camera before a React rerender with
   expect(editor.state.view.zoom).toBe(initial.zoom)
   closePoint(editor.state.view, initial)
   expect(editor.state.doc).toBe(document)
+  editor.dispose()
 })
 
 

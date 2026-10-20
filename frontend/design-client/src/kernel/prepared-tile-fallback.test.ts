@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { preparedTileCanFill } from './prepared-tile-fallback'
+import { preparedTileCanFill, preparedTileContinuation } from './prepared-tile-fallback'
 import type { ResidentFrame, ResidentItem } from './gpu/resident-presenter'
 import type { RasterTile } from './tile-cache'
 const tile: RasterTile = { key: 'compiled', x: -513, y: -1, width: 514, height: 514, zoom: 1, phaseX: .375, phaseY: .125 }
@@ -31,4 +31,20 @@ test('several finer residents collectively cover the prepared crop with exact sh
     placement: { left, top: 0, width: 256, height: 512 } }))
   expect(preparedTileCanFill(prepared, { ...current, items: halves })).toBe(false)
   expect(preparedTileCanFill(prepared, { ...current, items: [halves[0]] })).toBe(true)
+})
+
+test('a stale prepared tile continues only while the latest camera still has its visible gap', () => {
+  let latest = frame, current = false
+  const continuing = preparedTileContinuation(tile, () => current, true, () => latest)
+  expect(continuing()).toBe(true)
+  latest = { ...frame, view: { ...frame.view, x: 5000 } }
+  expect(continuing()).toBe(false)
+  latest = { ...frame, view: { ...frame.view, x: 420 } }
+  expect(continuing()).toBe(true)
+  latest = { ...frame, items: [item()] }
+  expect(continuing()).toBe(false)
+  current = true
+  expect(continuing()).toBe(true)
+  current = false; latest = frame
+  expect(preparedTileContinuation(tile, () => current, false, () => latest)()).toBe(false)
 })

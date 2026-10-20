@@ -1,3 +1,5 @@
+import { useInterfaceText } from './interface-preference'
+import type { InterfaceMessageKey } from './interface-messages'
 import { canvasActions, CanvasAction, ActionSource, ActionOutcome } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
 import { InterfaceSettings } from './AdaptivePanels'
@@ -11,19 +13,21 @@ import { nudgePreference } from './nudge-preference'
 import { KeyboardProfileSettings } from './KeyboardProfileSettings'
 import { shortcutPreference } from './shortcut-preference'
 import { settingsPreference, useSettingsPersistence, type CanvasSetting } from './settings-preference'
+import { pageMemoryPreference, useRenderMemoryTier } from './page-memory-preference'
+import { validRenderMemoryTier } from './kernel/page-memory-policy'
 import './settings-dialog.css'
 
 type SettingsSection = 'input' | 'canvas' | 'saving' | 'companion' | 'diagnostics'
-const sections: { id: SettingsSection; label: string }[] = [
-  { id: 'input', label: '操作习惯' }, { id: 'canvas', label: '画布辅助' }, { id: 'saving', label: '保存与范围' }, { id: 'companion', label: 'Nomi 伙伴' }, { id: 'diagnostics', label: '错误日志' },
+const sections: { id: SettingsSection; label: InterfaceMessageKey }[] = [
+  { id: 'input', label: 'inputTab' }, { id: 'canvas', label: 'canvasTab' }, { id: 'saving', label: 'savingTab' }, { id: 'companion', label: 'companionTab' }, { id: 'diagnostics', label: 'diagnosticsTab' },
 ]
-const canvasControls: { key: CanvasSetting; label: string; detail: string }[] = [
-  { key: 'snap', label: '智能吸附', detail: '移动图层时对齐附近图层与参考线。' },
-  { key: 'snapPixels', label: '吸附到像素网格', detail: '创建、移动和调整图层时使用像素对齐。' },
-  { key: 'pixelGrid', label: '像素网格', detail: '缩放到 400% 及以上时显示单像素网格。' },
-  { key: 'rulers', label: '标尺与参考线', detail: '显示标尺及文档参考线；参考线内容仍属于当前文档。' },
-  { key: 'checkerboard', label: '棋盘格背景', detail: '用棋盘格查看透明区域，不改变页面背景颜色。' },
-  { key: 'grid', label: '画布网格', detail: '显示画布的辅助网格，不写入导出的图像。' },
+const canvasControls: { key: CanvasSetting; label: InterfaceMessageKey; detail: InterfaceMessageKey }[] = [
+  { key: 'snap', label: 'snap', detail: 'snapHelp' },
+  { key: 'snapPixels', label: 'snapPixels', detail: 'snapPixelsHelp' },
+  { key: 'pixelGrid', label: 'pixelGrid', detail: 'pixelGridHelp' },
+  { key: 'rulers', label: 'rulers', detail: 'rulersHelp' },
+  { key: 'checkerboard', label: 'checkerboard', detail: 'checkerboardHelp' },
+  { key: 'grid', label: 'grid', detail: 'gridHelp' },
 ]
 
 /** The parent binds bindEditorSettings(editor) for the complete Editor lifetime. */
@@ -35,14 +39,17 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
   workspaceControls?: ReactNode
   busy?: boolean
 }) {
+  const text = useInterfaceText()
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const persistence = useSettingsPersistence()
+  const memoryTier = useRenderMemoryTier()
+  const memoryPersistence = useSyncExternalStore(pageMemoryPreference.subscribe, pageMemoryPreference.getPersistenceSnapshot)
   const petMode = useSyncExternalStore(desktopPet.subscribe, desktopPet.snapshot)
   const nudgePersistence = useSyncExternalStore(nudgePreference.subscribe, nudgePreference.getPersistenceSnapshot)
   const id = useId(), dialog = useRef<HTMLElement>(null), backdrop = useRef<HTMLDivElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null), close = useRef(onClose), closing = useRef(false)
   const restoreTarget = useRef(returnFocus), [section, setSection] = useState<SettingsSection>('input')
-  const [message, setMessage] = useState(''), [wheelTemporary, setWheelTemporary] = useState(false)
+  const [message, setMessage] = useState<InterfaceMessageKey | ''>(''), [wheelTemporary, setWheelTemporary] = useState(false)
   const [keyboardReset, setKeyboardReset] = useState(0)
   close.current = onClose
   const dismiss = () => { if (!busy && !closing.current) { closing.current = true; close.current() } }
@@ -106,6 +113,7 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
   }
   const restoreDefaults = () => {
     canvasActions(editor).event(CanvasAction.settings, ActionSource.properties, ActionOutcome.observed, undefined, { commandCode: 349 })
+    const memorySaved = pageMemoryPreference.reset()
     const petSaved = desktopPet.configure('off')
     const interfaceSaved = interfacePreference.reset()
     const canvasSaved = settingsPreference.reset()
@@ -113,7 +121,7 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
     const nudgeSaved = nudgePreference.reset()
     const wheelSaved = setWheel(false)
     setKeyboardReset(value => value + 1)
-    setMessage(petSaved && interfaceSaved && canvasSaved && keyboardSaved && nudgeSaved && wheelSaved ? '已恢复当前配置的偏好默认值。' : '已恢复默认值；部分偏好仅在本次会话生效。')
+    setMessage(memorySaved && petSaved && interfaceSaved && canvasSaved && keyboardSaved && nudgeSaved && wheelSaved ? 'defaultsRestored' : 'defaultsTemporary')
   }
 
   return createPortal(<div ref={backdrop} className="settings-backdrop"
@@ -134,11 +142,11 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
         }
       }}>
       <header className="settings-header">
-        <div><h2 id={`${id}-title`}>设置</h2><p id={`${id}-scope`}>当前应用偏好 · 更改立即生效，保存在当前应用配置中。</p></div>
-        <button ref={closeButton} type="button" aria-label="关闭设置" disabled={busy} onClick={dismiss}>×</button>
+        <div><h2 id={`${id}-title`}>{text.settingsTitle}</h2><p id={`${id}-scope`}>{text.settingsScope}</p></div>
+        <button ref={closeButton} type="button" aria-label={text.closeSettings} disabled={busy} onClick={dismiss}>×</button>
       </header>
       <div className="settings-layout">
-        <div className="settings-tabs" role="tablist" aria-label="设置分类">
+        <div className="settings-tabs" role="tablist" aria-label={text.settingsCategories}>
           {sections.map(({ id: value, label }, index) => <button key={value} type="button" role="tab" id={`${id}-tab-${value}`}
             aria-controls={`${id}-panel-${value}`} aria-selected={section === value} tabIndex={section === value ? 0 : -1}
             onClick={() => setSection(value)} onKeyDown={event => {
@@ -149,47 +157,60 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
                 : (index + (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) + sections.length) % sections.length
               setSection(sections[next].id)
               document.getElementById(`${id}-tab-${sections[next].id}`)?.focus()
-            }}>{label}</button>)}
+            }}>{text[label]}</button>)}
         </div>
         <div className="settings-content">
           <section role="tabpanel" id={`${id}-panel-input`} aria-labelledby={`${id}-tab-input`} hidden={section !== 'input'}>
-            <h3>键盘</h3>
+            <h3>{text.keyboard}</h3>
             <KeyboardProfileSettings key={keyboardReset} />
             <NudgeSettings key={`nudge-${keyboardReset}`} />
-            <h3>画布导航</h3>
+            <h3>{text.canvasNavigation}</h3>
             <label className="settings-toggle"><input type="checkbox" checked={state.scrollWheelZoom} aria-describedby={`${id}-wheel-help`}
-              onChange={event => { setMessage(''); setWheel(event.target.checked) }} /><span>滚轮围绕鼠标缩放</span></label>
-            <p className="settings-help" id={`${id}-wheel-help`}>关闭时，滚轮平移；Ctrl / ⌘＋滚轮及触控板捏合仍可缩放。空格拖动或 H 手形工具平移。</p>
+              onChange={event => { setMessage(''); setWheel(event.target.checked) }} /><span>{text.wheelZoom}</span></label>
+            <p className="settings-help" id={`${id}-wheel-help`}>{text.wheelHelp}</p>
           </section>
           <section role="tabpanel" id={`${id}-panel-canvas`} aria-labelledby={`${id}-tab-canvas`} hidden={section !== 'canvas'}>
             <InterfaceSettings />
-            <h3>显示与吸附</h3>
-            <p className="settings-help">与画布视图菜单共用同一组偏好。切换显示辅助不会修改文档内容或历史记录。</p>
+            <h3>{text.pageRetention}</h3>
+            <label htmlFor={`${id}-memory-tier`}>{text.cacheMemory}</label>
+            <select id={`${id}-memory-tier`} value={memoryTier} aria-describedby={`${id}-memory-help`}
+              onChange={event => { if (validRenderMemoryTier(event.target.value)) {
+                const saved = pageMemoryPreference.set(event.target.value)
+                setMessage(saved ? 'cacheSaved' : 'cacheTemporary')
+              } }}>
+              <option value="conservative">{text.cacheConservative}</option>
+              <option value="balanced">{text.cacheBalanced}</option>
+              <option value="expanded">{text.cacheExpanded}</option>
+            </select>
+            <p id={`${id}-memory-help`} className="settings-help">{text.cacheHelp}</p>
+            {memoryPersistence === 'session-only' && <p role="status">{text.cacheTemporary}</p>}
+            <h3>{text.displaySnapping}</h3>
+            <p className="settings-help">{text.displaySnappingHelp}</p>
             {canvasControls.map(({ key, label, detail }) => <div className="settings-control" key={key}>
               <label className="settings-toggle"><input type="checkbox" checked={!!state[key]} aria-describedby={`${id}-${key}-help`}
-                onChange={event => { setMessage(''); editor.set({ [key]: event.target.checked }) }} /><span>{label}</span></label>
-              <p id={`${id}-${key}-help`} className="settings-help">{detail}</p>
+                onChange={event => { setMessage(''); editor.set({ [key]: event.target.checked }) }} /><span>{text[label]}</span></label>
+              <p id={`${id}-${key}-help`} className="settings-help">{text[detail]}</p>
             </div>)}
           </section>
           <section role="tabpanel" id={`${id}-panel-saving`} aria-labelledby={`${id}-tab-saving`} hidden={section !== 'saving'}>
             {workspaceControls}
-            <h3>当前保存方式</h3>
-            {desktop ? <p>桌面端在修改停顿约 600 毫秒后安排本机恢复副本；支持本机文档库时，也会在完成编辑后保存到文档库。外部 .fd 文件请使用“保存”或“另存为”。</p>
-              : <p>浏览器端在修改停顿约 350 毫秒后安排保存到本机浏览器文档库。首次恢复完成后才会开始自动保存；清除网站数据会影响本机文件，请定期导出 .fd 备份。</p>}
-            <p className="settings-help">以上是当前保存机制的说明，间隔不可在此调整。待完成的输入、拖动、恢复失败或存储错误可能延后保存，请以工作区保存状态和错误提示为准。</p>
-            <h3>偏好与文档</h3>
-            <p>本页偏好保存在当前应用配置中，不会同步到其他设备。{desktop ? '独立打开的本地窗口使用各自配置，偏好不保证跨窗口共享或在新窗口中恢复。' : '使用其他浏览器或清除网站数据后，需要重新设置。'}文档色彩设置、页面背景与参考线内容属于各自文档，仍在对应文档工具中编辑。</p>
-            <p className="settings-help">恢复默认值只重置本页的快捷键、微移步长、滚轮行为、画布辅助、桌面伙伴及界面偏好，不删除文档或修改渲染精度。</p>
+            <h3>{text.savingMode}</h3>
+            {desktop ? <p>{text.savingDesktop}</p>
+              : <p>{text.savingWeb}</p>}
+            <p className="settings-help">{text.savingHelp}</p>
+            <h3>{text.preferencesDocuments}</h3>
+            <p>{text.preferencesScope}{desktop ? text.preferencesDesktop : text.preferencesWeb}{text.documentsScope}</p>
+            <p className="settings-help">{text.resetScope}</p>
           </section>
           <section role="tabpanel" id={`${id}-panel-companion`} aria-labelledby={`${id}-tab-companion`} hidden={section !== 'companion'}>
-            <h3>Nomi 桌面伙伴</h3>
+            <h3>{text.companionTitle}</h3>
             {desktop ? <>
-              <p role="status">旧版伙伴已移除，不会回退使用旧版素材。新版模型待来源确认与运行验证，目前不可启用。</p>
-              <p className="settings-help">全身动作、触摸和陪伴气泡尚未在此版本接通；不会读取文档内容或播放语音。编辑与保存不受影响。</p>
+              <p role="status">{text.companionUnavailable}</p>
+              <p className="settings-help">{text.companionHelp}</p>
               {petMode !== 'off' && <button type="button" onClick={() => {
-                const saved = desktopPet.configure('off'); setMessage(saved ? '已关闭旧的伙伴偏好。' : '已在本次会话关闭；偏好未能保存。')
-              }}>关闭已保存的伙伴偏好</button>}
-            </> : <p>Nomi 伙伴仅适用于桌面应用。</p>}
+                const saved = desktopPet.configure('off'); setMessage(saved ? 'companionDisabled' : 'companionTemporary')
+              }}>{text.disableCompanion}</button>}
+            </> : <p>{text.companionDesktopOnly}</p>}
           </section>
           <section role="tabpanel" id={`${id}-panel-diagnostics`} aria-labelledby={`${id}-tab-diagnostics`} hidden={section !== 'diagnostics'}>
             {section === 'diagnostics' && <LocalDiagnosticsPanel />}
@@ -198,9 +219,9 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
       </div>
       <footer className="settings-footer">
         <div className="settings-status" role="status" aria-live="polite">
-          {message || ((persistence === 'session-only' || nudgePersistence === 'session-only' || wheelTemporary) ? '当前存储不可用；部分偏好仅在本次会话生效。' : '更改立即生效。偏好会尝试保存在当前配置。')}
+          {message ? text[message] : ((persistence === 'session-only' || nudgePersistence === 'session-only' || wheelTemporary) ? text.preferencesTemporary : text.preferencesImmediate)}
         </div>
-        <div className="settings-actions"><button type="button" className="secondary" disabled={busy} onClick={restoreDefaults}>恢复偏好默认值</button><button type="button" className="primary" disabled={busy} onClick={dismiss}>完成</button></div>
+        <div className="settings-actions"><button type="button" className="secondary" disabled={busy} onClick={restoreDefaults}>{text.restoreDefaults}</button><button type="button" className="primary" disabled={busy} onClick={dismiss}>{text.done}</button></div>
       </footer>
     </section>
   </div>, document.body)

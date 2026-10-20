@@ -1,12 +1,9 @@
+import { PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES, prefixBandSize } from './prefix-band'
 import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 /// <reference types="@webgpu/types" />
 /** Exact tent filtering, including fractional radii and cropped outputs,
  * with bounded GPU scratch. Uncertified rows retain the scalar exact path. */
 export const PREFIX_SCRATCH_BYTES = 4 * 1024 * 1024
-const PREFIX_BYTES = 3275776,
-  RESULT_BYTES = 901120,
-  METADATA_BYTES = 16384,
-  READBACK_BYTES = 1024
 if (PREFIX_BYTES + RESULT_BYTES + METADATA_BYTES + READBACK_BYTES !== PREFIX_SCRATCH_BYTES)
   throw new Error('scratch accounting')
 type Rectangle = { x: number; y: number; w: number; h: number }
@@ -217,12 +214,7 @@ export class TexturePrefix {
     if (axis !== 0 && axis !== 1) return false
     const length = axis === 0 ? inputs[0].width : inputs[0].height,
       lineCount = axis === 0 ? rect.h : rect.w
-    const bandSize = Math.min(
-      Math.floor(PREFIX_BYTES / (32 * (length + 1))),
-      Math.floor(RESULT_BYTES / (8 * length)),
-      Math.floor((METADATA_BYTES - 16) / 16),
-      maxBandLines,
-    )
+    const bandSize = prefixBandSize(length, maxBandLines)
     if (!Number.isInteger(bandSize) || bandSize < 1) return false
     return true
   }
@@ -253,12 +245,7 @@ export class TexturePrefix {
     const offset = axis === 0 ? rect.x - base[4] : rect.y - base[5]
     const crossOffset = axis === 0 ? rect.y - base[5] : rect.x - base[4]
     const rational = !Number.isInteger(originalRadius) || originalRadius > 512
-    const bandSize = Math.min(
-      Math.floor(PREFIX_BYTES / (32 * (length + 1))),
-      Math.floor(RESULT_BYTES / (8 * length)),
-      Math.floor((METADATA_BYTES - 16) / 16),
-      maxBandLines,
-    )
+    const bandSize = prefixBandSize(length, maxBandLines)
     let drawn = false
     for (let channel = 0; channel < 4; channel++) {
       if (!(channels & (1 << channel))) continue

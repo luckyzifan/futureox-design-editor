@@ -17,6 +17,7 @@ import { hostRenderPolicy, effectiveBackend, allowsResidentSdr } from './render-
 import {residentFrameMessage} from './gpu/resident-frame'
 import { recordRenderProfile } from './render-profile'
 import { connectNativePreparation } from './native-preparation'
+import { currentPreparedDocumentJson } from '../prepared-document'
 
 // The immutable preload bridge is installed before this module evaluates.
 // Neither localStorage nor a render request can relax this launch policy.
@@ -506,7 +507,8 @@ export class KernelClient {
         void (async () => {
           try {
             if (!captured) throw Error('DERIVATION_CAPTURE_RETIRED')
-            const document = serializer ? await serializer(captured.document) : JSON.stringify(captured.document)
+            const document = currentPreparedDocumentJson(captured.document) ??
+              (serializer ? await serializer(captured.document) : JSON.stringify(captured.document))
             if (this.worker === worker) worker.postMessage({ command: 'document-fallback', id: e.data.id, document })
           } catch (error) {
             if (this.worker === worker) worker.postMessage({ command: 'document-fallback', id: e.data.id, error: String(error) })
@@ -823,7 +825,8 @@ export class KernelClient {
             const transition = beforeReceipt ? prepareAuthoredPatchTransition(snapshot, document) : { patch: documentPatch(snapshot, document), canAcknowledge: false }
             patch = nativeSerializer ? await nativeSerializer(transition.patch) : JSON.stringify(transition.patch)
             if (beforeReceipt && transition.canAcknowledge && boundedPatchWire(patch)) patchBaseReceipt = beforeReceipt
-          } else serialized = nativeSerializer ? await nativeSerializer(document) : JSON.stringify(document)
+          } else serialized = currentPreparedDocumentJson(document) ??
+            (nativeSerializer ? await nativeSerializer(document) : JSON.stringify(document))
           if (this.disposed || this.worker !== worker) throw new Error('渲染器已关闭')
           if (cancelled()) throw new Error('PREVIEW_CANCELLED')
           if (interaction) { this.interactionSnapshot = document; this.interactionRevision++ }

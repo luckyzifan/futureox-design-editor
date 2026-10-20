@@ -74,14 +74,31 @@ fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_i
  for(var chunk=0u;chunk<length;chunk=chunk+256u){
   let j=chunk+lane;var value=PrefixInt(0u);
   if(j<length&&scanAccepted!=0u){let bits=bitcast<u32>(textureLoad(sourceA,prefixPixel(j,first+localLine+u32(u(50u).z)),0)[channel]);value=prefix_sample(bits,minimum);}
-  scanSums[lane]=value;scanMoments[lane]=prefix_mul_u32(value,j);workgroupBarrier();
+  scanSums[lane]=value;let moment=prefix_mul_u32(value,j);scanMoments[lane]=moment;workgroupBarrier();
+  // Work-efficient Blelloch scan. Each level owns disjoint index pairs;
+  // signed-128 addition is associative under the admitted bound. Preserve the
+  // existing inclusive prefixes by adding the original lane value at the end.
   for(var stride=1u;stride<256u;stride=stride*2u){
-   var previous=PrefixPair(PrefixInt(0u),PrefixInt(0u));
-   if(lane>=stride){previous=PrefixPair(scanSums[lane-stride],scanMoments[lane-stride]);}
-   workgroupBarrier();
-   scanSums[lane]=prefix_add(scanSums[lane],previous.sum);scanMoments[lane]=prefix_add(scanMoments[lane],previous.moment);
+   let index=(lane+1u)*stride*2u-1u;
+   if(index<256u){
+    scanSums[index]=prefix_add(scanSums[index],scanSums[index-stride]);
+    scanMoments[index]=prefix_add(scanMoments[index],scanMoments[index-stride]);
+   }
    workgroupBarrier();
   }
+  if(lane==0u){scanSums[255u]=PrefixInt(0u);scanMoments[255u]=PrefixInt(0u);}
+  workgroupBarrier();
+  for(var stride=128u;stride>0u;stride=stride/2u){
+   let index=(lane+1u)*stride*2u-1u;
+   if(index<256u){
+    let leftSum=scanSums[index-stride];let leftMoment=scanMoments[index-stride];
+    let parentSum=scanSums[index];let parentMoment=scanMoments[index];
+    scanSums[index-stride]=parentSum;scanMoments[index-stride]=parentMoment;
+    scanSums[index]=prefix_add(parentSum,leftSum);scanMoments[index]=prefix_add(parentMoment,leftMoment);
+   }
+   workgroupBarrier();
+  }
+  scanSums[lane]=prefix_add(scanSums[lane],value);scanMoments[lane]=prefix_add(scanMoments[lane],moment);
   let total=PrefixPair(prefix_add(scanCarry.sum,scanSums[lane]),prefix_add(scanCarry.moment,scanMoments[lane]));
   if(j<length){prefixes[base+j+1u]=total;}
   workgroupBarrier();if(lane==255u){scanCarry=total;}workgroupBarrier();

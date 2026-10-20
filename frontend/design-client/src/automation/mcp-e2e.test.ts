@@ -96,6 +96,50 @@ const operations = [
   { method: 'text.set', params: { ids: [ids.label], text: 'Continue', fontSize: 18 } },
 ]
 
+it.each(['native-json', 'fd', 'sketch'] as const)('real MCP %s import distinguishes an exact retry from intentional repeated append',async format=>{
+  const source=await fixture(blank('Same filename'))
+  expect((await source.mutate('batch.apply',{operations})).isError).toBe(false)
+  const exported=(await source.read(format==='sketch'?'sketch.export':'document.export',format==='sketch'?{}:{format})).result
+  const method=format==='sketch'?'sketch.import':'document.import'
+  const params=format==='sketch'?{base64:exported.base64,name:'Same filename'}:
+    format==='fd'?{format,base64:exported.base64}:{format,content:exported.content}
+  const target=await fixture(blank('Destination')),documentId=target.editor.state.doc.id
+  const state=await target.read('document.get')
+  const fences={documentId:state.documentId,session:state.session,expectedRevision:state.revision}
+  const batch={mutationId:`import-${format}-one`,operations:[{method,params}]}
+  const first=await target.call('batch.apply',batch,fences)
+  expect(first.isError,JSON.stringify(first)).toBe(false)
+  const firstResult=first.structuredContent.result
+  const firstMap=firstResult.operations[0].result.nodeIdMap
+  const imported=target.editor.state.doc,revision=target.editor.state.version
+  expect(imported.id).toBe(documentId)
+  expect((await target.call('batch.apply',batch,fences)).structuredContent.result.receipt.replayed).toBe(true)
+  expect(target.editor.state.doc).toBe(imported);expect(target.editor.state.version).toBe(revision)
+  target.editor.change('Keep local edits',d=>{d.nodes[firstMap[ids.title]].text='Locally edited first copy'})
+  const edited=target.editor.state.doc,editedRevision=target.editor.state.version
+  expect((await target.call('batch.apply',batch,fences)).structuredContent.result.receipt.replayed).toBe(true)
+  expect(target.editor.state.doc).toBe(edited);expect(target.editor.state.version).toBe(editedRevision)
+  const collision=await target.call('batch.apply',{...batch,label:'Different input'},fences)
+  expect(collision.structuredContent).toMatchObject({ok:false,error:{code:'mutation_conflict'}})
+  expect(target.editor.state.doc).toBe(edited)
+  const secondState=await target.read('document.get')
+  const secondFences={documentId:secondState.documentId,session:secondState.session,expectedRevision:secondState.revision}
+  const secondBatch={...batch,mutationId:`import-${format}-two`}
+  const second=await target.call('batch.apply',secondBatch,secondFences)
+  expect(second.isError,JSON.stringify(second)).toBe(false)
+  const secondMap=second.structuredContent.result.operations[0].result.nodeIdMap
+  expect(Object.values(secondMap).every(id=>!Object.values(firstMap).includes(id))).toBe(true)
+  expect(target.editor.state.doc.nodes[firstMap[ids.title]].text).toBe('Locally edited first copy')
+  expect(target.editor.state.doc.nodes[secondMap[ids.title]].text).toBe('Sign in')
+  const twice=target.editor.state.doc
+  expect((await target.mutate('history.undo')).isError).toBe(false)
+  expect(target.editor.state.doc).toEqual(edited)
+  expect((await target.call('batch.apply',secondBatch,secondFences)).structuredContent.result.receipt.replayed).toBe(true)
+  expect(target.editor.state.doc).toEqual(edited) // Receipt replay never redoes.
+  expect((await target.mutate('history.redo')).isError).toBe(false)
+  expect(target.editor.state.doc).toEqual(twice)
+},30000)
+
 describe('MCP JSON-RPC -> shared operation API -> real Editor/WASM', () => {
   it('creates a login design, inspects/checks, fine-edits and exports exact code resources', async () => {
     const f = await fixture()

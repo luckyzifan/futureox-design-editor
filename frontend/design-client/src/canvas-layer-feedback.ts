@@ -1,10 +1,10 @@
-import { allParents } from './geometry'
+import { allParents, type ParentMap } from './geometry'
 import type { DesignDocument } from './model'
 
 /** Tree selection can include hidden or locked layers. Feedback describes
  * those targets without changing visibility or granting editing capability. */
-export function canvasLayerFeedback(document: DesignDocument, page: string, selection: readonly string[]) {
-  const parents = allParents(document), visible = new Set<string>(), locked = new Set<string>()
+export function canvasLayerFeedback(document: DesignDocument, page: string, selection: readonly string[], parents: ParentMap = allParents(document)) {
+  const visible = new Set<string>(), locked = new Set<string>()
   let hidden = 0, unavailable = 0
   for (const id of new Set(selection)) {
     const path: string[] = [], seen = new Set<string>()

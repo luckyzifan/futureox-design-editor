@@ -71,10 +71,11 @@ export function ResidentCompositeSurface(props: {
     p.client.presentationInputOwner=owner
     const all = [...p.items.map((i) => i.tile), ...(moving?.tiles || [])]
     const keep = new Set(all.map((t) => t.serial)),
-      release: number[] = []
+      keepGpu = new Set(all.map((t) => t.gpuTile)),
+      release = new Set<number>()
     for (const [serial, tile] of published.current)
       if (!keep.has(serial)) {
-        release.push(tile.gpuTile)
+        if (!keepGpu.has(tile.gpuTile)) release.add(tile.gpuTile)
         published.current.delete(serial)
         p.onGone(tile.key, serial)
       }
@@ -161,7 +162,7 @@ export function ResidentCompositeSurface(props: {
       lastFrameSignature.current = signature
       p.client.present(frame)
     }
-    p.client.releasePresented(release)
+    p.client.releasePresented([...release])
     if (canvas.current && moving)
       Object.assign(canvas.current.dataset, {
         interactionReady: String(moving.ready),
@@ -279,9 +280,9 @@ export function ResidentCompositeSurface(props: {
       // retaining page textures still owned by the parent surface/client.
       const pageIds = new Set(latest.current.items.map((item) => item.tile.gpuTile))
       p.client.releasePresented(
-        [...published.current.values()]
+        [...new Set([...published.current.values()]
           .filter((t) => !pageIds.has(t.gpuTile))
-          .map((t) => t.gpuTile),
+          .map((t) => t.gpuTile))],
       )
       published.current.clear()
       el.remove()

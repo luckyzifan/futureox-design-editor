@@ -1813,3 +1813,22 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
 .editor-shell .adaptive-layers-shell { animation: panel-enter-left 140ms ease-out; }
 .editor-shell .properties-workspace { animation: panel-enter-right 140ms ease-out; }
 .settings-dialog { animation: interface-enter 160ms ease-out; }
+
+/* Application-owned property color draft. Native color dialogs are not owners. */
+.color-swatch-trigger { width: 30px; height: 24px; border: 1px solid #737373; border-radius: 4px; }
+.paint-opacity-trigger { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+.paint-opacity-field { display: flex; align-items: center; gap: 6px; }
+.property-color-popover { position: fixed; z-index: 3000; width: min(316px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; padding: 14px; box-sizing: border-box; border: 1px solid var(--border, #555); border-radius: 10px; background: var(--panel, #27272a); color: var(--text, #f4f4f5); box-shadow: 0 10px 32px #0006; display: grid; gap: 10px; }
+.property-color-popover label { display: grid; gap: 5px; font-size: 12px; }
+.property-color-popover input:not([type="range"]), .property-color-popover select { width: 100%; min-width: 0; box-sizing: border-box; }
+.property-color-popover input[aria-invalid="true"] { outline: 1px solid #fb7185; }
+.property-color-popover input[type="range"] { width: 100%; min-width: 0; accent-color: #818cf8; }
+.property-color-heading, .property-color-actions { display: flex; align-items: center; gap: 7px; }
+.property-color-heading { justify-content: space-between; }
+.property-color-actions { justify-content: flex-end; }
+.property-color-actions button:first-child { margin-right: auto; }
+.property-color-sample { height: 40px; border-radius: 5px; border: 1px solid #8885; }
+.property-color-components { display: grid; gap: 5px; }
+.property-color-components label { grid-template-columns: 12px 1fr; align-items: center; }
+.property-color-popover .muted { margin: 0; font-size: 11px; line-height: 1.5; }
+.property-color-popover [role="alert"] { margin: 0; font-size: 12px; color: #fda4af; }

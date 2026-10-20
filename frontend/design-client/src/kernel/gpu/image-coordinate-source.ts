@@ -4,7 +4,7 @@ import { replaceWgslBody } from './display-arithmetic'
  * The sampler and its arithmetic are unchanged, including in the HDR tier. */
 export function imageCoordinateSource(source: string): string {
   return replaceWgslBody(source, 'linearImage', `
- let pixel=vec2<i32>(floor(p-u(0).xy));var grid:vec4<f32>;
+ let pixel=vec2<i32>(floor(p-u(51).xy));var grid:vec4<f32>;
  if(textureLoad(sourceD,vec2<i32>(0),0).w<0.){
   let x=textureLoad(sourceD,vec2<i32>(pixel.x,0),0);let y=textureLoad(sourceD,vec2<i32>(pixel.y,1),0);
   if(x.z==0.||y.z==0.){return vec4<f32>(0);}

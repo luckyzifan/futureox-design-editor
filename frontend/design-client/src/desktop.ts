@@ -88,7 +88,7 @@ export interface DesktopBridge {
   petConfigure?(mode: import('./desktop-pet').PetMode): Promise<unknown>
   petEvent?(event: import('./desktop-pet').PetEvent): Promise<unknown>
   readonly automation?: import('./automation/bridge').DesktopAutomationTransport
-  readonly documentCodec?: { readonly encoding?: 'json-stringify-v1'; encode(document: unknown): Promise<string>; decode(json: string): Promise<unknown> }
+  readonly documentCodec?: { readonly decoding?: 'json-parse-v1'; readonly encoding?: 'json-stringify-v1'; encode(document: unknown): Promise<string>; decode(json: string): Promise<unknown> }
   readonly preparation?: {
     open(): Promise<string>
     request(session: string, request: { lane: string; method: string; args: unknown[]; diagnostics?: { originChannelId: number; requestId: number; preparationId: number } }): Promise<import('./kernel/preparation-channel').PreparationReply>

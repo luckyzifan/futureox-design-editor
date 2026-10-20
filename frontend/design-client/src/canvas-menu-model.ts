@@ -1,6 +1,5 @@
 import type { Editor } from './engine'
 import type { EditorCommand } from './editor-commands'
-import { allParents } from './geometry'
 import { container, type Point } from './model'
 import { shortcutLabel, shortcutPlatform, type ShortcutContext } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
@@ -8,7 +7,7 @@ import { desktopBridge } from './desktop'
 
 export type CanvasMenuItem = { command: EditorCommand; label: string; group: string; disabled?: boolean; shortcut?: string; danger?: boolean }
 export function lockedSelectionIds(editor: Editor): string[] {
-  const doc = editor.state.doc, parents = allParents(doc), locked = new Set<string>()
+  const doc = editor.state.doc, parents = editor.parentMap(), locked = new Set<string>()
   for (const selected of editor.state.selection) {
     let id: string | undefined = selected
     while (id && doc.nodes[id]) { if (doc.nodes[id].locked) locked.add(id); id = parents.get(id) }
@@ -17,7 +16,7 @@ export function lockedSelectionIds(editor: Editor): string[] {
 }
 export function canvasMenuItems(editor: Editor, context: ShortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge() }): CanvasMenuItem[] {
   const { doc, selection, busy } = editor.state, nodes = selection.map((id) => doc.nodes[id]).filter(Boolean)
-  const roots = editor.topSelection(), parents = allParents(doc), locks = lockedSelectionIds(editor)
+  const roots = editor.topSelection(), parents = editor.parentMap(), locks = lockedSelectionIds(editor)
   const mutable = !!roots.length && !locks.length && !busy && !editor.interactionActive
   const siblings = roots.length > 0 && roots.every((id) => parents.get(id) === parents.get(roots[0]))
   const items: CanvasMenuItem[] = [
