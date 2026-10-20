@@ -140,6 +140,7 @@ function switchHarness() {
   assert.equal(lifecycle?.length, 1, 'import lifecycle callback missing or ambiguous')
   const current = editor(), fileImports = new ImportOwner(), changes = [], notices = [], diagnostics = []
   current.state.version = 0
+  current.settleOwnedPropertyPreview = reason => { assert.equal(reason, 'navigation'); return true }
   current.notify = message => notices.push(message)
   current.load = prepared => { current.state = { doc: prepared.snapshot(), version: 0 }; current.sessionGeneration++; return true }
   let cleanup
@@ -161,7 +162,7 @@ function switchHarness() {
     localSave: async document => ({ document, revision: 1 }), localSelect: async () => {},
     saver: { save: async () => {}, open: () => {} },
     uid: () => 'backup-id', copyName: name => name,
-    ...Object.fromEntries(['setSwitching', 'setRemoteId', 'setRevision', 'setMenu', 'setLocalFiles', 'setReady']
+    ...Object.fromEntries(['setSwitching', 'setRemoteId', 'setRevision', 'setMenu', 'setLocalFiles', 'setShowHome', 'setReady']
       .map(name => [name, value => changes.push([name, value])])),
   })
   const setup = () => vm.runInContext(lifecycle[0], context)
@@ -169,6 +170,57 @@ function switchHarness() {
   const switchDocument = vm.runInContext(`${callback}\nswitchDocument`, context)
   return { context, current, fileImports, changes, notices, diagnostics, switchDocument, setup, cleanup: () => cleanup() }
 }
+
+test('rejected preview settlement leaves the existing request and document untouched', async () => {
+  const h = switchHarness(), currentDocument = h.current.state.doc
+  const existing = h.fileImports.begin(h.current), calls = []
+  h.current.settleOwnedPropertyPreview = reason => { calls.push(['settle', reason]); return false }
+  for (const name of ['commitPendingEdits', 'cancelPendingOperations', 'initializePicking', 'localOpen', 'prepareDocument', 'localSave', 'localSelect'])
+    h.context[name] = () => { assert.fail(`${name} must not run after rejected settlement`) }
+  h.current.load = () => { assert.fail('adoption must not run after rejected settlement') }
+  assert.equal(await h.switchDocument({ id: 'rejected' }, undefined, false), false)
+  assert.deepEqual(calls, [['settle', 'navigation']])
+  assert.equal(existing.isCurrent(), true, 'failed settlement must not begin another import')
+  assert.equal(h.current.state.doc, currentDocument)
+  assert.equal(h.current.sessionGeneration, 1)
+  assert.equal(h.context.switchGate.current, null)
+  assert.deepEqual(h.changes, [])
+  assert.deepEqual(h.notices, [])
+  assert.deepEqual(h.diagnostics, [])
+})
+
+for (const invalidate of ['new selection', 'same-ID reopening']) {
+  test(`settlement reentry fences an import retired by ${invalidate} before preparation or storage`, async () => {
+    const h = switchHarness(), currentDocument = h.current.state.doc
+    const request = h.fileImports.begin(h.current), calls = []
+    h.current.settleOwnedPropertyPreview = reason => {
+      calls.push(['settle', reason])
+      if (invalidate === 'new selection') h.fileImports.invalidate()
+      else h.current.sessionGeneration++
+      return true
+    }
+    for (const name of ['cancelPendingOperations', 'initializePicking', 'localOpen', 'prepareDocument', 'localSave', 'localSelect'])
+      h.context[name] = () => { assert.fail(`${name} must not run after settlement retires ownership`) }
+    h.current.load = () => { assert.fail('adoption must not run after settlement retires ownership') }
+    assert.equal(await h.switchDocument({ id: 'retired' }, undefined, false, request), false)
+    assert.deepEqual(calls, [['settle', 'navigation']])
+    assert.equal(request.isCurrent(), false)
+    assert.equal(h.current.state.doc, currentDocument)
+    assert.equal(h.context.switchGate.current, null)
+    assert.deepEqual(h.changes, [])
+    assert.deepEqual(h.notices, [])
+    assert.deepEqual(h.diagnostics, [])
+  })
+}
+
+test('an already retired import cannot settle a preview owned by the current session', async () => {
+  const h = switchHarness(), request = h.fileImports.begin(h.current)
+  h.fileImports.invalidate()
+  h.current.settleOwnedPropertyPreview = () => { assert.fail('a retired request must not settle the current preview') }
+  assert.equal(await h.switchDocument({ id: 'retired' }, undefined, false, request), false)
+  assert.deepEqual(h.changes, [])
+  assert.deepEqual(h.diagnostics, [])
+})
 
 for (const invalidate of ['new selection', 'same-ID reopening']) {
   test(`the actual switch catch suppresses an old storage failure after ${invalidate}`, async () => {

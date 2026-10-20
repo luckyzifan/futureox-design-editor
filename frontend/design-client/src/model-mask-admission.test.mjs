@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { blank, node, validateDocument } from './model.ts'
 import { localSave } from './local-store.ts'
+import { prepareDocumentForEditing, prepareDocumentJsonForEditing } from './kernel/picking.ts'
+import { prepareDocument, prepareDocumentJson } from './prepared-document.ts'
 
 function fixture(schemaVersion, maskType) {
   const document = blank(), shape = node('rectangle')
@@ -62,7 +64,9 @@ test('source contract: opening prepares before local publication and adoption ac
   const read = name => readFileSync(new URL(name, import.meta.url), 'utf8')
   const picking = read('./kernel/picking.ts')
   const preparation = picking.slice(picking.indexOf('export function prepareDocumentForEditing'), picking.indexOf('export function kernelLayout'))
-  assert.match(preparation, /const original = documentStage\(DocumentStage\.admission, \(\) => admitDocumentSync\(value\)\)/)
+  assert.match(preparation, /return prepareAdmittedDocument\(documentStage\(DocumentStage\.admission, \(\) => admitDocumentSync\(value\)\), captureValidatedJson\)/)
+  assert.match(preparation, /return prepareAdmittedDocument\(admitDocumentJsonSync\(source, syntaxFailureAttempt\), captureValidatedJson\)/)
+  assert.match(preparation, /function prepareAdmittedDocument\(original: DesignDocument, captureValidatedJson\?: \(json: string\) => void\): DesignDocument \{\s+const prepared = documentStage\(DocumentStage\.layout, \(\) => kernelLayout\(\{/)
   assert.ok(preparation.indexOf('admitDocumentSync(value)') < preparation.indexOf('const prepared = documentStage(DocumentStage.layout'))
   assert.match(preparation, /const json = JSON\.stringify\(prepared\)\s+validateKernelDocument\(json\)\s+captureValidatedJson\?\.\(json\)/)
   assert.ok(preparation.indexOf('validateKernelDocument(json)') < preparation.indexOf('return prepared'))
@@ -81,4 +85,35 @@ test('source contract: opening prepares before local publication and adoption ac
   assert.match(engine, /const doc = takePreparedDocument\(prepared\)!/)
   // Behavioral aliasing, invalid-input and token-reuse checks run in
   // prepared-document.test.ts against the actual WASM and Editor.
+})
+
+test('object and JSON preparation reject hidden unsupported masks without publishing validated bytes or ownership', () => {
+  const cases = []
+  for (const version of [1, 2, 3])
+    for (const maskType of ['alpha', 'luminance'])
+      cases.push([version, maskType, '显式蒙版类型需要设计文件版本 4'])
+  for (const version of [4, 15])
+    for (const maskType of ['', 'invalid', 'Alpha', false, 0, [], {}])
+      cases.push([version, maskType, '蒙版类型无效'])
+
+  for (const [version, maskType, message] of cases) {
+    const document = fixture(version, maskType)
+    const shape = document.nodes[document.pages[0].children[0]]
+    shape.visible = false
+    shape.mask = false
+    const before = structuredClone(document), source = JSON.stringify(document)
+    let captured = 0
+    const capture = () => { captured++ }
+    for (const prepare of [
+      () => prepareDocumentForEditing(document, capture),
+      () => prepareDocumentJsonForEditing(source, capture),
+      () => prepareDocument(document),
+      () => prepareDocumentJson(source),
+    ]) {
+      // An uninitialized-layout error must not satisfy this rejection test.
+      assert.throws(prepare, { name: 'Error', message })
+      assert.equal(captured, 0)
+      assert.deepEqual(document, before)
+    }
+  }
 })

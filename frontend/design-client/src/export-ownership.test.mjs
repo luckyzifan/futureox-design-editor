@@ -10,6 +10,9 @@ const viteRequire = createRequire(import.meta.resolve('vite'))
 const { parseAst } = await import(pathToFileURL(viteRequire.resolve('rolldown/parseAst')).href)
 import { ExportOwner, commitExportEdits } from './export-ownership.ts'
 import { registerPendingEdit, hasPendingEdits } from './pending-edits.ts'
+import { beginEditorAction } from './editor-action-route.ts'
+import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics.ts'
+import { desktopPet } from './desktop-pet.ts'
 
 function deferred() {
   let resolve, reject
@@ -71,6 +74,7 @@ function harness() {
     const reply = deferred(); calls.push({ name, args, reply }); return reply.promise
   }]))
   const context = vm.createContext({ exports: owner, editor, loadExportModule, commitExportEdits, sdrToneMap: 'clip',
+    beginEditorAction, CanvasAction, ActionSource, ActionOutcome, ActionReason, desktopPet,
     request: { current: null }, kind: 'selection', format: 'png', padding: '40', region: { x: '0', y: '0', width: '10', height: '10' }, scales: [1],
     structuredClone, AbortController, URL: urlApi, urls: { current: [] }, setAssets() {}, setStatus() {}, release() {},
     exportRequest: { current: null }, setBusy: value => busy.push(value), setError: value => errors.push(value), onClose: () => { closed++ },
@@ -232,6 +236,22 @@ for (const origin of ['menu', 'color', 'batch']) {
     } finally { unregister(); api.owner.dispose() }
   })
 
+  test(`${origin}: property preview settlement refusal preserves drafts and starts no export`, async () => {
+    const api = harness(), boundaries = []; let commits = 0
+    api.editor.settleOwnedPropertyPreview = boundary => { boundaries.push(boundary); return false }
+    const unregister = registerPendingEdit(api.editor, { dirty: () => true, commit() { commits++; return true } })
+    try {
+      const pending = start(api)
+      assert.deepEqual(boundaries, ['export'])
+      assert.equal(commits, 0, 'settlement refusal must precede draft commits')
+      assert.equal(hasPendingEdits(api.editor), true)
+      assert.equal(api.loaders.length, 0); assert.equal(api.calls.length, 0)
+      assert.equal(api.created.length, 0); assert.equal(api.owner.getSnapshot(), null)
+      assert.equal(api.context.request.current, null); assert.equal(api.context.exportRequest.current, null)
+      await pending
+    } finally { unregister(); api.owner.dispose() }
+  })
+
   test(`${origin}: invalid and composing drafts veto export without creating requests or URLs`, async () => {
     for (const label of ['invalid draft', 'IME composition']) {
       const api = harness(), unregister = registerPendingEdit(api.editor, { dirty: () => true, commit: () => false })
@@ -263,3 +283,55 @@ for (const origin of ['menu', 'color', 'batch']) {
     }
   })
 }
+
+
+test('owner rejects live property previews even when a caller bypasses settlement', () => {
+  const api = harness()
+  api.editor.propertyPreviewActive = true
+  assert.equal(api.owner.begin(api.editor, 'png'), null)
+  assert.equal(api.created.length, 0); assert.equal(api.owner.getSnapshot(), null)
+  api.owner.dispose()
+})
+
+test('foreign owner cannot publish, cancel or finish another owner request', () => {
+  const api = harness(), foreign = new ExportOwner({
+    createObjectURL() { assert.fail('foreign owner must not create a URL') },
+    revokeObjectURL() { assert.fail('foreign owner must not revoke a URL') },
+  })
+  foreign.activate(api.editor)
+  const request = api.owner.begin(api.editor, 'png')
+  assert.ok(request)
+  const asset = { blob: new Blob(['pixels']), name: 'owned.png' }
+  assert.equal(foreign.publish(request, asset), false)
+  foreign.cancel(request); foreign.finish(request)
+  assert.equal(request.isCurrent(), true)
+  assert.equal(api.owner.publish(request, asset), true)
+  assert.equal(api.owner.getSnapshot().name, 'owned.png')
+  assert.equal(foreign.getSnapshot(), null)
+  foreign.dispose(); api.owner.dispose()
+  assert.deepEqual(api.revoked, ['blob:owned-0'])
+})
+
+test('reentrant replacement during URL creation rejects the old result without cancelling the new request', () => {
+  const api = harness(), revoked = []; let replacement, created = 0
+  const owner = new ExportOwner({
+    createObjectURL() {
+      const url = `blob:reentrant-${created++}`
+      if (!replacement) replacement = owner.begin(api.editor, 'new')
+      return url
+    },
+    revokeObjectURL(url) { revoked.push(url) },
+  })
+  owner.activate(api.editor)
+  const old = owner.begin(api.editor, 'old')
+  assert.equal(owner.publish(old, { blob: new Blob(['old']), name: 'old.png' }), false)
+  assert.deepEqual(revoked, ['blob:reentrant-0'])
+  assert.equal(old.signal.aborted, true); assert.equal(owner.getSnapshot(), null)
+  assert.equal(replacement.isCurrent(), true)
+  owner.finish(old)
+  assert.equal(replacement.isCurrent(), true)
+  assert.equal(owner.publish(replacement, { blob: new Blob(['new']), name: 'new.png' }), true)
+  assert.equal(owner.getSnapshot().name, 'new.png')
+  owner.dispose(); api.owner.dispose()
+  assert.deepEqual(revoked, ['blob:reentrant-0', 'blob:reentrant-1'])
+})

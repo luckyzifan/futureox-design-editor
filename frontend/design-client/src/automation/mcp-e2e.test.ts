@@ -437,3 +437,105 @@ describe('MCP JSON-RPC -> shared operation API -> real Editor/WASM', () => {
     console.info(JSON.stringify({ benchmark: 'mcp-real-editor-3000-nodes', nodes: count, pages, elapsedMs: Math.round(performance.now() - start) }))
   }, 60000)
 })
+
+
+it('committed supersession stays successful and owner-scoped through real MCP NDJSON', async () => {
+  const doc = blank('Original MCP owner'), item = node('rectangle')
+  doc.nodes[item.id] = item; doc.pages[0].children = [item.id]
+  const f = await fixture(doc), before = f.editor.state, session = f.editor.sessionGeneration
+  let entered = false, adopted: typeof before | undefined
+  const off = f.editor.subscribe(() => {
+    if (entered || f.editor.state.version !== before.version + 1) return
+    entered = true; f.editor.load(blank('Private newer document')); adopted = f.editor.state
+  })
+  try {
+    const response = await f.call('batch.apply', { mutationId: 'ndjson-superseded', operations: [
+      { method: 'node.update', params: { ids: [item.id], patch: { name: 'Accepted original edit' } } },
+    ] }, { documentId: doc.id, session, expectedRevision: before.version })
+    expect(response.isError).toBe(false)
+    expect(response.structuredContent).toMatchObject({ ok: true, documentId: doc.id, session, revision: before.version + 1,
+      result: { noChange: false, changedIds: [item.id], completion: { status: 'committed', superseded: true, retry: 'do-not-retry', contextApplied: false },
+        receipt: { revision: before.version + 1, replayed: false, replayAvailable: false } } })
+    const text = JSON.parse(response.content.find((part: Json) => part.type === 'text').text)
+    expect(text).toEqual(response.structuredContent)
+    expect(JSON.stringify(response)).not.toContain('Private newer document')
+    expect(f.editor.state).toBe(adopted)
+  } finally { off() }
+})
+
+it('unchanged navigation supersession never claims an authored commit over MCP NDJSON', async () => {
+  const doc = blank('Navigation only'), item = node('rectangle')
+  doc.nodes[item.id] = item; doc.pages[0].children = [item.id]
+  const f = await fixture(doc), session = f.editor.sessionGeneration, before = f.editor.state
+  let entered = false, adopted: typeof before | undefined
+  const off = f.editor.subscribe(() => {
+    if (entered || f.editor.state.selection[0] !== item.id) return
+    entered = true; f.editor.load(blank('New navigation owner')); adopted = f.editor.state
+  })
+  try {
+    const response = await f.call('selection.set', { ids: [item.id] }, { documentId: doc.id, session, expectedRevision: before.version })
+    expect(response.isError).toBe(false)
+    expect(response.structuredContent).toMatchObject({ ok: true, documentId: doc.id, session, revision: before.version,
+      result: { noChange: true, changedIds: [], completion: { status: 'unchanged', superseded: true, retry: 'read-current-state', contextApplied: false } } })
+    expect(f.editor.state).toBe(adopted); expect(f.editor.canUndo).toBe(false)
+  } finally { off() }
+})
+
+it('history supersession retains the accepted old history owner through real MCP NDJSON', async () => {
+  const doc = blank('Old history MCP owner'), item = node('rectangle')
+  doc.nodes[item.id] = item; doc.pages[0].children = [item.id]
+  const f = await fixture(doc)
+  f.editor.change('Before undo', draft => { draft.nodes[item.id].name = 'Changed' })
+  const before = f.editor.state, session = f.editor.sessionGeneration
+  let entered = false, adopted: typeof before | undefined
+  const off = f.editor.subscribe(() => {
+    if (entered || f.editor.state.version !== before.version + 1) return
+    entered = true; f.editor.load(blank('Private post-history owner')); adopted = f.editor.state
+  })
+  try {
+    const response = await f.call('history.undo', {}, { documentId: doc.id, session, expectedRevision: before.version })
+    expect(response.isError).toBe(false)
+    expect(response.structuredContent).toMatchObject({ ok: true, documentId: doc.id, session, revision: before.version + 1,
+      result: { noChange: false, canUndo: false, canRedo: true, completion: { status: 'committed', superseded: true, retry: 'do-not-retry' } } })
+    expect(f.editor.state).toBe(adopted); expect(f.editor.canRedo).toBe(false)
+    expect(JSON.stringify(response)).not.toContain('Private post-history owner')
+  } finally { off() }
+})
+
+it('shared arrangement planners preserve MCP sequential batch, one undo/redo and retry through real NDJSON', async () => {
+  const doc = blank('Shared commands'), a = node('rectangle', 0, 0, 10, 10), b = node('rectangle', 30, 5, 20, 10), c = node('rectangle', 100, 10, 10, 10)
+  doc.nodes = Object.fromEntries([a, b, c].map(n => [n.id, n])); doc.pages[0].children = [a.id, b.id, c.id]
+  const f = await fixture(doc), before = f.editor.state.doc, events: string[] = [], stop = f.editor.subscribeEdits(event => events.push(`${event.kind}:${event.source}`))
+  const group = '99cd73b2-253c-4dd5-bb69-3dded53196a7', state = await f.read('document.get')
+  const params = { mutationId: 'shared-arrange', operations: [
+    { method: 'node.distribute', params: { ids: [c.id, a.id, b.id], axis: 'x' } },
+    { method: 'node.group', params: { ids: [a.id, b.id, c.id], id: group } },
+    { method: 'node.align', params: { ids: [a.id, b.id, c.id], axis: 'y', mode: 'center' } },
+    { method: 'node.ungroup', params: { ids: [group] } },
+  ] }
+  const fences = { documentId: state.documentId, session: state.session, expectedRevision: state.revision }
+  try {
+    const result = await f.call('batch.apply', params, fences)
+    expect(result.isError).toBe(false); expect(f.editor.state.version).toBe(1)
+    expect(f.editor.state.doc.nodes[b.id].transform[4]).toBe(45)
+    expect(f.editor.state.doc.pages[0].children).toEqual([a.id, b.id, c.id]); expect(f.editor.state.doc.nodes[group]).toBeUndefined()
+    const after = f.editor.state.doc
+    expect((await f.mutate('history.undo')).isError).toBe(false); expect(f.editor.state.doc).toEqual(before)
+    expect((await f.mutate('history.redo')).isError).toBe(false); expect(f.editor.state.doc).toEqual(after)
+    const replay = await f.call('batch.apply', params, fences)
+    expect(replay.isError).toBe(false); expect(replay.structuredContent.result.receipt.replayed).toBe(true)
+    expect(f.editor.state.version).toBe(3); expect(f.editor.state.doc).toEqual(after)
+    expect(events).toEqual(['edit:automation', 'undo:automation', 'redo:automation'])
+  } finally { stop() }
+}, 30000)
+
+it('shared arrangement tools remain absent and fail under MCP read-only scope', async () => {
+  const doc = blank(), child = node('rectangle'); doc.nodes[child.id] = child; doc.pages[0].children = [child.id]
+  const f = await fixture(doc, 'read'), before = f.editor.state.doc
+  for (const name of ['design_node_align', 'design_node_distribute', 'design_node_group', 'design_node_ungroup']) {
+    expect(f.tools.some(tool => tool.name === name)).toBe(false)
+    const denied = await f.rpc('tools/call', { name, arguments: { params: { ids: [child.id] }, documentId: doc.id, session: 0, expectedRevision: 0 } })
+    expect(denied.error || denied.result?.isError).toBeTruthy()
+  }
+  expect(f.editor.state.doc).toBe(before); expect(f.editor.state.version).toBe(0); expect(f.editor.canUndo).toBe(false)
+}, 30000)

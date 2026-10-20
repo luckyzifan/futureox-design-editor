@@ -1,3 +1,5 @@
+import { planArrangement } from './commands/arrangement-plan'
+import { UI_SELECTION_PROFILE } from './commands/profiles'
 import type { Bounds, DesignDocument, Matrix, Point } from './model'
 import { identity } from './model'
 import { allParents, inverse, multiply, scene, translate, unionBounds, worldMatrix } from './geometry'
@@ -28,39 +30,15 @@ const EPS = 1e-9
  * their union bounds; a single rect aligns to `container` (the parent bounds).
  * The untouched axis always gets a zero delta. */
 export function alignOffsets(rects: Bounds[], command: AlignCommand, container?: Bounds): Point[] | null {
-  if (!rects.length || (rects.length === 1 && !container)) return null
   const { axis, mode } = ALIGN_TARGETS[command]
-  const size = axis === 'x' ? 'width' : 'height'
-  const reference = rects.length >= 2 ? unionBounds(rects) : container!
-  return rects.map((r) => {
-    const target =
-      mode === 'start'
-        ? reference[axis]
-        : mode === 'end'
-          ? reference[axis] + reference[size] - r[size]
-          : reference[axis] + (reference[size] - r[size]) / 2
-    const delta = target - r[axis]
-    return axis === 'x' ? { x: delta, y: 0 } : { x: 0, y: delta }
-  })
+  return planArrangement(UI_SELECTION_PROFILE, rects, axis, mode, container)?.offsets ?? null
 }
 
 /** Equal edge-gap distribution along one axis (Sketch MSDistribute*). The
  * outermost rects stay pinned to the union extent; negative gaps (overlap)
  * distribute the same way. Deltas follow the input order, not the sort order. */
 export function distributeOffsets(rects: Bounds[], axis: 'x' | 'y'): Point[] | null {
-  if (rects.length < 3) return null
-  const size = axis === 'x' ? 'width' : 'height'
-  const order = rects.map((r, index) => ({ r, index })).sort((a, b) => a.r[axis] - b.r[axis])
-  const box = unionBounds(rects)
-  const gap = (box[size] - order.reduce((sum, { r }) => sum + r[size], 0)) / (order.length - 1)
-  const deltas: Point[] = new Array(rects.length)
-  let cursor = box[axis]
-  for (const { r, index } of order) {
-    const delta = cursor - r[axis]
-    deltas[index] = axis === 'x' ? { x: delta, y: 0 } : { x: 0, y: delta }
-    cursor += r[size] + gap
-  }
-  return deltas
+  return planArrangement(UI_SELECTION_PROFILE, rects, axis, 'distribute')?.offsets ?? null
 }
 
 /** Grid tidy (Figma-style "tidy up"): rows clustered by vertical overlap are

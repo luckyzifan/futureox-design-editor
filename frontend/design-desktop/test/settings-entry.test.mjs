@@ -33,31 +33,37 @@ test('Settings retains text despite shared icon-only header styling and uses dis
   assert.match(app,/<SettingsIcon size=\{16\} \/><span>设置<\/span>/)
   assert.match(app,/正在处理设计文件，完成后可打开设置/)
 })
-test('all Settings routes share ready, transition, interaction, modal and pending-edit guards', () => {
-  const body=app.match(/const openSettings = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[ready, switching, desktopStatus.transitioning, editor\]\)/)?.[1];assert.ok(body)
-  const invoke=Function('ready','switching','desktopStatus','editor','modalOwnsKeyboard','document','commitPendingEdits','setMenu','setShowSettings',body)
-  for (const block of ['ready','switching','transitioning','interaction','modal','commit',null]) {
-    const calls=[];invoke(block!=='ready',block==='switching',{transitioning:block==='transitioning'},{interactionActive:block==='interaction'},()=>block==='modal',{activeElement:null},()=>block!=='commit',v=>calls.push(['menu',v]),v=>calls.push(['settings',v]))
-    assert.deepEqual(calls,block?[]:[['menu',false],['settings',true]])
+test('all Settings routes share the guarded callback with current Home dependencies', () => {
+  // Do not couple callback extraction to dependency order or an exact dependency list.
+  const { dependencies } = settingsCallback()
+  for (const dependency of ['ready', 'switching', 'desktopStatus.transitioning', 'editor', 'showHome']) {
+    assert.ok(dependencies.includes(dependency), `missing Settings dependency: ${dependency}`)
   }
   assert.match(app,/if \(name === 'settings'\) \{ openSettings\(\); return \}/)
   assert.match(app,/e.key === ','[\s\S]*?e.preventDefault\(\); openSettings\(\); return/)
   assert.match(app,/onClick=\{openSettings\}/)
 })
 
+function settingsCallback() {
+  const match = app.match(/^  const openSettings = useCallback\(\(\) => \{([\s\S]*?)^  \}, \[([^\]]*)\]\)/m)
+  assert.ok(match, 'production openSettings callback must be present')
+  return { body: match[1], dependencies: match[2].split(',').map(value => value.trim()) }
+}
+
 // Execute the production shortcut/open callbacks without mounting a renderer.
 // These are behavior/source contracts, not a browser visibility or Electron GUI test.
 function settingsHarness({ platform = 'mac', target = { tagName: 'INPUT' }, ready = true,
-  switching = false, transitioning = false, interactionActive = false, modal = false,
+  showHome = false, switching = false, transitioning = false, interactionActive = false, modal = false,
   commit = true } = {}) {
   const calls = []
-  const body = app.match(/const openSettings = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[ready, switching, desktopStatus.transitioning, editor\]\)/)?.[1]
-  const shortcutBody = app.match(/const shortcut = \(e: KeyboardEvent\) => \{([\s\S]*?)\n      if \(!ready/)?.[1]
-  assert.ok(body); assert.ok(shortcutBody)
-  const open = Function('ready', 'switching', 'desktopStatus', 'editor', 'modalOwnsKeyboard', 'document', 'commitPendingEdits', 'setMenu', 'setShowSettings', body)
-  const openSettings = () => open(ready, switching, { transitioning }, { interactionActive }, focused => {
+  const { body } = settingsCallback()
+  // Execute only the Settings prefix, not later save/open/editor shortcut branches.
+  const shortcutBody = app.match(/^    const shortcut = \(e: KeyboardEvent\) => \{([\s\S]*?^      \})/m)?.[1]
+  assert.ok(shortcutBody, 'production Settings shortcut prefix must be present')
+  const open = Function('ready', 'showHome', 'switching', 'desktopStatus', 'editor', 'modalOwnsKeyboard', 'document', 'commitPendingEdits', 'setMenu', 'setShowSettings', body)
+  const openSettings = () => open(ready, showHome, switching, { transitioning }, { interactionActive }, focused => {
     assert.equal(focused, target); calls.push('modal-check'); return modal
-  }, { activeElement: target }, () => { calls.push('commit'); return commit }, () => calls.push('close-menu'), () => calls.push('open-settings'))
+  }, { activeElement: target }, () => { calls.push('commit'); return commit }, value => { assert.equal(value, false); calls.push('close-menu') }, value => { assert.equal(value, true); calls.push('open-settings') })
   const shortcut = Function('e', 'shortcutPlatform', 'openSettings', shortcutBody)
   return { calls, openSettings, dispatch(extra = {}) {
     shortcut({ key: ',', metaKey: platform === 'mac', ctrlKey: platform !== 'mac', target,
@@ -89,6 +95,32 @@ test('focused modal and uncommittable edits never open Settings or close the cur
   // The native-menu command uses the same guarded callback without a DOM key event.
   const nativeModal = settingsHarness({ modal: true }); nativeModal.openSettings()
   assert.deepEqual(nativeModal.calls, ['modal-check'])
+})
+test('Home and editor Settings explicitly obey ready and transition branches', () => {
+  for (const showHome of [false, true]) for (const ready of [false, true]) for (const transitioning of [false, true]) {
+    const state = { showHome, ready, transitioning }
+    // Home may open Settings before editor readiness, even during initial transition.
+    // Once the editor is ready, transitions block Settings on either surface.
+    const allowed = ready ? !transitioning : showHome
+    for (const route of ['dispatch', 'openSettings']) {
+      const harness = settingsHarness(state); harness[route]()
+      const expected = route === 'dispatch' ? ['prevent'] : []
+      if (allowed) expected.push('modal-check', 'commit', 'close-menu', 'open-settings')
+      assert.deepEqual(harness.calls, expected, JSON.stringify({ ...state, route }))
+    }
+  }
+})
+test('Home and editor preserve switching, interaction, modal and pending-edit guards', () => {
+  const contexts = [{ showHome: false, ready: true }, { showHome: true, ready: true },
+    { showHome: true, ready: false }, { showHome: true, ready: false, transitioning: true }]
+  for (const context of contexts) for (const [guard, expected] of [
+    [{ switching: true }, []], [{ interactionActive: true }, []],
+    [{ modal: true }, ['modal-check']], [{ commit: false }, ['modal-check', 'commit']],
+  ]) for (const route of ['dispatch', 'openSettings']) {
+    const harness = settingsHarness({ ...context, ...guard }); harness[route]()
+    assert.deepEqual(harness.calls, [...(route === 'dispatch' ? ['prevent'] : []), ...expected],
+      JSON.stringify({ ...context, ...guard, route }))
+  }
 })
 test('loading, switching and active interaction block shortcut opens before any commit or modal mutation', () => {
   for (const state of [{ ready: false }, { switching: true }, { transitioning: true }, { interactionActive: true }]) {
