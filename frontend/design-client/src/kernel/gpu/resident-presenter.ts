@@ -1,3 +1,4 @@
+import { TerminalQualityGate, type TerminalQuality } from './terminal-quality'
 import { gpuDiagnosticsDetail } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import type { CanvasCamera } from '../../canvas-camera'
 import type { CompositeItem } from './tile-compositor'
@@ -15,6 +16,7 @@ export type ResidentFrame = {
   overlay?: CanvasOverlay
   /** Worker-local placement from the completed resident pose, not input. */
   overlayPose?: Record<string, {x:number;y:number}>
+  terminalQuality?: TerminalQuality
   presentationId?: string
   items: ResidentItem[]
   view: CanvasCamera
@@ -62,6 +64,7 @@ export class ResidentPresenter {
   private sampler: GPUSampler
   private uniforms: GPUBuffer
   private textures = new Map<number, { texture: GPUTexture; bytes: number; bind: GPUBindGroup }>()
+  private terminalQualityGate = new TerminalQualityGate()
   private latest?: ResidentFrame
   private drawn?: ResidentFrame
   private backbuffer?: { texture: GPUTexture; width: number; height: number }
@@ -412,9 +415,11 @@ export class ResidentPresenter {
     this.drawn = frame
     this.frames++
     const coverageAt=performance.now()
-    const measureCoverage=import.meta.env.DEV || (gpuDiagnosticsDetail() && coverageAt-this.diagnosticCoverageAt>=250)
+    const terminalQuality = this.terminalQualityGate.claim(frame.terminalQuality, gpuDiagnosticsDetail())
+    const measureCoverage=!!terminalQuality || import.meta.env.DEV || (gpuDiagnosticsDetail() && coverageAt-this.diagnosticCoverageAt>=250)
     if(measureCoverage)this.diagnosticCoverageAt=coverageAt
     this.report({
+      ...(terminalQuality ? { ...terminalQuality, qualityTerminal: true } : {}),
       coverageMeasured:measureCoverage,
       ...(measureCoverage?{coverageAt}:{}),
       compositor: 'webgpu-resident',

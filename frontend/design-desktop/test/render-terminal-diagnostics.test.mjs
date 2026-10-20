@@ -108,3 +108,36 @@ test('DETAIL resource context is bounded numeric metadata, never resource conten
   const worker=readFileSync(new URL('../../design-client/src/kernel/render-worker.ts',import.meta.url),'utf8')
   assert(worker.includes('terminalDiagnostics.detail\n          ? snapshotResourceFields(request.document.length, laneState.interactionDocument.fonts) : {}'))
 })
+
+ test('derivation telemetry admits bounded counts and categories without receipts or authored data',()=>{
+  assert.deepEqual(sanitizeFields({derivationAdmitted:true,fullPayloadBytes:0,derivationFallback:false,derivationReasonCode:2,baseReceipt:'secret',document:'private'}),
+   {derivationAdmitted:1,derivationFallback:0,fullPayloadBytes:0,derivationReasonCode:2})
+  for(const bad of [-1,0.5,Infinity,'0',null,undefined])
+   assert.deepEqual(sanitizeFields({fullPayloadBytes:bad,derivationReasonCode:bad}),{})
+  assert.deepEqual(sanitizeFields({derivationAdmitted:2,derivationFallback:'true',fullPayloadBytes:32*1024*1024+1,derivationReasonCode:5}),{})
+ })
+
+test('pan eligibility is bounded numeric metadata, never document/profile content', () => {
+  assert.deepEqual(sanitizeFields({ retainNativePanPhase: true, cameraDependent: false, samplingMode: 1,
+    qualityRevision: 5, pageToken: 2, dpr: 2, document: { private: true }, profile: 'private content' }),
+    { retainNativePanPhase: 1, cameraDependent: 0, samplingMode: 1, dpr: 2, qualityRevision: 5, pageToken: 2 })
+  assert.deepEqual(sanitizeFields({ retainNativePanPhase: 0, cameraDependent: 1, samplingMode: 2 }),
+    { retainNativePanPhase: 0, cameraDependent: 1, samplingMode: 2 })
+})
+test('pan eligibility rejects out-of-range numbers, strings, objects and nonfinite values', () => {
+  for (const value of [-1, 2, .5, Infinity, NaN, 'true', {}, null])
+    assert.deepEqual(sanitizeFields({ retainNativePanPhase: value, cameraDependent: value }), {})
+  for (const value of [0, -1, 3, 1.5, Infinity, NaN, 'native', true, {}, null])
+    assert.deepEqual(sanitizeFields({ samplingMode: value }), {})
+})
+test('existing viewport-state detail stream carries eligibility without another event', () => {
+  const rows = [], scheduled = []
+  const recorder = createRenderDiagnostics({ enabled: true, detail: true, session: 1, source: 'main',
+    now: () => 10, schedule: fn => { scheduled.push(fn); return 1 }, cancel: () => {}, sink: row => rows.push(row) })
+  recorder.record('viewport-state', { retainNativePanPhase: true, cameraDependent: false, samplingMode: 1 })
+  assert.equal(scheduled.length, 1)
+  recorder.flush()
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].event, 'viewport-state')
+  assert.equal(rows[0].retainNativePanPhase, 1)
+})

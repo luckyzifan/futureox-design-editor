@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale } from './canvas-raster-plan'
+import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale } from './canvas-raster-plan'
 import { planTiles, tilesCoverBounds } from './tile-cache'
 
 test('pans share canonical samples; fractional zoom uses the actual Figma density', () => {
@@ -138,4 +138,61 @@ test('phase readiness rejects full-density resampling and admits only matching n
     expect(canvasRasterPhaseMatches(view, dpr, native.scale * 2, native.phase)).toBe(false)
     expect(canvasRasterPhaseMatches({ ...view, x: 2 / dpr, y: -3 / dpr }, dpr, native.scale, { x: 0, y: 0 })).toBe(true)
   }
+})
+
+test('same-density whole-device-pixel pan retains prior native phase through moving and settle plans', () => {
+  for (const dpr of [1, 1.25, 2, 3]) {
+    const initial = { x: -1122.875 / dpr, y: -135.375 / dpr, zoom: .293650625 }
+    const first = canvasRasterPlan(initial, dpr, 855, 836, { exactPhase: true })
+    const previous = { view: initial, dpr, rasterScale: first.scale, samplingMode: first.mode }
+    const view = { ...initial, x: (-1122.875 - 64) / dpr, y: (-135.375 + 746) / dpr }
+    const preserve = preservesNativePanPhase(view, dpr, first.scale, false, previous)
+    expect(preserve).toBe(true)
+    const moving = canvasRasterPlan(view, dpr, 855, 836, { exactPhase: preserve })
+    const settled = canvasRasterPlan(view, dpr, 855, 836, { exactPhase: true })
+    expect(moving).toEqual(settled)
+    expect(moving.phase).toEqual(first.phase)
+    expect(canvasRasterPhaseMatches(view, dpr, moving.scale, moving.phase)).toBe(true)
+    const bounds = { x: -view.x / view.zoom, y: -view.y / view.zoom, width: 855 / view.zoom, height: 836 / view.zoom }
+    const movingKeys = planTiles(bounds, moving.scale, 256, moving.phase).map(tile => tile.key)
+    const settledKeys = planTiles(bounds, settled.scale, 256, settled.phase).map(tile => tile.key)
+    expect(movingKeys).toEqual(settledKeys)
+    const oldMoving = canvasRasterPlan(view, dpr, 855, 836, { exactPhase: false })
+    expect(oldMoving.phase).not.toEqual(settled.phase)
+  }
+})
+
+test('phase retention refuses fractional motion, changed density/dpr and camera-dependent pixels', () => {
+  const view = { x: .125, y: -.375, zoom: .3 }, dpr = 2, scale = .6
+  const previous = { view, dpr, rasterScale: scale, samplingMode: 'native' }
+  expect(preservesNativePanPhase({ ...view, x: view.x + .5 }, dpr, scale, false, previous)).toBe(true)
+  for (const next of [{ ...view, x: view.x + .125 }, { ...view, y: view.y + .125 }, { ...view, zoom: .31 }, { ...view, x: NaN }])
+    expect(preservesNativePanPhase(next, dpr, scale, false, previous)).toBe(false)
+  expect(preservesNativePanPhase(view, 1, scale, false, previous)).toBe(false)
+  expect(preservesNativePanPhase(view, dpr, scale * 2, false, previous)).toBe(false)
+  expect(preservesNativePanPhase(view, dpr, scale, true, previous)).toBe(false)
+  expect(preservesNativePanPhase(view, dpr, scale, false, { ...previous, samplingMode: 'density-cache' })).toBe(false)
+  expect(preservesNativePanPhase(view, dpr, scale, false)).toBe(false)
+})
+
+test('large zoom reversal cannot borrow a high-density native pan certificate', () => {
+  const view = { x: .125, y: -.375, zoom: 32 }, previous = { view, dpr: 2, rasterScale: 64, samplingMode: 'native' }
+  expect(preservesNativePanPhase({ ...view, zoom: .293650625 }, 2, .58730125, false, previous)).toBe(false)
+})
+test('near-integral movement is not rounded into native phase compatibility', () => {
+  const view = { x: -.125, y: -.375, zoom: 32 }, previous = { view, dpr: 2, rasterScale: 64, samplingMode: 'native' }
+  for (const delta of [1 + 1e-12, 1 - 1e-12, .99999999])
+    expect(preservesNativePanPhase({ ...view, x: view.x + delta / 2 }, 2, 64, false, previous)).toBe(false)
+})
+
+test('logged reversal camera pair satisfies the strict geometry guard only when camera-independent', () => {
+  const view = { x: -1122.9245768627336, y: -135.69254710438327, zoom: .29365062897155003 }
+  const next = { x: -1154.9245768627336, y: 237.30745289561673, zoom: view.zoom }
+  const previous = { view, dpr: 2, rasterScale: .5873012579431001, samplingMode: 'native' }
+  expect(preservesNativePanPhase(next, 2, previous.rasterScale, false, previous)).toBe(true)
+  expect(preservesNativePanPhase(next, 2, previous.rasterScale, true, previous)).toBe(false)
+  const a = canvasRasterPlan(view, 2, 855, 836, { exactPhase: true })
+  const b = canvasRasterPlan(next, 2, 855, 836, { exactPhase: true })
+  expect(b.phase).toEqual(a.phase)
+  expect(b.phase).toEqual({ x: .1508462745327961, y: .6149057912334683 })
 })

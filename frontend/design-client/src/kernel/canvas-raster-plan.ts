@@ -76,3 +76,23 @@ export function canvasRasterPhaseMatches(view: CanvasCamera, dpr: number, scale:
   return scale === view.zoom * dpr &&
     Number.isInteger(view.x * dpr - phase.x) && Number.isInteger(view.y * dpr - phase.y)
 }
+
+/** A whole-device-pixel pan can continue an already-native sample lattice.
+ * Do not switch it to phase zero only to rebuild the same native lattice at
+ * settle. This certifies sampling geometry, never content/cache ownership. */
+export function preservesNativePanPhase(
+  view: CanvasCamera, dpr: number, scale: number, cameraDependent: boolean,
+  previous?: { view: CanvasCamera; dpr: number; rasterScale: number; samplingMode: string } | null,
+) {
+  if (!previous || cameraDependent || previous.samplingMode !== 'native' ||
+      ![view.x, view.y, view.zoom, dpr, scale, previous.view.x, previous.view.y, previous.view.zoom].every(Number.isFinite) ||
+      dpr <= 0 || view.zoom <= 0 || previous.dpr !== dpr || previous.view.zoom !== view.zoom ||
+      scale !== view.zoom * dpr || previous.rasterScale !== scale) return false
+  const sameAxis = (current: number, prior: number) => {
+    const a = current * dpr, b = prior * dpr
+    // Exact equality avoids issuing a new floating-point phase key or silently
+    // snapping genuinely fractional movement to an old sample lattice.
+    return Number.isInteger(a - b) && a - Math.floor(a) === b - Math.floor(b)
+  }
+  return sameAxis(view.x, previous.view.x) && sameAxis(view.y, previous.view.y)
+}

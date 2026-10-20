@@ -1,15 +1,38 @@
 // Strict scalar allowlist shared by worker, renderer and terminal. Never stringify a render payload.
 export const PREFIX = '[render-diag] '
-const events = new Set(['request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage'])
-const resourceLimits = {sourceCodeUnits:32*1024*1024,embeddedFontCount:32,embeddedFontCodeUnits:32*28*1024*1024}
-const fields = new Set(('sourceCodeUnits embeddedFontCount embeddedFontCodeUnits preparationId methodCode activePreparationId documentFork documentEnvelope retainInteractionGraph interactionNative interactionOwner interactionGeneration interactionBranch purpose commandCode renderIntent preview finalRequest readback png coverageTiles livePreview tileViewport requestId sequence x y zoom width height milliseconds compileMs graphMs finishMs checkpointMs loadMs renderMs pipelineWallMs preparationWaitMs previewTiles tileCacheHits certifiedTileHits tileCacheBytes tileCacheEvictions drawCalls triangles peakTextureBytes workingTextureBytes missingTextureCount compositorFrames compositorTiles compositorDraws durationMs waitMs count sampleCount suppressed cached cameraFallback reasonCode exitCode quitRequested permitClose resourceEpoch completedResourceEpoch radius mode ms oldConfig newConfig channel acceptedLines declinedLines acceptedPixels availableBytes scratchBytes mapMs queueWaitMs coverage sharpCoverage nativePhaseCoverage maxUpscale pixelCoverageComplete nativeCoverageComplete inputSequence inputAt inputTimeOrigin inputAgeMs deltaX deltaY deltaMode inputKind generation fillGeneration pageToken state phase navigating targetDensity effectiveDensity finalComplete oldContentAgeMs queueDepth activeRequestId superseded skipped coverageMeasured coverageAt dropped phaseX phaseY sceneReady tileIndex').split(' '))
+const events = new Set(['operation','request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage'])
+const qualityLimits = {qualitySequence: 0xffffffff, qualityRevision: 0xffffffff, documentRevision: 0xffffffff}
+const diagnosticLimits = {originChannelId: 0xffffffffffff, backendCode: 2, boundaryCode: 16, boundaryDurationMs: 120000}
+const resourceLimits = {operationOwner:1e12,operationPresentation:1,operationId:1e9,operationSession:1e9,operationPhase:4,operationCategory:6,operationOutcome:5,authoredRevision:1e9,startRevision:1e9,targetCount:1e9,previewAttempts:1e9,previewAccepted:1e9,fullPayloadBytes:32*1024*1024,derivationReasonCode:4,sourceCodeUnits:32*1024*1024,embeddedFontCount:32,embeddedFontCodeUnits:32*28*1024*1024}
+const fields = new Set(('retainNativePanPhase cameraDependent samplingMode dpr qualitySequence qualityRevision documentRevision qualityTerminal operationOwner operationPresentation operationId operationSession operationPhase operationCategory operationOutcome authoredRevision startRevision targetCount previewAttempts previewAccepted originChannelId backendCode boundaryCode boundaryDurationMs derivationAdmitted derivationFallback fullPayloadBytes derivationReasonCode sourceCodeUnits embeddedFontCount embeddedFontCodeUnits preparationId methodCode activePreparationId documentFork documentEnvelope retainInteractionGraph interactionNative interactionOwner interactionGeneration interactionBranch purpose commandCode renderIntent preview finalRequest readback png coverageTiles livePreview tileViewport requestId sequence x y zoom width height milliseconds compileMs graphMs finishMs checkpointMs loadMs renderMs pipelineWallMs preparationWaitMs previewTiles tileCacheHits certifiedTileHits tileCacheBytes tileCacheEvictions drawCalls triangles peakTextureBytes workingTextureBytes missingTextureCount compositorFrames compositorTiles compositorDraws durationMs waitMs count sampleCount suppressed cached cameraFallback reasonCode exitCode quitRequested permitClose resourceEpoch completedResourceEpoch radius mode ms oldConfig newConfig channel acceptedLines declinedLines acceptedPixels availableBytes scratchBytes mapMs queueWaitMs coverage sharpCoverage nativePhaseCoverage maxUpscale pixelCoverageComplete nativeCoverageComplete inputSequence inputAt inputTimeOrigin inputAgeMs deltaX deltaY deltaMode inputKind generation fillGeneration pageToken state phase navigating targetDensity effectiveDensity finalComplete oldContentAgeMs queueDepth activeRequestId superseded skipped coverageMeasured coverageAt dropped phaseX phaseY sceneReady tileIndex').split(' '))
 export function sanitizeFields(value) {
   const out = {}
   if (!value || typeof value !== 'object') return out
   for (const key of fields) {
     const v = value[key]
+    if (key === 'dpr') { if (typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 64) out[key]=v; continue }
+    if (Object.hasOwn(qualityLimits,key)) {
+      if (Number.isSafeInteger(v) && v >= 0 && v <= qualityLimits[key]) out[key]=v
+      continue
+    }
+    if (key === 'retainNativePanPhase' || key === 'cameraDependent') {
+      if (typeof v === 'boolean' || v === 0 || v === 1) out[key]=Number(v)
+      continue
+    }
+    // Sampling geometry only: 1=native, 2=density-cache. Never accept strings.
+    if (key === 'samplingMode') { if (v === 1 || v === 2) out[key]=v; continue }
+    if (key === 'qualityTerminal') { if (typeof v === 'boolean' || v === 0 || v === 1) out[key]=Number(v); continue }
+    if (key==='derivationAdmitted' || key==='derivationFallback') {
+      if (typeof v==='boolean') out[key]=v?1:0
+      else if (v===0 || v===1) out[key]=v
+      continue
+    }
+    if (Object.hasOwn(diagnosticLimits,key)) {
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= diagnosticLimits[key] && (key === 'boundaryDurationMs' || Number.isInteger(v))) out[key]=v
+      continue
+    }
     if (Object.hasOwn(resourceLimits,key)) {
-      if (Number.isSafeInteger(v) && v>=0 && v<=resourceLimits[key]) out[key]=v
+      if (Number.isSafeInteger(v) && v>=((key==='operationId'||key==='operationPhase')?1:0) && v<=resourceLimits[key]) out[key]=v
       continue
     }
     if (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e15) out[key] = v

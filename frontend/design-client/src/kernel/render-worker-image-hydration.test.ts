@@ -311,6 +311,7 @@ test('real render worker retires obsolete packet waits before their reply withou
     const { id, method, args } = event.data
     methods.push(method)
     const reply = () => {
+      if (method === 'preparation_capabilities_v1') { pair.port2.postMessage({ id, error: 'Unknown legacy preparation method' }); return }
       let value: unknown
       if (method !== 'initialize' && method !== 'warm_resources') value = (prepared as any)[method](...args)
       pair.port2.postMessage({ id, value, ...(method === 'load_document' || method === 'initialize' || method === 'apply_document_patch_with_damage' ? { settings: prepared.color_settings() } : {}) })

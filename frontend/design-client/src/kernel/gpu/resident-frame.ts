@@ -1,3 +1,4 @@
+import { terminalQualityMessage } from './terminal-quality'
 import type { ResidentFrame } from './resident-presenter'
 
 /** Explicit wire projection: painted tiles also carry their document and
@@ -5,6 +6,7 @@ import type { ResidentFrame } from './resident-presenter'
 export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
   return {
     presentationId: frame.presentationId,
+    terminalQuality: terminalQualityMessage(frame.terminalQuality),
     overlay: frame.overlay ? { pixelGrid: frame.overlay.pixelGrid, selection: frame.overlay.selection ? {
       handles: frame.overlay.selection.handles, owners:frame.overlay.selection.owners?.slice(), corners: frame.overlay.selection.corners.map(p => ({ x: p.x, y: p.y })) } : undefined,
       labels:frame.overlay.labels?.map(label=>({anchor:{x:label.anchor.x,y:label.anchor.y},offset:{x:label.offset.x,y:label.offset.y},
@@ -61,6 +63,7 @@ export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
 export function residentFrameSignature(frame: ResidentFrame) {
   return JSON.stringify([
     frame.presentationId,
+    terminalQualityMessage(frame.terminalQuality),
     frame.overlay,
     frame.view,
     frame.width,

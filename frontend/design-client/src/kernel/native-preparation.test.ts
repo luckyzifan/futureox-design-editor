@@ -101,3 +101,19 @@ test('desktop serialization cannot reorder document revisions or wait for render
     await current
   }finally{client.dispose()}
 })
+test('unsupported read-only capability negotiation is nonfatal and cached; mutation uncertainty still retires', async () => {
+  const pair = new MessageChannel(), channel = new PreparationChannel(pair.port2), failure = vi.fn()
+  const bridge = { open: async () => 'owned', close: vi.fn(async () => {}), request: vi.fn(async (_id: string, request: any) => {
+    if (request.method === 'preparation_capabilities_v1') throw Error('Unknown preparation method')
+    if (request.method === 'load_document') throw Error('IPC outcome uncertain')
+    return { id: 1, value: 'still alive' }
+  }) }
+  const connection = connectNativePreparation(bridge, pair.port1, failure)
+  try {
+    expect(await channel.supportsDerivation()).toBe(false); expect(await channel.supportsDerivation()).toBe(false)
+    expect(bridge.request).toHaveBeenCalledTimes(1); expect(failure).not.toHaveBeenCalled()
+    expect((await channel.request('canvas', 'stats')).value).toBe('still alive')
+    await expect(channel.request('canvas', 'load_document', ['captured'])).rejects.toThrow('IPC outcome uncertain')
+    expect(failure).toHaveBeenCalledTimes(1)
+  } finally { connection.close(); channel.close() }
+})
