@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { CanvasSceneSnapshots } from './canvas-scene-snapshots'
 import { scene, SpatialIndex, unionBounds } from './geometry'
 import { Editor } from './engine'
-import { blank, node, defaultTextStyle, type DesignDocument } from './model'
+import { blank, node, effect, defaultTextStyle, type DesignDocument } from './model'
 import { activateDocumentFonts, kernelPdfVector, pickingGeometryEpoch } from './kernel/picking'
 import { componentFixture } from './component-fixtures'
 import { fontTestBytes } from './font-test-fixtures'
@@ -179,4 +179,61 @@ test.each([2,3,4,5,6,7,8,9,10,11,12,13,14] as const)('schema %i preserves exact 
   const before=frozen(e.state.doc);e.begin('Schema preview');expect(e.preview({[a.id]:{transform:[-.5,.125,.25,1.5,10.125,-9.375]}})).toBe(true)
   verify(e,store,before);e.commit();verify(e,store);const committed=e.state.doc
   e.undo();exact(e.state.doc,before);e.redo();exact(e.state.doc,committed);verify(e,store)
+})
+
+test('paint/name/opacity/effect edits keep fresh scene snapshots, current nodes and exact history', () => {
+  const { doc, a } = fixture(), e = makeEditor(doc), store = new CanvasSceneSnapshots()
+  store.begin(e, e.sessionGeneration, e.state.page, true)
+  const originalDocument = e.state.doc, original = store.currentScene(originalDocument, e.state.page), index = original.index
+  store.displayedScene(originalDocument, e.state.page)
+  for (const patch of [{ name: 'Current label' }, { opacity: .375 }, { fills: [{ ...a.fills[0], visible: false }] }, { effects: [effect('blur')] }]) {
+    const previousDocument = e.state.doc
+    e.update([a.id], patch)
+    expect(e.state.doc, e.state.message).not.toBe(previousDocument)
+    const current = store.currentScene(e.state.doc, e.state.page)
+    expect(current).not.toBe(original)
+    expect(current.entries).not.toBe(original.entries); expect(current.index).not.toBe(index)
+    expect(current.key.document).toBe(e.state.doc)
+    expect(store.displayedScene(originalDocument, e.state.page)!.key.document).toBe(originalDocument)
+    verify(e, store, originalDocument)
+  }
+  const final = e.state.doc
+  e.undo(); verify(e, store, originalDocument)
+  e.redo(); expect(e.state.doc).toBe(final); verify(e, store, originalDocument)
+  expect(originalDocument.nodes[a.id].name).not.toBe('Current label')
+})
+
+test('scene rebuild covers geometric, unknown-field and complex-node changes', () => {
+  const { doc, a, vector } = fixture(), e = makeEditor(doc)
+  for (const [id, patch] of [
+    [a.id, { transform: [1, 0, 0, 1, 40, 50] }],
+    [a.id, { width: 100 }], [a.id, { visible: false }], [a.id, { locked: true }],
+    [a.id, { strokes: [] }], [a.id, { text: 'Changed text dependency' }],
+    [a.id, { mask: true }], [a.id, { clip: true }],
+    [a.id, { futureGeometry: { scale: 3 } }], [vector.id, { name: 'Complex path renamed' }],
+  ] as const) {
+    const store = new CanvasSceneSnapshots(); store.begin(e, e.sessionGeneration, e.state.page, true)
+    const previous = store.currentScene(e.state.doc, e.state.page); void previous.index
+    const document = { ...e.state.doc, nodes: { ...e.state.doc.nodes, [id]: { ...e.state.doc.nodes[id], ...patch } } } as DesignDocument
+    const current = store.currentScene(document, e.state.page)
+    expect(current.entries).not.toBe(previous.entries); expect(current.index).not.toBe(previous.index)
+    exact(current.entries, actual.scene(document, e.state.page))
+  }
+})
+
+test('changed documents, sessions and top-level resources keep separate lazy scene caches', () => {
+  const { doc, a } = fixture(), e = makeEditor(doc), store = new CanvasSceneSnapshots()
+  store.begin(e, e.sessionGeneration, e.state.page, true)
+  const before = store.currentScene(e.state.doc, e.state.page)
+  e.update([a.id], { name: 'Renamed' })
+  const after = store.currentScene(e.state.doc, e.state.page)
+  expect(after.entries).not.toBe(before.entries); expect(after.index).not.toBe(before.index)
+  for (const document of [
+    { ...e.state.doc, pages: [...e.state.doc.pages] },
+    { ...e.state.doc, fonts: {} },
+  ]) {
+    expect(store.currentScene(document, e.state.page).entries).not.toBe(after.entries)
+  }
+  store.begin(e, e.sessionGeneration + 1, e.state.page, true)
+  expect(store.currentScene(e.state.doc, e.state.page).entries).not.toBe(after.entries)
 })

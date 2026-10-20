@@ -96,10 +96,13 @@ export function resolveShortcut(event: ShortcutKey, context: ShortcutContext): S
 export function shortcutLabel(command: ShortcutAction, context: ShortcutContext): string | undefined {
   const normalized = command === 'lock-selection' || command === 'unlock-selection' ? 'toggle-lock' : command === 'hide-selection' || command === 'show-selection' ? 'toggle-visibility' : command
   const combo = shortcutBindings(context).find(binding => binding.command === normalized)?.combo
-  if (!combo) return undefined
-  const names: Record<string, string> = context.platform === 'mac' ? { Mod: '⌘', Ctrl: '⌃', Alt: '⌥', Shift: '⇧', Backspace: '⌫' } : { Mod: 'Ctrl', Backspace: 'Backspace' }
+  return combo ? formatShortcutCombo(combo, context.platform) : undefined
+}
+/** File/host commands share the same modifier presentation as editor commands. */
+export function formatShortcutCombo(combo: string, platform: ShortcutPlatform): string {
+  const names: Record<string, string> = platform === 'mac' ? { Mod: '⌘', Ctrl: '⌃', Alt: '⌥', Shift: '⇧', Backspace: '⌫' } : { Mod: 'Ctrl', Backspace: 'Backspace' }
   if (combo.endsWith('+')) return `${combo.slice(0, -1).split('+').filter(Boolean).map(part => names[part] || part).join(' + ')}${combo.length > 1 ? ' + ' : ''}+`
-  return combo.split('+').map(part => names[part] || part).join(context.platform === 'mac' ? ' ' : '+')
+  return combo.split('+').map(part => names[part] || part).join(platform === 'mac' ? ' ' : '+')
 }
 export function toolShortcutLabel(tool: string, context: ShortcutContext): string {
   const command = TOOL_COMMANDS.find(entry => entry.tool === tool)?.id

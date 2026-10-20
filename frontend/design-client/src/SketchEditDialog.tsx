@@ -15,7 +15,7 @@ export function SketchEditDialog({ bridge, onClose }: { bridge: SketchSessionBri
   const s = state.session, blocked = state.pending || state.uncertain
   return <div className="modal-backdrop" data-desktop-dialog="true"><section className="remote-modal sketch-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="sketch-edit-title"
     onKeyDown={event => modalKeyDown(event, () => { if (!state.pending) void close() })}>
-    <h2 id="sketch-edit-title">独立 Sketch 编辑会话</h2>
+    <h2 id="sketch-edit-title">独立 Sketch 编辑会话（有限支持）</h2>
     <p>原生页/图层名称、受支持叶层位置/尺寸及实例文本覆盖编辑；不转换为 Figma 文档。修改先保存在内存；可另存到全新 .sketch 文件，绝不覆盖已有文件。退出进程会丢失未保存修改。</p>
     {!s ? <button type="button" autoFocus disabled={state.pending} onClick={() => void controller.open()}>选择或恢复 Sketch 原生会话…</button> : <>
       <p>{state.displayName} · revision {s.revision} · {s.dirty ? '有未保存或待核实修改' : s.persistence === 'native-file-saved' ? '已另存为原生文件' : '源文件尚未修改'} · undo {s.undoCount} / redo {s.redoCount}</p>

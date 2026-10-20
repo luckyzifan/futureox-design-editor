@@ -222,6 +222,11 @@ export interface Driver {
   readonly exactShadowOver?: boolean
   readonly scratchBytes?: number
   readonly frameScratchBytes?: number
+  /** Monotonic driver-lifetime frame epochs. A completed epoch proves every
+   * submitted read completed and every unsubmitted read was abandoned. A
+   * mere finish() return does not imply completion. */
+  readonly resourceEpoch?: number
+  readonly completedResourceEpoch?: number
   /** Aggregate device-side ledger. finishTransientBytes covers the finish()
    * output copy, readback target and MAP_READ staging that live outside the
    * renderer's pool budget; gates read it to reason about the true footprint. */
@@ -245,6 +250,7 @@ export interface Driver {
     bindGroupCreates?: number
     bindGroupHits?: number
     bindGroupCacheSize?: number
+    dynamicUniformBindings?: boolean
     deviceLost: boolean
   }
   prepareFilterPass?(target: Texture, uniforms: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number): void

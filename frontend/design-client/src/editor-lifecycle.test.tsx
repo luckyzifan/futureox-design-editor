@@ -236,8 +236,8 @@ describe('modal keyboard and asynchronous insertion ownership', () => {
     // These assertions fail if passive effect registration is skipped or its
     // cleanup is omitted; a no-op removeEventListener stub cannot satisfy them.
     for (const target of [windowTarget, documentTarget]) {
-      for (const [name, fn] of target.addEventListener.mock.calls)
-        expect(target.removeEventListener).toHaveBeenCalledWith(name, fn)
+      for (const args of target.addEventListener.mock.calls)
+        expect(target.removeEventListener).toHaveBeenCalledWith(...args)
       expect(Object.values(target.listeners).every(registered => registered.size === 0)).toBe(true)
     }
   })

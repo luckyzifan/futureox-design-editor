@@ -79,6 +79,41 @@ The client model runs the workflow; the server only executes supported operation
 
 The adapter does not enforce or execute model iterations. No prompt authorizes unrelated edits, external asset fetching, publishing, shell/eval or an autonomous background AI loop.
 
+## Small edits with expected values and retry receipts
+
+The live registry now advertises `design_node_patch`, `design_layout_patch`,
+`design_paint_patch`, `design_text_styleRange`, `design_text_replaceRange` and `design_batch_preflight`.
+Use partial named leaves instead of reconstructing whole nodes or paint stacks.
+Node/layout/paint patches support optional expected leaf values; text ranges use
+half-open UTF-16 offsets at complete grapheme boundaries. `text.styleRange` accepts
+optional expectedText; `text.replaceRange` requires it to equal the selected substring.
+Replacement supports insertion (`start === end`) and deletion (`text: ""`) without
+relocating edits among repeated substrings. Inserted text inherits the run at start
+(right-biased at boundaries), the preceding run only at EOF, or layer defaults in gaps.
+It preserves outside rich styles and rejects new cross-edge grapheme joins; select
+the whole adjacent grapheme explicitly instead. The resulting text is limited to
+100,000 UTF-16 units and 4,096 runs. Identical replacement preserves run segmentation
+and creates no undo entry. Existing document/session/revision fences remain mandatory.
+Existing variable binding and component override operations remain the source of truth.
+
+`batch.preflight` only stages the five new edit methods plus variable.bind/unbind.
+Its output explicitly says `validation: "authored-only"`,
+`derivedResolution: "deferred"` and `authoritativeCommitValidationRequired: true`.
+It never activates fonts, invokes layout, commits history or consumes a receipt.
+Derived positions and component materialization are resolved only by the real commit.
+
+`batch.apply` accepts an optional ASCII `mutationId`. Within the same API document
+session, retry identical parameters and original fences with that same key after
+an uncertain response; a successful retry returns `receipt.replayed: true` without
+another commit, even if the user has since undone it. Changed arguments conflict;
+foreign documents/sessions remain rejected. Receipts are bounded and session-local,
+not durable across process restart or bridge recreation. Authored edit and batch.apply responses
+include a bounded JSON-pointer before/after summary that omits image/font payloads.
+
+See [granular editing contract and examples](../../docs/GRANULAR_MCP_EDITING.zh-CN.md)
+for precise coverage, limits and unsupported fields. This is not a claim of Figma
+leaf-level component inheritance or pixel equivalence.
+
 ## Structured results / actual artifacts
 
 Small read/query results retain the actual shared operation envelope. Each default `tools/call` response is capped at **256 KiB**, including text and structured output; large queries return `result_too_large` and must be narrowed or paginated. This limit is distinct from the 32 MiB explicit file-transfer frame limit.

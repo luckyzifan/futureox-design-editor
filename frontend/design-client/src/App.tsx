@@ -1,8 +1,13 @@
+import { keyboardNudgeActive, keyboardNudgeOwnsKey } from './keyboard-nudge-gesture'
+import { BatchRenameDialog } from './BatchRenameDialog'
+import { NativeSketchDialog } from './NativeSketchDialog'
+import { nativeSketchCapabilities } from './native-sketch-capabilities'
+import { alignmentAvailability, alignSelection } from './alignment-availability'
 import { SettingsDialog } from './SettingsDialog'
 import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
-import { shortcutPlatform, toolShortcutLabel } from './shortcut-profiles'
+import { shortcutPlatform, toolShortcutLabel, shortcutLabel, formatShortcutCombo } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { AutomationPanel } from './AutomationPanelLauncher'
 import { attachDesktopAutomation } from './automation/bridge'
@@ -149,6 +154,8 @@ export default function App() {
   const [showWorkspaceLibrary, setShowWorkspaceLibrary] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [sketchMode, setSketchMode] = useState<'inspect' | 'edit' | null>(null)
+  const sketchCapabilities = nativeSketchCapabilities(desktopBridge())
   const [workspaceRootBusy, setWorkspaceRootBusy] = useState(false)
   const workspaceRootPending = useRef(false)
   const fileMenuTrigger = useRef<HTMLButtonElement>(null)
@@ -556,6 +563,12 @@ export default function App() {
   useEffect(() => {
     const command = (name: DesktopCommand) => {
       if (!ready || !desktopSession) return
+      // Native editor/text commands retain the dispatcher's focused-input routing.
+      // File commands must not act on the .fd document behind an independent modal.
+      if (['open', 'openPending', 'new', 'recover', 'save', 'saveAs'].includes(name) && modalOwnsKeyboard(document.activeElement)) return
+      // Electron can consume the DOM shortcut before Canvas sees it. Complete
+      // only our keyboard-owned edit, never another pending pointer gesture.
+      if (keyboardNudgeActive(editor) && !commitPendingEdits(editor)) return
       if (name === 'open' || name === 'openPending' || name === 'new' || name === 'recover') fileImports.invalidate()
       setMenu(false)
       if (name === 'open') void desktopSession.open()
@@ -608,7 +621,7 @@ export default function App() {
     setShowUtility(open && name === 'utility')
   }
   const action = (label: string, Icon: typeof Square, fn: () => void, disabled = false, menuItem = false) => (
-    <button type="button" title={menuItem ? label : undefined} data-tooltip={menuItem ? undefined : label === '撤销' ? '撤销 (⌘ Z)' : label === '重做' ? '重做 (⇧ ⌘ Z)' : label}
+    <button type="button" title={menuItem ? label : undefined} data-tooltip={menuItem ? undefined : label === '撤销' ? `撤销 (${shortcutLabel('undo', shortcutContext)})` : label === '重做' ? `重做 (${shortcutLabel('redo', shortcutContext)})` : label}
       aria-label={label} role={menuItem ? 'menuitem' : undefined} tabIndex={menuItem ? -1 : undefined} disabled={disabled}
       onClick={() => { focusCanvas(); fn() }}>
       <Icon size={16} />
@@ -623,6 +636,7 @@ export default function App() {
   const unavailableTools = TOOL_COMMANDS.filter((c) => !c.tool).filter((c, i, all) => all.findIndex((x) => x.id === c.id) === i)
   const MoveIcon = moveTool.icon, RegionIcon = regionTool.icon, ShapeIcon = shapeTool.icon, DrawingIcon = drawingTool.icon
   const UtilityIcon = utilityTool.icon
+  const alignment = alignmentAvailability(editor)
   const toolbarCommands = showCommands || showDrawing ? canvasMenuItems(editor) : []
   const commandDisabled = (command: EditorCommand) => {
     const item = toolbarCommands.find(item => item.command === command)
@@ -667,7 +681,8 @@ export default function App() {
       onKeyDownCapture={(e) => {
         if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
         const penCanvas = editor.state.tool === 'pen' && (e.target as Element).closest('[data-testid="canvas"]')
-        if (!penCanvas && !(e.target as Element).closest('input,textarea,select,.rich-text-editor') && !commitPendingEdits(editor)) {
+        const nudgeKey = keyboardNudgeOwnsKey(editor, e.nativeEvent) && !shortcutTargetOwnsKeyboard(e.target)
+        if (!penCanvas && !nudgeKey && !(e.target as Element).closest('input,textarea,select,.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
         }
         if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog]'))) {
@@ -707,7 +722,7 @@ export default function App() {
             }
           />
           <span className="draft-badge">本地</span>
-          <button type="button" aria-label={uiMinimized ? '展开界面' : '收起界面'} title="收起 / 展开界面 (⇧ ⌘ \)"
+          <button type="button" aria-label={uiMinimized ? '展开界面' : '收起界面'} title={`收起 / 展开界面 (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
             aria-pressed={uiMinimized} onClick={() => setUiMinimized(value => !value)}>
             {uiMinimized ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
@@ -806,7 +821,7 @@ export default function App() {
                 <FolderOpen size={15} />本机项目目录
               </button>
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); void desktopSession.open() }}>
-                <FolderOpen size={15} />打开本机设计文件 <kbd>⌘ O</kbd>
+                <FolderOpen size={15} />打开本机设计文件 <kbd>{formatShortcutCombo('Mod+O', shortcutContext.platform)}</kbd>
               </button>
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); void desktopSession.recover() }}>
                 恢复未保存的设计
@@ -873,6 +888,12 @@ export default function App() {
               <FolderOpen size={15} />
               导入 Sketch / FIG / SVG / PDF
             </button>
+            {(['inspect', 'edit'] as const).map(mode => <button type="button" key={mode}
+              disabled={!ready || switching || desktopStatus.busy || s.busy || editor.interactionActive || !sketchCapabilities[mode]}
+              title={sketchCapabilities[mode] ? (mode === 'inspect' ? '原生只读预览，不转换为当前画布，也不修改源文件' : '独立原生会话，仅支持已声明的编辑范围；另存为全新文件') : '当前宿主未提供此原生 Sketch 能力；可使用兼容格式导入'}
+              onClick={() => { if (!commitPendingEdits(editor)) return; fileImports.invalidate(); setMenu(false); setSketchMode(mode) }}>
+              {mode === 'inspect' ? '预览原生 Sketch（只读）…' : '编辑原生 Sketch（有限支持）…'}
+            </button>)}
             <button disabled={!ready || switching || desktopStatus.busy} onClick={() => {
               fileImports.invalidate()
               importMode.current = 'append'
@@ -887,7 +908,7 @@ export default function App() {
               }}
             >
               <Download size={15} />
-              {desktopSession?.supportsWorkspace ? '保存到本机文档库' : '保存设计文件'} <kbd>⌘ S</kbd>
+              {desktopSession?.supportsWorkspace ? '保存到本机文档库' : '保存设计文件'} <kbd>{formatShortcutCombo('Mod+S', shortcutContext.platform)}</kbd>
             </button>
             <hr />
             <button
@@ -1018,21 +1039,21 @@ export default function App() {
                 {(['eyedropper','measure','comments','annotate'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={utilityToolNames[id]} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{utilityToolNames[id]}</button>)}
                 <strong>白板与响应式</strong>{(Object.entries(boardToolNames) as [BoardTool,string][]).map(([id,label])=><button type="button" role="menuitem" tabIndex={-1} key={id} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{label}</button>)}
                 <strong>对齐与分布</strong><div className="arrangement-grid">
-                  {action('左对齐', AlignLeft, () => editor.align('x', 'start'), s.selection.length < 2, true)}
-                  {action('水平居中', AlignCenterHorizontal, () => editor.align('x', 'center'), s.selection.length < 2, true)}
-                  {action('右对齐', AlignRight, () => editor.align('x', 'end'), s.selection.length < 2, true)}
-                  {action('顶部对齐', ArrowUpToLine, () => editor.align('y', 'start'), s.selection.length < 2, true)}
-                  {action('垂直居中', AlignVerticalJustifyCenter, () => editor.align('y', 'center'), s.selection.length < 2, true)}
-                  {action('底部对齐', ArrowDownToLine, () => editor.align('y', 'end'), s.selection.length < 2, true)}
-                  {action('水平等距', AlignHorizontalDistributeCenter, () => editor.align('x', 'distribute'), s.selection.length < 3, true)}
-                  {action('垂直等距', AlignVerticalDistributeCenter, () => editor.align('y', 'distribute'), s.selection.length < 3, true)}
+                  {action('左对齐', AlignLeft, () => alignSelection(editor, 'x', 'start'), !alignment.align, true)}
+                  {action('水平居中', AlignCenterHorizontal, () => alignSelection(editor, 'x', 'center'), !alignment.align, true)}
+                  {action('右对齐', AlignRight, () => alignSelection(editor, 'x', 'end'), !alignment.align, true)}
+                  {action('顶部对齐', ArrowUpToLine, () => alignSelection(editor, 'y', 'start'), !alignment.align, true)}
+                  {action('垂直居中', AlignVerticalJustifyCenter, () => alignSelection(editor, 'y', 'center'), !alignment.align, true)}
+                  {action('底部对齐', ArrowDownToLine, () => alignSelection(editor, 'y', 'end'), !alignment.align, true)}
+                  {action('水平等距', AlignHorizontalDistributeCenter, () => alignSelection(editor, 'x', 'distribute'), !alignment.distribute, true)}
+                  {action('垂直等距', AlignVerticalDistributeCenter, () => alignSelection(editor, 'y', 'distribute'), !alignment.distribute, true)}
                 </div>
                 <strong>组合形状</strong>
                 {([['union', '联合'], ['subtract', '减去顶层'], ['intersect', '交集'], ['exclude', '排除交集'], ['divide', '形状构建：分割区域']] as const).map(([operation, label]) =>
                   <button type="button" role="menuitem" tabIndex={-1} key={operation} disabled={s.selection.length < 2 || s.busy} onClick={() => { void editor.geometry(operation); setShowCommands(false) }}>{label}</button>)}
                 <button type="button" role="menuitem" tabIndex={-1} disabled={s.selection.length < 2} onClick={() => { editor.group(true); setShowCommands(false) }}>蒙版组</button>
-                <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('group')} onClick={() => { void dispatchEditorCommand(editor, 'group'); setShowCommands(false) }}>编组 <kbd>⌘ G</kbd></button>
-                <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('ungroup')} onClick={() => { void dispatchEditorCommand(editor, 'ungroup'); setShowCommands(false) }}>解除编组 <kbd>⇧ ⌘ G</kbd></button>
+                <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('group')} onClick={() => { void dispatchEditorCommand(editor, 'group'); setShowCommands(false) }}>编组 <kbd>{shortcutLabel('group', shortcutContext)}</kbd></button>
+                <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('ungroup')} onClick={() => { void dispatchEditorCommand(editor, 'ungroup'); setShowCommands(false) }}>解除编组 <kbd>{shortcutLabel('ungroup', shortcutContext)}</kbd></button>
                 <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setShowTools(true); setShowCommands(false) }}>变量 · 组件库 · 原型</button>
               </ToolPopover>
             </div>
@@ -1056,6 +1077,8 @@ export default function App() {
           </div>
         </div>
       </main>
+      <BatchRenameDialog editor={editor} />
+      {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} />}
       {showAnimation && <AnimationPanel editor={editor} onClose={() => setShowAnimation(false)} />}
       {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={fileMenuTrigger.current}
         busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <WorkspaceRootControls bridge={desktop.workspaceRoot}
