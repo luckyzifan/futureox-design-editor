@@ -3,11 +3,11 @@
   "scope": "Production src .ts/.tsx/.js/.mjs; excludes tests, declarations, comments and the localized interface-messages.ts catalog.",
   "interpretation": "Han-script literal candidates only, not all visible strings and not a translation-completion metric. Code literals can be authored document defaults, errors, identifiers, diagnostics or test/dev helpers. English-only untranslated text, runtime/host strings and interpolation meaning require manual review. Never bulk-translate authored names or stable protocol identifiers.",
   "counts": {
-    "filesScanned": 501,
+    "filesScanned": 506,
     "filesWithCandidates": 213,
     "candidates": 3811
   },
-  "sourceInventorySha256": "226620a3ccebc2555c96ae720793030481e944de1752a107af7f23c69a30b441",
+  "sourceInventorySha256": "eb702c80d142c1826a8f87c81ff3fb96ee56287be975749fa26139a6233764d4",
   "files": [
     {
       "file": "src/AdaptivePanels.tsx",
@@ -391,7 +391,7 @@
     },
     {
       "file": "src/align-engine.ts",
-      "sha256": "9b8ef89c208e6983ed2d093f1ce6189926be44cee30773f9e2b648680c4acde5",
+      "sha256": "8df775abba76db5ece24f36801e18efdd0c444e66a91827429f14ff76daa3ab7",
       "candidates": 0
     },
     {
@@ -486,7 +486,7 @@
     },
     {
       "file": "src/automation/core.ts",
-      "sha256": "a703a5bde0688e9f83117f1b9fd7e23a1d4a9cfdcfcc7456c7c8605d95bb6c50",
+      "sha256": "bcfb616714ef672eef450f58652e4436a9a5fadc7374b4493e64d8421885df71",
       "candidates": 0
     },
     {
@@ -556,7 +556,7 @@
     },
     {
       "file": "src/automation/types.ts",
-      "sha256": "771aadaf5663143e6d4879b4e0130d0189e9daeaff7fb46720514331af508c24",
+      "sha256": "327670745f1983628e1801ce5a590f98c52765131c78ceadf0f3086422340300",
       "candidates": 0
     },
     {
@@ -750,6 +750,31 @@
       "candidates": 0
     },
     {
+      "file": "src/commands/affine.ts",
+      "sha256": "25192cc5e9580a1afd9acd61256c9483adb592c90fd3037c53f8538f459323cc",
+      "candidates": 1
+    },
+    {
+      "file": "src/commands/apply-plan.ts",
+      "sha256": "1476f47b724a84d4d593ee37f1b9dd011db6abbc7aaae1f906e844709caebeda",
+      "candidates": 0
+    },
+    {
+      "file": "src/commands/arrangement-plan.ts",
+      "sha256": "1ef92e8d7f6a5fc01d5e1159fb979e175abda5fe874918c84d0547f1f0aef1ab",
+      "candidates": 0
+    },
+    {
+      "file": "src/commands/profiles.ts",
+      "sha256": "0fc001effd6d22b560d09820cb83cfbf07a1c9199ad0e45263da53e3b7bb7298",
+      "candidates": 0
+    },
+    {
+      "file": "src/commands/structure-plan.ts",
+      "sha256": "a5e301ceeac415e889ba48b789069df52beb22fac5cace341af1b5cadc3ad631",
+      "candidates": 0
+    },
+    {
       "file": "src/component-check.tsx",
       "sha256": "d59eb25667926f483aa7f3cb1a39d2ba9bc738b5909af9e489e220d8df1480c7",
       "candidates": 24
@@ -886,7 +911,7 @@
     },
     {
       "file": "src/engine.ts",
-      "sha256": "2c042d98faae23c481d7271b9e95f4f45ddb0a966512d899f5492ff3aad59f4f",
+      "sha256": "fb247dace2c0fbe43d72d51ddaf44673be880122d162056804733e6615dfa94e",
       "candidates": 118
     },
     {
@@ -966,8 +991,8 @@
     },
     {
       "file": "src/geometry.ts",
-      "sha256": "a022e2ae4c575e42da54ba4cbf344690b67fcb8a9fc32b18fa1139f4fdb46569",
-      "candidates": 1
+      "sha256": "ab0afdcab543910d417c91af825938ee13985aa35290810b93bee0d0ade774b2",
+      "candidates": 0
     },
     {
       "file": "src/grid-overlay.ts",
@@ -19212,6 +19237,13 @@
       "text": "PQ 高光"
     },
     {
+      "file": "src/commands/affine.ts",
+      "line": 16,
+      "column": 44,
+      "kind": "code-literal-or-template",
+      "text": "不可逆变换"
+    },
+    {
       "file": "src/component-check.tsx",
       "line": 23,
       "column": 36,
@@ -20718,826 +20750,826 @@
     },
     {
       "file": "src/engine.ts",
-      "line": 272,
+      "line": 282,
       "column": 16,
       "kind": "code-literal-or-template",
       "text": "就绪"
     },
     {
       "file": "src/engine.ts",
-      "line": 297,
+      "line": 313,
       "column": 117,
       "kind": "code-literal-or-template",
       "text": "API 文档修改"
     },
     {
       "file": "src/engine.ts",
-      "line": 297,
+      "line": 313,
       "column": 148,
       "kind": "code-literal-or-template",
       "text": "API 撤销"
     },
     {
       "file": "src/engine.ts",
-      "line": 297,
+      "line": 313,
       "column": 159,
       "kind": "code-literal-or-template",
       "text": "API 重做"
     },
     {
       "file": "src/engine.ts",
-      "line": 297,
+      "line": 313,
       "column": 243,
       "kind": "code-literal-or-template",
       "text": "编辑"
     },
     {
       "file": "src/engine.ts",
-      "line": 517,
+      "line": 544,
       "column": 84,
       "kind": "code-literal-or-template",
       "text": "请先完成颜色输入"
     },
     {
       "file": "src/engine.ts",
-      "line": 613,
+      "line": 646,
       "column": 37,
       "kind": "code-literal-or-template",
       "text": "（相关实例已分离）"
     },
     {
       "file": "src/engine.ts",
-      "line": 641,
+      "line": 674,
       "column": 34,
       "kind": "code-literal-or-template",
       "text": "修改填充颜色和不透明度"
     },
     {
       "file": "src/engine.ts",
-      "line": 692,
+      "line": 725,
       "column": 35,
       "kind": "code-literal-or-template",
       "text": "修改填充颜色和不透明度"
     },
     {
       "file": "src/engine.ts",
-      "line": 715,
+      "line": 748,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "颜色输入尚未完成或已失效，请完成输入或取消后重试"
     },
     {
       "file": "src/engine.ts",
-      "line": 740,
+      "line": 773,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "颜色提交失败，输入已保留，请重试或取消"
     },
     {
       "file": "src/engine.ts",
-      "line": 907,
+      "line": 946,
       "column": 16,
       "kind": "code-literal-or-template",
       "text": "撤销："
     },
     {
       "file": "src/engine.ts",
-      "line": 939,
+      "line": 983,
       "column": 16,
       "kind": "code-literal-or-template",
       "text": "重做："
     },
     {
       "file": "src/engine.ts",
-      "line": 978,
+      "line": 1023,
       "column": 16,
       "kind": "code-literal-or-template",
       "text": "设计已打开"
     },
     {
       "file": "src/engine.ts",
-      "line": 1169,
+      "line": 1214,
       "column": 7,
       "kind": "code-literal-or-template",
       "text": "创建"
     },
     {
       "file": "src/engine.ts",
-      "line": 1187,
+      "line": 1232,
       "column": 7,
       "kind": "code-literal-or-template",
       "text": "绘制铅笔路径"
     },
     {
       "file": "src/engine.ts",
-      "line": 1201,
+      "line": 1246,
       "column": 13,
       "kind": "code-literal-or-template",
       "text": "修改属性"
     },
     {
       "file": "src/engine.ts",
-      "line": 1214,
+      "line": 1259,
       "column": 58,
       "kind": "code-literal-or-template",
       "text": "切换锁定"
     },
     {
       "file": "src/engine.ts",
-      "line": 1214,
+      "line": 1259,
       "column": 66,
       "kind": "code-literal-or-template",
       "text": "切换可见性"
     },
     {
       "file": "src/engine.ts",
-      "line": 1214,
+      "line": 1259,
       "column": 75,
       "kind": "code-literal-or-template",
       "text": "重命名图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 1218,
+      "line": 1263,
       "column": 31,
       "kind": "code-literal-or-template",
       "text": "描边参数无效，请检查宽度控制点、虚线或闭合接缝"
     },
     {
       "file": "src/engine.ts",
-      "line": 1225,
+      "line": 1270,
       "column": 18,
       "kind": "code-literal-or-template",
       "text": "编辑文字"
     },
     {
       "file": "src/engine.ts",
-      "line": 1225,
+      "line": 1270,
       "column": 38,
       "kind": "code-literal-or-template",
       "text": "编辑富文本"
     },
     {
       "file": "src/engine.ts",
-      "line": 1232,
+      "line": 1277,
       "column": 99,
       "kind": "code-literal-or-template",
       "text": "修改属性"
     },
     {
       "file": "src/engine.ts",
-      "line": 1238,
+      "line": 1283,
       "column": 43,
       "kind": "code-literal-or-template",
       "text": "删除图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 1244,
+      "line": 1289,
       "column": 38,
       "kind": "code-literal-or-template",
       "text": "删除图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 1283,
+      "line": 1328,
       "column": 32,
       "kind": "code-literal-or-template",
       "text": "应用建议布局"
     },
     {
       "file": "src/engine.ts",
-      "line": 1293,
+      "line": 1338,
       "column": 21,
       "kind": "code-literal-or-template",
       "text": "移除自动布局"
     },
     {
       "file": "src/engine.ts",
-      "line": 1308,
+      "line": 1353,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "设置自动布局"
     },
     {
       "file": "src/engine.ts",
-      "line": 1319,
+      "line": 1364,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "请先选中同一容器中的图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 1325,
+      "line": 1370,
       "column": 18,
       "kind": "code-literal-or-template",
       "text": "自动布局"
     },
     {
       "file": "src/engine.ts",
-      "line": 1332,
+      "line": 1377,
       "column": 7,
       "kind": "code-literal-or-template",
       "text": "创建自动布局"
     },
     {
       "file": "src/engine.ts",
-      "line": 1399,
+      "line": 1444,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "创建主组件"
     },
     {
       "file": "src/engine.ts",
-      "line": 1409,
+      "line": 1454,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "插入组件实例"
     },
     {
       "file": "src/engine.ts",
-      "line": 1417,
+      "line": 1462,
       "column": 28,
       "kind": "code-literal-or-template",
       "text": "分离实例"
     },
     {
       "file": "src/engine.ts",
-      "line": 1420,
+      "line": 1465,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "重置实例覆盖"
     },
     {
       "file": "src/engine.ts",
-      "line": 1423,
+      "line": 1468,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "替换组件实例"
     },
     {
       "file": "src/engine.ts",
-      "line": 1426,
+      "line": 1471,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "声明内容插槽"
     },
     {
       "file": "src/engine.ts",
-      "line": 1429,
+      "line": 1474,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "移除内容插槽"
     },
     {
       "file": "src/engine.ts",
-      "line": 1432,
+      "line": 1477,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "设置插槽内容"
     },
     {
       "file": "src/engine.ts",
-      "line": 1435,
+      "line": 1480,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "修改组件属性"
     },
     {
       "file": "src/engine.ts",
-      "line": 1438,
+      "line": 1483,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "定义组件属性"
     },
     {
       "file": "src/engine.ts",
-      "line": 1442,
+      "line": 1487,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "添加组件变体"
     },
     {
       "file": "src/engine.ts",
-      "line": 1450,
+      "line": 1495,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "创建组件集"
     },
     {
       "file": "src/engine.ts",
-      "line": 1456,
+      "line": 1501,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "切换组件变体"
     },
     {
       "file": "src/engine.ts",
-      "line": 1459,
+      "line": 1504,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "添加变体属性"
     },
     {
       "file": "src/engine.ts",
-      "line": 1466,
+      "line": 1511,
       "column": 25,
       "kind": "code-literal-or-template",
       "text": "变体属性名称无效"
     },
     {
       "file": "src/engine.ts",
-      "line": 1469,
+      "line": 1514,
       "column": 60,
       "kind": "code-literal-or-template",
       "text": "变体属性已存在"
     },
     {
       "file": "src/engine.ts",
-      "line": 1470,
+      "line": 1515,
       "column": 26,
       "kind": "code-literal-or-template",
       "text": "默认"
     },
     {
       "file": "src/engine.ts",
-      "line": 1503,
+      "line": 1548,
       "column": 13,
       "kind": "code-literal-or-template",
       "text": "页面"
     },
     {
       "file": "src/engine.ts",
-      "line": 1508,
+      "line": 1553,
       "column": 7,
       "kind": "code-literal-or-template",
       "text": "新建页面"
     },
     {
       "file": "src/engine.ts",
-      "line": 1528,
+      "line": 1573,
       "column": 32,
       "kind": "code-literal-or-template",
       "text": "调整页面顺序"
     },
     {
       "file": "src/engine.ts",
-      "line": 1531,
+      "line": 1576,
       "column": 39,
       "kind": "code-literal-or-template",
       "text": "目标页面已不存在"
     },
     {
       "file": "src/engine.ts",
-      "line": 1546,
+      "line": 1591,
       "column": 113,
       "kind": "code-literal-or-template",
       "text": "副本"
     },
     {
       "file": "src/engine.ts",
-      "line": 1547,
+      "line": 1592,
       "column": 32,
       "kind": "code-literal-or-template",
       "text": "复制页面"
     },
     {
       "file": "src/engine.ts",
-      "line": 1565,
+      "line": 1610,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "至少保留一个页面"
     },
     {
       "file": "src/engine.ts",
-      "line": 1570,
+      "line": 1615,
       "column": 7,
       "kind": "code-literal-or-template",
       "text": "删除页面"
     },
     {
       "file": "src/engine.ts",
-      "line": 1612,
+      "line": 1657,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "重命名页面"
     },
     {
       "file": "src/engine.ts",
-      "line": 1626,
+      "line": 1671,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "请先将待编组图层放在同一容器内"
     },
     {
       "file": "src/engine.ts",
-      "line": 1634,
+      "line": 1680,
       "column": 37,
       "kind": "code-literal-or-template",
       "text": "布尔组合 ·"
     },
     {
       "file": "src/engine.ts",
-      "line": 1634,
+      "line": 1680,
       "column": 75,
       "kind": "code-literal-or-template",
       "text": "蒙版组"
     },
     {
       "file": "src/engine.ts",
-      "line": 1634,
+      "line": 1680,
       "column": 102,
       "kind": "code-literal-or-template",
       "text": "画板"
     },
     {
       "file": "src/engine.ts",
-      "line": 1634,
+      "line": 1680,
       "column": 109,
       "kind": "code-literal-or-template",
       "text": "编组"
     },
     {
       "file": "src/engine.ts",
-      "line": 1644,
+      "line": 1690,
       "column": 14,
       "kind": "code-literal-or-template",
       "text": "创建蒙版"
     },
     {
       "file": "src/engine.ts",
-      "line": 1644,
+      "line": 1690,
       "column": 42,
       "kind": "code-literal-or-template",
       "text": "创建选区画板"
     },
     {
       "file": "src/engine.ts",
-      "line": 1644,
+      "line": 1690,
       "column": 53,
       "kind": "code-literal-or-template",
       "text": "编组"
     },
     {
       "file": "src/engine.ts",
-      "line": 1672,
+      "line": 1719,
       "column": 7,
       "kind": "code-literal-or-template",
       "text": "解除编组"
     },
     {
       "file": "src/engine.ts",
-      "line": 1708,
+      "line": 1759,
       "column": 51,
       "kind": "code-literal-or-template",
       "text": "不能将图层放入自身的后代"
     },
     {
       "file": "src/engine.ts",
-      "line": 1712,
+      "line": 1763,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "移动图层层级"
     },
     {
       "file": "src/engine.ts",
-      "line": 1733,
+      "line": 1784,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "调整图层顺序"
     },
     {
       "file": "src/engine.ts",
-      "line": 1824,
+      "line": 1875,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "已复制图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 1829,
+      "line": 1880,
       "column": 23,
       "kind": "code-literal-or-template",
       "text": "锁定图层可复制；剪切前请先解锁"
     },
     {
       "file": "src/engine.ts",
-      "line": 1836,
+      "line": 1887,
       "column": 28,
       "kind": "code-literal-or-template",
       "text": "剪贴板"
     },
     {
       "file": "src/engine.ts",
-      "line": 1854,
+      "line": 1905,
       "column": 89,
       "kind": "code-literal-or-template",
       "text": "剪贴板超过 32 MiB"
     },
     {
       "file": "src/engine.ts",
-      "line": 1857,
+      "line": 1908,
       "column": 107,
       "kind": "code-literal-or-template",
       "text": "不支持的图层剪贴板"
     },
     {
       "file": "src/engine.ts",
-      "line": 1860,
+      "line": 1911,
       "column": 95,
       "kind": "code-literal-or-template",
       "text": "剪贴板根图层无效"
     },
     {
       "file": "src/engine.ts",
-      "line": 1864,
+      "line": 1915,
       "column": 199,
       "kind": "code-literal-or-template",
       "text": "剪贴板选择图层无效"
     },
     {
       "file": "src/engine.ts",
-      "line": 1867,
+      "line": 1918,
       "column": 182,
       "kind": "code-literal-or-template",
       "text": "剪贴板位置无效"
     },
     {
       "file": "src/engine.ts",
-      "line": 1870,
+      "line": 1921,
       "column": 107,
       "kind": "code-literal-or-template",
       "text": "剪贴板位置无效"
     },
     {
       "file": "src/engine.ts",
-      "line": 1883,
+      "line": 1934,
       "column": 71,
       "kind": "code-literal-or-template",
       "text": "粘贴目标包含锁定图层，请先解锁"
     },
     {
       "file": "src/engine.ts",
-      "line": 1886,
+      "line": 1937,
       "column": 48,
       "kind": "code-literal-or-template",
       "text": "请选择要替换的图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 1890,
+      "line": 1941,
       "column": 99,
       "kind": "code-literal-or-template",
       "text": "不能向锁定图层或组件实例内部粘贴新结构"
     },
     {
       "file": "src/engine.ts",
-      "line": 1899,
+      "line": 1950,
       "column": 24,
       "kind": "code-literal-or-template",
       "text": "粘贴替换"
     },
     {
       "file": "src/engine.ts",
-      "line": 1899,
+      "line": 1950,
       "column": 31,
       "kind": "code-literal-or-template",
       "text": "粘贴到选中容器"
     },
     {
       "file": "src/engine.ts",
-      "line": 1906,
+      "line": 1957,
       "column": 64,
       "kind": "code-literal-or-template",
       "text": "未能粘贴图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 1908,
+      "line": 1959,
       "column": 21,
       "kind": "code-literal-or-template",
       "text": "放置粘贴图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 1936,
+      "line": 1987,
       "column": 116,
       "kind": "code-literal-or-template",
       "text": "替换目标无法删除"
     },
     {
       "file": "src/engine.ts",
-      "line": 1945,
+      "line": 1996,
       "column": 49,
       "kind": "code-literal-or-template",
       "text": "请结束当前操作后追加导入"
     },
     {
       "file": "src/engine.ts",
-      "line": 1948,
+      "line": 1999,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "追加导入文件"
     },
     {
       "file": "src/engine.ts",
-      "line": 1949,
+      "line": 2000,
       "column": 109,
       "kind": "code-literal-or-template",
       "text": "追加导入失败"
     },
     {
       "file": "src/engine.ts",
-      "line": 1960,
+      "line": 2011,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "粘贴位置无效"
     },
     {
       "file": "src/engine.ts",
-      "line": 1982,
+      "line": 2033,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "粘贴组件实例"
     },
     {
       "file": "src/engine.ts",
-      "line": 1997,
+      "line": 2048,
       "column": 7,
       "kind": "code-literal-or-template",
       "text": "粘贴图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 2134,
+      "line": 2185,
       "column": 70,
       "kind": "code-literal-or-template",
       "text": "完成图层放置"
     },
     {
       "file": "src/engine.ts",
-      "line": 2147,
+      "line": 2198,
       "column": 22,
       "kind": "code-literal-or-template",
       "text": "动画或实例内部图层的层级已保留；请选择完整的动画容器或实例移动"
     },
     {
       "file": "src/engine.ts",
-      "line": 2187,
+      "line": 2238,
       "column": 17,
       "kind": "code-literal-or-template",
       "text": "创建副本"
     },
     {
       "file": "src/engine.ts",
-      "line": 2204,
+      "line": 2255,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "等比缩放图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 2208,
+      "line": 2259,
       "column": 41,
       "kind": "code-literal-or-template",
       "text": "变换图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 2232,
+      "line": 2283,
       "column": 104,
       "kind": "code-literal-or-template",
       "text": "对齐到父级"
     },
     {
       "file": "src/engine.ts",
-      "line": 2261,
+      "line": 2290,
       "column": 41,
       "kind": "code-literal-or-template",
       "text": "等距分布"
     },
     {
       "file": "src/engine.ts",
-      "line": 2261,
+      "line": 2290,
       "column": 50,
       "kind": "code-literal-or-template",
       "text": "对齐图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 2283,
+      "line": 2308,
       "column": 7,
       "kind": "code-literal-or-template",
       "text": "转换为矢量"
     },
     {
       "file": "src/engine.ts",
-      "line": 2296,
+      "line": 2321,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "请选择形状或矢量图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 2303,
+      "line": 2328,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "几何运算需要选择同一容器内的图层"
     },
     {
       "file": "src/engine.ts",
-      "line": 2316,
+      "line": 2341,
       "column": 19,
       "kind": "code-literal-or-template",
       "text": "所选图层没有可轮廓化的描边"
     },
     {
       "file": "src/engine.ts",
-      "line": 2321,
+      "line": 2346,
       "column": 37,
       "kind": "code-literal-or-template",
       "text": "正在计算几何…"
     },
     {
       "file": "src/engine.ts",
-      "line": 2330,
+      "line": 2355,
       "column": 54,
       "kind": "code-literal-or-template",
       "text": "文档已发生变化，请重新执行几何操作"
     },
     {
       "file": "src/engine.ts",
-      "line": 2340,
+      "line": 2365,
       "column": 26,
       "kind": "code-literal-or-template",
       "text": "/ 填充"
     },
     {
       "file": "src/engine.ts",
-      "line": 2360,
+      "line": 2385,
       "column": 40,
       "kind": "code-literal-or-template",
       "text": "/ 描边轮廓"
     },
     {
       "file": "src/engine.ts",
-      "line": 2380,
+      "line": 2405,
       "column": 43,
       "kind": "code-literal-or-template",
       "text": "几何内核尚未就绪"
     },
     {
       "file": "src/engine.ts",
-      "line": 2415,
+      "line": 2440,
       "column": 21,
       "kind": "code-literal-or-template",
       "text": "矢量几何运算"
     },
     {
       "file": "src/engine.ts",
-      "line": 2443,
+      "line": 2468,
       "column": 15,
       "kind": "code-literal-or-template",
       "text": "构建区域"
     },
     {
       "file": "src/engine.ts",
-      "line": 2446,
+      "line": 2471,
       "column": 28,
       "kind": "code-literal-or-template",
       "text": "联合"
     },
     {
       "file": "src/engine.ts",
-      "line": 2447,
+      "line": 2472,
       "column": 31,
       "kind": "code-literal-or-template",
       "text": "减去顶层"
     },
     {
       "file": "src/engine.ts",
-      "line": 2448,
+      "line": 2473,
       "column": 32,
       "kind": "code-literal-or-template",
       "text": "交集"
     },
     {
       "file": "src/engine.ts",
-      "line": 2449,
+      "line": 2474,
       "column": 30,
       "kind": "code-literal-or-template",
       "text": "排除交集"
     },
     {
       "file": "src/engine.ts",
-      "line": 2466,
+      "line": 2491,
       "column": 9,
       "kind": "code-literal-or-template",
       "text": "矢量几何运算"
     },
     {
       "file": "src/engine.ts",
-      "line": 2517,
+      "line": 2542,
       "column": 39,
       "kind": "code-literal-or-template",
       "text": "几何运算超时，原图层已保留"
@@ -22171,13 +22203,6 @@
       "column": 83,
       "kind": "code-literal-or-template",
       "text": "直线采样超出有效坐标范围"
-    },
-    {
-      "file": "src/geometry.ts",
-      "line": 34,
-      "column": 44,
-      "kind": "code-literal-or-template",
-      "text": "不可逆变换"
     },
     {
       "file": "src/image-crop.ts",

@@ -83,6 +83,30 @@ await runProof('forma-prefix-textures', [], async (proof) => {
       values: Array.from({length: w*h*4}, (_, i) =>
         ((127 << 23) | ((i * 13171) & 0x7fffff) | (i % 7 === 0 ? 0x80000000 : 0)) >>> 0) })
   }
+  // Parallel block boundaries, full-line exponent admission, both axes and
+  // the maximum supported length. The oracle remains the old exact shader.
+  for (const [w, h] of [[511, 2], [512, 2], [513, 2], [769, 3], [16384, 1], [2, 3484], [3484, 64]]) {
+    fixtures.push({
+      name: `chunk-boundary-${w}x${h}`, w, h, r: 7,
+      origin: [-19, 23], channels: 15, maxBandLines: 255,
+      values: Array.from({ length: w * h * 4 }, (_, i) => {
+        const pixel = Math.floor(i / 4), coordinate = w === 2 ? Math.floor(pixel / w) : pixel % w
+        const exponent = 110 + (Math.floor(coordinate / 256) % 7) * 5
+        return ((exponent << 23) | ((i * 13171) & 0x7fffff) |
+          (pixel % 3 === 0 ? 0x80000000 : 0)) >>> 0
+      }),
+    })
+  }
+  fixtures.push({
+    name: 'chunk-long-line-decline', w: 769, h: 3, r: 7,
+    origin: [41, -67], channels: 15, maxBandLines: 255,
+    values: Array.from({ length: 769 * 3 * 4 }, (_, i) => {
+      if (i === 511 * 4) return 0x7fc01234
+      if (i === 512 * 4 + 1) return 0x7f800000
+      if (i % 4 === 2) return i % 8 ? 1 : 0x3f800000
+      return ((127 << 23) | ((i * 13171) & 0x7fffff)) >>> 0
+    }),
+  })
   for (const f of fixtures) {
     f.kernel = Array.from(rational_tent_kernel_rgba(f.r))
     f.certified = Array.from(certified_tent_kernel_rgba(f.r))
@@ -110,7 +134,12 @@ await runProof('forma-prefix-textures', [], async (proof) => {
           rollover = true
         const adapter = await navigator.gpu?.requestAdapter()
         if (!adapter) throw new Error('Real WebGPU required')
-        const device = await adapter.requestDevice()
+        const requiredDimension = Math.max(...fixtures.flatMap(f => [f.w, f.h]))
+        if (requiredDimension > adapter.limits.maxTextureDimension2D)
+          throw new Error(`Fixture dimension ${requiredDimension} exceeds adapter limit ${adapter.limits.maxTextureDimension2D}`)
+        const device = await adapter.requestDevice({
+          requiredLimits: { maxTextureDimension2D: requiredDimension },
+        })
         const errors: string[] = []
         device.addEventListener('uncapturederror', (e) => errors.push(e.error.message))
         let activeEncoder: GPUCommandEncoder | undefined
