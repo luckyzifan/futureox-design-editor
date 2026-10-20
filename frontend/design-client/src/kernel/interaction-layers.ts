@@ -1,3 +1,4 @@
+import { effectsAreKnown } from './render-dependency'
 import type { Bounds, DesignDocument, Matrix } from '../model'
 import { scene, unionBounds } from '../geometry'
 import type { CanvasCamera } from '../canvas-camera'
@@ -17,7 +18,7 @@ export type InteractionProps = {
 
 /** Only backdrop reads outside an isolated root propagate damage between
  * boards. Internal background blurs move with their containing board. */
-export function pageBackdropPadding(document:DesignDocument,entries:ReturnType<typeof scene>):number {
+export function pageBackdropPadding(document:DesignDocument,entries:readonly ReturnType<typeof scene>[number][]):number {
   return entries.reduce((sum,entry)=>{
     if(entry.ancestors.some(id=>document.nodes[id]?.blend!=='pass-through'))return sum
     const scale=Math.max(Math.hypot(entry.matrix[0],entry.matrix[1]),Math.hypot(entry.matrix[2],entry.matrix[3]))
@@ -45,14 +46,16 @@ export function planInteractionLayers(document: DesignDocument, pageId: string, 
   const independent = (id: string): boolean => {
     const n = document.nodes[id]
     if (!n?.visible) return true
-    if (n.mask || n.effects.some(e => e.visible && ['background-blur', 'glass'].includes(e.kind))) return false
+    if (!effectsAreKnown(n.effects) || n.mask || n.effects.some(e => e.visible && ['background-blur', 'glass'].includes(e.kind))) return false
     if (n.blend === 'normal') return true
     return n.blend === 'pass-through' && n.opacity === 1 && !n.clip && !n.effects.some(e => e.visible) &&
       [...n.fills, ...n.strokes.filter(s => s.visible).map(s => s.paint)].every(p => !p.visible || p.blend === 'normal') &&
       n.children.every(independent)
   }
   if (roots.some(id => !independent(id))) return null
-  const entries = scene(document, pageId), selected = new Set(ids), layers: InteractionLayer[] = []
+  const entries = scene(document, pageId)
+  if (entries.some(entry => !effectsAreKnown(document.nodes[entry.id].effects))) return null
+  const selected = new Set(ids), layers: InteractionLayer[] = []
   const append = (children: string[], moving?: string) => {
     if (!children.length) return
     const included = new Set(children)

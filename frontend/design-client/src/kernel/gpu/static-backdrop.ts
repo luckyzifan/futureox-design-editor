@@ -6,7 +6,7 @@ import type { GpuNode, GpuScene } from './types'
  * scene, camera or capture lattice must invalidate this proof. */
 export function staticBackdropKey(scene: GpuScene, n: GpuNode): string | undefined {
   const index = sceneIndex(scene), selection = scene.interactionSelection || []
-  if (!scene.interactionRetained || scene.coherentSamples || !n.clip || n.mask || n.passthrough ||
+  if (index.unknownEffectSubtrees.size || !scene.interactionRetained || scene.coherentSamples || !n.clip || n.mask || n.passthrough ||
       !index.roots.has(n.id) || selection.includes(n.id) || !selection.some(id=>index.rootFor.get(id)===n.id)) return
   const position=scene.roots.indexOf(n.id)
   if(selection.some(id=>{const root=index.rootFor.get(id);return !root||scene.roots.indexOf(root)<position}))return
@@ -26,7 +26,7 @@ export function movingBackdropKey(scene: GpuScene, n: GpuNode): string | undefin
   if (!scene.nativeInteraction || !scene.interactionLease || !scene.interactionRetained || scene.coherentSamples ||
       !n.clip || n.mask || n.passthrough || !scene.interactionSelection?.includes(n.id)) return
   const index=sceneIndex(scene), position=scene.roots.indexOf(n.id)
-  if(position<0 || scene.interactionSelection.some(id=>index.rootFor.get(id)!==n.id))return
+  if(index.unknownEffectSubtrees.size || position<0 || scene.interactionSelection.some(id=>index.rootFor.get(id)!==n.id))return
   const prefix=scene.roots.slice(0,position).map(id=>scene.nodes[id])
   if(prefix.some(node=>node?.previewDynamic))return
   return JSON.stringify([prefix.map(node=>node?[node.id,node.rect,node.matrix]:null),n.id,n.effects,

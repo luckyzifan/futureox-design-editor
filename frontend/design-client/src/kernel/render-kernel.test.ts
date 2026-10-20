@@ -149,3 +149,102 @@ test('completion from an old revision cannot remove or share the newer in-flight
     expect(await kernel.compile_gpu_packet('{}')).toEqual(new Uint8Array([2]))
   } finally { channel.close(); ports.port2.close(); assets.free() }
 })
+
+test('cancelling one packet waiter neither cancels exact output nor waits for a shared compile', async () => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  const requests: any[] = []
+  ports.port2.onmessage = event => requests.push(event.data)
+  const waitFor = async (count: number) => { while (requests.length < count) await new Promise(resolve => setTimeout(resolve, 1)) }
+  try {
+    const exact = kernel.compile_gpu_packet('{}')
+    await waitFor(1)
+    const controller = new AbortController()
+    const preview = kernel.compile_gpu_packet('{}', controller.signal)
+    const cancelled = expect(preview).rejects.toThrow('PREVIEW_CANCELLED')
+    controller.abort()
+    ports.port2.postMessage({ id: requests[0].id, value: new Uint8Array([7]) })
+    await cancelled
+    expect(await exact).toEqual(new Uint8Array([7]))
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+test('a cancellable first consumer never owns an exact output sharing its options', async () => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  const requests: any[] = []
+  ports.port2.onmessage = event => requests.push(event.data)
+  const waitFor = async (count: number) => { while (requests.length < count) await new Promise(resolve => setTimeout(resolve, 1)) }
+  try {
+    const controller = new AbortController()
+    const preview = kernel.compile_gpu_packet('{}', controller.signal)
+    const cancelled = expect(preview).rejects.toThrow('PREVIEW_CANCELLED')
+    const exact = kernel.compile_gpu_packet('{}')
+    // Attach immediately so this regression cannot hide as unhandled rejection.
+    const outcome = exact.then(value => ({ value }), error => ({ error }))
+    await waitFor(1); controller.abort(); await cancelled
+    ports.port2.postMessage({ id: requests[0].id, value: new Uint8Array([1]) })
+    // An exact consumer must get its own physical dispatch, not cancelled bytes.
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(requests).toHaveLength(2)
+    ports.port2.postMessage({ id: requests[1].id, value: new Uint8Array([9]) })
+    expect(await outcome).toEqual({ value: new Uint8Array([9]) })
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+test('production receipt rejects an old packet after a delayed compile crosses a document mutation', async () => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = unorderedPreparation(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  let release!: () => void, notice!: () => void
+  const started = new Promise<void>(resolve => { notice = resolve })
+  ports.port2.onmessage = event => {
+    const { id, method } = event.data
+    if (method === 'compile_gpu_packet') { release = () => ports.port2.postMessage({ id, value: new Uint8Array([3]) }); notice() }
+    else ports.port2.postMessage({ id })
+  }
+  try {
+    const packet = kernel.prepare_gpu_packet('{}')
+    const rejected = expect(packet).rejects.toThrow('STALE_PREPARED_PACKET')
+    await started; await kernel.load_document('{}'); release(); await rejected
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+test('production receipt is bound to one lane, mutation epoch and pre-encoder cancellation', async () => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'interaction', channel)
+  ports.port2.onmessage = event => ports.port2.postMessage({ id: event.data.id, value: event.data.method === 'compile_gpu_packet' ? new Uint8Array([8]) : undefined })
+  try {
+    await kernel.load_document('{}')
+    const first = await kernel.prepare_gpu_packet('{}')
+    expect(first.certificate).toEqual({ lane: 'interaction', revision: 1, options: '{}', settings: 'null' })
+    await kernel.load_document('{}')
+    expect(() => first.consume()).toThrow('STALE_PREPARED_PACKET')
+    const signal = new AbortController(), cancelled = await kernel.prepare_gpu_packet('{}', signal.signal)
+    signal.abort(); expect(() => cancelled.consume()).toThrow('PREVIEW_CANCELLED')
+    const exact = await kernel.prepare_gpu_packet('{}')
+    expect(exact.consume()).toEqual(new Uint8Array([8]))
+    expect(() => exact.consume()).toThrow('PREPARED_PACKET_CONSUMED')
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+test('pending mutation cannot produce a receipt; aborted ready cache hits never return bytes', async () => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  let release!: () => void, notice!: () => void, held = false
+  ports.port2.onmessage = event => {
+    const { id, method } = event.data
+    const send = () => ports.port2.postMessage({ id, value: method === 'compile_gpu_packet' ? new Uint8Array([6]) : undefined })
+    if (held && method === 'load_document') { release = send; notice() } else send()
+  }
+  try {
+    await kernel.compile_gpu_packet('{}')
+    const signal = new AbortController(); signal.abort()
+    await expect(kernel.prepare_gpu_packet('{}', signal.signal)).rejects.toThrow('PREVIEW_CANCELLED')
+    held = true
+    const started = new Promise<void>(resolve => { notice = resolve })
+    const mutation = kernel.load_document('{}'); await started
+    await expect(kernel.prepare_gpu_packet('{}')).rejects.toThrow('DOCUMENT_PREPARATION_PENDING')
+    release(); await mutation
+    expect((await kernel.prepare_gpu_packet('{}')).consume()).toEqual(new Uint8Array([6]))
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})

@@ -6,12 +6,12 @@ import { interactionCaptureTiles, recoverableInteractionBudget } from './interac
 import { canvasRasterPlan } from './canvas-raster-plan'
 import { tilePlacementAtView } from './tile-preview'
 import { scene, unionBounds } from '../geometry'
-import { interactionRootBounds } from './interaction-scene-bounds'
+import { buildInteractionDependencyScope } from './interaction-scene-bounds'
 import { KernelClient, type KernelOptions, type KernelResult } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
 import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, planInteractionLayers,
-  pageBackdropPadding, type GpuMoveControl, type InteractionPlan, type InteractionProps } from './interaction-layers'
+  type GpuMoveControl, type InteractionPlan, type InteractionProps } from './interaction-layers'
 
 let serial = -1
 type ResidentInteraction = {
@@ -36,10 +36,19 @@ type ResidentInteraction = {
 /** A bounded, kernel-rendered set of isolated layer intervals. It is reusable
  * outside the original viewport and preserves order across board overlap.
  * This transient SDR presentation never certifies exact output or exports. */
+let nextInteractionOwner = 0
 export class InteractionRenderer {
   private qualityZoom = 1
   private client: KernelClient | null = null
+  private readonly interactionOwner = ++nextInteractionOwner
   private generation = 0
+  private captureAbort = new AbortController()
+  private nextGeneration() {
+    // A shared worker may serve other interaction owners. Retire only requests
+    // issued by this obsolete capture, not the entire interaction channel.
+    this.captureAbort.abort(); this.captureAbort = new AbortController()
+    return ++this.generation
+  }
   private pending?: { document: DesignDocument; ids: string; scale: number }
   private pendingDensity?: Parameters<InteractionRenderer['prepare']>
   private resident?: ResidentInteraction
@@ -159,7 +168,7 @@ export class InteractionRenderer {
         if(r.live&&r.tiles[0]?.gpuTile){this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile);this.inlineDisabled=true}
         if (r.live) {
           if (r.active) this.renderLive(document)
-          else { this.livePending = undefined; this.generation++; this.releaseClient() }
+          else { this.livePending = undefined; this.nextGeneration(); this.releaseClient() }
         }
         this.changed()
       },
@@ -213,11 +222,11 @@ export class InteractionRenderer {
     if (props) props.control.current = this.control
     if (this.disposed) return
     if (!props) {
-      this.generation++; this.releaseClient(); this.pending = undefined; this.pendingDensity = undefined
+      this.nextGeneration(); this.releaseClient(); this.pending = undefined; this.pendingDensity = undefined
       this.closeResidents(); this.warming = false; return
     }
     if (this.sessionEpoch !== props.epoch) {
-      this.generation++; this.releaseClient(); this.pending = undefined; this.pendingDensity = undefined
+      this.nextGeneration(); this.releaseClient(); this.pending = undefined; this.pendingDensity = undefined
       this.closeResidents(); this.error = ''; this.sessionEpoch = props.epoch
     }
     const r = this.resident, key = props.selection.join(',')
@@ -278,7 +287,7 @@ export class InteractionRenderer {
     }
     this.pendingDensity = undefined
     this.profile = profile; this.backend = backend
-    const token = ++this.generation
+    const token = this.nextGeneration()
     if (!this.sharedClient) this.client?.cancelPreview()
     this.pending = { document: props.document, ids: key, scale: requestedScale }
     const contentGesture = props.active && !!r && !this.baseOffsets(r.plan, props.document)
@@ -301,54 +310,8 @@ export class InteractionRenderer {
         this.resident = { plan: livePlan, tiles: [], scale: view.zoom * dpr,
           offsets: interactionOffsets(livePlan, props.document)!, active: props.active, live: true }
         const entries = scene(props.document, pageId)
-        // Bound propagation through all backdrop filters conservatively. This
-        // is computed once per scene, not once per pointer sample.
-        this.resident.dependencyPadding = pageBackdropPadding(props.document,entries)
-        this.resident.rootBounds = interactionRootBounds(props.document, pageId, entries)
-        // Small nested edits do not need a full-screen capture. Only localize
-        // when no backdrop can propagate the changed pixels and every ancestor
-        // is an ordinary effect-free, mask-free container; other selections
-        // retain the conservative viewport dependency path.
-        const byId = new Map(entries.map(entry => [entry.id, entry]))
-        this.resident.parentLinear = new Map(props.selection.map(id =>
-          [id, byId.get(byId.get(id)?.parent || '')?.matrix.slice(0, 4) || [1, 0, 0, 1]]))
-        this.resident.localizedBounds = new Set()
-        const noBackdrop = entries.every(entry => !props.document.nodes[entry.id].effects.some(e =>
-          e.visible && ['background-blur', 'glass'].includes(e.kind)))
-        if (noBackdrop) for (const id of props.selection) {
-          const entry = byId.get(id), selected = props.document.nodes[id]
-          if (!entry || !entry.ancestors.length || selected.mask || entry.ancestors.some(id => {
-            const n = props.document.nodes[id]
-            return n.mask || n.effects.some(e => e.visible) || n.children.some(id => props.document.nodes[id]?.mask)
-          })) continue
-          const affected = entries.filter(e => e.id === id || e.ancestors.includes(id)).map(e => {
-            const n = props.document.nodes[e.id], scale = Math.max(Math.hypot(e.matrix[0], e.matrix[1]), Math.hypot(e.matrix[2], e.matrix[3]))
-            const pad = Math.max(0, ...n.effects.filter(e => e.visible).map(e => e.radius * 3 + Math.abs(e.x || 0) + Math.abs(e.y || 0) + Math.abs(e.spread || 0)),
-              ...n.strokes.filter(s => s.visible).map(s => s.width * 4)) * scale
-            return { x: e.bounds.x - pad, y: e.bounds.y - pad, width: e.bounds.width + 2 * pad, height: e.bounds.height + 2 * pad }
-          })
-          this.resident.rootBounds.set(id, unionBounds(affected))
-          this.resident.localizedBounds.add(id)
-        }
-        // A nested edit cannot escape a fixed, clipped page root. Capture
-        // that complete dependency scope even when it has background blur;
-        // a large Retina viewport must not force a small board to half density.
-        // Optical reads and ancestor layout remain on the conservative path.
-        this.resident.fixedBounds = new Set()
-        const finiteBackdrop = !allowsReducedSampling(view.zoom) || !entries.some(entry => props.document.nodes[entry.id].effects.some(e => e.visible && e.kind === 'glass'))
-        if (!noBackdrop && finiteBackdrop && import.meta.env.VITE_DESIGN_LOCAL_BACKDROP !== '0') for (const id of props.selection) {
-          const entry=byId.get(id), rootId=entry?.ancestors[0], root=rootId&&props.document.nodes[rootId], rootEntry=rootId&&byId.get(rootId)
-          if(!entry||!root||!rootEntry||root.kind!=='frame'||!root.clip||root.mask||
-            root.effects.some(e=>e.visible&&e.kind!=='background-blur'&&e.kind!=='glass')||entry.ancestors.some(id=>{
-              const n=props.document.nodes[id]
-              return n.layout&&n.layout.mode!=='none'||n.sizing?.width==='hug'||n.sizing?.height==='hug'||
-                !!n.instance||!!n.instanceOrigin||!!n.component||!!n.componentSet||!!n.componentKey||
-                Object.keys(n.bindings||{}).length>0||Object.keys(n.variableModes||{}).length>0
-            }))continue
-          const b=rootEntry.bounds,edge=2/Math.max(1e-6,view.zoom*dpr)
-          this.resident.rootBounds.set(id,{x:b.x-edge,y:b.y-edge,width:b.width+edge*2,height:b.height+edge*2})
-          this.resident.localizedBounds.add(id);this.resident.fixedBounds.add(id)
-        }
+        Object.assign(this.resident, buildInteractionDependencyScope(props.document, pageId, entries,
+          props.selection, { zoom: view.zoom, dpr, allowFixedBackdrop: import.meta.env.VITE_DESIGN_LOCAL_BACKDROP !== '0' }))
         this.liveAuthored = props.document
         this.error = ''; props.onReady()
         this.renderLive(props.document)
@@ -365,6 +328,7 @@ export class InteractionRenderer {
     const current = () => !this.disposed && this.generation === token
     this.client ??= this.sharedClient || new KernelClient()
     const client = this.client, tiles: CompositeTile[] = []
+    const signal = this.sharedClient ? this.captureAbort.signal : undefined
     let backgroundLinear:KernelResult['backgroundLinear']
     let accepted=false, rebase:DesignDocument|undefined
     void (async () => {
@@ -389,8 +353,9 @@ export class InteractionRenderer {
             try {
               result = await client.render(layer.document, { pageId, width, height,
                 view: { x: -originX + phaseX, y: -originY + phaseY, zoom: scale },
+                interactionOwner: this.interactionOwner, interactionGeneration: token, interactionBranch: 1,
                 transparent: true, grid: false, rasterProfile: profile, livePreview: true, renderIntent: 'preview', interactionChannel: !!this.sharedClient,
-              }, false, backend, !this.sharedClient)
+              }, false, backend, !this.sharedClient, false, undefined, undefined, signal)
               break
             } catch (error) {
               // Read-only transient rasterization: bounded resolution reduction
@@ -507,6 +472,7 @@ export class InteractionRenderer {
     if (this.liveRunning) return
     this.liveRunning = true
     const token = this.generation, resident = this.resident!
+    const signal = this.sharedClient ? this.captureAbort.signal : undefined
     const current = () => !this.disposed && token === this.generation && this.resident === resident
     void (async () => {
       try {
@@ -592,12 +558,13 @@ export class InteractionRenderer {
               try {
                 const result=await client.render(document,{pageId:resident.plan.pageId,width,height,
                   view:raster.camera,transparent:false,grid:false,rasterProfile:this.profile,
+                  interactionOwner:this.interactionOwner,interactionGeneration:token,interactionBranch:2,
                   livePreview:true,renderIntent:'preview',interactionChannel:!!this.sharedClient,
                   tileViewport:plan,tilePrepareViewport:{x:originX+Math.floor(raster.camera.x)-1,
                     y:originY+Math.floor(raster.camera.y)-1,w:width+2,h:height+2}},
                   false,this.backend,false,false,undefined,tile=>{
                     staged.push({...tile,serial:serial--})
-                  })
+                  }, signal)
                 if(!current())throw Error('PREVIEW_CANCELLED')
                 if(staged.length!==plan.length)throw Error('Incomplete exact interaction tile group')
                 capturedTiles=staged
@@ -618,12 +585,13 @@ export class InteractionRenderer {
               result = await client.render(document, { pageId: resident.plan.pageId, width, height,
                 view: { x: worldCapture?0:-originX+phaseX, y: worldCapture?0:-originY+phaseY, zoom: scale }, transparent: false, grid: false,
                 ...(worldCapture?{captureViewport:{x:originX,y:originY,w:width,h:height}}:{}),
+                interactionOwner: this.interactionOwner, interactionGeneration: token, interactionBranch: 3,
                 rasterProfile: this.profile, livePreview: true, retainInteractionGraph: true, interactionSelection: resident.plan.ids,
                 interactionNative: !allowsReducedSampling(this.qualityZoom),
                 renderIntent: 'preview', interactionChannel: !!this.sharedClient,
                 interactionWindowFixed: resident.plan.ids.every(id=>resident.fixedBounds?.has(id)),
                 ...(this.viewport ? { interactionWindow: { x: worldCapture?bounds.x*scale:(bounds.x - b.x) * scale, y: worldCapture?bounds.y*scale:(bounds.y - b.y) * scale,
-                  w: bounds.width * scale, h: bounds.height * scale } } : {}) }, false, this.backend, false)
+                  w: bounds.width * scale, h: bounds.height * scale } } : {}) }, false, this.backend, false, false, undefined, undefined, signal)
               break
             } catch (error) {
               if(!reduced && !resident.tiledExact && recoverableInteractionBudget(error)){
@@ -693,7 +661,7 @@ export class InteractionRenderer {
     this.endedDocument=undefined
   }
   dispose() {
-    this.disposed = true; this.generation++; this.releaseClient(); this.pendingDensity = undefined
+    this.disposed = true; this.nextGeneration(); this.releaseClient(); this.pendingDensity = undefined
     if (this.props?.control.current === this.control) this.props.control.current = null
     this.closeResidents()
   }

@@ -103,3 +103,24 @@ test('latest packet burst dispatches at most the executing obsolete compile and 
   await Promise.all(obsolete)
   expect(received).toEqual(['obsolete-0', 'latest'])
 })
+
+test('physical preparation telemetry keeps original owner after cancellation and separates local queue wait', async () => {
+  const pair = new MessageChannel(), rows: any[] = [], received: any[] = []
+  let owner = 10
+  const client = new PreparationChannel(pair.port1, { enabled: () => true, owner: () => owner, record: (event, fields) => rows.push({ event, ...fields }) })
+  close.push(() => { client.close(); pair.port2.close() })
+  pair.port2.onmessage = event => received.push(event.data)
+  const controller = new AbortController()
+  const packet = client.request('canvas', 'compile_gpu_packet', [], controller.signal).catch(() => undefined)
+  owner = 11
+  const load = client.request('interaction', 'load_document', ['doc'])
+  await new Promise(resolve => setTimeout(resolve, 10)); controller.abort(); await packet
+  expect(rows.find(r => r.phase === 3)).toMatchObject({ requestId: 10, methodCode: 8, superseded: true })
+  pair.port2.postMessage({ id: received[0].id, value: new Uint8Array() })
+  await new Promise(resolve => setTimeout(resolve, 10))
+  expect(rows.find(r => r.phase === 4)).toMatchObject({ requestId: 10, methodCode: 8, superseded: true })
+  const dispatch = rows.find(r => r.phase === 2 && r.requestId === 11)
+  expect(dispatch.waitMs).toBeGreaterThanOrEqual(0); expect(dispatch.methodCode).toBe(3)
+  pair.port2.postMessage({ id: received[1].id, documentFork: true }); await load
+  expect(rows.at(-1)).toMatchObject({ phase: 4, requestId: 11, documentFork: true })
+})

@@ -53,11 +53,13 @@ self.onmessage = event => {
         }
         kernel ??= await engine(lane)
         if (method === 'load_document') snapshots.invalidate(lane)
-        if (method === 'apply_document_patch_with_damage' || method === 'apply_interaction_transforms') snapshots.invalidate(lane)
+        const commitSnapshot = method === 'apply_document_patch_with_damage' ? snapshots.beginPatch(lane, args[0] as string) : undefined
+        if (method === 'apply_interaction_transforms') snapshots.invalidate(lane)
         if (method === 'initialize') { kernel.set_image_mips(args[0] === true); snapshots.initialize(lane, args[0] === true) }
         else if (method === 'load_document' && documentFork) value = undefined
         else if (method === 'render_cpu_frame') value = renderCpuFrame(kernel, args[0] as string, args[1] as Parameters<typeof renderCpuFrame>[2])
         else value = (kernel[method] as (...args: any[]) => unknown).apply(kernel, args)
+        commitSnapshot?.()
         if (method === 'load_document') snapshots.loaded(lane, args[0] as string)
         const settings = method === 'initialize' || method === 'load_document' || method === 'apply_document_patch_with_damage'
           ? kernel.color_settings() : undefined

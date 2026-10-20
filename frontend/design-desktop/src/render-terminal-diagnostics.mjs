@@ -1,12 +1,17 @@
 // Strict scalar allowlist shared by worker, renderer and terminal. Never stringify a render payload.
 export const PREFIX = '[render-diag] '
-const events = new Set(['request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate'])
-const fields = new Set(('purpose commandCode renderIntent preview finalRequest readback png coverageTiles livePreview tileViewport requestId sequence x y zoom width height milliseconds compileMs graphMs finishMs checkpointMs loadMs renderMs pipelineWallMs preparationWaitMs previewTiles tileCacheHits certifiedTileHits tileCacheBytes tileCacheEvictions drawCalls triangles peakTextureBytes workingTextureBytes missingTextureCount compositorFrames compositorTiles compositorDraws durationMs waitMs count sampleCount suppressed cached cameraFallback reasonCode exitCode quitRequested permitClose resourceEpoch completedResourceEpoch radius mode ms oldConfig newConfig channel acceptedLines declinedLines acceptedPixels availableBytes scratchBytes mapMs queueWaitMs coverage sharpCoverage nativePhaseCoverage maxUpscale pixelCoverageComplete nativeCoverageComplete inputSequence inputAt inputTimeOrigin inputAgeMs deltaX deltaY deltaMode inputKind generation fillGeneration pageToken state phase navigating targetDensity effectiveDensity finalComplete oldContentAgeMs queueDepth activeRequestId superseded skipped coverageMeasured coverageAt dropped phaseX phaseY sceneReady tileIndex').split(' '))
+const events = new Set(['request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage'])
+const resourceLimits = {sourceCodeUnits:32*1024*1024,embeddedFontCount:32,embeddedFontCodeUnits:32*28*1024*1024}
+const fields = new Set(('sourceCodeUnits embeddedFontCount embeddedFontCodeUnits preparationId methodCode activePreparationId documentFork documentEnvelope retainInteractionGraph interactionNative interactionOwner interactionGeneration interactionBranch purpose commandCode renderIntent preview finalRequest readback png coverageTiles livePreview tileViewport requestId sequence x y zoom width height milliseconds compileMs graphMs finishMs checkpointMs loadMs renderMs pipelineWallMs preparationWaitMs previewTiles tileCacheHits certifiedTileHits tileCacheBytes tileCacheEvictions drawCalls triangles peakTextureBytes workingTextureBytes missingTextureCount compositorFrames compositorTiles compositorDraws durationMs waitMs count sampleCount suppressed cached cameraFallback reasonCode exitCode quitRequested permitClose resourceEpoch completedResourceEpoch radius mode ms oldConfig newConfig channel acceptedLines declinedLines acceptedPixels availableBytes scratchBytes mapMs queueWaitMs coverage sharpCoverage nativePhaseCoverage maxUpscale pixelCoverageComplete nativeCoverageComplete inputSequence inputAt inputTimeOrigin inputAgeMs deltaX deltaY deltaMode inputKind generation fillGeneration pageToken state phase navigating targetDensity effectiveDensity finalComplete oldContentAgeMs queueDepth activeRequestId superseded skipped coverageMeasured coverageAt dropped phaseX phaseY sceneReady tileIndex').split(' '))
 export function sanitizeFields(value) {
   const out = {}
   if (!value || typeof value !== 'object') return out
   for (const key of fields) {
     const v = value[key]
+    if (Object.hasOwn(resourceLimits,key)) {
+      if (Number.isSafeInteger(v) && v>=0 && v<=resourceLimits[key]) out[key]=v
+      continue
+    }
     if (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e15) out[key] = v
     else if (typeof v === 'boolean') out[key] = v ? 1 : 0
   }
@@ -70,10 +75,27 @@ export function renderRequestCategories(payload) {
   const commandCode=p.command===undefined?1:(commands.includes(p.command)?commands.indexOf(p.command)+2:0)
   const renderIntent=o.renderIntent==='preview'?1:o.renderIntent==='settled'?2:o.renderIntent==='canvas'?3:0
   const isRender=p.command===undefined && !!p.options
-  return {commandCode,purpose:!isRender?5:p.png||o.exportRegion?4:renderIntent||0,
+  return {documentEnvelope:p.document!==undefined?1:p.documentPatch!==undefined?2:0,retainInteractionGraph:o.retainInteractionGraph===true,interactionNative:o.interactionNative===true,interactionOwner:o.interactionOwner,interactionGeneration:o.interactionGeneration,interactionBranch:o.interactionBranch,commandCode,purpose:!isRender?5:p.png||o.exportRegion?4:renderIntent||0,
     channel:p.channel==='interaction'?1:isRender?0:2,renderIntent,
     preview:!!o.tileViewport||o.livePreview===true,finalRequest:renderIntent===2,
     readback:p.readback===true||p.png===true,png:p.png===true,
     coverageTiles:o.coverageTiles===true,livePreview:o.livePreview===true,tileViewport:!!o.tileViewport}
 }
 export function renderResultReason(error) { return error === 'PREVIEW_CANCELLED' ? 5 : error ? 1 : 0 }
+
+// Call only in DETAIL mode, with the already-parsed authored snapshot. No
+// resource names, payload bytes, node scan, JSON parse, or stringify is needed.
+export function snapshotResourceFields(sourceCodeUnits, fonts) {
+  const out=sanitizeFields({sourceCodeUnits})
+  let count=0, units=0
+  if(fonts!==undefined && (!fonts || typeof fonts!=='object' || Array.isArray(fonts))) return out
+  for(const key in fonts) {
+    if(!Object.hasOwn(fonts,key))continue
+    if(++count>32)return out
+    const data=fonts[key]?.data
+    if(typeof data!=='string')return out
+    units+=data.length
+    if(units>resourceLimits.embeddedFontCodeUnits)return out
+  }
+  return {...out,embeddedFontCount:count,embeddedFontCodeUnits:units}
+}

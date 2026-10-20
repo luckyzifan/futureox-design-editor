@@ -1,8 +1,9 @@
+import { effectsAreKnown } from '../render-dependency'
 import type { GpuNode, GpuScene } from './types'
 
 export type SceneIndex = {
   parents: Map<string, string>; roots: Set<string>; rootFor: Map<string, string>
-  sources: Set<GpuNode>; images: Set<string>; hasReplay: boolean; hasFilters: boolean; hasPrefixFilter: boolean
+  unknownEffectSubtrees: Set<string>; sources: Set<GpuNode>; images: Set<string>; hasReplay: boolean; hasFilters: boolean; hasPrefixFilter: boolean
 }
 const indices = new WeakMap<GpuScene['nodes'], {roots: GpuScene['roots']; index: SceneIndex}>()
 export function sceneScale(m: number[]) {
@@ -35,7 +36,16 @@ export function sceneIndex(scene: GpuScene): SceneIndex {
     const stack=[root]
     while(stack.length){const id=stack.pop()!;if(rootFor.has(id))continue;rootFor.set(id,root);stack.push(...(scene.nodes[id]?.children||[]))}
   }
-  const index={parents,roots,rootFor,sources,images,hasReplay,hasFilters,hasPrefixFilter}
+  // Propagate unsupported effects to containing sources once per immutable
+  // compiled topology. Each node is visited at most once in this propagation.
+  const unknownEffectSubtrees = new Set<string>()
+  for (const node of Object.values(scene.nodes)) if (!effectsAreKnown(node.effects)) {
+    let id: string | undefined = node.id
+    while (id && !unknownEffectSubtrees.has(id)) {
+      unknownEffectSubtrees.add(id); id = parents.get(id)
+    }
+  }
+  const index={parents,roots,rootFor,sources,images,hasReplay,hasFilters,hasPrefixFilter,unknownEffectSubtrees}
   indices.set(scene.nodes,{roots:scene.roots,index});return index
 }
 

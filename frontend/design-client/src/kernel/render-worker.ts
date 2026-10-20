@@ -1,7 +1,8 @@
-import { createRenderDiagnostics, setGpuDiagnosticSink, setGpuDiagnosticsDetail } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
+import { renderQualityContract } from './render-quality'
+import { createRenderDiagnostics, snapshotResourceFields, setGpuDiagnosticSink, setGpuDiagnosticsDetail } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { renderFailureEnvelope, renderErrorWithBudget } from './render-diagnostics'
-import { readAuthoredSnapshot, type AuthoredSnapshot } from './authored-snapshot'
+import { readAuthoredSnapshot } from './authored-snapshot'
 import initialize, {
   transcode_export_png,
   VectorEngine,
@@ -32,7 +33,8 @@ import { TILE_SIDE, type RasterTile } from './tile-cache'
 import { imageCacheKey, readCachedImage, writeCachedImage } from './image-mip-cache'
 import { DecodedImageCache } from './decoded-image-cache'
 import { managedSceneImageLoader, SceneImageHydration, type ImageContext } from './scene-image-hydration'
-import { ExactTileCache, coordinateSlot } from './exact-tile-cache'
+import { coordinateSlot } from './exact-tile-cache'
+import { OwnerTileCache, ownsExactTileBytes } from './owner-tile-cache'
 import { tileComputationDependsOnCamera } from './tile-computation-key'
 import { recoverFailedTileRenderer } from './tile-failure'
 import { recoverPreviewBudget, isRecoverablePreviewBudget } from './preview-budget-recovery'
@@ -48,6 +50,7 @@ import {residentFrameSignature} from './gpu/resident-frame'
 import { canCommitResidentFrame } from './gpu/retained-commit'
 import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
+import { RenderLaneStates, type RenderLaneName } from './render-lane-state'
 import { loadKernelResources } from './kernel-resources'
 import { preparedTileCanFill } from './prepared-tile-fallback'
 import { reuseExactSceneSources } from './gpu/exact-scene-reuse'
@@ -59,22 +62,11 @@ let terminalDiagnostics = createRenderDiagnostics()
 let diagnosticRequestId = 0
 let diagnosticQueueDepth=0
 let executionPolicy: RenderPolicy | undefined
-let enginePromise: Promise<RenderKernel> | undefined
 let preparation: PreparationChannel | undefined
-let loadedDocument = ''
-let authoredSnapshot: AuthoredSnapshot | undefined
-let loadedRevision = -1
-let interactionDocument: DesignDocument | undefined
-let synchronizedInteractionDocument: DesignDocument | undefined
-// Only accepted pure translations may leave the CPU kernel behind the transient GPU graph.
-let deferredInteractionDocument: DesignDocument | undefined
 let colorKey = ''
 let floatingKey: string | undefined
 let referenceGpu = false
 let solidBatchGpu = true
-// Only one compiled scene is retained. It is keyed by the immutable document
-// revision and all rendering options; GPU resource caches remain separate.
-let compiledScene: { revision: number; options: string; scene: GpuScene } | undefined
 let gpu: GpuRenderer | undefined
 let displayCanvas: OffscreenCanvas | undefined
 let displayFrame: import('./gpu/resident-presenter').ResidentFrame | undefined
@@ -122,7 +114,7 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   return work().finally(() => { if (generation === navigationCaptureGeneration) navigationJournal.record(5, { sequence }) })
 }
 function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal) {
-  return journalCompile(() => kernel.compile_gpu_packet(options, signal))
+  return journalCompile(async () => (await kernel.prepare_gpu_packet(options, signal)).consume())
 }
 function compileSceneUpdate(kernel: RenderKernel, options: string, reset: boolean) {
   return journalCompile(() => kernel.compile_gpu_scene_update(options, reset))
@@ -151,58 +143,54 @@ const previewGenerations = {canvas:0,interaction:0}
 let tileFillGeneration = 0
 // Cancellation is restricted to CPU-only packet waits before any encoder owns
 // resources. Ordered document synchronization and exact outputs always finish.
-const packetWaits = new Set<{ channel: string; tiled: boolean; controller: AbortController }>()
-let tileNamespace = ''
+const packetWaits = new Set<{ requestId: number; channel: string; tiled: boolean; controller: AbortController }>()
 const regionAdmissions = new Map<string, PreviewAdmission>()
 type TileRender = Awaited<ReturnType<typeof renderTiledPreview>>
-const tileCache = new ExactTileCache<TileRender & {worldBounds: [number,number,number,number]}>(undefined,(reasonCode,tileCacheBytes)=>{if(terminalDiagnostics.detail)terminalDiagnostics.record('cache',{requestId:diagnosticRequestId,reasonCode,tileCacheBytes})})
+const tileCaches = new OwnerTileCache<TileRender & {worldBounds: [number,number,number,number]}>(undefined,(reasonCode,tileCacheBytes)=>{if(terminalDiagnostics.detail)terminalDiagnostics.record('cache',{requestId:diagnosticRequestId,reasonCode,tileCacheBytes})})
+let tileCache = tileCaches.owner('canvas')
 let cacheGeneration = 0
-let documentGeneration = 0
-let resourceGeneration = 0
-let loadedDocumentId = ''
-let loadedNodeCount = 0
 function invalidateTileCache() {
-  terminalDiagnostics.record('cache-invalidate',{requestId:diagnosticRequestId,generation:cacheGeneration,reasonCode:0,tileCacheBytes:tileCache.bytes})
-  tileCache.clear()
+  terminalDiagnostics.record('cache-invalidate',{requestId:diagnosticRequestId,generation:cacheGeneration,reasonCode:0,tileCacheBytes:tileCaches.bytes})
+  tileCaches.clear()
   regionAdmissions.clear()
-  if (tileNamespace) tileCache.reserve(tileNamespace.length * 2 + 512)
   cacheGeneration++
 }
 
-// CPU document state is isolated; raster/display resources remain on one
-// worker/device. A transient selection never patches the settled page lane.
-function saveLane() { return { enginePromise, loadedDocument, authoredSnapshot, loadedRevision, interactionDocument,
-  synchronizedInteractionDocument, deferredInteractionDocument, compiledScene, loadedDocumentId, loadedNodeCount, documentGeneration, resourceGeneration } }
-type Lane = ReturnType<typeof saveLane>
-const emptyLane = (): Lane => ({enginePromise:undefined,loadedDocument:'',authoredSnapshot:undefined,loadedRevision:-1,interactionDocument:undefined,
-  synchronizedInteractionDocument:undefined,deferredInteractionDocument:undefined,compiledScene:undefined,loadedDocumentId:'',loadedNodeCount:0,documentGeneration:0,resourceGeneration:0})
-const lanes = new Map<string,Lane>()
-let activeLane = 'canvas'
-function selectLane(name:string) {
-  if (name===activeLane) return
-  lanes.set(activeLane,saveLane())
-  const next=lanes.get(name)||emptyLane()
-  ;({enginePromise,loadedDocument,authoredSnapshot,loadedRevision,interactionDocument,synchronizedInteractionDocument,deferredInteractionDocument,
-    compiledScene,loadedDocumentId,loadedNodeCount,documentGeneration,resourceGeneration}=next)
-  activeLane=name
-  invalidateTileCache()
+function invalidateOwnerTileCache() {
+  terminalDiagnostics.record('cache-invalidate',{requestId:diagnosticRequestId,generation:cacheGeneration,reasonCode:1,tileCacheBytes:tileCaches.bytes})
+  tileCache.clear()
+  // Admission heuristics are bounded separately and carry explicit owner keys.
+  for (const key of regionAdmissions.keys()) if (key.startsWith(JSON.stringify(activeLane) + '/')) regionAdmissions.delete(key)
+  cacheGeneration++
+}
+
+// Stable lane objects replace swapping mutable document fields. GPU state
+// remains on the single render queue; receipts certify CPU packet admission.
+const lanes = new RenderLaneStates()
+let laneState = lanes.get('canvas')
+let activeLane: RenderLaneName = 'canvas'
+function selectLane(name: RenderLaneName) {
+  if (name === activeLane) return
+  laneState = lanes.get(name)
+  activeLane = name
+  tileCache = tileCaches.owner(name)
 }
 
 
-async function engine() {
-  if (!enginePromise)
-    enginePromise = (async () => {
+async function engine(state = laneState) {
+  if (!state.enginePromise)
+    state.enginePromise = (async () => {
       const boot = () => initialize({ module_or_path: '/kernel/design_kernel_bg.wasm' })
       // Warm only after a real request owns the render queue/GPU permit. Merely
       // constructing idle clients must not boot unlimited WASM/font workers.
-      const font = preparation ? (await Promise.all([boot(), preparation.request(activeLane, 'warm_resources')]), undefined) : await loadKernelResources(boot)
-      const engine = new RenderKernel(new VectorEngine(), activeLane, preparation)
+      const font = preparation ? (await Promise.all([boot(), preparation.request(state.name, 'warm_resources')]), undefined) : await loadKernelResources(boot)
+      const engine = new RenderKernel(new VectorEngine(), state.name, preparation)
       // The execution policy is pinned by the first envelope before any task
       // reaches this point and can never change afterwards.
       await engine.initialize(executionPolicy?.imageMips === true, font)
       return engine
     })()
-  return enginePromise
+  return state.enginePromise
 }
 /** Deterministic asset access through the wasm engine: base decode for level
  * 0, the shared mip chain above it. Level surfaces come from the same cached
@@ -220,11 +208,11 @@ const managedImageLoader = managedSceneImageLoader(diskImageCache, () => {
 /** Capture after ordered document synchronization. Same-id reopen, resources,
  * lanes and color settings each own separate optional decode residency. */
 function sceneImageHydration(kernel: RenderKernel, current: () => boolean) {
-  const lane = activeLane, generation = documentGeneration, resources = resourceGeneration, promise = enginePromise
+  const lane = activeLane, generation = laneState.documentGeneration, resources = laneState.resourceGeneration, promise = laneState.enginePromise
   const context = { kernel, settings: kernel.color_settings(),
-    scope: JSON.stringify([lane, generation, resources, loadedDocumentId, kernel.color_settings()]) }
-  const ownerCurrent = () => activeLane === lane && documentGeneration === generation &&
-    resourceGeneration === resources && enginePromise === promise && kernel.color_settings() === context.settings
+    scope: JSON.stringify([lane, generation, resources, laneState.loadedDocumentId, kernel.color_settings()]) }
+  const ownerCurrent = () => activeLane === lane && laneState.documentGeneration === generation &&
+    laneState.resourceGeneration === resources && laneState.enginePromise === promise && kernel.color_settings() === context.settings
   const hydration = new SceneImageHydration(diskImageCache, context, imagePersistence, ownerCurrent, current)
   return async (scene: GpuScene, isCurrent = current) => {
     const hydrationStarted=terminalDiagnostics.enabled?performance.now():0
@@ -340,9 +328,9 @@ function schedulePose(){
           gpu.driver.replacePresented(session.slot,result.gpuTile)
           session.scene=next
           if(session.patch)session.patch.accept(next,pose.transforms)
-          else {session.document=document!;interactionDocument=document;deferredInteractionDocument=document}
+          else {session.document=document!;laneState.interactionDocument=document;laneState.deferredInteractionDocument=document}
           session.input=pose.input
-          compiledScene={revision:loadedRevision,options:session.options,scene:next}
+          laneState.compiledScene={revision:laneState.loadedRevision,options:session.options,scene:next}
           const bounds={x:(window.x-next.view.x)/scale,y:(window.y-next.view.y)/scale,width:window.w/scale,height:window.h/scale}
           session.bounds=bounds
           if(displayFrame&&displayFrame.items.some(item=>item.active&&item.tile.gpuTile===session.slot)){
@@ -394,7 +382,7 @@ self.onmessage = (e) => {
     return
   }
   if (request.command === 'prepare-port') {
-    if (!preparation && !enginePromise && request.port instanceof MessagePort) preparation = new PreparationChannel(request.port)
+    if (!preparation && !laneState.enginePromise && request.port instanceof MessagePort) preparation = new PreparationChannel(request.port, { enabled: () => terminalDiagnostics.enabled, owner: () => diagnosticRequestId, record: (event, fields) => terminalDiagnostics.record(event, fields) })
     return
   }
   const channel = request.channel === 'interaction' ? 'interaction' : 'canvas'
@@ -451,6 +439,14 @@ self.onmessage = (e) => {
     if(poseSession&&request.ids.includes(poseSession.slot)){poseSession=undefined;pendingPose=undefined}
     gpu?.driver.releasePresented?.(request.ids); return
   }
+  if (request.command === 'cancel-request') {
+    if (!Number.isSafeInteger(request.requestId)) return
+    try {
+      executionPolicy = pinRenderPolicy(executionPolicy, request.executionPolicy)
+      for (const wait of packetWaits) if (wait.requestId === request.requestId) wait.controller.abort()
+    } catch { /* malformed control envelope has no effect */ }
+    return
+  }
   if (request.command === 'cancel-preview') {
     terminalDiagnostics.record('cancel',{channel:channel==='interaction'?1:0,reasonCode:1,generation:previewGenerations[channel],fillGeneration:tileFillGeneration,activeRequestId:diagnosticRequestId,queueDepth:diagnosticQueueDepth})
     if (navigationJournal.recording) navigationJournal.record(10, { channel: channel === 'interaction' ? 1 : 0 })
@@ -473,7 +469,7 @@ self.onmessage = (e) => {
   const cancellablePacket = request.options?.renderIntent === 'preview' &&
     (request.options?.livePreview === true || !!request.options?.tileViewport) &&
     !request.png && !request.readback && !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
-  const packetWait = cancellablePacket ? { channel, tiled: !!request.options.tileViewport, controller: new AbortController() } : undefined
+  const packetWait = cancellablePacket ? { requestId: request.id, channel, tiled: !!request.options.tileViewport, controller: new AbortController() } : undefined
   if (packetWait) packetWaits.add(packetWait)
   let completedRegions=0
   const reportRasterProgress=()=>self.postMessage({id:request.id,rasterProgress:++completedRegions})
@@ -511,7 +507,7 @@ self.onmessage = (e) => {
         // Debug snapshot: the kernel ledger plus live driver accounting. A
         // worker whose engine never finished loading reports a null breakdown
         // rather than triggering the wasm/font load for a poll.
-        const kernel = enginePromise ? await engine() : undefined
+        const kernel = laneState.enginePromise ? await engine() : undefined
         const driverStats = gpu?.driver.stats?.() ?? null
         self.postMessage({
           id: request.id,
@@ -549,8 +545,8 @@ self.onmessage = (e) => {
       selectLane(request.channel === 'interaction' ? 'interaction' : 'canvas')
       if(channel==='interaction'){
         if(poseSession?.patch && request.document===undefined){
-          interactionDocument=poseSession.document=poseSession.patch.snapshot()
-          deferredInteractionDocument=interactionDocument
+          laneState.interactionDocument=poseSession.document=poseSession.patch.snapshot()
+          laneState.deferredInteractionDocument=laneState.interactionDocument
         }
         poseSession=undefined;pendingPose=undefined
       }
@@ -559,17 +555,17 @@ self.onmessage = (e) => {
       const retainInteraction = request.options?.retainInteractionGraph === true && request.options?.renderIntent === 'preview' && request.options?.livePreview === true &&
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
-      const { interactionChannel: _interactionChannel, livePreview, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
+      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
         tilePrepareViewport: requestedPrepareViewport, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
-      const previewCurrent = () => generation === previewGenerations[channel] &&
+      const previewCurrent = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
         (!tileViewport || channel !== 'canvas' || fillGeneration === tileFillGeneration)
       const retainCoverage = channel === 'canvas' && coverageTiles === true && !!tileViewport && renderIntent === 'preview'
       if(renderOptions.captureViewport&&(request.png||request.readback||tileViewport||renderOptions.pixelPreview||exportFormat||renderOptions.exportRegion))
         throw Error('Native viewport capture is only available for canvas presentation')
       // Readback is transport, not quality. Only an explicitly transient
       // preview may simplify effects; settled frames and exports never do.
-      renderOptions.interactiveEffects = renderIntent === 'preview' &&
-        !executionPolicy.desktopFullMath && !request.png && !exportFormat && !renderOptions.exportRegion
+      renderOptions.interactiveEffects = renderQualityContract({ renderIntent, png: request.png, exportFormat,
+        exportRegion: renderOptions.exportRegion, desktopFullMath: executionPolicy.desktopFullMath }).existingInteractiveEffectsPolicy
       const canvasDisplayFilters = usesCanvasDisplayFilters(executionPolicy, {
         renderIntent, png: request.png, readback: request.readback, exportFormat,
         exportRegion: renderOptions.exportRegion, pixelPreview: renderOptions.pixelPreview,
@@ -590,53 +586,60 @@ self.onmessage = (e) => {
       const disableExactCache = request.debug?.disableExactTileCache === true
       const options = JSON.stringify({...renderOptions,...(renderOptions.captureViewport&&requestedPrepareViewport?{prepareViewport:requestedPrepareViewport}:{})})
       const synchronizeDeferred = async () => {
-        if (!deferredInteractionDocument) return
-        if(synchronizedInteractionDocument?.id===deferredInteractionDocument.id)
-          await kernel.apply_document_patch_with_damage(JSON.stringify(documentPatch(synchronizedInteractionDocument,deferredInteractionDocument)))
-        else await kernel.load_document(JSON.stringify(deferredInteractionDocument))
-        synchronizedInteractionDocument=deferredInteractionDocument
-        deferredInteractionDocument = undefined
+        if (!laneState.deferredInteractionDocument) return
+        if(laneState.synchronizedInteractionDocument?.id===laneState.deferredInteractionDocument.id)
+          await kernel.apply_document_patch_with_damage(JSON.stringify(documentPatch(laneState.synchronizedInteractionDocument,laneState.deferredInteractionDocument)))
+        else await kernel.load_document(JSON.stringify(laneState.deferredInteractionDocument))
+        laneState.synchronizedInteractionDocument=laneState.deferredInteractionDocument
+        laneState.deferredInteractionDocument = undefined
       }
-      if (!retainInteraction) await synchronizeDeferred()
+      const loadStage = (phase: number, at: number, fields = {}) => terminalDiagnostics.record('load-stage', { requestId: request.id, phase, durationMs: performance.now() - at, ...fields })
+      if (!retainInteraction) { const at = performance.now(); await synchronizeDeferred(); loadStage(1, at) }
       let translated: { options: string; scene: GpuScene } | undefined
       // Keep the immutable authored snapshot in both lanes. It also proves
       // whether the last displayed pose is exactly the patch being committed.
       let paintDamage: PaintDamage | undefined
       if (request.document !== undefined) {
         // A full resynchronization is a new owner even if its authored id repeats.
-        deferredInteractionDocument = undefined
-        documentGeneration++
-        invalidateTileCache()
-        authoredSnapshot = undefined
-        interactionDocument = readAuthoredSnapshot(request.document,
+        laneState.deferredInteractionDocument = undefined
+        laneState.documentGeneration++
+        invalidateOwnerTileCache()
+        laneState.authoredSnapshot = undefined
+        const snapshotAt = performance.now()
+        laneState.interactionDocument = readAuthoredSnapshot(request.document,
           channel === 'interaction' ? lanes.get('canvas')?.authoredSnapshot : undefined)
-        loadedDocumentId = interactionDocument.id
-        loadedNodeCount = Object.keys(interactionDocument.nodes).length
-        synchronizedInteractionDocument=interactionDocument
+        loadStage(2, snapshotAt, terminalDiagnostics.detail
+          ? snapshotResourceFields(request.document.length, laneState.interactionDocument.fonts) : {})
+        laneState.loadedDocumentId = laneState.interactionDocument.id
+        laneState.loadedNodeCount = Object.keys(laneState.interactionDocument.nodes).length
+        laneState.synchronizedInteractionDocument=laneState.interactionDocument
 
-        if (request.document !== loadedDocument || request.documentRevision !== loadedRevision) {
+        if (request.document !== laneState.loadedDocument || request.documentRevision !== laneState.loadedRevision) {
+          const loadAt = performance.now(), forks = kernel.documentForks
           await kernel.load_document(request.document)
-          loadedDocument = request.document
-          compiledScene = undefined
+          loadStage(3, loadAt, { documentFork: kernel.documentForks > forks })
+          laneState.loadedDocument = request.document
+          laneState.compiledScene = undefined
           paintDamage = undefined
         }
-        loadedRevision = request.documentRevision
+        laneState.loadedRevision = request.documentRevision
         // Publish only after successful kernel synchronization. A failed load
         // or any later patch must never leave a reusable source certificate.
-        authoredSnapshot = {json:request.document,document:interactionDocument}
+        laneState.authoredSnapshot = {json:request.document,document:laneState.interactionDocument}
       } else if (request.documentPatch !== undefined) {
-        authoredSnapshot = undefined
-        if (request.baseDocumentRevision !== loadedRevision)
+        const patchAt = performance.now()
+        laneState.authoredSnapshot = undefined
+        if (request.baseDocumentRevision !== laneState.loadedRevision)
           throw new Error('文档补丁版本未同步，请重试当前画布')
         const patch = JSON.parse(request.documentPatch) as DocumentPatch
-        if (interactionDocument) {
-          const next = applyDocumentPatch(interactionDocument, patch)
-          if (retainInteraction && !interactionNative && compiledScene?.revision === loadedRevision) {
-            const moved = translatePreviewScene(compiledScene.scene, interactionDocument, next)
-            if (moved) translated = { options: compiledScene.options, scene: moved }
+        if (laneState.interactionDocument) {
+          const next = applyDocumentPatch(laneState.interactionDocument, patch)
+          if (retainInteraction && !interactionNative && laneState.compiledScene?.revision === laneState.loadedRevision) {
+            const moved = translatePreviewScene(laneState.compiledScene.scene, laneState.interactionDocument, next)
+            if (moved) translated = { options: laneState.compiledScene.options, scene: moved }
           }
-          interactionDocument = next
-          loadedNodeCount = Object.keys(next.nodes).length
+          laneState.interactionDocument = next
+          laneState.loadedNodeCount = Object.keys(next.nodes).length
         }
         // Translation already passed geometry/clipping/resource validation and
         // uses the identical compile options. Avoid re-running Rust document
@@ -646,8 +649,8 @@ self.onmessage = (e) => {
         if (!defer) await synchronizeDeferred()
         const damage = defer ? { full: true, bounds: null, reason: 'transient-translation' } :
           JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch)) as {full:boolean;bounds:[number,number,number,number]|null;rects?:[number,number,number,number][];reason?:string}
-        if(!defer)synchronizedInteractionDocument=interactionDocument
-        if (defer) deferredInteractionDocument = interactionDocument
+        if(!defer)laneState.synchronizedInteractionDocument=laneState.interactionDocument
+        if (defer) laneState.deferredInteractionDocument = laneState.interactionDocument
         // Kernel-tiled frames consume the same damage: full repaint, bounded
         // world rects, or no paint change.
         paintDamage = {full:damage.full,bounds:damage.bounds??undefined,rects:damage.rects,reason:damage.reason}
@@ -662,43 +665,44 @@ self.onmessage = (e) => {
         // Default font/runtime bytes are fixed for this worker's lifetime.
         // Any embedded-font update conservatively changes the resource envelope.
         if (Object.hasOwn(patch.fields || {}, 'fonts')) {
-          resourceGeneration++
-          invalidateTileCache()
+          laneState.resourceGeneration++
+          invalidateOwnerTileCache()
         }
-        loadedDocument = ''
-        loadedRevision = request.documentRevision
-        compiledScene = undefined
+        laneState.loadedDocument = ''
+        laneState.loadedRevision = request.documentRevision
+        laneState.compiledScene = undefined
+        loadStage(4, patchAt)
       }
-      if (request.documentRevision !== loadedRevision) throw new Error('渲染文档版本未同步')
+      if (request.documentRevision !== laneState.loadedRevision) throw new Error('渲染文档版本未同步')
       // Apply the versioned document envelope even when its pixels were
       // superseded; the following request may legitimately patch this revision.
-      if ((livePreview || tileViewport) && generation !== previewGenerations[channel]) throw Error('PREVIEW_CANCELLED')
+      if ((livePreview || tileViewport) && (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw Error('PREVIEW_CANCELLED')
       // Camera-only cancellation must still apply the ordered document above,
       // but need not initialize GPU pipelines or hydrate a stale raster batch.
       // Page coverage is useful across cameras and keeps its explicit exemption.
       if (tileViewport && channel === 'canvas' && fillGeneration !== tileFillGeneration)
         throw Error('PREVIEW_CANCELLED')
-      if (deferredInteractionDocument && translated?.options !== options && compiledScene?.options !== options) await synchronizeDeferred()
+      if (laneState.deferredInteractionDocument && translated?.options !== options && laneState.compiledScene?.options !== options) await synchronizeDeferred()
       // Whole-board translation changes almost every visible program. Its
       // measured full packet is cheaper than diffing/reassembling that stream.
       // Keep deltas for local edits; neither route changes the exact compiler.
       const incrementalScene = interactionNative && import.meta.env.VITE_DESIGN_SCENE_DELTA!=='0' &&
-        !(interactionSelection || []).some((id: string) => interactionDocument?.pages.some(page => page.children.includes(id)))
+        !(interactionSelection || []).some((id: string) => laneState.interactionDocument?.pages.some(page => page.children.includes(id)))
       const hydrateImages = sceneImageHydration(kernel, () => !(livePreview || tileViewport) || previewCurrent())
       const settingsJson = kernel.color_settings()
       const color: ColorSettings | undefined = JSON.parse(settingsJson) || undefined
       if (tileOwner !== undefined && (!tileOwner || typeof tileOwner !== 'object' ||
-          tileOwner.documentId !== loadedDocumentId || !Number.isSafeInteger(tileOwner.sessionEpoch) ||
+          tileOwner.documentId !== laneState.loadedDocumentId || !Number.isSafeInteger(tileOwner.sessionEpoch) ||
           tileOwner.sessionEpoch < 0)) throw new Error('Invalid tile session owner')
       // Explicit UI session ownership is required for cross-revision reuse.
-      const tileOwnerKey = tileOwner === undefined ? ['revision', loadedRevision] :
+      const tileOwnerKey = tileOwner === undefined ? ['revision', laneState.loadedRevision] :
         ['session', tileOwner.documentId, tileOwner.sessionEpoch]
       const loadMs = performance.now() - start
       const wantsReference = import.meta.env.DEV && request.referenceGpu === true
       const wantsBatch = !(import.meta.env.DEV && request.debug?.disableSolidBatch)
       const cacheScene = !(import.meta.env.DEV && request.debug?.disableSceneCache)
       if (cacheScene && translated?.options === options)
-        compiledScene = { revision: loadedRevision, options, scene: translated.scene }
+        laneState.compiledScene = { revision: laneState.loadedRevision, options, scene: translated.scene }
       if (
         settingsJson !== colorKey ||
         preference !== backend ||
@@ -762,19 +766,19 @@ self.onmessage = (e) => {
             if (channel === 'canvas' && request.documentPatch && !tileViewport.length &&
                 renderIntent === 'canvas' && !request.readback && !renderOptions.grid && !renderOptions.checkerboard &&
                 !renderOptions.pixelPreview && allowsResidentSdr(executionPolicy) &&
-                interactionDocument && poseSession?.input && displayFrame && gpu?.driver.snapshotPresented &&
+                laneState.interactionDocument && poseSession?.input && displayFrame && gpu?.driver.snapshotPresented &&
                 renderOptions.view.zoom === poseSession.scene.view.zoom &&
                 renderOptions.width === Math.ceil(displayFrame.width * displayFrame.dpr) &&
                 renderOptions.height === Math.ceil(displayFrame.height * displayFrame.dpr) &&
                 JSON.parse(poseSession.options).pageId === renderOptions.pageId &&
                 JSON.parse(poseSession.options).rasterProfile === renderOptions.rasterProfile &&
-                canCommitResidentFrame(poseSession.scene, poseSession.document, interactionDocument, displayFrame, poseSession.input)) {
+                canCommitResidentFrame(poseSession.scene, poseSession.document, laneState.interactionDocument, displayFrame, poseSession.input)) {
               let snapshot: ReturnType<NonNullable<typeof gpu.driver.snapshotPresented>>
               try { snapshot = gpu.driver.snapshotPresented() }
               catch (error) { if (!isDisplayBudgetError(error)) throw error }
-              if (snapshot && canCommitResidentFrame(poseSession.scene, poseSession.document, interactionDocument, snapshot.frame, poseSession.input)) {
+              if (snapshot && canCommitResidentFrame(poseSession.scene, poseSession.document, laneState.interactionDocument, snapshot.frame, poseSession.input)) {
                 const { view, dpr, width, height } = snapshot.frame
-                self.postMessage({ id: request.id, tile: { key: `commit:${loadedRevision}:${snapshot.gpuTile}`,
+                self.postMessage({ id: request.id, tile: { key: `commit:${laneState.loadedRevision}:${snapshot.gpuTile}`,
                   x: -view.x * dpr, y: -view.y * dpr, width: Math.ceil(width * dpr), height: Math.ceil(height * dpr),
                   zoom: view.zoom * dpr, gutter: 0, committedViewport: true, viewportPreview: true,
                   gpuTile: snapshot.gpuTile, backend, description: 'retained native viewport', cached: false } })
@@ -785,7 +789,7 @@ self.onmessage = (e) => {
               if (snapshot) gpu.driver.releasePresented?.([snapshot.gpuTile])
             }
             const namespace = JSON.stringify([
-              documentGeneration, resourceGeneration, tileOwnerKey,
+              laneState.documentGeneration, laneState.resourceGeneration, tileOwnerKey,
               renderOptions.pageId,
               renderOptions.rasterProfile,
               renderOptions.interactiveEffects,
@@ -803,9 +807,6 @@ self.onmessage = (e) => {
               wantsReference,
               wantsBatch,
             ])
-            if (namespace !== tileNamespace) {
-              tileNamespace = namespace
-            }
             // One prepare guard shared by every tile of this request: the
             // kernel caches the flattened-geometry phase per camera, so the
             // whole-document walk happens once instead of once per tile.
@@ -821,7 +822,7 @@ self.onmessage = (e) => {
             const batchStarted = performance.now(), packetHitsBefore = kernel.packetCacheHits
             const ahead = new PrepareAhead<{ bytes: Uint8Array; ms: number }>()
             let preparationWaitMs = 0, overlappedPreparations = 0
-            const current = () => generation === previewGenerations[channel] &&
+            const current = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
               (channel !== 'canvas' || fillGeneration === tileFillGeneration)
             const slot = (tile: RasterTile) => namespace + '/' + coordinateSlot([
               tile.x, tile.y, tile.width, tile.height, tile.zoom, tile.phaseX ?? 0, tile.phaseY ?? 0,
@@ -841,7 +842,7 @@ self.onmessage = (e) => {
               let undelivered: { bitmap?: ImageBitmap; gpuTile?: number } | undefined
               try {
               if (fillGeneration !== tileFillGeneration && channel === 'canvas') throw new Error('PREVIEW_CANCELLED')
-              if (generation !== previewGenerations[channel]) throw new Error('PREVIEW_CANCELLED')
+              if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
               // World slots retain the computation camera for measured byte
               // dithering, grids and pixel preview. Those established paths
               // cannot certify a translated hit from world address alone.
@@ -849,7 +850,7 @@ self.onmessage = (e) => {
               // keep their own bounded entries instead of clearing each other's
               // cache whenever the quality tier changes.
               const cacheKey = slot(tile)
-              const lifetime = cacheGeneration, tileOptions = {
+              const cacheOwner = tileCache, cacheTicket = cacheOwner.capture(), tileOptions = {
                 ...renderOptions, view: { ...renderOptions.view, zoom: tile.zoom },
               }, crop = { x: tile.x + Math.floor(renderOptions.view.x),
                 y: tile.y + Math.floor(renderOptions.view.y), width: tile.width, height: tile.height }
@@ -869,7 +870,7 @@ self.onmessage = (e) => {
                 // Keep both CPU work time and exposed wait time in telemetry.
                 speculativeSavedMs = Math.max(0, prepared.ms - waited)
                 const rawScene = prepared.bytes
-                if (generation !== previewGenerations[channel]) throw Error('PREVIEW_CANCELLED')
+                if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw Error('PREVIEW_CANCELLED')
                 if (channel === 'canvas' && fillGeneration !== tileFillGeneration) {
                   // Optional page backing yields to a new viewport. Only an
                   // already prepared visible tile may supply useful pixels.
@@ -907,18 +908,18 @@ self.onmessage = (e) => {
                   settingsJson, TILE_SIDE + 2, crop, preparedScene,
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
                   prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
-                  () => generation === previewGenerations[channel] && (cameraFallback || current()), hydrateImages)
+                  () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] && (cameraFallback || current()), hydrateImages)
                 undelivered = result
-                if (generation !== previewGenerations[channel]) throw new Error('PREVIEW_CANCELLED')
+                if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
                 // Budget-subdivided assemblies have no accepted single-scene witness.
-                if (!disableExactCache && witness.byteLength && result.previewTiles === 1 && lifetime === cacheGeneration)
-                  tileCache.set(cacheKey, witness, {...result,worldBounds:[
+                if (!disableExactCache && witness.byteLength && result.previewTiles === 1 && ownsExactTileBytes(result) && cacheOwner.current(cacheTicket))
+                  cacheOwner.set(cacheKey, witness, {...result,worldBounds:[
                     (crop.x-renderOptions.view.x-2)/tile.zoom,(crop.y-renderOptions.view.y-2)/tile.zoom,
                     (tile.width+4)/tile.zoom,(tile.height+4)/tile.zoom,
                   ]},
                     result.buffer.byteLength + (result.linearBuffer?.byteLength || 0) +
-                      JSON.stringify({ ...result, buffer: undefined, linearBuffer: undefined }).length * 2)
+                      JSON.stringify({ ...result, buffer: undefined, linearBuffer: undefined }).length * 2, cacheTicket)
                 rendered++
                 tileLeaves += result.previewTiles
                 tileBitmapLeaves += result.bitmapLeaves
@@ -937,7 +938,7 @@ self.onmessage = (e) => {
                 tileDrawCalls += result.drawCalls
                 tileTriangles += result.triangles
               }
-              if (generation !== previewGenerations[channel]) throw new Error('PREVIEW_CANCELLED')
+              if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
               // Cached or fresh, the tile posts back: the surface rebuilds its
               // resident map from deliveries, so a cached hit must still arrive
               // (the historical resident-skip here was unreachable dead code —
@@ -964,7 +965,7 @@ self.onmessage = (e) => {
                 } catch {
                   bitmap = undefined
                 }
-                if (generation !== previewGenerations[channel]) {
+                if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) {
                   bitmap?.close()
                   throw new Error('PREVIEW_CANCELLED')
                 }
@@ -1019,7 +1020,7 @@ self.onmessage = (e) => {
               await queue.yieldToHigherPriority(channel === 'interaction' ? 1 : 0)
               // A canceled returning lane must not retire the interaction's
               // current resources merely to restore an obsolete canvas owner.
-              if (generation !== previewGenerations[channel] ||
+              if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel]) ||
                   (channel === 'canvas' && fillGeneration !== tileFillGeneration)) throw new Error('PREVIEW_CANCELLED')
               selectLane(channel)
               if (settingsJson !== colorKey || preference !== requestPreference || referenceGpu !== wantsReference || solidBatchGpu !== wantsBatch) {
@@ -1053,8 +1054,8 @@ self.onmessage = (e) => {
               injectedBudgetFailures: tileBudgetInjections,
               tileCacheHits: hits,
               certifiedTileHits: certifiedHits,
-              tileCacheBytes: tileCache.bytes,
-              tileCacheEvictions: tileCache.evictions,
+              tileCacheBytes: tileCaches.bytes,
+              tileCacheEvictions: tileCaches.evictions,
               drawCalls: tileDrawCalls,
               triangles: tileTriangles,
               peakTextureBytes: tilePeakTextureBytes,
@@ -1062,8 +1063,8 @@ self.onmessage = (e) => {
               workingTextureBytes: tileWorkingTextureBytes,
               // Counting diagnostics must not reparse a multi-megabyte source
               // after every tile. This also stays correct after patches clear
-              // loadedDocument's full-sync string.
-              stats: { nodes: loadedNodeCount },
+              // the lane's full-sync string.
+              stats: { nodes: laneState.loadedNodeCount },
             })
             return
           }
@@ -1095,17 +1096,17 @@ self.onmessage = (e) => {
           if (!scene) {
             if (
               cacheScene &&
-              compiledScene?.revision === loadedRevision &&
-              compiledScene.options === options
+              laneState.compiledScene?.revision === laneState.loadedRevision &&
+              laneState.compiledScene.options === options
             ) {
-              scene = compiledScene.scene
+              scene = laneState.compiledScene.scene
               compileCacheHit = true
             } else {
               const t = performance.now()
               await synchronizeDeferred()
               scene = decodeScenePacket(await compilePacket(kernel, options, packetWait?.controller.signal))
               compileMs = performance.now() - t
-              if (cacheScene) compiledScene = { revision: loadedRevision, options, scene: scene! }
+              if (cacheScene) laneState.compiledScene = { revision: laneState.loadedRevision, options, scene: scene! }
             }
           }
           // A compile can outlive the camera request while the preparation
@@ -1115,7 +1116,7 @@ self.onmessage = (e) => {
             if (!Array.isArray(interactionSelection) || interactionSelection.length > 16 ||
                 interactionSelection.some(id => typeof id !== 'string')) throw Error('Invalid interaction selection')
             scene = { ...preparePreviewSelection(scene!, interactionSelection), interactionSelection: [...interactionSelection] }
-            if (cacheScene) compiledScene = { revision: loadedRevision, options, scene }
+            if (cacheScene) laneState.compiledScene = { revision: laneState.loadedRevision, options, scene }
           }
           // Color-managed inputs retain linear computation even for SDR output.
           // The HDR preference controls presentation, never the document model.
@@ -1213,14 +1214,14 @@ self.onmessage = (e) => {
               }),
             )
           if (request.png) result.bitmap?.close()
-          if(channel==='interaction'&&retainInteraction&&interactionDocument&&result.gpuTile&&interactionWindow&&
+          if(channel==='interaction'&&retainInteraction&&laneState.interactionDocument&&result.gpuTile&&interactionWindow&&
               !scene!.resolve&&!scene!.presentation&&import.meta.env.VITE_DESIGN_WORKER_POSES!=='0'){
             // Cached coverage is reused only for integer device-pixel moves.
             // Fractional poses request a fresh capture through the normal rebase
             // path; warming their former bilinear approximation is unnecessary.
-            poseSession={slot:result.gpuTile,document:interactionDocument,baseDocument:interactionDocument,
+            poseSession={slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,
               scene:scene!,native:interactionNative===true,delta:!!incrementalScene,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
-              patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
+              patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,laneState.interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
           }
           const bitmap = request.png ? undefined : result.bitmap
           const transfer: Transferable[] = []
@@ -1463,7 +1464,7 @@ async function renderTiledPreview(
   const { renderPreviewTiles, renderBitmapPreviewTiles } = await import('./preview-tiles')
   let hybridEffects = 0, materialFieldHits = 0, materialFieldBuilds = 0, materialFieldBuildMs = 0, materialFieldUploadBytes = 0
   const managedOutput = !!(executionPolicy?.hdrCompositing && color)
-  const admissionKey=JSON.stringify([documentGeneration,resourceGeneration,options.pageId,options.view.zoom,
+  const admissionKey=JSON.stringify(activeLane) + "/" + JSON.stringify([laneState.documentGeneration,laneState.resourceGeneration,options.pageId,options.view.zoom,
     options.rasterProfile,options.interactiveEffects,backend,managedOutput,canvasDisplayFilters,canvasMath,referenceGpu])
   let admission=regionAdmissions.get(admissionKey)
   if(!admission){
