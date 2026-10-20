@@ -1,3 +1,4 @@
+import { desktopPet } from './desktop-pet'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, subscribePendingEdits } from './pending-edits'
 import type { Editor } from './engine'
 import type { WorkspaceAutomationGuard } from './automation/workspace-bridge'
@@ -264,7 +265,7 @@ export class DesktopSession {
     return result
   }
 
-  save(saveAs = false) { return this.run('save', () => this.saveCurrent(saveAs)) }
+  save(saveAs = false) { return this.run('save', async () => { const saved = await this.saveCurrent(saveAs); if (saved) desktopPet.event('save'); return saved }) }
 
   /** Native-confirmed MCP operations never commit/discard a pending input. Each
    * await and the final store/adoption boundary retain the original live fence. */
@@ -363,6 +364,7 @@ export class DesktopSession {
         if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
         return result.status === 'cancelled' ? false : this.failed(result)
       }
+      desktopPet.event('save')
       this.workspaceHeads.set(result.id, result.revision)
       if (this.generation !== generation || this.disposed) { this.editor.notify('本机副本已保存；当前新修改已保留'); return true }
       this.workspacePending = undefined
@@ -660,6 +662,7 @@ export class DesktopSession {
         if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
         return result.status === 'cancelled' ? false : this.failed(result)
       }
+      desktopPet.event('save')
       this.workspaceHeads.set(result.id, result.revision)
       this.workspacePending = undefined
       if (this.currentDocument.id === older.id) {
@@ -679,6 +682,7 @@ export class DesktopSession {
     if (result.id !== id || !Number.isSafeInteger(result.revision) || result.revision < 1)
       throw new Error('本机库保存响应无效')
     this.workspacePending = undefined
+    desktopPet.event('save')
     this.workspaceHeads.set(result.id, result.revision)
     if (!this.disposed && this.currentDocument.id === id) {
       this.baselineGeneration = generation
@@ -756,6 +760,7 @@ export class DesktopSession {
   }
 
   private failed(result: Exclude<DesktopResult, { status: 'ok' } | { status: 'cancelled' }>): false {
+    desktopPet.event('error')
     this.error = result.message
     this.conflict = result.status === 'conflict' || result.code === 'CONFLICT' || result.code === 'WORKSPACE_CONFLICT'
     this.publish()

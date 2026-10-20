@@ -1,3 +1,7 @@
+import { hasSchema15Features } from './schema-features'
+import { expandRepeats, repeatSourceId } from './repeat-transforms'
+import * as ComponentSlots from './component-slots'
+import { previewLayoutSuggestion, applyLayoutSuggestion, type LayoutSuggestionPreview } from './layout-suggestions'
 import { interfacePreference } from './interface-preference'
 import { CameraState } from './camera-state'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasLayoutGrids,hasImageAdjusts,hasPatternTiles } from './model'
@@ -442,6 +446,7 @@ export class Editor {
       let detached = false
       const d = produceDraft(authored, (draft) => {
         draft.schemaVersion = Math.max(2, draft.schemaVersion) as 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+        if (draft.schemaVersion < 15 && hasSchema15Features(authored)) draft.schemaVersion = 15
         draft.rasterProfile ??= before.doc.rasterProfile || 'analytic'
         // Before component/dependency cleanup, only root schema/profile fields
         // have changed. Inspect finalized authored nodes here to avoid creating
@@ -503,7 +508,7 @@ export class Editor {
         if (n !== before.doc.nodes[n.id]) invalidateGeometry(n)
       const resolved = shareDocument(before.doc, kernelLayout(d, before.doc))
       for (const n of Object.values(resolved.nodes))
-        if (n.pathOffset && n !== before.doc.nodes[n.id]) kernelBounds(n)
+        if ((n.pathOffset || n.vectorBrush) && n !== before.doc.nodes[n.id]) kernelBounds(n)
       validateStructure(resolved)
       validateDocument(resolved)
       if (resolved === before.doc) return { status: 'unchanged' as const, revision: this.state.version }
@@ -547,7 +552,7 @@ export class Editor {
       if (hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
       if (Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
       if (hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
-      if(hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion']
+      if(hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15
       if (hasStrokeMarkers(candidate) || hasLayerExports(candidate)) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
       const visible=move?this.movePreviewDocument(candidate,move.ids,move.point,move.force,move.preserveParent):candidate
       if (visible !== candidate) validateStructure(visible)
@@ -556,7 +561,7 @@ export class Editor {
       // A failed derived offset must never become the React scene. Scene/hit
       // queries are synchronous: publishing it first can unmount the editor.
       for(const n of Object.values(resolved.nodes))
-        if(n.pathOffset&&n!==this.state.doc.nodes[n.id])kernelBounds(n)
+        if((n.pathOffset||n.vectorBrush)&&n!==this.state.doc.nodes[n.id])kernelBounds(n)
       const published = performance.now()
       this.set({ doc: resolved })
       this.lastPreviewTiming = { prepareMs: layoutStarted - previewStarted, layoutMs: published - layoutStarted, publishMs: performance.now() - published }
@@ -761,15 +766,16 @@ export class Editor {
     return this.hit(p, true, index, viewZoom, snapshot, undefined, 'smallest')
   }
   hit(p: Point, deep = false, index?: SpatialIndex, viewZoom = this.state.view.zoom, snapshot?: PickSnapshot, eligible?: (node:DesignNode)=>boolean, priority: 'paint-order' | 'smallest' = 'paint-order'): string | null {
-    const d = snapshot?.document || this.state.doc,
+    const authored = snapshot?.document || this.state.doc,
+      d = expandRepeats(authored),
       page = snapshot?.pageId || this.state.page,
-      entries = index || new SpatialIndex(scene(d, page)),
+      entries = (d === authored ? index : undefined) || new SpatialIndex(scene(d, page)),
       tol = 5 / viewZoom
     // Hit the pixels actually on screen while a later frame is rendering. The
     // visible target must still be editable in the current document and page.
     if (page !== this.state.page || d.id !== this.state.doc.id) return null
-    const liveParents = snapshot && d !== this.state.doc ? this.pickContext(this.state.doc).parents : undefined
-    const live = (id: string) => !liveParents || !!interactivePath(this.state.doc, this.state.page, id, false, liveParents).length
+    const liveParents = d !== this.state.doc ? this.pickContext(this.state.doc).parents : undefined
+    const live = (id: string) => !liveParents || !!interactivePath(this.state.doc, this.state.page, repeatSourceId(d, id), false, liveParents).length
     // Exclusions depend on the query point and density; topology and world
     // matrices depend only on the immutable document, not the camera.
     const excluded = new Map<string, boolean>()
@@ -832,11 +838,11 @@ export class Editor {
       if (e.ancestors.some(blocks)) continue
       if (!kernelHitWorld(n, p, e.matrix, viewZoom)) continue
       if (priority === 'smallest') { hovered = e; hoverOwner ??= owner(e); continue }
-      if (deep) return e.id
+      if (deep) return repeatSourceId(d, e.id)
       const candidate = shallowSelectionHit(d, this.state.selection, e.id, [...e.ancestors, e.id], parents)
-      return live(candidate) ? candidate : e.id
+      return repeatSourceId(d, live(candidate) ? candidate : e.id)
     }
-    return hovered?.id || null
+    return hovered ? repeatSourceId(d, hovered.id) : null
   }
   add(
     kind: Kind,
@@ -930,6 +936,18 @@ export class Editor {
       },
       selection,
     )
+  }
+  previewSuggestedLayout(frameId = this.topSelection()[0]): LayoutSuggestionPreview {
+    return { ...previewLayoutSuggestion(this.state.doc, frameId), revision: this.state.version }
+  }
+  applySuggestedLayout(preview: LayoutSuggestionPreview, suggestionId: string) {
+    // Validate before opening history; the callback revalidates after pending edits.
+    const current = this.previewSuggestedLayout(preview.frameId)
+    if (current.revision !== preview.revision || current.fingerprint !== preview.fingerprint) throw new Error('Layout preview is stale; preview again before applying')
+    if (!current.suggestions.some(s => s.id === suggestionId)) throw new Error('Unknown layout suggestion')
+    const result = this.change('应用建议布局', doc => { applyLayoutSuggestion(doc, preview.frameId, preview.fingerprint, suggestionId) })
+    if (result.status === 'rejected') throw new Error(result.message)
+    return result
   }
   autoLayout(requestedMode?: AutoLayout['mode']) {
     const mode = requestedMode ?? 'horizontal'
@@ -1032,7 +1050,7 @@ export class Editor {
       if (hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
       if (Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
       if (hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
-      if(hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion']
+      if(hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15
       if (hasStrokeMarkers(candidate) || hasLayerExports(candidate)) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
       this.set({ doc: kernelLayout(candidate) })
     } catch (error) {
@@ -1068,6 +1086,15 @@ export class Editor {
   }
   swapInstance(id: string, target: string) {
     this.change('替换组件实例', (d) => Components.swapInstance(d, id, target))
+  }
+  declareComponentSlot(targetId: string, name: string) {
+    this.change('声明内容插槽', d => { ComponentSlots.declareSlot(d, targetId, name) })
+  }
+  removeComponentSlot(componentId: string, slotId: string) {
+    this.change('移除内容插槽', d => ComponentSlots.removeSlot(d, componentId, slotId))
+  }
+  assignComponentSlot(instanceId: string, slotId: string, roots: string[] | null) {
+    this.change('设置插槽内容', d => ComponentSlots.assignSlot(d, instanceId, slotId, roots))
   }
   setComponentProperty(id: string, key: string, value: string | boolean) {
     this.change('修改组件属性', (d) => Components.setProperty(d, id, key, value))

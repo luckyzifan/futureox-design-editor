@@ -1,3 +1,4 @@
+import { desktopPet } from './desktop-pet'
 import { pdfVectorIssues, sliceExportTarget } from './export-metadata'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Editor } from './engine'
@@ -44,8 +45,8 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
         if(next.some(p=>p.name===name))throw new Error('导出设置生成了同名文件，请填写不同后缀')
         next.push({name,url,pdf:setting.format==='pdf'||setting.format==='pdf-vector',pdfVector:setting.format==='pdf-vector'&&!asset.fallback})
       }
-      if(request.isCurrent()){setPreviews(next);setMessage(`已生成 ${next.length} 个文件`)}
-    } catch(error){release();if(mounted.current)setMessage(request.signal.aborted?'导出已取消：图层或文档已变化':String(error))}
+      if(request.isCurrent()){desktopPet.event('export');setPreviews(next);setMessage(`已生成 ${next.length} 个文件`)}
+    } catch(error){if(request.isCurrent())desktopPet.event('error');release();if(mounted.current)setMessage(request.signal.aborted?'导出已取消：图层或文档已变化':String(error))}
     finally{owner.current.cancel(request);if(mounted.current)setBusy(false)}
   }
   return <section aria-label="图层导出设置" className="node-export-panel">

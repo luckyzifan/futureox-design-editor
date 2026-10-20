@@ -89,7 +89,7 @@ describe('Typed native node inputs over real MCP JSON-RPC', () => {
   const patch = update.properties.params.properties.patch
   expect(patch).toEqual(create.properties.params.properties.patch)
   expect(patch.additionalProperties).toBe(false)
-  expect(Object.keys(patch.properties).sort()).toEqual('name transform width height visible locked opacity blend fills strokes effects radii smoothing clip mask maskType points innerRadius network text fontSize textStyle textRuns layout sizing constraints layoutGrid guides arc cornerRadius constrainProportions booleanOperation exportSettings textPath pathOffset connector board'.split(' ').sort())
+  expect(Object.keys(patch.properties).sort()).toEqual('repeat vectorBrush name transform width height visible locked opacity blend fills strokes effects radii smoothing clip mask maskType points innerRadius network text fontSize textStyle textRuns layout sizing constraints layoutGrid guides arc cornerRadius constrainProportions booleanOperation exportSettings textPath pathOffset connector board'.split(' ').sort())
   for (const descriptor of Object.values(patch.properties) as Json[]) expect(descriptor.type || descriptor.anyOf).toBeTruthy()
   expect(patch.properties.width).toMatchObject({type:'number',minimum:0.000001,maximum:10000000})
   expect(patch.properties.transform).toMatchObject({type:'array',minItems:6,maxItems:6,items:{minimum:-10000000,maximum:10000000}})
@@ -132,4 +132,25 @@ describe('Typed native node inputs over real MCP JSON-RPC', () => {
    await capture(label,result)
   }
  })
+})
+
+it('MCP authors editable vector brushes and rejects unsupported or over-budget edits atomically', async () => {
+  const { pathNetwork } = await import('../path-network')
+  const { defaultVectorBrush } = await import('../vector-brush')
+  const f=await fixture(), id='34000000-0000-4000-8000-000000000001'
+  const brush=defaultVectorBrush(pathNetwork('M-2 -1C-1 -3 1 -3 2 -1L2 1L-2 1Z'))
+  const create=await f.mutate('node.create',{id,kind:'vector',patch:{network:pathNetwork('M0 0C0 40 40 40 40 0'),fills:[paint()],vectorBrush:brush}})
+  expect(create.isError,JSON.stringify(create)).toBe(false)
+  expect(f.editor.state.doc.nodes[id].vectorBrush).toEqual(brush)
+  expect(f.editor.state.doc.schemaVersion).toBe(15)
+  for(const patch of [{vectorBrush:{...brush,mode:'stretch'}},{vectorBrush:{...brush,spacing:.001}},{vectorBrush:{...brush,seed:-1}}]) {
+    const before=f.editor.state.doc,revision=f.editor.state.version
+    const result=await f.mutate('node.update',{ids:[id],patch})
+    expect(result.isError,JSON.stringify(result)).toBe(true)
+    expect(f.editor.state.doc).toBe(before);expect(f.editor.state.version).toBe(revision)
+  }
+  const clear=await f.mutate('node.update',{ids:[id],patch:{vectorBrush:null}})
+  expect(clear.isError,JSON.stringify(clear)).toBe(false)
+  expect(f.editor.state.doc.nodes[id].vectorBrush).toBeUndefined()
+  await capture('vector-brush-authoring',{create,clear})
 })

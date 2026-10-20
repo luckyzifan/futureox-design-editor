@@ -1,3 +1,6 @@
+import { PrototypeLogicBuilder } from './PrototypeLogicBuilder'
+import { hasLogic } from './prototype-logic'
+import { validatePrototype } from './automation/interactions'
 import { modalKeyDown } from './modal-keyboard'
 import { VariablesPanel } from './VariablesPanel'
 import { commitPendingEdits } from './pending-edits'
@@ -64,6 +67,8 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
   const interaction = (index: number, fn: (e: Interaction) => void) =>
     editor.change('修改交互', (d) => {
       fn(d.prototype!.interactions[n.id][index])
+      validatePrototype(d, d.prototype)
+      if (Object.values(d.prototype!.interactions).some(events => events.some(e => hasLogic(e.actions)))) d.schemaVersion = Math.max(d.schemaVersion, 15) as DesignDocument['schemaVersion']
       // Easing curves, overlay placements and recovered action-schema
       // extras are schema-12 facets.
       if (
@@ -372,7 +377,8 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                           }
                         />
                       )}
-                      {e.actions.map((a, j) => (
+                      <PrototypeLogicBuilder doc={doc} event={e} onChange={actions => interaction(i, e => { e.actions = actions })}/>
+                      {e.actions.map((a, j) => a.kind === 'if' || a.expression ? null : (
                         <div className="feature-row" key={j}>
                           <select
                             aria-label="交互动作"

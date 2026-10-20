@@ -1,6 +1,7 @@
 import { animation_plan_json } from './generated/design-kernel/design_kernel'
 import type { DesignDocument } from './model'
 import { variableValue } from './design-system'
+import { evaluate, tick, validateLogicActions, type Expr } from './prototype-logic'
 export type PrototypeEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'spring' | import('./animation').NamedEasing
 export function isPrototypeEasing(value: unknown): value is PrototypeEasing {
   return typeof value === 'string' && (/^(linear|ease-in|ease-out|ease-in-out|spring)$/.test(value) ||
@@ -34,7 +35,10 @@ export type PrototypeMediaAction =
   | 'forward'
   | 'rewind'
 export type PrototypeAction = {
-  kind: 'navigate' | 'overlay' | 'back' | 'close-overlay' | 'scroll-to' | 'set-variable'
+  kind: 'navigate' | 'overlay' | 'back' | 'close-overlay' | 'scroll-to' | 'set-variable' | 'if'
+  expression?: Expr
+  thenActions?: PrototypeAction[]
+  elseActions?: PrototypeAction[]
   target?: string
   value?: string | number | boolean
   durationMs?: number
@@ -117,14 +121,14 @@ export function prunePrototypeReferences(before: DesignDocument, after: DesignDo
       continue
     }
     const retained = events.flatMap((event) => {
-      const actions = event.actions.filter(
+      const prune = (items: PrototypeAction[]): PrototypeAction[] => items.map(a => a.kind === 'if' ? {...a, thenActions: prune(a.thenActions || []), elseActions: prune(a.elseActions || [])} : a).filter(
         (action) =>
           !(
             ['navigate', 'overlay', 'scroll-to'].includes(action.kind) &&
             removed.has(action.target!)
           ),
       )
-      if (actions.length === event.actions.length) return [event]
+      const actions = prune(event.actions)
       return actions.length ? [{ ...event, actions }] : []
     })
     if (retained.length) p.interactions[id] = retained
@@ -132,6 +136,8 @@ export function prunePrototypeReferences(before: DesignDocument, after: DesignDo
   }
 }
 export type PrototypeState = {
+  /** Preview-session circuit breaker for timer/navigation cycles. Restart preview to reset. */
+  eventCount?: number
   current: string
   history: string[]
   overlays: string[]
@@ -225,8 +231,10 @@ export function prototypeEvent(
   trigger: Interaction['trigger'],
   only?: Interaction,
 ): PrototypeState {
+  if ((state.eventCount ?? 0) >= 1024) throw new Error('Prototype preview event budget exceeded; restart preview to reset')
   const next = structuredClone(state)
   let applied = false
+  const budget = { steps: 0 }
   for (const e of only ? [only] : doc.prototype?.interactions[id] || []) {
     if (e.trigger !== trigger) continue
     if (e.condition) {
@@ -235,6 +243,7 @@ export function prototypeEvent(
       const actual = variableValue(prototypeDocument(doc, next).designSystem!, e.condition.variable)
       if (actual !== e.condition.equals) continue
     }
+    validateLogicActions(doc, e.actions)
     if (!e.actions.length) continue
     if (!applied) {
       next.transition = undefined
@@ -242,7 +251,13 @@ export function prototypeEvent(
       next.transitionEasing = undefined
       applied = true
     }
-    for (const a of e.actions) {
+    const execute = (actions: PrototypeAction[]) => { for (const authored of actions) {
+      tick(budget)
+      const read = (id: string) => variableValue(prototypeDocument(doc, next).designSystem!, id)
+      if (authored.mediaAction || authored.mediaSkipByAmount !== undefined || authored.mediaSkipToTime !== undefined) throw new Error('当前原型画布不支持媒体播放动作，请移除媒体命令后重试')
+      if (authored.transitionResetInteractiveComponents) throw new Error('当前原型画布不支持重置交互组件状态')
+      if (authored.kind === 'if') { execute(evaluate(authored.expression!, read, budget) === true ? authored.thenActions! : authored.elseActions!); continue }
+      const a = authored.expression ? { ...authored, value: evaluate(authored.expression, read, budget) } : authored
       if (a.mediaAction || a.mediaSkipByAmount !== undefined || a.mediaSkipToTime !== undefined)
         throw new Error('当前原型画布不支持媒体播放动作，请移除媒体命令后重试')
       if (a.transitionResetInteractiveComponents)
@@ -274,6 +289,7 @@ export function prototypeEvent(
         throw new Error('原型目标已删除')
       switch (a.kind) {
         case 'navigate':
+          if (next.history.length >= 256) throw new Error('Prototype navigation history budget exceeded')
           next.history.push(next.current)
           navigate(a.target!)
           break
@@ -315,8 +331,10 @@ export function prototypeEvent(
           break
         }
       }
-    }
+    } }
+    execute(e.actions)
   }
+  if (applied) next.eventCount = (state.eventCount ?? 0) + 1
   return applied ? next : state
 }
 /** Decode the frame-pair animation plan from the kernel (best effort:

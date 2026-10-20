@@ -1,3 +1,5 @@
+import { desktopPet } from './desktop-pet'
+import { ShapeBuilderDialog } from './ShapeBuilderDialog'
 import { recordLocalError } from './local-diagnostics'
 import { keyboardNudgeActive, keyboardNudgeOwnsKey } from './keyboard-nudge-gesture'
 import { BatchRenameDialog } from './BatchRenameDialog'
@@ -174,6 +176,7 @@ export default function App() {
   const [propertiesTab, setPropertiesTab] = useState<'design' | 'prototype'>('design')
   const [showPrototype, setShowPrototype] = useState(false)
   const [showCommands, setShowCommands] = useState(false)
+  const [showShapeBuilder, setShowShapeBuilder] = useState(false)
   const [showMove, setShowMove] = useState(false)
   const [showShapes, setShowShapes] = useState(false)
   const [showRegions, setShowRegions] = useState(false)
@@ -196,6 +199,7 @@ export default function App() {
   const setShowInspector = adaptivePanels.setRightOpen
   const [desktop] = useState(desktopBridge)
   const [editor] = useState(() => new Editor(blank()))
+  useEffect(() => desktopPet.bind(editor), [editor])
   useEffect(() => bindEditorSettings(editor), [editor])
   const [exports] = useState(() => new ExportOwner())
   const exportAsset = useSyncExternalStore(exports.subscribe, exports.getSnapshot)
@@ -217,7 +221,7 @@ export default function App() {
         : await module.exportImage(request.document, request.page, format, format === 'svg' ? 1 : 2, undefined, request.signal)
       if (exports.publish(request, result)) editor.notify('导出文件已生成')
     } catch (error) {
-      if (!request || request.isCurrent()) editor.notify(String(error))
+      if (!request || request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) }
     } finally { if (request) exports.finish(request) }
   }
   async function generateSketchExport() {
@@ -230,8 +234,9 @@ export default function App() {
       const bytes = await exportSketchInWorker(request.document, request.signal)
       if (!request.isCurrent()) return
       download(`${request.document.name}.sketch`, new Blob([new Uint8Array(bytes).buffer], { type: 'application/zip' }))
+      desktopPet.event('export')
       editor.notify('Sketch 兼容文件已生成；完整编辑信息请同时保留 .fd 文件')
-    } catch (error) { if (request.isCurrent()) editor.notify(String(error)) }
+    } catch (error) { if (request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) } }
     finally { exports.finish(request) }
   }
   const [fileImports] = useState(() => new ImportOwner())
@@ -255,7 +260,7 @@ export default function App() {
       if (opened && request.isLatest() && editor.state.doc.id === document.id && imported.warnings.length) {
         setImportReport({ documentId: document.id, warnings: imported.warnings }); editor.notify('导入完成，可以继续编辑')
       }
-    } catch (error) { if (request.isCurrent()) editor.notify(String(error)) }
+    } catch (error) { if (request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) } }
     finally { request.finish() }
   }
   async function importImageFiles(files: File[]) {
@@ -1074,8 +1079,9 @@ export default function App() {
                   {action('垂直等距', AlignVerticalDistributeCenter, () => alignSelection(editor, 'y', 'distribute'), !alignment.distribute, true)}
                 </div>
                 <strong>组合形状</strong>
-                {([['union', '联合'], ['subtract', '减去顶层'], ['intersect', '交集'], ['exclude', '排除交集'], ['divide', '形状构建：分割区域']] as const).map(([operation, label]) =>
+                {([['union', '联合'], ['subtract', '减去顶层'], ['intersect', '交集'], ['exclude', '排除交集'], ['divide', '分割为多边形区域（旧版）']] as const).map(([operation, label]) =>
                   <button type="button" role="menuitem" tabIndex={-1} key={operation} disabled={s.selection.length < 2 || s.busy} onClick={() => { void editor.geometry(operation); setShowCommands(false) }}>{label}</button>)}
+                <button type="button" role="menuitem" tabIndex={-1} disabled={!s.selection.length || s.busy} onClick={() => { setShowShapeBuilder(true); setShowCommands(false) }}>形状构建器…</button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={s.selection.length < 2} onClick={() => { editor.group(true); setShowCommands(false) }}>蒙版组</button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('group')} onClick={() => { void dispatchEditorCommand(editor, 'group'); setShowCommands(false) }}>编组 <kbd>{shortcutLabel('group', shortcutContext)}</kbd></button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('ungroup')} onClick={() => { void dispatchEditorCommand(editor, 'ungroup'); setShowCommands(false) }}>解除编组 <kbd>{shortcutLabel('ungroup', shortcutContext)}</kbd></button>
@@ -1104,6 +1110,7 @@ export default function App() {
         </div>
       </main>
       <BatchRenameDialog editor={editor} />
+      {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
       {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} />}
       {showAnimation && <AnimationPanel editor={editor} onClose={() => setShowAnimation(false)} />}
       {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={fileMenuTrigger.current}

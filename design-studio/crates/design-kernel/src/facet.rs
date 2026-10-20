@@ -535,6 +535,7 @@ pub fn apply_facet(node: &mut Node, kind: FacetKind, facet: &Facet) -> Result<()
         (FacetKind::Instance, Facet::Instance { component_id }) => {
             node.instance
                 .get_or_insert_with(|| crate::components::Instance {
+                        slot_contents: Default::default(),
                     component_id: String::new(),
                     overrides: Default::default(),
                     property_values: Default::default(),
@@ -581,12 +582,15 @@ fn solid_default() -> crate::scene::Paint {
 /// Test and tooling helper: a fully defaulted node of the given kind.
 pub fn sample_node(id: &str, kind: &str) -> Node {
     Node {
+        repeat: None,
+        repeat_origin: None,
         guides: vec![],
         board: None,
         layout_grid: None,
         connector: None,
         path_offset: 0.,
         text_path: None,
+        vector_brush: None,
         export_settings: Vec::new(),
         arc: None,
         corner_radius: 0.,

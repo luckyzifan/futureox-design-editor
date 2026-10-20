@@ -1,3 +1,4 @@
+import { readSvgEmbeddedFonts, EMBEDDED_FONT_WARNING } from './svg-font-embedding'
 import { readEditableSvgText, EDITABLE_TEXT_WARNING } from './svg-editable-text'
 import {
   blank,
@@ -69,18 +70,43 @@ export function svgTransform(value: string): Matrix {
   }
   return result
 }
-export function importSvg(source: string, name = '导入 SVG', fonts?: DesignDocument['fonts']): ImportedDesign {
-  if (source.length > 16 * 1024 * 1024 || /<!DOCTYPE|<!ENTITY/i.test(source))
+export function importSvg(source: string, name = '导入 SVG', fonts?: DesignDocument['fonts'], budget: {sourceChars:number;fontBytes:number;strictTree?:boolean} = {sourceChars:16 * 1024 * 1024,fontBytes:4 * 1024 * 1024}): ImportedDesign {
+  if (!Number.isSafeInteger(budget.sourceChars) || budget.sourceChars < 1 || budget.sourceChars > 48 * 1024 * 1024 || !Number.isSafeInteger(budget.fontBytes) || budget.fontBytes < 1 || budget.fontBytes > 24 * 1024 * 1024 || (budget.sourceChars > 16 * 1024 * 1024 || budget.fontBytes > 4 * 1024 * 1024) && !budget.strictTree) throw new Error('Invalid SVG import budget')
+  if (source.length > budget.sourceChars || /<!DOCTYPE|<!ENTITY/i.test(source))
     throw new Error('SVG 大小或声明不受支持')
   const xml = new DOMParser().parseFromString(source, 'image/svg+xml'),
     root = xml.documentElement
   if (root.localName !== 'svg' || xml.querySelector('parsererror')) throw new Error('SVG XML 无效')
   if (Array.from(root.attributes).some((attribute) => /^on/i.test(attribute.name)))
     throw new Error('SVG 事件脚本不能导入')
+  if (budget.strictTree) {
+    const pending: Array<{element:Element;depth:number}> = [{element:root,depth:0}]; let count=0
+    while (pending.length) {
+      const {element,depth}=pending.pop()!
+      if (++count>20000 || depth>64) throw new Error('SVG artifact node/depth budget exceeded')
+      if (element.namespaceURI !== 'http://www.w3.org/2000/svg') throw new Error('SVG artifact namespace is unsupported')
+      const supportedStyle = new Set(['fill','fill-opacity','fill-rule','stroke','stroke-width','stroke-opacity','stroke-linecap','stroke-linejoin','stroke-dasharray','stroke-dashoffset','font-size','font-family','font-weight','text-anchor','visibility','color','opacity','display'])
+      for (const declaration of (element.getAttribute('style')||'').split(';').filter(Boolean)) {
+        const colon=declaration.indexOf(':'), property=declaration.slice(0,colon).trim(), value=declaration.slice(colon+1).trim()
+        if (colon<1 || !supportedStyle.has(property) && !(property==='mix-blend-mode'&&value==='normal') && !(property==='white-space'&&value==='pre') && !(property==='isolation'&&['auto','isolate'].includes(value))) throw new Error('Unsupported SVG artifact inline style')
+      }
+      for (const attribute of Array.from(element.attributes)) {
+        if ((attribute.name === 'href' || attribute.name === 'xlink:href') && !attribute.value.startsWith('#') && !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(attribute.value)) throw new Error('SVG artifact external URL is forbidden')
+        if (/url\(/i.test(attribute.value) && !/^url\(#[^\s)]+\)$/.test(attribute.value) && attribute.name !== 'data-text-model') throw new Error('SVG artifact external or complex URL is forbidden')
+      }
+      for (const child of Array.from(element.children)) pending.push({element:child,depth:depth+1})
+    }
+  }
+  // Definitions are not painted during traversal, but must not conceal scripts.
+  for (const element of Array.from(root.querySelectorAll('*'))) {
+    if (['script','foreignObject','animate','animateTransform','set'].includes(element.localName) || Array.from(element.attributes).some(a => /^on/i.test(a.name))) throw new Error('SVG 动态或活动内容不能导入')
+  }
   const rootPresentation = svgRootPresentation(root)
   const doc = blank(name),
     warnings = new Set<string>()
+  fonts = readSvgEmbeddedFonts(root, fonts, budget.fontBytes)
   doc.fonts = fonts
+  const editableFontWarning = root.querySelector('style[data-svg-font="1"]') ? EMBEDDED_FONT_WARNING : EDITABLE_TEXT_WARNING
   let editableText = false
   let count = 0
   const admitElement = (depth: number) => {
@@ -270,7 +296,7 @@ export function importSvg(source: string, name = '导入 SVG', fonts?: DesignDoc
     } else if (tag === 'text') {
       if (readEditableSvgText(el, n, fonts, relativeDepth => admitElement(depth + relativeDepth))) {
         editableText = true
-        warnings.add(EDITABLE_TEXT_WARNING)
+        warnings.add(editableFontWarning)
         warnings.add('Editable SVG imports its validated text model; unavailable font IDs use the built-in font. Visual equivalence is not guaranteed.')
       } else {
         if (el.children.length) throw new Error('SVG tspan 请先转换为轮廓或拆分文本图层')

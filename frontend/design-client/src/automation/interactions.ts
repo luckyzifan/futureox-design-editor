@@ -2,6 +2,7 @@
 import { createClip, recordKeyframe, type AnimationClip, type Easing } from '../animation'
 import { uid, type DesignDocument, type LocalReview } from '../model'
 import { type Prototype, isPrototypeEasing, hasSchemaExtras } from '../prototype'
+import { hasLogic, validateLogicActions } from '../prototype-logic'
 import type { AutomationExtension } from './types'
 
 const str = (v: unknown, name: string, max = 200) => {
@@ -55,27 +56,31 @@ function tool(name:string, description:string, mutates:boolean, properties:Recor
 function reviews(d:DesignDocument,id:unknown) {
   const r=d.reviews?.find(r=>r.id===str(id,'review ID',128));if(!r)throw new Error('Review not found');return r
 }
-function validatePrototype(d:DesignDocument, value:unknown): Prototype {
+export function validatePrototype(d:DesignDocument, value:unknown): Prototype {
   const p=obj(value)
   if(Object.keys(p).some(k=>!['startNode','interactions'].includes(k)))throw new Error('Unknown prototype field')
   if(p.startNode!==undefined && !d.nodes[str(p.startNode,'start node',128)])throw new Error('Start node not found')
   const interactions=obj(p.interactions)
   if(Object.keys(interactions).length>10000)throw new Error('Too many interaction owners')
   for(const [id,raw] of Object.entries(interactions)){
-    if(!d.nodes[id]||!Array.isArray(raw)||raw.length>100)throw new Error('Invalid interaction owner/list')
+    if(!d.nodes[id]||!Array.isArray(raw)||raw.length>32)throw new Error('Invalid interaction owner/list')
     for(const value of raw){
       const event=obj(value)
       if(Object.keys(event).some(k=>!['trigger','actions','delayMs','condition'].includes(k)))throw new Error('Unknown interaction field')
-      if(!['click','hover','leave','after-delay'].includes(String(event.trigger))||!Array.isArray(event.actions)||!event.actions.length||event.actions.length>100)throw new Error('Invalid interaction')
+      if(!['click','hover','leave','after-delay'].includes(String(event.trigger))||!Array.isArray(event.actions)||event.actions.length>32)throw new Error('Invalid interaction')
       if(event.delayMs!==undefined)num(event.delayMs,'delayMs',0,1e6)
       if(event.condition!==undefined){const c=obj(event.condition);if(Object.keys(c).some(k=>!['variable','equals'].includes(k)))throw new Error('Unknown condition field');if(!d.designSystem?.variables?.[String(c.variable)])throw new Error('Condition variable not found')}
-      for(const rawAction of event.actions){
+      validateLogicActions(d,event.actions as import('../prototype').PrototypeAction[])
+      const pending=[...event.actions]
+      while(pending.length){
+        const rawAction=pending.pop()!
         const a=obj(rawAction)
-        const keys=['kind','target','value','durationMs','easingCurve','overlayPosition','targetVariable','targetVariableModeId','targetVariableSetId','targetVariableSetKey','targetVariableData','mediaAction','mediaSkipByAmount','mediaSkipToTime','transitionShouldSmartAnimate','transitionOverridesEnabled','transitionPreserveScroll','transitionResetScrollPosition','transitionResetInteractiveComponents','transitionDurationVar','transitionEasingVar']
+        const keys=['expression','thenActions','elseActions','kind','target','value','durationMs','easingCurve','overlayPosition','targetVariable','targetVariableModeId','targetVariableSetId','targetVariableSetKey','targetVariableData','mediaAction','mediaSkipByAmount','mediaSkipToTime','transitionShouldSmartAnimate','transitionOverridesEnabled','transitionPreserveScroll','transitionResetScrollPosition','transitionResetInteractiveComponents','transitionDurationVar','transitionEasingVar']
         if(Object.keys(a).some(k=>!keys.includes(k)))throw new Error('Unknown prototype action field')
-        if(!['navigate','overlay','back','close-overlay','scroll-to','set-variable'].includes(String(a.kind)))throw new Error('Unsupported prototype action')
+        if(!['if','navigate','overlay','back','close-overlay','scroll-to','set-variable'].includes(String(a.kind)))throw new Error('Unsupported prototype action')
         if(['navigate','overlay','scroll-to'].includes(String(a.kind))&&!d.nodes[String(a.target)])throw new Error('Action target not found')
-        if(a.kind==='set-variable'&&!d.designSystem?.variables?.[String(a.target)])throw new Error('Action variable not found')
+        if(a.kind==='set-variable'&&!d.designSystem?.variables?.[String(a.targetVariable||(a.targetVariableData as {id?:string}|undefined)?.id||a.target)])throw new Error('Action variable not found')
+        if(a.kind==='if')pending.push(...a.thenActions as unknown[],...a.elseActions as unknown[])
         if(a.durationMs!==undefined)num(a.durationMs,'durationMs',0,1e6)
         if(a.easingCurve!==undefined&&!isPrototypeEasing(a.easingCurve))throw new Error('Invalid prototype easing')
       }
@@ -85,7 +90,23 @@ function validatePrototype(d:DesignDocument, value:unknown): Prototype {
 }
 export const interactionExtensions: AutomationExtension[] = [
   tool('prototype.get','Read authored prototype actions; does not execute navigation.',false,{},[],d=>copy(d.prototype??{interactions:{}})),
-  tool('prototype.set','Replace authored prototype graph atomically; validates targets. Does not launch URLs or execute actions.',true,{prototype:{type:'object'}},['prototype'],(d,p)=>{d.prototype=validatePrototype(d,p.prototype);const extended=Object.values(d.prototype.interactions).some(events=>events.some(e=>e.actions.some(a=>a.easingCurve!==undefined||a.overlayPosition!==undefined||hasSchemaExtras(a))));d.schemaVersion=Math.max(d.schemaVersion,extended?12:4) as DesignDocument['schemaVersion'];return copy(d.prototype)}),
+  tool('prototype.set','Replace authored prototype graph atomically; validates targets. Does not launch URLs or execute actions.',true,{prototype:{type:'object'}},['prototype'],(d,p)=>{d.prototype=validatePrototype(d,p.prototype);const extended=Object.values(d.prototype.interactions).some(events=>events.some(e=>e.actions.some(a=>a.easingCurve!==undefined||a.overlayPosition!==undefined||hasSchemaExtras(a))));d.schemaVersion=Math.max(d.schemaVersion,Object.values(d.prototype.interactions).some(events=>events.some(e=>hasLogic(e.actions)))?15:extended?12:4) as DesignDocument['schemaVersion'];return copy(d.prototype)}),
+  tool('prototype.interaction.set','Add or replace one interaction using the shared prototype validator. Undoable and batch-compatible.',true,{nodeId:S,index:{type:'integer',minimum:0,maximum:31},interaction:{type:'object'}},['nodeId','index','interaction'],(d,p)=>{
+    const nodeId=str(p.nodeId,'node ID',128),index=num(p.index,'index',0,31)
+    if(!Number.isInteger(index)||!d.nodes[nodeId])throw new Error('Invalid interaction index/owner')
+    const next=copy(d.prototype??{interactions:{}}),events=next.interactions[nodeId]??=[]
+    if(index>events.length)throw new Error('Interaction index must replace or append')
+    events[index]=copy(p.interaction as import('../prototype').Interaction)
+    d.prototype=validatePrototype(d,next)
+    d.schemaVersion=Math.max(d.schemaVersion,hasLogic(events[index].actions)?15:12) as DesignDocument['schemaVersion']
+    return copy(events[index])
+  }),
+  tool('prototype.interaction.remove','Remove one interaction atomically; undoable and batch-compatible.',true,{nodeId:S,index:{type:'integer',minimum:0,maximum:31}},['nodeId','index'],(d,p)=>{
+    const next=copy(d.prototype??{interactions:{}}),events=next.interactions[str(p.nodeId,'node ID',128)],index=num(p.index,'index',0,31)
+    if(!Number.isInteger(index)||!events?.[index])throw new Error('Interaction not found')
+    events.splice(index,1);if(!events.length)delete next.interactions[String(p.nodeId)]
+    d.prototype=validatePrototype(d,next);return {removed:true}
+  }),
   tool('animation.list','List authored animation clips and track counts.',false,{pageId:S},[],(d,p)=>({clips:(d.animations??[]).filter(c=>p.pageId===undefined||c.pageId===p.pageId).map(({tracks,...c})=>({...c,trackCount:tracks.length}))})),
   tool('animation.get','Read one authored animation clip.',false,{id:S},['id'],(d,p)=>copy(clip(d,p.id))),
   tool('animation.create','Create a clip from current authored node poses; no rendering or playback.',true,{pageId:S,nodeIds:nodes,descendants:{type:'boolean'},name:{type:'string',minLength:1,maxLength:200}},['pageId','nodeIds'],(d,p)=>{

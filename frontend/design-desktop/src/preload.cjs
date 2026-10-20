@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld(
   'coreDesktop',
   Object.freeze({
     version: 1,
+    petConfigure: mode => invoke('pet-configure', mode),
+    petEvent: event => invoke('pet-event', event),
+    onPetStatus: callback => subscribe('design-desktop:pet-status', callback, value => value &&
+      ['off', 'quiet', 'active'].includes(value.mode) && ['off', 'starting', 'ready', 'unavailable'].includes(value.phase) &&
+      Number.isSafeInteger(value.revision) && value.revision >= 0),
     diagnostics: Object.freeze({ read: () => invoke('diagnostics-read'), write: value => invoke('diagnostics-write', value),
       onError: callback => { if (typeof callback !== 'function') throw new TypeError('Expected a callback'); diagnosticListeners.add(callback); return () => diagnosticListeners.delete(callback) },
     }),

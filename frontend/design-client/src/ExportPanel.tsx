@@ -1,3 +1,4 @@
+import { desktopPet } from './desktop-pet'
 import { validateSvgOptions, svgFileBytes } from './export-options'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor } from './engine'
@@ -20,6 +21,7 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
   })
   const [format, setFormat] = useState<'png'|'jpeg'|'webp'|'pdf'|'pdf-vector'|'svg'>('png')
   const [svgScale, setSvgScale] = useState('1')
+  const [embedFonts, setEmbedFonts] = useState(false)
   const [textMode, setTextMode] = useState<'outlines' | 'editable'>('outlines')
   const [precision, setPrecision] = useState('')
   const [compression, setCompression] = useState<'none' | 'gzip'>('none')
@@ -131,13 +133,24 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
       if (kind === 'page' && !padding.trim()) throw new Error('请填写页面留白')
       if (format === 'svg') {
         if (!svgScale.trim()) throw new Error('请填写 SVG 视口倍率')
-        const options = validateSvgOptions({ scale: Number(svgScale), precision: precision === '' ? undefined : Number(precision), compression, textMode })
+        const options = validateSvgOptions({ scale: Number(svgScale), precision: precision === '' ? undefined : Number(precision), compression, textMode, fontMode: textMode === 'editable' && embedFonts ? 'embed' : 'references', ...(embedFonts && textMode === 'editable' ? {fontEmbeddingAllowed: true} : {}) })
         const { svgSource, filename } = await import('./export')
-        const result = svgSource(document, page, target, options.scale, options.precision, options.textMode)
+        if (options.fontMode === 'embed') {
+          const { createSvgArtifact } = await import('./svg-artifact')
+          const artifact = await createSvgArtifact(document, page, target, options, controller.signal)
+          if (controller.signal.aborted || request.current !== controller) return
+          const url=URL.createObjectURL(artifact.blob); urls.current.push(url)
+          desktopPet.event('export')
+          setAssets([{name:`${filename(document.name)}.${options.compression === 'gzip' ? 'svgz' : 'svg'}`,url,width:artifact.bounds.width*options.scale,height:artifact.bounds.height*options.scale,scale:options.scale,pdf:false,pdfVector:false}])
+          setStatus('已生成含完整字体的 SVG；宿主可能忽略字体，外部显示仍可能不同。大型文件通过受限 SVG 字体文件通道导入。')
+          return
+        }
+        const result = svgSource(document, page, target, options.scale, options.precision, options.textMode, options.fontMode, options.fontEmbeddingAllowed)
         if (result.issues.length) throw new Error(`SVG 无法保留这些效果：${result.issues.join('、')}；请选择原生文件或位图导出`)
         const bytes = svgFileBytes(result.source, options.compression)
         const url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type: 'image/svg+xml' }))
         urls.current.push(url)
+        desktopPet.event('export')
         setAssets([{ name: `${filename(document.name)}.${options.compression === 'gzip' ? 'svgz' : 'svg'}`, url, width: result.box.width * options.scale, height: result.box.height * options.scale, scale: options.scale, pdf: false, pdfVector: false }])
         setStatus(`已生成 SVG${options.compression === 'gzip' ? 'Z（无损 gzip 压缩）' : ''}${options.precision === undefined ? '' : '；坐标已按所选精度进行有损舍入'}`)
         return
@@ -149,6 +162,7 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
         if (controller.signal.aborted || request.current !== controller) return
         const url = URL.createObjectURL(asset.blob)
         urls.current.push(url)
+        desktopPet.event('export')
         setAssets([
           {
             name: asset.name,
@@ -191,10 +205,12 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
           pdfVector: false,
         }
       })
+      desktopPet.event('export')
       setAssets(next)
       setStatus(`已生成 ${next.length} 个 ${format.toUpperCase()} 文件`)
     } catch (error) {
       if (!controller.signal.aborted && request.current === controller) {
+        desktopPet.event('error')
         release()
         setStatus(error instanceof Error ? error.message : String(error))
       }
@@ -229,7 +245,8 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
           <legend>SVG 矢量选项</legend>
           <label>视口倍率 <input aria-label="SVG 视口倍率" type="number" min="0.001" max="128" step="any" value={svgScale} onChange={e => setSvgScale(e.target.value)} /></label>
           <label>文字模式 <select aria-label="SVG 文字模式" value={textMode} onChange={e => setTextMode(e.target.value as typeof textMode)}><option value="outlines">轮廓（保持外观）</option><option value="editable">可编辑文字（需要对应字体）</option></select></label>
-          {textMode === 'editable' && <p>字体不会嵌入；缺失字体、回退和浏览器排版可能改变外观。高级文字样式需使用轮廓模式。</p>}
+          {textMode === 'editable' && <label><input type="checkbox" checked={embedFonts} onChange={e => setEmbedFonts(e.target.checked)} />嵌入本地字体（我确认拥有可编辑再分发授权；TTF/OTF 含内置字体总计不超过 24 MiB；宿主可能忽略嵌入字体）</label>}
+          {textMode === 'editable' && !embedFonts && <p>字体不会嵌入；缺失字体、回退和浏览器排版可能改变外观。高级文字样式需使用轮廓模式。</p>}
           <label>坐标精度 <select aria-label="SVG 坐标精度" value={precision} onChange={e => setPrecision(e.target.value)}><option value="">保留原始精度</option>{[0,1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n} 位小数（有损）</option>)}</select></label>
           <label>压缩 <select aria-label="SVG 压缩" value={compression} onChange={e => setCompression(e.target.value as typeof compression)}><option value="none">无（.svg）</option><option value="gzip">无损 gzip（.svgz）</option></select></label>
           <p>倍率仅改变矢量视口尺寸，不是像素分辨率。精度舍入会改变几何形状；无损 gzip 不改变解压后的 SVG。FD 和 Sketch 原生文件不使用这些矢量选项。</p>

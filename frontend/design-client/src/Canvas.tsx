@@ -1,3 +1,4 @@
+import { desktopPet } from './desktop-pet'
 import { nudgePreference } from './nudge-preference'
 import { createKeyboardNudgeGesture } from './keyboard-nudge-gesture'
 import { isDimensionNudgeCommand, nudgeSelectionDimensions } from './canvas-workflow-shortcuts'
@@ -485,6 +486,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const refreshHover = useRef<() => void>(() => {})
   const suspendNavigationHover = () => {
+    desktopPet.navigate()
     navigationUntil.current = performance.now() + 150
     editor.hoverLayer(null, 'canvas')
     if (hoverTimer.current !== null) clearTimeout(hoverTimer.current)
@@ -522,6 +524,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     marqueeHeld.current = false; setMarqueeKeyHeld(false)
   }, [editor, editor.sessionGeneration, state.page])
   const [panning, setPanning] = useState(false)
+  useEffect(() => { if (panning) desktopPet.navigate(true); return () => { if (panning) desktopPet.releaseNavigation() } }, [panning])
+  useEffect(() => () => desktopPet.stopNavigation(), [])
   const sceneSnapshots = useRef<CanvasSceneSnapshots | null>(null)
   sceneSnapshots.current ??= new CanvasSceneSnapshots()
   const snapshots = sceneSnapshots.current
@@ -947,6 +951,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         updateCreation(drag.current, { shift: e.shiftKey, alt: e.altKey })
     }
     const blur = () => {
+      desktopPet.stopNavigation()
       nudge.finish()
       cancelQueuedMove()
       wheelModifiers.current = { ctrl: false, meta: false }
@@ -1921,6 +1926,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         utility.cancel(e.pointerId)
         if (pencil.current && e.pointerId !== pencil.current.input.pointerId) return
         if (drag.current && e.pointerId !== drag.current.pointerId) return
+        desktopPet.stopNavigation()
         cancelQueuedMove()
         if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
         flushView()
@@ -1935,6 +1941,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if(utility.active())utility.cancel(e.pointerId)
         if (pencil.current?.input.pointerId === e.pointerId) cancelPencil()
         if (drag.current?.pointerId === e.pointerId) {
+          desktopPet.stopNavigation()
           cancelQueuedMove()
           if(drag.current.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
           flushView()

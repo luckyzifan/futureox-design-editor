@@ -1,3 +1,4 @@
+import { desktopPet } from './desktop-pet'
 import { browserDiagnosticAdapter, classifyDiagnostic, createDiagnosticStore, installDiagnosticHooks, type DiagnosticAdapter } from '../../design-desktop/src/diagnostic-store.mjs'
 
 // Identical schema/UI on both hosts; Electron uses a fixed app-owned local file.
@@ -8,6 +9,7 @@ const adapter: DiagnosticAdapter = desktop ? {
 } : browserDiagnosticAdapter(() => localStorage)
 export const localDiagnostics = createDiagnosticStore({adapter})
 export function recordLocalError(component:string, error:unknown, fallback = 'OPERATION_FAILED') {
+  desktopPet.event('error')
   const classified = classifyDiagnostic(error)
   return localDiagnostics.record({component, code:classified === 'OPERATION_FAILED' ? fallback : classified})
 }

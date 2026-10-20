@@ -856,7 +856,24 @@ impl Compiler<'_> {
         let omit_backdrop = requested.is_some_and(|region| prepared.is_some_and(|p|
             irrelevant_backdrop(n, p, region, self.compatible && !self.interactive_effects)));
         let own_halo = if omit_backdrop { 0 } else if self.doc.color_management.is_some()
-            && self.profile != crate::fidelity::RasterProfile::Analytic
+            && (self.profile != crate::fidelity::RasterProfile::Analytic ||
+                // Managed analytic paints use the same integrated rational
+                // tent, not the unmanaged three-box Gaussian. Admit only one
+                // ordinary blur on an isolated leaf; image/solid coordinates
+                // do not use the crop origin as a paint phase. Integer global
+                // centres and their complete support stay exactly representable.
+                // This changes only a branch-local source allocation: an
+                // observable later backdrop still prevents `requested`.
+                (!n.mask && !n.clip && !n.passes_backdrop()
+                    && n.effects.iter().filter(|e| e.visible).count() == 1
+                    && n.effects.iter().filter(|e| e.visible)
+                        .all(|e| e.kind == "blur" && e.gradient_blur.is_none())
+                    && n.fills.iter().all(|p| !p.visible || matches!(p.kind.as_str(), "solid" | "image"))
+                    && requested.is_some_and(|r| {
+                        let support = halo(n, matrix).saturating_add(2);
+                        [r.x, r.y, r.right(), r.bottom()].iter().all(|v|
+                            i64::from(*v).abs() + i64::from(support) <= 1_048_576)
+                    })))
             && n.render_children().is_empty() && n.strokes.is_empty()
             && n.effects.iter().filter(|e| e.visible).all(|e| e.gradient_blur.is_none() &&
                 (e.kind == "blur" || e.kind == "shadow" && e.spread == 0. && e.x == 0. && e.y == 0.))

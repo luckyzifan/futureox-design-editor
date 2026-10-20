@@ -1,3 +1,4 @@
+import { expandRepeats } from './repeat-transforms'
 import { EditableSvgText } from './svg-editable-text'
 import { kernelTextLayout, kernelStrokePaths, kernelSvgPaths } from './kernel/picking'
 import React, { useMemo, useRef } from 'react'
@@ -275,6 +276,7 @@ const Surface = React.memo(function Surface({ n, fonts, textMode }: { n: DesignN
 })
 type Props = { doc: DesignDocument; pageId: string; viewport?: Bounds; exporting?: boolean; retainedNodeId?: string; textMode?: 'outlines' | 'editable' }
 export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId, textMode = 'outlines' }: Props) {
+  doc = expandRepeats(doc)
   const page = doc.pages.find((p) => p.id === pageId)!
   const definitions = useRef(new Map<string, {node:DesignNode; children:string; mask:DesignNode|undefined; fonts:DesignDocument['fonts']; textMode: 'outlines' | 'editable'; element:React.ReactNode}>())
   const parents = useMemo(() => allParents(doc), [doc])

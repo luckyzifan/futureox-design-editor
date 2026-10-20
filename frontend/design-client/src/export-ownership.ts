@@ -1,3 +1,4 @@
+import { desktopPet } from './desktop-pet'
 import type { DesignDocument } from './model'
 import { commitPendingEdits } from './pending-edits.ts'
 
@@ -118,6 +119,7 @@ export class ExportOwner {
     // Object URL creation is synchronous; retain the fence for reentrant hosts.
     if (!request.isCurrent()) { this.urls.revokeObjectURL(url); return false }
     this.releasePreview()
+    desktopPet.event('export')
     this.preview = { asset: { url, name: result.name }, ownsGeneration: current.ownsGeneration }
     this.current = null
     this.emit()

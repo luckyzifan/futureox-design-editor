@@ -59,15 +59,25 @@ pub struct Property {
     pub target_key: String,
     pub default_value: Value,
 }
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Slot {
+    pub name: String,
+    pub target_key: String,
+}
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Component {
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub slots: BTreeMap<String, Slot>,
     pub variants: BTreeMap<String, String>,
     pub properties: BTreeMap<String, Property>,
 }
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Instance {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub slot_contents: BTreeMap<String, Vec<String>>,
     pub component_id: String,
     #[serde(default)]
     pub overrides: Overrides,
@@ -235,10 +245,45 @@ fn validate_instance(d: &Document, i: &Instance) -> Result<(), String> {
     }
     Ok(())
 }
+/// Slot content remains an authored, uniquely owned part of the visible layer tree.
+fn slot_owned_nodes(d: &Document) -> Result<BTreeSet<String>, String> {
+    let parents: BTreeMap<_, _> = d.nodes.values().flat_map(|n| n.children.iter().map(move |id| (id.as_str(), n.id.as_str()))).collect();
+    let mut owned = BTreeSet::new();
+    fn walk(d: &Document, id: &str, owned: &mut BTreeSet<String>, depth: usize) -> Result<(), String> {
+        if depth > 64 || !owned.insert(id.into()) { return Err("Cyclic, overlapping, or oversized slot content".into()); }
+        let n = d.nodes.get(id).ok_or("Missing slot content node")?;
+        if n.component.is_some() || n.component_set { return Err("Slot content cannot own main components".into()); }
+        for child in &n.children { walk(d, child, owned, depth + 1)?; }
+        Ok(())
+    }
+    for n in d.nodes.values().filter(|n| n.instance.as_ref().is_some_and(|i| !i.slot_contents.is_empty())) {
+        let spec = n.instance.as_ref().unwrap();
+        if n.instance_origin.is_some() || spec.slot_contents.len() > 128 { return Err("Invalid slot content owner".into()); }
+        let mut ancestor = parents.get(n.id.as_str()).copied();
+        let mut ancestry = BTreeSet::new();
+        while let Some(id) = ancestor {
+            if ancestry.len() >= 64 || !ancestry.insert(id) { return Err("Cyclic slot ancestry".into()); }
+            if d.nodes[id].component.is_some() { return Err("Authored slot assignments inside definitions are unsupported".into()); }
+            ancestor = parents.get(id).copied();
+        }
+        let c = d.nodes.get(&spec.component_id).and_then(|n| n.component.as_ref()).ok_or("Missing slot component")?;
+        for (slot_id, roots) in &spec.slot_contents {
+            let slot = c.slots.get(slot_id).ok_or("Assigned slot was removed; reset or detach before removing it")?;
+            for id in roots {
+                let content = d.nodes.get(id).ok_or("Missing slot content node")?;
+                let host = parents.get(id.as_str()).and_then(|p| d.nodes.get(*p)).and_then(|p| p.instance_origin.as_ref());
+                if content.instance_origin.is_some() || host.is_none_or(|o| o.owner != n.id || o.key != slot.target_key) { return Err("Slot content escaped its owning instance".into()); }
+                walk(d, id, &mut owned, 0)?;
+            }
+        }
+    }
+    Ok(owned)
+}
 pub fn validate(d: &Document) -> Result<(), String> {
     if !has_components(d) {
         return Ok(());
     }
+    let _owned = slot_owned_nodes(d)?;
     let parents: BTreeMap<_, _> = d
         .nodes
         .values()
@@ -280,6 +325,20 @@ pub fn validate(d: &Document) -> Result<(), String> {
                 return Err("Invalid component properties".into());
             }
             let keys = template_nodes(d, &n.id)?;
+            if c.slots.len() > 128 { return Err("Slot declaration budget exceeded".into()); }
+            let mut slot_names = BTreeSet::new();
+            let mut slot_targets = BTreeSet::new();
+            for (id, slot) in &c.slots {
+                let target = keys.get(&slot.target_key).and_then(|id| d.nodes.get(id)).ok_or("Missing slot target")?;
+                if !valid_key(id) || id.len() > 128 || !valid_key(&slot.name) || slot.name.trim().is_empty() || slot.name.len() > 128 || slot.target_key == "$root" || !slot_names.insert(&slot.name) || !slot_targets.insert(&slot.target_key) || !matches!(target.kind.as_str(), "frame" | "group" | "section") || target.instance.is_some() { return Err("Invalid content slot declaration".into()); }
+            }
+            for target in &slot_targets {
+                let mut parent = parents.get(keys[*target].as_str()).copied();
+                while let Some(id) = parent {
+                    if slot_targets.contains(&key(&d.nodes[id]).to_string()) { return Err("Nested slot declarations are not supported".into()); }
+                    parent = parents.get(id).copied();
+                }
+            }
             let mut names = BTreeSet::new();
             let mut bindings = BTreeSet::new();
             for (id, p) in &c.properties {
@@ -462,8 +521,23 @@ struct Builder<'a> {
     stack: Vec<String>,
     budget: usize,
     remaining_bytes: usize,
+    slots: BTreeMap<String, Vec<String>>,
 }
 impl Builder<'_> {
+    fn authored(&mut self, id: &str, depth: usize, modes: &Modes) -> Result<String, String> {
+        if depth > 64 { return Err("Slot content depth exceeded".into()); }
+        let mut n = self.source.nodes.get(id).ok_or("Missing slot content")?.clone();
+        if let Some(spec) = n.instance.clone() {
+            let previous_owner = std::mem::replace(&mut self.owner, id.into());
+            let result = self.instance(&n, &spec, "", &Overrides::new(), (id.into(), None), LayerContext {depth, modes});
+            self.owner = previous_owner;
+            return result;
+        }
+        let effective = self.apply_overrides(&mut n, None, modes)?;
+        n.children.clear();
+        for child in &self.source.nodes[id].children { n.children.push(self.authored(child, depth + 1, &effective)?); }
+        self.insert(n)
+    }
     fn apply_overrides(
         &self,
         n: &mut Node,
@@ -540,6 +614,10 @@ impl Builder<'_> {
             .collect();
         merge(&mut overrides, &local);
         merge(&mut overrides, outer);
+        for (id, roots) in &actual.slot_contents {
+            let slot = component.slots.get(id).ok_or("Unknown content slot")?;
+            self.slots.insert(qualify(prefix, &slot.target_key), roots.clone());
+        }
         let mut n = template.clone();
         n.variable_modes.extend(placement.variable_modes.clone());
         let modes = self.apply_overrides(
@@ -651,9 +729,12 @@ impl Builder<'_> {
         n.component_key = None;
         n.instance_origin = Some(origin);
         n.children.clear();
-        for child in &template.children {
-            n.children
-                .push(self.layer(child, prefix, overrides, depth + 1, &modes)?)
+        if let Some(roots) = self.slots.get(&path).cloned() {
+            for child in roots { n.children.push(self.authored(&child, depth + 1, &modes)?); }
+        } else {
+            for child in &template.children {
+                n.children.push(self.layer(child, prefix, overrides, depth + 1, &modes)?)
+            }
         }
         if n.boolean_operation.is_some() {
             crate::mutation::resize_boolean_children(
@@ -703,10 +784,11 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
         }
     }
     if matches!(source, std::borrow::Cow::Owned(_)) { validate(&source)?; }
+    let owned = slot_owned_nodes(&source)?;
     let roots: Vec<_> = source
         .nodes
         .values()
-        .filter(|n| n.instance.is_some() && n.instance_origin.is_none())
+        .filter(|n| n.instance.is_some() && n.instance_origin.is_none() && !owned.contains(&n.id))
         .map(|n| n.id.clone())
         .collect();
     let inherited_modes = crate::design_system::node_mode_contexts(&source)?;
@@ -736,6 +818,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
             stack: Vec::new(),
             budget: 20001usize.saturating_sub(result.nodes.len()),
             remaining_bytes: DOCUMENT_BYTES.saturating_sub(bytes),
+            slots: BTreeMap::new(),
         };
         builder.instance(
             placement,

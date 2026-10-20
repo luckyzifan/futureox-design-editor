@@ -1,0 +1,6 @@
+.shape-builder-backdrop{position:fixed;inset:0;z-index:10000;background:#0008;display:grid;place-items:center}
+.shape-builder-dialog{width:min(760px,90vw);max-height:90vh;overflow:auto;background:var(--workspace-panel,#fff);color:var(--workspace-text,#1e293b);padding:20px;border-radius:14px;box-shadow:0 16px 70px #0005}
+.shape-builder-dialog header,.shape-builder-dialog footer{display:flex;align-items:center;gap:12px;justify-content:space-between}
+.shape-builder-dialog h2{margin:0;font-size:18px}.shape-builder-dialog p{font-size:13px;line-height:1.5}
+.shape-builder-dialog svg{display:block;width:100%;height:400px;max-height:50vh;background:#f8fafc;border:1px solid #cbd5e1;touch-action:none}.shape-builder-dialog path{cursor:crosshair}.shape-builder-dialog path:focus{outline:none;stroke:#2563eb;stroke-width:3}
+.shape-builder-dialog button,.shape-builder-dialog select{padding:7px 11px}.shape-builder-dialog [role=alert]{color:#dc2626}
