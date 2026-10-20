@@ -32,7 +32,7 @@ test('handles subarray offsets without alignment assumptions and never reads mal
   }
 })
 test('current real WASM preserves eligible integer/binary fractions and detects futile fractional trials', () => {
-  for (const radius of [48, 48.25, 48.5, 96, 128, 512, 513])
+  for (const radius of [32, 38.25948715209961, 48, 48.25, 48.5, 96, 128, 512, 513])
     expect(prefixRationalUnsupported(rational_tent_kernel_rgba(radius))).toBe(false)
   for (const radius of [48.1, 96.1, 96 * Math.SQRT2, 60.00000000000001])
     expect(prefixRationalUnsupported(rational_tent_kernel_rgba(radius))).toBe(true)
@@ -47,6 +47,19 @@ test('preflight only narrows the rational path; unknown metadata and integer <=5
   for (const radius of [48.1, 513]) expect(policy.prefixPolicy.call(driver, u, 15, {kind:'tent',radius}, kernel)).toBe(false)
   expect(policy.prefixPolicy.call(driver, u, 15, {kind:'tent',radius:48.1})).toBe(true)
   expect(policy.prefixPolicy.call(driver, u, 15, {kind:'tent',radius:48.1}, {prefixRationalUnsupported:false} as Texture)).toBe(true)
+})
+test('measured drag radius retains the same exactness, alpha and display guards', () => {
+  const driver = { prefix: {}, displayFilters: false }, u = new Float32Array(256); u[16] = 22
+  for (const radius of [32, 38.25948715209961]) {
+    const filter = {kind:'tent' as const,radius}
+    expect(policy.prefixPolicy.call(driver,u,15,filter,{prefixRationalUnsupported:false} as Texture)).toBe(true)
+    expect(policy.prefixPolicy.call(driver,u,8,filter)).toBe(false)
+    expect(policy.prefixPolicy.call({...driver,displayFilters:true},u,15,filter)).toBe(false)
+  }
+  for (const radius of [0,31.999999,NaN])
+    expect(policy.prefixPolicy.call(driver,u,15,{kind:'tent',radius})).toBe(false)
+  expect(policy.prefixPolicy.call(driver,u,15,{kind:'tent',radius:38.25948715209961},
+    {prefixRationalUnsupported:true} as Texture)).toBe(false)
 })
 test('deterministic rejection occurs before scratch reservation even if scratch already exists', () => {
   const driver = Object.create(WebGpuDriver.prototype) as WebGpuDriver

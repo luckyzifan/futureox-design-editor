@@ -51,6 +51,7 @@ import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../docume
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
 import { tilePrepareViewport } from './tile-prepare-viewport'
+import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
 import { GPU_PRIORITY_BURST, RenderWorkQueue } from './render-work-queue'
 import { paintDamageIntersects, type PaintDamage } from './paint-damage'
 import {residentFrameSignature} from './gpu/resident-frame'
@@ -620,7 +621,7 @@ self.onmessage = (e) => {
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
-        tilePrepareViewport: requestedPrepareViewport, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
+        tilePrepareViewport: requestedPrepareViewport, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       if(terminalDiagnostics.enabled && renderIntent==='canvas')gridMeasurements.record({gridKind:1,gridVisible:Number(!!renderOptions.grid&&!renderOptions.transparent&&renderOptions.view.zoom>0.13),gridSpacingClass:3,gridRedrawReason:2})
       const previewCurrent = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
         (!tileViewport || channel !== 'canvas' || fillGeneration === tileFillGeneration)
@@ -885,6 +886,8 @@ self.onmessage = (e) => {
               )
             )
               throw new Error('Invalid tile request')
+            if (tileFillPriorities !== undefined && !validTileFillPriorities(tileFillPriorities, tileViewport.length))
+              throw new Error('Invalid tile priority hints')
             if (channel === 'canvas' && request.documentPatch && !tileViewport.length && poseQueued) {
               // The final pointer pose may arrive while the CPU worker applies
               // this patch. Complete that higher-priority GPU job before proving
@@ -953,7 +956,22 @@ self.onmessage = (e) => {
             const cameraDependent = tileComputationDependsOnCamera(renderOptions, !!color)
             const requestPreference: BackendPreference | undefined = preference
             const batchStarted = performance.now(), packetHitsBefore = kernel.packetCacheHits
-            const ahead = new PrepareAhead<{ bytes: Uint8Array; ms: number }>()
+            // Private identity covers only this synchronized lane/document/
+            // resource/camera/prepare batch. Never taken from the request or
+            // serialized native packet, and never shared with another job.
+            const filterBatchLease = {}
+            const order = new FilterTileOrder(tileViewport, tileFillPriorities, {
+              x: -renderOptions.view.x / renderOptions.view.zoom, y: -renderOptions.view.y / renderOptions.view.zoom,
+              width: renderOptions.width / renderOptions.view.zoom, height: renderOptions.height / renderOptions.view.zoom,
+            })
+            const allowFilterOrder = channel === 'canvas' && renderIntent === 'canvas' && !coverageTiles &&
+              !request.png && !request.readback && !exportFormat && !renderOptions.exportRegion && !renderOptions.pixelPreview &&
+              backend === 'webgpu' && !wantsReference && !executionPolicy.imageMips && !canvasDisplayFilters && !canvasMath &&
+              import.meta.env.VITE_DESIGN_FILTER_COLUMN_ORDER !== '0' &&
+              import.meta.env.VITE_DESIGN_HORIZONTAL_FILTER_REUSE !== '0' &&
+              import.meta.env.VITE_DESIGN_IMAGE_RESOLVE_FUSION !== '0'
+            let filterColumnPlans = 0, filterColumnReorders = 0
+            const ahead = new PrepareAhead<{ bytes: Uint8Array; ms: number; tile: RasterTile }>()
             let preparationWaitMs = 0, overlappedPreparations = 0
             const current = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
               (channel !== 'canvas' || fillGeneration === tileFillGeneration)
@@ -968,11 +986,13 @@ self.onmessage = (e) => {
                 gpuViewport: { x: tile.x + Math.floor(renderOptions.view.x), y: tile.y + Math.floor(renderOptions.view.y), w: tile.width, h: tile.height },
                 ...(prepareViewport ? { prepareViewport } : {}),
               }), packetWait?.controller.signal)
-              return { bytes, ms: performance.now() - at }
+              return { bytes, ms: performance.now() - at, tile }
             }
-            try { for (let tileIndex = 0; tileIndex < tileViewport.length; tileIndex++) {
+            try { for (let tileOrderIndex = 0; tileOrderIndex < tileViewport.length; tileOrderIndex++) {
+              const tileIndex = order.indexAt(tileOrderIndex)
               const tile = tileViewport[tileIndex] as RasterTile
               let undelivered: { bitmap?: ImageBitmap; gpuTile?: number } | undefined
+              let nextColumnPlan: { index: number | undefined; changed: boolean; deltaY: number } | undefined
               try {
               if (fillGeneration !== tileFillGeneration && channel === 'canvas') throw new Error('PREVIEW_CANCELLED')
               if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
@@ -996,6 +1016,7 @@ self.onmessage = (e) => {
               else try {
                 const waiting = performance.now()
                 const prepared = await ahead.take(tileIndex) ?? await compileTile(tile)
+                if (prepared.tile !== tile) throw Error('Prepared tile owner mismatch')
                 const waited = performance.now() - waiting
                 preparationWaitMs += waited
                 terminalDiagnostics.record('prepare-wait',{requestId:request.id,tileIndex,waitMs:waited,compileMs:prepared.ms,generation,fillGeneration})
@@ -1030,11 +1051,19 @@ self.onmessage = (e) => {
                 result = { ...result, milliseconds: verifyMs, compileMs: verifyMs,
                   renderMs: 0, graphMs: 0, finishMs: 0, checkpointMs: 0, drawCalls: 0, triangles: 0 }
               } else {
-                const next = tileViewport[tileIndex + 1] as RasterTile | undefined
+                const support = allowFilterOrder && current() && preparedScene && gpu?.driver.copyRegion &&
+                  tileFillPriorities ? compiledFilterColumnSupport(preparedScene, tile) : undefined
+                if (support) filterColumnPlans++
+                // Freeze the next original index before speculation starts.
+                // No packet is ever consumed using a mutable order position.
+                nextColumnPlan = order.chooseNext(tileOrderIndex, support || undefined)
+                if (nextColumnPlan.changed) filterColumnReorders++
+                const nextIndex = order.indexAt(tileOrderIndex + 1)
+                const next = nextIndex === undefined ? undefined : tileViewport[nextIndex] as RasterTile
                 if (next && current() && !next.prefetch && kernel.canPrepareConcurrently &&
                     import.meta.env.VITE_DESIGN_PREPARE_PIPELINE !== '0' &&
                     (disableExactCache || request.debug?.disableCertifiedTileReuse || !tileCache.certified(slot(next)))) {
-                  ahead.start(tileIndex + 1, () => compileTile(next))
+                  ahead.start(nextIndex, () => compileTile(next))
                   overlappedPreparations++
                 }
                 const tileCurrent = preparedTileContinuation(tile, current, cameraFallback, () => displayFrame)
@@ -1043,7 +1072,7 @@ self.onmessage = (e) => {
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
                   prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
                   () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
-                    tileCurrent(), hydrateImages)
+                    tileCurrent(), hydrateImages, filterBatchLease)
                 undelivered = result
                 if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
@@ -1121,6 +1150,9 @@ self.onmessage = (e) => {
                   id: request.id,
                   tile: {
                     ...tile,
+                    tileSourceIndex: tileIndex, tileOrderIndex,
+                    ...(nextColumnPlan ? { tileColumnNextIndex: nextColumnPlan.index ?? -1,
+                      tileColumnReordered: Number(nextColumnPlan.changed), tileColumnDeltaY: nextColumnPlan.deltaY } : {}),
                     ...(terminalDiagnostics.enabled ? { tileCacheDecision: cached ? 0 : disableExactCache ? 3 : request.debug?.disableCertifiedTileReuse ? 4 : 5 } : undefined),
                     ...(terminalDiagnostics.enabled ? (cached ? { tileCostUnavailable: 63 } : ('tileCost' in result ? result.tileCost : undefined)) : undefined),
                     cameraFallback: cameraFallback || undefined,
@@ -1133,6 +1165,11 @@ self.onmessage = (e) => {
                     materialFieldBuilds: result.materialFieldBuilds,
                     materialFieldBuildMs: result.materialFieldBuildMs,
                     materialFieldUploadBytes: result.materialFieldUploadBytes,
+                    ...('horizontalFilterHits' in result ? {
+                      horizontalFilterHits: result.horizontalFilterHits,
+                      horizontalFilterPixels: result.horizontalFilterPixels,
+                      horizontalFilterRows: result.horizontalFilterRows,
+                    } : {}),
                     milliseconds: result.milliseconds + (cached ? 0 : verifyMs),
                     compileMs: result.compileMs + (cached ? 0 : verifyMs),
                     graphMs: result.graphMs,
@@ -1169,13 +1206,17 @@ self.onmessage = (e) => {
                 undelivered?.bitmap?.close()
                 if (undelivered?.gpuTile) gpu?.driver.releasePresented?.([undelivered.gpuTile])
               }
-            } } finally { await ahead.drain() }
+            } } finally {
+              try { await ahead.drain() }
+              finally { gpu?.releaseFilterBatch(filterBatchLease) }
+            }
             self.postMessage({
               id: request.id,
               backend,
               milliseconds,
               pipelineWallMs: performance.now() - batchStarted,
               preparationWaitMs, overlappedPreparations,
+              filterColumnPlans, filterColumnReorders,
               compiledPacketHits: kernel.packetCacheHits - packetHitsBefore,
               compiledPacketBytes: kernel.packetCacheBytes,
               renderMs: milliseconds,
@@ -1607,6 +1648,7 @@ async function renderTiledPreview(
   onRegionComplete?: () => void,
   isCurrent?: () => boolean,
   hydrateImages: HydrateSceneImages = sceneImageHydration(kernel, isCurrent ?? (() => true)),
+  filterBatchLease?: object,
 ) {
   const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
   const checkCurrent = () => {
@@ -1623,6 +1665,7 @@ async function renderTiledPreview(
   const { createGpu, straightAlpha } = await import('./gpu/factory')
   const { renderPreviewTiles, renderBitmapPreviewTiles } = await import('./preview-tiles')
   let hybridEffects = 0, materialFieldHits = 0, materialFieldBuilds = 0, materialFieldBuildMs = 0, materialFieldUploadBytes = 0
+  let horizontalFilterHits = 0, horizontalFilterPixels = 0, horizontalFilterRows = 0
   const managedOutput = !!(executionPolicy?.hdrCompositing && color)
   const admissionKey=JSON.stringify(activeLane) + "/" + JSON.stringify([laneState.documentGeneration,laneState.resourceGeneration,options.pageId,options.view.zoom,
     options.rasterProfile,options.interactiveEffects,backend,managedOutput,canvasDisplayFilters,canvasMath,referenceGpu])
@@ -1663,6 +1706,7 @@ async function renderTiledPreview(
     await checkpoint?.()
     const scene = preparedScene
     preparedScene = undefined
+    scene.filterBatchLease = filterBatchLease
     scene.floatCompositing = requiresFloatCompositing(executionPolicy!, scene)
     const displayMath = canvasMath && backend === 'webgpu' && scene.floatCompositing && !scene.softwareRaster
     scene.displayFilters = canvasDisplayFilters || (options.interactiveEffects === true && !executionPolicy?.desktopFullMath)
@@ -1711,6 +1755,9 @@ async function renderTiledPreview(
         materialFieldBuilds += result.materialFieldBuilds
         materialFieldBuildMs += result.materialFieldBuildMs
         materialFieldUploadBytes += result.materialFieldUploadBytes
+        horizontalFilterHits += result.horizontalFilterHits
+        horizontalFilterPixels += result.horizontalFilterPixels
+        horizontalFilterRows += result.horizontalFilterRows
         drawCalls += result.drawCalls
         triangles += result.triangles
         graphMs += result.graphMs
@@ -1764,6 +1811,7 @@ async function renderTiledPreview(
               y: (crop?.y || 0) + tile.y, w: tile.width, h: tile.height },
             ...(prepareViewport ? { prepareViewport } : {}) })),
         ) as GpuScene
+        scene.filterBatchLease = filterBatchLease
         checkCurrent()
         compileMs += performance.now() - t
         Object.keys(scene.nodes).forEach((id) => nodes.add(id))
@@ -1820,6 +1868,9 @@ async function renderTiledPreview(
         materialFieldBuilds += result.materialFieldBuilds
         materialFieldBuildMs += result.materialFieldBuildMs
         materialFieldUploadBytes += result.materialFieldUploadBytes
+        horizontalFilterHits += result.horizontalFilterHits
+        horizontalFilterPixels += result.horizontalFilterPixels
+        horizontalFilterRows += result.horizontalFilterRows
         drawCalls += result.drawCalls
         triangles += result.triangles
         graphMs += result.graphMs
@@ -1893,6 +1944,7 @@ async function renderTiledPreview(
       backend,
       description,
       hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
+      horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
       compileMs,
       renderMs: performance.now() - start - compileMs,
       milliseconds: performance.now() - start,
@@ -1933,6 +1985,7 @@ async function renderTiledPreview(
     backend,
     description,
     hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
+    horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
     compileMs,
     renderMs: performance.now() - start - compileMs,
     milliseconds: performance.now() - start,

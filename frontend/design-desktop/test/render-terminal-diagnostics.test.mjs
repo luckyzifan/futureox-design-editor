@@ -10,6 +10,15 @@ test('schema rejects arbitrary content, nonfinite numbers and forged enums',()=>
   const result=sanitizeRecord({...secret,v:1,event:'tile',source:'worker',session:1,seq:1,at:1})
   assert.deepEqual(result,{v:1,session:1,source:'worker',seq:1,at:1,event:'tile',requestId:4,cached:1})
 })
+test('tile order correlation retains bounded original indices, signed row deltas and cache measurements',()=>{
+  const sample={tileSourceIndex:19,tileOrderIndex:4,tileColumnNextIndex:-1,tileColumnReordered:1,tileColumnDeltaY:-1024,
+    filterColumnPlans:20,filterColumnReorders:12,horizontalFilterHits:15,horizontalFilterRows:31780,horizontalFilterPixels:32796960}
+  assert.deepEqual(sanitizeFields(sample),sample)
+  for(const value of [NaN,Infinity,-Infinity,.5,'4',{},true])
+    assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(sample).map(key=>[key,value]))),{})
+  assert.deepEqual(sanitizeFields({tileSourceIndex:256,tileOrderIndex:-1,tileColumnNextIndex:-2,
+    tileColumnReordered:2,tileColumnDeltaY:1e7+1,filterColumnPlans:257,filterColumnReorders:-1}),{})
+})
 test('disabled path never reads clocks, schedules, serializes payloads, or emits',()=>{
   const fail=()=>{throw Error('disabled side effect')}
   const d=createRenderDiagnostics({sink:fail,now:fail,schedule:fail})

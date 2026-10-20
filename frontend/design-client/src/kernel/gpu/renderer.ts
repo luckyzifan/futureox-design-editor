@@ -1,4 +1,6 @@
 import { prefixAlignedStrip } from './prefix-band'
+import { IMAGE_RESOLVE_STEP_MODE } from './image-resolve-step'
+import { exactFilterKey, fullSampleCoverage, HorizontalFilterCache } from './horizontal-filter-cache'
 import { gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { markRenderFailure } from '../render-failure-telemetry'
 import { backdropEffect, backdropRadius, classifyCompiledSourceReuse } from '../render-dependency'
@@ -140,11 +142,22 @@ export class GpuRenderer {
   private yieldEncoding() {
     this.checkFrameCurrent()
     const pause = this.encodeYield.checkpoint(this.driver.captureDisplay === true || !!this.frameCurrent)
-    if (pause && import.meta.env.VITE_DESIGN_ENCODE_SUBMIT !== '0') this.driver.submitPending?.()
-    return pause?.then(() => { this.checkFrameCurrent() })
+    return pause?.then(() => {
+      // Let control messages invalidate this frame before its next GPU submit.
+      // Cancellation abandons this unsubmitted encoder through the existing
+      // abort/fence path; already submitted resources keep that same lifetime.
+      this.checkFrameCurrent()
+      if (import.meta.env.VITE_DESIGN_ENCODE_SUBMIT !== '0') this.driver.submitPending?.()
+    })
   }
   lastBudgetFailure?: RenderBudgetDiagnostic
   private frameBudget = SURFACE_BUDGET_BYTES
+  private horizontalFilters = new HorizontalFilterCache(plane => this.release(plane))
+  private horizontalFilterHits = 0
+  private horizontalFilterPixels = 0
+  private horizontalFilterRows = 0
+  /** Called only by the worker that created the local tile-fill owner. */
+  releaseFilterBatch(lease: object) { this.horizontalFilters.clear(lease) }
   private backdropReuseFrames=0
   private backdropReusePixels=0
   private backdropEligibleFrames=0
@@ -534,6 +547,7 @@ export class GpuRenderer {
     this.poolReleaseEpoch.delete(texture)
     delete texture.transparentZero
     delete texture.uniformColor
+    delete texture.finitePixels
     this.touch(texture)
     this.busy.add(texture)
     this.used.add(texture)
@@ -597,6 +611,9 @@ export class GpuRenderer {
     this.lastBudgetFailure = undefined
     if (!Number.isSafeInteger(required) || required < 0) throw new Error('无效的 GPU 分配字节数')
     if (this.workingBytes + required <= this.frameBudget) return false
+    // Optional retained filter work never expands the common working budget.
+    // Pool release preserves ordering when the entry was copied this frame.
+    this.horizontalFilters.clear()
     this.reapRetiredKernels()
     this.kernelCache.evictCompleted(this.workingBytes + required - this.frameBudget, this.driver.completedResourceEpoch ?? -1)
     this.materialFields.evictUnused(this.workingBytes + required - this.frameBudget)
@@ -1740,6 +1757,7 @@ export class GpuRenderer {
   private async reclaimScratch(required = 0) {
     this.checkFrameCurrent()
     const pressure = required > 0 && this.workingBytes + required > this.frameBudget
+    if (pressure) this.horizontalFilters.clear()
     // The shared worker replaces two former 256 MiB raster owners. Keep the
     // active interaction working set warm below its bounded pressure line.
     if (!pressure && this.driver.captureDisplay && this.scene.interactionRetained &&
@@ -2326,6 +2344,67 @@ export class GpuRenderer {
     for(const paint of node.fills)this.imageGrids.delete(paint)
     return layer
   }
+  /** Narrow leaf-only specialization. Keep the physical coverage pass and
+   * original coordinate fields; remove only the two materialized intermediates
+   * between image paint, over-transparent, and the exact sample resolve. */
+  private resolveFilterImageSample(n: GpuNode, region: Rect, sample: number, previous?: Surface): Surface | undefined {
+    if (!this.optimized || !this.driver.managed || this.driver.displayMath ||
+        !this.driver.exactImageResolveStep || !this.driver.createBinaryCoverage || !this.driver.maskRegion ||
+        import.meta.env.VITE_DESIGN_IMAGE_RESOLVE_FUSION === '0' || n.children.length ||
+        !Number.isInteger(sample) || sample < 0 || sample > 3 || (sample > 0 && !previous) ||
+        !this.filterSourceSupported(n) || !exactBlendLattice([region, ...(previous ? [previous.rect] : [])])) return
+    const fills = n.fills.filter(p => p.visible)
+    if (fills.length !== 1 || fills[0].kind !== 'image' || fills[0].blend !== 'normal' || fills[0].opacity !== 1) return
+    const visible = intersect(n.rect, region)
+    if (!visible.w || !visible.h) return
+    const paint = { ...fills[0] }, node = { ...n, rect: region, fills: [paint] }
+    this.sampleIndex = sample
+    const level = this.imageLevel(node, paint), intoAtlas = this.imageAtlas
+    const image = this.imageFor(paint.image || '', level, intoAtlas, paint.adjust)
+    // Atlas partial writes deliberately carry no whole-texture finite proof.
+    // Nonfinite or unknown uploads must keep integerSample's NaN-neighbour path.
+    if (image.texture.finitePixels !== true || !exactBlendLattice([image.rect])) return
+    const origin = intoAtlas
+      ? this.imageOrigins.get(this.imageKey(paint.image || '', level, true, paint.adjust)) ?? [0, 0] as [number, number]
+      : [0, 0] as [number, number]
+    const mask = this.acquire(region, true)
+    try {
+      if (n.fill.count) this.driver.maskRegion!(n.fill, mask.texture, sample, region)
+      else this.driver.clear(mask.texture)
+      const field = this.imageGrid(node, paint, image, level, origin)
+      return this.run(IMAGE_RESOLVE_STEP_MODE, region, [mask, image, previous || mask, field], u => {
+        this.configurePaint(u, node, paint)
+        u[17] = sample
+        u.set([field.rect.x, field.rect.y], 204)
+      })
+    } finally {
+      this.release(mask)
+      this.imageGrids.delete(paint)
+    }
+  }
+  private horizontalFilterSource(n: GpuNode, input: Rect, output: Rect, radius: number) {
+    const lease = this.scene.filterBatchLease
+    // Mip selection samples a rect-dependent f64 finite difference. Retaining
+    // level zero only avoids asserting that different strip centres pick the
+    // same level. Other policies keep the existing path.
+    if (!lease || !this.driver.copyRegion || this.imageMips || !this.optimized || !this.driver.managed ||
+        this.driver.displayMath || !this.driver.exactImageResolveStep || !this.driver.createBinaryCoverage ||
+        !this.driver.maskRegion || import.meta.env.VITE_DESIGN_IMAGE_RESOLVE_FUSION === '0' ||
+        import.meta.env.VITE_DESIGN_HORIZONTAL_FILTER_REUSE === '0' || n.children.length ||
+        !this.filterSourceSupported(n) || !fullSampleCoverage(n.fill, this.scene.curves, input)) return
+    const fills = n.fills.filter(p => p.visible), paint = fills[0]
+    if (fills.length !== 1 || paint.kind !== 'image' || paint.blend !== 'normal' || paint.opacity !== 1) return
+    const image = this.imageFor(paint.image || '', 0, this.imageAtlas, paint.adjust)
+    if (image.texture.finitePixels !== true || !exactBlendLattice([input, output, image.rect])) return
+    const origin = this.imageAtlas
+      ? this.imageOrigins.get(this.imageKey(paint.image || '', 0, true, paint.adjust)) ?? [0, 0]
+      : [0, 0]
+    const key = exactFilterKey([n.id, n.matrix, n.inverse, n.size, paint, radius,
+      input.x, input.w, output.x, output.w, image.rect, this.baseDims(paint.image || ''), 0, origin,
+      this.scene.view, this.scene.colorManagement, this.scene.integratedBlur, this.scene.floatCompositing,
+      this.driver.linearLight, this.driver.hdr, this.driver.certifiedFilter])
+    return key === undefined ? undefined : { lease, key, image: image.texture }
+  }
   private async streamIsolatedFilter(n: GpuNode, targets: Surface[], clip?: Surface[]): Promise<Surface[] | undefined> {
     const effects = n.effects.filter(e => e.visible)
     if (!this.optimized || !this.driver.managed || this.driver.displayMath || !this.driver.maskRegion ||
@@ -2352,14 +2431,38 @@ export class GpuRenderer {
     const previousFields = this.filterImageFields
     this.filterImageFields = { rect: input, fields: new Map(), pinned: new Set() }
     try {
+    const reusable = this.horizontalFilterSource(n, input, output, radius)
     const horizontal = this.acquire({x:output.x,y:input.y,w:output.w,h:input.h})
     this.driver.clear(horizontal.texture)
-    for (let y=input.y;y<input.y+input.h;y+=stripRows) {
+    // Lookup happens after allocation: admission pressure is allowed to drop
+    // the old entry. No await separates this last ownership check and its copy.
+    const cached = reusable && this.horizontalFilters.get(reusable.lease, reusable.key, reusable.image, horizontal.rect)
+    const missing = [{ y: input.y, h: input.h }]
+    if (cached) {
+      const { plane, overlap } = cached
+      this.used.add(plane.texture); this.touch(plane.texture)
+      this.driver.copyRegion!(horizontal.texture, plane.texture,
+        {x:overlap.x-plane.rect.x,y:overlap.y-plane.rect.y,w:overlap.w,h:overlap.h},
+        [overlap.x-horizontal.rect.x,overlap.y-horizontal.rect.y])
+      this.horizontalFilterHits++
+      this.horizontalFilterPixels += overlap.w * overlap.h
+      this.horizontalFilterRows += overlap.h
+      missing.splice(0,1,...[
+        {y:input.y,h:overlap.y-input.y},
+        {y:overlap.y+overlap.h,h:input.y+input.h-overlap.y-overlap.h},
+      ].filter(part=>part.h>0))
+      // The copy now owns the last queued read. Return old storage to the
+      // ordered pool immediately rather than keep two cache entries alive.
+      this.horizontalFilters.clear()
+    }
+    for (const part of missing) for (let y=part.y;y<part.y+part.h;y+=stripRows) {
       await this.reclaimScratch()
       const pause=this.yieldEncoding(); if(pause) await pause
-      const region={x:input.x,y,w:input.w,h:Math.min(stripRows,input.y+input.h-y)}
+      const region={x:input.x,y,w:input.w,h:Math.min(stripRows,part.y+part.h-y)}
       let resolved:Surface|undefined
       for(let i=0;i<4;i++) {
+        const fused = this.resolveFilterImageSample(n, region, i, resolved)
+        if (fused) { this.release(resolved); resolved = fused; continue }
         const layer=this.filterSource(n,region,i)
         const next=this.run(48,region,resolved?[layer,resolved]:[layer],u=>{u[17]=i})
         this.release(layer,resolved);resolved=next
@@ -2385,7 +2488,10 @@ export class GpuRenderer {
       this.driver.pass(blurred.texture,u,[filtered.texture],{x:x-output.x,y:0,w:region.w,h:region.h})
       this.release(filtered)
     }
-    this.release(horizontal)
+    // Ownership transfers only after the original Y filter has consumed the
+    // complete plane. Pending entries cannot satisfy another tile yet.
+    if (!reusable || !this.horizontalFilters.stage(reusable.lease, reusable.key, reusable.image, horizontal))
+      this.release(horizontal)
     const shadow=effects[0].kind==='shadow'
     const sharpNode=shadow?{...n,rect:output,fills:n.fills.map(p=>({...p}))}:undefined
     for(let i=0;i<4;i++) {
@@ -3290,6 +3396,7 @@ export class GpuRenderer {
     this.frameCurrent = this.driver.abortFrameAndReleaseFilterScratch ? isCurrent : undefined
     try { this.checkFrameCurrent(); return await this.renderAttempt(scene, readback, present) }
     catch (error) {
+      this.horizontalFilters.clear()
       const reserved = this.driver.scratchBytes || 0
       if (!(error instanceof Error) || error.message !== 'GPU 表面内存预算超限' || !reserved || !this.driver.abortFrameAndReleaseFilterScratch) throw error
       // Drop unsubmitted commands, wait for submitted references, then retire
@@ -3303,6 +3410,8 @@ export class GpuRenderer {
     } finally { this.frameCurrent = undefined }
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
+    this.horizontalFilters.begin(scene.filterBatchLease)
+    this.horizontalFilterHits = this.horizontalFilterPixels = this.horizontalFilterRows = 0
     this.encodeYield.begin()
     this.lastBudgetFailure = undefined
     // Surface storage is RGBA32F in both arithmetic modes. Exact desktop
@@ -3498,8 +3607,13 @@ export class GpuRenderer {
         this.bytes += (this.driver.scratchBytes || 0) - finishingScratch
       }
       completed = true
+      this.horizontalFilters.finish(!this.frameCurrent || this.frameCurrent())
       return {
         ...result,
+        horizontalFilterHits: this.horizontalFilterHits,
+        horizontalFilterPixels: this.horizontalFilterPixels,
+        horizontalFilterRows: this.horizontalFilterRows,
+        horizontalFilterBytes: this.horizontalFilters.bytes,
         retainedGroupHits: this.interactionHits,
         retainedPrefixHits: this.prefixHits,
         pairedFilterPasses: this.driver.pairedFilterPasses || 0,
@@ -3556,7 +3670,7 @@ export class GpuRenderer {
       this.constantTargets.clear()
       this.aliases.clear()
       this.releasedAliases = new WeakSet()
-      if (!completed) { this.coverage.clear(); this.materialFields.clear(); this.interactionInvalid = true }
+      if (!completed) { this.horizontalFilters.clear(); this.coverage.clear(); this.materialFields.clear(); this.interactionInvalid = true }
       for (const texture of this.coordinateMaps) {
         this.busy.delete(texture)
         this.used.delete(texture)
@@ -3576,7 +3690,8 @@ export class GpuRenderer {
       this.textureMath = undefined
       this.replayParameters = undefined
       for (const texture of [...this.busy])
-        if (!this.coverage.has(texture) && !this.materialFields.has(texture) && !this.interactionTextures.has(texture))
+        if (!this.coverage.has(texture) && !this.materialFields.has(texture) && !this.interactionTextures.has(texture) &&
+            !this.horizontalFilters.has(texture))
           this.release({ texture, rect: rect(0, 0, texture.width, texture.height) })
       this.sampleIndex = undefined
       this.masks.clear()
@@ -3586,6 +3701,7 @@ export class GpuRenderer {
     }
   }
   dispose() {
+    this.horizontalFilters.clear()
     this.coefficientBytes.clear()
     this.encodeYield.dispose()
     this.interactionPrefix = undefined
