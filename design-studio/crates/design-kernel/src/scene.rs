@@ -181,6 +181,13 @@ impl LayoutGrid {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat: Option<crate::repeat::Repeat>,
+    /// Disposable render-scene selection ownership; never authored or serialized.
+    #[serde(skip)]
+    pub(crate) repeat_origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_brush: Option<crate::vector_brush::VectorBrush>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub guides: Vec<RulerGuide>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -613,6 +620,7 @@ impl Node {
             && self.smoothing == other.smoothing
             && self.points == other.points
             && self.inner_radius == other.inner_radius
+            && self.vector_brush == other.vector_brush
             && self.network == other.network
             && self.derived_path == other.derived_path
             && self.text == other.text
@@ -831,6 +839,11 @@ impl Network {
 }
 impl Node {
     pub fn paths(&self) -> Result<(Path, Path), String> {
+        if let Some(brush) = &self.vector_brush {
+            let guide = self.network.as_ref().ok_or("Vector brush requires a guide network")?;
+            let path = crate::vector_brush::paths(guide, brush)?;
+            return Ok((path.clone(), path));
+        }
         if self.path_offset != 0. {
             if !self.path_offset.is_finite() || self.path_offset.abs() > 10000. {
                 return Err("Invalid path offset".into());
@@ -949,13 +962,29 @@ impl Document {
         nodes: impl IntoIterator<Item = (&'a String, &'a Node)>,
     ) -> Result<(), String> {
         for (id, n) in nodes {
+            if self.schema_version < 15 && (n.vector_brush.is_some()
+                || n.component.as_ref().is_some_and(|c| !c.slots.is_empty())
+                || n.instance.as_ref().is_some_and(|i| !i.slot_contents.is_empty())) {
+                return Err("Vector brushes and component slots require schema 15".into());
+            }
             if self.schema_version < 15 && (n.text_style.as_ref().is_some_and(|s| s.text_case != crate::font::TextCase::Original)
                 || n.text_runs.iter().any(|r| r.text_case.is_some())) {
                 return Err("Display text case requires schema 15".into());
             }
+            if let Some(repeat) = &n.repeat {
+                if self.schema_version < 15 { return Err("Repeated transforms require schema 15".into()); }
+                repeat.validate()?;
+            }
             validate_guides(&n.guides, self.schema_version)?;
             if !n.guides.is_empty() && !matches!(n.kind.as_str(), "frame" | "section") {
                 return Err("Only frames and sections own ruler guides".into());
+            }
+            if let Some(brush) = &n.vector_brush {
+                if n.kind != "vector" || n.network.is_none() || n.path_offset != 0. || n.boolean_operation.is_some() || !n.children.is_empty() {
+                    return Err("Vector brush requires a vector guide without offsets, booleans or children".into());
+                }
+                brush.validate()?;
+                crate::vector_brush::paths(n.network.as_ref().unwrap(), brush)?;
             }
             if let Some(path) = &n.text_path {
                 if self.schema_version < 10 || n.kind != "text" {
@@ -1341,6 +1370,7 @@ impl Document {
         if seen.len() != self.nodes.len() {
             return Err("Unreachable node".into());
         }
+        crate::repeat::validate_document(self)?;
         crate::components::validate(self)?;
         crate::animation::validate(self)?;
         crate::design_system::validate(self)?;

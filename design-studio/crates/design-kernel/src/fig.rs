@@ -1171,6 +1171,7 @@ impl FigImporter {
                         }
                     }
                     let mut instance = crate::components::Instance {
+                        slot_contents: Default::default(),
                         component_id,
                         overrides,
                         property_values: BTreeMap::new(),

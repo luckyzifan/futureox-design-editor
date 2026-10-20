@@ -294,6 +294,9 @@ impl Engine {
         let next = patch.apply(source).map_err(|e| e.to_string())?;
         let mut damage =
             crate::dirty_region::patch_damage_with_fonts(source, &next, patch, &self.fonts);
+        if crate::repeat::has_repeats(source) || crate::repeat::has_repeats(&next) {
+            damage.full = true; damage.reason = Some("repeat-derived-scene"); damage.bounds = None; damage.rects = None;
+        }
         // A proven rigid translation does not change local layout, shaped text,
         // resource identity or path topology. Keep those derived products; only
         // device geometry and the damage-dependent tile programs become dirty.
@@ -336,6 +339,7 @@ impl Engine {
     }
     fn retainable_paint_changes(&self, patch: &crate::editing::DocumentPatch) -> Option<Vec<String>> {
         let source = self.source_doc.as_ref()?;
+        if crate::repeat::has_repeats(source) { return None; }
         let resolved = self.doc.as_ref()?;
         let index = self.render_index.as_ref()?;
         if self.layout_dirty || self.animation_base.is_some() || self.animation_sample.is_some()
@@ -366,6 +370,7 @@ impl Engine {
     }
     fn can_retain_translation(&self, patch: &crate::editing::DocumentPatch) -> bool {
         let (Some(source), Some(resolved)) = (&self.source_doc, &self.doc) else { return false; };
+        if crate::repeat::has_repeats(source) { return false; }
         let Some(index) = &self.render_index else { return false; };
         if self.layout_dirty || self.animation_base.is_some() || self.animation_sample.is_some()
             || !source.animations.is_empty() || !patch.fields.is_empty() || patch.nodes.is_empty()
@@ -633,13 +638,17 @@ impl Engine {
         if let Some(request) = request {
             let candidate = if self.animation_base.is_none() {
                 self.resolve_layout()?;
-                Some(
-                    self.text_base
-                        .as_ref()
-                        .or(self.doc.as_ref())
-                        .ok_or("Load document first")?
-                        .clone(),
-                )
+                if self.source_doc.as_ref().is_some_and(|d| crate::repeat::has_repeats(d)) {
+                    // Sample editable sources first, then regenerate every appearance.
+                    let mut base = self.source_doc.as_ref().unwrap().clone();
+                    crate::design_system::resolve_authored(&mut base)?;
+                    crate::components::resolve(&mut base)?;
+                    crate::layout::resolve(&mut base, &self.fonts)?;
+                    crate::curve_boolean::resolve(&mut base)?;
+                    Some(base)
+                } else {
+                    Some(self.text_base.as_ref().or(self.doc.as_ref()).ok_or("Load document first")?.clone())
+                }
             } else {
                 None
             };
@@ -658,6 +667,7 @@ impl Engine {
                     .is_some_and(|(a, b)| a.same_geometry(b))
             });
             crate::curve_boolean::resolve(&mut sampled)?;
+            crate::repeat::resolve(&mut sampled)?;
             crate::font::expand_rich_text(&mut sampled, &self.fonts)?;
             self.doc = Some(sampled.into());
             // Sample resolved layout geometry. Timeline recording captures the
@@ -672,6 +682,7 @@ impl Engine {
                     .zip(base.nodes.get(id))
                     .is_some_and(|(a, b)| a.same_geometry(b))
             });
+            crate::repeat::resolve(&mut base)?;
             crate::font::expand_rich_text(&mut base, &self.fonts)?;
             self.doc = Some(base);
             self.animation_sample = None;
@@ -688,6 +699,7 @@ impl Engine {
                 .nodes
                 .values()
                 .any(|n| n.layout.is_some() || n.sizing.is_some() || n.constraints.is_some())
+                && !crate::repeat::has_repeats(doc)
                 && !crate::components::has_components(doc)
                 && doc.design_system.is_none()
                 && !doc
@@ -705,6 +717,7 @@ impl Engine {
                 .and_then(|()| crate::curve_boolean::resolve(doc))
                 .and_then(|()| crate::components::check_budget(doc))
                 .and_then(|()| doc.validate())
+                .and_then(|()| crate::repeat::resolve(doc))
                 .and_then(|()| {
                     self.text_base = doc
                         .nodes

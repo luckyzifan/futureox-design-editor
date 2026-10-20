@@ -1,3 +1,5 @@
+import { releaseSlotRoot } from '../component-slots'
+import { layoutSuggestionExtensions } from './layout-suggestions'
 import { NODE_FIELDS, OPTIONAL_NODE_FIELDS, nodePatchSchema as patchSchema } from './node-input-descriptors'
 import { bulkExtensions } from './bulk'
 /** Authored-document automation. This module owns no renderer or second history.
@@ -181,7 +183,7 @@ function removeNodes(doc: DesignDocument, selected: string[]): string[] {
   for (const id of top) {
     const parent = parents.get(id)
     if (!parent) fail('invalid_structure', `Node ${id} has no parent`)
-    const list = childList(doc, parent)
+    const list = childList(doc, parent, !releaseSlotRoot(doc, id))
     list.splice(list.indexOf(id), 1)
   }
   for (const id of removed) delete doc.nodes[id]
@@ -503,7 +505,7 @@ export class DesignAutomationApi {
   constructor(readonly editor: Editor, extensions: AutomationExtension[] = [],
     private readonly validators: ((document: DesignDocument) => void)[] = [], permissions?: AutomationPermissionPolicy) {
     this.permissions = permissions === undefined ? undefined : new LocalAutomationPermissions(permissions)
-    for (const entry of [...coreExtensions, ...granularExtensions, ...extensions]) {
+    for (const entry of [...coreExtensions, ...granularExtensions, ...layoutSuggestionExtensions, ...extensions]) {
       if (!/^[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]*)+$/.test(entry.name)) throw new Error(`Invalid automation method name: ${entry.name}`)
       if (this.registry.has(entry.name) || specialMethods.some(m => m.name === entry.name)) throw new Error(`Duplicate automation method: ${entry.name}`)
       this.registry.set(entry.name, entry)

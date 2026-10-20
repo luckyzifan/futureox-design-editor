@@ -137,7 +137,7 @@ export function prepareDocumentForEditing(value: unknown): DesignDocument {
   })
   // Reject an invalid derived offset before adopting a persisted/imported scene.
   // Otherwise the first synchronous bounds/selection query can tear down React.
-  for(const n of Object.values(prepared.nodes))if(n.pathOffset)kernelBounds(n)
+  for(const n of Object.values(prepared.nodes))if(n.pathOffset||n.vectorBrush)kernelBounds(n)
   validateKernelDocument(JSON.stringify(prepared))
   return prepared
 }
@@ -486,6 +486,7 @@ export function kernelBounds(n: DesignNode, matrix: Matrix = [1, 0, 0, 1, 0, 0])
       width: n.width,
       height: n.height,
       network: n.network,
+      vectorBrush: n.vectorBrush,
       radii: n.radii,
       smoothing: n.smoothing,
       arc: n.arc,

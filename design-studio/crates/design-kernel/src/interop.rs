@@ -1449,6 +1449,7 @@ impl<'a> Importer<'a> {
                         }
                     }
                     node.instance = Some(crate::components::Instance {
+                        slot_contents: Default::default(),
                         component_id: symbol_id.into(),
                         overrides,
                         property_values: BTreeMap::new(),
@@ -4288,6 +4289,12 @@ fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<
 
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
 pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
+    if let Some(node) = doc.nodes.values().find(|n| n.vector_brush.is_some()) {
+        return Err(Error::Unsupported(format!("Sketch cannot preserve editable vector brush on layer `{}`; preserve the native FD document or explicitly bake the brush before exporting", node.id)));
+    }
+    if let Some(node) = doc.nodes.values().find(|n| n.repeat.is_some()) {
+        return Err(Error::Unsupported(format!("Sketch cannot preserve non-destructive repeated transforms on layer `{}`; save native FD/JSON to retain editability, or export PNG/SVG/PDF for visual output", node.id)));
+    }
     let settings = doc.color_management.unwrap_or_default();
     if !matches!(settings.document_space, ColorSpace::Srgb | ColorSpace::DisplayP3) {
         return Err(Error::Unsupported(format!("Sketch only supports sRGB or Display P3 document profiles, not {:?}; preserve the native file or explicitly convert an SDR copy", settings.document_space)));
@@ -5649,12 +5656,14 @@ mod tests {
             .bindings
             .insert("symbolID".into(), "SYMBOL-UUID-1".into());
         master.component = Some(crate::components::Component {
+            slots: Default::default(),
             variants: [("Size".into(), "M".into())].into_iter().collect(),
             properties: BTreeMap::new(),
         });
         let mut instance = crate::facet::sample_node("n4", "frame");
         instance.name = "Button instance".into();
         instance.instance = Some(crate::components::Instance {
+                        slot_contents: Default::default(),
             component_id: "SYMBOL-UUID-1".into(),
             overrides: {
                 let mut overrides = crate::components::Overrides::new();

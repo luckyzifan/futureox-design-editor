@@ -132,9 +132,10 @@ impl Engine {
                     return;
                 }
                 let matrix = parent.concat(node.transform);
-                let chosen = selected.contains(id);
+                let source_id = node.repeat_origin.as_deref().unwrap_or(id);
+                let chosen = selected.contains(source_id);
                 if chosen {
-                    found.insert(id.to_owned());
+                    found.insert(source_id.to_owned());
                     if !inside {
                         roots.push((id.to_owned(), matrix));
                     }

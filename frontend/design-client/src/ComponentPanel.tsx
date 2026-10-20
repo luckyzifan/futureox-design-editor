@@ -2,6 +2,7 @@ import { DraftInput } from './DraftInput'
 import { useState } from 'react'
 import type { Editor } from './engine'
 import type { DesignNode, ComponentProperty } from './model'
+import { container } from './model'
 import { definitionOwner, instanceOwner, family } from './components'
 function ValueInput({
   label,
@@ -104,6 +105,7 @@ export function ComponentPanel({
               />
             </label>
           ))}
+          {Object.entries(n.component.slots || {}).map(([id, slot]) => <div className="component-property" key={id}><span>内容插槽：{slot.name}</span><button onClick={() => editor.removeComponentSlot(n.id, id)}>移除插槽</button></div>)}
           {Object.entries(n.component.properties).map(([id, p]) => (
             <div className="component-property" key={id}>
               <ValueInput
@@ -142,6 +144,12 @@ export function ComponentPanel({
           )}
         </>
       )}
+      {definition && definition !== n.id && container(n) && !n.instance && (
+        <div className="component-actions">
+          <input aria-label="内容插槽名称" placeholder="内容插槽名称" value={propertyName} onChange={e => setPropertyName(e.target.value)} />
+          <button disabled={!propertyName.trim()} onClick={() => editor.declareComponentSlot(n.id, propertyName.trim())}>声明内容插槽</button>
+        </div>
+      )}
       {n.componentSet && (
         <>
           <p className="muted">{n.children.length} 个变体</p>
@@ -171,6 +179,20 @@ export function ComponentPanel({
       )}
       {target?.instance && (
         <>
+          {Object.entries(source?.component?.slots || {}).map(([id, slot]) => (
+            <div className="component-property" key={id}>
+              <span>{slot.name} · {target.instance?.slotContents?.[id]?.length ?? '默认'} 个内容根</span>
+              <select aria-label={`向插槽 ${slot.name} 添加内容`} value="" onChange={event => {
+                if (event.target.value) editor.assignComponentSlot(target.id, id, [...(target.instance?.slotContents?.[id] || []), event.target.value])
+              }}>
+                <option value="">选择现有内容子树…</option>
+                {Object.values(d.nodes).filter(candidate => candidate.id !== target.id && !candidate.instanceOrigin && !candidate.component && !candidate.componentSet && !candidate.locked && !definitionOwner(d, candidate.id) && !(target.instance?.slotContents?.[id] || []).includes(candidate.id)).map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+              </select>
+              {!!target.instance?.slotContents?.[id]?.length && <button onClick={() => editor.select(target.instance!.slotContents![id])}>选择插槽内容</button>}
+              <button onClick={() => editor.assignComponentSlot(target.id, id, [])}>清空</button>
+              <button onClick={() => editor.assignComponentSlot(target.id, id, null)}>恢复默认</button>
+            </div>
+          ))}
           <p className="component-source">{source?.name || '主组件缺失'}</p>
           <label className="labeled-select">
             替换组件

@@ -42,6 +42,9 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
     Object.keys(api).sort(),
     [
       'version',
+      'petConfigure',
+      'petEvent',
+      'onPetStatus',
       'diagnostics',
       'automation',
       'rendererReady',
@@ -95,6 +98,8 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
 test('preload request methods map only to the fixed desktop IPC allowlist', async () => {
   const { api, calls } = load()
   const cases = [
+    ['petConfigure', 'pet-configure', 'active'],
+    ['petEvent', 'pet-event', 'save'],
     ['rendererReady', 'renderer-ready', undefined],
     ['listCatalog', 'catalog-list', undefined],
     ['selectCatalogDirectory', 'catalog-select', undefined],
@@ -328,4 +333,15 @@ test('handled desktop failures notify diagnostics while storage failures do not 
   await api.openDocument();await api.diagnostics.read();await api.diagnostics.write('{}')
   assert.equal(records.length,1);assert.equal(records[0].code,'BACKEND_TIMEOUT');assert.equal(records[0].message,undefined)
   stop();await api.openDocument();assert.equal(records.length,1)
+})
+
+test('pet health subscription validates payload, strips IPC event and unsubscribes', () => {
+  const {api, events}=load(), received=[]
+  const unsubscribe=api.onPetStatus(value=>received.push(value))
+  events.emit('design-desktop:pet-status',{}, {mode:'active',phase:'starting',revision:1})
+  events.emit('design-desktop:pet-status',{}, {mode:'active',phase:'ready',revision:2})
+  events.emit('design-desktop:pet-status',{}, {mode:'off',phase:'unavailable',revision:3})
+  events.emit('design-desktop:pet-status',{}, {mode:'active',phase:'unknown',revision:4})
+  assert.equal(received.length,3)
+  unsubscribe(); assert.equal(events.listenerCount('design-desktop:pet-status'),0)
 })

@@ -1,9 +1,10 @@
+import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
 import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
 import { registerAutomationBridge } from './automation-bridge.mjs'
 import { SketchSessionHost } from './sketch-session.mjs'
 import { readDesignClipboard, writeDesignClipboard } from './clipboard.mjs'
-import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor } from 'electron'
 import path from 'node:path'
 import { mkdtempSync, realpathSync } from 'node:fs'
 import { spawn } from 'node:child_process'
@@ -49,6 +50,7 @@ const applicationName = app.isPackaged ? app.getName() : 'futureox-desgin'
 app.setName(applicationName)
 app.enableSandbox()
 protocol.registerSchemesAsPrivileged([
+  { scheme: 'design-pet', privileges: { standard: true, secure: true, supportFetchAPI: true } },
   {
     scheme: 'design-app',
     privileges: {
@@ -280,6 +282,17 @@ function register(name, action, exclusiveOperation = true) {
     try { return await action(value) } catch (error) { return resultError(error) }
   })
 }
+let petHost = null
+function getPetHost() {
+  if (!petHost) {
+    petHost = createPetHost({ BrowserWindow, session, ipcMain, screen, powerMonitor, app })
+    if (window && !window.isDestroyed()) petHost.attachEditor(window)
+  }
+  return petHost
+}
+register('pet-configure', mode => getPetHost().configure(mode), false)
+register('pet-event', event => petHost ? petHost.event(event) : { ok: true, accepted: false }, false)
+
 function sendCommand(command) {
   if (closePending || quitRequested || shutdownComplete) return
   if (!window || window.isDestroyed() || !rendererReady) {
@@ -993,6 +1006,7 @@ async function buildWindow() {
     },
   })
   const ownedWindow = window
+  petHost?.attachEditor(ownedWindow)
   for (const event of ['resize', 'move', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'])
     window.on(event, () => { clearTimeout(windowStateTimer); windowStateTimer = setTimeout(() => void saveWindowState(ownedWindow), 200) })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -1200,6 +1214,7 @@ else {
 async function shutdown() {
   if (!shutdownPromise)
     shutdownPromise = (async () => {
+      petHost?.dispose()
       await automationBridge.close()
       await windowStateWrites
       await windowCleanup

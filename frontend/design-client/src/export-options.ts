@@ -4,21 +4,27 @@ import { svgNumberList } from './svg-values'
 
 /** SVG scale changes viewport dimensions, not raster resolution. Precision is
  * opt-in lossy coordinate rounding; gzip only compresses the serialized bytes. */
-export type SvgExportOptions = { scale?: number; precision?: number; compression?: 'none' | 'gzip'; textMode?: 'outlines' | 'editable' }
+export type SvgExportOptions = { scale?: number; precision?: number; compression?: 'none' | 'gzip'; textMode?: 'outlines' | 'editable'; fontMode?: 'references' | 'embed'; fontEmbeddingAllowed?: boolean }
 export const SVG_OPTION_SCHEMA = {
+  fontEmbeddingAllowed: { type: 'boolean', description: 'Caller confirms rights to redistribute local fonts in editable SVG. OS/2 flags do not establish a license.' },
+  fontMode: { type: 'string', enum: ['references', 'embed'], description: 'Embed whole local TTF/OTF fonts only when licensed for editable redistribution. 4 MiB total. Host support varies.' },
   textMode: { type: 'string', enum: ['outlines', 'editable'], description: 'Outlines preserve visual geometry (default). Editable text references unembedded fonts and may render differently; advanced typography is rejected.' },
   scale: { type: 'number', minimum: 0.001, maximum: 128, description: 'SVG viewport size multiplier; not raster resolution.' },
   precision: { type: 'integer', minimum: 0, maximum: 8, description: 'Opt-in lossy coordinate decimal places. Omit to preserve existing precision.' },
   compression: { type: 'string', enum: ['none', 'gzip'], description: 'Lossless SVG container compression; gzip produces .svgz.' },
 }
-export function validateSvgOptions(input: SvgExportOptions = {}): Required<Pick<SvgExportOptions, 'scale' | 'compression' | 'textMode'>> & Pick<SvgExportOptions, 'precision'> {
-  for (const key of Object.keys(input)) if (!['scale', 'precision', 'compression', 'textMode'].includes(key)) throw new Error(`Unsupported SVG option: ${key}`)
-  const { scale = 1, precision, compression = 'none', textMode = 'outlines' } = input
+export function validateSvgOptions(input: SvgExportOptions = {}): Required<Pick<SvgExportOptions, 'scale' | 'compression' | 'textMode' | 'fontMode'>> & Pick<SvgExportOptions, 'precision' | 'fontEmbeddingAllowed'> {
+  for (const key of Object.keys(input)) if (!['scale', 'precision', 'compression', 'textMode', 'fontMode', 'fontEmbeddingAllowed'].includes(key)) throw new Error(`Unsupported SVG option: ${key}`)
+  const { scale = 1, precision, compression = 'none', textMode = 'outlines', fontMode = 'references', fontEmbeddingAllowed } = input
   if (typeof scale !== 'number' || !Number.isFinite(scale) || scale < 0.001 || scale > 128) throw new Error('SVG scale must be between 0.001 and 128')
   if (precision !== undefined && (!Number.isInteger(precision) || precision < 0 || precision > 8)) throw new Error('SVG precision must be an integer between 0 and 8')
   if (!['none', 'gzip'].includes(compression)) throw new Error('SVG compression must be none or gzip')
   if (!['outlines', 'editable'].includes(textMode)) throw new Error('SVG textMode must be outlines or editable')
-  return { scale, precision, compression, textMode }
+  if (!['references', 'embed'].includes(fontMode)) throw new Error('SVG fontMode must be references or embed')
+  if (fontMode === 'embed' && textMode !== 'editable') throw new Error('SVG embedded fonts require editable text mode')
+  if (fontEmbeddingAllowed !== undefined && typeof fontEmbeddingAllowed !== 'boolean') throw new Error('SVG fontEmbeddingAllowed must be boolean')
+  if (fontMode === 'embed' && fontEmbeddingAllowed !== true) throw new Error('Explicit rights to redistribute fonts are required for SVG embedding')
+  return { scale, precision, compression, textMode, fontMode, ...(fontEmbeddingAllowed === undefined ? {} : { fontEmbeddingAllowed }) }
 }
 export function roundSvgCoordinates(source: string, precision?: number): string {
   if (precision === undefined) return source

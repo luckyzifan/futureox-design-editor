@@ -24,7 +24,8 @@ export async function readDocument(file: File) {
 }
 export async function readDesignFile(file:File, signal?:AbortSignal):Promise<import('./import-svg').ImportedDesign> {
   signal?.throwIfAborted()
-  if (file.size > 32 * 1024 * 1024) throw new Error('文件超过 32 MB')
+  const svgFile = /\.svgz?$/i.test(file.name)
+  if (file.size > (svgFile ? 48 : 32) * 1024 * 1024) throw new Error(svgFile ? 'SVG 文件超过 48 MiB' : '文件超过 32 MB')
   if (/\.(fig|sketch|pdf)$/i.test(file.name)) {
     const bytes = await file.arrayBuffer()
     signal?.throwIfAborted()
@@ -36,7 +37,14 @@ export async function readDesignFile(file:File, signal?:AbortSignal):Promise<imp
     const {importSvg}=await import('./import-svg')
     const { decodeSvgFileBytes } = await import('./export-options')
     const bytes = new Uint8Array(await file.arrayBuffer()); signal?.throwIfAborted()
-    const result=importSvg(decodeSvgFileBytes(bytes, /\.svgz$/i.test(file.name)),file.name.replace(/\.svgz?$/i,''));validateDocument(result.document);return result
+    const compressed=/\.svgz$/i.test(file.name)
+    const expanded=compressed && bytes.length>=18 ? new DataView(bytes.buffer,bytes.byteOffset+bytes.length-4,4).getUint32(0,true) : bytes.length
+    if (expanded>8*1024*1024 || bytes.length>8*1024*1024) {
+      if (!['','image/svg+xml','application/gzip','application/x-gzip'].includes(file.type)) throw new Error('大型 SVG 文件 MIME 类型无效')
+      const {importSvgArtifact}=await import('./import-svg-artifact'); signal?.throwIfAborted()
+      return importSvgArtifact(bytes,compressed?'svgz':'svg',signal,file.name.replace(/\.svgz?$/i,''))
+    }
+    const result=importSvg(decodeSvgFileBytes(bytes, compressed),file.name.replace(/\.svgz?$/i,''));validateDocument(result.document);return result
   }
   const bytes=new Uint8Array(await file.arrayBuffer())
   const binary=bytes[0]===70 && bytes[1]===88 && bytes[2]===68 && bytes[3]===75

@@ -1,3 +1,4 @@
+import { isSlotHost } from './component-slots'
 import { cloneValue } from './draft'
 import {
   node,
@@ -148,6 +149,16 @@ function variableModeRenames(before: DesignDocument, after: DesignDocument) {
   return maps
 }
 export function captureOverrides(before: DesignDocument, d: DesignDocument) {
+  for (const n of Object.values(d.nodes)) if (n.instance?.slotContents) {
+    for (const [slot, roots] of Object.entries(n.instance.slotContents)) {
+      let remaining = roots.filter(id => !!d.nodes[id])
+      const targetKey = d.nodes[n.instance.componentId]?.component?.slots?.[slot]?.targetKey
+      const host = Object.values(d.nodes).find(host => host.instanceOrigin?.owner === n.id && host.instanceOrigin.key === targetKey)
+      const ordered = host?.children.filter(id => remaining.includes(id))
+      if (ordered?.length === remaining.length) remaining = ordered
+      if (!same(remaining, roots)) editInstance(d, n.id, i => { i.slotContents![slot] = remaining })
+    }
+  }
   const modeRenames = variableModeRenames(before, d)
   const changedModeCollections = new Set(Object.keys(before.designSystem?.collections || {}).filter(id =>
     !same(before.designSystem?.collections[id].modes, d.designSystem?.collections[id]?.modes)))
@@ -180,7 +191,9 @@ export function captureOverrides(before: DesignDocument, d: DesignDocument) {
       throw new Error('实例内部结构由主组件控制，请先分离实例')
     if (next.kind !== old.kind) throw new Error('请先分离实例，再改变图层类型')
     const remaining = old.children.filter((id) => next.children.includes(id))
-    if (!same(remaining, next.children)) throw new Error('实例内部结构由主组件控制，请先分离实例')
+    const assignedRoots = isSlotHost(d, old.id) ? new Set(Object.values(d.nodes[owner].instance?.slotContents || {}).flat()) : undefined
+    const legalSlotEdit = assignedRoots && next.children.every(id => old.children.includes(id) || assignedRoots.has(id))
+    if (!legalSlotEdit && !same(remaining, next.children) && !(old.instance && next.children.every(id => old.children.includes(id) || isSlotHost(d, id)))) throw new Error('实例内部结构由主组件控制，请先分离实例')
     const changed: Record<string, unknown> = {}
     for (const field of overrideFields) {
       if (key === '$root' && ['transform', 'visible', 'locked', 'constraints', 'variableModes'].includes(field))
@@ -441,6 +454,15 @@ export function remapInstance(
     fresh = d.nodes[target]
   if (!fresh?.component) throw new Error('替换目标不是主组件')
   next.componentId = target
+  if (spec.slotContents) {
+    next.slotContents = {}
+    for (const [id, roots] of Object.entries(spec.slotContents)) {
+      const slots = fresh.component.slots || {}
+      const matching = slots[id] ? [id] : Object.keys(slots).filter(k => slots[k].name === old?.component?.slots?.[id]?.name)
+      if (matching.length !== 1 || next.slotContents[matching[0]]) throw new Error('Target variant has no unambiguous matching content slot; reset or detach first')
+      next.slotContents[matching[0]] = [...roots]
+    }
+  }
   if (old?.component) {
     const a = semanticPaths(d, old.id),
       b = semanticPaths(d, target),
@@ -496,7 +518,21 @@ export function swapInstance(d: DesignDocument, id: string, target: string) {
         propertyValues: remapped.propertyValues,
       }
     })
-  } else d.nodes[id] = { ...n, instance: remapped }
+  } else {
+    // The transaction still contains the previous generated host until the
+    // kernel replaces it. Rebind its ownership key to the new declaration so
+    // authored content remains parented during pre-materialization validation.
+    for (const oldSlot of Object.keys(n.instance.slotContents || {})) {
+      const oldKey = d.nodes[n.instance.componentId]?.component?.slots?.[oldSlot]?.targetKey
+      const newSlots = d.nodes[target].component?.slots || {}
+      const newSlot = newSlots[oldSlot] ? oldSlot : Object.keys(newSlots).find(slot => newSlots[slot].name === d.nodes[n.instance!.componentId]?.component?.slots?.[oldSlot]?.name)
+      const newKey = newSlot && d.nodes[target].component?.slots?.[newSlot]?.targetKey
+      if (oldKey && newKey && oldKey !== newKey) for (const host of Object.values(d.nodes)) {
+        if (host.instanceOrigin?.owner === id && host.instanceOrigin.key === oldKey) host.instanceOrigin.key = newKey
+      }
+    }
+    d.nodes[id] = { ...n, instance: remapped }
+  }
 }
 
 export function resetInstance(d: DesignDocument, id: string) {
@@ -674,6 +710,7 @@ export function remapReferences(n: DesignNode, ids: Map<string, string>, source:
       if (typeof fields.swapComponent === 'string')
         fields.swapComponent = mapped(fields.swapComponent)
     }
+    if (n.instance.slotContents) for (const [slot, roots] of Object.entries(n.instance.slotContents)) n.instance.slotContents[slot] = roots.map(mapped)
     n.instance.componentId = mapped(componentId)
   }
   if (n.instanceOrigin) {

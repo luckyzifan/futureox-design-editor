@@ -1,3 +1,4 @@
+import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { renderFailureEnvelope, renderErrorWithBudget } from './render-diagnostics'
 import { readAuthoredSnapshot, type AuthoredSnapshot } from './authored-snapshot'
 import initialize, {
@@ -80,7 +81,40 @@ displayTasks.port1.onmessage=()=>{
   displayFramePending=false
   try{if(displayFrame)gpu?.driver.presentFrame?.(displayFrame)}catch(error){reportDisplay({error:String(error)})}
 }
-const reportDisplay = (presentation: Record<string, unknown>) => self.postMessage({ presentation })
+const navigationJournal = new NavigationJournal()
+let navigationCompileSequence = 0, navigationCaptureGeneration = 0
+let navigationTextureSet: number[] = [], navigationTextureSequence = 0
+// Numeric stages are documented in the diagnostic collector. The callback is
+// immediately after queue.submit, not GPU completion or physical scanout.
+const reportDisplay = (presentation: Record<string, unknown>) => {
+  if (navigationJournal.recording) {
+    if (typeof presentation.compositorFrames === 'number') {
+      const ids = (presentation.presented as {ids?:unknown} | undefined)?.ids
+      // Keep only a bounded numeric identity list. Its change marks a new
+      // submitted texture set, not proof of new pixels or physical scanout.
+      const valid = Array.isArray(ids) && ids.length <= 4096 && ids.every(id => Number.isSafeInteger(id) && id >= 0)
+      if (valid && (ids.length !== navigationTextureSet.length || ids.some((id, i) => id !== navigationTextureSet[i]))) {
+        navigationTextureSet = ids.slice(); navigationTextureSequence++
+      }
+      navigationJournal.record(7, { frames: presentation.compositorFrames,
+        ...(valid ? {sequence:navigationTextureSequence,tiles:ids.length} : {}) })
+    }
+    if (presentation.error && gpu?.driver.lost) navigationJournal.stop(5)
+  }
+  self.postMessage({ presentation })
+}
+function journalCompile<T>(work: () => Promise<T>): Promise<T> {
+  if (!navigationJournal.recording) return work()
+  const generation = navigationCaptureGeneration, sequence = ++navigationCompileSequence
+  navigationJournal.record(4, { sequence })
+  return work().finally(() => { if (generation === navigationCaptureGeneration) navigationJournal.record(5, { sequence }) })
+}
+function compilePacket(kernel: RenderKernel, options: string) {
+  return journalCompile(() => kernel.compile_gpu_packet(options))
+}
+function compileSceneUpdate(kernel: RenderKernel, options: string, reset: boolean) {
+  return journalCompile(() => kernel.compile_gpu_scene_update(options, reset))
+}
 let reportedResidentAttachment = ''
 function prepareDisplay(capture = true) {
   if (!gpu) return
@@ -264,8 +298,8 @@ function schedulePose(){
           if(!await kernel.apply_interaction_transforms(JSON.stringify(pose.transforms))){rebasePose(pose);break}
           const compileStarted=performance.now()
           let compiled:GpuScene
-          if(session.delta){compiled=await kernel.compile_gpu_scene_update(session.options,false);sceneUpdateBytes=kernel.sceneUpdateBytes}
-          else{const packet=await kernel.compile_gpu_packet(session.options);sceneUpdateBytes=packet.byteLength;compiled=decodeScenePacket(packet)}
+          if(session.delta){compiled=await compileSceneUpdate(kernel, session.options,false);sceneUpdateBytes=kernel.sceneUpdateBytes}
+          else{const packet=await compilePacket(kernel, session.options);sceneUpdateBytes=packet.byteLength;compiled=decodeScenePacket(packet)}
           poseCompileMs=performance.now()-compileStarted
           compileStats=kernel.compileStats
           next={...preparePreviewSelection(compiled,session.scene.interactionSelection||[]),
@@ -318,6 +352,18 @@ function schedulePose(){
 }
 self.onmessage = (e) => {
   const request = e.data
+  if (request.command === 'navigation-diagnostic') {
+    try {
+      if (request.action === 'start') {
+        const options = validateNavigationJournalOptions(request.options === undefined ? {} : request.options)
+        navigationJournal.start(options); navigationCompileSequence = 0; navigationCaptureGeneration++
+        navigationTextureSet = []; navigationTextureSequence = 0
+      } else if (request.action === 'stop') navigationJournal.stop(1)
+      else if (request.action !== 'snapshot') throw Error('Invalid navigation diagnostic action')
+      self.postMessage({ id: request.id, navigationDiagnostic: navigationJournal.report() })
+    } catch { self.postMessage({ id: request.id, error: 'Invalid navigation diagnostic command' }) }
+    return
+  }
   if (request.command === 'prepare-port') {
     if (!preparation && !enginePromise && request.port instanceof MessagePort) preparation = new PreparationChannel(request.port)
     return
@@ -333,6 +379,7 @@ self.onmessage = (e) => {
     return
   }
   if (request.command === 'display-frame') {
+    if (navigationJournal.recording) navigationJournal.record(6, { sequence: request.sequence })
     if(!displayOrder.accept(request.sequence)){
       reportDisplay({displayCommandsDropped:displayOrder.dropped});return
     }
@@ -374,6 +421,7 @@ self.onmessage = (e) => {
     gpu?.driver.releasePresented?.(request.ids); return
   }
   if (request.command === 'cancel-preview') {
+    if (navigationJournal.recording) navigationJournal.record(10, { channel: channel === 'interaction' ? 1 : 0 })
     try {
       executionPolicy = pinRenderPolicy(executionPolicy, request.executionPolicy)
       previewGenerations[channel]++
@@ -391,6 +439,7 @@ self.onmessage = (e) => {
   let completedRegions=0
   const reportRasterProgress=()=>self.postMessage({id:request.id,rasterProgress:++completedRegions})
   void queue.run(async () => {
+    if (navigationJournal.recording && request.options?.view) navigationJournal.record(3, { requestId: request.id, channel: channel === 'interaction' ? 1 : 0 })
     try {
       executionPolicy = pinRenderPolicy(executionPolicy, request.executionPolicy)
       const backend = effectiveBackend(executionPolicy, request.backend, request.png)
@@ -399,6 +448,7 @@ self.onmessage = (e) => {
       if (import.meta.env.DEV && request.command === 'lose-device') {
         if (!gpu) throw new Error('No active GPU to test')
         invalidateTileCache()
+        navigationJournal.stop(5)
         await gpu.driver.loseDeviceForTesting()
         self.postMessage({ id: request.id })
         return
@@ -612,6 +662,7 @@ self.onmessage = (e) => {
         tiledPreviewMode = false
       }
       if (gpu?.driver.lost) {
+        navigationJournal.stop(5)
         invalidateTileCache()
         gpu.dispose()
         gpu = undefined
@@ -724,7 +775,7 @@ self.onmessage = (e) => {
             const compileTile = async (tile: RasterTile) => {
               if (!current()) throw Error('PREVIEW_CANCELLED')
               const at = performance.now()
-              const bytes = await kernel.compile_gpu_packet(JSON.stringify({ ...renderOptions,
+              const bytes = await compilePacket(kernel, JSON.stringify({ ...renderOptions,
                 view: { ...renderOptions.view, zoom: tile.zoom }, width: tile.width, height: tile.height,
                 gpuViewport: { x: tile.x + Math.floor(renderOptions.view.x), y: tile.y + Math.floor(renderOptions.view.y), w: tile.width, h: tile.height },
                 ...(prepareViewport ? { prepareViewport } : {}),
@@ -983,7 +1034,7 @@ self.onmessage = (e) => {
           const { createGpu, straightAlpha } = await import('./gpu/factory')
           if (channel==='interaction' && retainInteraction && incrementalScene) {
             const t=performance.now(); await synchronizeDeferred()
-            scene=await kernel.compile_gpu_scene_update(options,true); compileMs=performance.now()-t
+            scene=await compileSceneUpdate(kernel, options,true); compileMs=performance.now()-t
           }
           if (!scene) {
             if (
@@ -996,7 +1047,7 @@ self.onmessage = (e) => {
             } else {
               const t = performance.now()
               await synchronizeDeferred()
-              scene = decodeScenePacket(await kernel.compile_gpu_packet(options))
+              scene = decodeScenePacket(await compilePacket(kernel, options))
               compileMs = performance.now() - t
               if (cacheScene) compiledScene = { revision: loadedRevision, options, scene: scene! }
             }
@@ -1479,7 +1530,7 @@ async function renderTiledPreview(
           tile.width === crop?.width && tile.height === crop?.height ? preparedScene : undefined
         preparedScene = undefined
         const scene = prepared ?? decodeScenePacket(
-          await kernel.compile_gpu_packet(JSON.stringify({ ...options, width: tile.width, height: tile.height,
+          await compilePacket(kernel, JSON.stringify({ ...options, width: tile.width, height: tile.height,
             view: options.view, gpuViewport: { x: (crop?.x || 0) + tile.x,
               y: (crop?.y || 0) + tile.y, w: tile.width, h: tile.height },
             ...(prepareViewport ? { prepareViewport } : {}) })),

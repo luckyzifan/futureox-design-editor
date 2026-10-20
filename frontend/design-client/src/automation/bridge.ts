@@ -1,3 +1,6 @@
+import { importSvgArtifact } from '../import-svg-artifact'
+import { SVG_ARTIFACT_LIMITS } from '../svg-artifact'
+import { captureSvgArtifact, vectorArtifactMethods, vectorArtifactParams } from './vector-artifact'
 import type { Editor, EditorEditEvent } from '../engine'
 import type { AutomationCapabilities, AutomationMethod, AutomationRequest, AutomationResponse } from './types'
 import { createEditorDesignAutomation } from './index'
@@ -67,6 +70,7 @@ export interface BridgeDependencies {
   api?: AutomationApi
   capturePreview?: typeof captureDesignPreview
   captureRaster?: typeof captureRaster
+  captureSvgArtifact?: typeof captureSvgArtifact
   host?: { execute(payload: DesktopAutomationRequest, signal: AbortSignal): Promise<unknown> }
 }
 const bridgeError = (code: string, message: string) => Object.assign(new Error(message), { code })
@@ -76,12 +80,13 @@ const bridgeError = (code: string, message: string) => Object.assign(new Error(m
 export function attachDesktopAutomation(editor: Editor, transport: DesktopAutomationTransport, dependencies: BridgeDependencies = {}): () => void {
   const api = dependencies.api ?? createEditorDesignAutomation(editor)
   const capture = dependencies.capturePreview ?? captureDesignPreview
-  const methods = [...api.methods().filter(method => method.name !== previewMethod.name && !rasterMethods.some(r => r.name === method.name)), previewMethod, ...rasterMethods]
+  const methods = [...api.methods().filter(method => method.name !== previewMethod.name && !rasterMethods.some(r => r.name === method.name)), previewMethod, ...rasterMethods, ...vectorArtifactMethods]
   const raster = dependencies.captureRaster ?? captureRaster
-  const artifacts = new Map<string, { blob: Blob; owner: string; expires: number; revision: number }>()
+  const vector = dependencies.captureSvgArtifact ?? captureSvgArtifact
+  const artifacts = new Map<string, { blob: Blob; owner: string; expires: number; revision: number; kind: 'vector'|'raster'; format?:'svg'|'svgz' }>()
   let rasterBusy = false
   const pruneArtifacts = () => { for (const [id, a] of artifacts) if (a.expires <= Date.now()) artifacts.delete(id) }
-  const capabilities = (scope: 'read' | 'write') => ({ ...api.capabilities(), raster: { renderer: 'product-cpu-export', backend: 'cpu', limits: RASTER_LIMITS, pngTransparency: 'preserved', jpegQuality: 100, webpCompression: 'lossless', transport: 'session-local handles; raster.read chunks; raster.release' }, methods: methods.filter(method => scope === 'write' || !method.mutates), preview: { renderer: 'product-cpu-export', backend: 'cpu', formats: ['png', 'jpeg', 'webp'], screenshot: false, gpuDisplayPixelEquivalence: false, runtime: typeof Worker === 'function' ? 'worker-available-unprobed' : 'worker-unavailable', limits: PREVIEW_LIMITS, transport: 'MCP image content when within tool budget; exact bytes in session-local resources' } })
+  const capabilities = (scope: 'read' | 'write') => ({ ...api.capabilities(), vectorArtifact: { limits: SVG_ARTIFACT_LIMITS, storage: RASTER_LIMITS, transport: 'session-local handles; vector.read chunks; vector.release', embeddedFonts: 'whole local TTF/OTF plus bundled default; explicit redistribution permission' }, raster: { renderer: 'product-cpu-export', backend: 'cpu', limits: RASTER_LIMITS, pngTransparency: 'preserved', jpegQuality: 100, webpCompression: 'lossless', transport: 'session-local handles; raster.read chunks; raster.release' }, methods: methods.filter(method => scope === 'write' || !method.mutates), preview: { renderer: 'product-cpu-export', backend: 'cpu', formats: ['png', 'jpeg', 'webp'], screenshot: false, gpuDisplayPixelEquivalence: false, runtime: typeof Worker === 'function' ? 'worker-available-unprobed' : 'worker-unavailable', limits: PREVIEW_LIMITS, transport: 'MCP image content when within tool budget; exact bytes in session-local resources' } })
   const active = new Map<string, AbortController>()
   let disposed = false
   let identity = ''
@@ -122,6 +127,7 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
       if (payload.scope !== 'read' && payload.scope !== 'write') throw bridgeError('PERMISSION_DENIED', 'Invalid automation scope')
     }
     const runAsync = <T,>(work: () => Promise<T>) => {
+      clearTimeout(deadlineTimer)
       deadlineTimer = setTimeout(() => controller.abort(bridgeError('TIMEOUT', 'The automation deadline expired')), Math.min(2147483647, Math.max(0, payload.deadline - Date.now())))
       return new Promise<T>((resolve, reject) => {
         const abort = () => reject(controller.signal.reason)
@@ -155,14 +161,14 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
         await respond(payload.requestId, validated.ok ? { ...validated, result: capabilities(payload.scope) } : validated)
         return
       }
-      if (request.method === 'raster.read' || request.method === 'raster.release') {
+      if (['raster.read','raster.release','vector.read','vector.release'].includes(request.method)) {
         const params = request.params ?? {}
-        const keys = request.method === 'raster.read' ? ['artifactId', 'offset', 'length'] : ['artifactId']
+        const keys = request.method.endsWith('.read') ? ['artifactId', 'offset', 'length'] : ['artifactId']
         if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(k => !keys.includes(k)) || typeof params.artifactId !== 'string' || params.artifactId.length > 512) throw bridgeError('INVALID_PARAMS', 'Invalid raster artifact arguments')
         pruneArtifacts()
         const artifact = artifacts.get(params.artifactId)
         if (!artifact || artifact.owner !== payload.sessionId) throw bridgeError('ARTIFACT_NOT_FOUND', 'Raster artifact expired or belongs to another session')
-        if (request.method === 'raster.release') {
+        if (request.method.endsWith('.release')) {
           check(); artifacts.delete(params.artifactId)
           await respond(payload.requestId, { ...envelope, ok: true, result: { released: true } }); return
         }
@@ -173,6 +179,46 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
         if (artifact.expires <= Date.now() || artifacts.get(params.artifactId) !== artifact) throw bridgeError('ARTIFACT_NOT_FOUND', 'Raster artifact expired or was released during retrieval')
         let binary = ''; for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
         await respond(payload.requestId, { ...envelope, ok: true, result: { artifactId: params.artifactId, encoding: 'base64', base64: btoa(binary), offset, nextOffset: (offset as number) + bytes.length, totalBytes: artifact.blob.size, mimeType: artifact.blob.type, sourceRevision: artifact.revision } }); return
+      }
+      if (request.method === 'svg.importArtifact') {
+        if (request.expectedRevision !== revision) throw bridgeError('REVISION_CONFLICT','The design revision changed')
+        const params=request.params ?? {}
+        if (Object.keys(params).some(k=>!['artifactId','pageId','name'].includes(k)) || typeof params.artifactId!=='string' || params.artifactId.length>512 || params.pageId!==undefined && (typeof params.pageId!=='string'||params.pageId.length>512) || params.name!==undefined && (typeof params.name!=='string'||params.name.length>200)) throw bridgeError('INVALID_PARAMS','Invalid SVG artifact import arguments')
+        pruneArtifacts()
+        const artifact=artifacts.get(params.artifactId)
+        if (!artifact || artifact.owner!==payload.sessionId || artifact.kind!=='vector' || artifact.blob.type!=='image/svg+xml' || !artifact.format) throw bridgeError('ARTIFACT_NOT_FOUND','SVG artifact is unavailable or belongs to another session')
+        if (artifact.blob.size>48*1024*1024) throw bridgeError('ARTIFACT_LIMIT','SVG import exceeds 48 MiB')
+        const bytes=await runAsync(async()=>new Uint8Array(await artifact.blob.arrayBuffer()))
+        check()
+        if(artifact.expires<=Date.now()||artifacts.get(params.artifactId)!==artifact)throw bridgeError('ARTIFACT_NOT_FOUND','SVG artifact expired during import')
+        const imported=importSvgArtifact(bytes,artifact.format,controller.signal,typeof params.name==='string'?params.name:undefined)
+        // Let queued cancellation/session events run before the atomic commit.
+        await runAsync(()=>new Promise<void>(resolve=>setTimeout(resolve,0)))
+        check()
+        if(artifact.expires<=Date.now()||artifacts.get(params.artifactId)!==artifact)throw bridgeError('ARTIFACT_NOT_FOUND','SVG artifact expired or was released before commit')
+        if(editor.state.version!==revision || params.pageId===undefined && editor.state.page!==pageId)throw bridgeError('STALE_REVISION','The document or page changed during SVG import')
+        const result=api.execute({...request,method:'document.import',params:{format:'native-json',content:JSON.stringify(imported.document),pageId:params.pageId ?? pageId}})
+        await respond(payload.requestId,{...result,method:request.method,...(result.ok?{result:{...result.result as object,sourceFormat:artifact.format,warnings:imported.warnings}}:{})});return
+      }
+      if (request.method === 'vector.exportArtifact') {
+        if (request.expectedRevision !== undefined && (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision !== revision)) throw bridgeError('REVISION_CONFLICT', 'The design revision changed')
+        const params = request.params ?? {}; vectorArtifactParams(params)
+        pruneArtifacts()
+        if (artifacts.size >= RASTER_LIMITS.artifacts) throw bridgeError('ARTIFACT_LIMIT', 'Release earlier artifacts before exporting')
+        if (rasterBusy) throw bridgeError('BUSY', 'An artifact export is already running')
+        rasterBusy = true
+        const work = () => vector(structuredClone(editor.state.doc), { ...params, pageId: params.pageId ?? pageId }, controller.signal).finally(() => { rasterBusy = false })
+        let result: Awaited<ReturnType<typeof captureSvgArtifact>>
+        try { result = await runAsync(work) } catch (error) { if (!controller.signal.aborted) rasterBusy = false; throw error }
+        check()
+        if (editor.state.version !== revision) throw bridgeError('STALE_REVISION', 'The document changed during SVG export')
+        if (params.pageId === undefined && editor.state.page !== pageId) throw bridgeError('STALE_PAGE', 'The active page changed during SVG export')
+        pruneArtifacts()
+        if (artifacts.size >= RASTER_LIMITS.artifacts || [...artifacts.values()].reduce((sum,a)=>sum+a.blob.size,0)+result.blob.size > RASTER_LIMITS.bytes) throw bridgeError('ARTIFACT_LIMIT', 'Artifact storage exceeds 64 MiB')
+        const artifactId=crypto.randomUUID(), expires=Date.now()+RASTER_LIMITS.lifetimeMs
+        const {blob,...metadata}=result
+        artifacts.set(artifactId,{blob,owner:payload.sessionId,expires,revision,kind:'vector',format:result.options.compression==='gzip'?'svgz':'svg'})
+        await respond(payload.requestId,{...envelope,ok:true,result:{...metadata,format:'futureox.design-vector-artifact.v1',files:[{artifactId,bytes:blob.size,mimeType:blob.type,name:result.name,expiresAt:expires,chunkBytes:RASTER_LIMITS.chunkBytes}]}}); return
       }
       if (request.method === 'raster.export') {
         if (request.expectedRevision !== undefined && (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision !== revision)) throw bridgeError('REVISION_CONFLICT', 'The design revision changed')
@@ -195,7 +241,7 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
         const expires = Date.now() + RASTER_LIMITS.lifetimeMs
         const files = result.assets.map(({ blob, ...metadata }) => {
           const artifactId = crypto.randomUUID()
-          artifacts.set(artifactId, { blob, owner: payload.sessionId, expires, revision })
+          artifacts.set(artifactId, { blob, owner: payload.sessionId, expires, revision, kind:'raster' })
           return { ...metadata, artifactId, bytes: blob.size, mimeType: blob.type, expiresAt: expires, chunkBytes: RASTER_LIMITS.chunkBytes }
         })
         const { assets: _assets, ...metadata } = result

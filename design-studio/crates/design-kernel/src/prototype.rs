@@ -23,6 +23,12 @@ pub struct Interaction {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Action {
     pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expression: Option<crate::prototype_logic::Expr>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub then_actions: Option<Vec<Action>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub else_actions: Option<Vec<Action>>,
     #[serde(default)]
     pub target: Option<String>,
     #[serde(default)]
@@ -335,7 +341,11 @@ pub fn validate(doc: &Document) -> Result<(), String> {
             {
                 return Err("Missing condition variable".into());
             }
-            for a in &e.actions {
+            crate::prototype_logic::validate_actions(doc, &e.actions, 0, &mut 0)?;
+            let mut pending: Vec<&Action> = e.actions.iter().collect();
+            while let Some(a) = pending.pop() {
+                if let Some(branch) = &a.then_actions { pending.extend(branch); }
+                if let Some(branch) = &a.else_actions { pending.extend(branch); }
                 if a.duration_ms > 10000 {
                     return Err("Prototype transition too long".into());
                 }
@@ -366,13 +376,14 @@ pub fn validate(doc: &Document) -> Result<(), String> {
                             return Err("Missing prototype destination".into());
                         }
                     }
-                    "back" | "close-overlay" => {}
+                    "back" | "close-overlay" | "if" => {}
                     "set-variable" => {
-                        let v = a
-                            .target
-                            .as_ref()
+                        let v = a.target_variable.as_deref()
+                            .or_else(|| a.target_variable_data.as_ref()?.get("id")?.as_str())
+                            .or(a.target.as_deref())
                             .and_then(|id| doc.design_system.as_ref()?.variables.get(id))
                             .ok_or("Missing prototype variable")?;
+                        if a.expression.is_some() { continue; }
                         let x = a.value.as_ref().ok_or("Missing prototype value")?;
                         if !match v.kind.as_str() {
                             "number" => x.as_f64().is_some_and(f64::is_finite),

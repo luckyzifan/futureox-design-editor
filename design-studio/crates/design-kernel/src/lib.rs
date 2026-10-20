@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
+pub mod repeat;
 pub mod analytic;
 pub mod animation;
 pub mod animation_bake;
 pub mod animation_plan;
 pub mod area_program;
 pub mod authoring_shapes;
+pub mod vector_brush;
 pub mod binfmt;
 pub mod blend;
 pub mod boolean;
@@ -20,6 +22,7 @@ pub mod constraint_projection;
 pub mod connectors;
 pub mod coverage;
 pub mod curve_boolean;
+pub mod shape_builder;
 mod curve_boolean_cache;
 pub mod design_system;
 pub mod dirty_region;
@@ -76,6 +79,7 @@ pub mod pdf_import;
 pub mod preview;
 pub mod preparation;
 pub mod prototype;
+pub mod prototype_logic;
 pub mod protocol;
 pub mod raster;
 pub mod raster_surface;
@@ -300,6 +304,9 @@ pub fn hit_test_device(
 }
 
 pub fn geometry(json: &str) -> Result<String, String> {
+    if serde_json::from_str::<serde_json::Value>(json).ok().and_then(|v| v.get("operation").and_then(|x| x.as_str()).map(str::to_owned)).as_deref() == Some("shape-builder") {
+        return shape_builder::json(json);
+    }
     use math::{Point, Transform};
     use path::Contour;
     #[derive(serde::Deserialize)]
