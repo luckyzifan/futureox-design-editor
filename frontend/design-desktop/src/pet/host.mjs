@@ -31,6 +31,13 @@ export function createPetHost({ BrowserWindow, session, ipcMain, screen, powerMo
   const listen = (target, event, callback, list) => { target.on(event, callback); list.push(() => target.removeListener(event, callback)) }
   const sleeping = () => systemSuspended || locked
   const isEditorVisible = () => editor && !editor.isDestroyed() && editor.isVisible() && !editor.isMinimized()
+  function syncVisibility() {
+    if (!pet || pet.isDestroyed()) return
+    // State changes during image loading must never reveal an unready renderer.
+    const visible = ready && !disposed && controller.state().mode !== 'off' && isEditorVisible() && !sleeping()
+    if (visible) { if (!pet.isVisible()) pet.showInactive() }
+    else if (pet.isVisible()) pet.hide()
+  }
   function closePet() {
     cancelLoadTimer()
     const previous = pet; pet = null; ready = false
@@ -40,7 +47,7 @@ export function createPetHost({ BrowserWindow, session, ipcMain, screen, powerMo
     if (state.mode === 'off') { closePet(); return }
     if (pet && !pet.isDestroyed()) {
       if (ready) pet.webContents.send('design-pet:state', state)
-      if (isEditorVisible() && !sleeping()) { if (!pet.isVisible()) pet.showInactive() } else if (pet.isVisible()) pet.hide()
+      syncVisibility()
     }
   } })
   function sync() { controller.suspend(sleeping() || !isEditorVisible()) }
@@ -83,7 +90,7 @@ export function createPetHost({ BrowserWindow, session, ipcMain, screen, powerMo
   function onReady(event) {
     if (ready || !pet || pet.isDestroyed() || event.sender !== pet.webContents || event.senderFrame !== pet.webContents.mainFrame || event.senderFrame?.url !== PET_URL) return
     cancelLoadTimer(); ready = true; sync(); publishStatus(); pet.webContents.send('design-pet:state', controller.state())
-    if (isEditorVisible() && !sleeping() && !pet.isVisible()) pet.showInactive()
+    syncVisibility()
   }
   ipcMain.on('design-pet:ready', onReady)
   if (powerMonitor) {

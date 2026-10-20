@@ -55,6 +55,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'fonts',
       'performTextCommand',
       'renderPolicy',
+      'renderDiagnostics',
       'preparation',
       'documentCodec',
       'listCatalog',
@@ -345,3 +346,5 @@ test('pet health subscription validates payload, strips IPC event and unsubscrib
   assert.equal(received.length,3)
   unsubscribe(); assert.equal(events.listenerCount('design-desktop:pet-status'),0)
 })
+
+test('terminal diagnostics is disabled unless explicit native launch flag is present',()=>{assert.equal(load().api.renderDiagnostics,false);assert.equal(load(['--core-render-diagnostics']).api.renderDiagnostics,true)})

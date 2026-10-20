@@ -26,6 +26,7 @@ import { tilePrepareViewport, tileBatchPrepareViewport } from './tile-prepare-vi
 import { TileCompositeSurface } from './TileCompositeSurface'
 import { ResidentCompositeSurface } from './ResidentCompositeSurface'
 import { PresentationOwnership } from './presentation-ownership'
+import { PageResidencyCache } from './page-residency-cache'
 import { isDisplayBudgetError } from './gpu/display-budget'
 import { progressiveTileLayer } from './progressive-quality'
 import { hasRetainedOverview } from './overview-coverage'
@@ -370,6 +371,10 @@ export function ProgressiveSurfaceImpl(
   const tileRef = useRef(tiles),
     ready = useRef(new Set<string>())
   const presentationOwnership = useRef(new PresentationOwnership())
+  const [pageResidency] = useState(() => new PageResidencyCache<PaintedTile>(32 * 1024 * 1024, 3, tile => {
+    tile.bitmap?.close(); tile.bitmap = undefined
+  }))
+  const pageOwner = useRef({ document: doc, pageId, scope: '' })
   const desired = useRef<string[]>([])
   const activePlanKey = useRef('')
   const overviewKeys = useRef(new Set<string>())
@@ -461,6 +466,8 @@ export function ProgressiveSurfaceImpl(
   // Raster options can change without an authored document patch. They own
   // separate residents; a world key alone must not reuse another contract.
   const identity = JSON.stringify([doc.id, pageId, props.presentationEpoch || 0, backend,
+    !!props.grid, !!props.checkerboard, props.pixelPreview || 0, rasterProfile, displayCapability, hdrCompositing])
+  const pageScope = JSON.stringify([doc.id, props.presentationEpoch || 0, backend,
     !!props.grid, !!props.checkerboard, props.pixelPreview || 0, rasterProfile, displayCapability, hdrCompositing])
   const navigationZoom = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
     !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing)
@@ -646,7 +653,7 @@ export function ProgressiveSurfaceImpl(
   const damageHandler = useRef((damage: TileDamage) => {
     // Patch damage arrives before the request's tiles: evict stale residents
     // so replacements are accepted and untouched ones keep their pixels.
-    if (damage.full) { coverageRetention.current.clear(); dropTiles(() => true) }
+    if (damage.full) { pageResidency.clear(); coverageRetention.current.clear(); dropTiles(() => true) }
     else dropTiles((_key, tile) => { const r=tileWorldRect(tile);return paintDamageIntersects(damage,[r.x,r.y,r.width,r.height]) })
   }).current
   useEffect(() => {
@@ -660,19 +667,41 @@ export function ProgressiveSurfaceImpl(
       presentationOwnership.current.clear()
       owner.dispose()
       lodSnapshots.clear()
+      pageResidency.clear()
     }
   }, [owner, lodSnapshots, damageHandler])
   useLayoutEffect(() => {
+    const old = pageOwner.current
+    const invalidated = pageResidency.synchronize(doc, pageScope)
     if (lastIdentity.current !== identity) {
+      // Take the destination first: admitting the outgoing page must not evict
+      // the very page being revisited. No content edit or resource replacement
+      // can reuse old pixels, even when document/page IDs are unchanged.
+      const restored = pageResidency.take(pageId)
+      const retain = !invalidated && old.document === doc && old.scope === pageScope && syncedDoc.current === doc
+        ? [...tileRef.current.values()].filter(tile => ready.current.has(tile.key) && tile.document === doc) : []
+      if (retain.length) pageResidency.store(old.pageId, retain,
+        retain.reduce((sum, tile) => sum + tileResidentBytes(tile), 0))
+      const retained = new Set(pageResidency.values())
       coverageRetention.current.clear()
-      dropTiles(() => true)
-      ready.current.clear()
+      dropTiles((_key, tile) => !retained.has(tile))
+      const map = new Map((restored || []).map(tile => {
+        // Pixels and serial stay unchanged, preserving the existing compositor
+        // upload. Only the new active raster contract's bookkeeping changes.
+        tile.revision = contract.revision
+        return [tile.key, tile] as const
+      }))
+      tileRef.current = map
+      ready.current = new Set(map.keys())
       activePlan.current = null
-      syncedDoc.current = null
+      acknowledged.current = undefined
+      syncedDoc.current = restored?.length ? doc : null
+      setTiles(map)
       setDisplayed(null)
       lastIdentity.current = identity
     }
-  }, [identity, dropTiles])
+    pageOwner.current = { document: doc, pageId, scope: pageScope }
+  }, [identity, doc, pageScope, contract.revision, dropTiles, pageResidency])
   useEffect(() => {
     const c = client.current
     if (!c || width <= 0 || height <= 0) return
@@ -784,6 +813,9 @@ export function ProgressiveSurfaceImpl(
         (n, t) => n + tileResidentBytes(t),
         0,
       )
+      // Inactive pages are lower priority than the active viewport. Their
+      // bytes are not an extra allowance above the existing display ceiling.
+      pageResidency.trim(displayBudget - bytes)
       // Keep current visible tiles, evict oldest offscreen/history entries first.
       for (const [key, old] of map) {
         if (bytes <= displayBudget) break
@@ -968,6 +1000,10 @@ export function ProgressiveSurfaceImpl(
     }
     const failed = (error: unknown) => {
       if (!current()) return
+      if (/device lost|GPU device|has been lost|设备已丢失|上下文已丢失|worker.*(?:failed|error)/i.test(String(error))) {
+        pageResidency.clear()
+        setTiles(new Map(tileRef.current))
+      }
       recordRenderDiagnostic({ kind: 'error', zoom: view.zoom, dpr,
         requestedDensity: view.zoom * dpr, errorCode: renderDiagnosticError(error) })
       if (String(error).includes('PREVIEW_CANCELLED')) return
@@ -1023,7 +1059,11 @@ export function ProgressiveSurfaceImpl(
             result.bitmap?.close(); if (result.gpuTile) c.releasePresented([result.gpuTile]); return
           }
           syncedDoc.current = doc
-          receive({ key: `navigation-preview:${contract.revision}`, x: -sample.view.x * ratio,
+          // Every sampled viewport owns distinct pixels and an independent upload.
+          // Do not replace the last acknowledged preview while the new one is
+          // importing: provisional previews are not held by displayed.residents.
+          // The ordinary byte-budgeted LRU bounds this compatible history.
+          receive({ key: `navigation-preview:${contract.revision}:${serial.current + 1}`, x: -sample.view.x * ratio,
             y: -sample.view.y * ratio, width: w, height: h, zoom: scale, gutter: 0, viewportPreview: true,
             bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile, backend: result.backend,
             description: result.description || '', milliseconds: result.milliseconds, cached: false })
@@ -1307,12 +1347,16 @@ export function ProgressiveSurfaceImpl(
         // pixels under pressure; only final exact refinement is authoritative.
         if (navigationZoom.active && !/device lost|GPU device|has been lost|设备已丢失|recovery failed/i.test(String(error)) &&
           /PREVIEW_BUDGET|GPU.*(?:budget|预算)|Invalid GPU viewport|GPU 区域超过安全限制/i.test(String(error))) return
+        // Cached pages are expendable under device pressure, before retiring
+        // current-page coverage or retrying an exact visible request.
+        const retiredPages = current() && isDisplayBudgetError(error) && pageResidency.size > 0
+        if (retiredPages) { pageResidency.clear(); setTiles(new Map(tileRef.current)) }
         // Reclaim only history; the last displayed frame and incoming visible
         // tiles stay pinned. Retry once after React has presented/released the
         // retired handles, without increasing the device budget.
         if (current() && isDisplayBudgetError(error) && runAttempts++ < 1 &&
-          dropTiles((key, tile) => !protectedKeys.current.has(key) && !displayed?.ids.has(key) &&
-            !coverageRetention.current.has(key) && !tile.overview)) {
+          (retiredPages || dropTiles((key, tile) => !protectedKeys.current.has(key) && !displayed?.ids.has(key) &&
+            !coverageRetention.current.has(key) && !tile.overview))) {
           requestAnimationFrame(() => { if (current()) void run() })
           return
         }
@@ -1373,7 +1417,15 @@ export function ProgressiveSurfaceImpl(
     props.overview?.height,
   ])
   // Cached canvases stay mounted offscreen, so a revisit does not repaint pixels.
-  const visible = [...new Set([...tiles.values(), ...(displayed?.residents.values() || [])])]
+  const activeResidents = [...new Set([...tiles.values(), ...(displayed?.residents.values() || [])])]
+  const inactiveResidents = pageOwner.current.document === doc && pageOwner.current.scope === pageScope
+    ? pageResidency.values() : []
+  const inactiveSet = new Set(inactiveResidents)
+  const visible = [...new Set([...activeResidents, ...inactiveResidents])]
+  useLayoutEffect(() => {
+    if (pageResidency.trim(displayBudget - activeResidents.reduce((sum, tile) => sum + tileResidentBytes(tile), 0)))
+      setTiles(new Map(tileRef.current))
+  })
   useLayoutEffect(() => {
     // Child layout effects have already queued their new display frame. Keep
     // both rendered residents and deliveries newer than this React render.
@@ -1460,6 +1512,9 @@ export function ProgressiveSurfaceImpl(
         data-startup-preview={String(startupPreview)}
         data-renderer={stats.actualBackend || 'initializing'}
         data-tile-count={tiles.size}
+        data-page-cache-bytes={pageResidency.bytes}
+        data-page-cache-pages={pageResidency.size}
+        data-page-cache-hits={pageResidency.hits}
         data-cache-hits={stats.hits}
         data-tiles-rendered={stats.rendered}
         data-viewport-tiles-rendered={stats.viewportRendered}
@@ -1542,8 +1597,8 @@ export function ProgressiveSurfaceImpl(
           const CompositeSurface = residentDisplay && rasterClient ? ResidentCompositeSurface : TileCompositeSurface
           return <CompositeSurface key={residentDisplay && rasterClient ? 'resident' : 'bitmap'} client={rasterClient!}
           items={visible.map(tile => {
-            const fine = fineTile(tile), base = displayed?.residents.get(tile.key) === tile,
-              coarse = coarseTile(tile), cached = cachedPreviewTile(tile)
+            const fine = !inactiveSet.has(tile) && fineTile(tile), base = !inactiveSet.has(tile) && displayed?.residents.get(tile.key) === tile,
+              coarse = !inactiveSet.has(tile) && coarseTile(tile), cached = !inactiveSet.has(tile) && cachedPreviewTile(tile)
             // CSS hides a replacement backend until it is ready. It must
             // still compose/acknowledge its real frame before that handoff.
             return { tile, gutter:tile.gutter??1,active: fine || base || coarse || cached,
@@ -1581,10 +1636,10 @@ export function ProgressiveSurfaceImpl(
             setFailure(message); props.onRenderFailure?.();
             if (residentDisplay || backend === 'auto') props.onFallback(`PREVIEW_CPU_FALLBACK: ${message}`) }}
         /> })() : visible.map((tile) => {
-          const fineVisible = fineTile(tile)
-          const baseVisible = displayed?.residents.get(tile.key) === tile
-          const lodVisible = coarseTile(tile)
-          const cachedVisible = cachedPreviewTile(tile)
+          const fineVisible = !inactiveSet.has(tile) && fineTile(tile)
+          const baseVisible = !inactiveSet.has(tile) && displayed?.residents.get(tile.key) === tile
+          const lodVisible = !inactiveSet.has(tile) && coarseTile(tile)
+          const cachedVisible = !inactiveSet.has(tile) && cachedPreviewTile(tile)
           // Per-tile coarse underlay: map this exact tile's device rect into
           // its covering coarse bitmap (same world, TILE_SIDE grid at the
           // bucket scale, minus the one-pixel gutter).

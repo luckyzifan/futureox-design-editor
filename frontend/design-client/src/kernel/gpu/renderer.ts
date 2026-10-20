@@ -1,3 +1,4 @@
+import { prefixRationalUnsupported } from './prefix-preflight'
 import { renderErrorWithBudget, sanitizeRenderBudget, type RenderBudgetDiagnostic } from '../render-diagnostics'
 import { textureByteLength } from './texture-byte-length'
 import { movingBackdropKey, staticBackdropKey } from './static-backdrop'
@@ -2471,6 +2472,8 @@ export class GpuRenderer {
         if (!this.driver.uploadRgba8) throw new Error('Backend cannot upload exact coefficients')
         texture = this.driver.uploadRgba8(values, width, height)
       }
+      if (operator === 'rational-tent' && values instanceof Uint8Array)
+        texture.prefixRationalUnsupported = prefixRationalUnsupported(values)
       this.kernelBuilds++
       this.kernelUploadBytes += bytes
       this.bytes += texture.bytes

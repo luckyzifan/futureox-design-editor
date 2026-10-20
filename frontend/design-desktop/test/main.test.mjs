@@ -233,6 +233,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
     /import \{ app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor \} from 'electron'/,
     `const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor } = globalThis[${JSON.stringify(key)}].electron`,
   )
+  source = source.replace("from './render-terminal-diagnostics.mjs'", `from ${JSON.stringify(new URL('../src/render-terminal-diagnostics.mjs', import.meta.url).href)}`)
   source = source.replace("from './pet/host.mjs'", `from ${JSON.stringify(new URL('../src/pet/host.mjs', import.meta.url).href)}`)
   source = source.replace("from './diagnostic-file.mjs'", `from ${JSON.stringify(new URL('../src/diagnostic-file.mjs', import.meta.url).href)}`)
   source = source.replace("from './workspace-roots.mjs'", `from ${JSON.stringify(new URL('../src/workspace-roots.mjs', import.meta.url).href)}`)

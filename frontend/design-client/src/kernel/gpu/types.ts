@@ -164,6 +164,8 @@ export type GpuScene = {
   vertices: number[] | Float32Array<ArrayBuffer>
 }
 export type Texture = {
+  /** Immutable rational coefficient metadata; exact prefix reason 4 only. */
+  prefixRationalUnsupported?: boolean
   /** Lossless storage for proven 0/1 sample coverage; never a color target. */
   binaryCoverage?: true
   /** One lossless f32 coverage channel, expanded to RGBA by the sampler. */

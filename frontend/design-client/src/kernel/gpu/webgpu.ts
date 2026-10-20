@@ -1,3 +1,4 @@
+import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { QueueWaitStats, type QueueWaitReason } from './queue-wait-stats'
 import { textureByteLength } from './texture-byte-length'
 /// <reference types="@webgpu/types" />
@@ -46,7 +47,10 @@ type ParkedDriver = {
 export class WebGpuDriver implements Driver {
   private queueWaitStats = new QueueWaitStats(import.meta.env.VITE_DESIGN_QUEUE_WAIT_TIMING === '1')
   private waitForQueue(reason: QueueWaitReason) {
-    return this.queueWaitStats.wait(reason, () => this.device.queue.onSubmittedWorkDone(), () => this.lost)
+    const started=gpuDiagnosticsEnabled()?performance.now():0
+    const pending=this.queueWaitStats.wait(reason, () => this.device.queue.onSubmittedWorkDone(), () => this.lost)
+    if(!gpuDiagnosticsEnabled())return pending
+    return pending.finally(()=>recordGpuDiagnostic('fence',{reasonCode:['readback','timing','prefix-scratch','interaction','periodic','admission','checkpoint','cancel','initialization','park'].indexOf(reason)+1,queueWaitMs:performance.now()-started,resourceEpoch:this.resourceEpoch,completedResourceEpoch:this.completedResourceEpoch}))
   }
   private bindingCache = new GpuBindingCache()
   // Rollout gate until real-device validation and timings are available. The
@@ -233,6 +237,8 @@ export class WebGpuDriver implements Driver {
       console.debug(`DESIGN_GPU_PARK ${JSON.stringify({ event: 'park-cleanup-failed', error: String(error) })}`)
     }
     if (parked.driver.lost || parked.key !== key) {
+      const configBits=(value:string)=>{try{return (JSON.parse(value) as boolean[]).reduce((bits,v,i)=>bits|(v?1<<i:0),0)}catch{return -1}}
+      recordGpuDiagnostic('cache',{reasonCode:parked.driver.lost?2:1,oldConfig:configBits(parked.key),newConfig:configBits(key)})
       console.debug(`DESIGN_GPU_PARK ${JSON.stringify({
         event: 'discarded', reason: parked.driver.lost ? 'device-lost' : 'config-mismatch',
       })}`)
@@ -667,13 +673,15 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (this.prefixEnabled && prefixUseful && !this.prefix)
       this.prefix = await TexturePrefix.create(this.device, (u) => this.uniform(u), prefixModule(this.certifiedFilter), false)
   }
-  private prefixPolicy(u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}) {
+  private prefixPolicy(u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}, kernel?: Texture) {
     // Actual operator measurements: alpha-only remains faster on the old path;
     // the tested 48/96-pixel RGBA filters benefit from 4 MiB bands.
-    return !!(!this.displayFilters && this.prefix && filter?.kind === 'tent' && filter.radius >= 48 && channels === 15 && u[16] === 22)
+    return !!(!this.displayFilters && this.prefix && filter?.kind === 'tent' && filter.radius >= 48 &&
+      !((!Number.isInteger(filter.radius) || filter.radius > 512) && kernel?.prefixRationalUnsupported === true) && channels === 15 && u[16] === 22)
   }
   prepareFilterPass(target: Texture, u: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number) {
-    if (!this.prefixPolicy(u, channels, filter) || this.prefix!.scratchBytes) return
+    if (!this.prefixPolicy(u, channels, filter, inputs[1]) || this.prefix!.scratchBytes) return
+    recordGpuDiagnostic('prefix',{reasonCode:availableBytes<PREFIX_SCRATCH_BYTES?1:0,availableBytes,scratchBytes:PREFIX_SCRATCH_BYTES,radius:filter.radius,width:u[2],height:u[3]})
     const sources = [0, 1, 2].map((i) => (inputs[i] || this.blank).resource as GPUTexture)
     if (availableBytes < PREFIX_SCRATCH_BYTES || !this.prefix!.canEncode(target.resource as GPUTexture, sources, u, filter.radius, filter.kind, {x:u[0],y:u[1],w:u[2],h:u[3]}, channels)) return
     this.prefix!.reserveScratch()
@@ -1305,7 +1313,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   pass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15, filter?: {kind: 'tent'; radius: number}, clearOutside = false) {
     this.closeOver()
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
-    if (this.prefixPolicy(u, channels, filter) && filter && !region && this.prefix!.encode(() => this.encoder, target.resource as GPUTexture,
+    if (this.prefixPolicy(u, channels, filter, inputs[1]) && filter && !region && this.prefix!.encode(() => this.encoder, target.resource as GPUTexture,
       [0, 1, 2].map((i) => (inputs[i] || this.blank).resource as GPUTexture), u, filter.radius, filter.kind,
       {x:u[0],y:u[1],w:u[2],h:u[3]}, channels)) { this.drawCalls += this.prefix!.lastRenderPasses; return }
     const bind = this.bind(u, inputs)
@@ -1538,7 +1546,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // overprovisioned geometry buffers for the next frame.
     this.shrinkCapacities()
     if (this.prefix?.scratchBytes) {
-      console.debug('DESIGN_GPU_PREFIX ' + JSON.stringify(await this.prefix.readCounters()))
+      const counters=await this.prefix.readCounters()
+      recordGpuDiagnostic('prefix',counters)
+      if(!gpuDiagnosticsEnabled())console.debug('DESIGN_GPU_PREFIX ' + JSON.stringify(counters))
       this.prefix.releaseScratch()
     }
     if (timingRead) {

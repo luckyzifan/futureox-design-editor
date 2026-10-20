@@ -10,7 +10,7 @@ test('strict launch policy is configured before readiness and forwarded only fro
   assert.ok(main.indexOf('app.disableHardwareAcceleration()') < main.indexOf('.whenReady()'))
   assert.match(main, /appendSwitch\('disable-gpu'\)/)
   assert.match(main, /appendSwitch\('disable-software-rasterizer'\)/)
-  assert.match(main, /additionalArguments: cpuOnly \? \['--core-cpu-only'\] : \[\]/)
+  assert.ok(main.includes("...(cpuOnly ? ['--core-cpu-only'] : [])"))
   assert.match(smoke, /\[root, '--desktop-smoke', '--core-cpu-only'\]/)
   // The explicit packaged smoke must also choose a private profile and strict
   // CPU policy; silently ignoring this flag would touch the ordinary profile.

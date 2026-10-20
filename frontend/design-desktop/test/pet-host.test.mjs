@@ -135,3 +135,53 @@ test('health reports starting, verified ready and async crash/load failure witho
   m.host.dispose(); const count=statuses().length
   pet.webContents.emit('render-process-gone'); assert.equal(statuses().length,count)
 })
+
+test('loading renderer stays hidden across mode, editor and power changes until trusted ready', () => {
+  const time=clock(), m=mocks(time); m.host.configure('active'); const pet=m.windows[1]
+  let shows=0, hides=0
+  const show=pet.showInactive.bind(pet), hide=pet.hide.bind(pet)
+  pet.showInactive=()=>{ shows++; show() }; pet.hide=()=>{ hides++; hide() }
+  m.host.configure('quiet'); assert.equal(pet.visible,false)
+  m.host.configure('active'); m.host.event('edit'); assert.equal(pet.visible,false)
+  m.editor.visible=false; m.editor.emit('hide'); m.editor.visible=true; m.editor.emit('show')
+  assert.equal(pet.visible,false)
+  m.powerMonitor.emit('suspend'); m.powerMonitor.emit('resume')
+  m.powerMonitor.emit('lock-screen'); m.powerMonitor.emit('unlock-screen')
+  assert.equal(pet.visible,false); assert.equal(shows,0)
+  m.ipcMain.emit('design-pet:ready',{sender:pet.webContents,senderFrame:{url:PET_URL}})
+  assert.equal(shows,0); assert.equal(time.count(),1)
+  m.ipcMain.emit('design-pet:ready',{sender:pet.webContents,senderFrame:pet.webContents.mainFrame})
+  assert.equal(pet.visible,true); assert.equal(shows,1); assert.equal(time.count(),0)
+  m.host.configure('quiet'); m.host.configure('active'); m.host.event('save')
+  m.ipcMain.emit('design-pet:ready',{sender:pet.webContents,senderFrame:pet.webContents.mainFrame})
+  assert.equal(shows,1) // No hide/show flicker during state updates or duplicate ready.
+  assert.equal(hides,2) // Explicit suspend/lock handlers only while still loading.
+  m.host.dispose(); assert.equal(time.count(),0)
+})
+
+test('trusted ready does not override hidden editor, lock, suspension, off or failed ownership', () => {
+  for (const condition of ['hidden','locked','suspended','off','failed','timeout']) {
+    const time=clock(), m=mocks(time); m.host.configure('active'); const pet=m.windows[1]
+    let shows=0; const show=pet.showInactive.bind(pet); pet.showInactive=()=>{shows++;show()}
+    if(condition==='hidden') {m.editor.visible=false;m.editor.emit('hide')}
+    if(condition==='locked') m.powerMonitor.emit('lock-screen')
+    if(condition==='suspended') m.powerMonitor.emit('suspend')
+    if(condition==='off') m.host.configure('off')
+    if(condition==='failed') pet.webContents.emit('did-fail-load')
+    if(condition==='timeout') time.tick(10000)
+    m.ipcMain.emit('design-pet:ready',{sender:pet.webContents,senderFrame:pet.webContents.mainFrame})
+    assert.equal(shows,0,condition)
+    if(condition==='hidden') {m.editor.visible=true;m.editor.emit('show')}
+    if(condition==='locked') m.powerMonitor.emit('unlock-screen')
+    if(condition==='suspended') m.powerMonitor.emit('resume')
+    if(['hidden','locked','suspended'].includes(condition)) assert.equal(shows,1,condition)
+    else {
+      m.host.configure('off'); m.host.configure('quiet'); const replacement=m.windows[2]
+      m.ipcMain.emit('design-pet:ready',{sender:pet.webContents,senderFrame:pet.webContents.mainFrame})
+      assert.equal(replacement.visible,false)
+      m.ipcMain.emit('design-pet:ready',{sender:replacement.webContents,senderFrame:replacement.webContents.mainFrame})
+      assert.equal(replacement.visible,true)
+    }
+    m.host.dispose(); assert.equal(time.count(),0)
+  }
+})
