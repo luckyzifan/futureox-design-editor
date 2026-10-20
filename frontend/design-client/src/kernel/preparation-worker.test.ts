@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { PreparationChannel } from './preparation-channel'
+import { blank, node } from '../model'
 
 const counts=vi.hoisted(()=>({engines:0,fonts:0,forks:0,loads:0}))
 vi.mock('../generated/design-kernel/design_kernel',()=>({default:async()=>{},VectorEngine:class {
@@ -47,4 +48,17 @@ test('different resource policy and a failed source load cannot certify a fork',
   await expect(client.request('canvas','load_document',['invalid'])).rejects.toThrow('Invalid document')
   expect((await client.request('interaction','load_document',[doc])).documentFork).toBe(false)
   expect(counts.forks).toBe(0)
+})
+
+test('a successful canvas patch renews exact-source fork without another font/load', async () => {
+  const client = await setup(), doc = blank(), rect = node('rectangle', 0, 0, 10, 10)
+  doc.nodes[rect.id] = rect; doc.pages[0].children = [rect.id]
+  await client.request('canvas', 'initialize', [false]); await client.request('canvas', 'load_document', [JSON.stringify(doc)])
+  await client.request('interaction', 'initialize', [false])
+  const moved = { ...rect, transform: [1, 0, 0, 1, 4, 0] }
+  await client.request('canvas', 'apply_document_patch_with_damage', [JSON.stringify({nodes:{[rect.id]:moved},fields:{}})])
+  const next = JSON.stringify({...doc,nodes:{...doc.nodes,[rect.id]:moved}})
+  expect((await client.request('interaction', 'load_document', [next])).documentFork).toBe(true)
+  expect(counts).toEqual({engines:2,fonts:1,forks:1,loads:1})
+  expect((await client.request('interaction', 'load_document', [JSON.stringify(doc)])).documentFork).toBe(false)
 })

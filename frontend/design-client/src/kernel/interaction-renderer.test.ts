@@ -14,7 +14,7 @@ vi.mock('./client', () => ({ KernelClient: class {
   stopResidentInteraction(id:number){worker.stops.push(id)}
   releasePresented(ids:number[]){worker.released.push(...ids)}
   render(document: unknown, options: any, ...rest:any[]) {
-    return new Promise((resolve, reject) => worker.jobs.push({ document, options, reject, progress:rest[5],
+    return new Promise((resolve, reject) => worker.jobs.push({ document, options, reject, progress:rest[5], signal:rest[6],
       resolve: (result={}) => resolve({ bytes: new Uint8Array(options.width * options.height * 4),...result }) }))
   }
 } }))
@@ -615,4 +615,24 @@ test('page translation hands fractional native motion to the GPU renderer withou
   expect(page.prepare({ ...props, document: moved, active: false }, doc.pages[0].id, moved, items, moved, true)).toBe(true)
   expect(page.handingOff).toBe(false)
   shared.dispose()
+})
+
+
+test('replaced shared capture retires its own requests without cancelling another owner or same-generation motion', async () => {
+  const shared = new KernelClient(), doc = blank(), a = node('frame', 0, 0, 100, 100), b = node('frame', 140, 0, 100, 100)
+  a.blend = b.blend = 'normal'; doc.nodes[a.id] = a; doc.nodes[b.id] = b; doc.pages[0].children = [a.id, b.id]
+  const one = new InteractionRenderer(vi.fn(), shared), two = new InteractionRenderer(vi.fn(), shared); owners.push(one, two)
+  const props: InteractionProps = { document: doc, selection: [a.id], active: false, epoch: 1, control: { current: null }, onReady() {} }
+  const view = { x: .25, y: .125, zoom: .6 }, size = { width: 600, height: 500 }
+  one.prepare(props, doc.pages[0].id, view, 1, 'analytic', 'cpu', doc, size)
+  two.prepare({ ...props, control: { current: null } }, doc.pages[0].id, view, 1, 'analytic', 'cpu', doc, size)
+  const old = worker.jobs[0], independent = worker.jobs[1]
+  expect(old.signal?.aborted).toBe(false); expect(independent.signal?.aborted).toBe(false)
+  one.prepare({ ...props, selection: [b.id] }, doc.pages[0].id, view, 1, 'analytic', 'cpu', doc, size)
+  expect(old.signal.aborted).toBe(true); expect(independent.signal.aborted).toBe(false)
+  const latest = worker.jobs[2]
+  expect(latest.signal.aborted).toBe(false)
+  one.prepare({ ...props, selection: [b.id] }, doc.pages[0].id, view, 1, 'analytic', 'cpu', doc, size)
+  expect(worker.jobs).toHaveLength(3); expect(latest.signal.aborted).toBe(false)
+  one.dispose(); expect(latest.signal.aborted).toBe(true); expect(independent.signal.aborted).toBe(false)
 })

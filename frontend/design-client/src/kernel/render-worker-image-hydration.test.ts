@@ -345,3 +345,19 @@ test('real render worker retires obsolete packet waits before their reply withou
     expect(methods.filter(x => x === 'compile_gpu_packet')).toHaveLength(3)
   } finally { prepared.free() }
 })
+
+test('request-scoped cancellation applies its ordered patch but leaves independent preview and exact work alive', async () => {
+  const f = fixture(4), w = await worker()
+  w.send({ id: 800, document: JSON.stringify(f.doc), documentRevision: 1, options: f.options })
+  expect((await w.finish(800)).backend).toBe('webgpu')
+  const preview = { ...f.options, livePreview: true, renderIntent: 'preview' }
+  w.send({ id: 801, documentPatch: JSON.stringify({ fields: { name: 'renamed' }, nodes: {} }), baseDocumentRevision: 1, documentRevision: 2, options: preview })
+  w.send({ command: 'cancel-request', requestId: 801 })
+  w.send({ command: 'cancel-request', requestId: 801 })
+  w.send({ id: 802, documentRevision: 2, options: preview })
+  w.send({ id: 803, documentRevision: 2, options: f.options, readback: true })
+  expect((await w.finish(801)).error).toContain('PREVIEW_CANCELLED')
+  expect((await w.finish(802)).backend).toBe('webgpu')
+  expect((await w.finish(803)).backend).toBe('webgpu')
+  expect(state.renders).toHaveLength(3)
+})

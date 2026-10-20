@@ -158,6 +158,10 @@ export type GpuMemorySnapshot = {
 export type KernelOptions = {
   /** A separate document/geometry lane on the same display GPU worker. */
   interactionChannel?: boolean
+  /** Numeric capture identity for diagnostics only, never a document certificate. */
+  interactionOwner?: number
+  interactionGeneration?: number
+  interactionBranch?: number
   /** Presentation intent is independent of readback. Only transient previews
    * may reduce effects; settled frames and exports retain full computation. */
   renderIntent?: 'preview' | 'settled' | 'canvas'
@@ -695,13 +699,17 @@ export class KernelClient {
       forcePreviewTiles?: boolean
     },
     progress?: (tile: TileResult) => void,
+    signal?: AbortSignal,
   ): Promise<KernelResult> {
     if (this.disposed) return Promise.reject(new Error('渲染器已关闭'))
+    // Owner cancellation is only a transient presentation contract. Never
+    // change exact/export/readback lifetime because an optional signal fires.
+    if (options.renderIntent !== 'preview' || (!options.livePreview && !options.tileViewport) || png || readback || options.exportFormat || options.exportRegion || options.pixelPreview) signal = undefined
     // File pixels must not depend on editor/backend preference or device DPR.
     backend = effectiveBackend(renderExecutionPolicy, backend, png)
     const channel = options.interactionChannel ? 'interaction' : 'canvas'
     const previewEpoch = this.previewEpochs[channel], tileEpoch = this.tileFillEpoch
-    const cancelled = () => ((!!options.tileViewport || options.livePreview === true) && this.previewEpochs[channel] !== previewEpoch) ||
+    const cancelled = () => signal?.aborted || ((!!options.tileViewport || options.livePreview === true) && this.previewEpochs[channel] !== previewEpoch) ||
       (!!options.tileViewport && this.tileFillEpoch !== tileEpoch)
     // A GPU-capable request may initialize a worker-held device; wait for a
     // page GPU slot first. CPU-only requests never queue, and the
@@ -756,7 +764,7 @@ export class KernelClient {
             referenceGpu: import.meta.env.DEV && referenceGpu,
             debug: import.meta.env.DEV ? debug : undefined,
           },
-          progress,
+          progress, [], signal,
         )
           .then((result) => ({ ...result, serializeMs }))
           .catch((error) => {
@@ -818,10 +826,12 @@ export class KernelClient {
     }
     this.worker?.postMessage({ command: 'cancel-preview', channel, executionPolicy: renderExecutionPolicy })
   }
-  private request(payload: object, progress?: (tile: TileResult) => void, transfer:Transferable[]=[]): Promise<KernelResult> {
+  private request(payload: object, progress?: (tile: TileResult) => void, transfer:Transferable[]=[], signal?: AbortSignal): Promise<KernelResult> {
     if (this.disposed) return Promise.reject(new Error('渲染器已关闭'))
+    if (signal?.aborted) return Promise.reject(new Error('PREVIEW_CANCELLED'))
     const id = ++this.next
-    return new Promise((resolve, reject) => {
+    let cleanup: (() => void) | undefined
+    const result = new Promise<KernelResult>((resolve, reject) => {
       const options = (payload as { options?: KernelOptions }).options
       this.terminalDiagnostics.record('request',{...renderRequestCategories(payload),requestId:id,x:options?.view?.x,y:options?.view?.y,zoom:options?.view?.zoom,width:options?.width,height:options?.height})
       const preview = !!options?.tileViewport || options?.livePreview === true
@@ -834,6 +844,18 @@ export class KernelClient {
       }, 30000)
       this.pending.set(id, { resolve, reject, timer, started: performance.now(), progress, preview,
         channel: (payload as {channel?:string}).channel === 'interaction' ? 'interaction' : 'canvas' })
+      if (signal) {
+        const abort = () => {
+          const pending = this.pending.get(id)
+          if (!pending) return
+          clearTimeout(pending.timer); this.pending.delete(id)
+          this.terminalDiagnostics.record('cancel', { requestId: id, reasonCode: 3 })
+          this.worker?.postMessage({ command: 'cancel-request', requestId: id, executionPolicy: renderExecutionPolicy })
+          reject(new Error('PREVIEW_CANCELLED'))
+        }
+        signal.addEventListener('abort', abort, { once: true })
+        cleanup = () => signal.removeEventListener('abort', abort)
+      }
       try {
         if (this.navigationJournal.recording && options?.view) this.navigationJournal.record(1, {
           requestId: id, channel: (payload as {channel?:string}).channel === 'interaction' ? 1 : 0,
@@ -843,6 +865,7 @@ export class KernelClient {
         this.reset(error instanceof Error ? error : new Error(String(error)))
       }
     })
+    return result.finally(() => cleanup?.())
   }
   dispose() {
     if (this.disposed) return

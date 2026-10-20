@@ -56,8 +56,8 @@ export class ExactTileCache<T> {
     this.values.delete(slot); this.values.set(slot, entry)
     return entry.value
   }
-  revoke(predicate: (value: T) => boolean) {
-    for (const entry of this.values.values()) if (predicate(entry.value)) entry.certified = false
+  revoke(predicate: (value: T, slot: string) => boolean) {
+    for (const [slot, entry] of this.values) if (predicate(entry.value, slot)) entry.certified = false
   }
   set(slot: string, witness: Uint8Array, value: T, payloadBytes: number) {
     if (!Number.isSafeInteger(payloadBytes) || payloadBytes < 0)
@@ -77,6 +77,9 @@ export class ExactTileCache<T> {
     const old = this.values.get(slot)
     if (old) this.bytes -= old.bytes
     this.values.delete(slot)
+  }
+  deleteWhere(predicate: (slot: string) => boolean) {
+    for (const slot of this.values.keys()) if (predicate(slot)) this.delete(slot)
   }
   clear() {
     this.report(15)
