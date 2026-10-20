@@ -84,6 +84,9 @@ export interface NativeRenderBridgeApi {
   stats(): Promise<NativeRenderReply<{ stats: { gpu_memory?: NativeGpuMemoryBreakdown } }>>
 }
 export interface DesktopBridge {
+  onPetStatus?(callback: (status: import('./desktop-pet').PetStatus) => void): () => void
+  petConfigure?(mode: import('./desktop-pet').PetMode): Promise<unknown>
+  petEvent?(event: import('./desktop-pet').PetEvent): Promise<unknown>
   readonly automation?: import('./automation/bridge').DesktopAutomationTransport
   readonly documentCodec?: { encode(document: unknown): Promise<string>; decode(json: string): Promise<unknown> }
   readonly preparation?: {

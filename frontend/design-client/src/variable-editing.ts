@@ -1,3 +1,4 @@
+import { allActions, expressionVariables } from './prototype-logic'
 /** Authored variable edits. Call inside Editor.change for validation, undo and persistence. */
 import { validColor } from './color'
 import { emptySystem, variableValue, type DesignSystem, type VariableValue } from './design-system'
@@ -37,7 +38,7 @@ function refs(n: DesignNode) {
 }
 function actions(doc: DesignDocument) {
   return Object.entries(doc.prototype?.interactions || {}).flatMap(([id, events]) =>
-    events.flatMap((event, ei) => event.actions.map((action, ai) => ({
+    events.flatMap((event, ei) => allActions(event.actions).map((action, ai) => ({
       action, label: `原型「${doc.nodes[id]?.name || id}」交互 ${ei + 1} / 动作 ${ai + 1}`,
     }))),
   )
@@ -59,7 +60,7 @@ export function variableReferences(doc: DesignDocument, id: string): string[] {
   for (const { action: a, label } of actions(doc)) {
     const fields = [a.targetVariable, a.targetVariableData?.id, a.transitionDurationVar, a.transitionEasingVar,
       a.kind === 'set-variable' ? a.target : undefined]
-    if (fields.includes(id)) result.push(label)
+    if (fields.includes(id) || expressionVariables(a.expression).some(v => v.id === id)) result.push(label)
   }
   return result
 }

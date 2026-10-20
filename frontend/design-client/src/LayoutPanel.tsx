@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import type { LayoutSuggestionPreview } from './layout-suggestions'
 import { UnitNumberField } from './UnitNumberField'
 import { propertyUnits } from './property-units'
 import { DraftInput } from './DraftInput'
@@ -35,6 +37,8 @@ export function LayoutPanel({
   ids: string[]
   embedded?: boolean
 }) {
+  const [suggestion, setSuggestion] = useState<LayoutSuggestionPreview | null>(null)
+  const [suggestionError, setSuggestionError] = useState('')
   const units = propertyUnits(editor.state.doc, n.id)
   const parent = editor.state.doc.nodes[allParents(editor.state.doc).get(n.id) || ''],
     flow = !!parent?.layout && parent.layout.mode !== 'none',
@@ -115,6 +119,27 @@ export function LayoutPanel({
           </button>
         )}
       </Heading>
+      {container(n) && ids.length === 1 && <div className="layout-suggestions">
+        <button type="button" disabled={n.locked} onClick={() => {
+          try { setSuggestion(editor.previewSuggestedLayout(n.id)); setSuggestionError('') }
+          catch (error) { setSuggestion(null); setSuggestionError(String(error)) }
+        }}>建议自动布局…</button>
+        {suggestion && suggestion.frameId === n.id && <div role="region" aria-label="建议布局预览">
+          <p>预览不会改变设计。请选择方案后应用。</p>
+          {suggestion.suggestions.map(candidate => <div key={candidate.id}>
+            <strong>{candidate.label} · {Math.round(candidate.confidence * 100)}%</strong>
+            {candidate.explanation.map((line, index) => <p key={index}>{line}</p>)}
+            <button type="button" onClick={() => {
+              try { editor.applySuggestedLayout(suggestion, candidate.id); setSuggestion(null); setSuggestionError('') }
+              catch (error) { setSuggestionError(String(error)) }
+            }}>应用此方案</button>
+          </div>)}
+          {!suggestion.suggestions.length && <p>没有可安全应用的规则布局。</p>}
+          {suggestion.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
+          <button type="button" onClick={() => { setSuggestion(null); setSuggestionError('') }}>取消</button>
+        </div>}
+        {suggestionError && <p role="alert">{suggestionError}</p>}
+      </div>}
       {container(n) && <div className="layout-flow" role="radiogroup" aria-label="布局方向">
         {([['none','自由布局',LayoutDashboard],['vertical','纵向布局',Rows3],['horizontal','横向布局',Columns3],['grid','网格布局',Grid2X2]] as const).map(([mode,label,Icon]) =>
           <button key={mode} type="button" role="radio" aria-label={label} title={label} aria-checked={(active ? layout.mode : 'none') === mode}

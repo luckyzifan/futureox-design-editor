@@ -1,3 +1,5 @@
+import { svgEmbeddedFonts } from './svg-font-embedding'
+import { expandRepeats, repeatSourceId, hasRepeats } from './repeat-transforms'
 import { roundSvgCoordinates } from './export-options'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Scene } from './Renderer'
@@ -17,6 +19,24 @@ import {
   kernelPdfVector,
 } from './kernel/picking'
 
+function repeatExport(doc: DesignDocument, target: ExportTarget): {doc: DesignDocument; target: ExportTarget} {
+  const expanded = expandRepeats(doc)
+  if (expanded === doc) return {doc,target}
+  if (target.kind === 'selection') {
+    const selected = new Set(target.nodeIds)
+    target = {...target,nodeIds:Object.keys(expanded.nodes).filter(id=>selected.has(repeatSourceId(expanded,id)))}
+  }
+  // The export is a disposable visual snapshot: re-running layout/components
+  // after repetition would reposition appearances (especially auto-layout).
+  const nodes = Object.fromEntries(Object.entries(expanded.nodes).map(([id,source])=>{
+    const n={...source}
+    delete n.component;delete n.componentSet;delete n.componentKey;delete n.instance;delete n.instanceOrigin
+    delete n.layout;delete n.sizing;delete n.constraints;delete n.connector
+    delete n.bindings;delete n.styleRefs;delete n.variableModes
+    return [id,n]
+  }))
+  return {doc:{...expanded,nodes},target}
+}
 function projectSlice(doc: DesignDocument, pageId: string, target: ExportTarget): DesignDocument {
   if(target.kind!=='slice'||!target.transform)return doc
   const matrix=inverse(target.transform),page=doc.pages.find(p=>p.id===pageId)
@@ -28,6 +48,7 @@ function projectSlice(doc: DesignDocument, pageId: string, target: ExportTarget)
 
 /** Page presentation retains its explicit historical 40-unit margin. */
 export function exportBounds(doc: DesignDocument, pageId: string, padding = 40) {
+  doc = expandRepeats(doc)
   if (!Number.isFinite(padding) || padding < 0 || padding > 1e6)
     throw new Error('页面留白必须为 0–1000000')
   if (!doc.pages.some((p) => p.id === pageId)) throw new Error('导出页面不存在')
@@ -134,12 +155,13 @@ export function targetBounds(doc: DesignDocument, pageId: string, target: Export
     return { ...b }
   }
   const ids = new Set(target.nodeIds)
-  const entries = scene(doc, pageId).filter((entry) => ids.has(entry.id))
-  if (!ids.size || ids.size > 1000 || entries.length !== ids.size)
+  doc = expandRepeats(doc)
+  const entries = scene(doc, pageId).filter((entry) => ids.has(repeatSourceId(doc, entry.id)))
+  if (!ids.size || ids.size > 1000 || new Set(entries.map(e=>repeatSourceId(doc,e.id))).size !== ids.size)
     throw new Error('请选择当前页面的 1–1000 个可见图层')
   return unionBounds(
     entries
-      .filter((entry) => !entry.ancestors.some((id) => ids.has(id)))
+      .filter((entry) => !entry.ancestors.some((id) => ids.has(repeatSourceId(doc,id))))
       .map((entry) => {
         const n=doc.nodes[entry.id]
         if(container(n) || !n.strokes.some(s=>s.visible && s.paint.visible && s.width>0)) return entry.bounds
@@ -219,8 +241,10 @@ export async function exportVisualSvg(doc: DesignDocument, pageId: string, scale
   )
   return { name: `${doc.name}-visual.svg`, blob: new Blob([source], { type: 'image/svg+xml' }) }
 }
-export function svgSource(doc: DesignDocument, pageId: string, target: ExportTarget = {kind:'page'}, scale = 1, precision?: number, textMode: 'outlines' | 'editable' = 'outlines') {
-  doc = projectSlice(kernelLayout(doc),pageId,target)
+export function svgSource(doc: DesignDocument, pageId: string, target: ExportTarget = {kind:'page'}, scale = 1, precision?: number, textMode: 'outlines' | 'editable' = 'outlines', fontMode: 'references' | 'embed' = 'references', fontEmbeddingAllowed = false, fontByteLimit = 4 * 1024 * 1024, embeddedFonts?: DesignDocument['fonts']) {
+  if (fontMode === 'embed' && (textMode !== 'editable' || !fontEmbeddingAllowed)) throw new Error('Explicit editable font redistribution permission is required')
+  ;({doc,target} = repeatExport(kernelLayout(doc),target))
+  doc = projectSlice(doc,pageId,target)
   const b = targetBounds(doc, pageId, target)
   if(!Number.isFinite(scale) || scale<0.001 || scale>128) throw new Error('导出倍率必须在 0.001–128 之间')
   if (target.kind === 'selection') {
@@ -240,6 +264,7 @@ export function svgSource(doc: DesignDocument, pageId: string, target: ExportTar
       viewBox={`${b.x} ${b.y} ${b.width} ${b.height}`}
     >
       <title>{doc.name}</title>
+      {fontMode === 'embed' && <defs>{svgEmbeddedFonts(embeddedFonts ?? doc.fonts, new Set(scene(doc,pageId).filter(e=>doc.nodes[e.id].kind === 'text').flatMap(e=>['default', doc.nodes[e.id].textStyle?.fontId || 'default', ...(doc.nodes[e.id].textStyle?.fallbacks || []), ...(doc.nodes[e.id].textRuns || []).map(r=>r.fontId || doc.nodes[e.id].textStyle?.fontId || 'default')])), fontByteLimit).map(font => <style key={font.id} data-svg-font="1" data-font-id={font.id} data-font-family={font.family}>{font.css}</style>)}</defs>}
       <Scene doc={doc} pageId={pageId} exporting textMode={textMode} />
     </svg>,
   )
@@ -266,7 +291,9 @@ export async function exportPdfVector(
   if (signal?.aborted) throw new Error('已取消导出')
   await initializePicking()
   if (signal?.aborted) throw new Error('已取消导出')
-  doc = projectSlice(kernelLayout(doc), pageId, target)
+  const repeatedVisual = hasRepeats(doc)
+  ;({doc,target} = repeatExport(kernelLayout(doc),target))
+  doc = projectSlice(doc, pageId, target)
   if (pdfVectorIssues(doc, pageId, target).length) {
     const bitmap = (await exportRasterBatch(doc, pageId, [1], target, undefined, signal, 'pdf'))[0]
     return { ...bitmap, scale: 1, vector: true, fallback: true }
@@ -299,6 +326,12 @@ export async function exportPdfVector(
       ...shifted.nodes[entry.id],
       transform: multiply(translate(-box.x, -box.y), entry.matrix),
     }
+  if (repeatedVisual) {
+    const reachable = new Set<string>(), pending = [...shifted.pages[0].children]
+    while (pending.length) {const id=pending.pop()!;if(reachable.has(id))continue;reachable.add(id);pending.push(...shifted.nodes[id].children)}
+    shifted.nodes = Object.fromEntries(Object.entries(shifted.nodes).filter(([id])=>reachable.has(id)))
+    delete shifted.prototype;delete shifted.reviews;shifted.animations=[]
+  }
   const bytes = kernelPdfVector(shifted, pageId, width, height, true)
   return {
     name: `${filename(targetName(doc, target))}.pdf`,
@@ -364,7 +397,8 @@ export async function exportRasterBatch(
     throw new Error('请选择 1–16 个不重复的导出倍率')
   await initializePicking()
   if (signal?.aborted) throw new Error('已取消导出')
-  doc = projectSlice(kernelLayout(doc),pageId,target)
+  ;({doc,target} = repeatExport(kernelLayout(doc),target))
+  doc = projectSlice(doc,pageId,target)
   const box = targetBounds(doc, pageId, target)
   const plans = scales.map((scale) => {
     if (!Number.isFinite(scale) || scale < 0.001 || scale > 128)

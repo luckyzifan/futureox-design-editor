@@ -4,7 +4,7 @@ import { SVGPathData } from 'svg-pathdata'
 import { roundSvgCoordinates, svgFileBytes, validateSvgOptions, decodeSvgFileBytes } from './export-options'
 
 test('SVG options are bounded and reject unsupported native/raster knobs', () => {
-  expect(validateSvgOptions()).toEqual({ scale: 1, precision: undefined, compression: 'none', textMode: 'outlines' })
+  expect(validateSvgOptions()).toEqual({ scale: 1, precision: undefined, compression: 'none', textMode: 'outlines', fontMode: 'references' })
   for (const options of [{ precision: -1 }, { precision: 9 }, { precision: 1.5 }, { scale: 0 }, { scale: Infinity }, { scale: 129 }, { compression: 'zip' }, { textMode: 'html' }, { quality: 80 }, { width: 100 }]) expect(() => validateSvgOptions(options as never)).toThrow()
 })
 test('coordinate precision uses parsed path commands while preserving text, flags, IDs, colors and resources', () => {

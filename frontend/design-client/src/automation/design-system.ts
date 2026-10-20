@@ -1,3 +1,4 @@
+import * as ComponentSlots from '../component-slots'
 /** Local document design-system automation. No network, renderer, or editor state. */
 import * as Components from '../components'
 import {
@@ -516,7 +517,13 @@ export const designSystemExtensions: AutomationExtension[] = [
     }
     return { nodeIds: selected, fontId: id }
   }),
-  extension('component.list', 'List local main components and component sets.', {}, [], false, d => Object.values(d.nodes).filter(n => n.component || n.componentSet).map(n => ({ id: n.id, name: n.name, componentSet: !!n.componentSet, variants: n.component?.variants, properties: n.component?.properties }))),
+  extension('component.declareSlot', 'Declare a named free-content slot on a main component container; its current children remain fallback.', { nodeId: str, name: str, slotId: str }, ['nodeId', 'name'], true, (d, p) => ComponentSlots.declareSlot(d, key(p.nodeId), key(p.name, 'name', 128), p.slotId === undefined ? undefined : key(p.slotId))),
+  extension('component.removeSlot', 'Remove a slot declaration only after assigned instances are reset or detached.', { componentId: str, slotId: str }, ['componentId', 'slotId'], true, (d, p) => ComponentSlots.removeSlot(d, key(p.componentId), key(p.slotId))),
+  extension('component.assignSlot', 'Move authored subtree roots into an instance slot; [] empties it, null restores fallback. Replaced content is retained on its page.', { nodeId: str, slotId: str, nodeIds: { anyOf: [{ type: 'array', items: str }, { type: 'null' }] } }, ['nodeId', 'slotId', 'nodeIds'], true, (d, p) => {
+    if (p.nodeIds !== null && !Array.isArray(p.nodeIds)) throw new Error('nodeIds must be an array or null')
+    return ComponentSlots.assignSlot(d, key(p.nodeId), key(p.slotId), p.nodeIds === null ? null : (p.nodeIds as unknown[]).map(id => key(id)))
+  }),
+  extension('component.list', 'List local main components and component sets.', {}, [], false, d => Object.values(d.nodes).filter(n => n.component || n.componentSet).map(n => ({ id: n.id, name: n.name, componentSet: !!n.componentSet, variants: n.component?.variants, properties: n.component?.properties, slots: n.component?.slots }))),
   extension('component.get', 'Read a main component, its template keys, and instance IDs.', { componentId: str }, ['componentId'], false, (d, p) => {
     const n = component(d, p.componentId)
     return { ...n, template: Object.fromEntries(template(d, n.id)), instanceIds: Object.values(d.nodes).filter(i => i.instance?.componentId === n.id).map(i => i.id) }

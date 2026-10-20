@@ -1,3 +1,4 @@
+import { desktopPet, type PetMode } from './desktop-pet'
 import { InterfaceSettings } from './AdaptivePanels'
 import { interfacePreference } from './interface-preference'
 import { LocalDiagnosticsPanel } from './LocalDiagnosticsPanel'
@@ -35,6 +36,8 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
 }) {
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const persistence = useSettingsPersistence()
+  const petMode = useSyncExternalStore(desktopPet.subscribe, desktopPet.snapshot)
+  const petStatus = useSyncExternalStore(desktopPet.subscribe, desktopPet.statusSnapshot)
   const nudgePersistence = useSyncExternalStore(nudgePreference.subscribe, nudgePreference.getPersistenceSnapshot)
   const id = useId(), dialog = useRef<HTMLElement>(null), backdrop = useRef<HTMLDivElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null), close = useRef(onClose), closing = useRef(false)
@@ -81,13 +84,14 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
     return persisted
   }
   const restoreDefaults = () => {
+    const petSaved = desktopPet.configure('off')
     const interfaceSaved = interfacePreference.reset()
     const canvasSaved = settingsPreference.reset()
     const keyboardSaved = shortcutPreference.set('figma-like')
     const nudgeSaved = nudgePreference.reset()
     const wheelSaved = setWheel(false)
     setKeyboardReset(value => value + 1)
-    setMessage(interfaceSaved && canvasSaved && keyboardSaved && nudgeSaved && wheelSaved ? '已恢复当前配置的偏好默认值。' : '已恢复默认值；部分偏好仅在本次会话生效。')
+    setMessage(petSaved && interfaceSaved && canvasSaved && keyboardSaved && nudgeSaved && wheelSaved ? '已恢复当前配置的偏好默认值。' : '已恢复默认值；部分偏好仅在本次会话生效。')
   }
 
   return createPortal(<div ref={backdrop} className="settings-backdrop"
@@ -147,13 +151,20 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
           </section>
           <section role="tabpanel" id={`${id}-panel-saving`} aria-labelledby={`${id}-tab-saving`} hidden={section !== 'saving'}>
             {workspaceControls}
+            {desktop && <div className="settings-control"><label htmlFor={`${id}-pet`}>Nomi 桌面伙伴</label>
+              <select id={`${id}-pet`} value={petMode} onChange={event => { const saved = desktopPet.configure(event.target.value as PetMode); setMessage(saved ? '' : '桌面伙伴偏好仅在本次会话生效。') }}>
+                <option value="off">关闭（默认）</option><option value="quiet">安静</option><option value="active">活跃</option>
+              </select><p className="settings-help">可选的本机桌面伙伴。仅响应编辑、保存等操作状态，不读取文档内容；移动或缩放画布时暂停动作。模式为已保存的偏好，实际运行可能因桌面窗口或后端状态而变化。</p>
+              {petStatus === 'unavailable' && <p className="settings-help" role="status">桌面伙伴暂不可用；编辑不受影响。请先关闭再开启。</p>}
+              {petStatus === 'checking' && <p className="settings-help" role="status">正在确认桌面伙伴状态…</p>}
+            </div>}
             <h3>当前保存方式</h3>
             {desktop ? <p>桌面端在修改停顿约 600 毫秒后安排本机恢复副本；支持本机文档库时，也会在完成编辑后保存到文档库。外部 .fd 文件请使用“保存”或“另存为”。</p>
               : <p>浏览器端在修改停顿约 350 毫秒后安排保存到本机浏览器文档库。首次恢复完成后才会开始自动保存；清除网站数据会影响本机文件，请定期导出 .fd 备份。</p>}
             <p className="settings-help">以上是当前保存机制的说明，间隔不可在此调整。待完成的输入、拖动、恢复失败或存储错误可能延后保存，请以工作区保存状态和错误提示为准。</p>
             <h3>偏好与文档</h3>
             <p>本页偏好保存在当前应用配置中，不会同步到其他设备。{desktop ? '独立打开的本地窗口使用各自配置，偏好不保证跨窗口共享或在新窗口中恢复。' : '使用其他浏览器或清除网站数据后，需要重新设置。'}文档色彩设置、页面背景与参考线内容属于各自文档，仍在对应文档工具中编辑。</p>
-            <p className="settings-help">恢复默认值只重置本页的快捷键、微移步长、滚轮行为、画布辅助及界面偏好，不删除文档或修改渲染精度。</p>
+            <p className="settings-help">恢复默认值只重置本页的快捷键、微移步长、滚轮行为、画布辅助、桌面伙伴及界面偏好，不删除文档或修改渲染精度。</p>
           </section>
           <section role="tabpanel" id={`${id}-panel-diagnostics`} aria-labelledby={`${id}-tab-diagnostics`} hidden={section !== 'diagnostics'}>
             {section === 'diagnostics' && <LocalDiagnosticsPanel />}

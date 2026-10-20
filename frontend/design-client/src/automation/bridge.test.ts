@@ -1,3 +1,5 @@
+// @ts-expect-error test-only dependency
+import { JSDOM } from 'jsdom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Editor } from '../engine'
 import { blank, node } from '../model'
@@ -6,7 +8,7 @@ import type { AutomationResponse } from './types'
 import type { captureDesignPreview } from './export'
 const cleanups: Array<() => void> = []
 afterEach(() => { cleanups.splice(0).reverse().forEach(fn => fn()); vi.restoreAllMocks() })
-function fixture(capturePreview?: typeof captureDesignPreview, host?: BridgeDependencies['host'], captureRaster?: BridgeDependencies['captureRaster']) {
+function fixture(capturePreview?: typeof captureDesignPreview, host?: BridgeDependencies['host'], captureRaster?: BridgeDependencies['captureRaster'], captureSvgArtifact?: BridgeDependencies['captureSvgArtifact']) {
   const document = blank('Live automation'), rectangle = node('rectangle', 10, 20, 100, 60)
   document.nodes[rectangle.id] = rectangle; document.pages[0].children.push(rectangle.id)
   const editor = new Editor(document); cleanups.push(() => editor.dispose())
@@ -19,7 +21,7 @@ function fixture(capturePreview?: typeof captureDesignPreview, host?: BridgeDepe
     onRequest: (callback: typeof receive) => { receive = callback; return () => { receive = undefined } },
     onCancel: (callback: typeof cancel) => { cancel = callback; return () => { cancel = undefined } },
   } as unknown as DesktopAutomationTransport
-  const dispose = attachDesktopAutomation(editor, transport, { capturePreview, host, captureRaster }); cleanups.push(dispose)
+  const dispose = attachDesktopAutomation(editor, transport, { capturePreview, host, captureRaster, captureSvgArtifact }); cleanups.push(dispose)
   const envelope = (scope: 'read' | 'write' = 'read'): DesktopAutomationRequest => ({ requestId: `request-${++serial}`, kind: 'execute', sessionId: 'authorized-local-session', scope, documentId: editor.state.doc.id, session: editor.sessionGeneration, deadline: Date.now() + 15_000 })
   const send = (payload: DesktopAutomationRequest) => { const promise = new Promise<unknown>(resolve => waiters.set(payload.requestId, resolve)); receive!(payload); return promise }
   const call = (method: string, params: Record<string, unknown> = {}, scope: 'read' | 'write' = 'read', overrides: Partial<DesktopAutomationRequest> = {}) => {
@@ -249,4 +251,61 @@ describe('raster deadlines and bounded retention', () => {
     expect(await f.call('raster.read', { artifactId: first.result.files[0].artifactId })).toMatchObject({ ok: false, error: { code: 'ARTIFACT_NOT_FOUND' } })
     expect(await f.call('raster.export')).toMatchObject({ ok: true })
   })
+})
+
+const vectorResult = () => ({blob:new Blob(['<svg/>'],{type:'image/svg+xml'}),name:'design.svg',bounds:{x:0,y:0,width:1,height:1},options:{scale:1,compression:'none' as const,textMode:'outlines' as const,fontMode:'references' as const},decodedFontBytes:0,sourceBytes:6,estimatedFontWorkingBytes:0,warnings:[],pageId:'page',sourceNodeIds:[]})
+describe('bounded SVG artifact transport',()=>{
+ it('returns exact owned chunks, rejects foreign reads and releases handles',async()=>{
+  const capture=vi.fn(async()=>vectorResult()),f=fixture(undefined,undefined,undefined,capture)
+  const result=await f.call('vector.exportArtifact') as any
+  expect(result.ok).toBe(true);const artifactId=result.result.files[0].artifactId
+  expect(await f.call('vector.read',{artifactId,length:6})).toMatchObject({ok:true,result:{base64:'PHN2Zy8+',totalBytes:6,nextOffset:6}})
+  expect(await f.call('vector.read',{artifactId,length:65537})).toMatchObject({ok:false})
+  expect(await f.call('vector.read',{artifactId},'read',{sessionId:'foreign'})).toMatchObject({ok:false,error:{code:'ARTIFACT_NOT_FOUND'}})
+  expect(await f.call('vector.release',{artifactId})).toMatchObject({ok:true})
+  expect(await f.call('vector.read',{artifactId})).toMatchObject({ok:false,error:{code:'ARTIFACT_NOT_FOUND'}})
+ })
+ it('does not publish cancelled or stale SVGs and shares the artifact busy gate',async()=>{
+  const gate=deferred<ReturnType<typeof vectorResult>>(),capture=vi.fn(()=>gate.promise),f=fixture(undefined,undefined,undefined,capture)
+  const base=f.envelope(),pending=f.send({...base,request:{method:'vector.exportArtifact',documentId:base.documentId,session:base.session}})
+  expect(await f.call('raster.export')).toMatchObject({ok:false,error:{code:'BUSY'}})
+  f.cancel(base.requestId);expect(await pending).toMatchObject({ok:false,error:{code:'CANCELLED'}})
+  gate.resolve(vectorResult());await new Promise(resolve=>setTimeout(resolve,0))
+  const stale=deferred<ReturnType<typeof vectorResult>>();capture.mockImplementationOnce(()=>stale.promise)
+  const request=f.call('vector.exportArtifact');f.editor.change('Change',d=>{d.name='Changed'});stale.resolve(vectorResult())
+  expect(await request).toMatchObject({ok:false,error:{code:'STALE_REVISION'}})
+ })
+})
+
+describe('owned SVG artifact import',()=>{
+ const source='<svg xmlns="http://www.w3.org/2000/svg"><rect width="12" height="15" fill="#123456"/></svg>'
+ const result=()=>({...vectorResult(),blob:new Blob([source],{type:'image/svg+xml'})})
+ it('appends atomically with write permission, preserves old content, and supports undo',async()=>{
+  const dom=new JSDOM('');vi.stubGlobal('DOMParser',dom.window.DOMParser)
+  try {
+   const f=fixture(undefined,undefined,undefined,async()=>result()),before=JSON.stringify(f.editor.state.doc)
+   const exported=await f.call('vector.exportArtifact') as any,artifactId=exported.result.files[0].artifactId
+   expect(await f.call('svg.importArtifact',{artifactId})).toMatchObject({ok:false,error:{code:'PERMISSION_DENIED'}})
+   expect(await f.call('svg.importArtifact',{artifactId},'write',{sessionId:'foreign'})).toMatchObject({ok:false,error:{code:'ARTIFACT_NOT_FOUND'}})
+   const imported=await f.call('svg.importArtifact',{artifactId},'write');expect(imported.ok,JSON.stringify(imported)).toBe(true)
+   expect(f.editor.state.doc.nodes[f.rectangle.id].width).toBe(100)
+   expect(Object.values(f.editor.state.doc.nodes).some(n=>n.width===12)).toBe(true)
+   f.editor.undo();expect(JSON.stringify(f.editor.state.doc)).toBe(before)
+  } finally {vi.unstubAllGlobals();dom.window.close()}
+ })
+ it('rejects stale and cancelled asynchronous blob reads before any mutation',async()=>{
+  const dom=new JSDOM('');vi.stubGlobal('DOMParser',dom.window.DOMParser)
+  try {
+   let gate=deferred<ArrayBuffer>()
+   class DelayedBlob extends Blob {arrayBuffer(){return gate.promise}}
+   const f=fixture(undefined,undefined,undefined,async()=>({...result(),blob:new DelayedBlob([source],{type:'image/svg+xml'})}))
+   const exported=await f.call('vector.exportArtifact') as any,artifactId=exported.result.files[0].artifactId
+   const pending=f.call('svg.importArtifact',{artifactId},'write');f.editor.change('Edit',d=>{d.name='Changed'});gate.resolve(new TextEncoder().encode(source).buffer)
+   expect(await pending).toMatchObject({ok:false,error:{code:'STALE_REVISION'}})
+   gate=deferred<ArrayBuffer>();const before=JSON.stringify(f.editor.state.doc),base=f.envelope('write')
+   const cancelled=f.send({...base,request:{method:'svg.importArtifact',params:{artifactId},documentId:base.documentId,session:base.session,expectedRevision:f.editor.state.version}})
+   f.cancel(base.requestId);expect(await cancelled).toMatchObject({ok:false,error:{code:'CANCELLED'}})
+   gate.resolve(new TextEncoder().encode(source).buffer);await new Promise(resolve=>setTimeout(resolve,0));expect(JSON.stringify(f.editor.state.doc)).toBe(before)
+  } finally {vi.unstubAllGlobals();dom.window.close()}
+ })
 })

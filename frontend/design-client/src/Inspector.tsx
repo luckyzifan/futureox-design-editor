@@ -1,3 +1,4 @@
+import { RepeatPanel } from './RepeatPanel'
 import {BoardPanel} from './BoardPanel'
 import { AlignmentControls } from './AlignmentControls'
 import { CanvasContextMenu } from './CanvasContextMenu'
@@ -23,6 +24,7 @@ import { resizeNodeDimension, selectionMetric } from './selection-properties'
 import React, { useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus } from 'lucide-react'
 import type { Editor } from './engine'
+import { VectorBrushPanel } from './VectorBrushPanel'
 import {
   type DesignNode,
   type Paint,
@@ -730,8 +732,10 @@ export function Inspector({ editor }: { editor: Editor }) {
           </section>
         )}
         {n.kind!=='slice' && <>
+        <VectorBrushPanel editor={editor} node={n}/>
         {(n.pathOffset!==undefined || s.tool==='offset-path') && <NumberField label="路径偏移距离" value={n.pathOffset||0} min={-10000} max={10000} onChange={v=>update(n=>{n.pathOffset=v})}/>}
         <BoardPanel editor={editor} node={n}/>
+        <RepeatPanel editor={editor} node={n}/>
         <ComponentPanel editor={editor} node={n} ids={ids} />
         <section>
           <h3>

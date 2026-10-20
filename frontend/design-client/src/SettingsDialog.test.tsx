@@ -1,3 +1,4 @@
+import { desktopPet } from './desktop-pet'
 // Real React/DOM events and Editor/WASM. jsdom does not claim browser layout/GPU validation.
 // @ts-expect-error jsdom is a test-only runtime dependency.
 import { JSDOM } from 'jsdom'
@@ -194,4 +195,36 @@ test('unmount with disconnected trigger restores canvas and releases every backg
   await act(async () => root.render(null))
   expect(document.activeElement).toBe(canvas); expect(document.body.style.overflow).toBe('')
   expect(mount.hasAttribute('inert')).toBe(false); expect(canvas.hasAttribute('inert')).toBe(false)
+})
+
+
+test('desktop companion setting defaults off, changes mode and resets with preferences', async () => {
+  desktopPet.configure('off')
+  await act(async () => root.render(<Harness desktop />))
+  await tab('保存与范围')
+  const select = dialog().querySelector<HTMLSelectElement>('select[id$="-pet"]')!
+  expect(select.value).toBe('off')
+  await act(async () => { select.value = 'quiet'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(desktopPet.snapshot()).toBe('quiet'); expect(localStorage.getItem('core-desktop-pet-mode')).toBe('quiet')
+  await act(async () => button('恢复偏好默认值').click())
+  expect(desktopPet.snapshot()).toBe('off'); expect(select.value).toBe('off')
+})
+
+
+test('desktop companion reports sanitized rejected configuration and explains off-first recovery', async () => {
+  Object.defineProperty(window, 'coreDesktop', { configurable: true, value: { version: 1, petConfigure: vi.fn().mockRejectedValue(Error('private credential string')) } })
+  await act(async () => { desktopPet.configure('active'); root.render(<Harness desktop />) })
+  await tab('保存与范围')
+  expect(dialog().textContent).toContain('桌面伙伴暂不可用')
+  expect(dialog().textContent).not.toContain('private credential string')
+  expect(dialog().textContent).toContain('请先关闭再开启')
+  const select = dialog().querySelector<HTMLSelectElement>('select[id$="-pet"]')!
+  let revision = 100
+  const configure = vi.fn().mockImplementation(async mode => ({ ok: true, failed: false, mode, phase: mode === 'off' ? 'off' : 'ready', revision: ++revision }))
+  window.coreDesktop!.petConfigure = configure
+  await act(async () => { select.value = 'off'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+  await act(async () => { select.value = 'active'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(configure.mock.calls).toEqual([['off'], ['active']])
+  expect(dialog().textContent).not.toContain('桌面伙伴暂不可用')
+  expect(desktopPet.statusSnapshot()).toBe('ready')
 })

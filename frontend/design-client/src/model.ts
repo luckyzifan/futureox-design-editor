@@ -1,4 +1,8 @@
+import { hasSchema15Features } from './schema-features'
+import { validateRepeat, validateRepeatDocument, type RepeatTransform } from './repeat-transforms'
+import { hasLogic, validateLogicActions } from './prototype-logic'
 import { validateFdCompatibility, type FdCompatibility } from './fd-extensions'
+import { validateVectorBrush } from './vector-brush'
 import { validStroke, validProfiles } from './stroke-profile'
 import type { AnimationClip } from './animation'
 import { validColor, validColorSettings, type ColorSettings } from './color'
@@ -236,11 +240,13 @@ export function exportSuffixHasForbiddenCharacters(value: string): boolean {
 }
 export type ConnectorEndpoint={point:Point;nodeId?:string;anchor?:Point}
 export type DesignNode = {
+  vectorBrush?: import('./vector-brush').VectorBrush
   guides?: RulerGuide[]
   textPath?: {network:Network;offset:number;normal:number;reverse:boolean}
   pathOffset?:number
   connector?: {from:ConnectorEndpoint;to:ConnectorEndpoint;style:'straight'|'elbow'}
   board?: {kind:string;rows?:number;columns?:number;language?:string}
+  repeat?: RepeatTransform
   layoutGrid?: LayoutGrid
 
   exportSettings?: ExportSetting[]
@@ -281,7 +287,7 @@ export type DesignNode = {
   layout?: AutoLayout
   sizing?: Sizing
   constraints?: Constraints
-  component?: { variants: Record<string, string>; properties: Record<string, ComponentProperty> }
+  component?: { variants: Record<string, string>; properties: Record<string, ComponentProperty>; slots?: Record<string, { name: string; targetKey: string }> }
   componentSet?: boolean
   componentKey?: string
   instance?: ComponentInstance
@@ -335,6 +341,7 @@ export type ComponentProperty = {
   defaultValue: string | boolean
 }
 export type ComponentInstance = {
+  slotContents?: Record<string, string[]>
   componentId: string
   overrides: Record<string, Record<string, unknown>>
   propertyValues: Record<string, string | boolean>
@@ -677,14 +684,20 @@ export function validateDocument(value: unknown): DesignDocument {
   for(const n of Object.values(d.nodes))if(n.network?.filledFaces!==undefined && (d.schemaVersion<10||!Array.isArray(n.network.filledFaces)||n.network.filledFaces.length>10000||n.network.filledFaces.some(f=>!Array.isArray(f)||f.length>10000||f.some(id=>!n.network!.edges.some(e=>e.id===id)))))throw new Error('矢量区域填充数据无效')
   for(const n of Object.values(d.nodes))if(n.pathOffset!==undefined&&(!Number.isFinite(n.pathOffset)||Math.abs(n.pathOffset)>10000||(n.pathOffset!==0&&(d.schemaVersion<10||['text','frame','section','group','slice'].includes(n.kind)))))throw new Error('路径偏移数据无效')
   if(hasLocalTools(d)&&d.schemaVersion<10)throw new Error('本地扩展工具需要设计文件版本10')
+  for (const n of Object.values(d.nodes)) if (n.vectorBrush !== undefined) validateVectorBrush(n)
   const entries = Object.entries(d.nodes)
   validateVariableModes(d)
   if (d.schemaVersion < 9 && hasGradientBlur(d)) throw new Error('渐变模糊需要设计文件版本 9')
   if (d.schemaVersion < 13 && hasImageAdjusts(d)) throw new Error('图片调整需要设计文件版本 13')
   if (d.schemaVersion < 14 && hasPatternTiles(d)) throw new Error('图案平铺需要设计文件版本 14')
+  if (d.schemaVersion < 15 && hasSchema15Features(d)) throw new Error('此设计功能需要设计文件版本 15')
   if (d.schemaVersion < 8 && (hasStrokeMarkers(d) || hasLayerExports(d))) throw new Error('描边端点需要设计文件版本 8')
   // Mirror scene::Document::validate and animation::validate schema gates.
   // This pre-initialization boundary is not a replacement for full Rust validation.
+  for (const events of Object.values(d.prototype?.interactions || {})) for (const event of events) {
+    if (hasLogic(event.actions) && d.schemaVersion < 15) throw new Error('Prototype logic requires schema 15')
+    validateLogicActions(d, event.actions)
+  }
   if (d.schemaVersion < 4 && (d.designSystem != null || d.prototype != null))
     throw new Error('设计系统和原型需要设计文件版本 4')
   const hasMaterialParameters = (effects: unknown) =>
@@ -772,7 +785,12 @@ export function validateDocument(value: unknown): DesignDocument {
         p.stops.every((s) => finite(s.offset, 0, 1) && color.test(s.color)) &&
         (!p.image || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.image)),
     )
+  validateRepeatDocument(d)
   for (const [id, n] of entries) {
+    if (n.repeat !== undefined) {
+      if (d.schemaVersion < 15) throw Error('重复变换需要版本 15')
+      validateRepeat(n.repeat)
+    }
     // Layout grids mirror scene.rs: schema-12 frames only, finite ranges
     // and a parseable color.
     if (n?.layoutGrid !== undefined) {

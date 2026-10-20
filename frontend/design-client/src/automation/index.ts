@@ -8,10 +8,11 @@ import { interactionExtensions } from './interactions'
 import { sketchExtensions } from './sketch'
 import { appExportExtensions } from './app-export'
 import { bulkExtensions } from './bulk'
+import { shapeBuilderExtensions } from './shape-builder'
 /** Single shared registry for live editor, embedded UI and MCP. */
 export function createEditorDesignAutomation(editor: Editor, permissions?: AutomationPermissionPolicy) {
   return createDesignAutomation(editor, [
-    ...designSystemExtensions, ...contextExtensions, ...exportExtensions, ...interactionExtensions, ...sketchExtensions, ...appExportExtensions, ...bulkExtensions,
+    ...designSystemExtensions, ...contextExtensions, ...exportExtensions, ...interactionExtensions, ...sketchExtensions, ...appExportExtensions, ...bulkExtensions, ...shapeBuilderExtensions,
   ], [validateDesignSystemDocument], permissions)
 }
 export * from './types'

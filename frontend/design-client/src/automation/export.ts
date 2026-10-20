@@ -1,3 +1,5 @@
+import { EMBEDDED_FONT_WARNING } from '../svg-font-embedding'
+import { hasLogic } from '../prototype-logic'
 import { EDITABLE_TEXT_WARNING } from '../svg-editable-text'
 import { importSvg } from '../import-svg'
 import { SVG_OPTION_SCHEMA, validateSvgOptions, svgFileBytes, decodeSvgFileBytes, type SvgExportOptions } from '../export-options'
@@ -131,6 +133,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
   warn('APPROXIMATE_HTML', 'HTML/CSS is an editable approximation. Use preview.capture or native export for renderer-faithful pixels; no pixel-equivalence claim is made.')
   if (document.colorManagement) warn('COLOR_MANAGEMENT', 'Browser CSS does not reproduce native HDR, tone mapping or color-managed compositing.')
   if (document.animations?.length || document.prototype) warn('INTERACTIONS_NOT_EXPORTED', 'Animation timelines and prototype interactions remain in the native document; no executable script is generated.')
+  if (Object.values(document.prototype?.interactions || {}).some(events => events.some(e => hasLogic(e.actions)))) warn('PROTOTYPE_LOGIC_NOT_EXPORTED', 'Typed expressions, nested branches and runtime variable assignments run only in the native Web/Electron prototype preview. HTML/CSS export is static; native .fd retains this logic.')
   const assetIdentities = new Map<string, string>()
   const assets = collectAssetReferences(entries, assetIdentities).map<CodeAsset>(asset => ({ ...asset, path: `assets/${asset.id}.${asset.mediaType?.split('/')[1] === 'jpeg' ? 'jpg' : asset.mediaType?.split('/')[1] ?? 'image'}`, emitted: false }))
   const assetsById = new Map(assets.map(asset => [asset.id, asset]))
@@ -207,7 +210,8 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     if (n.smoothing) warn('CORNER_SMOOTHING', 'Continuous corner smoothing is approximated by CSS border-radius.', n.id)
     if (n.kind === 'ellipse') declarations.push('border-radius:50%')
     else declarations.push(`border-radius:${n.radii.map(px).join(' ')}`)
-    if (n.arc || n.textPath || n.pathOffset) warn('SPECIAL_GEOMETRY', 'Arc, text-on-path and path-offset geometry is not reproduced in HTML.', n.id)
+    if (n.repeat) warn('REPEAT_TRANSFORMS_NOT_EXPORTED', 'Semantic HTML includes only the editable source, not its derived repeat appearances. Use native FD/JSON to preserve the repeat, or PNG/SVG/PDF for visual output.', n.id)
+    if (n.arc || n.textPath || n.pathOffset || n.vectorBrush) warn('SPECIAL_GEOMETRY', 'Arc, text-on-path, path-offset and vector-brush geometry is not reproduced in HTML.', n.id)
     if (['vector', 'polygon', 'star', 'line'].includes(n.kind)) {
       warn('UNSUPPORTED_SHAPE', `${n.kind} geometry uses a bounding-box placeholder; use native SVG/image export for its exact shape.`, n.id)
       declarations.push('outline:1px dashed #999')
@@ -300,9 +304,9 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
 /** Vector serialization reuses the existing native SVG path exporter. Unsupported
  * effects are rejected, never silently rasterized or claimed to be editable SVG. */
 export function exportDesignSvg(document: DesignDocument, input: CodeExportOptions & SvgExportOptions = {}) {
-  for (const key of Object.keys(input)) if (!['pageId', 'nodeIds', 'maxNodes', 'scale', 'precision', 'compression', 'textMode'].includes(key)) throw new AutomationError('invalid_params', `Unsupported SVG option: ${key}`)
+  for (const key of Object.keys(input)) if (!['pageId', 'nodeIds', 'maxNodes', 'scale', 'precision', 'compression', 'textMode', 'fontMode', 'fontEmbeddingAllowed'].includes(key)) throw new AutomationError('invalid_params', `Unsupported SVG option: ${key}`)
   let svgOptions: ReturnType<typeof validateSvgOptions>
-  try { svgOptions = validateSvgOptions({ scale: input.scale, precision: input.precision, compression: input.compression, textMode: input.textMode }) } catch (error) { throw new AutomationError('invalid_params', String(error)) }
+  try { svgOptions = validateSvgOptions({ scale: input.scale, precision: input.precision, compression: input.compression, textMode: input.textMode, fontMode: input.fontMode, fontEmbeddingAllowed: input.fontEmbeddingAllowed }) } catch (error) { throw new AutomationError('invalid_params', String(error)) }
   const options = codeOptions(input as Record<string, unknown>)
   const resolved = kernelLayout(document)
   const selected = contextEntries(resolved, { ...options, maxDepth: 64 })
@@ -314,11 +318,11 @@ export function exportDesignSvg(document: DesignDocument, input: CodeExportOptio
   }
   const target = options.nodeIds ? { kind: 'selection' as const, nodeIds: selected.roots } : { kind: 'page' as const, padding: 0 }
   let result: ReturnType<typeof svgSource>
-  try { result = svgSource(resolved, selected.page.id, target, svgOptions.scale, svgOptions.precision, svgOptions.textMode) } catch (error) { throw new AutomationError('invalid_params', String(error)) }
+  try { result = svgSource(resolved, selected.page.id, target, svgOptions.scale, svgOptions.precision, svgOptions.textMode, svgOptions.fontMode, svgOptions.fontEmbeddingAllowed) } catch (error) { throw new AutomationError('invalid_params', String(error)) }
   if (result.issues.length) throw new AutomationError('unsupported_fidelity', 'SVG cannot faithfully represent this scope; use preview.capture or native document export', { issues: result.issues })
   if (new TextEncoder().encode(result.source).byteLength > EXPORT_LIMITS.bytes) throw new AutomationError('response_limit', 'SVG exceeds 8 MiB')
   const payload = svgOptions.compression === 'gzip' ? { filename: 'design.svgz', encoding: 'base64', base64: bytesToBase64(svgFileBytes(result.source, 'gzip')) } : { filename: 'design.svg', encoding: 'utf8', content: result.source }
-  const output = { format: 'futureox.design-vector.v1', mimeType: 'image/svg+xml', ...payload, options: svgOptions, precisionLossy: svgOptions.precision !== undefined, bounds: result.box, sourceNodeIds: selected.roots, warnings: [...(svgOptions.textMode === 'editable' ? [{ code: 'SVG_EDITABLE_TEXT', message: EDITABLE_TEXT_WARNING }] : []), ...(svgOptions.precision === undefined ? [] : [{ code: 'SVG_PRECISION_LOSS', message: 'Opt-in decimal rounding changes geometry and may merge nearby points; this is not lossless native export.' }]), { code: 'SVG_NODE_MAPPING', message: 'Source root IDs identify this export scope. Native SVG path and definition IDs are internal and are not a DOM editing API.' }] }
+  const output = { format: 'futureox.design-vector.v1', mimeType: 'image/svg+xml', ...payload, options: svgOptions, precisionLossy: svgOptions.precision !== undefined, bounds: result.box, sourceNodeIds: selected.roots, warnings: [...(svgOptions.textMode === 'editable' ? [{ code: 'SVG_EDITABLE_TEXT', message: svgOptions.fontMode === 'embed' ? EMBEDDED_FONT_WARNING : EDITABLE_TEXT_WARNING }] : []), ...(svgOptions.precision === undefined ? [] : [{ code: 'SVG_PRECISION_LOSS', message: 'Opt-in decimal rounding changes geometry and may merge nearby points; this is not lossless native export.' }]), { code: 'SVG_NODE_MAPPING', message: 'Source root IDs identify this export scope. Native SVG path and definition IDs are internal and are not a DOM editing API.' }] }
   if (new TextEncoder().encode(JSON.stringify(output)).byteLength > EXPORT_LIMITS.bytes) throw new AutomationError('response_limit', 'SVG response exceeds 8 MiB including encoding and metadata')
   return output
 }
@@ -391,7 +395,7 @@ export const exportExtensions: AutomationExtension[] = [
 
   { name: 'vector.export', description: 'Export real editable SVG using existing native geometry and font outlines. Rejects unsupported effects or unsafe resources; never substitutes a fake screenshot.', mutates: false,
     inputSchema: { type: 'object', properties: { ...SVG_OPTION_SCHEMA, pageId: { type: 'string' }, nodeIds: { type: 'array', items: { type: 'string' }, maxItems: 500 }, maxNodes: { type: 'integer', minimum: 1, maximum: 500 } }, additionalProperties: false },
-    execute: (document, params, context) => exportDesignSvg(document, { ...codeOptions(params, context.pageId), scale: params.scale as number | undefined, precision: params.precision as number | undefined, compression: params.compression as SvgExportOptions['compression'], textMode: params.textMode as SvgExportOptions['textMode'] }) },
+    execute: (document, params, context) => exportDesignSvg(document, { ...codeOptions(params, context.pageId), scale: params.scale as number | undefined, precision: params.precision as number | undefined, compression: params.compression as SvgExportOptions['compression'], textMode: params.textMode as SvgExportOptions['textMode'], fontMode: params.fontMode as SvgExportOptions['fontMode'], fontEmbeddingAllowed: params.fontEmbeddingAllowed as boolean | undefined }) },
   { name: 'document.import', description: 'Atomically append a validated fd binary or native-json document through the existing importer. Preserves destination identity and remaps nodes, components, tokens, fonts and interactions; returns nodeIdMap. HTML import is unsupported.', mutates: true,
     inputSchema: { type: 'object', required: ['format'], properties: { format: { type: 'string', enum: ['fd', 'native-json'] }, base64: { type: 'string' }, content: { type: 'string' }, document: { type: 'object' }, pageId: { type: 'string' } }, additionalProperties: false },
     execute: importNativeDocument },

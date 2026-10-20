@@ -49,11 +49,6 @@ it('refreshes the real MCP-generated Ops carriers with shared resources, dual SV
     }
     for(const font of Object.values(source.fonts??{})){const back=Object.values(restored.fonts??{}).find(f=>f.family===font.family)!;expect(back.data).toBe(font.data)}
     report.sketch={strictGeometryRoundtripPassed:report.geometryDifferences.length===0,nodeCount:Object.keys(restored.nodes).length,textNodes:Object.values(restored.nodes).filter(n=>n.kind==='text').length,sharedStyles:2,embeddedFonts:1,exactFontBytes:true,allSourceNodesMapped:true,sha256:sha256(bytes),exportWarnings:sketch.warnings,importWarnings:result.warnings,realSketchApplicationOpened:false}
-    if(process.env.FUTUREOX_ARTIFACT_GEOMETRY_ONLY==='1'){
-      report.scope='FD/Sketch structure, sizing, editable style bindings and embedded font bytes only; no SVG/PNG run'
-      report.fd={sha256:sha256(fd),bytes:fd.length,exactDecodedEquality:true,textEditAndUndoVerified:true}
-      return
-    }
     for(const [i,page] of source.pages.entries()) {
       const name=page.name.toLowerCase().replaceAll(' ','-'),nodeIds=[refs.roots[i]],pageReport:Json={name,modes:[]}
       for(const textMode of ['outlines','editable']) {

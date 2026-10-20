@@ -44,3 +44,14 @@ Reference fixtures are excluded from production assets, but remain in the source
 repository and tests. Source publication still requires their ownership/permission
 review. See `docs/UI_ASSET_PROVENANCE.md`, including unresolved derivation claims.
 Do not remove required attribution when renaming internal implementation concepts.
+
+## Optional Nomi artwork companion (NEXT)
+
+Only `frontend/design-desktop/src/pet/renderer/assets/neutral.png` is copied from
+Cookieboty/nomi-ai commit `2d50d24dc0bae366d74918f90fe203e7a129a0b3`.
+Copyright (c) 2026 Cookieboty and contributors. MIT.
+Full license, original artwork declaration and byte-exact provenance hashes are
+retained beside the image as `LICENSE-MIT.txt`, `ARTWORK-NOTICE.txt` and
+`provenance.json`. No upstream executable runtime, voice assets or models are
+included. The Canvas 2D animation adapter is independently implemented by Futureox.
+See `docs/NOMI_PET_INTEGRATION.zh-CN.md` for scope and validation limits.

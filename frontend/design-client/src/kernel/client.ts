@@ -1,3 +1,4 @@
+import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { recordRenderDiagnostic, renderBudgetDiagnostic, renderErrorWithBudget } from './render-diagnostics'
 import type { RasterTile } from './tile-cache'
 import type { DesignDocument } from '../model'
@@ -320,6 +321,23 @@ function recordDamage(damage: TileDamage) {
     console.debug(`[damage] full=${damage.full} reason=${damage.reason ?? '-'} bounds=${JSON.stringify(damage.bounds ?? null)}`)
 }
 export class KernelClient {
+  private navigationJournal = new NavigationJournal()
+  /** Explicit diagnostic control only. No per-frame IPC, readback or GPU
+   * fence. Worker and main clocks must be aligned by their timeOrigin. */
+  async navigationCapture(action: 'start' | 'stop' | 'snapshot', options?: { capacity?: number; durationMs?: number }) {
+    if (action !== 'start' && action !== 'stop' && action !== 'snapshot') throw Error('Invalid navigation diagnostic action')
+    const validated = action === 'start' ? validateNavigationJournalOptions(options === undefined ? {} : options) : undefined
+    if (this.disposed) throw Error('Renderer disposed')
+    this.startWorker()
+    if (action === 'start') this.navigationJournal.start(validated)
+    if (action === 'stop') this.navigationJournal.stop(1)
+    try {
+      const response = await this.request({ command: 'navigation-diagnostic', action, options: validated }) as KernelResult & { navigationDiagnostic?: ReturnType<NavigationJournal['report']> }
+      return { main: this.navigationJournal.report(), worker: response.navigationDiagnostic,
+        semantics: 'CPU events only; align timeOrigin + at. Stage 7 is immediately post-submit, not GPU completion/scanout. Compile sequence is independent of request IDs.' }
+    } catch (error) { this.navigationJournal.stop(4); throw error }
+  }
+
   onPresentation?: (stats: Record<string, unknown>) => void
   presentationInputOwner?:string
   private presentationAttached = false
@@ -328,7 +346,9 @@ export class KernelClient {
     this.worker!.postMessage({ command: 'display-attach', canvas, executionPolicy: renderExecutionPolicy }, [canvas])
   }
   present(frame: import('./gpu/resident-presenter').ResidentFrame) {
-    this.worker?.postMessage({ command: 'display-frame', sequence:++this.displaySequence, frame:residentFrameMessage(frame) })
+    const sequence = ++this.displaySequence
+    if (this.navigationJournal.recording) this.navigationJournal.record(2, { sequence, x: frame.view.x, y: frame.view.y, zoom: frame.view.zoom })
+    this.worker?.postMessage({ command: 'display-frame', sequence, frame:residentFrameMessage(frame) })
   }
   async readContentPixel(u:number,v:number,expected?:import('./resident-presentation').ResidentAcknowledgement){const result=await this.request({command:'display-read-pixel',u,v,expected});if(!result.contentPixel)throw Error('Missing document sample');return result.contentPixel}
   async captureContentBitmap(){const result=await this.request({command:'display-capture-content'});if(!result.bitmap||!result.contentFrame)throw Error('Missing document snapshot');return{bitmap:result.bitmap,frame:result.contentFrame}}
@@ -410,6 +430,8 @@ export class KernelClient {
         return
       }
       if (e.data.presentation) {
+        if (this.navigationJournal.recording && typeof e.data.presentation.compositorFrames === 'number')
+          this.navigationJournal.record(9, { frames: e.data.presentation.compositorFrames })
         if (e.data.presentation.residentSample) recordRenderProfile('拖动中间帧', e.data.presentation.residentSample)
         this.onPresentation?.(e.data.presentation); return
       }
@@ -441,6 +463,9 @@ export class KernelClient {
         }
         return // Internal completed regions are not publishable viewport tiles.
       }
+      if (this.navigationJournal.recording && (e.data.tile || e.data.gpuTile || (e.data.backend && typeof e.data.milliseconds === 'number')))
+        this.navigationJournal.record(8, { requestId: e.data.id, compileMs: e.data.tile?.compileMs ?? e.data.compileMs,
+          graphMs: e.data.tile?.graphMs ?? e.data.graphMs, finishMs: e.data.tile?.finishMs ?? e.data.finishMs })
       if (e.data.tile) {
         recordRenderProfile(e.data.tile.prefetch ? '预取瓦片' : '可见瓦片', e.data.tile)
         this.renewPreviewWatchdogs()
@@ -498,6 +523,7 @@ export class KernelClient {
     }
   }
   private reset(error: Error) {
+    this.navigationJournal.stop(/device lost|GPU device|设备已丢失/i.test(error.message) ? 5 : 4)
     if(this.presentationAttached&&!this.disposed){
       this.presentationAttached=false
       this.onPresentation?.({error:`GPU 显示线程已重置: ${error.message}`})
@@ -771,6 +797,9 @@ export class KernelClient {
       this.pending.set(id, { resolve, reject, timer, started: performance.now(), progress, preview,
         channel: (payload as {channel?:string}).channel === 'interaction' ? 'interaction' : 'canvas' })
       try {
+        if (this.navigationJournal.recording && options?.view) this.navigationJournal.record(1, {
+          requestId: id, channel: (payload as {channel?:string}).channel === 'interaction' ? 1 : 0,
+          x: options.view?.x, y: options.view?.y, zoom: options.view?.zoom, width: options.width, height: options.height })
         this.worker!.postMessage({ id, ...payload, executionPolicy: renderExecutionPolicy },transfer)
       } catch (error) {
         this.reset(error instanceof Error ? error : new Error(String(error)))

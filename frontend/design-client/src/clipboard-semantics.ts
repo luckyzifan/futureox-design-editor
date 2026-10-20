@@ -1,3 +1,4 @@
+import { allActions, expressionVariables } from './prototype-logic'
 import { cloneValue } from './draft'
 import { node, uid, type DesignDocument, type DesignNode, type Matrix, type Point } from './model'
 import { allParents, multiply, translate, worldMatrix } from './geometry'
@@ -54,16 +55,17 @@ export function captureClipboardSemantics(
     if (selected.has(id)) {
       for (const event of events) {
         if (event.condition) variables.add(event.condition.variable)
-        for (const action of event.actions) {
+        for (const action of allActions(event.actions)) {
           if (nodeActions.has(action.kind) && !selected.has(action.target!)) {
             if (external) throw new Error('所选图层的原型指向选区外目标，请一并选择目标后再复制；原图层已保留')
             retainedTargets.add(action.target!)
           }
           if (action.kind === 'set-variable') variables.add(action.target!)
+          for (const ref of expressionVariables(action.expression)) variables.add(ref.id)
         }
       }
       interactions[id] = cloneValue(events)
-    } else if (cut && events.some(event => event.actions.some(action => nodeActions.has(action.kind) && selected.has(action.target!)))) {
+    } else if (cut && events.some(event => allActions(event.actions).some(action => nodeActions.has(action.kind) && selected.has(action.target!)))) {
       throw new Error('选区外的原型交互仍指向这些图层，剪切会破坏原型；请一并选择关联图层或改用复制')
     }
   }
@@ -131,9 +133,10 @@ export function applyClipboardSemantics(
     }
     remapped.interactions = Object.fromEntries(Object.entries(remapped.interactions).map(([id, events]) => [ids.get(id)!, events.map(event => {
       if (event.condition) event.condition.variable = design.variables.get(event.condition.variable) || event.condition.variable
-      for (const action of event.actions) {
+      for (const action of allActions(event.actions)) {
         if (nodeActions.has(action.kind) && !semantics.retainedTargets.has(action.target!)) action.target = ids.get(action.target!)!
         else if (action.kind === 'set-variable') action.target = design.variables.get(action.target!) || action.target
+        for (const ref of expressionVariables(action.expression)) ref.id = design.variables.get(ref.id) || ref.id
       }
       return event
     })]))
