@@ -1,3 +1,4 @@
+import { createRenderDiagnostics, sanitizeRecord, sanitizeFields as sanitizeRecordFields, PREFIX } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { recordRenderDiagnostic, renderBudgetDiagnostic, renderErrorWithBudget } from './render-diagnostics'
 import type { RasterTile } from './tile-cache'
@@ -321,6 +322,11 @@ function recordDamage(damage: TileDamage) {
     console.debug(`[damage] full=${damage.full} reason=${damage.reason ?? '-'} bounds=${JSON.stringify(damage.bounds ?? null)}`)
 }
 export class KernelClient {
+  private diagnosticSession = Math.floor(Math.random() * 1e12)
+  private terminalDiagnostics = createRenderDiagnostics({
+    enabled: typeof window !== 'undefined' && (window as unknown as {coreDesktop?:{renderDiagnostics?:boolean}}).coreDesktop?.renderDiagnostics === true,
+    session: this.diagnosticSession, source: 'main', sink: record => console.log(PREFIX + JSON.stringify(record)),
+  })
   private navigationJournal = new NavigationJournal()
   /** Explicit diagnostic control only. No per-frame IPC, readback or GPU
    * fence. Worker and main clocks must be aligned by their timeOrigin. */
@@ -347,6 +353,7 @@ export class KernelClient {
   }
   present(frame: import('./gpu/resident-presenter').ResidentFrame) {
     const sequence = ++this.displaySequence
+    this.terminalDiagnostics.record('camera-request',{sequence,x:frame.view.x,y:frame.view.y,zoom:frame.view.zoom,width:frame.width,height:frame.height})
     if (this.navigationJournal.recording) this.navigationJournal.record(2, { sequence, x: frame.view.x, y: frame.view.y, zoom: frame.view.zoom })
     this.worker?.postMessage({ command: 'display-frame', sequence, frame:residentFrameMessage(frame) })
   }
@@ -407,6 +414,7 @@ export class KernelClient {
     if (this.worker || this.disposed) return
     const worker = new Worker(new URL('./render-worker.ts', import.meta.url), { type: 'module' })
     this.worker = worker
+    if (this.terminalDiagnostics.enabled) worker.postMessage({command:'terminal-diagnostics',session:this.diagnosticSession})
     if (desktopHost?.preparation) {
       const channel = new MessageChannel()
       const native = connectNativePreparation(desktopHost.preparation, channel.port1, error => {
@@ -425,6 +433,13 @@ export class KernelClient {
       preparation.onerror = event => { if (this.preparationWorker === preparation) this.reset(new Error(event.message || 'CPU 准备线程失败')) }
     }
     worker.onmessage = (e) => {
+      if (e.data.renderDiagnostic) {
+        if (this.terminalDiagnostics.enabled && this.worker === worker) {
+          const record = sanitizeRecord(e.data.renderDiagnostic)
+          if (record && record.session === this.diagnosticSession) console.log(PREFIX + JSON.stringify(record))
+        }
+        return
+      }
       if (this.worker !== worker) {
         e.data.bitmap?.close()
         return
@@ -450,6 +465,7 @@ export class KernelClient {
       }
       const p = this.pending.get(e.data.id)
       if (!p) {
+        this.terminalDiagnostics.record('stale-drop',{requestId:e.data.id,reasonCode:1})
         if (e.data.gpuTile || e.data.tile?.gpuTile) this.releasePresented([e.data.gpuTile || e.data.tile.gpuTile])
         e.data.bitmap?.close()
         e.data.tileBitmap?.close()
@@ -467,6 +483,7 @@ export class KernelClient {
         this.navigationJournal.record(8, { requestId: e.data.id, compileMs: e.data.tile?.compileMs ?? e.data.compileMs,
           graphMs: e.data.tile?.graphMs ?? e.data.graphMs, finishMs: e.data.tile?.finishMs ?? e.data.finishMs })
       if (e.data.tile) {
+        this.terminalDiagnostics.record('tile',{...sanitizeRecordFields(e.data.tile),requestId:e.data.id})
         recordRenderProfile(e.data.tile.prefetch ? '预取瓦片' : '可见瓦片', e.data.tile)
         this.renewPreviewWatchdogs()
         try {
@@ -486,6 +503,7 @@ export class KernelClient {
         }
         return
       }
+      this.terminalDiagnostics.record(e.data.error ? 'error' : 'result',{...sanitizeRecordFields(e.data),requestId:e.data.id,reasonCode:e.data.error?1:0,milliseconds:performance.now()-p.started})
       clearTimeout(p.timer)
       this.pending.delete(e.data.id)
       if (e.data.error) {
@@ -523,6 +541,7 @@ export class KernelClient {
     }
   }
   private reset(error: Error) {
+    this.terminalDiagnostics.record('error',{reasonCode:this.disposed?3:2})
     this.navigationJournal.stop(/device lost|GPU device|设备已丢失/i.test(error.message) ? 5 : 4)
     if(this.presentationAttached&&!this.disposed){
       this.presentationAttached=false
@@ -786,6 +805,7 @@ export class KernelClient {
     const id = ++this.next
     return new Promise((resolve, reject) => {
       const options = (payload as { options?: KernelOptions }).options
+      if(options) this.terminalDiagnostics.record('request',{requestId:id,x:options.view?.x,y:options.view?.y,zoom:options.view?.zoom,width:options.width,height:options.height})
       const preview = !!options?.tileViewport || options?.livePreview === true
       const timer = setTimeout(() => {
         // Reject this attempt. A subsequent user/render request starts a fresh
@@ -811,5 +831,6 @@ export class KernelClient {
     this.disposed = true
     activeClients.delete(this)
     this.reset(new Error('渲染器已关闭'))
+    this.terminalDiagnostics.flush(); this.terminalDiagnostics.close()
   }
 }

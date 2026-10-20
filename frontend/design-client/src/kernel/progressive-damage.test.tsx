@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { blank, node as makeNode, effect as makeEffect } from '../model'
 import { ProgressiveSurfaceImpl } from './ProgressiveSurface'
 import { NavigationZoom } from './navigation-zoom'
+import { compositeDrawPlan } from './gpu/composite-draw-plan'
 import { planTiles, type RasterTile } from './tile-cache'
 import { prioritizeTileFill } from './tile-scheduler'
 import { tileBatchPrepareViewport } from './tile-prepare-viewport'
@@ -741,4 +742,194 @@ test('reversed zoom with optional budget pressure retains the previous whole vie
   expect(wrapper.props['data-detail-ready']).toBe('false')
   expect(compositor.props.items.find((item: any) => item.tile === preview)?.active).toBe(true)
   expect(worker.plannedScales).toEqual([])
+})
+
+// Real surface orchestration, with display-upload acknowledgements delayed.
+// A navigation capture is provisional and therefore not in displayed.residents.
+// Reusing its key must not tear down its pixels before the next upload is ready.
+test.each(['webgl2', 'webgpu'] as const)('pending %s navigation replacement preserves acknowledged pixels at the live camera', async backend => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const h = harness(false)
+  const first = { x: -12.125, y: 7.375, zoom: 2 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: first } }
+  h.render({ backend, view: first })
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(1))
+  worker.calls[0].resolve({ gpuTile: backend === 'webgpu' ? 101 : undefined })
+  await flushRasterWork()
+  let compositor = surfaceParts(h.render({ backend, view: first })).compositor
+  const old = compositor.props.items.find((item: any) => item.tile.viewportPreview).tile
+  compositor.props.onReady(old.key, old.serial, false)
+  compositor = surfaceParts(h.render({ backend, view: first })).compositor
+  expect(compositor.props.items.find((item: any) => item.tile === old)?.active).toBe(true)
+  const next = { x: -38.875, y: 20.125, zoom: 1.75 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 2, view: next } }
+  h.render({ backend, view: next })
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
+  worker.calls[1].resolve() // bytes/bitmap transport still waiting for display upload
+  await flushRasterWork()
+  const live = { x: -40.25, y: 21.5, zoom: 1.7 }
+  compositor = surfaceParts(h.render({ backend, view: next, requestedView: live })).compositor
+  expect(compositor.props.view).toEqual(live)
+  expect(compositor.props.items.find((item: any) => item.tile === old)?.active).toBe(true)
+  const replacement = compositor.props.items.find((item: any) => item.tile.viewportPreview && item.tile !== old).tile
+  expect(replacement.key).not.toBe(old.key)
+  expect(compositor.props.items.find((item: any) => item.tile === replacement)?.active).toBe(false)
+  compositor.props.onReady(replacement.key, replacement.serial, false)
+  compositor = surfaceParts(h.render({ backend, view: next, requestedView: live })).compositor
+  expect(compositor.props.items.find((item: any) => item.tile === replacement)?.active).toBe(true)
+  expect(compositor.props.items.find((item: any) => item.tile === old)?.active).toBe(true)
+})
+
+test('repeated viewport extents of one navigation sample cannot replace an uploading capture', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const h = harness(false), view = { x: -.25, y: .75, zoom: 2 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view } }
+  const captures: any[] = []
+  for (const width of [800, 900, 800]) {
+    h.render({ backend: 'webgl2', view, width }); await flushRasterWork()
+    const compositor = surfaceParts(h.render({ backend: 'webgl2', view, width })).compositor
+    const capture = compositor.props.items.at(-1).tile
+    captures.push(capture)
+    compositor.props.onReady(capture.key, capture.serial, false)
+  }
+  expect(new Set(captures.map(tile => tile.key)).size).toBe(3)
+  const compositor = surfaceParts(h.render({ backend: 'webgl2', view, width: 800 })).compositor
+  for (const capture of captures)
+    expect(compositor.props.items.find((item: any) => item.tile === capture)?.active).toBe(true)
+})
+
+test('navigation history remains byte-budgeted during a long gesture', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const h = harness(false)
+  let compositor: any
+  for (let sequence = 1; sequence <= 80; sequence++) {
+    const view = { x: sequence / 8, y: -sequence / 4, zoom: 2 + sequence / 100 }
+    worker.navigation = { active: true, suspended: false, sample: { active: true, sequence, view } }
+    h.render({ backend: 'webgl2', view })
+    await vi.waitFor(() => expect(worker.calls).toHaveLength(sequence))
+    worker.calls.at(-1).resolve({ gpuTile: sequence })
+    await flushRasterWork()
+    compositor = surfaceParts(h.render({ backend: 'webgl2', view })).compositor
+    const capture = compositor.props.items.at(-1).tile
+    compositor.props.onReady(capture.key, capture.serial, false)
+  }
+  expect(worker.calls).toHaveLength(80)
+  expect(compositor.props.items.length).toBeGreaterThan(1)
+  expect(compositor.props.items.length).toBeLessThan(80)
+  expect(compositor.props.items.at(-1).tile.serial).toBe(80)
+  expect(compositor.props.items.some((item: any) => item.tile.serial === 1)).toBe(false)
+  const released = worker.clients[0].releasePresented.mock.calls.flatMap((args: any[]) => args[0])
+  expect(released).toContain(1)
+  expect(released).not.toContain(80)
+  expect(new Set(released).size).toBe(released.length)
+})
+
+
+test.each(['document', 'page', 'epoch'] as const)('a pending navigation capture cannot survive a %s contract change', async change => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const h = harness(false), view = { x: -.25, y: .75, zoom: 2 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view } }
+  h.render({ backend: 'webgl2', view })
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(1))
+  const override = change === 'document' ? { document: blank('replacement') } :
+    change === 'page' ? { pageId: 'another-page' } : { presentationEpoch: 1 }
+  h.render({ backend: 'webgl2', view, ...override })
+  const close = vi.fn()
+  worker.calls[0].resolve({ gpuTile: 301, bitmap: { close } })
+  await flushRasterWork()
+  const compositor = surfaceParts(h.render({ backend: 'webgl2', view, ...override })).compositor
+  expect(compositor.props.items.some((item: any) => item.tile.gpuTile === 301)).toBe(false)
+  expect(worker.clients[0].releasePresented).toHaveBeenCalledWith([301])
+  expect(close).toHaveBeenCalledTimes(1)
+})
+
+test('overlapping captures with translucent scene pixels never double-compose during handoff', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const h = harness(false), view = { x: -.25, y: .75, zoom: 2 }
+  let compositor: any
+  for (const sequence of [1, 2]) {
+    worker.navigation = { active: true, suspended: false, sample: { active: true, sequence, view } }
+    h.render({ backend: 'webgl2', view }); await flushRasterWork()
+    compositor = surfaceParts(h.render({ backend: 'webgl2', view })).compositor
+    const capture = compositor.props.items.at(-1).tile
+    compositor.props.onReady(capture.key, capture.serial, false)
+  }
+  compositor = surfaceParts(h.render({ backend: 'webgl2', view })).compositor
+  // Production navigation captures include the opaque page background, even
+  // when authored nodes are translucent. They are replacement planes, not
+  // independently alpha-blended scene fragments.
+  expect(worker.calls.every(call => call.options.transparent === false)).toBe(true)
+  expect(compositor.props.items.every((item: any) => !item.blend)).toBe(true)
+  const draws = compositeDrawPlan(compositor.props.items, view, 1024, 512)
+  expect(draws).toHaveLength(1)
+  expect(draws[0].item.tile.serial).toBe(2)
+  expect(draws[0].clip).toEqual({ left: 0, top: 0, right: 1024, bottom: 512 })
+})
+
+test('page A → B → A reuses bounded mounted pixels without another raster request', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const h = harness()
+  h.doc.pages.push({ ...h.doc.pages[0], id: 'page-b', name: 'B', children: [] })
+  h.render()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(1))
+  worker.calls[0].resolve()
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+  let { compositor } = surfaceParts(h.render())
+  const original = compositor.props.items.map((item: any) => item.tile)
+  h.render({ pageId: 'page-b' })
+  ;({ compositor } = surfaceParts(h.render({ pageId: 'page-b' })))
+  expect(compositor.props.items.filter((item: any) => original.includes(item.tile)).every((item: any) => !item.active)).toBe(true)
+  const before = worker.calls.length
+  h.render()
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+  const restored = surfaceParts(h.render())
+  expect(restored.compositor.props.items.map((item: any) => item.tile)).toEqual(original)
+  expect(restored.wrapper.props['data-page-cache-hits']).toBe(1)
+  expect(worker.calls).toHaveLength(before)
+  expect(worker.clients).toHaveLength(1)
+})
+
+test('inactive page pixels are discarded on an edit, including undo/font/resource replacements', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const h = harness()
+  h.doc.pages.push({ ...h.doc.pages[0], id: 'page-b', name: 'B', children: [] })
+  h.render()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(1)); worker.calls[0].resolve()
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+  h.render({ pageId: 'page-b' })
+  const changed = { ...h.doc, fonts: {} }
+  h.render({ pageId: 'page-b', document: changed })
+  const next = surfaceParts(h.render({ document: changed }))
+  expect(next.wrapper.props['data-page-cache-bytes']).toBe(0)
+  expect(next.compositor.props.items.some((item: any) => item.tile.document === h.doc)).toBe(false)
+})
+
+test('fast zoom-out keeps the wider sampled viewport while the new wide capture is delayed', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const h = harness(false)
+  for (const [sequence, zoom] of [[1, .25], [2, 4]]) {
+    const view = { x: 0, y: 0, zoom }
+    worker.navigation = { active: true, suspended: false, sample: { active: true, sequence, view } }
+    h.render({ backend: 'webgl2', view }); await flushRasterWork()
+    const compositor = surfaceParts(h.render({ backend: 'webgl2', view })).compositor
+    const capture = compositor.props.items.at(-1).tile
+    compositor.props.onReady(capture.key, capture.serial, false)
+  }
+  const view = { x: 0, y: 0, zoom: .25 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 3, view } }
+  const output = h.render({ backend: 'webgl2', view })
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(3)) // leave capture 3 blocked
+  const { compositor, wrapper } = surfaceParts(output)
+  expect(wrapper.props['data-detail-ready']).toBe('false')
+  const draws = compositeDrawPlan(compositor.props.items, view, 1024, 512)
+  const area = draws.reduce((sum, row) => sum + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)
+  expect(area).toBe(1024 * 512)
+  expect(draws.some(row => row.item.tile.zoom === .25)).toBe(true)
+  expect(draws.some(row => row.item.tile.zoom === 4)).toBe(true)
 })
