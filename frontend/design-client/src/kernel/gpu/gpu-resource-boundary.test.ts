@@ -1,3 +1,4 @@
+import { setDeviceDiagnosticRequestContext } from './device-lifecycle-diagnostics'
 import { setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 // CPU-only descriptor/ownership instrumentation of production renderer/driver
 // methods. WGSL is neither executed nor validated here; these are work counts,
@@ -12,7 +13,7 @@ import { parameters, type GpuScene, type Texture } from './types'
 import { displayFilterWeights } from './display-filter'
 import { rational_tent_kernel_rgba } from '../../generated/design-kernel/design_kernel'
 
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
+afterEach(() => { setDeviceDiagnosticRequestContext(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 const frozenBaseline = process.env.GPU_RESOURCE_BASELINE === '1'
 function measurement(value: object) {
   const row = JSON.stringify({ source: frozenBaseline ? 'frozen-base-5b7ed1a' : 'working-tree', ...value })
@@ -518,4 +519,70 @@ test('pool completion proof leaves newly submitted work pending and does not byp
   driver.lost=true
   await expect(driver.checkpoint('admission',undefined,1)).rejects.toThrow('设备已丢失')
   driver.lost=false;await driver.checkpoint();driver.destroy(current);driver.dispose()
+})
+
+// Lifecycle observations must not alter real production descriptor/queue traces.
+test('device diagnostics off/on/throwing preserve production command sequence and queue counts',async()=>{
+  const outputs:{trace:object[];counts:ReturnType<ReturnType<typeof deviceBoundary>['counts']>}[]=[]
+  for(const mode of ['off','on','throwing']){
+    setGpuDiagnosticSink(mode==='off'?undefined:()=>{if(mode==='throwing')throw Error('diagnostic observer failure')})
+    try{
+      const {boundary,driver}=await createDriver(true)
+      await driver.prepareScene(empty);driver.begin(new Float32Array(0))
+      const target=driver.create(8,8),source=driver.create(8,8)
+      driver.pass(target,parameters(empty.extent,empty.extent),[source]);await driver.checkpoint('checkpoint')
+      outputs.push({trace:boundary.normalized,counts:boundary.counts()});driver.dispose()
+      await Promise.resolve()
+    }finally{setGpuDiagnosticSink(undefined)}
+  }
+  expect(outputs[1]).toEqual(outputs[0]);expect(outputs[2]).toEqual(outputs[0])
+})
+test('production lost callback is numeric, nonthrowing and keeps existing disposed suppression',async()=>{
+  const records:{event:string;fields:any}[]=[]
+  setGpuDiagnosticSink((event,fields)=>records.push({event,fields}))
+  try{
+    const {boundary,driver}=await createDriver(true)
+    const created=records.find(row=>row.event==='device-lifecycle'&&row.fields.devicePhase===1)!
+    boundary.device.destroy();await Promise.resolve()
+    expect(driver.lost).toBe(true)
+    expect(records.find(row=>row.event==='device-lifecycle'&&row.fields.devicePhase===3)?.fields)
+      .toMatchObject({deviceIncarnation:created.fields.deviceIncarnation,deviceLostReason:2,deviceCallbackDisposition:1,deviceCounterMask:0})
+    expect(JSON.stringify(records)).not.toContain('Injected device loss')
+    driver.dispose()
+    records.length=0
+    const second=await createDriver(true);second.driver.dispose();await Promise.resolve()
+    expect(second.driver.lost).toBe(false) // existing intentional destroyed+disposed early return
+    expect(records.find(row=>row.event==='device-lifecycle'&&row.fields.devicePhase===4)?.fields.deviceCallbackDisposition).toBe(2)
+  }finally{setGpuDiagnosticSink(undefined)}
+})
+test('delayed fence retains initiating request, identity and start epochs despite another current device',async()=>{
+  let activeRequest = 74
+  setDeviceDiagnosticRequestContext(() => activeRequest)
+  const records:{event:string;fields:any}[]=[]
+  setGpuDiagnosticSink((event,fields)=>records.push({event,fields}))
+  try{
+    const first=await createDriver(true);first.driver.begin(new Float32Array(0));first.boundary.holdWait()
+    const pending=first.driver.checkpoint('admission'),firstId=records.find(row=>row.event==='device-lifecycle')!.fields.deviceIncarnation
+    activeRequest = 75
+    const second=await createDriver(true)
+    first.boundary.releaseWait();await pending
+    const row=records.filter(row=>row.event==='fence'&&row.fields.reasonCode===6).at(-1)!
+    expect(row.fields).toMatchObject({requestId:74,deviceIncarnation:firstId,deviceFenceResourceEpoch:1,deviceFenceCompletedResourceEpoch:0})
+    expect(first.driver.completedResourceEpoch).toBe(0)
+    first.driver.dispose();second.driver.dispose()
+  }finally{setGpuDiagnosticSink(undefined)}
+})
+test('same-device park/revive preserves lifecycle incarnation without another creation event',async()=>{
+  const records:{event:string;fields:any}[]=[]
+  setGpuDiagnosticSink((event,fields)=>records.push({event,fields}))
+  let driver:WebGpuDriver|undefined
+  try{
+    const made=await createDriver(true);driver=made.driver;(driver as any).poolKey='diagnostic-test'
+    const created=records.find(row=>row.event==='device-lifecycle'&&row.fields.devicePhase===1)!.fields.deviceIncarnation
+    driver.dispose()
+    const revived=await (WebGpuDriver as any).reviveParked('diagnostic-test')
+    expect(revived).toBe(driver)
+    expect(records.filter(row=>row.event==='device-lifecycle'&&row.fields.devicePhase===1)).toHaveLength(1)
+    expect(records.filter(row=>row.event==='device-lifecycle'&&[5,6,7].includes(row.fields.devicePhase)).map(row=>row.fields.deviceIncarnation)).toEqual([created,created,created])
+  }finally{if(driver)(driver as any).destroyDeviceNow();setGpuDiagnosticSink(undefined)}
 })

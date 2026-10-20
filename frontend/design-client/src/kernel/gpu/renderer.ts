@@ -1735,6 +1735,9 @@ export class GpuRenderer {
       admissionPoolBytes: pooled.reduce((bytes, texture) => bytes + texture.bytes, 0),
       admissionPoolCount: pooled.length,
       admissionUploadCount: this.retiredUploads.length + this.coordinateMaps.size,
+      admissionRetiredKinds: (pooled.length ? 1 : 0) | (this.retiredUploads.length ? 2 : 0) | (this.coordinateMaps.size ? 4 : 0) | (imagesUnderPressure ? 8 : 0),
+      admissionRetiredUploadCount: this.retiredUploads.length,
+      admissionCoordinateCount: this.coordinateMaps.size,
       admissionImageCount: this.images.size,
     } : undefined
     // Submission is still mandatory. Only the completion wait may be omitted,

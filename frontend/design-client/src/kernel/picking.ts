@@ -11,6 +11,7 @@ import {
   DocumentHistory,
 } from '../generated/design-kernel/design_kernel'
 import { initializeKernelModule, validateKernelDocument } from './module'
+import { documentStage, DocumentStage } from '../document-lifecycle-diagnostics'
 import { admitDocumentSync } from '../document-admission'
 import { InitializationGate, readKernelAsset } from './initialization'
 import { loadKernelResourcePair } from './kernel-resources'
@@ -129,16 +130,18 @@ export function initializePicking(resources?: { wasm: Uint8Array; font: Uint8Arr
 }
 /** All file-opening paths share the same forward-only schema normalization. */
 export function prepareDocumentForEditing(value: unknown): DesignDocument {
-  const original = admitDocumentSync(value)
-  const prepared = kernelLayout({
+  const original = documentStage(DocumentStage.admission, () => admitDocumentSync(value))
+  const prepared = documentStage(DocumentStage.layout, () => kernelLayout({
     ...original,
     schemaVersion: Math.max(2, original.schemaVersion) as 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10,
     rasterProfile: original.rasterProfile || (original.colorManagement ? 'figma' : 'analytic'),
-  })
+  }))
   // Reject an invalid derived offset before adopting a persisted/imported scene.
   // Otherwise the first synchronous bounds/selection query can tear down React.
-  for(const n of Object.values(prepared.nodes))if(n.pathOffset||n.vectorBrush)kernelBounds(n)
-  validateKernelDocument(JSON.stringify(prepared))
+  documentStage(DocumentStage.derivedValidation, () => {
+    for(const n of Object.values(prepared.nodes))if(n.pathOffset||n.vectorBrush)kernelBounds(n)
+    validateKernelDocument(JSON.stringify(prepared))
+  })
   return prepared
 }
 /** Restore the document-local font environment without repeating admission or layout. */

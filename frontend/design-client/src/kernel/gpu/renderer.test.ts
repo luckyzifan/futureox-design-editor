@@ -943,7 +943,7 @@ test('admission diagnostics classify proactive and required pressure without ear
       expect(metadata).toEqual({ admissionKind: required ? 1 : 0, admissionPressure: required ? 1 : 0,
         admissionRequiredBytes: required, admissionWorkingBytes: 220 * MiB, admissionBudgetBytes: 256 * MiB,
         admissionReclaimableBytes: MiB, admissionPoolBytes: MiB, admissionPoolCount: 1,
-        admissionUploadCount: 0, admissionImageCount: 0 })
+        admissionUploadCount: 0, admissionImageCount: 0, admissionRetiredKinds: 1, admissionRetiredUploadCount: 0, admissionCoordinateCount: 0 })
       expect(destroyed).toEqual([]); expect(renderer.bytes).toBe(220 * MiB)
       finish(); await pending
       expect(destroyed).toEqual([texture]); expect(renderer.bytes).toBe(219 * MiB)

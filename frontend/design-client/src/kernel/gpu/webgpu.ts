@@ -1,3 +1,4 @@
+import { captureDeviceDiagnosticRequest, deviceDiagnosticFields, registerDeviceDiagnosticOwner, recordDeviceLifecycle, recordDeviceDiagnostic, recordDeviceCallback, deviceLifecyclePhase, deviceLostReason } from './device-lifecycle-diagnostics'
 import { markRenderFailure, renderFailureFields, withRenderFailureStage } from '../render-failure-telemetry'
 import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { QueueWaitStats, type QueueWaitReason } from './queue-wait-stats'
@@ -48,10 +49,11 @@ type ParkedDriver = {
 export class WebGpuDriver implements Driver {
   private queueWaitStats = new QueueWaitStats(import.meta.env.VITE_DESIGN_QUEUE_WAIT_TIMING === '1')
   private waitForQueue(reason: QueueWaitReason, admission?: GpuAdmissionDiagnostic) {
+    const diagnosticIdentity = { ...captureDeviceDiagnosticRequest(), ...deviceDiagnosticFields(this), deviceFenceResourceEpoch: this.resourceEpoch, deviceFenceCompletedResourceEpoch: this.completedResourceEpoch }
     const started=gpuDiagnosticsEnabled()?performance.now():0
     const pending=this.queueWaitStats.wait(reason, () => this.device.queue.onSubmittedWorkDone(), () => this.lost)
     if(!gpuDiagnosticsEnabled())return pending
-    return pending.finally(()=>recordGpuDiagnostic('fence',{...admission,reasonCode:['readback','timing','prefix-scratch','interaction','periodic','admission','checkpoint','cancel','initialization','park'].indexOf(reason)+1,queueWaitMs:performance.now()-started,resourceEpoch:this.resourceEpoch,completedResourceEpoch:this.completedResourceEpoch}))
+    return pending.finally(()=>recordDeviceDiagnostic('fence',{...admission,...diagnosticIdentity,reasonCode:['readback','timing','prefix-scratch','interaction','periodic','admission','checkpoint','cancel','initialization','park'].indexOf(reason)+1,queueWaitMs:performance.now()-started,resourceEpoch:this.resourceEpoch,completedResourceEpoch:this.completedResourceEpoch}))
   }
   private bindingCache = new GpuBindingCache()
   // Rollout gate until real-device validation and timings are available. The
@@ -75,6 +77,10 @@ export class WebGpuDriver implements Driver {
   private programHitBytes = 0
   captureDisplay = false
   private presenter?: ResidentPresenter
+  private lifecycleFields() {
+    const counters = this.presenter?.diagnosticFields()
+    return { ...counters, ...deviceDiagnosticFields(this), deviceCounterMask: counters?.deviceCounterMask ?? 0 }
+  }
   attachPresenter(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void) {
     if(this.presenter)this.presenter.attachCanvas(canvas)
     else this.presenter=new ResidentPresenter(this.device, canvas, this.format, report)
@@ -247,10 +253,13 @@ export class WebGpuDriver implements Driver {
       return undefined
     }
     try {
+      recordDeviceLifecycle(parked.driver, deviceLifecyclePhase.reviveStart, parked.driver.lifecycleFields())
       await parked.driver.revive()
+      recordDeviceLifecycle(parked.driver, deviceLifecyclePhase.reviveReady, parked.driver.lifecycleFields())
       console.debug(`DESIGN_GPU_PARK ${JSON.stringify({ event: 'revived', key })}`)
       return parked.driver
     } catch (error) {
+      recordDeviceLifecycle(parked.driver, deviceLifecyclePhase.reviveFailed, parked.driver.lifecycleFields())
       console.debug(`DESIGN_GPU_PARK ${JSON.stringify({ event: 'revive-failed', error: String(error) })}`)
       parked.driver.destroyDeviceNow()
       return undefined
@@ -272,13 +281,23 @@ export class WebGpuDriver implements Driver {
       if (!Number.isInteger(alignment) || alignment < 1 || 1024 % alignment !== 0)
         throw new Error('WebGPU dynamic uniform alignment does not support the exact 1024-byte stride')
     }
+    const diagnosticIdentity = registerDeviceDiagnosticOwner(this, this.device, 1)
+    recordDeviceLifecycle(this, deviceLifecyclePhase.created, { deviceCounterMask: 0 })
     if (timing) this.timingQueries = this.device.createQuerySet({ type: 'timestamp', count: 4096 })
     this.description = adapter.info?.description || adapter.info?.architecture || 'WebGPU'
     this.device.lost.then((info) => {
       // Intentional teardown (dispose/reaper) has nothing further to report.
-      if (info.reason === 'destroyed' && this.disposed) return
+      const fields = { ...this.lifecycleFields(), deviceLostReason: deviceLostReason(info.reason) }
+      if (info.reason === 'destroyed' && this.disposed) {
+        recordDeviceCallback(this, diagnosticIdentity, deviceLifecyclePhase.callbackDiscarded, { ...fields, deviceCallbackDisposition: 2 })
+        return
+      }
       this.lost = true
-      if (this.disposed) return
+      if (this.disposed) {
+        recordDeviceCallback(this, diagnosticIdentity, deviceLifecyclePhase.callbackDiscarded, { ...fields, deviceCallbackDisposition: 3 })
+        return
+      }
+      recordDeviceCallback(this, diagnosticIdentity, deviceLifecyclePhase.lost, { ...fields, deviceCallbackDisposition: 1 })
       this.presenter?.lost(info.message || 'device lost')
       this.errors.push(info.message || 'GPU device lost')
       // freeGpuMemory semantics: reclaim every pooled texture/buffer/querySet
@@ -1675,6 +1694,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         )
       }
       this.parkedForReuse = true
+      recordDeviceLifecycle(this, deviceLifecyclePhase.parked, this.lifecycleFields())
       const settled = this.reclaimForPark()
       const reaper = setTimeout(() => {
         if (WebGpuDriver.parkedDriver?.driver === this) {
@@ -1690,6 +1710,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   }
   /** Full synchronous teardown: reclaim every resource and destroy the device. */
   private destroyDeviceNow() {
+    recordDeviceLifecycle(this, deviceLifecyclePhase.disposed, this.lifecycleFields())
     this.presenter?.dispose(); this.presenter = undefined
     this.parkedForReuse = false
     this.closeOver()

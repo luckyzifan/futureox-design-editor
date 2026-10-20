@@ -1,3 +1,5 @@
+import { createTileCostDiagnostics } from './tile-cost-diagnostics'
+import { setDeviceDiagnosticRequestContext, beginDeviceRecovery, deviceDiagnosticFields, deviceLifecyclePhase, type DeviceDiagnosticFields } from './gpu/device-lifecycle-diagnostics'
 import { GridMeasurements } from './grid-measurements'
 import { RenderFailureAttempts, renderFailureFields, withRenderFailureStage } from './render-failure-telemetry'
 import { boundedPatchWire, supportsAcknowledgedPropertyPatch } from './authored-patch-transition'
@@ -65,6 +67,7 @@ import { TranslationPatchSession } from './gpu/translation-patch-session'
 import { DisplayCommandOrder } from './display-command-order'
 let terminalDiagnostics = createRenderDiagnostics()
 let diagnosticRequestId = 0
+setDeviceDiagnosticRequestContext(() => diagnosticRequestId)
 let diagnosticFailureAttempts: RenderFailureAttempts | undefined
 function failureAttempt<T>(stage: number, work: () => T): T {
   const scope = diagnosticFailureAttempts
@@ -100,6 +103,11 @@ let floatingKey: string | undefined
 let referenceGpu = false
 let solidBatchGpu = true
 let gpu: GpuRenderer | undefined
+let previousDeviceDiagnostic: DeviceDiagnosticFields = {}
+function noteRetiredDevice(renderer: GpuRenderer | undefined) {
+  const identity = deviceDiagnosticFields(renderer?.driver)
+  if (identity.deviceIncarnation) previousDeviceDiagnostic = { devicePreviousIncarnation: identity.deviceIncarnation }
+}
 let displayCanvas: OffscreenCanvas | undefined
 let displayFrame: import('./gpu/resident-presenter').ResidentFrame | undefined
 let displayFramePending = false
@@ -169,8 +177,14 @@ function prepareDisplay(capture = true) {
   gpu.driver.captureDisplay = !!displayCanvas && capture
 }
 async function recoverTileFailure(error:unknown) {
-  try {if(!await recoverFailedTileRenderer(error,gpu,invalidateTileCache,!!displayCanvas))gpu=undefined}
-  catch(failure){gpu=undefined;throw failure}
+  const owner = gpu?.driver, observation = beginDeviceRecovery(owner, 2, diagnosticRequestId)
+  try {
+    if(!await recoverFailedTileRenderer(error,gpu,invalidateTileCache,!!displayCanvas)) {
+      previousDeviceDiagnostic = { devicePreviousIncarnation: deviceDiagnosticFields(owner).deviceIncarnation || 0 }
+      gpu=undefined
+      observation.end(deviceLifecyclePhase.recoveryRetired)
+    } else observation.end(deviceLifecyclePhase.recoveryReady, gpu?.driver)
+  } catch(failure){noteRetiredDevice(gpu);gpu=undefined;observation.end(deviceLifecyclePhase.recoveryFailed);throw failure}
 }
 let preference: BackendPreference | undefined
 const unavailable = new Map<string, string>()
@@ -409,7 +423,7 @@ self.onmessage = (e) => {
       terminalDiagnostics.close()
       terminalDiagnostics=createRenderDiagnostics({enabled:true,detail:request.detail===true,batchSink:batch=>self.postMessage({renderDiagnostics:batch}),session:request.session,source:'worker',sink:record=>self.postMessage({renderDiagnostic:record})})
       setGpuDiagnosticsDetail(request.detail===true)
-      setGpuDiagnosticSink((event,fields)=>terminalDiagnostics.record(event,{...fields as object,requestId:diagnosticRequestId}))
+      setGpuDiagnosticSink((event,fields)=>terminalDiagnostics.record(event,{requestId:diagnosticRequestId,...fields as object}))
       terminalDiagnostics.record('start')
     }
     return
@@ -548,7 +562,7 @@ self.onmessage = (e) => {
       if (request.command === 'park-gpu') {
         // The serialized queue is idle at this boundary. Retain the document,
         // fonts, decoded assets and CPU cache, but relinquish the device lease.
-        gpu?.dispose(); gpu = undefined
+        noteRetiredDevice(gpu); gpu?.dispose(); gpu = undefined
         self.postMessage({ id: request.id })
         return
       }
@@ -821,6 +835,7 @@ self.onmessage = (e) => {
         wantsReference !== referenceGpu ||
         wantsBatch !== solidBatchGpu
       ) {
+        noteRetiredDevice(gpu)
         invalidateTileCache()
         gpu?.dispose()
         gpu = undefined
@@ -832,10 +847,14 @@ self.onmessage = (e) => {
         tiledPreviewMode = false
       }
       if (gpu?.driver.lost) {
+        const observation = beginDeviceRecovery(gpu.driver, 4, diagnosticRequestId)
+        previousDeviceDiagnostic = { devicePreviousIncarnation: deviceDiagnosticFields(gpu.driver).deviceIncarnation || 0 }
         navigationJournal.stop(5)
+        noteRetiredDevice(gpu)
         invalidateTileCache()
         gpu.dispose()
         gpu = undefined
+        observation.end(deviceLifecyclePhase.recoveryRetired)
       }
       const candidates = rasterCandidates(executionPolicy, preference, request.png)
       let scene: GpuScene | undefined
@@ -1027,12 +1046,12 @@ self.onmessage = (e) => {
                 // Only the exact scene actually rendered once certifies these pixels.
                 // Budget-subdivided assemblies have no accepted single-scene witness.
                 if (!disableExactCache && witness.byteLength && result.previewTiles === 1 && ownsExactTileBytes(result) && cacheOwner.current(cacheTicket))
-                  cacheOwner.set(cacheKey, witness, {...result,worldBounds:[
+                  cacheOwner.set(cacheKey, witness, {...result,tileCost:undefined,worldBounds:[
                     (crop.x-renderOptions.view.x-2)/tile.zoom,(crop.y-renderOptions.view.y-2)/tile.zoom,
                     (tile.width+4)/tile.zoom,(tile.height+4)/tile.zoom,
                   ]},
                     result.buffer.byteLength + (result.linearBuffer?.byteLength || 0) +
-                      JSON.stringify({ ...result, buffer: undefined, linearBuffer: undefined }).length * 2, cacheTicket)
+                      JSON.stringify({ ...result, tileCost:undefined, buffer: undefined, linearBuffer: undefined }).length * 2, cacheTicket)
                 rendered++
                 tileLeaves += result.previewTiles
                 tileBitmapLeaves += result.bitmapLeaves
@@ -1099,6 +1118,8 @@ self.onmessage = (e) => {
                   id: request.id,
                   tile: {
                     ...tile,
+                    ...(terminalDiagnostics.enabled ? { tileCacheDecision: cached ? 0 : disableExactCache ? 3 : request.debug?.disableCertifiedTileReuse ? 4 : 5 } : undefined),
+                    ...(terminalDiagnostics.enabled ? (cached ? { tileCostUnavailable: 63 } : ('tileCost' in result ? result.tileCost : undefined)) : undefined),
                     cameraFallback: cameraFallback || undefined,
                     gpuTile: result.gpuTile,
                     backend,
@@ -1137,7 +1158,7 @@ self.onmessage = (e) => {
                   (channel === 'canvas' && fillGeneration !== tileFillGeneration)) throw new Error('PREVIEW_CANCELLED')
               selectLane(channel)
               if (settingsJson !== colorKey || preference !== requestPreference || referenceGpu !== wantsReference || solidBatchGpu !== wantsBatch) {
-                gpu?.dispose(); gpu = undefined; invalidateTileCache(); unavailable.clear()
+                noteRetiredDevice(gpu); gpu?.dispose(); gpu = undefined; invalidateTileCache(); unavailable.clear()
                 colorKey = settingsJson
                 preference = requestPreference; referenceGpu = wantsReference; solidBatchGpu = wantsBatch
               }
@@ -1258,11 +1279,13 @@ self.onmessage = (e) => {
             gpu &&
             (gpu.driver.name !== backend || !!gpu.driver.managed !== floating || !!gpu.driver.displayMath !== displayMath)
           ) {
+            noteRetiredDevice(gpu)
             invalidateTileCache()
             gpu.dispose()
             gpu = undefined
           }
           if (!gpu) {
+            const observation = beginDeviceRecovery(undefined, 1, diagnosticRequestId, previousDeviceDiagnostic)
             try {
               gpu = await createGpu(
                 backend,
@@ -1276,7 +1299,10 @@ self.onmessage = (e) => {
                 !!executionPolicy?.imageAtlas,
                 displayMath,
               )
+              observation.end(deviceLifecyclePhase.recoveryReady, gpu.driver)
+            previousDeviceDiagnostic = {}
             } catch (error) {
+              observation.end(deviceLifecyclePhase.recoveryFailed)
               unavailable.set(
                 backend,
                 `${backend}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1419,8 +1445,11 @@ self.onmessage = (e) => {
           const previewBudget = isRecoverablePreviewBudget(error, gpu?.driver.lost)
           let preservedPreview = false
           if (!tileViewport && (livePreview || renderOptions.captureViewport)) {
-            try { preservedPreview = await failureAttempt(11, () => recoverPreviewBudget(error, gpu, invalidateTileCache)) }
-            catch (recoveryError) { gpu = undefined; throw recoveryError }
+            const observation = beginDeviceRecovery(gpu?.driver, 3, diagnosticRequestId)
+            try {
+              preservedPreview = await failureAttempt(11, () => recoverPreviewBudget(error, gpu, invalidateTileCache))
+              observation.end(preservedPreview ? deviceLifecyclePhase.recoveryReady : deviceLifecyclePhase.recoveryNotHandled, preservedPreview ? gpu?.driver : undefined)
+            } catch (recoveryError) { noteRetiredDevice(gpu); gpu = undefined; observation.end(deviceLifecyclePhase.recoveryFailed); throw recoveryError }
           }
           if (preservedPreview && (renderOptions.captureViewport || _retainInteractionGraph ||
               !previewTileFallback || tiledPreviewMode)) {
@@ -1432,6 +1461,7 @@ self.onmessage = (e) => {
               preference === 'auto' &&
               !String(error).includes('Invalid tile request')
             ) {
+              noteRetiredDevice(gpu)
               invalidateTileCache()
               gpu?.dispose()
               gpu = undefined
@@ -1443,6 +1473,7 @@ self.onmessage = (e) => {
             throw error
           }
           if (!preservedPreview) {
+            noteRetiredDevice(gpu)
             invalidateTileCache()
             gpu?.dispose()
             gpu = undefined
@@ -1574,6 +1605,7 @@ async function renderTiledPreview(
   isCurrent?: () => boolean,
   hydrateImages: HydrateSceneImages = sceneImageHydration(kernel, isCurrent ?? (() => true)),
 ) {
+  const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
   const checkCurrent = () => {
     if (isCurrent && !isCurrent()) throw new Error('PREVIEW_CANCELLED')
   }
@@ -1634,27 +1666,36 @@ async function renderTiledPreview(
     {
       try {
         if (gpu && (gpu.driver.lost || gpu.driver.name !== backend || !!gpu.driver.managed !== scene.floatCompositing || !!gpu.driver.displayMath !== displayMath)) {
+          noteRetiredDevice(gpu)
           invalidateTileCache()
           gpu.dispose()
           gpu = undefined
         }
-        gpu ??= await createGpu(
-          backend,
-          !referenceGpu,
-          solidBatchGpu,
-          color,
-          managedImageLoader,
-          managedOutput,
-          scene.floatCompositing,
-          !!executionPolicy?.imageMips,
-          !!executionPolicy?.imageAtlas,
-          displayMath,
-        )
+        if (!gpu) {
+          const observation = beginDeviceRecovery(undefined, 1, diagnosticRequestId, previousDeviceDiagnostic)
+          try {
+            gpu = await createGpu(
+              backend,
+              !referenceGpu,
+              solidBatchGpu,
+              color,
+              managedImageLoader,
+              managedOutput,
+              scene.floatCompositing,
+              !!executionPolicy?.imageMips,
+              !!executionPolicy?.imageAtlas,
+              displayMath,
+            )
+            observation.end(deviceLifecyclePhase.recoveryReady, gpu.driver)
+            previousDeviceDiagnostic = {}
+          } catch (error) { observation.end(deviceLifecyclePhase.recoveryFailed); throw error }
+        }
         if (gpu.driver.name !== 'webgpu') throw new Error('present fast path unavailable')
         checkCurrent()
         await hydrateImages(scene, isCurrent)
         prepareDisplay()
         const result = await failureAttempt(12, () => gpu!.render(scene, false, true, isCurrent))
+        tileCost?.observe(scene, result)
         presented = result.bitmap
         residentTile = result.gpuTile
         checkCurrent()
@@ -1736,28 +1777,37 @@ async function renderTiledPreview(
             gpu.driver.name !== backend ||
             !!gpu.driver.managed !== floating || !!gpu.driver.displayMath !== displayMath)
         ) {
+          noteRetiredDevice(gpu)
           invalidateTileCache()
           gpu.dispose()
           gpu = undefined
         }
-        gpu ??= await createGpu(
-          backend,
-          !referenceGpu,
-          solidBatchGpu,
-          color,
-          managedImageLoader,
-          managedOutput,
-          floating,
-          !!executionPolicy?.imageMips,
-          !!executionPolicy?.imageAtlas,
-          displayMath,
-        )
+        if (!gpu) {
+          const observation = beginDeviceRecovery(undefined, 1, diagnosticRequestId, previousDeviceDiagnostic)
+          try {
+            gpu = await createGpu(
+              backend,
+              !referenceGpu,
+              solidBatchGpu,
+              color,
+              managedImageLoader,
+              managedOutput,
+              floating,
+              !!executionPolicy?.imageMips,
+              !!executionPolicy?.imageAtlas,
+              displayMath,
+            )
+            observation.end(deviceLifecyclePhase.recoveryReady, gpu.driver)
+            previousDeviceDiagnostic = {}
+          } catch (error) { observation.end(deviceLifecyclePhase.recoveryFailed); throw error }
+        }
         // Assembly needs a bitmap per leaf, but the attached presenter and its
         // previous textures remain alive on this same device during the retry.
         checkCurrent()
         await hydrateImages(scene, isCurrent)
         prepareDisplay(false)
         const result = await failureAttempt(12, () => gpu!.render(scene, !bitmapAssembly, bitmapAssembly, isCurrent))
+        tileCost?.observe(scene, result)
         bitmap = result.bitmap
         checkCurrent()
         onRegionComplete?.()
@@ -1833,6 +1883,7 @@ async function renderTiledPreview(
   }
   if (presented || residentTile)
     return {
+      tileCost: tileCost?.snapshot(),
       bitmap: presented,
       gpuTile: residentTile,
       buffer: new ArrayBuffer(0),
@@ -1872,6 +1923,7 @@ async function renderTiledPreview(
   const linear = managedOutput ? (assembled!.pixels as Float32Array) : undefined
   const bytes = linear ? color_encode_rgba8(linear, settingsJson) : (assembled!.pixels as Uint8Array)
   return {
+    tileCost: tileCost?.snapshot(),
     buffer: bytes.buffer,
     bitmapLeaves: 0,
     linearBuffer: linear?.buffer,
