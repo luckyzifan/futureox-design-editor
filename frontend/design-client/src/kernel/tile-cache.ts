@@ -1,6 +1,8 @@
 /** World-aligned geometric tiles. Raster owners additionally key their exact
  * computation camera, document revision and render contract; algebraically
  * translating an old float computation is not a proof of bitwise equivalence. */
+/** Submit-time coverage tiers. A scheduling hint never changes tile pixels. */
+export type TileFillPriority = 0 | 1 | 2
 export type RasterTile = {
   key: string
   x: number

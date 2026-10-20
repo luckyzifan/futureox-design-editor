@@ -135,6 +135,9 @@ export type GpuScene = {
   disableSparseGlass?: boolean
   /** Worker-local proof owner for transform-only recompiles; never a document field. */
   interactionLease?: object
+  /** Worker-private tile-fill owner, attached after native packet decoding.
+   * Never serialized into documents or accepted from a render request. */
+  filterBatchLease?: object
   interactionSelection?: string[]
   /** Transient web-canvas filter reduction. Never set by export/readback. */
   displayFilters?: boolean
@@ -164,6 +167,9 @@ export type GpuScene = {
   vertices: number[] | Float32Array<ArrayBuffer>
 }
 export type Texture = {
+  /** Actual immutable rgba32float upload was checked after all CPU transforms.
+   * Any render/partial upload write revokes this finite-pixel certificate. */
+  finitePixels?: true
   /** Immutable rational coefficient metadata; exact prefix reason 4 only. */
   prefixRationalUnsupported?: boolean
   /** Lossless storage for proven 0/1 sample coverage; never a color target. */
@@ -239,6 +245,8 @@ export interface Driver {
   readonly constantTextureSampling?: boolean
   /** Materialize each step of meanFourRN without changing its operation order. */
   readonly sequentialSampleResolve?: boolean
+  /** Finite image paint + transparent normal blend + one exact resolve step. */
+  readonly exactImageResolveStep?: boolean
   readonly scalarAlphaFilter?: boolean
   readonly exactShadowOver?: boolean
   readonly scratchBytes?: number
@@ -299,6 +307,9 @@ export interface Driver {
   checkpoint?(reason?: import('./queue-wait-stats').QueueWaitReason, admission?: GpuAdmissionDiagnostic, completedPoolEpoch?: number): Promise<void>
   /** Raw premultiplied storage; used by exact Rust f64 effect composition. */
   readSurface?(source: Texture): Promise<Float32Array>
+  /** Bit-preserving physical RGBA32F copy. Coordinates are texture-local;
+   * this enqueues a copy, without proving GPU completion. */
+  copyRegion?(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]): void
   create(width: number, height: number): Texture
   createBinaryCoverage?(width: number, height: number): Texture
   createScalarCoverage?(width: number, height: number): Texture

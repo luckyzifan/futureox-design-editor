@@ -1,0 +1,11 @@
+*
+!.gitignore
+!*.mjs
+!*.py
+!*.md
+!summary.json
+!gpu-summary.json
+!accepted-build-manifest.json
+!shared-weights-candidate.patch
+!resolve-split-candidate.patch
+!strip-pool-candidate.patch

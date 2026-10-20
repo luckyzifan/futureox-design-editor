@@ -1,0 +1,298 @@
+diff --git a/frontend/design-client/src/kernel/gpu/prefix-band.ts b/frontend/design-client/src/kernel/gpu/prefix-band.ts
+index 90426bf..3a549d8 100644
+--- a/frontend/design-client/src/kernel/gpu/prefix-band.ts
++++ b/frontend/design-client/src/kernel/gpu/prefix-band.ts
+@@ -2,7 +2,8 @@
+ export const PREFIX_BYTES = 3275776
+ export const RESULT_BYTES = 901120
+ export const METADATA_BYTES = 16384
+-export const READBACK_BYTES = 1024
++export const READBACK_BYTES = 1008
++export const INDIRECT_BYTES = 16
+ export function prefixBandSize(length: number, maxBandLines = 255) {
+   if (!Number.isSafeInteger(length) || length < 1 || length > 16384) return 0
+   return Math.min(Math.floor(PREFIX_BYTES / (32 * (length + 1))),
+diff --git a/frontend/design-client/src/kernel/gpu/texture-prefix.ts b/frontend/design-client/src/kernel/gpu/texture-prefix.ts
+index 6f89247..18d7a33 100644
+--- a/frontend/design-client/src/kernel/gpu/texture-prefix.ts
++++ b/frontend/design-client/src/kernel/gpu/texture-prefix.ts
+@@ -1,31 +1,42 @@
+-import { PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES, prefixBandSize } from './prefix-band'
++import { PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES, INDIRECT_BYTES, prefixBandSize } from './prefix-band'
+ import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
+ /// <reference types="@webgpu/types" />
+ /** Exact tent filtering, including fractional radii and cropped outputs,
+  * with bounded GPU scratch. Uncertified rows retain the scalar exact path. */
+ export const PREFIX_SCRATCH_BYTES = 4 * 1024 * 1024
+-if (PREFIX_BYTES + RESULT_BYTES + METADATA_BYTES + READBACK_BYTES !== PREFIX_SCRATCH_BYTES)
++if (PREFIX_BYTES + RESULT_BYTES + METADATA_BYTES + READBACK_BYTES + INDIRECT_BYTES !== PREFIX_SCRATCH_BYTES)
+   throw new Error('scratch accounting')
+ type Rectangle = { x: number; y: number; w: number; h: number }
++export type PrefixPassTiming = (
++  stage: 'prefix-scan' | 'prefix-solve' | 'prefix-resolve',
++  width: number, height: number, radius: number, channel: number,
++) => GPUComputePassTimestampWrites | undefined
+ export class TexturePrefix {
+   private prefix?: GPUBuffer
+   private results?: GPUBuffer
+   private metadata?: GPUBuffer
+   private readback?: GPUBuffer
++  private indirect?: GPUBuffer
+   private scratchLayout: GPUBindGroupLayout
++  private resolveLayout: GPUBindGroupLayout
+   private sourceLayout: GPUBindGroupLayout
+   private scratchGroup?: GPUBindGroup
++  private resolveGroup?: GPUBindGroup
+   private scan!: GPUComputePipeline
+   private solve!: GPUComputePipeline
+   lastRenderPasses = 0
++  // Encoded draw commands, including an indirect draw with zero vertices.
++  lastDrawCalls = 0
+   lastComputePasses = 0
+   private resolve: GPURenderPipeline[] = []
++  private fallback: GPURenderPipeline[] = []
+   get scratchBytes() {
+     return this.prefix ? PREFIX_SCRATCH_BYTES : 0
+   }
+   private constructor(
+     private device: GPUDevice,
+     private uniform: (data: Float32Array) => GPUBufferBinding,
++    private measure?: PrefixPassTiming,
+   ) {
+     this.sourceLayout = device.createBindGroupLayout({
+       entries: [
+@@ -41,13 +52,15 @@ export class TexturePrefix {
+         })),
+       ],
+     })
+-    this.scratchLayout = device.createBindGroupLayout({
+-      entries: [0, 1, 2].map((binding) => ({
++    const renderEntries = [0, 1, 2].map((binding) => ({
+         binding,
+         visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
+         buffer: { type: 'storage' as const },
+-      })),
+-    })
++      }))
++    this.resolveLayout = device.createBindGroupLayout({ entries: renderEntries })
++    this.scratchLayout = device.createBindGroupLayout({ entries: [...renderEntries,
++      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
++    ] })
+   }
+   /** Caller must admit every byte before allocation. */
+   reserveScratch() {
+@@ -65,13 +78,25 @@ export class TexturePrefix {
+         size: READBACK_BYTES,
+         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+       })
++      this.indirect = this.device.createBuffer({
++        size: INDIRECT_BYTES,
++        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
++      })
+       this.scratchGroup = this.device.createBindGroup({
+         layout: this.scratchLayout,
+-        entries: [this.prefix, this.metadata, this.results].map((buffer, binding) => ({
++        entries: [this.prefix, this.metadata, this.results, this.indirect].map((buffer, binding) => ({
+           binding,
+           resource: { buffer: buffer! },
+         })),
+       })
++      // The indirect buffer must not also be bound as writable storage in a
++      // render usage scope. Compute writes it; this group contains only inputs.
++      this.resolveGroup = this.device.createBindGroup({
++        layout: this.resolveLayout,
++        entries: [this.prefix, this.metadata, this.results].map((buffer, binding) => ({
++          binding, resource: { buffer: buffer! },
++        })),
++      })
+     } catch (error) {
+       this.releaseScratch()
+       throw error
+@@ -83,19 +108,23 @@ export class TexturePrefix {
+     this.results?.destroy()
+     this.metadata?.destroy()
+     this.readback?.destroy()
++    this.indirect?.destroy()
+     this.prefix = undefined
+     this.results = undefined
+     this.metadata = undefined
+     this.readback = undefined
++    this.indirect = undefined
+     this.scratchGroup = undefined
++    this.resolveGroup = undefined
+   }
+   static async create(
+     device: GPUDevice,
+     uniform: (data: Float32Array) => GPUBufferBinding,
+     source: string,
+     reserve = true,
++    measure?: PrefixPassTiming,
+   ) {
+-    const candidate = new TexturePrefix(device, uniform)
++    const candidate = new TexturePrefix(device, uniform, measure)
+     try {
+       await candidate.initialize(source)
+       if (reserve) candidate.reserveScratch()
+@@ -120,20 +149,31 @@ export class TexturePrefix {
+       layout,
+       compute: { module, entryPoint: 'prefixSolve' },
+     })
++    const resolveLayout = this.device.createPipelineLayout({
++      bindGroupLayouts: [this.sourceLayout, this.resolveLayout],
++    })
+     for (let channel = 0; channel < 4; channel++)
+       this.resolve.push(
+         await this.device.createRenderPipelineAsync({
+-          layout,
++          layout: resolveLayout,
+           vertex: { module, entryPoint: 'quad' },
+           fragment: {
+             module,
+             entryPoint: 'prefixResolve',
+-            constants: { PREFIX_CHANNEL: channel },
+             targets: [{ format: 'rgba32float', writeMask: 1 << channel }],
+           },
+           primitive: { topology: 'triangle-list' },
+         }),
+       )
++    for (let channel = 0; channel < 4; channel++)
++      this.fallback.push(await this.device.createRenderPipelineAsync({
++        layout: resolveLayout,
++        vertex: { module, entryPoint: 'quad' },
++        fragment: { module, entryPoint: 'prefixResolveFallback',
++          constants: { PREFIX_CHANNEL: channel },
++          targets: [{ format: 'rgba32float', writeMask: 1 << channel }] },
++        primitive: { topology: 'triangle-list' },
++      }))
+   }
+   resetCounters(encoder: GPUCommandEncoder) {
+     if (this.metadata) encoder.clearBuffer(this.metadata, 0, 16)
+@@ -231,10 +271,11 @@ export class TexturePrefix {
+     maxBandLines = 255,
+   ): boolean {
+     this.lastRenderPasses = 0
++    this.lastDrawCalls = 0
+     this.lastComputePasses = 0
+     const getEncoder = typeof encoderSource === 'function' ? encoderSource : () => encoderSource
+     if (
+-      !this.scratchGroup ||
++      !this.scratchGroup || !this.resolveGroup || !this.indirect ||
+       !this.canEncode(target, inputs, base, originalRadius, kind, rect, channels, maxBandLines)
+     )
+       return false
+@@ -267,19 +308,26 @@ export class TexturePrefix {
+         })
+         // uniform() may submit and replace the caller's bounded command encoder.
+         const encoder = getEncoder()
+-        const scan = encoder.beginComputePass()
++        // Queue-ordered reset; no CPU readback or added completion fence.
++        encoder.clearBuffer(this.indirect)
++        const scan = encoder.beginComputePass({
++          timestampWrites: this.measure?.('prefix-scan', length, count, originalRadius, channel),
++        })
+         scan.setPipeline(this.scan)
+         scan.setBindGroup(0, group)
+         scan.setBindGroup(1, this.scratchGroup)
+         scan.dispatchWorkgroups(count)
+         scan.end()
+-        const solve = encoder.beginComputePass()
++        const solve = encoder.beginComputePass({
++          timestampWrites: this.measure?.('prefix-solve', outputLength, count, originalRadius, channel),
++        })
+         solve.setPipeline(this.solve)
+         solve.setBindGroup(0, group)
+         solve.setBindGroup(1, this.scratchGroup)
+         solve.dispatchWorkgroups(Math.ceil(outputLength / 64), count)
+         solve.end()
+         const resolve = encoder.beginRenderPass({
++          timestampWrites: this.measure?.('prefix-resolve', outputLength, count, originalRadius, channel),
+           colorAttachments: [
+             {
+               view: target.createView(),
+@@ -291,13 +339,19 @@ export class TexturePrefix {
+         })
+         resolve.setPipeline(this.resolve[channel])
+         resolve.setBindGroup(0, group)
+-        resolve.setBindGroup(1, this.scratchGroup)
++        resolve.setBindGroup(1, this.resolveGroup)
+         if (axis === 0) resolve.setScissorRect(0, first, rect.w, count)
+         else resolve.setScissorRect(first, 0, count, rect.h)
+         resolve.draw(3)
++        // Accepted pixels use a small shader with no exact-filter fallback
++        // reachable from its entry point. No rejected rows/pixels means zero
++        // indirect vertices, so the large fallback fragment never launches.
++        resolve.setPipeline(this.fallback[channel])
++        resolve.drawIndirect(this.indirect, 0)
+         resolve.end()
+         drawn = true
+         this.lastRenderPasses++
++        this.lastDrawCalls += 2
+         this.lastComputePasses += 2
+       }
+     }
+diff --git a/frontend/design-client/src/kernel/gpu/texture-prefix.wgsl b/frontend/design-client/src/kernel/gpu/texture-prefix.wgsl
+index 7267e3e..9898aab 100644
+--- a/frontend/design-client/src/kernel/gpu/texture-prefix.wgsl
++++ b/frontend/design-client/src/kernel/gpu/texture-prefix.wgsl
+@@ -8,6 +8,10 @@ struct PrefixMetadata {
+ @group(1) @binding(0) var<storage,read_write> prefixes:array<PrefixPair>;
+ @group(1) @binding(1) var<storage,read_write> prefixMetadata:PrefixMetadata;
+ @group(1) @binding(2) var<storage,read_write> prefixResults:array<vec2<u32>>;
++@group(1) @binding(3) var<storage,read_write> prefixIndirect:array<atomic<u32>>;
++fn prefixNeedsFallback(){
++ atomicStore(&prefixIndirect[0],3u);atomicStore(&prefixIndirect[1],1u);
++}
+ // Mode22 uniform contract: u48=(length,first,count,axis),
+ // u49=(channel,integer-radius or linear-interior reach,rational flag,0).
+ // u50=(output offset along source axis,output length,cross-axis offset,0).
+@@ -15,7 +19,7 @@ fn prefixPixel(x:u32,line:u32)->vec2<i32>{
+  if(u(48u).w<0.5){return vec2<i32>(i32(x),i32(line));}
+  return vec2<i32>(i32(line),i32(x));
+ }
+-fn prefixDecline(line:u32,reason:u32){prefixMetadata.lines[line]=vec4<u32>(0u,0u,0u,reason);atomicAdd(&prefixMetadata.declined,1u);}
++fn prefixDecline(line:u32,reason:u32){prefixMetadata.lines[line]=vec4<u32>(0u,0u,0u,reason);atomicAdd(&prefixMetadata.declined,1u);prefixNeedsFallback();}
+ fn prefixCoefficient(distance:u32)->PrefixInt {
+  let cw=rfLoad(0u);var value=PrefixInt(0u);
+  for(var i=0u;i<cw&&i<4u;i=i+1u){value[i]=rfLoad(4u+cw*(1u+distance)+i);}
+@@ -126,6 +130,9 @@ fn prefixRational(base:u32,x:u32,length:u32,interior:u32,quantum:i32)->vec2<u32>
+  }
+  return prefix_round_wide(numerator,prefixDenominator(),quantum);
+ }
++fn prefixResult(index:u32,value:vec2<u32>){
++ prefixResults[index]=value;if(value.y==0u){prefixNeedsFallback();}
++}
+ @compute @workgroup_size(64)
+ fn prefixSolve(@builtin(global_invocation_id) id:vec3<u32>){
+  let length=u32(u(48u).x);let count=u32(u(48u).z);let radius=u32(u(49u).y);let x=id.x+u32(u(50u).x);let localLine=id.y;
+@@ -133,7 +140,7 @@ fn prefixSolve(@builtin(global_invocation_id) id:vec3<u32>){
+  if(localLine>=count||id.x>=outputLength){return;}let resultIndex=localLine*outputLength+id.x;
+  prefixResults[resultIndex]=vec2<u32>(0u);let lineInfo=prefixMetadata.lines[localLine];if(lineInfo.z==0u){return;}
+  let base=localLine*(length+1u);let left=u32(max(0,i32(x)-i32(radius)+1));let right=min(length,x+radius);
+- if(u(49u).z>0.5){prefixResults[resultIndex]=prefixRational(base,x,length,radius,i32(lineInfo.x)-150);return;}
++ if(u(49u).z>0.5){prefixResult(resultIndex,prefixRational(base,x,length,radius,i32(lineInfo.x)-150));return;}
+  let before=prefixPairAt(base,left);let center=prefixPairAt(base,x+1u);let after=prefixPairAt(base,right);
+  let a=prefix_mul_i32(prefix_sub(center.sum,before.sum),i32(radius)-i32(x));
+  let b=prefix_mul_i32(prefix_sub(after.sum,center.sum),i32(radius)+i32(x));
+@@ -141,7 +148,7 @@ fn prefixSolve(@builtin(global_invocation_id) id:vec3<u32>){
+  var numerator=prefix_sub(prefix_mul_u32(triangle,6u),prefix_mul_u32(prefixValueAt(base,x),2u));
+  if(x>=radius){numerator=prefix_add(numerator,prefixValueAt(base,x-radius));}
+  if(x+radius<length){numerator=prefix_add(numerator,prefixValueAt(base,x+radius));}
+- prefixResults[resultIndex]=prefix_round_ratio(numerator,6u*radius*radius,i32(lineInfo.x)-150);
++ prefixResult(resultIndex,prefix_round_ratio(numerator,6u*radius*radius,i32(lineInfo.x)-150));
+ }
+ override PREFIX_CHANNEL:u32=0u;
+ @fragment fn prefixResolve(@builtin(position) position:vec4<f32>)->@location(0) vec4<f32>{
+@@ -149,6 +156,13 @@ override PREFIX_CHANNEL:u32=0u;
+  let x=select(pixel.y,pixel.x,axis<0.5);let localLine=select(pixel.x,pixel.y,axis<0.5)-u32(u(48u).y);
+  let value=prefixResults[localLine*u32(u(50u).y)+x];
+  if(prefixMetadata.lines[localLine].z!=0u&&value.y!=0u){return vec4<f32>(bitcast<f32>(value.x));}
++ return vec4<f32>(0.0);
++}
++@fragment fn prefixResolveFallback(@builtin(position) position:vec4<f32>)->@location(0) vec4<f32>{
++ let pixel=vec2<u32>(floor(position.xy));let axis=u(48u).w;
++ let x=select(pixel.y,pixel.x,axis<0.5);let localLine=select(pixel.x,pixel.y,axis<0.5)-u32(u(48u).y);
++ let value=prefixResults[localLine*u32(u(50u).y)+x];
++ if(prefixMetadata.lines[localLine].z!=0u&&value.y!=0u){discard;}
+  let p=position.xy+u(0u).xy;let direction=select(vec2<f32>(0.0,1.0),vec2<f32>(1.0,0.0),axis<0.5);
+  return vec4<f32>(exactFilterChannel(p,direction,PREFIX_CHANNEL));
+ }

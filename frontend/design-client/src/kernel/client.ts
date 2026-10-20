@@ -191,6 +191,8 @@ export type KernelOptions = {
   interactionWindow?: import('./gpu/types').Rect
   previewTileFallback?: boolean
   tileViewport?: RasterTile[]
+  /** Parallel original-index hints: holes, coarse coverage, sharp coverage. */
+  tileFillPriorities?: import('./tile-cache').TileFillPriority[]
   /** Bounded native viewport capture on the same world sample lattice as tiles. */
   captureViewport?: import('./gpu/types').Rect
   /** Shared geometry preparation guard for a complete camera plan. */
@@ -789,7 +791,7 @@ export class KernelClient {
     const channel = options.interactionChannel ? 'interaction' : 'canvas'
     const previewEpoch = this.previewEpochs[channel], tileEpoch = this.tileFillEpoch
     const cancelled = () => signal?.aborted || ((!!options.tileViewport || options.livePreview === true) && this.previewEpochs[channel] !== previewEpoch) ||
-      (!!options.tileViewport && this.tileFillEpoch !== tileEpoch)
+      (channel === 'canvas' && !!options.tileViewport && this.tileFillEpoch !== tileEpoch)
     // A GPU-capable request may initialize a worker-held device; wait for a
     // page GPU slot first. CPU-only requests never queue, and the
     // immediately-granted path stays synchronous so message order (and thus
@@ -837,8 +839,13 @@ export class KernelClient {
         // A cancelled queued preview can be omitted because the next immutable
         // snapshot is diffed from the last actually submitted snapshot. Hold the
         // submission fence until mutation ACK, not the cancellable pixel promise.
-        const fenceMutation = !!nativeSerializer && !interaction && options.renderIntent === 'preview' &&
-          (options.livePreview === true || !!options.tileViewport) && !png && !readback &&
+        // The surface first sends an empty canvas tile plan to synchronize
+        // authored damage. It needs the same pre-dispatch admission fence:
+        // cancelling pixels cannot drop a patch already accepted by the worker.
+        const canvasSyncOnly = options.renderIntent === 'canvas' &&
+          Array.isArray(options.tileViewport) && options.tileViewport.length === 0
+        const fenceMutation = !!nativeSerializer && !interaction &&
+          (canvasSyncOnly || options.renderIntent === 'preview' && (options.livePreview === true || !!options.tileViewport)) && !png && !readback &&
           !options.exportFormat && !options.exportRegion && !options.pixelPreview &&
           (serialized !== undefined || patch !== undefined)
         let releaseSynchronization: (() => void) | undefined
@@ -902,8 +909,8 @@ export class KernelClient {
             throw error
           }) }
       }
-      // Serialize/submit in revision order. Preview mutations release on the real
-      // synchronization ACK; pixel rendering never holds the admission fence.
+      // Serialize/submit in revision order. Transient and empty-plan canvas
+      // mutations release on the real synchronization ACK, not pixel completion.
       if (nativeSerializer) {
         const pending = this.nativeSubmission.then(prepare)
         this.nativeSubmission = pending.then(({ synchronized }) => synchronized, () => undefined)

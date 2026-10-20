@@ -1,4 +1,7 @@
 // Shared scratch layout for the exact GPU prefix implementation.
+// Operator crossover measurements include the fractional 117 drag radius.
+// This is a cost policy; per-line exactness and resource proofs still apply.
+export const PREFIX_MIN_RADIUS = 32
 export const PREFIX_BYTES = 3275776
 export const RESULT_BYTES = 901120
 export const METADATA_BYTES = 16384

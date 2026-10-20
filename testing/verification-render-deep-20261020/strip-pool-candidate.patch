@@ -1,0 +1,336 @@
+diff --git a/frontend/design-client/src/kernel/gpu/renderer.ts b/frontend/design-client/src/kernel/gpu/renderer.ts
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -1,6 +1,7 @@
+ import { prefixAlignedStrip } from './prefix-band'
+ import { IMAGE_RESOLVE_STEP_MODE } from './image-resolve-step'
+ import { exactFilterKey, fullSampleCoverage, HorizontalFilterCache } from './horizontal-filter-cache'
++import { stripScratchPlan, type StripScratchDemand } from './strip-scratch-plan'
+ import { gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
+ import { markRenderFailure } from '../render-failure-telemetry'
+ import { backdropEffect, backdropRadius, classifyCompiledSourceReuse } from '../render-dependency'
+@@ -156,6 +157,9 @@
+   private horizontalFilterHits = 0
+   private horizontalFilterPixels = 0
+   private horizontalFilterRows = 0
++  private stripPoolMaintenanceSkips = 0
++  private stripPoolReusedBytes = 0
++  private stripPoolMissingBytesHighWater = 0
+   /** Called only by the worker that created the local tile-fill owner. */
+   releaseFilterBatch(lease: object) { this.horizontalFilters.clear(lease) }
+   private backdropReuseFrames=0
+@@ -164,7 +168,9 @@
+   private backdropAdmittedFrames=0
+   memoryPolicy() { return { workingBudgetBytes: this.frameBudget, interactionBudgetBytes: this.interactionBudget,
+     backdropReuseFrames:this.backdropReuseFrames,backdropReusePixels:this.backdropReusePixels,
+-    backdropEligibleFrames:this.backdropEligibleFrames,backdropAdmittedFrames:this.backdropAdmittedFrames } }
++    backdropEligibleFrames:this.backdropEligibleFrames,backdropAdmittedFrames:this.backdropAdmittedFrames,
++    stripPoolMaintenanceSkips:this.stripPoolMaintenanceSkips,stripPoolReusedBytes:this.stripPoolReusedBytes,
++    stripPoolMissingBytesHighWater:this.stripPoolMissingBytesHighWater } }
+   /** Retained subtree pixels have their own cap; they are not scratch. */
+   private get workingBytes() { return this.bytes - (this.driver.captureDisplay ? this.interactionBytes : 0) }
+   private get interactionBudget() {
+@@ -1754,6 +1760,25 @@
+     const missing=Math.max(0,copies-available)
+     if(missing)await this.reclaimScratch(r.w*r.h*16*missing)
+   }
++  /** A warmed fixed-size strip can reuse its pool without retiring anything.
++   * Every possible new allocation is counted first, including the short tail.
++   * Unknown uploads, pending retirement and real pressure use the old fence. */
++  private async reclaimStripScratch(demands: StripScratchDemand[], warmed: boolean) {
++    this.checkFrameCurrent()
++    const pendingCoordinates = [...this.coordinateMaps].some(texture => !this.filterImageFields?.pinned.has(texture))
++    if (!warmed || !this.optimized || this.driver.name !== 'webgpu' || !this.driver.managed ||
++        import.meta.env.VITE_DESIGN_REUSE_STRIP_POOL === '0' || this.retiredUploads.length ||
++        this.retiredKernels.length || pendingCoordinates) return this.reclaimScratch()
++    const plan = stripScratchPlan(this.free, demands)
++    if (!plan) return this.reclaimScratch()
++    if (this.workingBytes + plan.missingBytes > this.frameBudget)
++      return this.reclaimScratch(plan.missingBytes)
++    // No resources are destroyed here. Current-epoch pool storage is reusable
++    // in queue order without declaring any submitted GPU commands complete.
++    this.stripPoolMaintenanceSkips++
++    this.stripPoolReusedBytes += plan.reusedBytes
++    this.stripPoolMissingBytesHighWater = Math.max(this.stripPoolMissingBytesHighWater, plan.missingBytes)
++  }
+   private async reclaimScratch(required = 0) {
+     this.checkFrameCurrent()
+     const pressure = required > 0 && this.workingBytes + required > this.frameBudget
+@@ -2455,10 +2480,20 @@
+       // ordered pool immediately rather than keep two cache entries alive.
+       this.horizontalFilters.clear()
+     }
++    let completedStrips = 0
+     for (const part of missing) for (let y=part.y;y<part.y+part.h;y+=stripRows) {
+-      await this.reclaimScratch()
++      const region={x:input.x,y,w:input.w,h:Math.min(stripRows,part.y+part.h-y)}
++      const fields = this.filterImageFields!
++      const imageStillResident = reusable && [...this.images.values()].some(surface => surface.texture === reusable.image &&
++        surface.texture.finitePixels === true)
++      const warmed = !!imageStillResident && completedStrips > 0 && fields.fields.size === 4 &&
++        [...fields.fields.values()].every(field => !!field && fields.pinned.has(field.texture))
++      await this.reclaimStripScratch([
++        {width:input.w,height:region.h,count:2},
++        {width:input.w,height:region.h,count:1,binary:true},
++        {width:output.w,height:region.h,count:1},
++      ], warmed)
+       const pause=this.yieldEncoding(); if(pause) await pause
+-      const region={x:input.x,y,w:input.w,h:Math.min(stripRows,part.y+part.h-y)}
+       let resolved:Surface|undefined
+       for(let i=0;i<4;i++) {
+         const fused = this.resolveFilterImageSample(n, region, i, resolved)
+@@ -2473,6 +2508,7 @@
+       const u=parameters(horizontal.rect,filtered.rect);u[16]=0
+       this.driver.pass(horizontal.texture,u,[filtered.texture],{x:0,y:y-input.y,w:output.w,h:region.h})
+       this.release(filtered)
++      completedStrips++
+     }
+     await this.reclaimScratch(output.w*output.h*16 + output.h*64*16)
+     const blurred=this.acquire(output)
+@@ -2481,8 +2517,8 @@
+     // delay camera-presentation messages behind hundreds of dispatches.
+     for(let x=output.x;x<output.x+output.w;x+=stripColumns){
+       const pause=this.yieldEncoding();if(pause)await pause
+-      await this.reclaimScratch()
+       const region={x,y:output.y,w:Math.min(stripColumns,output.x+output.w-x),h:output.h}
++      await this.reclaimStripScratch([{width:region.w,height:region.h,count:1}], !!reusable && x > output.x)
+       const filtered=this.exactTentAxis(horizontal,radius,1,region)
+       const u=parameters(output,filtered.rect);u[16]=0
+       this.driver.pass(blurred.texture,u,[filtered.texture],{x:x-output.x,y:0,w:region.w,h:region.h})
+@@ -3410,6 +3446,7 @@
+     } finally { this.frameCurrent = undefined }
+   }
+   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
++    this.stripPoolMaintenanceSkips = this.stripPoolReusedBytes = this.stripPoolMissingBytesHighWater = 0
+     this.horizontalFilters.begin(scene.filterBatchLease)
+     this.horizontalFilterHits = this.horizontalFilterPixels = this.horizontalFilterRows = 0
+     this.encodeYield.begin()
+@@ -3614,6 +3651,9 @@
+         horizontalFilterPixels: this.horizontalFilterPixels,
+         horizontalFilterRows: this.horizontalFilterRows,
+         horizontalFilterBytes: this.horizontalFilters.bytes,
++        stripPoolMaintenanceSkips: this.stripPoolMaintenanceSkips,
++        stripPoolReusedBytes: this.stripPoolReusedBytes,
++        stripPoolMissingBytesHighWater: this.stripPoolMissingBytesHighWater,
+         retainedGroupHits: this.interactionHits,
+         retainedPrefixHits: this.prefixHits,
+         pairedFilterPasses: this.driver.pairedFilterPasses || 0,
+diff --git a/frontend/design-client/src/kernel/render-worker.ts b/frontend/design-client/src/kernel/render-worker.ts
+--- a/frontend/design-client/src/kernel/render-worker.ts
++++ b/frontend/design-client/src/kernel/render-worker.ts
+@@ -1170,6 +1170,11 @@
+                       horizontalFilterPixels: result.horizontalFilterPixels,
+                       horizontalFilterRows: result.horizontalFilterRows,
+                     } : {}),
++                    ...('stripPoolMaintenanceSkips' in result ? {
++                      stripPoolMaintenanceSkips: result.stripPoolMaintenanceSkips,
++                      stripPoolReusedBytes: result.stripPoolReusedBytes,
++                      stripPoolMissingBytesHighWater: result.stripPoolMissingBytesHighWater,
++                    } : {}),
+                     milliseconds: result.milliseconds + (cached ? 0 : verifyMs),
+                     compileMs: result.compileMs + (cached ? 0 : verifyMs),
+                     graphMs: result.graphMs,
+@@ -1666,6 +1671,7 @@
+   const { renderPreviewTiles, renderBitmapPreviewTiles } = await import('./preview-tiles')
+   let hybridEffects = 0, materialFieldHits = 0, materialFieldBuilds = 0, materialFieldBuildMs = 0, materialFieldUploadBytes = 0
+   let horizontalFilterHits = 0, horizontalFilterPixels = 0, horizontalFilterRows = 0
++  let stripPoolMaintenanceSkips = 0, stripPoolReusedBytes = 0, stripPoolMissingBytesHighWater = 0
+   const managedOutput = !!(executionPolicy?.hdrCompositing && color)
+   const admissionKey=JSON.stringify(activeLane) + "/" + JSON.stringify([laneState.documentGeneration,laneState.resourceGeneration,options.pageId,options.view.zoom,
+     options.rasterProfile,options.interactiveEffects,backend,managedOutput,canvasDisplayFilters,canvasMath,referenceGpu])
+@@ -1758,6 +1764,9 @@
+         horizontalFilterHits += result.horizontalFilterHits
+         horizontalFilterPixels += result.horizontalFilterPixels
+         horizontalFilterRows += result.horizontalFilterRows
++        stripPoolMaintenanceSkips += result.stripPoolMaintenanceSkips
++        stripPoolReusedBytes += result.stripPoolReusedBytes
++        stripPoolMissingBytesHighWater = Math.max(stripPoolMissingBytesHighWater, result.stripPoolMissingBytesHighWater)
+         drawCalls += result.drawCalls
+         triangles += result.triangles
+         graphMs += result.graphMs
+@@ -1871,6 +1880,9 @@
+         horizontalFilterHits += result.horizontalFilterHits
+         horizontalFilterPixels += result.horizontalFilterPixels
+         horizontalFilterRows += result.horizontalFilterRows
++        stripPoolMaintenanceSkips += result.stripPoolMaintenanceSkips
++        stripPoolReusedBytes += result.stripPoolReusedBytes
++        stripPoolMissingBytesHighWater = Math.max(stripPoolMissingBytesHighWater, result.stripPoolMissingBytesHighWater)
+         drawCalls += result.drawCalls
+         triangles += result.triangles
+         graphMs += result.graphMs
+@@ -1945,6 +1957,7 @@
+       description,
+       hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
+       horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
++      stripPoolMaintenanceSkips, stripPoolReusedBytes, stripPoolMissingBytesHighWater,
+       compileMs,
+       renderMs: performance.now() - start - compileMs,
+       milliseconds: performance.now() - start,
+@@ -1986,6 +1999,7 @@
+     description,
+     hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
+     horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
++    stripPoolMaintenanceSkips, stripPoolReusedBytes, stripPoolMissingBytesHighWater,
+     compileMs,
+     renderMs: performance.now() - start - compileMs,
+     milliseconds: performance.now() - start,
+diff --git a/frontend/design-desktop/src/render-terminal-diagnostics.mjs b/frontend/design-desktop/src/render-terminal-diagnostics.mjs
+--- a/frontend/design-desktop/src/render-terminal-diagnostics.mjs
++++ b/frontend/design-desktop/src/render-terminal-diagnostics.mjs
+@@ -2,7 +2,8 @@
+ const tileCostLimits = {tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
+ export const PREFIX = '[render-diag] '
+ const tileOrderLimits = {tileSourceIndex:[0,255],tileOrderIndex:[0,255],tileColumnNextIndex:[-1,255],
+- tileColumnReordered:[0,1],tileColumnDeltaY:[-1e7,1e7],filterColumnPlans:[0,256],filterColumnReorders:[0,256]}
++ tileColumnReordered:[0,1],tileColumnDeltaY:[-1e7,1e7],filterColumnPlans:[0,256],filterColumnReorders:[0,256],
++ stripPoolMaintenanceSkips:[0,1e9],stripPoolReusedBytes:[0,1e15],stripPoolMissingBytesHighWater:[0,1073741824]}
+ const events = new Set(['canvas-action','grid-state','frame-window','operation','request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage','failure-summary','device-lifecycle'])
+ const failureLimits = {failureCategory:6,lastFailureCategory:6,failureStage:13,lastFailureStage:13,
+  failureCode:255,lastFailureCode:255,errorClassCode:7,rendererCode:3,compileAttempts:65535,hydrateAttempts:65535,graphAttempts:65535,fallbackAttempts:65535,failureAttempts:65535}
+diff --git a/frontend/design-desktop/test/render-terminal-diagnostics.test.mjs b/frontend/design-desktop/test/render-terminal-diagnostics.test.mjs
+--- a/frontend/design-desktop/test/render-terminal-diagnostics.test.mjs
++++ b/frontend/design-desktop/test/render-terminal-diagnostics.test.mjs
+@@ -18,6 +18,14 @@
+     assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(sample).map(key=>[key,value]))),{})
+   assert.deepEqual(sanitizeFields({tileSourceIndex:256,tileOrderIndex:-1,tileColumnNextIndex:-2,
+     tileColumnReordered:2,tileColumnDeltaY:1e7+1,filterColumnPlans:257,filterColumnReorders:-1}),{})
++})
++test('strip reuse observations retain bounded integer counts without changing retirement diagnostics',()=>{
++  const fields={stripPoolMaintenanceSkips:120,stripPoolReusedBytes:789000000,stripPoolMissingBytesHighWater:8232288,
++    admissionKind:1,admissionPressure:1,admissionRequiredBytes:20971520}
++  assert.deepEqual(sanitizeFields(fields),fields)
++  for(const value of [NaN,Infinity,-1,.5,'1',true,{}])
++    assert.deepEqual(sanitizeFields({stripPoolMaintenanceSkips:value,stripPoolReusedBytes:value,stripPoolMissingBytesHighWater:value}),{})
++  assert.deepEqual(sanitizeFields({stripPoolMaintenanceSkips:1e9+1,stripPoolReusedBytes:1e15+1,stripPoolMissingBytesHighWater:1073741825}),{})
+ })
+ test('disabled path never reads clocks, schedules, serializes payloads, or emits',()=>{
+   const fail=()=>{throw Error('disabled side effect')}
+diff --git a/frontend/design-client/src/kernel/gpu/strip-scratch-plan.ts b/frontend/design-client/src/kernel/gpu/strip-scratch-plan.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/strip-scratch-plan.ts
+@@ -0,0 +1,31 @@
++import type { Texture } from './types'
++
++export type StripScratchDemand = { width: number; height: number; count: number; binary?: boolean }
++/** Count only physical same-format/same-size free storage. Reusing it is
++ * queue-ordered; this is an allocation estimate, never a completion proof.
++ * Add demands sharing a key so one pooled texture cannot satisfy two slots. */
++export function stripScratchPlan(free: ReadonlyMap<string, readonly Texture[]>, demands: readonly StripScratchDemand[]) {
++  const slots = new Map<string, StripScratchDemand>()
++  for (const demand of demands) {
++    if (![demand.width, demand.height, demand.count].every(Number.isSafeInteger) ||
++        demand.width < 1 || demand.height < 1 || demand.width > 8192 || demand.height > 8192 ||
++        demand.count < 1 || demand.count > 8) return
++    const key = `${demand.binary ? 'binary:' : ''}${demand.width}:${demand.height}`
++    const old = slots.get(key)
++    slots.set(key, { ...demand, count: demand.count + (old?.count || 0) })
++  }
++  if (!slots.size || slots.size > 4) return
++  let missingBytes = 0, reusedBytes = 0, totalBytes = 0
++  for (const [key, demand] of slots) {
++    if (demand.count > 8) return
++    const bytes = demand.width * demand.height * (demand.binary ? 4 : 16)
++    const available = [...new Set(free.get(key) || [])].filter(texture =>
++      texture.width === demand.width && texture.height === demand.height && texture.bytes === bytes &&
++      !!texture.binaryCoverage === !!demand.binary && !texture.scalarCoverage)
++    const reused = Math.min(available.length, demand.count)
++    totalBytes += bytes * demand.count
++    reusedBytes += bytes * reused
++    missingBytes += bytes * (demand.count - reused)
++  }
++  return { missingBytes, reusedBytes, totalBytes }
++}
+diff --git a/frontend/design-client/src/kernel/gpu/strip-scratch-plan.test.ts b/frontend/design-client/src/kernel/gpu/strip-scratch-plan.test.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/strip-scratch-plan.test.ts
+@@ -0,0 +1,88 @@
++import { afterEach, expect, test, vi } from 'vitest'
++import { stripScratchPlan, type StripScratchDemand } from './strip-scratch-plan'
++import { GpuRenderer } from './renderer'
++import type { Driver, Texture } from './types'
++
++afterEach(()=>vi.unstubAllEnvs())
++const MiB=1024*1024
++function texture(width:number,height:number,binary=false):Texture {
++  return {width,height,bytes:width*height*(binary?4:16),resource:{},...(binary?{binaryCoverage:true as const}:{})} as Texture
++}
++const demands=(height:number):StripScratchDemand[]=>[
++  {width:3484,height,count:2},{width:3484,height,count:1,binary:true},{width:1032,height,count:1},
++]
++function fixture() {
++  let completed=false
++  const live=new Set<Texture>(),destroyed:Texture[]=[],created:Texture[]=[]
++  const create=(w:number,h:number,binary=false)=>{const t=texture(w,h,binary);live.add(t);created.push(t);return t}
++  const driver={name:'webgpu',managed:true,scratchBytes:0,resourceEpoch:2,completedResourceEpoch:0,
++    create:(w:number,h:number)=>create(w,h),createBinaryCoverage:(w:number,h:number)=>create(w,h,true),
++    destroy(t:Texture){expect(completed).toBe(true);destroyed.push(t);live.delete(t)},
++    checkpoint:vi.fn(async()=>{completed=true}),
++  } as unknown as Driver
++  const renderer=new GpuRenderer(driver,true,false) as any;renderer.scene={}
++  return {renderer,driver,live,destroyed,created,complete(){completed=true}}
++}
++
++test('exact physical format, size and multiplicity determine missing bytes; aliases cannot count twice',()=>{
++  const a=texture(100,20),b=texture(100,20,true),free=new Map<string,Texture[]>([['100:20',[a,a]],['binary:100:20',[b]]])
++  const plan=stripScratchPlan(free,[{width:100,height:20,count:1},{width:100,height:20,count:2},{width:100,height:20,count:1,binary:true}])!
++  expect(plan).toEqual({totalBytes:104000,reusedBytes:40000,missingBytes:64000})
++  free.set('100:20',[texture(100,20,true),texture(100,19),{...a,scalarCoverage:true}])
++  expect(stripScratchPlan(free,[{width:100,height:20,count:1}])!.missingBytes).toBe(32000)
++  for(const width of [0,-1,.5,NaN,Infinity,8193])expect(stripScratchPlan(free,[{width,height:20,count:1}])).toBeUndefined()
++})
++
++test('warm full strips and different-height tails stay inside the same hard ledger without a maintenance fence',async()=>{
++  const f=fixture(),r=f.renderer;r.bytes=200*MiB
++  let first:Texture[]|undefined
++  for(const height of [58,58,58,58,30,58,30]){
++    await r.reclaimStripScratch(demands(height),true)
++    const allocated=[r.acquire({x:0,y:0,w:3484,h:height}),r.acquire({x:0,y:0,w:3484,h:height}),
++      r.acquire({x:0,y:0,w:3484,h:height},true),r.acquire({x:0,y:0,w:1032,h:height})]
++    if(height===58){if(first)expect(allocated.map((s:any)=>s.texture)).toEqual([first[1],first[0],first[2],first[3]]);first=allocated.map((s:any)=>s.texture)}
++    expect(r.workingBytes).toBeLessThanOrEqual(256*MiB)
++    r.release(...allocated)
++  }
++  expect(f.created).toHaveLength(8);expect(f.destroyed).toEqual([]);expect(f.driver.checkpoint).not.toHaveBeenCalled()
++  expect(r.memoryPolicy().stripPoolMaintenanceSkips).toBe(7)
++  expect(r.memoryPolicy().stripPoolMissingBytesHighWater).toBe(stripScratchPlan(new Map(),demands(58))!.missingBytes)
++  // Scope exit still uses the original completed-checkpoint retirement path.
++  await r.reclaimScratch();expect(f.driver.checkpoint).toHaveBeenCalledOnce();expect(f.destroyed).toHaveLength(8)
++})
++
++test('a tail that cannot fit requests positive-byte pressure and never destroys before completion',async()=>{
++  const f=fixture(),r=f.renderer;r.bytes=250*MiB
++  const old=texture(6144,512);r.free.set('6144:512',[old]);f.live.add(old)
++  let finish!:()=>void
++  f.driver.checkpoint=vi.fn(async()=>{await new Promise<void>(resolve=>{finish=resolve});f.complete()})
++  const pending=r.reclaimStripScratch([{width:2560,height:512,count:1}],true)
++  expect(f.driver.checkpoint).toHaveBeenCalledOnce();expect(f.destroyed).toEqual([]);expect(r.bytes).toBe(250*MiB)
++  finish();await pending
++  expect(f.destroyed).toEqual([old]);expect(r.workingBytes+20*MiB).toBeLessThanOrEqual(r.frameBudget)
++  expect(r.memoryPolicy().stripPoolMaintenanceSkips).toBe(0)
++})
++
++test('cold strips, unsupported policy, retired uploads and unpinned coordinates retain old reclamation',async()=>{
++  for(const kind of ['cold','disabled','webgl','unmanaged','retired-upload','retired-kernel','coordinate']){
++    const f=fixture(),r=f.renderer,original=vi.spyOn(r,'reclaimScratch').mockResolvedValue(undefined)
++    if(kind==='disabled')vi.stubEnv('VITE_DESIGN_REUSE_STRIP_POOL','0')
++    if(kind==='webgl')(f.driver as any).name='webgl2'
++    if(kind==='unmanaged')(f.driver as any).managed=false
++    if(kind==='retired-upload')r.retiredUploads.push(texture(1,1))
++    if(kind==='retired-kernel')r.retiredKernels.push({texture:texture(1,1),epoch:1})
++    if(kind==='coordinate')r.coordinateMaps.add(texture(1,1))
++    await r.reclaimStripScratch(demands(58),kind!=='cold')
++    expect(original).toHaveBeenCalledOnce();expect(r.memoryPolicy().stripPoolMaintenanceSkips).toBe(0);vi.unstubAllEnvs()
++  }
++})
++
++test('pinned whole-support coordinate fields remain alive and cancellation still precedes all work',async()=>{
++  const f=fixture(),r=f.renderer,field=texture(3484,2)
++  r.coordinateMaps.add(field);r.filterImageFields={pinned:new Set([field]),fields:new Map()}
++  await r.reclaimStripScratch(demands(58),true)
++  expect(f.driver.checkpoint).not.toHaveBeenCalled();expect(f.destroyed).not.toContain(field)
++  r.frameCurrent=()=>false
++  await expect(r.reclaimStripScratch(demands(58),true)).rejects.toThrow('PREVIEW_CANCELLED')
++  expect(r.memoryPolicy().stripPoolMaintenanceSkips).toBe(1)
++})

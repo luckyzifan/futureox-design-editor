@@ -957,9 +957,10 @@ export function ProgressiveSurfaceImpl(
             // this latest plan waited for the worker. Do not rasterize twice.
             const pending = chunk.filter(tile => !isResident(tile))
             if (!pending.length) return Promise.resolve(undefined)
+            const priorities = new Map<RasterTile, import('./tile-cache').TileFillPriority>()
             const ordered = prioritizeUncoveredTiles(pending,
               [...tileRef.current.values()].filter(tile => tile.document === doc &&
-                tile.revision === contract.revision && ready.current.has(tile.key)), viewport)
+                tile.revision === contract.revision && ready.current.has(tile.key)), viewport, priorities)
             return c.render(
             doc,
             {
@@ -972,6 +973,7 @@ export function ProgressiveSurfaceImpl(
               pixelPreview: props.pixelPreview || undefined,
               rasterProfile,
               tileViewport: ordered,
+              ...(prefetchOnly ? {} : { tileFillPriorities: ordered.map(tile => priorities.get(tile)!) }),
               tilePrepareViewport: import.meta.env.VITE_DESIGN_PREPARE_CACHE === '0' ? undefined :
                 tileBatchPrepareViewport(plan, prefetch.rim, ordered, renderCamera),
               renderIntent: 'canvas',

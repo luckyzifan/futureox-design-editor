@@ -7,6 +7,10 @@ export const PREFIX_SCRATCH_BYTES = 4 * 1024 * 1024
 if (PREFIX_BYTES + RESULT_BYTES + METADATA_BYTES + READBACK_BYTES !== PREFIX_SCRATCH_BYTES)
   throw new Error('scratch accounting')
 type Rectangle = { x: number; y: number; w: number; h: number }
+export type PrefixPassTiming = (
+  stage: 'prefix-scan' | 'prefix-solve' | 'prefix-resolve',
+  width: number, height: number, radius: number, channel: number,
+) => GPUComputePassTimestampWrites | undefined
 export class TexturePrefix {
   private prefix?: GPUBuffer
   private results?: GPUBuffer
@@ -26,6 +30,7 @@ export class TexturePrefix {
   private constructor(
     private device: GPUDevice,
     private uniform: (data: Float32Array) => GPUBufferBinding,
+    private measure?: PrefixPassTiming,
   ) {
     this.sourceLayout = device.createBindGroupLayout({
       entries: [
@@ -94,8 +99,9 @@ export class TexturePrefix {
     uniform: (data: Float32Array) => GPUBufferBinding,
     source: string,
     reserve = true,
+    measure?: PrefixPassTiming,
   ) {
-    const candidate = new TexturePrefix(device, uniform)
+    const candidate = new TexturePrefix(device, uniform, measure)
     try {
       await candidate.initialize(source)
       if (reserve) candidate.reserveScratch()
@@ -267,19 +273,24 @@ export class TexturePrefix {
         })
         // uniform() may submit and replace the caller's bounded command encoder.
         const encoder = getEncoder()
-        const scan = encoder.beginComputePass()
+        const scan = encoder.beginComputePass({
+          timestampWrites: this.measure?.('prefix-scan', length, count, originalRadius, channel),
+        })
         scan.setPipeline(this.scan)
         scan.setBindGroup(0, group)
         scan.setBindGroup(1, this.scratchGroup)
         scan.dispatchWorkgroups(count)
         scan.end()
-        const solve = encoder.beginComputePass()
+        const solve = encoder.beginComputePass({
+          timestampWrites: this.measure?.('prefix-solve', outputLength, count, originalRadius, channel),
+        })
         solve.setPipeline(this.solve)
         solve.setBindGroup(0, group)
         solve.setBindGroup(1, this.scratchGroup)
         solve.dispatchWorkgroups(Math.ceil(outputLength / 64), count)
         solve.end()
         const resolve = encoder.beginRenderPass({
+          timestampWrites: this.measure?.('prefix-resolve', outputLength, count, originalRadius, channel),
           colorAttachments: [
             {
               view: target.createView(),

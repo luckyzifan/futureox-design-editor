@@ -21,12 +21,12 @@ vi.mock('./client', () => ({ KernelClient: class {
 
 const owners: InteractionRenderer[] = []
 afterEach(() => { owners.splice(0).forEach(owner => owner.dispose()); worker.jobs.length = 0; worker.poses.length=worker.stops.length=worker.released.length=0;worker.disposed = 0 })
-function fixture(dependent = false, zoom = 1, extent = 100) {
+function fixture(dependent = false, zoom = 1, extent = 100, active = dependent) {
   const doc = blank(), root = node('frame', 0, 0, extent, extent)
   root.blend = 'normal'
   if (dependent) root.effects = [effect('glass')]
   doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
-  const props: InteractionProps = { document: doc, selection: [root.id], active: false, epoch: 1, control: { current: null }, onReady: vi.fn() }
+  const props: InteractionProps = { document: doc, selection: [root.id], active, epoch: 1, control: { current: null }, onReady: vi.fn() }
   const owner = new InteractionRenderer(vi.fn()); owners.push(owner)
   const view = { x: 0, y: 0, zoom }
   owner.prepare(props, doc.pages[0].id, view, 1, 'analytic', 'webgpu')
@@ -51,7 +51,7 @@ test('live capture prepares 3,000 page roots without rescanning the scene for ev
   })))
   const owner = new InteractionRenderer(vi.fn()); owners.push(owner)
   try {
-    owner.prepare({ document: doc, selection: [doc.pages[0].children[0]], active: false,
+    owner.prepare({ document: doc, selection: [doc.pages[0].children[0]], active: true,
       epoch: 1, control: { current: null }, onReady() {} }, doc.pages[0].id,
     { x: 0, y: 0, zoom: 1 }, 1, 'analytic', 'cpu', undefined, { width: 640, height: 480 })
     expect(scene).toHaveBeenCalledOnce()
@@ -143,7 +143,7 @@ test('HQ dependent captures keep the settled computation camera and full density
   const doc=blank(),root=node('frame',0,0,100,100);root.effects=[effect('glass')]
   doc.nodes[root.id]=root;doc.pages[0].children=[root.id];doc.rasterProfile='figma'
   const shared=new KernelClient(),owner=new InteractionRenderer(vi.fn(),shared);owners.push(owner)
-  owner.prepare({document:doc,selection:[root.id],active:false,epoch:1,control:{current:null},onReady(){}},
+  owner.prepare({document:doc,selection:[root.id],active:true,epoch:1,control:{current:null},onReady(){}},
     doc.pages[0].id,{x:-.375,y:.125,zoom:1},2,'figma','webgpu',undefined,{width:100,height:100})
   const request=worker.jobs[0].options
   expect(request.view).toEqual({x:-.75,y:.25,zoom:2})
@@ -153,6 +153,69 @@ test('HQ dependent captures keep the settled computation camera and full density
   shared.dispose()
 })
 
+function finalForegroundCapture(earlierBackdrop = true) {
+  const doc = blank(), root = node('frame', 0, 0, 1000, 1000)
+  const backdrop = node('rectangle', 0, 0, 800, 800), selected = node('rectangle', 300, 300, 238, 118)
+  root.clip = false; root.children = [backdrop.id, selected.id]
+  if (earlierBackdrop) backdrop.effects = [{ ...effect('background-blur'), radius: 3 }]
+  for (const n of [root, backdrop, selected]) doc.nodes[n.id] = n
+  doc.pages[0].children = [root.id]
+  const shared = new KernelClient(), owner = new InteractionRenderer(vi.fn(), shared); owners.push(owner)
+  owner.prepare({ document: doc, selection: [selected.id], active: true, epoch: 1, control: { current: null }, onReady() {} },
+    doc.pages[0].id, { x: 0, y: 0, zoom: 1 }, 2, 'figma', 'webgpu', undefined, { width: 855, height: 888 })
+  return { doc, selected, owner, shared }
+}
+async function completeForegroundCapture(job: any, firstSlot: number) {
+  for (const [index, tile] of job.options.tileViewport.entries())
+    job.progress({ ...tile, gpuTile: firstSlot + index, bytes: new Uint8Array() })
+  job.resolve({ bytes: new Uint8Array() })
+  for (let i = 0; i < 8; i++) await Promise.resolve()
+}
+test('only proven final foreground uses the short reserve while complete swept captures expand in both directions', async () => {
+  const { doc, selected, owner, shared } = finalForegroundCapture()
+  try {
+    const initial = worker.jobs[0]
+    // These are real production request extents with a mocked transport.
+    // They establish scheduling/coverage, not GPU pixels or measured latency.
+    expect(initial.options.width).toBe(732); expect(initial.options.height).toBe(492)
+    expect(initial.options.tileViewport).toHaveLength(2)
+    expect(initial.options.view).toEqual({ x: 0, y: 0, zoom: 2 })
+    await completeForegroundCapture(initial, 100)
+    expect(owner.control.apply(doc, { [selected.id]: { transform: [1, 0, 0, 1, 320, 300] } })).not.toBeNull()
+    const nearby = worker.jobs[1]
+    expect(nearby.options.tileViewport).toEqual(initial.options.tileViewport)
+    await completeForegroundCapture(nearby, 200)
+    for (const [index, x] of [500, 100].entries()) {
+      const previous = owner.tiles
+      expect(owner.control.apply(doc, { [selected.id]: { transform: [1, 0, 0, 1, x, 300] } })).not.toBeNull()
+      const expanded = worker.jobs[2 + index], tiles = expanded.options.tileViewport
+      const left = Math.min(...tiles.map((t: any) => t.x + t.gutter)) / 2
+      const right = Math.max(...tiles.map((t: any) => t.x + t.width - t.gutter)) / 2
+      const top = Math.min(...tiles.map((t: any) => t.y + t.gutter)) / 2
+      const bottom = Math.max(...tiles.map((t: any) => t.y + t.height - t.gutter)) / 2
+      expect(left).toBeLessThanOrEqual(Math.min(300, x) - 16)
+      expect(right).toBeGreaterThanOrEqual(Math.max(300, x) + 238 + 16)
+      expect(top).toBeLessThanOrEqual(300 - 16)
+      expect(bottom).toBeGreaterThanOrEqual(300 + 118 + 16)
+      expect(expanded.options.width).toBeGreaterThan(initial.options.width)
+      expect(expanded.options.view).toEqual(initial.options.view)
+      expect(tiles.every((t: any) => t.zoom === 2 && t.gutter === 1)).toBe(true)
+      expect(owner.tiles).toBe(previous)
+      await completeForegroundCapture(expanded, 300 + index * 100)
+      expect(owner.tiles).not.toBe(previous)
+    }
+    expect(owner.error).toBe('')
+  } finally { shared.dispose() }
+})
+test('ordinary no-backdrop localization retains its original 256-pixel travel reserve', () => {
+  const { shared } = finalForegroundCapture(false)
+  try {
+    expect(worker.jobs[0].options.width).toBe(1628)
+    expect(worker.jobs[0].options.height).toBe(1388)
+    expect(worker.jobs[0].options.tileViewport).toHaveLength(12)
+  } finally { shared.dispose() }
+})
+
 test('worker pose inputs do not enumerate the document after validation and rebase materializes the latest pose',async()=>{
   const doc=blank(),root=node('frame',0,0,100,100);root.blend='normal';root.effects=[effect('background-blur')]
   doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
@@ -160,7 +223,7 @@ test('worker pose inputs do not enumerate the document after validation and reba
   let enumerations=0
   doc.nodes=new Proxy(doc.nodes,{ownKeys(target){enumerations++;return Reflect.ownKeys(target)}})
   const shared=new KernelClient(),owner=new InteractionRenderer(vi.fn(),shared);owners.push(owner)
-  const props:InteractionProps={document:doc,selection:[root.id],active:false,epoch:1,control:{current:null},onReady(){}}
+  const props:InteractionProps={document:doc,selection:[root.id],active:true,epoch:1,control:{current:null},onReady(){}}
   owner.prepare(props,doc.pages[0].id,{x:0,y:0,zoom:1},1,'analytic','webgpu',undefined,{width:100,height:100})
   expect(worker.jobs[0].options.view).toEqual({x:0,y:0,zoom:1})
   expect(worker.jobs[0].options.captureViewport).toBeDefined()
@@ -222,16 +285,16 @@ test('selection replacement cannot publish a late warm result', async () => {
   expect(props.onReady).not.toHaveBeenCalled()
 })
 
-test('idle editor notifications preserve a warmed dependent renderer for the first drag', async () => {
-  const { doc, root, owner } = fixture(true)
-  worker.jobs[0].resolve()
-  await vi.waitFor(() => expect(owner.ready).toBe(true))
+test('idle editor notifications preserve a deferred dependent controller for the first drag', async () => {
+  const { doc, root, owner } = fixture(true, 1, 100, false)
   owner.control.end(doc)
   owner.control.end(doc)
   expect(worker.disposed).toBe(0)
+  expect(worker.jobs).toHaveLength(0)
   owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, 20, 0] } })
-  worker.jobs[1].resolve()
-  await vi.waitFor(() => expect(owner.samples).toBe(2))
+  expect(worker.jobs).toHaveLength(1)
+  worker.jobs[0].resolve()
+  await vi.waitFor(() => expect(owner.samples).toBe(1))
   expect(worker.disposed).toBe(0)
 })
 
@@ -306,7 +369,7 @@ test('shared GPU movement sends poses, retains a stable texture handle, and leav
   const doc=blank(),root=node('frame',0,0,100,100);root.effects=[effect('background-blur')];root.blend='normal'
   doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
   const shared=new KernelClient(),owner=new InteractionRenderer(vi.fn(),shared);owners.push(owner)
-  const view={x:0,y:0,zoom:1},props:InteractionProps={document:doc,selection:[root.id],active:false,epoch:1,control:{current:null},onReady(){}}
+  const view={x:0,y:0,zoom:1},props:InteractionProps={document:doc,selection:[root.id],active:true,epoch:1,control:{current:null},onReady(){}}
   owner.prepare(props,doc.pages[0].id,view,1,'analytic','webgpu',undefined,{width:100,height:100})
   worker.jobs[0].resolve({gpuTile:44,residentInteraction:true})
   await vi.waitFor(()=>expect(owner.ready).toBe(true))
@@ -359,7 +422,7 @@ test('nested motion retains native Retina density and sends live GPU poses witho
   root.blend = 'normal'; root.children = [child.id]; doc.nodes[root.id] = root; doc.nodes[child.id] = child
   doc.pages[0].children = [root.id]
   const shared = new KernelClient(), owner = new InteractionRenderer(vi.fn(), shared); owners.push(owner)
-  const props: InteractionProps = { document: doc, selection: [child.id], active: false, epoch: 1, control: { current: null }, onReady() {} }
+  const props: InteractionProps = { document: doc, selection: [child.id], active: true, epoch: 1, control: { current: null }, onReady() {} }
   owner.prepare(props, doc.pages[0].id, { x: 100, y: 100, zoom: .6 }, 2, 'analytic', 'webgpu', undefined, { width: 2560, height: 1440 })
   const job = worker.jobs[0]
   expect(job.options.view.zoom).toBe(1.2)
@@ -387,7 +450,7 @@ test('nested background-blur motion captures the fixed board at Retina density i
   root.clip=true;root.blend='multiply';root.effects=[{...effect('background-blur'),radius:8}];root.children=[child.id]
   doc.nodes[root.id]=root;doc.nodes[child.id]=child;doc.pages[0].children=[root.id]
   const shared=new KernelClient(),owner=new InteractionRenderer(vi.fn(),shared);owners.push(owner)
-  owner.prepare({document:doc,selection:[child.id],active:false,epoch:1,control:{current:null},onReady(){}},
+  owner.prepare({document:doc,selection:[child.id],active:true,epoch:1,control:{current:null},onReady(){}},
     doc.pages[0].id,{x:800,y:400,zoom:.6},2,'analytic','webgpu',undefined,{width:2560,height:1440})
   const first=worker.jobs[0];expect(first.options.view.zoom).toBe(1.2);expect(first.options.interactionWindowFixed).toBe(true)
   expect(first.options.width*first.options.height).toBeLessThanOrEqual(4_194_304)
