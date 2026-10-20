@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld(
   'coreDesktop',
   Object.freeze({
     version: 1,
+    renderDiagnostics: process.argv.includes('--core-render-diagnostics'),
     petConfigure: mode => invoke('pet-configure', mode),
     petEvent: event => invoke('pet-event', event),
     onPetStatus: callback => subscribe('design-desktop:pet-status', callback, value => value &&

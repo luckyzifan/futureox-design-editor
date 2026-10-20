@@ -1,3 +1,4 @@
+import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 /// <reference types="@webgpu/types" />
 /** Exact tent filtering, including fractional radii and cropped outputs,
  * with bounded GPU scratch. Uncertified rows retain the scalar exact path. */
@@ -151,7 +152,9 @@ export class TexturePrefix {
   }
   async readCounters() {
     if (!this.readback) throw Error('Prefix scratch not reserved')
+    const started=gpuDiagnosticsEnabled()?performance.now():0
     await this.readback.mapAsync(GPUMapMode.READ)
+    recordGpuDiagnostic('prefix',{mapMs:performance.now()-started})
     const values = Array.from(new Uint32Array(this.readback.getMappedRange(), 0, 4))
     this.readback.unmap()
     return { acceptedLines: values[0], declinedLines: values[1], acceptedPixels: values[2] }

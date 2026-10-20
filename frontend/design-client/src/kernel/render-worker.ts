@@ -1,3 +1,4 @@
+import { createRenderDiagnostics, setGpuDiagnosticSink } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { renderFailureEnvelope, renderErrorWithBudget } from './render-diagnostics'
 import { readAuthoredSnapshot, type AuthoredSnapshot } from './authored-snapshot'
@@ -54,6 +55,8 @@ import { PrepareAhead } from './prepare-ahead'
 import { withResidentPose } from './gpu/resident-pose-frame'
 import { TranslationPatchSession } from './gpu/translation-patch-session'
 import { DisplayCommandOrder } from './display-command-order'
+let terminalDiagnostics = createRenderDiagnostics()
+let diagnosticRequestId = 0
 let executionPolicy: RenderPolicy | undefined
 let enginePromise: Promise<RenderKernel> | undefined
 let preparation: PreparationChannel | undefined
@@ -75,6 +78,7 @@ let gpu: GpuRenderer | undefined
 let displayCanvas: OffscreenCanvas | undefined
 let displayFrame: import('./gpu/resident-presenter').ResidentFrame | undefined
 let displayFramePending = false
+let displayOrderSequence = 0
 const displayOrder = new DisplayCommandOrder()
 const displayTasks = new MessageChannel()
 displayTasks.port1.onmessage=()=>{
@@ -87,6 +91,8 @@ let navigationTextureSet: number[] = [], navigationTextureSequence = 0
 // Numeric stages are documented in the diagnostic collector. The callback is
 // immediately after queue.submit, not GPU completion or physical scanout.
 const reportDisplay = (presentation: Record<string, unknown>) => {
+  const presented = presentation.presented as {view?:{x:number;y:number;zoom:number};width?:number;height?:number} | undefined
+  terminalDiagnostics.record(presentation.error ? 'error' : 'camera-submit',{...presentation,...presented?.view,width:presented?.width,height:presented?.height,sequence:displayOrderSequence,reasonCode:presentation.error?4:0})
   if (navigationJournal.recording) {
     if (typeof presentation.compositorFrames === 'number') {
       const ids = (presentation.presented as {ids?:unknown} | undefined)?.ids
@@ -104,6 +110,10 @@ const reportDisplay = (presentation: Record<string, unknown>) => {
   self.postMessage({ presentation })
 }
 function journalCompile<T>(work: () => Promise<T>): Promise<T> {
+  if (terminalDiagnostics.enabled) {
+    const original=work, started=performance.now(), requestId=diagnosticRequestId
+    work=()=>original().finally(()=>terminalDiagnostics.record('compile',{requestId,durationMs:performance.now()-started}))
+  }
   if (!navigationJournal.recording) return work()
   const generation = navigationCaptureGeneration, sequence = ++navigationCompileSequence
   navigationJournal.record(4, { sequence })
@@ -211,7 +221,9 @@ function sceneImageHydration(kernel: RenderKernel, current: () => boolean) {
     resourceGeneration === resources && enginePromise === promise && kernel.color_settings() === context.settings
   const hydration = new SceneImageHydration(diskImageCache, context, imagePersistence, ownerCurrent, current)
   return async (scene: GpuScene, isCurrent = current) => {
+    const hydrationStarted=terminalDiagnostics.enabled?performance.now():0
     await hydration.hydrate(scene, isCurrent)
+    terminalDiagnostics.record('hydrate',{requestId:diagnosticRequestId,durationMs:performance.now()-hydrationStarted})
     // RenderWorkQueue owns the entire gpu.render promise. Its only priority
     // yield is after completed tile delivery, so another lane cannot rebind
     // this decoder while a GPU render is awaiting driver work.
@@ -352,6 +364,15 @@ function schedulePose(){
 }
 self.onmessage = (e) => {
   const request = e.data
+  if(request.command==='terminal-diagnostics') {
+    if(Number.isSafeInteger(request.session)&&request.session>=0&&request.session<1e12) {
+      terminalDiagnostics.close()
+      terminalDiagnostics=createRenderDiagnostics({enabled:true,session:request.session,source:'worker',sink:record=>self.postMessage({renderDiagnostic:record})})
+      setGpuDiagnosticSink((event,fields)=>terminalDiagnostics.record(event,{...fields as object,requestId:diagnosticRequestId}))
+      terminalDiagnostics.record('start')
+    }
+    return
+  }
   if (request.command === 'navigation-diagnostic') {
     try {
       if (request.action === 'start') {
@@ -381,8 +402,10 @@ self.onmessage = (e) => {
   if (request.command === 'display-frame') {
     if (navigationJournal.recording) navigationJournal.record(6, { sequence: request.sequence })
     if(!displayOrder.accept(request.sequence)){
+      terminalDiagnostics.record('stale-drop',{sequence:request.sequence,reasonCode:2})
       reportDisplay({displayCommandsDropped:displayOrder.dropped});return
     }
+    displayOrderSequence=request.sequence
     displayFrame=request.frame
     if(displayFrame&&poseSession?.input&&poseSession.bounds)
       displayFrame=withResidentPose(displayFrame,{slot:poseSession.slot,input:poseSession.input,bounds:poseSession.bounds})
@@ -421,6 +444,7 @@ self.onmessage = (e) => {
     gpu?.driver.releasePresented?.(request.ids); return
   }
   if (request.command === 'cancel-preview') {
+    terminalDiagnostics.record('cancel',{channel:channel==='interaction'?1:0,reasonCode:1})
     if (navigationJournal.recording) navigationJournal.record(10, { channel: channel === 'interaction' ? 1 : 0 })
     try {
       executionPolicy = pinRenderPolicy(executionPolicy, request.executionPolicy)
@@ -438,7 +462,11 @@ self.onmessage = (e) => {
   const fillGeneration = tileFillGeneration
   let completedRegions=0
   const reportRasterProgress=()=>self.postMessage({id:request.id,rasterProgress:++completedRegions})
+  const diagnosticQueuedAt=terminalDiagnostics.enabled?performance.now():0
   void queue.run(async () => {
+    diagnosticRequestId=request.id
+    const diagnosticStarted=terminalDiagnostics.enabled?performance.now():0
+    terminalDiagnostics.record('queue-start',{requestId:request.id,waitMs:diagnosticStarted-diagnosticQueuedAt})
     if (navigationJournal.recording && request.options?.view) navigationJournal.record(3, { requestId: request.id, channel: channel === 'interaction' ? 1 : 0 })
     try {
       executionPolicy = pinRenderPolicy(executionPolicy, request.executionPolicy)
@@ -1361,10 +1389,11 @@ self.onmessage = (e) => {
         { transfer },
       )
     } catch (error) {
-      self.postMessage({
-        id: request.id,
-        ...renderFailureEnvelope(error),
-      })
+      terminalDiagnostics.record('error',{requestId:request.id,reasonCode:1})
+      self.postMessage({id:request.id,...renderFailureEnvelope(error)})
+    } finally {
+      terminalDiagnostics.record('queue-end',{requestId:request.id,durationMs:performance.now()-diagnosticStarted,resourceEpoch:gpu?.driver.resourceEpoch,completedResourceEpoch:gpu?.driver.completedResourceEpoch})
+      if(terminalDiagnostics.enabled) for(const pass of gpu?.driver.stats?.().passTimings?.slice(0,16)||[]) terminalDiagnostics.record('filter',pass)
     }
   }, channel === 'interaction' ? 1 : 0)
 }

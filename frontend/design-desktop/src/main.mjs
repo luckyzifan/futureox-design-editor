@@ -1,3 +1,4 @@
+import { createRenderDiagnostics, sanitizeRecord, PREFIX } from './render-terminal-diagnostics.mjs'
 import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
 import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
@@ -34,6 +35,8 @@ import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legac
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 
+const renderDiagnosticsEnabled = !app.isPackaged && process.env.CORE_RENDER_DIAGNOSTICS === '1'
+const terminalDiagnostics=createRenderDiagnostics({enabled:renderDiagnosticsEnabled,source:'host',session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
 const smoke = process.argv.includes('--desktop-smoke')
 const cpuOnly = process.argv.includes('--core-cpu-only') || smoke
 const guiTest = process.argv.includes('--desktop-gui-test')
@@ -182,6 +185,12 @@ let recoveryId = randomUUID()
 let shutdownPromise
 let shutdownComplete = false
 let quitRequested = false
+function processExitReason(reason) { return ['clean-exit','abnormal-exit','killed','crashed','oom','launch-failed','integrity-failure','memory-eviction'].indexOf(reason)+1 }
+app.on('child-process-gone', (_event,details)=>{
+  if(details.type!=='GPU')return
+  terminalDiagnostics.record('gpu-exit',{exitCode:details.exitCode,reasonCode:processExitReason(details.reason),quitRequested,permitClose})
+  terminalDiagnostics.flush()
+})
 let hostReady = false
 let windowOpening
 let sessionConfigured = false
@@ -988,7 +997,7 @@ async function buildWindow() {
     backgroundColor: '#191919',
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
-      additionalArguments: cpuOnly ? ['--core-cpu-only'] : [],
+      additionalArguments: [...(cpuOnly ? ['--core-cpu-only'] : []),...(renderDiagnosticsEnabled?['--core-render-diagnostics']:[])],
       session: isolated,
       nodeIntegration: false,
       nodeIntegrationInWorker: false,
@@ -1013,12 +1022,20 @@ async function buildWindow() {
 
   // Forward renderer console logs to terminal (for debugging)
   window.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if(renderDiagnosticsEnabled && message.startsWith(PREFIX) && message.length < 8192) {
+      try { const record=sanitizeRecord(JSON.parse(message.slice(PREFIX.length))); if(record) console.log(PREFIX+JSON.stringify(record)) } catch {}
+      return
+    }
     if (message.includes('[imageLevel]') || message.includes('[Image Pixel Check]') || message.includes('GPU')) {
       const levelName = ['', 'INFO', 'WARN', 'ERROR'][level] || 'LOG'
       console.log(`[RENDERER ${levelName}] ${message}`)
     }
   })
 
+  window.webContents.on('render-process-gone', (_event, details) => {
+    terminalDiagnostics.record('renderer-exit',{exitCode:details.exitCode,reasonCode:processExitReason(details.reason),quitRequested,permitClose})
+    terminalDiagnostics.flush()
+  })
   window.webContents.on('before-input-event', (event, input) => {
     forwardNativeEditorShortcut(event, input, {
       platform: process.platform, sendCommand,
