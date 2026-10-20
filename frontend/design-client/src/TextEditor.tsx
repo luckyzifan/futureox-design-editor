@@ -1,6 +1,8 @@
+import { ActionSource } from './canvas-action-diagnostics'
+import { createInputDiagnostics, InputFamily, InputPhase } from './input-diagnostics'
 import {apply,matrixString} from './geometry'
 import { propertyUnits } from './property-units'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DesignDocument, DesignNode, Matrix } from './model'
 import { replaceText, styleTextRange } from './text'
 import { kernelTextLayout } from './kernel/picking'
@@ -20,6 +22,8 @@ export function TextInput({
   canvas?: boolean
   style?: React.CSSProperties
 }) {
+  const diagnostic = useMemo(() => createInputDiagnostics(editor, InputFamily.text, canvas ? ActionSource.keyboard : ActionSource.properties), [editor, canvas])
+  useEffect(() => () => diagnostic.dispose(), [diagnostic])
   const input = useRef<HTMLTextAreaElement>(null),
     composing = useRef(false),
     blurred = useRef(false),
@@ -31,9 +35,12 @@ export function TextInput({
     if (done.current) return true
     if (composing.current) return false
     done.current = true
+    const changed = value.current !== original.current
     if (!cancel && value.current !== original.current) {
+      diagnostic.start()
       if (editor.sessionGeneration !== session.current || editor.state.doc.nodes[node.id]?.text !== original.current) {
         done.current = false
+        diagnostic.valid(false)
         editor.notify('文字已被其他操作修改；输入仍保留在编辑框，请复制或按 Esc 取消')
         return false
       }
@@ -41,9 +48,11 @@ export function TextInput({
       else editor.updateProperties([node.id], (n) => replaceText(n, value.current), '编辑文字')
       if (editor.state.doc.nodes[node.id]?.text !== value.current) {
         done.current = false
+        diagnostic.finish(false, false)
         return false
       }
     }
+    if (cancel) diagnostic.cancel(); else diagnostic.finish(changed, true)
     original.current = value.current
     pendingEditsChanged(editor)
     onClose?.()
@@ -78,26 +87,31 @@ export function TextInput({
       dir="auto"
       style={style}
       onFocus={() => {
+        diagnostic.event(InputPhase.focus)
         done.current = false
         blurred.current = false
       }}
       onChange={(e) => {
+        diagnostic.start()
         value.current = e.currentTarget.value
         done.current = false
         pendingEditsChanged(editor)
       }}
       onCompositionStart={() => {
+        diagnostic.start(); diagnostic.event(InputPhase.compositionStart)
         done.current = false
         composing.current = true
         pendingEditsChanged(editor)
       }}
       onCompositionEnd={(e) => {
+        diagnostic.event(InputPhase.compositionEnd)
         composing.current = false
         value.current = e.currentTarget.value
         pendingEditsChanged(editor)
         if (blurred.current) finish()
       }}
       onBlur={() => {
+        diagnostic.event(InputPhase.blur)
         blurred.current = true
         finish()
       }}
@@ -138,6 +152,8 @@ export function CanvasTextEditor({
   viewport?: { width: number; height: number }
   onClose: () => void
 }) {
+  const diagnostic = useMemo(() => createInputDiagnostics(editor, InputFamily.richText, ActionSource.keyboard), [editor])
+  useEffect(() => () => diagnostic.dispose(), [diagnostic])
   const [draft, setDraft] = useState(() => structuredClone(node)),
     [selection, setSelection] = useState<[number, number]>([0, node.text.length]),
     [error, setError] = useState(''),
@@ -189,7 +205,9 @@ export function CanvasTextEditor({
     if (composing.current) return false
     const changed = latest.current.text !== original.current.text || JSON.stringify(latest.current.textRuns) !== JSON.stringify(original.current.textRuns)
     if (!cancel && changed) {
+      diagnostic.start()
       if (editor.sessionGeneration !== session.current || editor.state.doc.nodes[node.id] !== original.current) {
+        diagnostic.valid(false)
         setError('图层已被修改，当前输入保留；请复制文字后取消')
         return false
       }
@@ -201,8 +219,9 @@ export function CanvasTextEditor({
         },
         '编辑富文本',
       )
-      if (editor.state.doc.nodes[node.id]?.text !== latest.current.text || JSON.stringify(editor.state.doc.nodes[node.id]?.textRuns) !== JSON.stringify(latest.current.textRuns)) return false
+      if (editor.state.doc.nodes[node.id]?.text !== latest.current.text || JSON.stringify(editor.state.doc.nodes[node.id]?.textRuns) !== JSON.stringify(latest.current.textRuns)) { diagnostic.finish(false, false); return false }
     }
+    if (cancel) diagnostic.cancel(); else diagnostic.finish(changed, true)
     done.current = true
     pendingEditsChanged(editor)
     onClose()
@@ -215,6 +234,7 @@ export function CanvasTextEditor({
     commit: () => commit.current(),
   }), [editor, node.id])
   const change = (text: string) => {
+    diagnostic.start()
     const n = structuredClone(latest.current)
     replaceText(n, text)
     latest.current = n
@@ -224,6 +244,7 @@ export function CanvasTextEditor({
     sync()
   }
   const style = (patch: Partial<import('./model').TextRun>) => {
+    diagnostic.start(); diagnostic.event(InputPhase.start, { fieldFamily: InputFamily.richStyle })
     try {
       const n = structuredClone(latest.current)
       styleTextRange(n, ...selection, patch)
@@ -362,9 +383,9 @@ export function CanvasTextEditor({
       style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none' }}
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
-      onFocus={() => { blurred.current = false }}
+      onFocus={() => { diagnostic.event(InputPhase.focus); blurred.current = false }}
       onBlur={(e) => {
-        if (!root.current?.contains(e.relatedTarget as Node)) { blurred.current = true; finish() }
+        if (!root.current?.contains(e.relatedTarget as Node)) { diagnostic.event(InputPhase.blur); blurred.current = true; finish() }
       }}
     >
       <div
@@ -515,10 +536,12 @@ export function CanvasTextEditor({
         onChange={(e) => change(e.target.value)}
         onSelect={sync}
         onCompositionStart={() => {
+          diagnostic.start(); diagnostic.event(InputPhase.compositionStart)
           composing.current = true
           pendingEditsChanged(editor)
         }}
         onCompositionEnd={(e) => {
+          diagnostic.event(InputPhase.compositionEnd)
           composing.current = false
           change(e.currentTarget.value)
           if (blurred.current) finish()

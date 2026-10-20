@@ -15,6 +15,7 @@ import { EncodeYield } from './encode-yield'
 import { sceneIndex, sceneScale as scale, type SceneIndex } from './scene-index'
 import type {
   Driver,
+  GpuAdmissionDiagnostic,
   Texture,
   Rect,
   GpuNode,
@@ -406,6 +407,9 @@ export class GpuRenderer {
   // frames. It never gates destruction - the checkpoint discipline does.
   private generation = 0
   private lastUsed = new Map<Texture, number>()
+  // A pool entry has no future reader until acquire removes it. Stamp actual
+  // pool return, not allocation: cached coverage may be read in a newer frame.
+  private poolReleaseEpoch = new WeakMap<Texture, number>()
   // Parameter uploads whose last read has been encoded. Destroying them early
   // could race queued commands and pooling them would let a later writeTexture
   // overtake pending reads, so only a completed checkpoint may destroy them.
@@ -515,6 +519,7 @@ export class GpuRenderer {
       this.bytes += texture.bytes
       this.peak = Math.max(this.peak, this.bytes)
     }
+    this.poolReleaseEpoch.delete(texture)
     delete texture.transparentZero
     delete texture.uniformColor
     this.touch(texture)
@@ -625,6 +630,9 @@ export class GpuRenderer {
       const key = `${s.texture.scalarCoverage ? 'scalar:' : s.texture.binaryCoverage ? 'binary:' : ''}${s.texture.width}:${s.texture.height}`,
         list = this.free.get(key) || []
       list.push(s.texture)
+      const epoch = this.driver.resourceEpoch
+      if (Number.isSafeInteger(epoch) && epoch! > 0) this.poolReleaseEpoch.set(s.texture, epoch!)
+      else this.poolReleaseEpoch.delete(s.texture)
       this.free.set(key, list)
       // Returning to the pool is the end of this texture's latest use; stamp
       // it so pressure eviction prefers the least recently used entry.
@@ -1698,10 +1706,29 @@ export class GpuRenderer {
     if (!pressure && this.workingBytes < this.frameBudget * .75 && reclaimableBytes < RECLAIM_BATCH_BYTES) return
     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
     const resourceLimit = pressure ? 4096 : RECLAIM_BATCH_RESOURCES
+    // Preserve the exact oldest-first batch. Only a pool-only maintenance
+    // batch below image pressure can use prior-frame completion evidence.
+    pooled.sort((a, b) => (this.lastUsed.get(a) || 0) - (this.lastUsed.get(b) || 0))
+    let completedPoolEpoch: number | undefined
+    if (required === 0 && !this.retiredUploads.length && !this.coordinateMaps.size &&
+        this.workingBytes <= this.frameBudget * .75) {
+      const completed = this.driver.completedResourceEpoch, current = this.driver.resourceEpoch
+      if (Number.isSafeInteger(completed) && Number.isSafeInteger(current)) {
+        let bytes = 0, count = 0, newest = 0, proven = pooled.length > 0
+        for (const texture of pooled) {
+          if (count >= resourceLimit || bytes >= batchLimit) break
+          const epoch = this.poolReleaseEpoch.get(texture)
+          if (!Number.isSafeInteger(epoch) || epoch! <= 0 || epoch! > completed! || epoch! >= current!) proven = false
+          else newest = Math.max(newest, epoch!)
+          count++; bytes += texture.bytes
+        }
+        if (proven) completedPoolEpoch = newest
+      }
+    }
     const checkpointStart = performance.now()
     // Diagnostic-only snapshot of the decision already made above. The fence
     // record precedes destruction, so these are candidate bytes, not freed bytes.
-    await this.driver.checkpoint('admission', gpuDiagnosticsEnabled() ? {
+    const diagnostic: GpuAdmissionDiagnostic | undefined = gpuDiagnosticsEnabled() ? {
       admissionKind: required > 0 ? 1 : 0, admissionPressure: pressure ? 1 : 0,
       admissionRequiredBytes: required, admissionWorkingBytes: this.workingBytes,
       admissionBudgetBytes: this.frameBudget, admissionReclaimableBytes: reclaimableBytes,
@@ -1709,10 +1736,15 @@ export class GpuRenderer {
       admissionPoolCount: pooled.length,
       admissionUploadCount: this.retiredUploads.length + this.coordinateMaps.size,
       admissionImageCount: this.images.size,
-    } : undefined)
+    } : undefined
+    // Submission is still mandatory. Only the completion wait may be omitted,
+    // and the driver independently validates the already-completed epoch.
+    if (completedPoolEpoch === undefined) await this.driver.checkpoint('admission', diagnostic)
+    else await this.driver.checkpoint('admission', diagnostic, completedPoolEpoch)
     this.checkpointMs += performance.now() - checkpointStart
-    // Every surface still needed by an ancestor is in busy. GPU commands that
-    // used a released surface or an upload have completed at this boundary.
+    // Every surface still needed by an ancestor is in busy. Completion is
+    // proven for every selected destruction: by this fence, or (pool-only)
+    // by the completed prior-frame release stamps checked above.
     let destroyed = 0,
       batchBytes = 0
     while (
@@ -1725,9 +1757,7 @@ export class GpuRenderer {
       destroyed++
       batchBytes += texture.bytes
     }
-    // Age is the stamp of the last acquire/release; free lists keep their
-    // LIFO order for the survivors.
-    pooled.sort((a, b) => (this.lastUsed.get(a) || 0) - (this.lastUsed.get(b) || 0))
+    // The preselected oldest-first order leaves survivor free-list LIFO intact.
     for (const texture of pooled) {
       if (destroyed >= resourceLimit || batchBytes >= batchLimit) break
       this.destroyFree(texture)

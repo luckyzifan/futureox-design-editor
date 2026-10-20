@@ -71,3 +71,12 @@ test('PREVIEW_BUDGET wrappers preserve generic admission code200 at every worker
   expect(renderFailureFields(new Error('private-prefix '+message))).toMatchObject({failureCategory:0,failureCode:0})
  }
 })
+
+// Rust compile_gpu_scene rejects extent area before the renderer byte gate.
+test('native compiler surface-area rejection keeps a distinct exact code and compile stage',()=>{
+ const e=markRenderFailure(new Error('GPU surface budget exceeded'),{failureStage:5})
+ expect(renderFailureFields(e)).toMatchObject({failureCategory:3,failureCode:64,failureStage:5})
+ expect(renderFailureFields(new Error('GPU 表面内存预算超限'))).toMatchObject({failureCategory:3,failureCode:20})
+ expect(renderFailureFields(inheritRenderFailure(e,new Error('private wrapper')))).toMatchObject({failureCode:64,failureStage:5})
+ expect(renderFailureFields(new Error('private GPU surface budget exceeded'))).toMatchObject({failureCategory:0,failureCode:0})
+})

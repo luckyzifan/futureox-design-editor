@@ -1,3 +1,6 @@
+import { recordCanvasGrid } from './kernel/grid-measurements'
+import { canvasActions, CanvasAction, ActionSource, ActionOutcome, ActionReason, modifierBits, type ActionReasonCode, type ActionOutcomeCode } from './canvas-action-diagnostics'
+import { actionGeometry, compareActionGeometry } from './canvas-action-geometry'
 import { recordNavigationInput } from './kernel/navigation-input'
 import { desktopPet } from './desktop-pet'
 import { nudgePreference } from './nudge-preference'
@@ -101,6 +104,14 @@ import { interactivePath } from './selection-hierarchy'
 import { presentedPenVertex, remapPointerAnchor } from './canvas-published-input'
 import { canvasLayerFeedback } from './canvas-layer-feedback'
 type Drag = {
+  actionSamples?: number
+  actionToken?: number
+  actionRevision?: number
+  actionBefore?: number[]
+  actionProposal?: number[]
+  actionResolved?: number[]
+  actionSelection?: number
+
   pointerId: number
   session: number
   page: string
@@ -363,6 +374,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }, [loading, onCapturePreview, exactCurrent, state.doc, state.version, state.page, state.view, state.grid, state.checkerboard, state.pixelPreview, size.width, size.height, editor])
   const [textEdit, setTextEdit] = useState<string | null>(null)
   const [textPreview,setTextPreview]=useState<DesignNode|null>(null)
+  const textAction = useRef<{ token: number; revision: number } | null>(null)
   useEffect(() => setTextEdit(null), [editor.sessionGeneration, state.page])
   const [geometryReady, setGeometryReady] = useState(false)
   useEffect(() => {
@@ -377,6 +389,49 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
   }, [editor])
   const drag = useRef<Drag | null>(null)
+  const actionTrace = useMemo(() => canvasActions(editor), [editor])
+  useEffect(() => {
+    if (!textEdit || !actionTrace.enabled) return
+    const record = { token: actionTrace.begin(CanvasAction.text, ActionSource.unknown, {targetCount: 1, routeSupported: true}), revision: editor.state.version }
+    textAction.current = record
+    return () => {
+      actionTrace.finish(record.token, ActionOutcome.observed, ActionReason.unobserved, {routeSupported: true})
+      if (textAction.current === record) textAction.current = null
+    }
+  }, [textEdit, actionTrace, editor])
+  const beginDragTrace = (d: Drag, event: React.PointerEvent) => {
+    if (!actionTrace.enabled) return
+    const supported = ['move', 'resize', 'scale', 'rotate'].includes(d.kind)
+    d.actionRevision = editor.state.version; d.actionSelection = editor.state.selection.length
+    d.actionBefore = supported ? actionGeometry(editor.state.doc, d.ids) : undefined
+    d.actionToken = actionTrace.begin(CanvasAction[d.kind], ActionSource.pointer, {
+      modifiers: modifierBits(event), targetCount: d.ids.length, selectionBefore: editor.state.selection.length,
+      lockedCount: d.ids.filter(id => editor.state.doc.nodes[id]?.locked).length,
+      geometrySupported: !!d.actionBefore, snapEnabled: editor.state.snapPixels || editor.state.snap,
+    })
+  }
+  const resizeWithTrace = (d: Drag, ...args: Parameters<typeof resizeInBasis>) => {
+    const result = resizeInBasis(...args)
+    if (d.actionToken) {
+      const unsnapped = args[7] ? resizeInBasis(args[0], args[1], args[2], args[3], args[4], args[5], args[6], false) : result
+      const unconstrained = args[5] || args[6] ? resizeInBasis(args[0], args[1], args[2], args[3], args[4], false, false, false) : unsnapped
+      actionTrace.sample(d.actionToken, { snapChanged: compareActionGeometry(unsnapped, result) === 2, constraintEnabled: args[5] || args[6], constraintChanged: compareActionGeometry(unconstrained, unsnapped) === 2, intentResolvedComparison: compareActionGeometry(unsnapped, result) })
+    }
+    return result
+  }
+  const finishDragTrace = (d: Drag | null, outcome?: ActionOutcomeCode, reason: ActionReasonCode = ActionReason.none) => {
+    if (!d?.actionToken) return
+    const committed = editor.state.version !== d.actionRevision
+    const geometry = d.actionBefore ? actionGeometry(editor.state.doc, d.ids) : undefined
+    actionTrace.finish(d.actionToken, outcome ?? (committed ? ActionOutcome.committed : ActionOutcome.unchanged), reason, {
+      committedChanged: committed, selectionAfter: editor.state.selection.length,
+      selectionChanged: editor.state.selection.length !== d.actionSelection,
+      proposalResolvedComparison: compareActionGeometry(d.actionProposal, d.actionResolved),
+      resolvedCommittedComparison: compareActionGeometry(d.actionResolved, geometry),
+      geometrySupported: !!geometry, thresholdPassed: !!d.moved,
+    })
+    d.actionToken = undefined
+  }
   const queuedMove = useRef<{ event: React.PointerEvent; at: number } | null>(null)
   const moveFrame = useRef<number | null>(null)
   const moveCallback = useRef<(event: React.PointerEvent) => void>(() => {})
@@ -421,6 +476,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     return {x:(local.x-frame.box.x)/Math.max(frame.box.width,1e-10),y:(local.y-frame.box.y)/Math.max(frame.box.height,1e-10)}
   }
   const pencil = useRef<{
+    actionToken?: number
+    actionRevision?: number
     input: PencilInput
     id: string
     settings: PencilSettings
@@ -434,7 +491,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const [pencilPreview, setPencilPreview] = useState<DesignNode | null>(null)
   const [shapePreview, setShapePreview] = useState<DesignNode | null>(null)
   const drawingPreview = pencilPreview || shapePreview
-  function cancelPencil() {
+  function cancelPencil(recordCancellation = true) {
+    if (pencil.current?.actionToken && recordCancellation) actionTrace.finish(pencil.current.actionToken, ActionOutcome.cancelled, ActionReason.unobserved)
     if (pencil.current) editor.cancel()
     if (pencilFrame.current !== null) cancelAnimationFrame(pencilFrame.current)
     pencilFrame.current = null
@@ -477,6 +535,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // Loading another document resets the engine transaction. Never restore the
     // old snapshot over that new document. A same-session page switch cancels it.
     if (previous.session === editor.sessionGeneration) editor.cancel()
+    finishDragTrace(drag.current, ActionOutcome.cancelled, ActionReason.staleSession)
     drag.current = null
     if (host.current?.hasPointerCapture(previous.pointerId)) host.current.releasePointerCapture(previous.pointerId)
     setRubber(null)
@@ -665,6 +724,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     () => pixelGridPathData(displayView, size.width, size.height, state.pixelGrid),
     [state.pixelGrid, displayView.x, displayView.y, displayView.zoom, size.width, size.height],
   )
+  useLayoutEffect(() => {
+    if (!actionTrace.enabled) return
+    // Count already-rendered overlays; never re-run layout or log their geometry.
+    recordCanvasGrid(editor, {gridKind: 2, gridVisible: Number(!!pixelGridPath && !gpuOverlay), gridSpacingClass: displayView.zoom >= 4 ? 2 : 1,
+      gridStale: Number(displayView.x !== state.view.x || displayView.y !== state.view.y || displayView.zoom !== state.view.zoom), gridRedrawReason: 0})
+    if (editor.interactionActive) return
+    const cells = host.current?.querySelectorAll('[data-testid="layout-grid-cell"]').length || 0
+    const bands = host.current?.querySelectorAll('[data-testid="authored-layout-grid-band"]').length || 0
+    recordCanvasGrid(editor, {gridKind: 3, gridVisible: Number(cells > 0), gridCount: cells, gridRedrawReason: 0})
+    recordCanvasGrid(editor, {gridKind: 4, gridVisible: Number(bands > 0), gridCount: bands, gridRedrawReason: 0})
+  }, [editor, actionTrace.enabled, pixelGridPath, gpuOverlay, displayView, state.view, state.doc, state.selection])
   useEffect(() => {
     const observer = new ResizeObserver(([e]) =>
       setSize({ width: e.contentRect.width, height: e.contentRect.height }),
@@ -841,6 +911,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         setShapePreview(null)
         if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
         editor.cancel()
+        finishDragTrace(drag.current, ActionOutcome.cancelled, ActionReason.escape)
         drag.current = null
         setPanning(false)
         setRubber(null)
@@ -969,6 +1040,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       marqueeHeld.current = false; setMarqueeKeyHeld(false)
       setSpaceHeld(false); setPanning(false)
       editor.cancel()
+      finishDragTrace(drag.current, ActionOutcome.cancelled, ActionReason.sessionEnd)
       drag.current = null
       setRubber(null)
       hoverPoint.current = null
@@ -1074,15 +1146,19 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const target = e.target as Element
     if (!host.current?.contains(target) || target.closest('button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.pencil-controls,.rich-text-editor')) return
     if (textEdit) {
+      actionTrace.event(CanvasAction.pointer, ActionSource.pointer, ActionOutcome.blocked, ActionReason.editingText)
       host.current?.focus({ preventScroll: true })
       return
     }
     if (e.button === 0 && e.ctrlKey && /Mac|iPhone|iPad/.test(navigator.platform)) return
     const navigation = e.button === 1 || space.current || editor.state.tool === 'hand'
-    if ((!navigation && (editor.state.busy || !geometryReady)) || (e.button !== 0 && e.button !== 1)) return
-    if (pencil.current || drag.current || !e.isPrimary) return
-    if (kind && !displayedSnapshot) return
-    if (nodeId && !editor.topSelection().includes(nodeId)) return
+    if ((!navigation && (editor.state.busy || !geometryReady)) || (e.button !== 0 && e.button !== 1)) {
+      actionTrace.event(CanvasAction.pointer, ActionSource.pointer, ActionOutcome.blocked, editor.state.busy ? ActionReason.busy : !geometryReady ? ActionReason.notReady : ActionReason.unsupported)
+      return
+    }
+    if (pencil.current || drag.current || !e.isPrimary) { actionTrace.event(CanvasAction.pointer, ActionSource.pointer, ActionOutcome.blocked, ActionReason.wrongOwner); return }
+    if (kind && !displayedSnapshot) { actionTrace.event(CanvasAction.pointer, ActionSource.pointer, ActionOutcome.blocked, ActionReason.notReady); return }
+    if (nodeId && !editor.topSelection().includes(nodeId)) { actionTrace.event(CanvasAction.pointer, ActionSource.pointer, ActionOutcome.blocked, editor.state.doc.nodes[nodeId]?.locked ? ActionReason.locked : ActionReason.noTarget); return }
     e.preventDefault()
     host.current!.focus({ preventScroll: true })
     // A pending revision must not drop the next gesture. Creation uses the
@@ -1093,6 +1169,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // Retire the hover frame before its ownership is replaced by this drag.
     cancelQueuedMove()
     host.current!.setPointerCapture(e.pointerId)
+    actionTrace.event(CanvasAction.grab, ActionSource.pointer, ActionOutcome.observed, ActionReason.none, { modifiers: modifierBits(e), lockedCount: actionTrace.enabled ? editor.state.selection.filter(id => editor.state.doc.nodes[id]?.locked).length : 0 })
     const capturedView = { ...displayViewRef.current }
     const p = screenToWorld(capturedView, screenPoint(e)),
       screen = screenPoint(e),
@@ -1102,6 +1179,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       // snapshot. Keep it responsive while geometry/refinement is pending.
       drag.current = { pointerId: e.pointerId, session: editor.sessionGeneration, page: s.page,
         kind: 'pan', start: p, screen, view: editor.flushPendingView(), ids: [], matrices: {}, box: emptyBox, originSelection: s.selection }
+      beginDragTrace(drag.current, e)
       setPanning(true); editor.hoverLayer(null, 'canvas')
       return
     }
@@ -1128,7 +1206,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const input = new PencilInput(e.pointerId, s[tool].pressure)
       input.append([e.nativeEvent], map)
       editor.begin(tool === 'pencil' ? '绘制铅笔路径' : '绘制画笔路径')
-      pencil.current = { input, map, id: uid(), settings: { ...s[tool] }, tool, zoom: view.zoom, session:editor.sessionGeneration, page:s.page }
+      pencil.current = { actionToken: actionTrace.begin(CanvasAction.create, ActionSource.pointer, {routeSupported:true,geometrySupported:false}), actionRevision:editor.state.version, input, map, id: uid(), settings: { ...s[tool] }, tool, zoom: view.zoom, session:editor.sessionGeneration, page:s.page }
       pencilFrame.current = requestAnimationFrame(pencilPreviewFrame)
       return
     }
@@ -1188,6 +1266,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         vertex: v.id,
         originSelection: [],
       }
+      beginDragTrace(drag.current, e)
       return
     }
     if (e.button === 0 && !space.current && !kind && s.tool === 'crop') {
@@ -1214,6 +1293,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         node: structuredClone(target),
         originSelection: s.selection,
       }
+      beginDragTrace(drag.current, e)
       setCropRect(null)
       return
     }
@@ -1244,7 +1324,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const containerHit=hit&&selected.length>1&&selected.every(entry=>entry.ancestors.includes(hit))
       const gap = (!hit||containerHit) && ids.length>1 && !e.metaKey && !e.ctrlKey && ['select','scale'].includes(s.tool) && contains(selectionBox,p)
       const intent = groupIntent || selectionPointerDown(s.selection, gap?null:hit, e.shiftKey || s.tool==='multiselect',!!gap)
+      const selectionChanged = actionTrace.enabled && (s.selection.length !== intent.selection.length || s.selection.some((id, i) => id !== intent.selection[i]))
+      if (actionTrace.enabled) actionTrace.event(CanvasAction.hitTest, ActionSource.pointer, ActionOutcome.observed, ActionReason.none, {
+        hitCount: hit ? 1 : 0, hitDepth: hit ? entries.find(entry => entry.id === hit)?.ancestors.length || 0 : 0,
+        modifiers: modifierBits(e), lockedCount: hit && s.doc.nodes[hit]?.locked ? 1 : 0,
+      })
       editor.select(intent.selection)
+      actionTrace.event(CanvasAction.selection, ActionSource.pointer, selectionChanged ? ActionOutcome.observed : ActionOutcome.unchanged, ActionReason.none, {
+        selectionBefore: s.selection.length, selectionAfter: editor.state.selection.length, selectionChanged,
+        resolvedCommittedComparison: editor.state.selection.length === intent.selection.length && editor.state.selection.every((id,i) => id === intent.selection[i]) ? 1 : 2,
+      })
       clickSelection = intent.clickSelection
       if (hit || groupIntent || (gap&&!e.shiftKey)) {
         ids = editor.topSelection()
@@ -1325,6 +1414,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         screenDistance: 0, modifiers: { shift: e.shiftKey, alt: e.altKey },
       } : {}),
     }
+    beginDragTrace(drag.current, e)
     if (dragKind === 'create') editor.begin('绘制形状')
     if (['move', 'resize', 'scale', 'rotate', 'vertex', 'handle'].includes(dragKind))
       editor.begin(
@@ -1385,6 +1475,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     d.lastScreen = screenPoint(e)
     d.lastModifiers = { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey }
     d.sampledMovement ||= d.lastScreen.x !== d.screen.x || d.lastScreen.y !== d.screen.y
+    if (d.actionToken) actionTrace.sample(d.actionToken, { inputSamples: d.actionSamples = (d.actionSamples || 0) + 1, motionObserved: !!d.sampledMovement, modifiers: modifierBits(e) })
     if(d.kind==='pivot'){setOrigin(originFromWorld(p),true);return}
     if (d.kind === 'parameter' && d.node) {
       if (!d.sampledMovement) return
@@ -1513,6 +1604,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     setGuides({})
     if (d.kind === 'move') {
       d.moved = dragThresholdPassed(d.screen, screenPoint(e), !!d.moved)
+      if (d.actionToken) actionTrace.sample(d.actionToken, { thresholdPassed: !!d.moved })
       if (!d.moved) return
       if (e.altKey !== !!d.duplicating) {
         try {
@@ -1524,7 +1616,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           d.parentMatrices = Object.fromEntries(d.ids.map(id=>[id,worldMatrix(editor.state.doc,parents.get(id)!,parents)]))
           d.layoutPointerOrigin = undefined
         } catch (error) {
-          editor.notify(String(error)); editor.cancel(); drag.current = null; return
+          editor.notify(String(error)); editor.cancel(); finishDragTrace(drag.current, ActionOutcome.rejected, ActionReason.validation); drag.current = null; return
         }
       }
       const layoutPointer = d.layoutPointerOrigin ? {
@@ -1588,6 +1680,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         force || (editor.state.snapPixels && !e.ctrlKey),
         { x: moveAxes.x && (force || !guidedX), y: moveAxes.y && (force || !guidedY) },
       )
+      if (d.actionToken) actionTrace.sample(d.actionToken, {
+        snapChanged: snapped.x !== dx || snapped.y !== dy || guidedX || guidedY,
+        constraintEnabled: e.shiftKey, constraintChanged: !moveAxes.x && p.x !== d.start.x || !moveAxes.y && p.y !== d.start.y,
+        intentResolvedComparison: snapped.x === p.x - d.start.x && snapped.y === p.y - d.start.y ? 1 : 2,
+      })
       transform = translate(snapped.x, snapped.y)
     } else if (d.kind === 'rotate') {
       const center = d.rotationCenter || (
@@ -1604,7 +1701,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     } else if (d.kind === 'resize' || d.kind === 'scale') {
       if (d.basis && d.localBox) {
         const n = editor.state.doc.nodes[d.ids[0]]
-        transform = resizeInBasis(
+        transform = resizeWithTrace(d,
           d.basis,
           d.localBox,
           d.start,
@@ -1618,7 +1715,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         const anchor = boxPoints(d.box)[((d.handle || 0) + 2) % 4]
         const box = { x: 0, y: 0, width: d.box.width, height: d.box.height }
         const basis: Matrix = [1, 0, 0, 1, d.box.x, d.box.y]
-        transform = resizeInBasis(
+        transform = resizeWithTrace(d,
           basis,
           box,
           d.start,
@@ -1639,6 +1736,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         const original = d.sourceDocument?.nodes[id]
         if (original) patches[id] = resizedNode(original, patches[id].transform!)
       }
+    }
+    if (d.actionToken && d.actionBefore) {
+      d.actionProposal = actionGeometry(editor.state.doc, d.ids, patches)
+      actionTrace.sample(d.actionToken, { proposalChanged: compareActionGeometry(d.actionBefore, d.actionProposal) === 2 })
     }
     const placement = d.kind==='move'?{ids:d.ids,point:p,force:e.metaKey||e.ctrlKey,preserveParent:space.current}:undefined
     // Independent complete boards can follow the pointer on the compositor.
@@ -1672,9 +1773,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       try {
         draft.input.append([e.nativeEvent], draft.map, true, e.shiftKey)
         const n = freehandNode(draft.id, draft.input.samples, draft.settings, draft.zoom, draft.tool)
-        cancelPencil()
+        cancelPencil(false)
         if (n.opacity > 0) editor.addFreehand(n)
+        if (draft.actionToken) actionTrace.finish(draft.actionToken, editor.state.version !== draft.actionRevision ? ActionOutcome.committed : ActionOutcome.unchanged, ActionReason.none)
       } catch (error) {
+        if (draft.actionToken) actionTrace.finish(draft.actionToken, ActionOutcome.rejected, ActionReason.validation)
         editor.notify(String(error))
       }
       cancelPencil()
@@ -1699,13 +1802,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       pendingBoardMove.current = null; retainedMove.current?.restore()
       editor.preview(...pending)
     }
+    if (d.actionToken && d.actionBefore) d.actionResolved = actionGeometry(editor.state.doc, d.ids)
     // Coalesced camera writes land synchronously before the gesture unwinds.
     flushView()
     drag.current = null
     setPanning(false)
     if (host.current?.hasPointerCapture(e.pointerId))
       host.current.releasePointerCapture(e.pointerId)
-    if (penRef.current && d.kind === 'vertex' && !d.node) return
+    if (penRef.current && d.kind === 'vertex' && !d.node) { finishDragTrace(d, ActionOutcome.observed, ActionReason.unobserved); return }
     if (d.kind === 'create') {
       d.pointer = screenToWorld(d.view, screenPoint(e))
       d.screenDistance = Math.max(d.screenDistance || 0, distance(screenPoint(e), d.screen))
@@ -1749,6 +1853,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       // The origin is an editing handle, not document geometry or undo state.
     } else if (d.kind === 'move' && !d.moved) {
       editor.cancel()
+      finishDragTrace(d, ActionOutcome.cancelled, ActionReason.belowThreshold)
       if (d.clickSelection !== null && d.clickSelection !== undefined) editor.select(d.clickSelection)
     } else if (d.kind === 'crop') {
       const target = d.node
@@ -1771,6 +1876,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.kind === 'move' && d.duplicating && d.ids.every(id => editor.state.doc.nodes[id]))
         editor.rememberDuplication(d.ids, new Map(d.ids.map(id => [id, d.matrices[id]])))
     }
+    finishDragTrace(d, ['pan','zoom','pivot','marquee'].includes(d.kind) ? ActionOutcome.observed : d.kind === 'crop' ? ActionOutcome.unsupported : undefined, d.kind === 'crop' ? ActionReason.unobserved : ActionReason.none)
     setRubber(null)
     setGuides({})
   }
@@ -1837,6 +1943,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     e.stopPropagation()
     e.preventDefault()
     host.current!.setPointerCapture(e.pointerId)
+    actionTrace.event(CanvasAction.grab, ActionSource.pointer, ActionOutcome.observed, ActionReason.none, { modifiers: modifierBits(e) })
     editor.begin('调整描边宽度')
     drag.current = {
       pointerId: e.pointerId,
@@ -1940,6 +2047,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         cancelPencil()
         setShapePreview(null)
         editor.cancel()
+        finishDragTrace(drag.current, ActionOutcome.cancelled, ActionReason.pointerCancel)
         drag.current = null
         setPanning(false)
         setRubber(null)
@@ -1952,7 +2060,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           cancelQueuedMove()
           if(drag.current.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
           flushView()
-          editor.cancel(); drag.current = null; setPanning(false); setShapePreview(null); setRubber(null); setGuides({})
+          editor.cancel(); finishDragTrace(drag.current, ActionOutcome.cancelled, ActionReason.lostCapture); drag.current = null; setPanning(false); setShapePreview(null); setRubber(null); setGuides({})
         }
       }}
       onDragOver={(e) => e.preventDefault()}

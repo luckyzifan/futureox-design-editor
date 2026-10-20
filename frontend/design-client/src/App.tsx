@@ -1,3 +1,6 @@
+import { appendImageFiles, captureImageImportAnchor, StaleImageImport } from './append-image-files'
+import { beginEditorAction } from './editor-action-route'
+import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
 import { ShapeBuilderDialog } from './ShapeBuilderDialog'
 import { recordLocalError } from './local-diagnostics'
@@ -40,6 +43,7 @@ import { canvasMenuItems } from './canvas-menu-model'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import {
+  Settings as SettingsIcon,
   MousePointer2,
   Scaling,
   Hand,
@@ -208,128 +212,89 @@ export default function App() {
     return () => exports.dispose()
   }, [editor, exports])
   async function generateExport(format: 'svg' | 'png' | 'visual-svg') {
+    const trace = beginEditorAction(editor, CanvasAction.export, ActionSource.menu, 310)
+    try {
     let request: ExportRequest | null = null
     try {
-      if (!commitExportEdits(editor)) return
+      if (!commitExportEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
       request = exports.begin(editor, `menu:${format}`)
-      if (!request) return
+      if (!request) { trace.result(ActionOutcome.blocked, ActionReason.busy); return }
       editor.notify('正在生成导出预览…')
       const module = await import('./export')
-      if (!request.isCurrent()) return
+      if (!request.isCurrent()) { trace.result(ActionOutcome.cancelled, ActionReason.superseded); return }
       const result = format === 'visual-svg'
         ? await module.exportVisualSvg(request.document, request.page)
         : await module.exportImage(request.document, request.page, format, format === 'svg' ? 1 : 2, undefined, request.signal)
-      if (exports.publish(request, result)) editor.notify('导出文件已生成')
-    } catch (error) {
+      if (exports.publish(request, result)) { trace.result(ActionOutcome.observed); editor.notify('导出文件已生成') } else trace.result(ActionOutcome.cancelled, ActionReason.superseded)
+    } catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation);
       if (!request || request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) }
     } finally { if (request) exports.finish(request) }
+    } finally { trace.finish() }
   }
   async function generateSketchExport() {
-    if (!commitExportEdits(editor)) return
+    const trace = beginEditorAction(editor, CanvasAction.export, ActionSource.menu, 311)
+    try {
+    if (!commitExportEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
     const request = exports.begin(editor, 'menu:sketch')
-    if (!request) return
+    if (!request) { trace.result(ActionOutcome.blocked, ActionReason.busy); return }
     setMenu(false)
     try {
       editor.notify('正在生成 Sketch 兼容文件…')
       const bytes = await exportSketchInWorker(request.document, request.signal)
-      if (!request.isCurrent()) return
+      if (!request.isCurrent()) { trace.result(ActionOutcome.cancelled, ActionReason.superseded); return }
       download(`${request.document.name}.sketch`, new Blob([new Uint8Array(bytes).buffer], { type: 'application/zip' }))
+      trace.result(ActionOutcome.observed)
       desktopPet.event('export')
       editor.notify('Sketch 兼容文件已生成；完整编辑信息请同时保留 .fd 文件')
-    } catch (error) { if (request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) } }
+    } catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation); if (request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) } }
     finally { exports.finish(request) }
+    } finally { trace.finish() }
   }
   const [fileImports] = useState(() => new ImportOwner())
   const importMode = useRef<'open' | 'append'>('open')
   async function importDesignFile(f: File, mode: 'open' | 'append' = 'open') {
-    if(!ready || switching || desktopStatus.busy || editor.interactionActive){editor.notify('请结束当前操作后打开文件');return}
+    const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 312)
+    trace.result(ActionOutcome.cancelled, ActionReason.unobserved)
+    try {
+    if(!ready || switching || desktopStatus.busy || editor.interactionActive){trace.result(ActionOutcome.blocked, ActionReason.busy);editor.notify('请结束当前操作后打开文件');return}
     const request = fileImports.begin(editor)
     try {
       const imported = await importStep(request, () => readDesignFile(f, request.signal))
       request.assertCurrent()
       const document = { ...imported.document, id: uid() }
       if (mode === 'append') {
-        if (!commitPendingEdits(editor)) return
+        if (!commitPendingEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
         request.assertCurrent()
+        const revision = editor.state.version
         const roots = editor.appendDocument(document)
+        trace.result(editor.state.version !== revision ? ActionOutcome.committed : ActionOutcome.unchanged)
         setImportReport(imported.warnings.length ? { documentId: editor.state.doc.id, warnings: imported.warnings } : null)
         editor.notify(`已追加 ${roots.length} 组内容，可整体拖动；撤销可移除此轮导入`)
         return
       }
       const opened = await switchDocument(document, undefined, true, request)
+      if (opened) trace.result(ActionOutcome.observed)
       if (opened && request.isLatest() && editor.state.doc.id === document.id && imported.warnings.length) {
         setImportReport({ documentId: document.id, warnings: imported.warnings }); editor.notify('导入完成，可以继续编辑')
       }
-    } catch (error) { if (request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) } }
+    } catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation); if (request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) } }
     finally { request.finish() }
+    } finally { trace.finish() }
   }
   async function importImageFiles(files: File[]) {
-    if (!ready || editor.interactionActive) { editor.notify('请结束当前操作后导入图片'); return }
-    if (!commitPendingEdits(editor)) return
+    const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 313)
     try {
-      const images: { uri: string; width: number; height: number }[] = []
-      for (const file of files) {
-        const uri = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(reader.result as string)
-          reader.onerror = () => reject(new Error(`读取图片失败: ${file.name}`))
-          reader.readAsDataURL(file)
-        })
-        // Get image dimensions
-        const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
-          const img = new Image()
-          img.onload = () => resolve({ width: img.width, height: img.height })
-          img.onerror = () => reject(new Error(`解码图片失败: ${file.name}`))
-          img.src = uri
-        })
-        images.push({ uri, width: dims.width, height: dims.height })
-      }
-
-      // Place images at the current view center
-      const centerX = editor.state.view.x
-      const centerY = editor.state.view.y
-      const spacing = 20
-      let offsetY = centerY - (images.length * spacing) / 2
-
-      editor.change('导入图片', (doc) => {
-        for (const { uri, width, height } of images) {
-          const id = uid()
-          const node: any = {
-            id,
-            kind: 'rectangle',
-            name: `图片`,
-            visible: true,
-            opacity: 1,
-            blend: 'normal',
-            width,
-            height,
-            transform: [1, 0, 0, 1, centerX - width / 2, offsetY],
-            fills: [{
-              kind: 'image',
-              visible: true,
-              opacity: 1,
-              blend: 'normal',
-              color: '#ffffff',
-              image: uri,
-              fit: 'cover',
-              angle: 0,
-              stops: [],
-            }],
-            strokes: [],
-            effects: [],
-          }
-          doc.nodes[id] = node
-          const currentPage = doc.pages.find(p => p.id === editor.state.page)
-          if (currentPage) {
-            currentPage.children.push(id)
-          }
-          offsetY += height + spacing
-        }
-      })
-      editor.notify(`已导入 ${images.length} 张图片`)
+      if (!ready || editor.interactionActive) { trace.result(ActionOutcome.blocked, ActionReason.notReady); editor.notify('请结束当前操作后导入图片'); return }
+      if (!commitPendingEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
+      const canvas = document.querySelector<HTMLElement>('[data-testid=canvas]')
+      const anchor = captureImageImportAnchor(editor, { width: canvas?.clientWidth ?? 0, height: canvas?.clientHeight ?? 0 })
+      const result = await appendImageFiles(editor, files, anchor)
+      trace.result(result.status === 'committed' ? ActionOutcome.committed : result.status === 'rejected' ? ActionOutcome.rejected : ActionOutcome.unchanged, result.status === 'rejected' ? ActionReason.validation : ActionReason.none)
     } catch (error) {
-      editor.notify(`图片导入失败: ${String(error)}`)
-    }
+      trace.result(error instanceof StaleImageImport ? ActionOutcome.cancelled : ActionOutcome.rejected,
+        error instanceof StaleImageImport ? ActionReason.superseded : ActionReason.validation)
+      editor.notify(error instanceof StaleImageImport ? error.message : `图片导入失败: ${String(error)}`)
+    } finally { trace.finish() }
   }
   const switchLifetime = useRef(0)
   useEffect(() => {
@@ -480,6 +445,9 @@ export default function App() {
     preserveCurrent = true,
     request?: ImportRequest,
   ) {
+    const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.lifecycle, 314)
+    trace.result(ActionOutcome.cancelled, ActionReason.unobserved)
+    try {
     if (request && !request.isCurrent()) return false
     if (desktopSession ? desktopSession.status.busy : (!ready || switchGate.current || !commitPendingEdits(editor))) return false
     const adoption = request || fileImports.begin(editor)
@@ -487,6 +455,7 @@ export default function App() {
     if (desktopSession) {
       const opened = await desktopSession.replace(document, adoption.isCurrent)
       if (opened && adoption.isLatest()) setMenu(false)
+      if (opened) trace.result(ActionOutcome.observed)
       return opened
     }
     cancelPendingOperations(editor)
@@ -535,8 +504,10 @@ export default function App() {
       setMenu(false)
       setLocalFiles(null)
       setReady(true)
+      trace.result(ActionOutcome.observed)
       return true
     } catch (e) {
+      trace.result(ActionOutcome.rejected, ActionReason.validation)
       recordLocalError('workspace', e, 'STORAGE_ERROR')
       if (ownsSession()) editor.notify(String(e))
       return false
@@ -546,6 +517,13 @@ export default function App() {
         if (switchLifetime.current === lifetime) setSwitching(false)
       }
     }
+    } finally { trace.finish() }
+  }
+  async function trashLocalFile(id: string, deleted: boolean) {
+    const trace = beginEditorAction(editor, CanvasAction.delete, ActionSource.menu, deleted ? 330 : 331)
+    try { await localTrash(id, deleted); trace.result(ActionOutcome.observed); await openLocalFiles() }
+    catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation); recordLocalError('workspace', error, 'STORAGE_ERROR'); editor.notify(String(error)) }
+    finally { trace.finish() }
   }
   async function openLocalFiles() {
     fileImports.invalidate()
@@ -578,8 +556,15 @@ export default function App() {
       if (result.status === 'error' || result.status === 'conflict') editor.notify(result.message)
     }).catch(error => editor.notify(String(error)))
   }, [ready, desktop, editor])
+  const openSettings = useCallback(() => {
+    if (!ready || switching || desktopStatus.transitioning || editor.interactionActive || modalOwnsKeyboard(document.activeElement)) return
+    if (!commitPendingEdits(editor)) return
+    setMenu(false)
+    setShowSettings(true)
+  }, [ready, switching, desktopStatus.transitioning, editor])
   useEffect(() => {
     const command = (name: DesktopCommand) => {
+      if (name === 'settings') { openSettings(); return }
       if (!ready || !desktopSession) return
       // Native editor/text commands retain the dispatcher's focused-input routing.
       // File commands must not act on the .fd document behind an independent modal.
@@ -598,6 +583,10 @@ export default function App() {
       else if (editorCommands.includes(name as EditorCommand)) void dispatchEditorCommand(editor, name as EditorCommand)
     }
     const shortcut = (e: KeyboardEvent) => {
+      const settingsMod = shortcutPlatform() === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
+      if (settingsMod && e.key === ',' && !e.shiftKey && !e.altKey && !e.repeat && !e.isComposing && e.keyCode !== 229 && !e.defaultPrevented) {
+        e.preventDefault(); openSettings(); return
+      }
       if (!ready || e.defaultPrevented || e.isComposing || e.keyCode === 229 || e.repeat || e.altKey || shortcutTargetOwnsKeyboard(e.target)) return
       if (shortcutPlatform() === 'mac' ? (!e.metaKey || e.ctrlKey) : (!e.ctrlKey || e.metaKey)) return
       const key = e.key.toLowerCase()
@@ -630,7 +619,7 @@ export default function App() {
         })
     })
     return () => { window.removeEventListener('keydown', shortcut); offCommand?.(); offClose?.() }
-  }, [editor, desktopSession, desktop, ready, fileImports])
+  }, [editor, desktopSession, desktop, ready, fileImports, openSettings])
   const focusCanvas = () => document.querySelector<HTMLElement>('[data-testid="canvas"]')?.focus({ preventScroll: true })
   const chooseTool = (tool: Tool) => { void activateTool(editor,tool);focusCanvas() }
   const openToolbarMenu = (name: 'move' | 'regions' | 'shapes' | 'drawing' | 'commands' | 'utility', open: boolean) => {
@@ -815,10 +804,12 @@ export default function App() {
             导出
             <ChevronDown size={12} />
           </button>
-          <button type="button" className="app-settings-button" aria-label="打开设置" title="设置"
+          <button type="button" className="app-settings-button" aria-label="打开设置"
+            disabled={!ready || switching || desktopStatus.transitioning}
+            title={!ready || switching || desktopStatus.transitioning ? '正在处理设计文件，完成后可打开设置' : `设置 (${formatShortcutCombo('Mod+,', shortcutContext.platform)})`}
             aria-haspopup="dialog" aria-expanded={showSettings}
-            onClick={() => { if (commitPendingEdits(editor)) { setMenu(false); setShowSettings(true) } }}>
-            <SlidersHorizontal size={16} /><span>设置</span>
+            onClick={openSettings}>
+            <SettingsIcon size={16} /><span>设置</span>
           </button>
           <span className="avatar">我</span>
         </div>
@@ -828,10 +819,7 @@ export default function App() {
         <>
           <div className="menu-scrim" onClick={() => setMenu(false)} />
           <div className="file-menu">
-            <button type="button" onClick={() => {
-              if (!commitPendingEdits(editor)) return
-              setMenu(false); setShowSettings(true)
-            }}><SlidersHorizontal size={15} />设置</button>
+            <button type="button" onClick={openSettings}><SettingsIcon size={15} />设置</button>
             <button
               onClick={() => {
                 void switchDocument(blank())
@@ -1175,9 +1163,7 @@ export default function App() {
                 <button
                   disabled={entry.id === s.doc.id}
                   onClick={() =>
-                    void localTrash(entry.id, !entry.deleted)
-                      .then(openLocalFiles)
-                      .catch((e) => { recordLocalError('workspace', e, 'STORAGE_ERROR'); editor.notify(String(e)) })
+                    void trashLocalFile(entry.id, !entry.deleted)
                   }
                 >
                   {entry.deleted ? '恢复' : '移入回收站'}

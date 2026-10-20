@@ -1,3 +1,4 @@
+import { utilityAction, runUtilityAction, ActionSource, CanvasAction, ActionReason, type UtilityAction } from './canvas-utility-action'
 import {useEffect,useRef,useState} from 'react'
 import type {Editor} from './engine'
 import type {CanvasCamera,CanvasSize} from './canvas-camera'
@@ -8,18 +9,18 @@ import {NumberField} from './fields'
 
 export function CanvasGuides({editor,view,size,intercept}:{editor:Editor;view:CanvasCamera;size:CanvasSize;intercept:(e:React.PointerEvent)=>boolean}){
   const host=useRef<HTMLDivElement>(null),[selected,setSelected]=useState<{owner:string;id:string}|null>(null)
-  const active=useRef<{pointer:number;session:number;page:string;owner:string;id:string;axis:'x'|'y';view:CanvasCamera;created:boolean;start:{x:number;y:number};moved:boolean}|null>(null)
+  const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;owner:string;id:string;axis:'x'|'y';view:CanvasCamera;created:boolean;start:{x:number;y:number};moved:boolean}|null>(null)
   const doc=editor.state.doc,page=editor.state.page,shown=!!editor.state.rulers
   const guides=shown?worldGuides(doc,page):[]
   const selectedGuide=selected&&guideOwner(doc,selected.owner)?.guides?.find(g=>g.id===selected.id)
-  const cancel=()=>{const d=active.current;active.current=null;if(d?.session===editor.sessionGeneration&&d.page===editor.state.page)editor.cancel()}
+  const cancel=()=>{const d=active.current;active.current=null;if(d?.session===editor.sessionGeneration&&d.page===editor.state.page)editor.cancel();d?.action.cancel()}
   useEffect(()=>{cancel();setSelected(null)},[editor.sessionGeneration,page,shown])
   useEffect(()=>{
     const down=(e:PointerEvent)=>{if(!host.current?.contains(e.target as Node))setSelected(null)}
     const key=(e:KeyboardEvent)=>{
       if(!selected||!shown||(e.target as Element)?.closest('input,textarea,[contenteditable]'))return
       if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();cancel();setSelected(null)}
-      if(['Delete','Backspace'].includes(e.key)&&!active.current){e.preventDefault();e.stopImmediatePropagation();editor.change('删除参考线',d=>{const owner=guideOwner(d,selected.owner);if(owner)owner.guides=owner.guides?.filter(g=>g.id!==selected.id)});setSelected(null)}
+      if(['Delete','Backspace'].includes(e.key)&&!active.current){e.preventDefault();e.stopImmediatePropagation();runUtilityAction(editor,CanvasAction.guide,ActionSource.keyboard,()=>editor.change('删除参考线',d=>{const owner=guideOwner(d,selected.owner);if(owner)owner.guides=owner.guides?.filter(g=>g.id!==selected.id)}));setSelected(null)}
     }
     window.addEventListener('keydown',key,true);window.addEventListener('pointerdown',down,true);window.addEventListener('blur',cancel)
     return()=>{window.removeEventListener('keydown',key,true);window.removeEventListener('pointerdown',down,true);window.removeEventListener('blur',cancel)}
@@ -28,26 +29,28 @@ export function CanvasGuides({editor,view,size,intercept}:{editor:Editor;view:Ca
   const location=(e:{clientX:number;clientY:number},camera=view)=>{const b=host.current!.getBoundingClientRect();return screenToWorld(camera,{x:e.clientX-b.left,y:e.clientY-b.top})}
   const start=(e:React.PointerEvent,axis:'x'|'y',owner:string,existing?:RulerGuide)=>{
     e.stopPropagation();if(existing&&intercept(e))return
-    if(e.button!==0||editor.state.busy||editor.interactionActive||editor.state.tool!=='select')return
+    const action=utilityAction(editor,CanvasAction.guide)
+    if(e.button!==0||editor.state.busy||editor.interactionActive||editor.state.tool!=='select'){action.block(ActionReason.busy);return}
     e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);host.current?.focus({preventScroll:true})
     const id=existing&&!e.altKey?existing.id:uid();editor.begin(existing?(e.altKey?'复制参考线':'移动参考线'):'添加参考线')
     if(!existing||e.altKey)editor.change('添加参考线',d=>{const target=guideOwner(d,owner);if(!target)throw Error('参考线容器已移除');(target.guides??=[]).push({id,axis,position:existing?.position??guidePosition(d,owner,axis,location(e))})})
-    active.current={pointer:e.pointerId,session:editor.sessionGeneration,page:editor.state.page,owner,id,axis,view:{...view},created:!existing||e.altKey,start:{x:e.clientX,y:e.clientY},moved:false};setSelected({owner,id})
+    active.current={action,pointer:e.pointerId,session:editor.sessionGeneration,page:editor.state.page,owner,id,axis,view:{...view},created:!existing||e.altKey,start:{x:e.clientX,y:e.clientY},moved:false};setSelected({owner,id})
   }
   const move=(e:React.PointerEvent)=>{
     e.stopPropagation();const a=active.current;if(!a||a.pointer!==e.pointerId||a.session!==editor.sessionGeneration||a.page!==editor.state.page)return
+    a.action.sample({snapEnabled:!e.ctrlKey})
     a.moved ||= e.clientX!==a.start.x||e.clientY!==a.start.y
     if(!a.moved)return
-    let position=guidePosition(editor.state.doc,a.owner,a.axis,location(e,a.view));if(!e.ctrlKey)position=Math.round(position)
+    let position=guidePosition(editor.state.doc,a.owner,a.axis,location(e,a.view));const proposed=position;if(!e.ctrlKey)position=Math.round(position);a.action.sample({snapChanged:position!==proposed,intentResolvedComparison:position===proposed?1:2})
     if(!Number.isFinite(position)||Math.abs(position)>1e7)return
     editor.change('移动参考线',d=>{const guide=guideOwner(d,a.owner)?.guides?.find(g=>g.id===a.id);if(guide)guide.position=position})
   }
   const end=(e:React.PointerEvent)=>{
     const a=active.current;if(!a||a.pointer!==e.pointerId)return;move(e);active.current=null
     const b=host.current!.getBoundingClientRect(),inside=e.clientX-b.left>=20&&e.clientY-b.top>=20&&e.clientX<b.right&&e.clientY<b.bottom
-    if(!inside&&a.created){editor.cancel();setSelected(null);return}
+    if(!inside&&a.created){editor.cancel();a.action.cancel();setSelected(null);return}
     if(!inside)editor.change('移除参考线',d=>{const target=guideOwner(d,a.owner);if(target)target.guides=target.guides?.filter(g=>g.id!==a.id)} )
-    editor.commit();if(!inside)setSelected(null)
+    const resolved=guideOwner(editor.state.doc,a.owner)?.guides?.find(g=>g.id===a.id)?.position;editor.commit();const committed=guideOwner(editor.state.doc,a.owner)?.guides?.find(g=>g.id===a.id)?.position;a.action.finish(false,{motionObserved:a.moved,resolvedCommittedComparison:resolved===committed?1:2});if(!inside)setSelected(null)
   }
   const selectedFrame=editor.topSelection().length===1?doc.nodes[editor.topSelection()[0]]:null
   const owner=selectedFrame&&['frame','section'].includes(selectedFrame.kind)&&!selectedFrame.instance&&!selectedFrame.instanceOrigin&&!selectedFrame.locked?selectedFrame.id:page
@@ -69,8 +72,8 @@ export function CanvasGuides({editor,view,size,intercept}:{editor:Editor;view:Ca
     <div className="ruler-origin"/>
     {selected&&selectedGuide&&<div className="guide-properties" onPointerDown={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
       <span>{selected.owner===page?'页面':'画板'}参考线</span>
-      <NumberField label="参考线位置" value={selectedGuide.position} onChange={position=>editor.change('设置参考线位置',d=>{const g=guideOwner(d,selected.owner)?.guides?.find(g=>g.id===selected.id);if(g)g.position=position})}/>
-      <button onClick={()=>{editor.change('删除参考线',d=>{const o=guideOwner(d,selected.owner);if(o)o.guides=o.guides?.filter(g=>g.id!==selected.id)});setSelected(null)}}>删除</button>
+      <NumberField label="参考线位置" value={selectedGuide.position} onChange={position=>runUtilityAction(editor,CanvasAction.guide,ActionSource.properties,()=>editor.change('设置参考线位置',d=>{const g=guideOwner(d,selected.owner)?.guides?.find(g=>g.id===selected.id);if(g)g.position=position}))}/>
+      <button onClick={()=>{runUtilityAction(editor,CanvasAction.guide,ActionSource.properties,()=>editor.change('删除参考线',d=>{const o=guideOwner(d,selected.owner);if(o)o.guides=o.guides?.filter(g=>g.id!==selected.id)}));setSelected(null)}}>删除</button>
     </div>}
   </div>
 }

@@ -1,3 +1,4 @@
+import { canvasActions, CanvasAction, ActionSource, ActionOutcome } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
 import { InterfaceSettings } from './AdaptivePanels'
 import { interfacePreference } from './interface-preference'
@@ -75,14 +76,36 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
     }
   }, [])
 
+  // These stores are independent of the six canvas-aid booleans. Observe
+  // applied family changes only; never emit chosen values or preference JSON.
+  useLayoutEffect(() => {
+    const watch = (get: () => unknown, subscribe: (listener: () => void) => () => void, commandCode: number) => {
+      let previous = get()
+      return subscribe(() => {
+        const next = get()
+        if (Object.is(previous, next)) return
+        previous = next
+        canvasActions(editor).event(CanvasAction.settings, ActionSource.properties, ActionOutcome.observed, undefined, { commandCode })
+      })
+    }
+    const stops = [watch(shortcutPreference.getSnapshot, shortcutPreference.subscribe, 340),
+      watch(nudgePreference.getSnapshot, nudgePreference.subscribe, 341),
+      watch(interfacePreference.getSnapshot, interfacePreference.subscribe, 342),
+      watch(desktopPet.snapshot, desktopPet.subscribe, 343)]
+    return () => { for (const stop of stops) stop() }
+  }, [editor])
+
   const setWheel = (enabled: boolean) => {
+    const previous = editor.state.scrollWheelZoom
     editor.setScrollWheelZoom(enabled)
+    canvasActions(editor).event(CanvasAction.settings, ActionSource.properties, previous === editor.state.scrollWheelZoom ? ActionOutcome.unchanged : ActionOutcome.observed, undefined, { commandCode: 344 })
     let persisted = false
     try { persisted = localStorage.getItem('forma-scroll-wheel-zoom') === String(enabled) } catch { /* Denied storage remains session-only. */ }
     setWheelTemporary(!persisted)
     return persisted
   }
   const restoreDefaults = () => {
+    canvasActions(editor).event(CanvasAction.settings, ActionSource.properties, ActionOutcome.observed, undefined, { commandCode: 349 })
     const petSaved = desktopPet.configure('off')
     const interfaceSaved = interfacePreference.reset()
     const canvasSaved = settingsPreference.reset()

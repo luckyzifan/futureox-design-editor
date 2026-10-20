@@ -1,3 +1,4 @@
+import { canvasActions, CanvasAction, ActionSource, ActionOutcome } from './canvas-action-diagnostics'
 import { useSyncExternalStore } from 'react'
 import type { Editor, EditorState } from './engine'
 
@@ -94,18 +95,21 @@ export function useSettingsPersistence() {
  * menus and shortcuts share the same values. Camera/document notifications only
  * compare six booleans: no storage read/write, snapshot allocation, or React update. */
 export function bindEditorSettings(editor: Editor, preference = settingsPreference) {
+  let armed = false
   let applying = false, previous = preference.getSnapshot()
   const apply = () => {
     const next = preference.getSnapshot()
     previous = next
     if (CANVAS_SETTING_KEYS.every(key => !!editor.state[key] === next[key])) return
     applying = true
-    try { editor.set(next) } finally { applying = false }
+    try { editor.set(next); if (armed) canvasActions(editor).event(CanvasAction.settings, ActionSource.properties, ActionOutcome.observed) } finally { applying = false }
   }
   apply()
+  armed = true
   const stopPreference = preference.subscribe(apply)
   const stopEditor = editor.subscribe(() => {
     if (applying || CANVAS_SETTING_KEYS.every(key => !!editor.state[key] === previous[key])) return
+    canvasActions(editor).event(CanvasAction.settings, ActionSource.unknown, ActionOutcome.observed)
     previous = fromEditor(editor.state)
     preference.set(previous)
   })

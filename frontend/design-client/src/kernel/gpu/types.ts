@@ -289,7 +289,10 @@ export interface Driver {
   prepareFilters?(prefixUseful?: boolean): Promise<void>
   begin(vertices: Float32Array, curves?: Float32Array): void
   /** Complete prior commands before reclaiming frame-local scratch textures. */
-  checkpoint?(reason?: import('./queue-wait-stats').QueueWaitReason, admission?: GpuAdmissionDiagnostic): Promise<void>
+  /** Always submit encoded commands. completedPoolEpoch may omit the wait only
+   * for a renderer-proven free-pool-only destruction batch entirely released
+   * in already-completed prior frames; unknown/current epochs must wait. */
+  checkpoint?(reason?: import('./queue-wait-stats').QueueWaitReason, admission?: GpuAdmissionDiagnostic, completedPoolEpoch?: number): Promise<void>
   /** Raw premultiplied storage; used by exact Rust f64 effect composition. */
   readSurface?(source: Texture): Promise<Float32Array>
   create(width: number, height: number): Texture

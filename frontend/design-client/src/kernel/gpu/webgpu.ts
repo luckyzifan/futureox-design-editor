@@ -1050,8 +1050,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       return floating?new Float32Array(packed.buffer):Float32Array.from(packed,v=>v/255)
     } finally { buffer.destroy() }
   }
-  async checkpoint(reason: QueueWaitReason = 'checkpoint', admission?: GpuAdmissionDiagnostic) {
+  async checkpoint(reason: QueueWaitReason = 'checkpoint', admission?: GpuAdmissionDiagnostic, completedPoolEpoch?: number) {
     this.submitCommands()
+    // Do not advance completion here: the newly submitted commands may still
+    // be running. This certificate covers only old, no-longer-used pool entries.
+    if (reason === 'admission' && !this.lost && Number.isSafeInteger(completedPoolEpoch) && completedPoolEpoch! > 0 &&
+        completedPoolEpoch! < this.resourceEpoch && completedPoolEpoch! <= this.completedResourceEpoch) return
     const epoch = this.resourceEpoch
     await this.waitForQueue(reason, admission)
     if (this.lost) throw new Error('GPU 设备已丢失')

@@ -5,6 +5,7 @@ import type { ResidentFrame } from './resident-presenter'
  * diagnostics at runtime. A TypeScript type does not remove those fields. */
 export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
   return {
+    diagnosticSequence: Number.isSafeInteger(frame.diagnosticSequence) && frame.diagnosticSequence! > 0 ? frame.diagnosticSequence : undefined,
     presentationId: frame.presentationId,
     terminalQuality: terminalQualityMessage(frame.terminalQuality),
     overlay: frame.overlay ? { pixelGrid: frame.overlay.pixelGrid, selection: frame.overlay.selection ? {

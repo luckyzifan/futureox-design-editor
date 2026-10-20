@@ -1,3 +1,4 @@
+import { InputFamily } from './input-diagnostics'
 import { numericExpression, propertyUnit } from './numeric-expression'
 import { DraftInput } from './DraftInput'
 import { NumberField } from './fields'
@@ -18,7 +19,7 @@ export function MixedNumberField({ label, value, onChange, min = -1e6, max = 1e6
     if (!onExpression && (/^[+*/-]=/.test(text) || text.includes('%')) && propertyUnit(label) !== 'percent') return false
     return (bases || [0]).every(base => { const value = parsed(text, base); return Number.isFinite(value) && value >= min && value <= max })
   }
-  return <label className="number-field mixed-field"><span>{label}</span><DraftInput
+  return <label className="number-field mixed-field"><span>{label}</span><DraftInput diagnosticFamily={InputFamily.mixed}
     aria-label={label} aria-description="所选图层的数值不同；输入数值可同时修改" value="" placeholder="混合"
     inputMode="decimal" normalize={(text) => text.trim()} validate={(text) => text === '' || valid(text)}
     onCommit={(text) => { if (text.trim()) { if (onExpression) onExpression(text); else onChange(parsed(text)) } }}

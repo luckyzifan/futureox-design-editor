@@ -1,3 +1,4 @@
+import { NavigationBudgetLatch } from './navigation-budget-latch'
 import { initializeKernelModule } from './module'
 import { shouldUseExactCpuFallback } from './cpu-fallback'
 import { allowsResidentSdr } from './render-policy'
@@ -367,6 +368,7 @@ export function ProgressiveSurfaceImpl(
   const fillOwner = useRef<{ contract: object; key: string } | null>(null)
   const previousFillView = useRef<SurfaceProps['view'] | undefined>(undefined)
   const previewAdmission = useRef<{ contract?: object; key?: string; active: boolean }>({ active: false })
+  const [navigationBudgetLatch] = useState(() => new NavigationBudgetLatch())
   const startupPreviewAttempt = useRef<object | null>(null)
   const [owner] = useState(displayOwner)
   const [tiles, setTiles] = useState<Map<string, PaintedTile>>(() => new Map())
@@ -1048,8 +1050,10 @@ export function ProgressiveSurfaceImpl(
         props.onFallback(String(error))
       else setFailure(String(error))
     }
+    if (!navigationZoom.active) navigationBudgetLatch.clear()
     let runAttempts = 0
     let navigationRequest: string | undefined
+    let navigationIntent: string | undefined
     const run = async () => {
       try {
         if (navigationZoom.active) {
@@ -1069,6 +1073,8 @@ export function ProgressiveSurfaceImpl(
           }
           // Continuous zoom owns a separate transient lane. Do not plan,
           // compile or rasterize intermediate native-density tile levels.
+          navigationIntent = JSON.stringify([sample.view.x, sample.view.y, sample.view.zoom, width, height, dpr, ratio, rasterProfile])
+          if (navigationBudgetLatch.blocked(contract, navigationIntent, displayRetry)) return
           navigationRequest = JSON.stringify([sample.sequence, width, height, dpr])
           if (previewAdmission.current.contract === contract && previewAdmission.current.key === navigationRequest) return
           previewAdmission.current = { contract, key: navigationRequest, active: true }
@@ -1374,8 +1380,10 @@ export function ProgressiveSurfaceImpl(
           }))
         }
       } catch (error) {
-        if (navigationRequest && previewAdmission.current.contract === contract && previewAdmission.current.key === navigationRequest)
+        if (navigationRequest && previewAdmission.current.contract === contract && previewAdmission.current.key === navigationRequest) {
+          if (navigationIntent) navigationBudgetLatch.reject(contract, navigationIntent, displayRetry, error)
           previewAdmission.current.key = undefined
+        }
         // A bounded navigation preview is optional. Preserve current resident
         // pixels under pressure; only final exact refinement is authoritative.
         if (navigationZoom.active && !/device lost|GPU device|has been lost|设备已丢失|recovery failed/i.test(String(error)) &&

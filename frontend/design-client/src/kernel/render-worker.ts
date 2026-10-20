@@ -1,3 +1,4 @@
+import { GridMeasurements } from './grid-measurements'
 import { RenderFailureAttempts, renderFailureFields, withRenderFailureStage } from './render-failure-telemetry'
 import { boundedPatchWire, supportsAcknowledgedPropertyPatch } from './authored-patch-transition'
 import type { PreparationStateReceiptV1 } from './preparation-state'
@@ -93,6 +94,7 @@ function capturedDocumentFallback(id: number): Promise<string> {
     self.postMessage({ id, documentFallback: true })
   })
 }
+const gridMeasurements = new GridMeasurements((event,fields)=>terminalDiagnostics.record(event,fields))
 let colorKey = ''
 let floatingKey: string | undefined
 let referenceGpu = false
@@ -114,6 +116,7 @@ let navigationTextureSet: number[] = [], navigationTextureSequence = 0
 // Numeric stages are documented in the diagnostic collector. The callback is
 // immediately after queue.submit, not GPU completion or physical scanout.
 const reportDisplay = (presentation: Record<string, unknown>) => {
+  if(terminalDiagnostics.enabled && presentation.gridVisible !== undefined)gridMeasurements.record({gridKind:5,gridVisible:Number(presentation.gridVisible),gridSpacingClass:Number(presentation.gridVisible)?2:1,gridRedrawReason:0,dpr:Number(presentation.dpr)})
   const presented = presentation.presented as {view?:{x:number;y:number;zoom:number};width?:number;height?:number;dpr?:number} | undefined
   terminalDiagnostics.record(presentation.error ? 'error' : 'camera-submit',{...(presentation.error ? { ...renderFailureFields(presentation.error), failureStage:10 } : {}),...presentation,...presented?.view,width:presented?.width,height:presented?.height,dpr:presented?.dpr,sequence:displayOrderSequence,reasonCode:presentation.error?4:0})
   // Preserve the one forced terminal sample before another burst fills the bounded journal.
@@ -603,6 +606,7 @@ self.onmessage = (e) => {
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
         tilePrepareViewport: requestedPrepareViewport, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
+      if(terminalDiagnostics.enabled && renderIntent==='canvas')gridMeasurements.record({gridKind:1,gridVisible:Number(!!renderOptions.grid&&!renderOptions.transparent&&renderOptions.view.zoom>0.13),gridSpacingClass:3,gridRedrawReason:2})
       const previewCurrent = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
         (!tileViewport || channel !== 'canvas' || fillGeneration === tileFillGeneration)
       const retainCoverage = channel === 'canvas' && coverageTiles === true && !!tileViewport && renderIntent === 'preview'
