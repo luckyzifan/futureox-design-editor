@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest'
+import { PresenterPayloadLedger } from './presenter-payload-ledger'
 import { ResidentPresenter } from './resident-presenter'
 import { WebGpuDriver } from './webgpu'
 afterEach(() => vi.unstubAllGlobals())
@@ -50,7 +51,7 @@ test.each(['texture', 'view', 'bind'] as const)('capture %s failure preserves ac
     return {}
   }) }
   const presenter = Object.assign(Object.create(ResidentPresenter.prototype), {
-    disposed: false, bytes: 64, captures: 3, textures: new Map(), device: {
+    disposed: false, bytes: 64, captures: 3, textures: new Map(), payload: new PresenterPayloadLedger(() => Promise.resolve(), 512*1024*1024), device: {
       createTexture: vi.fn(() => { if (failure === 'texture') throw Error('texture failure'); return texture }),
       createBindGroup: vi.fn(() => { throw Error('bind failure') }),
     },

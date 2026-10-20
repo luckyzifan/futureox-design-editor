@@ -478,7 +478,8 @@ self.onmessage = (e) => {
       try{
         const result=request.command==='display-read-pixel'?await gpu?.driver.readContentPixel?.(request.u,request.v,request.expected):await gpu?.driver.captureContentBitmap?.()
         if(!result)throw Error('No displayed document content')
-        self.postMessage({id:request.id,...result},{transfer:'bitmap' in result?[result.bitmap]:[]})
+        try { self.postMessage({id:request.id,...result},{transfer:'bitmap' in result?[result.bitmap]:[]}) }
+        catch (error) { if ('bitmap' in result) result.bitmap.close(); throw error }
       }catch(error){self.postMessage({id:request.id,error:String(error)})}
     })()
     return

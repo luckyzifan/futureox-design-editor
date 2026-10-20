@@ -4,7 +4,7 @@ import { desktopPet } from './desktop-pet'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, subscribePendingEdits } from './pending-edits'
 import type { Editor } from './engine'
 import type { WorkspaceAutomationGuard } from './automation/workspace-bridge'
-import { prepareDocument, takePreparedDocument, forkPreparedDocument, type PreparedDocument } from './prepared-document'
+import { prepareDocument, takePreparedDocument, forkPreparedDocument, ensurePreparedDocument, preparedDocumentAdoptionOwner, preparedDocumentEncoding, type PreparedDocument } from './prepared-document'
 import { documentStage, documentStageAsync, DocumentStage } from './document-lifecycle-diagnostics'
 import { blank, type DesignDocument } from './model'
 import type { DesktopBridge, DesktopFile, DesktopResult, WorkspaceDocument, WorkspaceOpened } from './desktop'
@@ -610,20 +610,43 @@ export class DesktopSession {
   }
 
   private load(document: DesignDocument | PreparedDocument, persisted: boolean, handle?: string, name?: string,preserveView=false) {
+    // Plain-object callers (including saveCopy) need the same private owner
+    // proof as pre-prepared paths. Editor.load consumes this token without a
+    // second preparation or serialization.
+    document = ensurePreparedDocument(document)
+    const adoptedOwner = preparedDocumentAdoptionOwner(document)
+    const preparedEncoding = persisted ? preparedDocumentEncoding(document) : undefined
+    // Only the installed JSON.stringify codec (or the exact local fallback) can
+    // use this certificate. Unknown/custom encoders keep the existing encode path.
+    const encoding = persisted && (!this.bridge.documentCodec || this.bridge.documentCodec.encoding === 'json-stringify-v1')
+      ? preparedEncoding : undefined
+    const previousVersion = this.editor.state.version, previousSession = this.editor.sessionGeneration
+    const previousGeneration = this.generation
     this.suppressObservation = true
     try { if (!documentStage(DocumentStage.adoption, () => this.editor.load(document,preserveView))) return false } finally { this.suppressObservation = false }
+    // Editor.load publishes synchronously. A listener may edit even the same
+    // root object or start another load while normal observation is suppressed.
+    // Ownership alone cannot prove that the adopted bytes are still current.
+    const unchangedAdoption = this.editor.state.version === previousVersion + 1 &&
+      (previousSession === undefined ? this.editor.sessionGeneration === undefined
+        : this.editor.sessionGeneration === previousSession + 1) &&
+      this.generation === previousGeneration &&
+      !!adoptedOwner?.(this.editor.state.doc)
     const previousId = this.currentDocument.id
     if (previousId !== this.editor.state.doc.id && !this.workspaceHeads.has(previousId))
       this.tabsValue = this.tabsValue.filter(t => t.id !== previousId)
     this.currentDocument = this.editor.state.doc
     this.currentVersion = this.editor.state.version
     this.generation++
-    this.pristineBlankGeneration = !persisted && this.isDefaultBlank(this.currentDocument)
+    this.pristineBlankGeneration = !persisted && unchangedAdoption && this.isDefaultBlank(this.currentDocument)
       ? this.generation : null
     // The kernel may canonicalize an already validated document when it opens it.
-    this.baselineGeneration = persisted ? this.generation : null
-    this.baselineJson = null
-    this.baselineDocument = persisted ? this.currentDocument : undefined
+    const persistedUnchanged = persisted && unchangedAdoption
+    this.baselineGeneration = persistedUnchanged ? this.generation : null
+    const certifiedJson = persistedUnchanged && encoding
+      ? documentStage(DocumentStage.baselineReuse, () => encoding.json, encoding.json.length) : undefined
+    this.baselineJson = certifiedJson ?? null
+    this.baselineDocument = persistedUnchanged && certifiedJson === undefined ? this.currentDocument : undefined
     this.handle = handle
     this.displayName = name
     this.warning = undefined
