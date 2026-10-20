@@ -16,7 +16,6 @@ import {
   defaultLayoutGrid,
   container,
 } from './model'
-import { allParents } from './geometry'
 import { NumberField } from './fields'
 import { ColorInput } from './ColorInput'
 import { LayoutDashboard, Rows3, Columns3, Grid2X2 } from 'lucide-react'
@@ -39,8 +38,8 @@ export function LayoutPanel({
 }) {
   const [suggestion, setSuggestion] = useState<LayoutSuggestionPreview | null>(null)
   const [suggestionError, setSuggestionError] = useState('')
-  const units = propertyUnits(editor.state.doc, n.id)
-  const parent = editor.state.doc.nodes[allParents(editor.state.doc).get(n.id) || ''],
+  const parents = editor.parentMap(), units = propertyUnits(editor.state.doc, n.id, parents)
+  const parent = editor.state.doc.nodes[parents.get(n.id) || ''],
     flow = !!parent?.layout && parent.layout.mode !== 'none',
     layout = n.layout || defaultLayout(),
     active = !!n.layout && n.layout.mode !== 'none',

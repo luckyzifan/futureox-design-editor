@@ -1,3 +1,4 @@
+import { selectionSizeLabel } from './selection-size-label'
 import { recordCanvasGrid } from './kernel/grid-measurements'
 import { canvasActions, CanvasAction, ActionSource, ActionOutcome, ActionReason, modifierBits, type ActionReasonCode, type ActionOutcomeCode } from './canvas-action-diagnostics'
 import { actionGeometry, compareActionGeometry } from './canvas-action-geometry'
@@ -74,7 +75,7 @@ import {
   translate,
   multiply,
   worldMatrix,
-  allParents,
+  type ParentMap,
   scene,
   SpatialIndex,
   unionBounds,
@@ -152,7 +153,7 @@ type Drag = {
   moved?: boolean
   duplicating?: boolean
   originalIds?: string[]
-  sourceParents?: Map<string,string>
+  sourceParents?: ParentMap
   sourceDocument?: import('./model').DesignDocument
   parentMatrices?: Record<string, Matrix>
   pickIndex?: SpatialIndex
@@ -668,8 +669,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     else refreshHover.current()
   }, [editor, state.view, presented, displayedIndex, textEdit, state.tool])
   const selection = useMemo(() => new Set(state.selection), [state.selection])
-  const selectionFeedback = useMemo(() => canvasLayerFeedback(state.doc, state.page, state.selection),
-    [state.doc, state.page, state.selection])
+  const selectionFeedback = useMemo(() => canvasLayerFeedback(state.doc, state.page, state.selection, editor.parentMap(state.doc)),
+    [editor, state.doc, state.version, state.page, state.selection])
   const selected = useMemo(() => {
     const ids = new Set(selectionFeedback.ids)
     return entries.filter(e => ids.has(e.id))
@@ -713,7 +714,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const labels:import('./kernel/gpu/canvas-labels').CanvasLabel[]=frameTitles.map(e=>({anchor:apply(e.matrix,{x:0,y:0}),offset:{x:0,y:-12},
       basis:e.matrix.slice(0,4) as [number,number,number,number],text:state.doc.nodes[e.id].name,size:11,color:'#73778b',owners:[...e.ancestors,e.id]}))
     if(showSelection)labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
-      text:`${Math.round(localSelection?localSelection.width*Math.hypot(selected[0].matrix[0],selected[0].matrix[1]):selectionBox.width)} × ${Math.round(localSelection?localSelection.height*Math.hypot(selected[0].matrix[2],selected[0].matrix[3]):selectionBox.height)}`,
+      text:selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix),
       size:10,color:'#0d99ff',centered:true,owners:selectionFeedback.ids})
     for(const m of measurements)labels.push({anchor:{x:(m.from.x+m.to.x)/2,y:(m.from.y+m.to.y)/2},offset:{x:4,y:-5},text:String(Number(m.distance.toFixed(2))),size:11,color:'#f24822',halo:true})
     return { document:state.doc,pageId:state.page,epoch:editor.sessionGeneration, commands:{pixelGrid:state.pixelGrid,labels,measurements,
@@ -852,7 +853,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         const rect = host.current!.getBoundingClientRect(), view = editor.flushPendingView(), bounds = editor.selectionBounds()
         const center = bounds ? worldToScreen(view, { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }) : { x: rect.width / 2, y: rect.height / 2 }
         const anchor = { x: Math.max(8, Math.min(center.x, rect.width - 8)), y: Math.max(8, Math.min(center.y, rect.height - 8)) }
-        const parents = allParents(editor.state.doc)
+        const parents = editor.parentMap()
         setContextMenu({ x: rect.left + anchor.x, y: rect.top + anchor.y, worldPoint: screenToWorld(view, anchor), candidates: editor.state.selection.map(id => ({ id, name: editor.state.doc.nodes[id].name, locked: !interactivePath(editor.state.doc, editor.state.page, id, false, parents).length })) })
         return
       }
@@ -1342,7 +1343,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         setRubber({ ...p, width: 0, height: 0 })
       }
     }
-    const sourceDocument=editor.state.doc,sourceParents=allParents(sourceDocument)
+    const sourceDocument=editor.state.doc,sourceParents=editor.parentMap(sourceDocument)
     const matrices = Object.fromEntries(ids.map((id) => [id, worldMatrix(sourceDocument, id,sourceParents)]))
     const selectedIds = new Set(ids)
     const currentBox = unionBounds(
@@ -1611,7 +1612,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           d.ids = editor.moveDuplication(e.altKey, d.originalIds || d.ids)
           d.duplicating = e.altKey
           // Duplication changes topology; share one fresh map for this sample.
-          const parents = allParents(editor.state.doc)
+          const parents = editor.parentMap()
           d.matrices = Object.fromEntries(d.ids.map(id => [id, worldMatrix(editor.state.doc, id, parents)]))
           d.parentMatrices = Object.fromEntries(d.ids.map(id=>[id,worldMatrix(editor.state.doc,parents.get(id)!,parents)]))
           d.layoutPointerOrigin = undefined
@@ -1727,7 +1728,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         )
       }
     }
-    const parents = d.kind === 'move' && d.sourceParents || allParents(editor.state.doc),
+    const parents = d.kind === 'move' && d.sourceParents || editor.parentMap(),
       patches: Record<string, Partial<DesignNode>> = {}
     for (const id of d.ids) {
       const parent = d.kind === 'move' && d.parentMatrices?.[id] || worldMatrix(editor.state.doc, parents.get(id)!, parents)
@@ -2072,13 +2073,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (drag.current || pencil.current || !geometryReady || !displayedSnapshot || !displayedIndex) return
         host.current?.focus({ preventScroll: true })
         const point = world(e)
-        const shown = displayedSnapshot.document, parents = allParents(editor.state.doc)
+        const shown = displayedSnapshot.document, parents = editor.parentMap(), shownParents = editor.parentMap(shown)
         const candidates = displayedIndex.query({ x: point.x - 3 / zoom, y: point.y - 3 / zoom, width: 6 / zoom, height: 6 / zoom }).reverse().filter(entry => {
           if (!interactivePath(editor.state.doc, editor.state.page, entry.id, true, parents).length) return false
           const n = shown.nodes[entry.id]
           return kernelHitWorld(n, point, entry.matrix, zoom) && !entry.ancestors.some(id => {
             const parent = shown.nodes[id]
-            return parent.clip && !kernelFillWorld(parent, point, worldMatrix(shown, id), zoom)
+            return parent.clip && !kernelFillWorld(parent, point, worldMatrix(shown, id, shownParents), zoom)
           })
         }).map(entry => ({ id: entry.id, name: editor.state.doc.nodes[entry.id].name,
           locked: entry.locked || !interactivePath(editor.state.doc, editor.state.page, entry.id, false, parents).length }))
@@ -2153,6 +2154,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }}/>
       <KernelSurface
         navigationInputOwner={editor}
+        panGestureActive={panning}
         overlay={overlay}
         interaction={gpuInteraction}
         onPresentation={recordPresentation}
@@ -2467,19 +2469,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 fontSize={10 / zoom}
                 fill="#0d99ff"
               >
-                {Math.round(
-                  localSelection
-                    ? localSelection.width *
-                        Math.hypot(selected[0].matrix[0], selected[0].matrix[1])
-                    : selectionBox.width,
-                )}{' '}
-                ×{' '}
-                {Math.round(
-                  localSelection
-                    ? localSelection.height *
-                        Math.hypot(selected[0].matrix[2], selected[0].matrix[3])
-                    : selectionBox.height,
-                )}
+                {selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix)}
               </text>
             </g>
           )}

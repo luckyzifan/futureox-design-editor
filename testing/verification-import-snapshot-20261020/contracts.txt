@@ -1,0 +1,15 @@
+(node:3040) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ omitted and null mask mode remain legacy-compatible in schema 1 through 6 (9.281291ms)
+✔ explicit alpha and luminance require schema 4 even when mask is not active (1.286583ms)
+✔ unknown and non-string mask values cannot be adopted as a default mode (0.915875ms)
+✔ local save rejects invalid mask contracts before opening IndexedDB (0.451542ms)
+✔ source contract: opening prepares before local publication and adoption accepts only owned preparation (1.775291ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 162.924875

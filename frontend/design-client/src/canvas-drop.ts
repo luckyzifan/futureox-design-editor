@@ -1,4 +1,4 @@
-import { allParents, apply, bounds, boxPoints, inverse, multiply, worldMatrix } from './geometry'
+import { allParents, apply, bounds, boxPoints, inverse, multiply, worldMatrix, type ParentMap } from './geometry'
 import { kernelFillWorld } from './kernel/picking'
 import { interactivePath } from './selection-hierarchy'
 import type { DesignDocument, Point } from './model'
@@ -38,10 +38,10 @@ export function canvasDropFrame(doc: DesignDocument, page: string, roots: readon
     return n.id
   }
 }
-export function containingFrame(doc: DesignDocument,id:string,parents=allParents(doc)):string|undefined {
+export function containingFrame(doc: DesignDocument,id:string,parents:ParentMap=allParents(doc)):string|undefined {
   for(let at=parents.get(id);at&&doc.nodes[at];at=parents.get(at))if(['frame','section'].includes(doc.nodes[at].kind))return at
 }
-export function insideParentFrame(doc: DesignDocument,id:string,point:Point,parents=allParents(doc)):boolean {
+export function insideParentFrame(doc: DesignDocument,id:string,point:Point,parents:ParentMap=allParents(doc)):boolean {
   const frame=containingFrame(doc,id,parents)
   return !!frame&&kernelFillWorld(doc.nodes[frame],point,worldMatrix(doc,frame,parents),1)
 }

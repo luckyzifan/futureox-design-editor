@@ -64,3 +64,28 @@ test('eviction and invalidation release resources, while activation transfers ow
   cache.clear()
   expect(retired).toEqual(['b', 'c'])
 })
+
+test('active transfer is pinned outside LRU, shrinking and pressure evict only inactive entries', () => {
+  const retired: object[] = [], cache = new PageResidencyCache<object>(100, 8, value => retired.push(value))
+  const active = {}, b = {}, c = {}
+  cache.store('A', [active], 30); expect(cache.take('A')).toEqual([active])
+  cache.store('B', [b], 30); cache.store('C', [c], 30)
+  expect(cache.configure(30, 1)).toBe(true)
+  expect(retired).toEqual([b]); cache.trim(NaN)
+  expect(retired).toEqual([b, c]); expect(retired).not.toContain(active)
+  cache.clear(); expect(retired).toHaveLength(2)
+})
+
+test('resource identity transfers instead of double-retiring or double-counting shared values', () => {
+  const retired: object[] = [], cache = new PageResidencyCache<object>(100, 8, value => retired.push(value), values => new Set(values).size * 10)
+  const shared = {}, unique = {}
+  cache.store('A', [shared, unique], 20); cache.store('B', [shared, shared], 20)
+  expect(cache.bytes).toBe(10); expect(cache.size).toBe(1)
+  expect(retired).toEqual([unique]); expect(cache.take('B')).toEqual([shared])
+  cache.clear(); expect(retired).toEqual([unique])
+})
+
+test('invalid configuration cannot disable the bound', () => {
+  for (const [limit, pages] of [[NaN, 3], [Infinity, 3], [10, -1], [10, 1.5]])
+    expect(() => new PageResidencyCache(limit, pages)).toThrow()
+})

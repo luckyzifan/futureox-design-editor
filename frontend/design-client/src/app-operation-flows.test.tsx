@@ -35,6 +35,7 @@ beforeEach(async () => {
   vi.spyOn(dom.window.HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, right: 1000, bottom: 800, width: 1000, height: 800, x: 0, y: 0, toJSON() {} })
   vi.spyOn(dom.window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
   vi.spyOn(localStore, 'localOpen').mockResolvedValue(null)
+  vi.spyOn(localStore, 'localList').mockResolvedValue([])
   vi.spyOn(localStore.SaveCoordinator.prototype, 'save').mockResolvedValue()
   vi.spyOn(localStore, 'localSelect').mockResolvedValue()
   vi.spyOn(startupPreview, 'readStartupPreview').mockResolvedValue(undefined)
@@ -48,7 +49,18 @@ afterEach(async () => {
   await act(async () => root.unmount()); editor?.dispose(); nudgePreference.reset(); shortcutPreference.set('figma-like')
   dom.window.close(); vi.restoreAllMocks(); vi.unstubAllGlobals(); expect(errors).toEqual([])
 })
-async function render() { await act(async () => { root.render(<App />); for (let i = 0; i < 30; i++) await Promise.resolve() }) }
+async function render() {
+  await act(async () => { root.render(<App />); for (let i = 0; i < 30; i++) await Promise.resolve() })
+  // App intentionally starts on Home. These are editor operation tests, so
+  // enter through the real ready-gated route instead of clicking inert chrome.
+  expect(document.querySelector('[aria-label="本机设计首页"]')).not.toBeNull()
+  expect(document.querySelector('[data-testid="canvas"]')).toBeNull()
+  const resume = button('继续编辑')
+  expect(resume.disabled).toBe(false)
+  await act(async () => resume.click())
+  expect(document.querySelector('[aria-label="本机设计首页"]')).toBeNull()
+  expect(canvas()).not.toBeNull()
+}
 const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(value => value.textContent?.includes(text))!
 const canvas = () => document.querySelector<HTMLElement>('[data-testid="canvas"]')!
 async function key(value: string, options: KeyboardEventInit = {}, type = 'keydown') { await act(async () => canvas().dispatchEvent(new KeyboardEvent(type, { key: value, code: value, bubbles: true, cancelable: true, ...options }))) }

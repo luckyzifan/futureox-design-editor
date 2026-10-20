@@ -1,0 +1,779 @@
+[
+  {
+    "run": "117-run1",
+    "fixture": "117.sketch",
+    "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+    "sampling": true,
+    "status": "completed",
+    "navigationPreservedDocument": true,
+    "document": {
+      "nodes": 752,
+      "pages": 1,
+      "sha256": "79a280d6dbbbca8500d0e4a5e14758fb35de383234b19a837ea4e69920c71f9c",
+      "dpr": 2
+    },
+    "anchor": {
+      "id": "2C1B4AB4-2395-451A-9113-CBED71BA6CFA",
+      "name": "组合 51",
+      "kind": "group"
+    },
+    "stages": [
+      {
+        "name": "import",
+        "actionMs": 884.9377080000004,
+        "totalMs": 4045.200167,
+        "ready": true,
+        "raf": {
+          "count": 446,
+          "p50": 8.300000000000182,
+          "p95": 9.200000000000273,
+          "max": 307.9000000000001,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 2306.300000011921,
+            "duration": 311
+          }
+        ]
+      },
+      {
+        "name": "zoom-100",
+        "actionMs": 75.17408400000204,
+        "totalMs": 2327.624334,
+        "ready": true,
+        "raf": {
+          "count": 280,
+          "p50": 8.30000000000291,
+          "p95": 9.200000000000728,
+          "max": 9.5,
+          "over50": 0
+        },
+        "longtasks": []
+      },
+      {
+        "name": "pan-100",
+        "actionMs": 1069.8855829999993,
+        "totalMs": 1093.1871659999997,
+        "ready": true,
+        "raf": {
+          "count": 105,
+          "p50": 8.30000000000291,
+          "p95": 9.400000000001455,
+          "max": 67.29999999999927,
+          "over50": 3
+        },
+        "longtasks": []
+      },
+      {
+        "name": "zoom-3200",
+        "actionMs": 76.00258300000132,
+        "totalMs": 9869.905791999998,
+        "ready": true,
+        "raf": {
+          "count": 1185,
+          "p50": 8.299999999999272,
+          "p95": 9.200000000000728,
+          "max": 9.400000000001455,
+          "over50": 0
+        },
+        "longtasks": []
+      },
+      {
+        "name": "pan-3200",
+        "actionMs": 1466.5437910000037,
+        "totalMs": 1487.0915000000023,
+        "ready": true,
+        "raf": {
+          "count": 111,
+          "p50": 8.400000000001455,
+          "p95": 50,
+          "max": 108.29999999999563,
+          "over50": 5
+        },
+        "longtasks": []
+      },
+      {
+        "name": "zoom-return-100",
+        "actionMs": 74.04483299999993,
+        "totalMs": 221.52554199999577,
+        "ready": true,
+        "raf": {
+          "count": 27,
+          "p50": 8.30000000000291,
+          "p95": 8.89999999999418,
+          "max": 9.400000000001455,
+          "over50": 0
+        },
+        "longtasks": []
+      },
+      {
+        "name": "zoom-repeat-3200",
+        "actionMs": 64.87483300000167,
+        "totalMs": 219.9173329999976,
+        "ready": true,
+        "raf": {
+          "count": 27,
+          "p50": 8.30000000000291,
+          "p95": 9.200000000004366,
+          "max": 9.400000000001455,
+          "over50": 0
+        },
+        "longtasks": []
+      }
+    ]
+  },
+  {
+    "run": "117-control",
+    "fixture": "117.sketch",
+    "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+    "sampling": false,
+    "status": "completed",
+    "navigationPreservedDocument": true,
+    "document": {
+      "nodes": 752,
+      "pages": 1,
+      "sha256": "dca8b677a09887a9c4eb8cd7a5597196ae2d18a17b61fdd8cf9b257bcfbb1b23",
+      "dpr": 2
+    },
+    "anchor": {
+      "id": "2C1B4AB4-2395-451A-9113-CBED71BA6CFA",
+      "name": "组合 51",
+      "kind": "group"
+    },
+    "stages": [
+      {
+        "name": "import",
+        "actionMs": 764.5218749999999,
+        "totalMs": 3717.254875,
+        "ready": true,
+        "raf": {
+          "count": 412,
+          "p50": 8.300000000000182,
+          "p95": 9.200000000000045,
+          "max": 291.5999999999999,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 1340.5999999940395,
+            "duration": 292
+          }
+        ]
+      },
+      {
+        "name": "zoom-100",
+        "actionMs": 83.95937500000036,
+        "totalMs": 2187.0397090000006,
+        "ready": true,
+        "raf": {
+          "count": 263,
+          "p50": 8.300000000001091,
+          "p95": 9.200000000000728,
+          "max": 10.300000000001091,
+          "over50": 0
+        },
+        "longtasks": []
+      },
+      {
+        "name": "pan-100",
+        "actionMs": 902.0499170000003,
+        "totalMs": 923.3717079999988,
+        "ready": true,
+        "raf": {
+          "count": 92,
+          "p50": 8.30000000000291,
+          "p95": 9.200000000000728,
+          "max": 66.69999999999709,
+          "over50": 3
+        },
+        "longtasks": []
+      },
+      {
+        "name": "zoom-3200",
+        "actionMs": 62.47420800000327,
+        "totalMs": 9452.131792,
+        "ready": true,
+        "raf": {
+          "count": 1135,
+          "p50": 8.299999999999272,
+          "p95": 9,
+          "max": 9.299999999999272,
+          "over50": 0
+        },
+        "longtasks": []
+      },
+      {
+        "name": "pan-3200",
+        "actionMs": 1381.2594580000004,
+        "totalMs": 1403.4883330000011,
+        "ready": true,
+        "raf": {
+          "count": 99,
+          "p50": 8.400000000001455,
+          "p95": 50.10000000000218,
+          "max": 141.8000000000029,
+          "over50": 6
+        },
+        "longtasks": []
+      },
+      {
+        "name": "zoom-return-100",
+        "actionMs": 63.86687499999971,
+        "totalMs": 211.7659160000003,
+        "ready": true,
+        "raf": {
+          "count": 25,
+          "p50": 8.299999999999272,
+          "p95": 8.599999999998545,
+          "max": 9.19999999999709,
+          "over50": 0
+        },
+        "longtasks": []
+      },
+      {
+        "name": "zoom-repeat-3200",
+        "actionMs": 52.43779100000029,
+        "totalMs": 208.3896249999998,
+        "ready": true,
+        "raf": {
+          "count": 25,
+          "p50": 8.299999999999272,
+          "p95": 8.799999999999272,
+          "max": 9.099999999998545,
+          "over50": 0
+        },
+        "longtasks": []
+      }
+    ]
+  },
+  {
+    "run": "fig-run1",
+    "fixture": "01有料素材 (Copy) (1).fig",
+    "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+    "sampling": true,
+    "status": "completed",
+    "navigationPreservedDocument": true,
+    "document": {
+      "nodes": 19959,
+      "pages": 15,
+      "sha256": "3a7522eb336162f2ee501a1cc275159fd3d3d81b3e8a8d36369d9b2a9c06e6c9",
+      "dpr": 2
+    },
+    "anchor": {
+      "id": "75846ee3-3a1f-4057-bdf0-ed990b969719",
+      "name": "21_404_Error",
+      "kind": "frame"
+    },
+    "stages": [
+      {
+        "name": "import",
+        "actionMs": 7000.421542,
+        "totalMs": 11405.373416999999,
+        "ready": true,
+        "raf": {
+          "count": 793,
+          "p50": 8.300000000000182,
+          "p95": 9.200000000000045,
+          "max": 3515.7,
+          "over50": 4
+        },
+        "longtasks": [
+          {
+            "start": 2629,
+            "duration": 3513
+          },
+          {
+            "start": 8153.300000011921,
+            "duration": 51
+          },
+          {
+            "start": 12537.5,
+            "duration": 402
+          }
+        ]
+      },
+      {
+        "name": "zoom-100",
+        "actionMs": 171.90283400000044,
+        "totalMs": 1908.190917,
+        "ready": true,
+        "raf": {
+          "count": 203,
+          "p50": 8.30000000000291,
+          "p95": 9.299999999995634,
+          "max": 74.90000000000146,
+          "over50": 3
+        },
+        "longtasks": [
+          {
+            "start": 32752.90000000596,
+            "duration": 79
+          },
+          {
+            "start": 33026.60000002384,
+            "duration": 61
+          },
+          {
+            "start": 33099.80000001192,
+            "duration": 81
+          },
+          {
+            "start": 34107.90000000596,
+            "duration": 56
+          }
+        ]
+      },
+      {
+        "name": "pan-100",
+        "actionMs": 1203.034375000003,
+        "totalMs": 1219.3215840000048,
+        "ready": true,
+        "raf": {
+          "count": 141,
+          "p50": 8.30000000000291,
+          "p95": 9.19999999999709,
+          "max": 50.19999999999709,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 36333.20000001788,
+            "duration": 55
+          }
+        ]
+      },
+      {
+        "name": "zoom-3200",
+        "actionMs": 157.08279100000073,
+        "totalMs": 837.8412499999977,
+        "ready": true,
+        "raf": {
+          "count": 88,
+          "p50": 8.30000000000291,
+          "p95": 9.200000000004366,
+          "max": 66.80000000000291,
+          "over50": 2
+        },
+        "longtasks": [
+          {
+            "start": 37504.60000002384,
+            "duration": 67
+          },
+          {
+            "start": 37759.70000001788,
+            "duration": 72
+          }
+        ]
+      },
+      {
+        "name": "pan-3200",
+        "actionMs": 1110.3885420000006,
+        "totalMs": 1138.5694169999988,
+        "ready": true,
+        "raf": {
+          "count": 131,
+          "p50": 8.30000000000291,
+          "p95": 9.30000000000291,
+          "max": 58.299999999995634,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 43749.60000002384,
+            "duration": 62
+          }
+        ]
+      },
+      {
+        "name": "zoom-return-100",
+        "actionMs": 196.20266699999775,
+        "totalMs": 369.95474999999715,
+        "ready": true,
+        "raf": {
+          "count": 31,
+          "p50": 8.30000000000291,
+          "p95": 49.80000000000291,
+          "max": 50,
+          "over50": 0
+        },
+        "longtasks": [
+          {
+            "start": 44694.70000001788,
+            "duration": 57
+          },
+          {
+            "start": 44769.5,
+            "duration": 58
+          }
+        ]
+      },
+      {
+        "name": "zoom-repeat-3200",
+        "actionMs": 95.3526669999992,
+        "totalMs": 296.4367920000004,
+        "ready": true,
+        "raf": {
+          "count": 24,
+          "p50": 8.30000000000291,
+          "p95": 49.200000000004366,
+          "max": 67.29999999999563,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 45776.5,
+            "duration": 58
+          },
+          {
+            "start": 45834.80000001192,
+            "duration": 65
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "run": "fig-text-run2",
+    "fixture": "01有料素材 (Copy) (1).fig",
+    "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+    "sampling": true,
+    "status": "completed",
+    "navigationPreservedDocument": true,
+    "document": {
+      "nodes": 19959,
+      "pages": 15,
+      "sha256": "ce2ca1f1e986344aaa2ee8e52b592a1d0942b519b72ef43166182f923c91465b",
+      "dpr": 2
+    },
+    "anchor": {
+      "id": "74d635f2-137f-497c-b7fe-1227d594d306",
+      "name": "Whooops, that page i",
+      "kind": "text"
+    },
+    "stages": [
+      {
+        "name": "import",
+        "actionMs": 6902.263208999999,
+        "totalMs": 11438.635792,
+        "ready": true,
+        "raf": {
+          "count": 803,
+          "p50": 8.300000000001091,
+          "p95": 9.200000000000728,
+          "max": 3534.2,
+          "over50": 4
+        },
+        "longtasks": [
+          {
+            "start": 2587.7999999821186,
+            "duration": 3529
+          },
+          {
+            "start": 12557,
+            "duration": 370
+          }
+        ]
+      },
+      {
+        "name": "zoom-100",
+        "actionMs": 169.6191660000004,
+        "totalMs": 781.5942080000023,
+        "ready": true,
+        "raf": {
+          "count": 85,
+          "p50": 8.299999999999272,
+          "p95": 9.200000000000728,
+          "max": 66.70000000000073,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 29139.40000000596,
+            "duration": 69
+          }
+        ]
+      },
+      {
+        "name": "pan-100",
+        "actionMs": 1116.254832999999,
+        "totalMs": 1131.934957999998,
+        "ready": true,
+        "raf": {
+          "count": 129,
+          "p50": 8.299999999999272,
+          "p95": 9.200000000000728,
+          "max": 66.29999999999927,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 31072.09999999404,
+            "duration": 71
+          }
+        ]
+      },
+      {
+        "name": "zoom-3200",
+        "actionMs": 149.3053329999966,
+        "totalMs": 916.3737909999982,
+        "ready": true,
+        "raf": {
+          "count": 94,
+          "p50": 8.39999999999418,
+          "p95": 16.599999999998545,
+          "max": 58.19999999999709,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 32544.5,
+            "duration": 67
+          },
+          {
+            "start": 33088.19999998808,
+            "duration": 58
+          }
+        ]
+      },
+      {
+        "name": "pan-3200",
+        "actionMs": 1341.0355419999978,
+        "totalMs": 1361.9279999999999,
+        "ready": true,
+        "raf": {
+          "count": 149,
+          "p50": 8.30000000000291,
+          "p95": 9.30000000000291,
+          "max": 74.20000000000437,
+          "over50": 2
+        },
+        "longtasks": [
+          {
+            "start": 38184.5,
+            "duration": 68
+          },
+          {
+            "start": 39197.90000000596,
+            "duration": 74
+          }
+        ]
+      },
+      {
+        "name": "zoom-return-100",
+        "actionMs": 148.5111659999966,
+        "totalMs": 313.85437499999534,
+        "ready": true,
+        "raf": {
+          "count": 26,
+          "p50": 8.599999999998545,
+          "p95": 50,
+          "max": 50,
+          "over50": 0
+        },
+        "longtasks": [
+          {
+            "start": 40052.19999998808,
+            "duration": 61
+          },
+          {
+            "start": 40205.5,
+            "duration": 60
+          }
+        ]
+      },
+      {
+        "name": "zoom-repeat-3200",
+        "actionMs": 83.37154200000077,
+        "totalMs": 256.21275000000605,
+        "ready": true,
+        "raf": {
+          "count": 29,
+          "p50": 8.30000000000291,
+          "p95": 9.30000000000291,
+          "max": 24.900000000001455,
+          "over50": 0
+        },
+        "longtasks": []
+      }
+    ]
+  },
+  {
+    "run": "fig-control",
+    "fixture": "01有料素材 (Copy) (1).fig",
+    "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+    "sampling": false,
+    "status": "completed",
+    "navigationPreservedDocument": true,
+    "document": {
+      "nodes": 19959,
+      "pages": 15,
+      "sha256": "420ea28fbf040b2b6bce7a364e37e1d209e1d232b261fb6b854f843c13c4d6b3",
+      "dpr": 2
+    },
+    "anchor": {
+      "id": "f90ca697-285a-4dd9-804e-dbe7f41bcb67",
+      "name": "Whooops, that page i",
+      "kind": "text"
+    },
+    "stages": [
+      {
+        "name": "import",
+        "actionMs": 6614.797709,
+        "totalMs": 10945.882459,
+        "ready": true,
+        "raf": {
+          "count": 758,
+          "p50": 8.300000000000182,
+          "p95": 9.200000000000728,
+          "max": 3308.9,
+          "over50": 4
+        },
+        "longtasks": [
+          {
+            "start": 2103.699999988079,
+            "duration": 3312
+          },
+          {
+            "start": 11564.90000000596,
+            "duration": 446
+          }
+        ]
+      },
+      {
+        "name": "zoom-100",
+        "actionMs": 164.62408399999913,
+        "totalMs": 709.8582920000008,
+        "ready": true,
+        "raf": {
+          "count": 70,
+          "p50": 8.299999999999272,
+          "p95": 9.30000000000291,
+          "max": 65.79999999999927,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 27360.29999998212,
+            "duration": 74
+          },
+          {
+            "start": 27575.69999998808,
+            "duration": 62
+          }
+        ]
+      },
+      {
+        "name": "pan-100",
+        "actionMs": 902.0707089999996,
+        "totalMs": 920.9496669999971,
+        "ready": true,
+        "raf": {
+          "count": 105,
+          "p50": 8.299999999999272,
+          "p95": 9.299999999999272,
+          "max": 58.19999999999709,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 28588.59999999404,
+            "duration": 63
+          }
+        ]
+      },
+      {
+        "name": "zoom-3200",
+        "actionMs": 209.7827499999985,
+        "totalMs": 747.854374999999,
+        "ready": true,
+        "raf": {
+          "count": 69,
+          "p50": 8.30000000000291,
+          "p95": 33.20000000000073,
+          "max": 66.59999999999854,
+          "over50": 2
+        },
+        "longtasks": [
+          {
+            "start": 29219.19999998808,
+            "duration": 73
+          },
+          {
+            "start": 29296.69999998808,
+            "duration": 64
+          },
+          {
+            "start": 29601.09999999404,
+            "duration": 59
+          }
+        ]
+      },
+      {
+        "name": "pan-3200",
+        "actionMs": 966.0412909999977,
+        "totalMs": 981.2155829999974,
+        "ready": true,
+        "raf": {
+          "count": 112,
+          "p50": 8.299999999999272,
+          "p95": 9.299999999999272,
+          "max": 57.599999999998545,
+          "over50": 1
+        },
+        "longtasks": [
+          {
+            "start": 30617.09999999404,
+            "duration": 65
+          }
+        ]
+      },
+      {
+        "name": "zoom-return-100",
+        "actionMs": 209.78079200000138,
+        "totalMs": 392.0164580000019,
+        "ready": true,
+        "raf": {
+          "count": 31,
+          "p50": 8.299999999999272,
+          "p95": 58.29999999999927,
+          "max": 58.400000000001455,
+          "over50": 2
+        },
+        "longtasks": [
+          {
+            "start": 31183.90000000596,
+            "duration": 69
+          },
+          {
+            "start": 31259.29999998212,
+            "duration": 67
+          },
+          {
+            "start": 31508.19999998808,
+            "duration": 53
+          }
+        ]
+      },
+      {
+        "name": "zoom-repeat-3200",
+        "actionMs": 82.67450000000099,
+        "totalMs": 276.47841699999844,
+        "ready": true,
+        "raf": {
+          "count": 28,
+          "p50": 8.299999999999272,
+          "p95": 9.100000000002183,
+          "max": 50,
+          "over50": 0
+        },
+        "longtasks": [
+          {
+            "start": 32016.59999999404,
+            "duration": 59
+          }
+        ]
+      }
+    ]
+  }
+]

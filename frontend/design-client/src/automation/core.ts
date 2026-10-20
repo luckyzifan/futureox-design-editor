@@ -591,7 +591,7 @@ export class DesignAutomationApi {
     return expanded
   }
   private stage(operations: { method: string; params?: Record<string, unknown> }[], preflight = false) {
-    const before = this.editor.state.doc, candidate = structuredClone(before), ctx = this.context()
+    const before = this.editor.authoredDocument, candidate = structuredClone(before), ctx = this.context()
     const results: { method: string; result: unknown }[] = []
     let resultBytes = 0
     for (let index = 0; index < operations.length; index++) {
@@ -732,7 +732,7 @@ export class DesignAutomationApi {
         result = this.mutate(request, operations!, params.label === undefined ? 'AI design batch' : text(params.label, 'label', 200), fingerprint === undefined ? undefined : new TextEncoder().encode(fingerprint).byteLength, originalOperations)
       } else if (descriptor.mutates) result = this.mutate(request, operations!, `AI: ${request.method}`, undefined, originalOperations)
       else {
-        const snapshot = structuredClone(this.editor.state.doc)
+        const snapshot = structuredClone(this.editor.authoredDocument)
         result = this.entry(request.method).execute(snapshot, params, this.context())
         if (result && typeof result === 'object' && 'then' in result) fail('unsupported_async', 'This operation requires an explicitly scoped asynchronous host flow')
       }

@@ -1,0 +1,7 @@
+{
+  "method": "wasm-bindgen same release artifact; strip_names equality checked before function-index symbol mapping",
+  "equalExecutableBytes": true,
+  "productionSha256": "5adf983167e47e10071faf2f43f9af0550476ef526d9077b8527f5178e00884e",
+  "namedSha256": "c50a981db839eaacb239ca315781d91bb524a04ab153ec7f6bd679269eadec3a",
+  "namedFunctions": 6143
+}

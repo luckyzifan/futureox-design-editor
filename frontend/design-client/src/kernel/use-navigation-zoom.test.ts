@@ -30,12 +30,14 @@ function harness() {
   const dispose = () => effects.forEach(value => value.cleanup?.())
   owners.push(dispose)
   return {
-    render(zoom: number, identity = 'document', enabled = true) {
+    render(zoom: number, identity = 'document', enabled = true,
+      pan: { enabled?: boolean; held?: boolean; x?: number; y?: number } = {}) {
       state = ref = effect = 0; layouts = []
       const internal = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
       const previous = internal.H
       let value: ReturnType<typeof useNavigationZoom>
-      try { internal.H = dispatcher; value = useNavigationZoom({ x: 0, y: 0, zoom }, identity, enabled) }
+      try { internal.H = dispatcher; value = useNavigationZoom({ x: pan.x || 0, y: pan.y || 0, zoom },
+        identity, enabled, pan.enabled === true, pan.held === true) }
       finally { internal.H = previous }
       layouts.forEach(run => run()); return value!
     },
@@ -55,6 +57,30 @@ test('first changed input suppresses exact work before the sampled preview layou
   h.frame(160); expect(h.render(32).active).toBe(true)
   h.frame(176); expect(h.render(32).active).toBe(false)
   expect(h.pending).toBe(0)
+})
+
+test('pointer pan blocks exact admission from pointerdown and admits final camera on release without quiet delay', () => {
+  const h = harness(), pan = { enabled: true, held: true, x: 10.375 }
+  h.render(32, 'document', true, { enabled: true })
+  expect(h.render(32, 'document', true, pan).active).toBe(true)
+  expect(h.render(32, 'document', true, pan).sample?.view.x).toBe(10.375)
+  h.frame(5000)
+  expect(h.render(32, 'document', true, pan).active).toBe(true)
+  const released = h.render(32, 'document', true, { enabled: true, held: false, x: 30.125 })
+  expect(released.active).toBe(false)
+  expect(released.panEnabled).toBe(true)
+  expect(h.render(32, 'document', true, { enabled: true, x: 30.125 }).active).toBe(false)
+  expect(h.pending).toBe(0)
+})
+
+test('first opted-in wheel-pan input suppresses exact work before the preview layout effect', () => {
+  const h = harness()
+  h.render(32, 'document', true, { enabled: true })
+  const first = h.render(32, 'document', true, { enabled: true, x: 1 })
+  expect(first.active).toBe(true); expect(first.sample).toBeUndefined()
+  expect(h.render(32, 'document', true, { enabled: true, x: 1 }).sample?.view.x).toBe(1)
+  h.frame(160); h.frame(176)
+  expect(h.render(32, 'document', true, { enabled: true, x: 1 }).active).toBe(false)
 })
 
 test('identity replacement cancels old gesture timers and starts exact at its own camera', () => {

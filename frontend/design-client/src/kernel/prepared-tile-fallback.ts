@@ -29,3 +29,10 @@ export function preparedTileCanFill(tile: RasterTile, frame: ResidentFrame | und
   }).filter(rect => rect.width > 0 && rect.height > 0)
   return !tilesCoverBounds(covering, target)
 }
+
+/** A prepared tile's exception belongs to the current visible gap, not to all
+ * future cameras. Recheck at each existing renderer cancellation boundary. */
+export function preparedTileContinuation(tile: RasterTile, current: () => boolean,
+  allowFallback: boolean, frame: () => ResidentFrame | undefined): () => boolean {
+  return () => current() || allowFallback && preparedTileCanFill(tile, frame())
+}

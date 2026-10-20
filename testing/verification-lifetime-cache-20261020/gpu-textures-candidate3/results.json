@@ -1,0 +1,189 @@
+{
+  "status": "passed",
+  "result": {
+    "cases": 11,
+    "wasmSha256": "9cddc0c6b91a48474037a4f64f6ac844f8bbea696596a241b3d31b49cf9678c5",
+    "fixtureSha256": "219a362d2803b76afdbe6c917f5cd0d56b307732c8d7039d065807f2bf08b6b8",
+    "uniformArenaBytes": 4096,
+    "maxBandLines": 2,
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3"
+    },
+    "scratchBytes": 4194304,
+    "uniformRollovers": 127,
+    "records": [
+      {
+        "name": "two-axis-minsub",
+        "radius": 1,
+        "horizontalComponents": 36,
+        "verticalComponents": 36,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "centerBits": 1,
+        "counters": {
+          "acceptedLines": 24,
+          "declinedLines": 0,
+          "acceptedPixels": 72
+        },
+        "examples": []
+      },
+      {
+        "name": "finite-radius-1",
+        "radius": 1,
+        "horizontalComponents": 748,
+        "verticalComponents": 748,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "counters": {
+          "acceptedLines": 112,
+          "declinedLines": 0,
+          "acceptedPixels": 1496
+        },
+        "examples": []
+      },
+      {
+        "name": "finite-radius-2",
+        "radius": 2,
+        "horizontalComponents": 748,
+        "verticalComponents": 748,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "counters": {
+          "acceptedLines": 112,
+          "declinedLines": 0,
+          "acceptedPixels": 1496
+        },
+        "examples": []
+      },
+      {
+        "name": "finite-radius-7",
+        "radius": 7,
+        "horizontalComponents": 748,
+        "verticalComponents": 748,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "counters": {
+          "acceptedLines": 112,
+          "declinedLines": 0,
+          "acceptedPixels": 1496
+        },
+        "examples": []
+      },
+      {
+        "name": "finite-radius-48",
+        "radius": 48,
+        "horizontalComponents": 748,
+        "verticalComponents": 748,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "counters": {
+          "acceptedLines": 112,
+          "declinedLines": 0,
+          "acceptedPixels": 1496
+        },
+        "examples": []
+      },
+      {
+        "name": "finite-radius-96",
+        "radius": 96,
+        "horizontalComponents": 748,
+        "verticalComponents": 748,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "counters": {
+          "acceptedLines": 112,
+          "declinedLines": 0,
+          "acceptedPixels": 1496
+        },
+        "examples": []
+      },
+      {
+        "name": "finite-radius-512",
+        "radius": 512,
+        "horizontalComponents": 748,
+        "verticalComponents": 748,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "counters": {
+          "acceptedLines": 112,
+          "declinedLines": 0,
+          "acceptedPixels": 1496
+        },
+        "examples": []
+      },
+      {
+        "name": "mixed-decline-payload",
+        "radius": 2,
+        "horizontalComponents": 364,
+        "verticalComponents": 364,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "counters": {
+          "acceptedLines": 60,
+          "declinedLines": 20,
+          "acceptedPixels": 528
+        },
+        "examples": []
+      },
+      {
+        "name": "alpha-only-clears-rgb",
+        "radius": 2,
+        "horizontalComponents": 364,
+        "verticalComponents": 364,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "counters": {
+          "acceptedLines": 20,
+          "declinedLines": 0,
+          "acceptedPixels": 182
+        },
+        "examples": []
+      },
+      {
+        "name": "multi-chunk-520",
+        "radius": 48,
+        "horizontalComponents": 6240,
+        "verticalComponents": 6240,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "counters": {
+          "acceptedLines": 2092,
+          "declinedLines": 0,
+          "acceptedPixels": 12480
+        },
+        "examples": []
+      },
+      {
+        "name": "multi-chunk-3484",
+        "radius": 1224.3035888671875,
+        "horizontalComponents": 27872,
+        "verticalComponents": 27872,
+        "hDiff": 0,
+        "vDiff": 0,
+        "rgbNonzero": 0,
+        "counters": {
+          "acceptedLines": 13944,
+          "declinedLines": 0,
+          "acceptedPixels": 55744
+        },
+        "examples": []
+      }
+    ],
+    "different": 0,
+    "protocolFailures": 0,
+    "accepted": 16812,
+    "declined": 20
+  },
+  "errors": []
+}

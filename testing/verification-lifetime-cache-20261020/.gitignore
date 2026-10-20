@@ -1,0 +1,13 @@
+# Preserve compact historical evidence and repro tools; keep runtime captures local.
+*
+!.gitignore
+!*.md
+!*.mjs
+!*.py
+!package-audit.json
+!candidate1-pixel-comparison.json
+!candidate-summary.json
+!gpu-math-candidate3/
+!gpu-math-candidate3/results.json
+!gpu-textures-candidate3/
+!gpu-textures-candidate3/results.json

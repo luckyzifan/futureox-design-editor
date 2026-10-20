@@ -1,3 +1,4 @@
+import { ownedPropertyPreviewTarget } from './property-preview'
 import { beginEditorAction } from './editor-action-route'
 import { CanvasAction, ActionSource, ActionOutcome, ActionReason, type ActionSourceCode } from './canvas-action-diagnostics'
 import {PROPERTY_PREFIX,copyProperties,readProperties,pasteProperties,type PropertyKind} from './property-clipboard'
@@ -33,9 +34,28 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
   try {
   const active = typeof document === 'undefined' ? null : document.activeElement
   const editable = editableOwnsKeyboard(active)
-  // Native menu accelerators arrive without a DOM KeyboardEvent. Preserve the
-  // focused text control and modal ownership at the shared command boundary too.
-  if ((editable && !['undo', 'redo', 'cut', 'copy', 'paste', 'paste-in-place', 'paste-over-selection', 'select-all'].includes(command)) || (!editable && modalOwnsKeyboard(active))) { action.result(ActionOutcome.blocked, ActionReason.wrongOwner); return }
+  const ownsPropertyPopover = ownedPropertyPreviewTarget(editor, active)
+  const textCommand = command === 'select-all' ? 'selectAll' : (command === 'paste-in-place' || command === 'paste-over-selection') ? 'paste' : command
+  // Resolve focused text ownership before any document boundary. Native menus
+  // must still copy/paste/select invalid or composing drafts without committing
+  // them. Read-only controls retain the native text command's own semantics.
+  if (editable && ['undo','redo','cut','copy','paste','selectAll'].includes(textCommand) && !(command === 'undo' && ownsPropertyPopover)) {
+    const native = desktopBridge()?.performTextCommand
+    try {
+      if (native) await native(textCommand as 'undo'|'redo'|'cut'|'copy'|'paste'|'selectAll')
+      else if (!document.execCommand(textCommand)) { action.result(ActionOutcome.rejected, ActionReason.validation); return }
+      action.result(ActionOutcome.observed, ActionReason.editingText)
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); editor.notify(String(error)) }
+    return
+  }
+  // Only this popover's first Undo and explicit tool activation may cross its
+  // keyboard boundary. Unrelated text fields/dialogs cannot settle its draft.
+  const propertyCommand = ownsPropertyPopover && (command === 'undo' || command.startsWith('set-tool-'))
+  if ((editable || modalOwnsKeyboard(active)) && !propertyCommand) { action.result(ActionOutcome.blocked, ActionReason.wrongOwner); return }
+  if (command === 'undo' && editor.propertyPreviewActive) { editor.undo(); action.result(ActionOutcome.cancelled, ActionReason.escape); return }
+  if (editor.propertyPreviewActive && !editor.settleOwnedPropertyPreview(command.startsWith('set-tool-') ? 'tool' : 'edit')) {
+    action.result(ActionOutcome.blocked, ActionReason.validation); return
+  }
   if (typeof command === 'string' && command.startsWith('set-tool-')) {
     const tool = toolForCommand(command)
     if (tool) {
@@ -51,16 +71,6 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         entry ? `「${entry.label}」工具不可用：${unavailableReason(command)}` : `未知工具命令 ${command}`,
       )
     }
-    return
-  }
-  const textCommand = command === 'select-all' ? 'selectAll' : (command === 'paste-in-place' || command === 'paste-over-selection') ? 'paste' : command
-  if (editable && ['undo','redo','cut','copy','paste','selectAll'].includes(textCommand)) {
-    const native = desktopBridge()?.performTextCommand
-    try {
-      if (native) await native(textCommand as 'undo'|'redo'|'cut'|'copy'|'paste'|'selectAll')
-      else if (!document.execCommand(textCommand)) { action.result(ActionOutcome.rejected, ActionReason.validation); return }
-      action.result(ActionOutcome.observed, ActionReason.editingText)
-    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); editor.notify(String(error)) }
     return
   }
   if (editor.state.busy) { action.result(ActionOutcome.blocked, ActionReason.busy); return }

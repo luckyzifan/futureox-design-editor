@@ -24,7 +24,6 @@ import {
 } from 'lucide-react'
 import type { Editor } from './engine'
 import { container } from './model'
-import { allParents } from './geometry'
 import { commitPendingEdits } from './pending-edits'
 import { DraftInput } from './DraftInput'
 import { layerSelection } from './layer-selection'
@@ -86,7 +85,7 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
     const target = row && host.contains(row) ? row.dataset.layerId! : null
     const rect = row?.getBoundingClientRect(), node = target ? editor.state.doc.nodes[target] : undefined
     const position = node && rect ? layerDropPosition(container(node), (event.clientY - rect.top) / rect.height) : 'below'
-    active.plan = layerDropPlan(editor.state.doc, editor.state.page, payload.ids, target, position)
+    active.plan = layerDropPlan(editor.state.doc, editor.state.page, payload.ids, target, position, editor.parentMap())
     setDrop(active.plan ? { id: target, position } : null)
   }
   const endLayerPointer = (event: React.PointerEvent) => {
@@ -107,7 +106,7 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
   useEffect(() => { cancelPointerDrag(); setRenaming(null); selectionAnchor.current = null; setFocused(null) }, [editor.sessionGeneration, s.page])
   useEffect(() => {
     if (!s.selection.length) { reveal.current = null; return }
-    const parents = allParents(s.doc), ancestors = new Set<string>()
+    const parents = editor.parentMap(s.doc), ancestors = new Set<string>()
     for (const selected of s.selection)
       for (let id = parents.get(selected); id && s.doc.nodes[id]; id = parents.get(id)) ancestors.add(id)
     setCollapsed(old => {
@@ -194,7 +193,7 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
   function dropPlan(id: string | null, position: LayerDropPosition) {
     const payload = dragged.current
     if (!payload || payload.session !== editor.sessionGeneration || payload.page !== editor.state.page || payload.document !== editor.state.doc.id) return
-    return layerDropPlan(editor.state.doc, editor.state.page, payload.ids, id, position)
+    return layerDropPlan(editor.state.doc, editor.state.page, payload.ids, id, position, editor.parentMap())
   }
   return (
     <aside className="layers-panel" style={{ width: panelWidth }} aria-label={tab === 'assets' ? '组件资源' : '页面与图层'}>
@@ -235,7 +234,7 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
             }}>{name === 'layers' ? '图层' : '组件'}</button>)}
         </div>
         <button title="折叠全部图层" onClick={() => {
-          const parents = allParents(s.doc), keep = new Set(s.selection)
+          const parents = editor.parentMap(s.doc), keep = new Set(s.selection)
           for (const id of s.selection) for (let parent = parents.get(id); parent && s.doc.nodes[parent]; parent = parents.get(parent)) keep.add(parent)
           setCollapsed(old => new Set([...old, ...Object.values(s.doc.nodes).filter(n => n.children.length && !keep.has(n.id)).map(n => n.id)]))
         }}><ChevronDown size={13} /></button>
@@ -317,7 +316,8 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
                     const expand = e.key === 'ArrowRight'
                     if (n.children.length && collapsed.has(id) === expand) setCollapsed((old) => { const next = new Set(old); expand ? next.delete(id) : next.add(id); return next })
                     else {
-                      const next = expand ? rows[rows.findIndex((row) => row.id === id) + 1] : rows.find((row) => row.id === allParents(s.doc).get(id))
+                      const parent = expand ? undefined : editor.parentMap(s.doc).get(id)
+                      const next = expand ? rows[rows.findIndex((row) => row.id === id) + 1] : rows.find((row) => row.id === parent)
                       if (next && (!expand || next.depth > depth)) choose(next.id, false, false, true)
                     }
                   }

@@ -274,8 +274,25 @@ test.each(['page', 'document', 'unmount'] as const)('queued input does not mutat
 test.skipIf(process.env.CANVAS_REPRO_ADD_PAGE !== '1')('reproduce direct addPage during a live vertex transaction', async () => {
   const { start } = await begin('vertex')
   await act(async () => pointer('pointermove', start.x + 90, start.y + 70))
-  await act(async () => editor.addPage())
+  const draft = editor.state.doc, page = editor.state.page, version = editor.state.version
+  await act(async () => { expect(editor.addPage()).toBe(false); expect(editor.state.doc).toBe(draft) })
+  // A queued pointer preview may legitimately publish during the frame flush.
   await flushFrames()
+  expect(editor.state.doc.pages.map(value => value.id)).toEqual(draft.pages.map(value => value.id))
+  expect(editor.state.page).toBe(page)
+  expect(editor.state.version).toBe(version)
+  expect(editor.interactionActive).toBe(true)
+  await act(async () => pointer('pointerup', start.x + 90, start.y + 70))
+  expect(editor.interactionActive).toBe(false)
+  await act(async () => { expect(editor.addPage()).toBe(true) })
+  await flushFrames()
+  const newPage = editor.state.page
+  expect(newPage).not.toBe(page)
+  expect(editor.state.doc.pages.some(value => value.id === newPage)).toBe(true)
+  await act(async () => editor.undo())
+  expect(editor.state.page).toBe(page)
+  await act(async () => editor.redo())
+  expect(editor.state.page).toBe(newPage)
 })
 
 test('pen construction remains sample-preserving even when the pointer returns within its drag threshold', async () => {

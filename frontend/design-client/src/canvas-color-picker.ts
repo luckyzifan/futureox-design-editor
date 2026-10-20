@@ -1,6 +1,7 @@
 import { useLayoutEffect, useEffect, useState, useRef, type RefObject } from 'react'
 import { contentPlane } from './kernel/content-plane'
 import type { Editor } from './engine'
+import type { PropertyPreviewLease } from './property-preview'
 import { paint } from './model'
 import { commitPendingEdits } from './pending-edits'
 import { desktopBridge } from './desktop'
@@ -21,6 +22,7 @@ export function sampleColorLabel(hex: string, model: SampleColorModel): string {
 
 type Request = {
   session: number; page: string; version: number
+  lease?: PropertyPreviewLease
   finish: (color?: string) => void
 }
 const pending = new WeakMap<Editor, Request>()
@@ -30,18 +32,18 @@ export function acceptCanvasColor(editor: Editor, color:string) {
   if(!/^#[\da-f]{6}$/i.test(color))throw new Error('取样颜色无效')
   const r=pending.get(editor)
   if(!r)return
-  if(r.session!==editor.sessionGeneration||r.page!==editor.state.page||r.version!==editor.state.version){r.finish();return}
+  if((r.lease && !editor.isPropertyPreviewCurrent(r.lease))||r.session!==editor.sessionGeneration||r.page!==editor.state.page||r.version!==editor.state.version){r.finish();return}
   r.finish(color)
 }
 
 /** A local picker reads the published canvas, not authored fill/stroke data.
  * Electron exposes EyeDropper in some builds without a working native chooser. */
-export function requestCanvasColor(editor: Editor, signal?: AbortSignal): Promise<{sRGBHex:string}> {
-  if(editor.state.busy||editor.interactionActive)return Promise.reject(new Error('请结束当前操作后取色'))
+export function requestCanvasColor(editor: Editor, signal?: AbortSignal, lease?: PropertyPreviewLease): Promise<{sRGBHex:string}> {
+  if(editor.state.busy||(editor.interactionActive && (!lease || !editor.isPropertyPreviewCurrent(lease))))return Promise.reject(new Error('请结束当前操作后取色'))
   cancelCanvasColorPicker(editor)
   if(signal?.aborted)return Promise.reject(new DOMException('Cancelled','AbortError'))
   return new Promise((resolve,reject)=>{
-    const owner:Request={session:editor.sessionGeneration,page:editor.state.page,version:editor.state.version,finish(color){
+    const owner:Request={session:editor.sessionGeneration,page:editor.state.page,version:editor.state.version,lease,finish(color){
       if(pending.get(editor)!==owner)return
       pending.delete(editor);signal?.removeEventListener('abort',abort)
       const restore=()=>{if(editor.state.tool==='eyedropper'&&editor.sessionGeneration===owner.session&&!pending.has(editor))editor.set({tool:'select'})}
@@ -172,11 +174,15 @@ export function useCanvasColorPicker(editor: Editor, host: RefObject<HTMLElement
       preview(event.clientX,event.clientY)
     }
     const down=(event:PointerEvent)=>{
+      if(pending.get(editor)?.lease && (!host.current?.contains(event.target as Node) || (event.target as Element)?.closest?.('[data-property-preview]')))return
       if(editor.state.tool!=='eyedropper'||event.button!==0||!host.current)return
       event.preventDefault();event.stopImmediatePropagation()
       sample(event.clientX,event.clientY)
     }
     const key=(event:KeyboardEvent)=>{
+      const lease=pending.get(editor)?.lease
+      if(lease && (event.target as Element)?.closest?.('[data-property-preview]'))return
+      if(lease && event.key==='Escape') {event.preventDefault();event.stopImmediatePropagation();cancelCanvasColorPicker(editor);editor.cancelProperty(lease);return}
       if(editor.state.tool==='eyedropper'&&host.current&&(event.key.startsWith('Arrow')||event.key==='Enter')){
         event.preventDefault();event.stopImmediatePropagation()
         const r=host.current.getBoundingClientRect(),p=pointer.current||{x:r.left+r.width/2,y:r.top+r.height/2}

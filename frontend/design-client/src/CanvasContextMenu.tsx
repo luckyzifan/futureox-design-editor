@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Lock } from 'lucide-react'
 import type { Editor } from './engine'
 import type { Point } from './model'
-import { allParents } from './geometry'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { canvasMenuItems, clampContextMenu, lockedSelectionIds } from './canvas-menu-model'
 import { useShortcutProfile } from './shortcut-preference'
@@ -32,7 +31,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
   const groupName=(id:string)=>id==='copy-as'?'复制／粘贴为':'选择相同'
   const context = useRef({ session: editor.sessionGeneration, page: state.page, version: state.version, selection: state.selection.join('\n') })
   const profile = useShortcutProfile()
-  const items = canvasMenuItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), parents = allParents(state.doc)
+  const items = canvasMenuItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), parents = editor.parentMap(state.doc)
   const visible = candidates.filter((candidate) => {
     let id: string | undefined = candidate.id
     if (!state.doc.nodes[id]) return false

@@ -60,3 +60,38 @@ fn imported_reflection_residual_is_certified_without_rounding_the_transform() {
         assert!(compare(Rect::new(-7, 11, 21, 17), matrix, [31., 19.], [11, 7], &paint, sample, 0, [9, 17]));
     }
 }
+
+#[test]
+fn each_phase_certifies_its_own_cells_without_requiring_the_other_phases() {
+    let paint: Paint = serde_json::from_value(serde_json::json!({"kind":"image", "color":"#ffffff", "fit":"stretch"})).unwrap();
+    // Tiny coupling changes cell ownership only for the centre phase at an
+    // integer boundary. The four subpixel phases have stable endpoint bits.
+    // Their compact representation must remain exact even when the centre
+    // phase independently uses a dense field.
+    let rect = Rect::new(1, -1, 5, 5);
+    let matrix = Transform([1., 0., 1e-10, 1., 0., 0.]);
+    for sample in 0..4 {
+        assert!(compare(rect, matrix, [32., 32.], [32, 32], &paint, Some(sample), 0, [9, 17]));
+    }
+    assert!(image_sampling_axes_placed(rect, matrix, [32., 32.], [32, 32], &paint, None, 0, [9, 17]).unwrap().is_empty());
+    let dense = image_sampling_grid_placed(rect, matrix, [32., 32.], [32, 32], &paint, None, 0, [9, 17]).unwrap();
+    assert_ne!(dense[0], dense[(rect.h as usize - 1) * rect.w as usize * 4], "the failed centre proof must not be replaced with a reused subpixel plane");
+}
+
+#[test]
+fn full_rotation_residual_preserves_dense_bits_at_large_zoom_and_strip_origins() {
+    let paint: Paint = serde_json::from_value(serde_json::json!({"kind":"image", "color":"#ffffff", "fit":"cover"})).unwrap();
+    let angle = 360f64.to_radians();
+    let scale = 128.;
+    let matrix = Transform([scale * angle.cos(), scale * angle.sin(), -scale * angle.sin(), scale * angle.cos(), -1123.25, 27.5]);
+    assert_ne!(matrix.0[1], 0., "keep the authored full-rotation residual");
+    let mut used = 0;
+    // The 117 trace builds 3480-wide strips for the blur support region.
+    // Cover both far-offscreen clamping and visible interior coordinates.
+    for y in [-1281, -1, 63, 127, 1983] {
+        for sample in [None, Some(0), Some(1), Some(2), Some(3)] {
+            used += usize::from(compare(Rect::new(-1279, y, 3480, 64), matrix, [1920., 1080.], [1920, 1080], &paint, sample, 0, [9, 17]));
+        }
+    }
+    assert!(used >= 20, "large-zoom coverage must exercise compact fields, not only early fallback");
+}

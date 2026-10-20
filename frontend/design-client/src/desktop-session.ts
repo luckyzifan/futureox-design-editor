@@ -4,9 +4,10 @@ import { desktopPet } from './desktop-pet'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, subscribePendingEdits } from './pending-edits'
 import type { Editor } from './engine'
 import type { WorkspaceAutomationGuard } from './automation/workspace-bridge'
-import { prepareDocument, takePreparedDocument, forkPreparedDocument, ensurePreparedDocument, preparedDocumentAdoptionOwner, preparedDocumentEncoding, type PreparedDocument } from './prepared-document'
+import { prepareDocument, prepareDocumentJson, takePreparedDocument, forkPreparedDocument, ensurePreparedDocument, preparedDocumentAdoptionOwner, preparedDocumentEncoding, type PreparedDocument } from './prepared-document'
 import { documentStage, documentStageAsync, DocumentStage } from './document-lifecycle-diagnostics'
 import { blank, type DesignDocument } from './model'
+import { consumeDocumentJsonSyntaxFailure } from './document-admission'
 import type { DesktopBridge, DesktopFile, DesktopResult, WorkspaceDocument, WorkspaceOpened } from './desktop'
 
 export type LeaveDecision = 'save' | 'discard' | 'cancel'
@@ -24,7 +25,7 @@ export type DesktopStatus = {
   storage?: 'sqlite' | 'file'
   revision?: number
 }
-type SessionEditor = Pick<Editor, 'state' | 'subscribe' | 'load' | 'notify'> & Partial<Pick<Editor, 'interactionActive' | 'sessionGeneration'>>
+type SessionEditor = Pick<Editor, 'state' | 'subscribe' | 'load' | 'notify'> & Partial<Pick<Editor, 'interactionActive' | 'sessionGeneration' | 'authoredDocument' | 'propertyPreviewActive' | 'settleOwnedPropertyPreview'>>
 const MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 // These backend responses prove this request was rejected, rather than leaving
 // an uncertain write. INVALID_REQUEST validation precedes commit/transaction
@@ -177,6 +178,7 @@ export class DesktopSession {
   private lastDirty?: boolean
   private publishedStatus?: DesktopStatus
   private hadPending = false
+  private hadPropertyPreview = false
   private closeSnapshot?: number
   private pristineBlankGeneration: number | null
 
@@ -186,16 +188,21 @@ export class DesktopSession {
     private readonly confirmLeave: (reason: LeaveReason) => Promise<LeaveDecision>,
     private readonly onStatus: (status: DesktopStatus) => void = () => {},
   ) {
-    this.currentDocument = editor.state.doc
+    this.currentDocument = editor.authoredDocument ?? editor.state.doc
     this.currentVersion = editor.state.version
     this.pristineBlankGeneration = this.isDefaultBlank(this.currentDocument) ? 0 : null
     this.unsubscribe = editor.subscribe(() => this.observe())
     this.hadPending = hasPendingEdits(editor)
     this.unsubscribeDrafts = subscribePendingEdits(editor, () => {
       const pending = hasPendingEdits(editor)
+      const propertyEnded = this.hadPropertyPreview && !editor.propertyPreviewActive
+      this.hadPropertyPreview = !!editor.propertyPreviewActive
       if (pending || this.hadPending) this.generation++
       this.hadPending = pending
       this.publish()
+      // Cancellation may restore the exact saved object without a new revision.
+      // Reconcile its dirty badge/recovery state without ever saving draft pixels.
+      if (propertyEnded && this.started && !this.recoveryPaused && this.operation === 'idle') this.scheduleRecovery()
     })
   }
 
@@ -372,7 +379,7 @@ export class DesktopSession {
 
   saveCopy() {
     return this.run('save', async () => {
-      if (!this.bridge.workspace || this.editor.interactionActive || !commitPendingEdits(this.editor)) return false
+      if (!this.bridge.workspace || this.editor.settleOwnedPropertyPreview?.('save') === false || this.editor.interactionActive || !commitPendingEdits(this.editor)) return false
       const generation = this.generation
       const document = { ...this.currentDocument, id: crypto.randomUUID(), name: `${this.currentDocument.name} 副本`.slice(0, 200) }
       const documentJson = await this.encode(document)
@@ -526,8 +533,9 @@ export class DesktopSession {
   }
 
   private observe() {
-    if (this.suppressObservation || (this.editor.state.doc === this.currentDocument && this.editor.state.version === this.currentVersion)) return
-    this.currentDocument = this.editor.state.doc
+    const authored = this.editor.authoredDocument ?? this.editor.state.doc
+    if (this.suppressObservation || (authored === this.currentDocument && this.editor.state.version === this.currentVersion)) return
+    this.currentDocument = authored
     this.currentVersion = this.editor.state.version
     this.generation++
     this.publish()
@@ -548,8 +556,8 @@ export class DesktopSession {
       this.tabsValue = existing ? this.tabsValue.map(t => t.id === currentTab.id ? currentTab : t) : [...this.tabsValue, currentTab]
       this.tabListeners.forEach(listener => listener())
     }
-    // Preview documents still advance generation/recovery above, but identical
-    // status must not force App and its entire panel tree through every sample.
+    // Property preview pixels never become recovery snapshots. Identical status
+    // must not force App and its entire panel tree through every sample.
     const status = this.status
     if (!this.publishedStatus || (Object.keys(status) as (keyof DesktopStatus)[])
       .some(key => status[key] !== this.publishedStatus![key])) {
@@ -590,6 +598,37 @@ export class DesktopSession {
 
   private async parse(json: unknown) {
     if (typeof json !== 'string') throw new Error('原生文件响应缺少设计内容')
+    const codec = Object.getOwnPropertyDescriptor(this.bridge, 'documentCodec')?.value as DesktopBridge['documentCodec']
+    // Only this installed, frozen version1 preload declares exact JSON.parse.
+    // Unknown/custom/foreign codec owners retain their original decode contract.
+    if (codec && Object.isFrozen(this.bridge) && Object.isFrozen(codec) &&
+        typeof window !== 'undefined' && window.coreDesktop === this.bridge &&
+        Object.getOwnPropertyDescriptor(this.bridge, 'version')?.value === 1 &&
+        Object.getOwnPropertyDescriptor(codec, 'decoding')?.value === 'json-parse-v1' &&
+        typeof Object.getOwnPropertyDescriptor(codec, 'decode')?.value === 'function') {
+      // Match document-codec-worker's raw UTF-8 bound/error before parsing; the
+      // shared admission also checks its canonical serialized byte bound.
+      const syntaxFailureAttempt = {}
+      let rawSizeFailure = false
+      try {
+        return documentStage(DocumentStage.prepare, () =>
+          documentStage(DocumentStage.rawJsonPrepare, () => {
+            if (new TextEncoder().encode(json).byteLength > MAX_DOCUMENT_BYTES) {
+              rawSizeFailure = true
+              throw new Error('Invalid document JSON size')
+            }
+            return prepareDocumentJson(json, syntaxFailureAttempt)
+          }, json.length), json.length)
+      } catch (error) {
+        // Preserve the installed codec's transport error class/message on bad
+        // JSON or raw size. Never admit its returned object on this path. Only
+        // the private JSON.parse failure witness can authorize this retry;
+        // kernel, validation, allocation and unrelated SyntaxErrors fail once.
+        if (rawSizeFailure || consumeDocumentJsonSyntaxFailure(error, syntaxFailureAttempt))
+          await documentStageAsync(DocumentStage.decode, () => codec.decode(json), json.length)
+        throw error
+      }
+    }
     const decoded = await documentStageAsync(DocumentStage.decode, async () => {
       if (this.bridge.documentCodec) return this.bridge.documentCodec.decode(json)
       if (new TextEncoder().encode(json).byteLength > MAX_DOCUMENT_BYTES)
@@ -615,11 +654,10 @@ export class DesktopSession {
     // second preparation or serialization.
     document = ensurePreparedDocument(document)
     const adoptedOwner = preparedDocumentAdoptionOwner(document)
-    const preparedEncoding = persisted ? preparedDocumentEncoding(document) : undefined
     // Only the installed JSON.stringify codec (or the exact local fallback) can
     // use this certificate. Unknown/custom encoders keep the existing encode path.
-    const encoding = persisted && (!this.bridge.documentCodec || this.bridge.documentCodec.encoding === 'json-stringify-v1')
-      ? preparedEncoding : undefined
+    const encoding = !this.bridge.documentCodec || this.bridge.documentCodec.encoding === 'json-stringify-v1'
+      ? preparedDocumentEncoding(document) : undefined
     const previousVersion = this.editor.state.version, previousSession = this.editor.sessionGeneration
     const previousGeneration = this.generation
     this.suppressObservation = true
@@ -635,9 +673,18 @@ export class DesktopSession {
     const previousId = this.currentDocument.id
     if (previousId !== this.editor.state.doc.id && !this.workspaceHeads.has(previousId))
       this.tabsValue = this.tabsValue.filter(t => t.id !== previousId)
-    this.currentDocument = this.editor.state.doc
+    this.currentDocument = this.editor.authoredDocument ?? this.editor.state.doc
     this.currentVersion = this.editor.state.version
     this.generation++
+    // An imported document is still dirty until storage acknowledges it, but
+    // its exact post-layout bytes already exist. Reuse them for the first save
+    // instead of cloning the whole object through the desktop codec again.
+    // The same adoption fences protect this current-snapshot cache; future
+    // versioned edits advance generation and must obtain their own encoding.
+    if (unchangedAdoption && encoding) {
+      this.serializedJson = documentStage(DocumentStage.snapshotReuse, () => encoding.json, encoding.json.length)
+      this.serializedGeneration = this.generation
+    }
     this.pristineBlankGeneration = !persisted && unchangedAdoption && this.isDefaultBlank(this.currentDocument)
       ? this.generation : null
     // The kernel may canonicalize an already validated document when it opens it.
@@ -657,6 +704,7 @@ export class DesktopSession {
   }
 
   private async saveCurrent(saveAs = false) {
+    if (this.editor.settleOwnedPropertyPreview?.('save') === false) return false
     if (this.editor.interactionActive) { this.editor.notify('请先完成拖动，或按 Esc 取消后保存'); return false }
     if (!commitPendingEdits(this.editor)) return false
     const {json:snapshot,generation:snapshotGeneration,document} = await this.captureSnapshot()
@@ -743,6 +791,7 @@ export class DesktopSession {
   }
 
   private async leave(reason: LeaveReason): Promise<number | null> {
+    if (this.editor.settleOwnedPropertyPreview?.('navigation') === false) return null
     if (this.editor.interactionActive) { this.editor.notify('请先完成拖动，或按 Esc 取消后切换文档'); return null }
     if (!commitPendingEdits(this.editor)) return null
     const reconcilingGeneration = this.generation

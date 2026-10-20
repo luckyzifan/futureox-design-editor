@@ -1,5 +1,6 @@
 import { markRenderFailure } from './render-failure-telemetry'
 import React from 'react'
+import { Editor } from '../engine'
 import { afterEach, expect, test, vi } from 'vitest'
 import { blank, node as makeNode, effect as makeEffect } from '../model'
 import { ProgressiveSurfaceImpl } from './ProgressiveSurface'
@@ -40,7 +41,7 @@ vi.mock('./client', () => ({
     constructor() { worker.clients.push(this) }
     releasePresented = vi.fn()
     render(document: unknown, options: any, ...args: any[]) {
-      return new Promise((resolve, reject) => worker.calls.push({ document, options, reject, progress: args[5], resolve: (extra = {}) => resolve({
+      return new Promise((resolve, reject) => worker.calls.push({ document, options, reject, signal: args[6], progress: args[5], resolve: (extra = {}) => resolve({
         milliseconds: 0, compileMs: 0, graphMs: 0, finishMs: 0, checkpointMs: 0,
         bytes: new Uint8Array(), backend: 'webgpu', ...extra,
       }) }))
@@ -77,8 +78,8 @@ vi.mock('./presentation', async importOriginal => ({
 /** Run the production surface's hooks/effects with already painted residents.
  * Worker synchronization is deliberately controllable so stale/cancelled
  * completions can be ordered adversarially. No raster results are invented. */
-function surfaceHarness(seedResidents: boolean | RasterTile[] = true) {
-  const doc = blank('resident document'), states: any[] = [], refs: any[] = [], memos: any[] = []
+function surfaceHarness(seedResidents: boolean | RasterTile[] = true, sourceDoc = blank('resident document')) {
+  const doc = sourceDoc, states: any[] = [], refs: any[] = [], memos: any[] = []
   const effectSlots: any[] = [], layoutSlots: any[] = []
   const keys = ['4:0:0:0:0', '4:0:0:1:0']
   const seededTiles = Array.isArray(seedResidents) ? seedResidents : seedResidents ? keys.map((key, i) => ({
@@ -94,6 +95,7 @@ function surfaceHarness(seedResidents: boolean | RasterTile[] = true) {
     })
   }
   const hooks = {
+    useSyncExternalStore(_subscribe: unknown, getSnapshot: () => unknown) { return getSnapshot() },
     useState(init: any) {
       const index = stateIndex++
       if (!(index in states)) {
@@ -159,6 +161,31 @@ test('apply damage before selecting misses, retaining untouched painted resident
   worker.calls[0].resolve()
   await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
   expect(worker.calls[1].options.tileViewport.map((tile: any) => tile.key)).toEqual([h.keys[0]])
+})
+
+test('damage retirement keeps the displayed bitmap alive until its frame leaves the display', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const close = vi.fn(), bitmap = { close } as unknown as ImageBitmap
+  const seeds = ['4:0:0:0:0', '4:0:0:1:0'].map((key, i) => ({
+    key, x: i * 512 - 1, y: -1, width: 514, height: 514, zoom: 4,
+    ...(i === 0 ? { bitmap } : {}),
+  }))
+  const h = harness(seeds)
+  const nextPage = { ...h.doc.pages[0], id: 'bitmap-retirement-next-page', children: [] }
+  h.doc.pages.push(nextPage)
+  h.render({ backend: 'webgl2' }); await flushRasterWork()
+  const completed = h.render({ backend: 'webgl2' })
+  expect(surfaceParts(completed).wrapper.props['data-frame-publication']).toBe('complete')
+  worker.clients[0].onDamage({ full: false, bounds: [0, 0, 10, 10] })
+  expect(close).not.toHaveBeenCalled()
+  const held = surfaceParts(h.render({ backend: 'webgl2' })).compositor.props.items
+    .find((item: any) => item.tile.key === h.keys[0])
+  expect(held.tile.bitmap).toBe(bitmap)
+  // A page switch removes the old displayed frame. The next committed render
+  // can now close its payload, which is no longer in active or inactive cache.
+  h.render({ backend: 'webgl2', pageId: nextPage.id })
+  h.render({ backend: 'webgl2', pageId: nextPage.id })
+  expect(close).toHaveBeenCalledOnce()
 })
 
 test('cold visible detail starts before overview maintenance', async () => {
@@ -406,6 +433,48 @@ test('filtered navigation still renders a preview when retained pixels leave a g
   worker.navigation = { active: true, suspended: false, sample: { active: true, view, sequence: 1 } }
   h.render({ backend: 'webgl2', view }); await flushRasterWork()
   expect(worker.calls.slice(before).some(call => call.options.livePreview && call.options.renderIntent === 'preview')).toBe(true)
+})
+
+test('held filtered pan reuses exact residents and bounded previews, then schedules only the latest exact release phase', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const h = harness(), blur = makeNode('rectangle')
+  blur.effects = [makeEffect('blur')]
+  h.doc.nodes[blur.id] = blur; h.doc.pages[0].children.push(blur.id)
+  h.render({ backend: 'webgl2' }); await flushRasterWork()
+  const before = worker.calls.length
+  worker.plannedScales.length = 0; worker.plannedPhases.length = 0
+  worker.cameraMoving = true
+  const policy = new NavigationZoom({ x: 0, y: 0, zoom: 4 }, { includeTranslation: true })
+  const publish = (sample: ReturnType<NavigationZoom['update']>) => {
+    worker.navigation = Object.assign({ active: sample.active, suspended: false,
+      sample: sample.active ? sample : undefined }, { panEnabled: true })
+  }
+  let output: any
+  for (let step = 0; step < 30; step++) {
+    const view = { x: -step, y: 0, zoom: 4 }
+    publish(policy.update(view, step * 16, true))
+    output = h.render({ backend: 'webgl2', panGestureActive: true, view })
+    await flushRasterWork()
+    const { wrapper, compositor } = surfaceParts(output)
+    expect(wrapper.props['data-detail-ready']).toBe('false')
+    // Existing exact pixels remain active immediately; no replacement raster
+    // or quiet timer is needed to show their translated coverage.
+    expect(compositor.props.items.some((item: any) => item.active && h.keys.includes(item.tile.key))).toBe(true)
+  }
+  expect(worker.plannedScales).toEqual([])
+  const motion = worker.calls.slice(before)
+  expect(motion.length).toBeGreaterThan(0)
+  expect(motion.length).toBeLessThanOrEqual(3)
+  expect(motion.every(call => call.options.livePreview && call.options.renderIntent === 'preview')).toBe(true)
+  const final = { x: -31.375, y: .125, zoom: 4 }
+  publish(policy.update(final, 481, false))
+  output = h.render({ backend: 'webgl2', panGestureActive: false, view: final })
+  await flushRasterWork()
+  expect(worker.plannedScales).toEqual([4])
+  expect(worker.plannedPhases).toEqual([{ x: .625, y: .125 }])
+  const native = worker.calls.slice(before).find(call => call.options.renderIntent === 'canvas' && call.options.tileViewport?.length)
+  expect(native?.options.view).toEqual(final)
+  expect(surfaceParts(output).wrapper.props['data-detail-ready']).toBe('false')
 })
 
 /** The real ProgressiveSurface orchestration and mailbox run here. Only the
@@ -1020,4 +1089,49 @@ test.each(['document','fonts','epoch'] as const)('failed navigation budget is in
  worker.calls[0].reject(compileBudget());await settleRejected()
  const override=change==='document'?{document:blank('new')}:change==='fonts'?{document:{...h.doc,fonts:{...h.doc.fonts}}}:{presentationEpoch:1}
  h.render({backend:'webgl2',view,...override});await vi.waitFor(()=>expect(worker.calls).toHaveLength(2))
+})
+
+
+test('real Editor page switching drives Surface reuse without new raster work or a new worker', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const doc = blank('real page switch'), second = blank('second').pages[0]
+  doc.pages.push(second)
+  const editor = new Editor(doc), first = editor.state.page
+  const h = surfaceHarness(true, editor.snapshot().doc); harnesses.push(h)
+  const render = () => h.render({ document: editor.snapshot().doc, pageId: editor.state.page })
+  try {
+    render(); await vi.waitFor(() => expect(worker.calls).toHaveLength(1)); worker.calls[0].resolve()
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    const original = surfaceParts(render()).compositor.props.items.map((item: any) => item.tile)
+    editor.switchPage(second.id); render(); render()
+    const before = worker.calls.length
+    editor.switchPage(first); render()
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    const restored = surfaceParts(render())
+    expect(restored.compositor.props.items.map((item: any) => item.tile)).toEqual(original)
+    expect(restored.wrapper.props['data-page-cache-hits']).toBe(1)
+    expect(worker.calls).toHaveLength(before); expect(worker.clients).toHaveLength(1)
+    expect(editor.canUndo).toBe(false)
+  } finally { editor.dispose() }
+})
+
+
+
+test('pending optional preview survives raw pan within its sample and cancels on next sample', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const h = harness(false), first = { x: 0, y: 0, zoom: 32 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: first } }
+  h.render({ backend: 'webgl2', view: first }); await settleRejected()
+  expect(worker.calls).toHaveLength(1)
+  const signal = worker.calls[0].signal as AbortSignal
+  expect(signal.aborted).toBe(false)
+  h.render({ backend: 'webgl2', view: { ...first, x: 10 } }); await settleRejected()
+  expect(signal.aborted).toBe(false)
+  expect(worker.calls).toHaveLength(1)
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 2, view: { ...first, x: 10 } } }
+  h.render({ backend: 'webgl2', view: { ...first, x: 10 } }); await settleRejected()
+  expect(signal.aborted).toBe(true)
+  worker.calls[0].resolve(); await settleRejected()
+  expect(worker.calls).toHaveLength(2)
+  expect(worker.calls[1].signal.aborted).toBe(false)
 })

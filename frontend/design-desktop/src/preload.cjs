@@ -84,6 +84,8 @@ contextBridge.exposeInMainWorld(
     documentCodec: Object.freeze({
       // The persistent codec worker serializes plain admitted objects with JSON.stringify.
       encoding: 'json-stringify-v1',
+      // Versioned exact JSON.parse contract, including the native32MiB input bound.
+      decoding: 'json-parse-v1',
       encode: value => ipcRenderer.invoke('native-document:encode', value),
       decode: value => ipcRenderer.invoke('native-document:decode', value),
     }),

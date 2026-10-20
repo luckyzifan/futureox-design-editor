@@ -60,3 +60,15 @@ The intermediate guard still lacked an owner certificate when saveCopy adopted a
 - Relative to the 113-case checkpoint, source changes are limited to prepared-document.ts, DesktopSession.load, four new certificate tests plus a prepare-count assertion, and this verification document. The baseline patch still affects nine paths in total.
 - No production/test code changed after this final run. All three earlier archives remain preserved by hash. The final patch applies cleanly to unchanged 565 before hashes and its applied result matches every manifest after hash.
 - This remains an independent certificate/ownership correctness increment, not async-worker approval, a full application suite, GUI/GPU acceptance or a large-file performance measurement.
+
+## Current import snapshot and renderer reuse
+
+The real Electron FIG profile subsequently showed that a nonpersisted import still encoded its first recovery snapshot through the desktop bridge, and the render client separately sent the same large document object across the native preparation bridge to obtain JSON. The exact post-layout bytes were already available, but baseline reuse alone did not cover these consumers.
+
+- DesktopSession now seeds its current generation's encoding cache after the same successful owner/version/session/generation adoption fences. This applies to imports as well as persisted opens. Imports remain dirty until their own storage acknowledgement; certified bytes are not a save receipt. Unknown custom codecs and ID forks without a certificate keep the existing encoder path.
+- Editor.load normalizes a plain value through the existing prepared owner exactly once. Only a consumed private token can register its exact JSON for rendering. Registration binds the adopted document identity, editor revision and session; synchronous reentrant edits cannot register stale bytes.
+- KernelClient reuses that string only for full document synchronization and requested full-document fallbacks. Patch generation, native submission ordering, mutation acknowledgements and validation remain unchanged. An unregistered object, structural clone, expired owner or historical snapshot takes the existing serialization path.
+- Editor.set revokes the old certificate when its document or revision changes, including a versioned mutation of the same root. Disposal revokes it too. The getter independently checks the captured identity/revision/session. This both prevents stale reuse and releases the retained wire bytes even when editing history still holds an old document.
+- Numeric lifecycle event 216 records current snapshot reuse without names, paths or document content. It does not imply that storage succeeded.
+
+This removes proven repeated serialization/structured-clone work; it does not remove admission, component resolution, layout or derived validation. Those synchronous stages still require separate latency measurement. No asynchronous preparation Worker default is enabled by this change.

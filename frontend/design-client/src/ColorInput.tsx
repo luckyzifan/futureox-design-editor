@@ -1,3 +1,5 @@
+import { SolidFillColorInput } from './ColorPickerPopover'
+import type { SolidFillTarget } from './property-preview'
 import { createInputDiagnostics, InputFamily, InputPhase } from './input-diagnostics'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Pipette } from 'lucide-react'
@@ -6,7 +8,13 @@ import { validColor } from './color'
 import { PendingEditContext } from './pending-edit-context'
 import { commitPendingEdits } from './pending-edits'
 import { requestCanvasColor } from './canvas-color-picker'
-export function ColorInput({
+type ColorInputProps = { value: string; onChange: (value: string) => void; label: string; target?: SolidFillTarget }
+export function ColorInput(props: ColorInputProps) {
+  return props.target ? <SolidFillColorInput target={props.target} value={props.value} label={props.label} /> : <LegacyColorInput {...props} />
+}
+/** Legacy callback controls have no preview authority. Stroke/effect/mixed
+ * adapters remain unchanged until their separately reviewed target slice. */
+function LegacyColorInput({
   value,
   onChange,
   label,

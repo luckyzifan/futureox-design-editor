@@ -4,6 +4,8 @@ import { commitPendingEdits } from './pending-edits.ts'
 
 type ExportEditor = {
   readonly sessionGeneration: number
+  readonly propertyPreviewActive?: boolean
+  settleOwnedPropertyPreview?(boundary: 'export'): boolean
   readonly state: { doc: DesignDocument; page: string; selection: string[]; version: number }
   subscribe(listener: () => void): () => void
 }
@@ -38,7 +40,7 @@ export function commitExportEdits(editor: ExportEditor & { notify(message: strin
   }
   const unsubscribe = editor.subscribe(check)
   try {
-    if (!commitPendingEdits(editor)) return false
+    if (editor.settleOwnedPropertyPreview?.('export') === false || !commitPendingEdits(editor)) return false
     check()
     if (navigated) {
       editor.notify('导出已取消：提交输入时编辑会话或目标已切换，请重新导出')
@@ -96,7 +98,8 @@ export class ExportOwner {
   }
   begin(editor: ExportEditor, key: string): ExportRequest | null {
     this.observe(editor)
-    if (!this.active) return null
+    // Even a caller that missed the UI boundary cannot export a live preview.
+    if (!this.active || editor.propertyPreviewActive) return null
     if (this.current?.key === key && this.current.isCurrent()) return null
     // Snapshot before asynchronous import/render. A failed copy adopts nothing.
     const document = structuredClone(editor.state.doc)

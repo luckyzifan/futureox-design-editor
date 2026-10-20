@@ -207,7 +207,7 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
         if (artifacts.size >= RASTER_LIMITS.artifacts) throw bridgeError('ARTIFACT_LIMIT', 'Release earlier artifacts before exporting')
         if (rasterBusy) throw bridgeError('BUSY', 'An artifact export is already running')
         rasterBusy = true
-        const work = () => vector(structuredClone(editor.state.doc), { ...params, pageId: params.pageId ?? pageId }, controller.signal).finally(() => { rasterBusy = false })
+        const work = () => vector(structuredClone(editor.authoredDocument), { ...params, pageId: params.pageId ?? pageId }, controller.signal).finally(() => { rasterBusy = false })
         let result: Awaited<ReturnType<typeof captureSvgArtifact>>
         try { result = await runAsync(work) } catch (error) { if (!controller.signal.aborted) rasterBusy = false; throw error }
         check()
@@ -229,7 +229,7 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
         rasterBusy = true
         // Keep the slot until actual renderer settlement, including after a timeout.
         // Cancellation cannot permit overlapping unbounded background renders.
-        const work = () => raster(structuredClone(editor.state.doc), { ...params, pageId: params.pageId ?? pageId }, controller.signal).finally(() => { rasterBusy = false })
+        const work = () => raster(structuredClone(editor.authoredDocument), { ...params, pageId: params.pageId ?? pageId }, controller.signal).finally(() => { rasterBusy = false })
         let result: Awaited<ReturnType<typeof captureRaster>>
         try { result = await runAsync(work) } catch (error) { if (!controller.signal.aborted) rasterBusy = false; throw error }
         check()
@@ -263,7 +263,7 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
       if (params.scale !== undefined && (typeof params.scale !== 'number' || !Number.isFinite(params.scale) || params.scale < 0.1 || params.scale > 4)) throw bridgeError('INVALID_PARAMS', 'Preview scale must be between 0.1 and 4')
       // Export sees a detached immutable snapshot, never a subsequently edited
       // live document. Reject stale completion instead of labelling it current.
-      const document = structuredClone(editor.state.doc)
+      const document = structuredClone(editor.authoredDocument)
       const result = await runAsync(() => capture(document, { ...params, pageId: params.pageId as string | undefined ?? pageId, signal: controller.signal }))
       check()
       if (editor.state.version !== revision) throw bridgeError('STALE_REVISION', 'The document changed while generating the preview')

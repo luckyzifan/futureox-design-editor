@@ -1,5 +1,5 @@
 import type { DesignDocument, Matrix } from './model'
-import { allParents, worldMatrix } from './geometry'
+import { allParents, worldMatrix, type ParentMap } from './geometry'
 
 function axis(m: Matrix) { return { x: Math.hypot(m[0], m[1]), y: Math.hypot(m[2], m[3]) } }
 function materialScale(m: Matrix) {
@@ -11,7 +11,7 @@ function materialScale(m: Matrix) {
   return Math.sqrt((s + Math.sqrt(Math.max(0, s * s - 4 * det * det))) * .5)
 }
 /** Inspector units only: never rewrite a node just to display its properties. */
-export function propertyUnits(doc: DesignDocument, id: string, parents = allParents(doc)) {
+export function propertyUnits(doc: DesignDocument, id: string, parents: ParentMap = allParents(doc)) {
   const parent = worldMatrix(doc, parents.get(id)!, parents), world = worldMatrix(doc, id, parents)
   const own = axis(doc.nodes[id].transform), global = axis(world), p = axis(parent)
   return { parentX: p.x, parentY: p.y, width: global.x / own.x, height: global.y / own.y,

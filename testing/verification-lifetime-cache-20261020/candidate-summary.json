@@ -1,0 +1,1033 @@
+{
+  "scope": "Historical captures from before the canvas UI merge; no new runs. Not acceptance of merged source, frame rate or input latency. Raw profiles, screenshots, host configuration and imported files stay local.",
+  "runs": [
+    {
+      "run": "candidate1-117",
+      "rawResultSha256": "6921db526c6f379367fecd059f5fc0920cf8849f88b573097a8c5d3b9ce86b22",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "startedAt": "2026-10-20T11:16:07.854Z",
+      "scope": "Visible release Electron, sandbox retained, isolated user profile; real pointer/keyboard input through Playwright; sampled diagnostics, not physical input-to-photon or FPS acceptance.",
+      "sampling": true,
+      "extendedEnabled": false,
+      "adapter": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": ""
+      },
+      "document": {
+        "nodes": 752,
+        "pages": 1,
+        "sha256": "ba0aad71cb60a7a0f56b922de56b1368c6d2b058f0f0a62daf59b67afc39700c",
+        "dpr": 2
+      },
+      "navigationPreservedDocument": true,
+      "status": "completed",
+      "stages": [
+        {
+          "name": "import",
+          "wallStart": 1792494972041,
+          "wallEnd": 1792494979465,
+          "actionMs": 793.771291,
+          "totalMs": 7031.839083000001,
+          "raf": {
+            "count": 809,
+            "p50": 8.300000000000182,
+            "p95": 9.199999999998909,
+            "max": 258.8000000000002,
+            "over50": 1
+          },
+          "longtasks": [
+            {
+              "start": 2905.300000011921,
+              "duration": 258
+            }
+          ],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker-1ag37aQe.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-100",
+          "wallStart": 1792494990317,
+          "wallEnd": 1792494992748,
+          "actionMs": 74.9656670000004,
+          "totalMs": 2232.363625000002,
+          "raf": {
+            "count": 269,
+            "p50": 8.299999999999272,
+            "p95": 9.200000000000728,
+            "max": 9.30000000000291,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker-1ag37aQe.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "pan-100",
+          "wallStart": 1792494993830,
+          "wallEnd": 1792494995026,
+          "actionMs": 979.7435829999995,
+          "totalMs": 1039.7218749999993,
+          "raf": {
+            "count": 101,
+            "p50": 8.299999999999272,
+            "p95": 17.299999999999272,
+            "max": 67.40000000000146,
+            "over50": 2
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker-1ag37aQe.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-3200",
+          "wallStart": 1792494996126,
+          "wallEnd": 1792495006215,
+          "actionMs": 79.17137500000172,
+          "totalMs": 9729.942500000001,
+          "raf": {
+            "count": 1168,
+            "p50": 8.299999999999272,
+            "p95": 9.19999999999709,
+            "max": 9.400000000001455,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker-1ag37aQe.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "pan-3200",
+          "wallStart": 1792495006503,
+          "wallEnd": 1792495009367,
+          "actionMs": 2665.803791999999,
+          "totalMs": 2680.5392920000013,
+          "raf": {
+            "count": 109,
+            "p50": 8.30000000000291,
+            "p95": 133.90000000000146,
+            "max": 366.90000000000146,
+            "over50": 11
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker-1ag37aQe.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-return-100",
+          "wallStart": 1792495009635,
+          "wallEnd": 1792495009947,
+          "actionMs": 74.01445799999783,
+          "totalMs": 219.93604100000084,
+          "raf": {
+            "count": 27,
+            "p50": 8.30000000000291,
+            "p95": 9.099999999998545,
+            "max": 9.19999999999709,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker-1ag37aQe.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-repeat-3200",
+          "wallStart": 1792495011024,
+          "wallEnd": 1792495011366,
+          "actionMs": 113.20179199999984,
+          "totalMs": 260.1912499999962,
+          "raf": {
+            "count": 31,
+            "p50": 8.39999999999418,
+            "p95": 9.099999999998545,
+            "max": 9.19999999999709,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker-1ag37aQe.js"
+          ],
+          "settled": true,
+          "settleError": null
+        }
+      ]
+    },
+    {
+      "run": "candidate1-fig",
+      "rawResultSha256": "c8d7bec2dd548c85a3a00d6ddc46d9dacfa2f1bfc0099f32329da9e9a77360d9",
+      "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+      "startedAt": "2026-10-20T11:17:26.832Z",
+      "scope": "Visible release Electron, sandbox retained, isolated user profile; real pointer/keyboard input through Playwright; sampled diagnostics, not physical input-to-photon or FPS acceptance.",
+      "sampling": false,
+      "extendedEnabled": false,
+      "adapter": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": ""
+      },
+      "document": {
+        "nodes": 19959,
+        "pages": 15,
+        "sha256": "0aea48977600a15471d59df8d6ef3312e0a59b5aaf7a17726a8e9735041b053d",
+        "dpr": 2
+      },
+      "navigationPreservedDocument": true,
+      "status": "completed",
+      "stages": [
+        {
+          "name": "import",
+          "wallStart": 1792495049069,
+          "wallEnd": 1792495058219,
+          "actionMs": 5479.0895,
+          "totalMs": 9098.130084,
+          "raf": {
+            "count": 748,
+            "p50": 8.300000000000182,
+            "p95": 9.199999999999818,
+            "max": 2291.7000000000003,
+            "over50": 3
+          },
+          "longtasks": [
+            {
+              "start": 2369.7999999821186,
+              "duration": 2292
+            },
+            {
+              "start": 10017,
+              "duration": 394
+            }
+          ],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-100",
+          "wallStart": 1792495073800,
+          "wallEnd": 1792495074539,
+          "actionMs": 156.78158299999996,
+          "totalMs": 733.0192079999979,
+          "raf": {
+            "count": 83,
+            "p50": 8.299999999999272,
+            "p95": 9.299999999999272,
+            "max": 33.400000000001455,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "pan-100",
+          "wallStart": 1792495074724,
+          "wallEnd": 1792495075628,
+          "actionMs": 879.4830829999992,
+          "totalMs": 898.9471249999988,
+          "raf": {
+            "count": 105,
+            "p50": 8.299999999999272,
+            "p95": 9.200000000000728,
+            "max": 33.29999999999927,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-3200",
+          "wallStart": 1792495075880,
+          "wallEnd": 1792495076579,
+          "actionMs": 122.36191599999802,
+          "totalMs": 694.6116659999971,
+          "raf": {
+            "count": 78,
+            "p50": 8.299999999999272,
+            "p95": 9.30000000000291,
+            "max": 33.20000000000073,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "pan-3200",
+          "wallStart": 1792495076776,
+          "wallEnd": 1792495077687,
+          "actionMs": 886.9247910000013,
+          "totalMs": 905.3507910000008,
+          "raf": {
+            "count": 105,
+            "p50": 8.299999999999272,
+            "p95": 9.299999999999272,
+            "max": 42.099999999998545,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-return-100",
+          "wallStart": 1792495077934,
+          "wallEnd": 1792495078226,
+          "actionMs": 116.23695799999768,
+          "totalMs": 288.57545799999934,
+          "raf": {
+            "count": 31,
+            "p50": 8.299999999999272,
+            "p95": 24.899999999997817,
+            "max": 25,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-repeat-3200",
+          "wallStart": 1792495078464,
+          "wallEnd": 1792495078746,
+          "actionMs": 86.11362499999814,
+          "totalMs": 277.89358399999765,
+          "raf": {
+            "count": 28,
+            "p50": 8.299999999999272,
+            "p95": 8.900000000001455,
+            "max": 49.900000000001455,
+            "over50": 0
+          },
+          "longtasks": [
+            {
+              "start": 30916.899999976158,
+              "duration": 57
+            }
+          ],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        }
+      ]
+    },
+    {
+      "run": "candidate2-117",
+      "rawResultSha256": "b2051b3d22dffebd8f42dd5f9285e6f0d220266ed350fc9a0d2d6ae40565938c",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "startedAt": "2026-10-20T11:38:17.201Z",
+      "scope": "Visible release Electron, sandbox retained, isolated user profile; real pointer/keyboard input through Playwright; sampled diagnostics, not physical input-to-photon or FPS acceptance.",
+      "sampling": false,
+      "extendedEnabled": true,
+      "adapter": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": ""
+      },
+      "document": {
+        "nodes": 752,
+        "pages": 1,
+        "sha256": "7901841ea1b96714f4f2895953f575fccc781ef3ab34c42b0a82a89a16320a25",
+        "dpr": 2
+      },
+      "navigationPreservedDocument": true,
+      "status": "completed",
+      "stages": [
+        {
+          "name": "import",
+          "wallStart": 1792496301714,
+          "wallEnd": 1792496305450,
+          "actionMs": 765.5404589999998,
+          "totalMs": 3714.8221249999997,
+          "raf": {
+            "count": 416,
+            "p50": 8.300000000000182,
+            "p95": 9.199999999999818,
+            "max": 250,
+            "over50": 1
+          },
+          "longtasks": [
+            {
+              "start": 1971,
+              "duration": 256
+            }
+          ],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-100",
+          "wallStart": 1792496316829,
+          "wallEnd": 1792496319095,
+          "actionMs": 99.41212499999892,
+          "totalMs": 2254.029042000002,
+          "raf": {
+            "count": 271,
+            "p50": 8.299999999999272,
+            "p95": 9,
+            "max": 9.399999999997817,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "pan-100",
+          "wallStart": 1792496320197,
+          "wallEnd": 1792496321218,
+          "actionMs": 1005.0366250000006,
+          "totalMs": 1011.3964579999993,
+          "raf": {
+            "count": 116,
+            "p50": 8.299999999999272,
+            "p95": 9.200000000000728,
+            "max": 58.900000000001455,
+            "over50": 1
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-3200",
+          "wallStart": 1792496322329,
+          "wallEnd": 1792496332335,
+          "actionMs": 66.88770800000202,
+          "totalMs": 9934.187290999998,
+          "raf": {
+            "count": 1174,
+            "p50": 8.299999999999272,
+            "p95": 9.099999999998545,
+            "max": 158.39999999999782,
+            "over50": 1
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "pan-3200",
+          "wallStart": 1792496332621,
+          "wallEnd": 1792496333377,
+          "actionMs": 746.3581670000058,
+          "totalMs": 749.9033750000017,
+          "raf": {
+            "count": 90,
+            "p50": 8.30000000000291,
+            "p95": 9.30000000000291,
+            "max": 9.400000000001455,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": false,
+          "settleError": null
+        },
+        {
+          "name": "zoom-return-100",
+          "wallStart": 1792496333648,
+          "wallEnd": 1792496333872,
+          "actionMs": 72.6597499999989,
+          "totalMs": 220.08345800000097,
+          "raf": {
+            "count": 27,
+            "p50": 8.39999999999418,
+            "p95": 9.19999999999709,
+            "max": 9.400000000001455,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-repeat-3200",
+          "wallStart": 1792496334966,
+          "wallEnd": 1792496335181,
+          "actionMs": 62.06695899999613,
+          "totalMs": 211.15779199999815,
+          "raf": {
+            "count": 25,
+            "p50": 8.30000000000291,
+            "p95": 9.19999999999709,
+            "max": 9.30000000000291,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "extended-zoom-reset-100",
+          "wallStart": 1792496336461,
+          "wallEnd": 1792496336827,
+          "actionMs": 65.96995899999456,
+          "totalMs": 212.9233749999985,
+          "raf": {
+            "count": 26,
+            "p50": 8.400000000001455,
+            "p95": 9.299999999995634,
+            "max": 16.599999999998545,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker--ELWu2JR.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "extended-continuous-wheel",
+          "wallStart": 1792496337916,
+          "wallEnd": 1792496338815,
+          "actionMs": 617.2611249999973,
+          "totalMs": 790.3972920000015,
+          "raf": {
+            "count": 96,
+            "p50": 8.30000000000291,
+            "p95": 9.19999999999709,
+            "max": 9.30000000000291,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker--ELWu2JR.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "extended-select-edit-target",
+          "wallStart": 1792496340953,
+          "wallEnd": 1792496341546,
+          "actionMs": 303.04570899999817,
+          "totalMs": 450.1344170000011,
+          "raf": {
+            "count": 55,
+            "p50": 8.30000000000291,
+            "p95": 9,
+            "max": 9.200000000004366,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker--ELWu2JR.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "extended-pointer-drag",
+          "wallStart": 1792496343628,
+          "wallEnd": 1792496352135,
+          "actionMs": 571.0686249999999,
+          "totalMs": 8091.6238749999975,
+          "raf": {
+            "count": 949,
+            "p50": 8.30000000000291,
+            "p95": 9.200000000004366,
+            "max": 58.299999999995634,
+            "over50": 1
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker--ELWu2JR.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "extended-undo-edit",
+          "wallStart": 1792496355129,
+          "wallEnd": 1792496356054,
+          "actionMs": 18.918417000000773,
+          "totalMs": 815.6362499999959,
+          "raf": {
+            "count": 97,
+            "p50": 8.30000000000291,
+            "p95": 9.200000000004366,
+            "max": 16.7300000000032,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker--ELWu2JR.js"
+          ],
+          "settled": true,
+          "settleError": null
+        }
+      ],
+      "extended": {
+        "status": "completed",
+        "scope": "Actual Control+wheel and authored UI edit/undo in this isolated temporary workspace. rAF intervals and sampled CPU stacks are not physical FPS or input-to-photon measurements.",
+        "cpuProfiling": true,
+        "persistenceReadsOutsideProfiles": true,
+        "sourceFilePreserved": true,
+        "stages": [
+          "extended-zoom-reset-100",
+          "extended-continuous-wheel",
+          "extended-select-edit-target",
+          "extended-pointer-drag",
+          "extended-undo-edit"
+        ],
+        "wheel": {
+          "deltas": [
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12
+          ],
+          "observedZooms": [
+            1,
+            1.0366558464909237,
+            1.0746553440638136,
+            1.1140477453864674,
+            1.1548841085249135,
+            1.19721736312181,
+            1.2411023790006714
+          ],
+          "documentSha256": "7901841ea1b96714f4f2895953f575fccc781ef3ab34c42b0a82a89a16320a25",
+          "documentPreserved": true
+        },
+        "edit": {
+          "mode": "pointer-drag",
+          "beforeSha256": "7901841ea1b96714f4f2895953f575fccc781ef3ab34c42b0a82a89a16320a25",
+          "afterSha256": "e486dd84ba848dabc055158c2797da91960ee8b386c3952b64475c8b61e3a1bc",
+          "undoSha256": "7901841ea1b96714f4f2895953f575fccc781ef3ab34c42b0a82a89a16320a25",
+          "changed": true,
+          "nodeCountPreserved": true,
+          "undoRestoredCompleteDocument": true
+        }
+      }
+    },
+    {
+      "run": "candidate2-fig",
+      "rawResultSha256": "b9370b4c626fc01d40e8503aef492b758c09f5b9210d1ef48c06eb7e4cde6108",
+      "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+      "startedAt": "2026-10-20T11:41:29.537Z",
+      "scope": "Visible release Electron, sandbox retained, isolated user profile; real pointer/keyboard input through Playwright; sampled diagnostics, not physical input-to-photon or FPS acceptance.",
+      "sampling": false,
+      "extendedEnabled": true,
+      "adapter": {
+        "vendor": "apple",
+        "architecture": "metal-3",
+        "description": ""
+      },
+      "document": {
+        "nodes": 19959,
+        "pages": 15,
+        "sha256": "7526ac36535a2342ee45e2b56daae7389bae699285c72d77fb81c011d7d9c145",
+        "dpr": 2
+      },
+      "navigationPreservedDocument": true,
+      "status": "completed",
+      "stages": [
+        {
+          "name": "import",
+          "wallStart": 1792496491912,
+          "wallEnd": 1792496500207,
+          "actionMs": 5411.575333,
+          "totalMs": 8245.022792,
+          "raf": {
+            "count": 654,
+            "p50": 8.300000000000182,
+            "p95": 9.199999999999818,
+            "max": 2225.0000000000005,
+            "over50": 3
+          },
+          "longtasks": [
+            {
+              "start": 2394.9000000059605,
+              "duration": 2228
+            },
+            {
+              "start": 9162.59999999404,
+              "duration": 419
+            }
+          ],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-100",
+          "wallStart": 1792496515235,
+          "wallEnd": 1792496515914,
+          "actionMs": 116.63045899999997,
+          "totalMs": 672.0318340000013,
+          "raf": {
+            "count": 74,
+            "p50": 8.299999999999272,
+            "p95": 9.399999999997817,
+            "max": 33.400000000001455,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "pan-100",
+          "wallStart": 1792496516101,
+          "wallEnd": 1792496517192,
+          "actionMs": 1075.5317090000026,
+          "totalMs": 1084.1650000000009,
+          "raf": {
+            "count": 106,
+            "p50": 8.299999999999272,
+            "p95": 33.29999999999927,
+            "max": 58.89999999999782,
+            "over50": 1
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-3200",
+          "wallStart": 1792496517434,
+          "wallEnd": 1792496518045,
+          "actionMs": 164.4990420000031,
+          "totalMs": 606.0082089999996,
+          "raf": {
+            "count": 65,
+            "p50": 8.299999999999272,
+            "p95": 9.299999999999272,
+            "max": 34.400000000001455,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "pan-3200",
+          "wallStart": 1792496518227,
+          "wallEnd": 1792496519264,
+          "actionMs": 1015.3112499999988,
+          "totalMs": 1022.7637910000012,
+          "raf": {
+            "count": 109,
+            "p50": 8.299999999999272,
+            "p95": 9.299999999999272,
+            "max": 34.30000000000291,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-return-100",
+          "wallStart": 1792496519477,
+          "wallEnd": 1792496519768,
+          "actionMs": 139.13287499999933,
+          "totalMs": 288.2093750000022,
+          "raf": {
+            "count": 28,
+            "p50": 8.400000000001455,
+            "p95": 26,
+            "max": 33.29999999999927,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "zoom-repeat-3200",
+          "wallStart": 1792496520006,
+          "wallEnd": 1792496520273,
+          "actionMs": 70.61079199999949,
+          "totalMs": 264.1242920000004,
+          "raf": {
+            "count": 27,
+            "p50": 8.30000000000291,
+            "p95": 8.700000000000728,
+            "max": 41.70000000000073,
+            "over50": 0
+          },
+          "longtasks": [
+            {
+              "start": 29635.29999998212,
+              "duration": 52
+            }
+          ],
+          "profilerErrors": [],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "extended-zoom-reset-100",
+          "wallStart": 1792496534072,
+          "wallEnd": 1792496535072,
+          "actionMs": 123.61637499999779,
+          "totalMs": 261.7306249999965,
+          "raf": {
+            "count": 25,
+            "p50": 8.5,
+            "p95": 25,
+            "max": 33.400000000001455,
+            "over50": 0
+          },
+          "longtasks": [],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker--ELWu2JR.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "extended-continuous-wheel",
+          "wallStart": 1792496535428,
+          "wallEnd": 1792496537110,
+          "actionMs": 697.3541669999977,
+          "totalMs": 969.9987919999985,
+          "raf": {
+            "count": 100,
+            "p50": 8.30000000000291,
+            "p95": 9.30000000000291,
+            "max": 65.80000000000291,
+            "over50": 1
+          },
+          "longtasks": [
+            {
+              "start": 46277.69999998808,
+              "duration": 64
+            }
+          ],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker--ELWu2JR.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "extended-select-edit-target",
+          "wallStart": 1792496551002,
+          "wallEnd": 1792496553512,
+          "actionMs": 1186.7384999999995,
+          "totalMs": 1367.5899580000041,
+          "raf": {
+            "count": 145,
+            "p50": 8.30000000000291,
+            "p95": 9.30000000000291,
+            "max": 74.79999999999563,
+            "over50": 1
+          },
+          "longtasks": [
+            {
+              "start": 62602.69999998808,
+              "duration": 52
+            }
+          ],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker--ELWu2JR.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "extended-property-x",
+          "wallStart": 1792496567333,
+          "wallEnd": 1792496572104,
+          "actionMs": 1797.6782919999969,
+          "totalMs": 4066.276708999998,
+          "raf": {
+            "count": 198,
+            "p50": 8.30000000000291,
+            "p95": 9.30000000000291,
+            "max": 1717.7000000000116,
+            "over50": 2
+          },
+          "longtasks": [
+            {
+              "start": 77192.69999998808,
+              "duration": 1728
+            },
+            {
+              "start": 79388.40000000596,
+              "duration": 617
+            }
+          ],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker--ELWu2JR.js"
+          ],
+          "settled": true,
+          "settleError": null
+        },
+        {
+          "name": "extended-undo-edit",
+          "wallStart": 1792496601469,
+          "wallEnd": 1792496605142,
+          "actionMs": 212.5689999999886,
+          "totalMs": 2437.3232089999947,
+          "raf": {
+            "count": 176,
+            "p50": 8.30000000000291,
+            "p95": 9.30000000000291,
+            "max": 784,
+            "over50": 2
+          },
+          "longtasks": [
+            {
+              "start": 111885.90000000596,
+              "duration": 178
+            },
+            {
+              "start": 112522.79999998212,
+              "duration": 788
+            }
+          ],
+          "profilerErrors": [
+            "Worker exited before profile retrieval: design-app://app/assets/import-worker--ELWu2JR.js"
+          ],
+          "settled": true,
+          "settleError": null
+        }
+      ],
+      "extended": {
+        "status": "completed",
+        "scope": "Actual Control+wheel and authored UI edit/undo in this isolated temporary workspace. rAF intervals and sampled CPU stacks are not physical FPS or input-to-photon measurements.",
+        "cpuProfiling": true,
+        "persistenceReadsOutsideProfiles": true,
+        "sourceFilePreserved": true,
+        "stages": [
+          "extended-zoom-reset-100",
+          "extended-continuous-wheel",
+          "extended-select-edit-target",
+          "extended-property-x",
+          "extended-undo-edit"
+        ],
+        "wheel": {
+          "deltas": [
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            -12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12
+          ],
+          "observedZooms": [
+            1,
+            1.0366558464909237,
+            1.0746553440638136,
+            1.1140477453864674,
+            1.1548841085249135,
+            1.19721736312181,
+            1.2411023790006714
+          ],
+          "documentSha256": "7526ac36535a2342ee45e2b56daae7389bae699285c72d77fb81c011d7d9c145",
+          "documentPreserved": true
+        },
+        "edit": {
+          "mode": "property-x",
+          "beforeSha256": "7526ac36535a2342ee45e2b56daae7389bae699285c72d77fb81c011d7d9c145",
+          "afterSha256": "c8d739c679f5c0639338ce46464c2bb88f4ef66c2a7db91821370b9d64b155e5",
+          "undoSha256": "7526ac36535a2342ee45e2b56daae7389bae699285c72d77fb81c011d7d9c145",
+          "changed": true,
+          "nodeCountPreserved": true,
+          "undoRestoredCompleteDocument": true
+        }
+      }
+    }
+  ]
+}

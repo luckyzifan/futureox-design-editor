@@ -1,5 +1,6 @@
 // Exact signed-128 operations and rational-to-binary32 rounding. Requires
-// bsHigh and bsMultiply from sampling.wgsl. No native floating arithmetic.
+// bsHigh and bsMultiply from sampling.wgsl. Arithmetic/rounding results are exact;
+// native floating arithmetic only proposes an independently certified quotient.
 alias PrefixInt = vec4<u32>;
 
 fn prefix_add(a:PrefixInt,b:PrefixInt)->PrefixInt {
@@ -55,6 +56,40 @@ fn prefix_sample(bits:u32,minimum:u32)->PrefixInt {
  let value=prefix_shl(PrefixInt(mantissa,0u,0u,0u),max(exponent,1u)-minimum);
  if((bits&0x80000000u)!=0u){return prefix_neg(value);}return value;
 }
+struct PrefixDivision { remainder:PrefixInt, quotient:u32, accepted:u32 }
+// Floating arithmetic proposes a quotient only. Every accepted result is
+// independently certified with exact integers; an inaccurate estimate falls
+// back to the existing bit-at-a-time division.
+fn prefix_float(value:PrefixInt)->f32 {
+ return f32(f32(f32(f32(value.w)*79228162514264337593543950336.0+
+  f32(value.z)*18446744073709551616.0)+f32(value.y)*4294967296.0)+f32(value.x));
+}
+fn prefix_try_quotient(numerator:PrefixInt,divisor:PrefixInt,estimate:f32)->PrefixDivision {
+ let declined=PrefixDivision(numerator,0u,0u);let dh=prefix_high(divisor);
+ // N < 2^126, D < 2^103, q < 2^24 imply D*q < 2^127.
+ // Thus multiplication and every bounded correction are exact in 128 bits.
+ if(prefix_high(numerator)>125||dh<0||dh>102){return declined;}
+ if(!(estimate>=0.0&&estimate<=16777216.0)){return declined;}
+ var quotient=min(u32(estimate),16777215u);
+ var product=prefix_mul_u32(divisor,quotient);
+ for(var correction=0u;correction<=8u;correction=correction+1u){
+  if(prefix_compare(product,numerator)>0){
+   if(correction==8u||quotient==0u){return declined;}
+   quotient=quotient-1u;product=prefix_sub(product,divisor);
+  }else{
+   let remainder=prefix_sub(numerator,product);
+   if(prefix_compare(remainder,divisor)<0){return PrefixDivision(remainder,quotient,1u);}
+   if(correction==8u||quotient==16777215u){return declined;}
+   quotient=quotient+1u;product=prefix_add(product,divisor);
+  }
+ }
+ return declined;
+}
+fn prefix_divide_fast(numerator:PrefixInt,divisor:PrefixInt)->PrefixDivision {
+ let dh=prefix_high(divisor);
+ if(prefix_high(numerator)>125||dh<0||dh>102){return PrefixDivision(numerator,0u,0u);}
+ return prefix_try_quotient(numerator,divisor,prefix_float(numerator)/prefix_float(divisor));
+}
 // bits, accepted. Invalid protocol values decline; callers must use the old
 // exact filter and count the decline, never treat its zero placeholder as data.
 fn prefix_round_ratio(input:PrefixInt,denominator:u32,quantum:i32)->vec2<u32> {
@@ -72,8 +107,11 @@ fn prefix_round_ratio(input:PrefixInt,denominator:u32,quantum:i32)->vec2<u32> {
  var remainder=magnitude;var divisor=divisorBase;
  if(shift<0){remainder=prefix_shl(magnitude,u32(-shift));}else{divisor=prefix_shl(divisorBase,u32(shift));}
  var mantissa=0u;
+ let candidate=prefix_divide_fast(remainder,divisor);
+ if(candidate.accepted!=0u){remainder=candidate.remainder;mantissa=candidate.quotient;}else{
  for(var bit=23;bit>=0;bit=bit-1){let term=prefix_shl(divisor,u32(bit));
   if(prefix_compare(remainder,term)>=0){remainder=prefix_sub(remainder,term);mantissa=mantissa|(1u<<u32(bit));}
+ }
  }
  let comparison=prefix_compare(prefix_shl(remainder,1u),divisor);
  if(comparison>0||(comparison==0&&(mantissa&1u)!=0u)){mantissa=mantissa+1u;}
@@ -102,8 +140,11 @@ fn prefix_round_wide(input:PrefixInt,divisorBase:PrefixInt,quantum:i32)->vec2<u3
  var remainder=magnitude;var divisor=divisorBase;
  if(shift<0){remainder=prefix_shl(magnitude,u32(-shift));}else{divisor=prefix_shl(divisorBase,u32(shift));}
  var mantissa=0u;
+ let candidate=prefix_divide_fast(remainder,divisor);
+ if(candidate.accepted!=0u){remainder=candidate.remainder;mantissa=candidate.quotient;}else{
  for(var bit=23;bit>=0;bit=bit-1){let term=prefix_shl(divisor,u32(bit));
   if(prefix_compare(remainder,term)>=0){remainder=prefix_sub(remainder,term);mantissa=mantissa|(1u<<u32(bit));}}
+ }
  let comparison=prefix_compare(prefix_shl(remainder,1u),divisor);
  if(comparison>0||(comparison==0&&(mantissa&1u)!=0u)){mantissa=mantissa+1u;}
  if(mantissa>=0x1000000u){mantissa=mantissa>>1u;exponent=exponent+1;}

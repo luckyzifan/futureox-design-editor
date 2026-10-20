@@ -11,6 +11,8 @@ import { PendingEditContext } from './pending-edit-context'
 import { pendingOperationEpoch } from './pending-edits'
 import { DraftInput } from './DraftInput'
 import { ColorInput } from './ColorInput'
+import { SolidFillColorInput } from './ColorPickerPopover'
+import type { SolidFillTarget } from './property-preview'
 import { StrokeProfilePanel } from './StrokeProfilePanel'
 import { TextInput } from './TextEditor'
 import { TextStylePanel } from './TextStylePanel'
@@ -77,7 +79,9 @@ function PaintEditor({
   value: p,
   onChange,
   maxImagePixels,
+  target,
 }: {
+  target?: SolidFillTarget
   value: Paint
   onChange: (p: Paint) => void
   maxImagePixels: number
@@ -89,7 +93,7 @@ function PaintEditor({
   return (
     <div className="paint-editor">
       <div className="paint-row">
-        <ColorInput label="颜色" value={p.color} onChange={(color) => onChange({ ...p, color })} />
+        <ColorInput label="颜色" target={target} value={p.color} onChange={(color) => onChange({ ...p, color })} />
         <select
           aria-label="填充类型"
           value={p.kind}
@@ -129,13 +133,15 @@ function PaintEditor({
         </details>
       )}
       <div className="field-grid">
-        <NumberField
+        {target ? <label className="paint-opacity-field">填充不透明度 %
+          <SolidFillColorInput target={target} label="填充不透明度" value={String(p.opacity * 100)} opacity />
+        </label> : <NumberField
           label="不透明度 %"
           value={p.opacity * 100}
           min={0}
           max={100}
           onChange={(v) => onChange({ ...p, opacity: v / 100 })}
-        />
+        />}
         <select
           aria-label="填充混合模式"
           value={p.blend}
@@ -428,7 +434,7 @@ export function Inspector({ editor }: { editor: Editor }) {
         <div className="local-badge">独立工作空间 · 本地优先</div>
       </aside>
     )
-  const units = propertyUnits(s.doc, n.id)
+  const units = propertyUnits(s.doc, n.id, editor.parentMap(s.doc))
   const angle = rotationDegrees(n),
     position = parentBounds(n)
   const listControls = (field: 'fills' | 'strokes' | 'effects', i: number) => (
@@ -763,6 +769,7 @@ export function Inspector({ editor }: { editor: Editor }) {
               <PaintEditor
                 maxImagePixels={s.doc.colorManagement ? 8_388_608 : 16_777_216}
                 value={p}
+                target={p.kind === 'solid' ? { kind: 'solid-fill', nodeId: n.id, fillId: p.id, fillIndex: i } : undefined}
                 onChange={(p) =>
                   update((n) => {
                     if (n.fills[i]) {

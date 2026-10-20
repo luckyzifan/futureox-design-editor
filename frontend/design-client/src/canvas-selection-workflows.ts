@@ -17,7 +17,7 @@ export function canvasMarqueeSelection(document: DesignDocument, page: string,
   origin: readonly string[], entries: readonly SceneEntry[], area: Bounds,
   options: MarqueeSelectionOptions): string[] {
   const parents = allParents(document)
-  const scope = marqueeScope(document, page, origin)
+  const scope = marqueeScope(document, page, origin, parents)
   // Forced X starts inside an occupied hierarchy. Removing only its leaf
   // would accidentally promote its container when no other child intersects.
   const ignored = new Set(options.ignoreId ? interactivePath(document, page, options.ignoreId, false, parents) : [])

@@ -26,7 +26,7 @@ export async function activateTool(editor:Editor,tool:Tool){
  const action=beginEditorAction(editor,CanvasAction.tool,ActionSource.unknown)
  try {
  if(owners.has(editor))cancelToolActivation(editor)
- if(editor.interactionActive||editor.state.busy||!commitPendingEdits(editor)){action.result(ActionOutcome.blocked,editor.state.busy?ActionReason.busy:ActionReason.wrongOwner);return}
+ if(!editor.settleOwnedPropertyPreview('tool')||editor.interactionActive||editor.state.busy||!commitPendingEdits(editor)){action.result(ActionOutcome.blocked,editor.state.busy?ActionReason.busy:ActionReason.wrongOwner);return}
  if(tool==='code-block'){
   const generation=editor.sessionGeneration,owner={generation};owners.set(editor,owner)
   editor.set({tool,busy:true,message:'正在载入本机等宽字体…'})

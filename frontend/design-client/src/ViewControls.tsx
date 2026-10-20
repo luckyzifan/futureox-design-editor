@@ -1,3 +1,4 @@
+import { useInterfaceText } from './interface-preference'
 import type { Editor } from './engine'
 import { CANVAS_ZOOM_MIN, CANVAS_ZOOM_MAX, zoomAt, zoomStep } from './canvas-camera'
 import { NumberField } from './fields'
@@ -13,6 +14,7 @@ export function ViewControls({
   size: { width: number; height: number }
   fit: (selection?: boolean) => void
 }) {
+  const text = useInterfaceText()
   const s = editor.state
   const menu = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
@@ -36,15 +38,17 @@ export function ViewControls({
       onDoubleClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && menu.current?.open) { menu.current.open = false; menu.current.querySelector('summary')?.focus(); e.preventDefault() } }}
     >
-      {!compact && <button type="button" title="缩小" onClick={() => zoom(zoomStep(editor.effectiveView().zoom, -1))}>
+      {!compact && <button type="button" title={text.zoomOut} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, -1))}>
         −
       </button>}
       <details ref={menu} className="view-menu">
-        <summary aria-label="缩放与视图设置">{Number((s.view.zoom * 100).toFixed(1))}%</summary>
+        <summary aria-label={text.zoomView}>{Number((s.view.zoom * 100).toFixed(1))}%</summary>
         <div className="view-menu-body">
-          {compact && <div className="zoom-steps"><button type="button" title="缩小" onClick={() => zoom(zoomStep(editor.effectiveView().zoom, -1))}>−</button><button type="button" title="放大" onClick={() => zoom(zoomStep(editor.effectiveView().zoom, 1))}>＋</button></div>}
+          {compact && <div className="zoom-steps"><button type="button" title={text.zoomOut} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, -1))}>−</button><button type="button" title={text.zoomIn} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, 1))}>＋</button></div>}
           <NumberField
-            label="缩放比例"
+            label={text.zoomRatio}
+            // Preserve the existing numeric semantics independently of the translated label.
+            unit="number"
             value={s.view.zoom * 100}
             min={CANVAS_ZOOM_MIN * 100}
             max={CANVAS_ZOOM_MAX * 100}
@@ -58,34 +62,34 @@ export function ViewControls({
             ))}
           </div>
           <button type="button" onClick={() => { fit(); if (menu.current) menu.current.open = false }}>
-            适合全部　⇧1
+            {text.fitAll}　⇧1
           </button>
           <button type="button" onClick={() => { fit(true); if (menu.current) menu.current.open = false }}>
-            适合选择　⇧2
+            {text.fitSelection}　⇧2
           </button>
-          <label><input type="checkbox" aria-label="滚轮围绕鼠标缩放" checked={s.scrollWheelZoom}
-            onChange={e => editor.setScrollWheelZoom(e.target.checked)}/>滚轮围绕鼠标缩放</label>
-          <small>滚轮 / 双指移动平移；Ctrl / ⌘＋滚轮、双指捏合缩放。空格拖动或 H 手形工具平移。</small>
+          <label><input type="checkbox" aria-label={text.wheelZoom} checked={s.scrollWheelZoom}
+            onChange={e => editor.setScrollWheelZoom(e.target.checked)}/>{text.wheelZoom}</label>
+          <small>{text.viewNavigationHelp}</small>
           <label>
-            像素预览
+            {text.pixelPreview}
             <select
-              aria-label="像素预览"
+              aria-label={text.pixelPreview}
               value={s.pixelPreview}
               onChange={(e) => preview(Number(e.target.value) as 0 | 1 | 2)}
             >
-              <option value={0}>关闭 · 矢量</option>
+              <option value={0}>{text.vectorPreview}</option>
               <option value={1}>1×</option>
               <option value={2}>2×</option>
             </select>
           </label>
-          <label><input type="checkbox" aria-label="棋盘格背景" checked={s.checkerboard} onChange={e => editor.set({ checkerboard: e.target.checked })}/>棋盘格背景</label>
+          <label><input type="checkbox" aria-label={text.checkerboard} checked={s.checkerboard} onChange={e => editor.set({ checkerboard: e.target.checked })}/>{text.checkerboard}</label>
           <label>
             <input
               type="checkbox"
               checked={s.pixelGrid}
               onChange={(e) => editor.set({ pixelGrid: e.target.checked })}
             />
-            像素网格 <small>400% 起显示</small>
+            {text.pixelGrid} <small>{text.pixelGridThreshold}</small>
           </label>
           <label>
             <input
@@ -93,7 +97,7 @@ export function ViewControls({
               checked={s.snapPixels}
               onChange={(e) => editor.set({ snapPixels: e.target.checked })}
             />
-            吸附到像素网格
+            {text.snapPixels}
           </label>
           <label>
             <input
@@ -101,19 +105,19 @@ export function ViewControls({
               checked={s.snap}
               onChange={(e) => editor.set({ snap: e.target.checked })}
             />
-            智能吸附
+            {text.snap}
           </label>
-          <label><input type="checkbox" checked={!!s.rulers} onChange={e=>editor.set({rulers:e.target.checked})}/>标尺与参考线　⇧R</label>
+          <label><input type="checkbox" checked={!!s.rulers} onChange={e=>editor.set({rulers:e.target.checked})}/>{text.rulers}　⇧R</label>
         </div>
       </details>
-      {!compact && <><button type="button" title="放大" onClick={() => zoom(zoomStep(editor.effectiveView().zoom, 1))}>
+      {!compact && <><button type="button" title={text.zoomIn} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, 1))}>
         ＋
       </button>
       <i />
-      <button type="button" onClick={() => fit()} title="适合全部">
-        适合
+      <button type="button" onClick={() => fit()} title={text.fitAll}>
+        {text.fit}
       </button></>}
-      {!!s.pixelPreview && <span className="pixel-preview-badge">像素 {s.pixelPreview}×</span>}
+      {!!s.pixelPreview && <span className="pixel-preview-badge">{text.pixel} {s.pixelPreview}×</span>}
     </div>
   )
 }

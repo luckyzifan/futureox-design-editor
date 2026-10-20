@@ -12,7 +12,7 @@ import {
 } from '../generated/design-kernel/design_kernel'
 import { initializeKernelModule, validateKernelDocument } from './module'
 import { documentStage, DocumentStage } from '../document-lifecycle-diagnostics'
-import { admitDocumentSync } from '../document-admission'
+import { admitDocumentSync, admitDocumentJsonSync } from '../document-admission'
 import { InitializationGate, readKernelAsset } from './initialization'
 import { loadKernelResourcePair } from './kernel-resources'
 import type { DesignNode, Point, DesignDocument, Bounds, Matrix } from '../model'
@@ -130,7 +130,13 @@ export function initializePicking(resources?: { wasm: Uint8Array; font: Uint8Arr
 }
 /** All file-opening paths share the same forward-only schema normalization. */
 export function prepareDocumentForEditing(value: unknown, captureValidatedJson?: (json: string) => void): DesignDocument {
-  const original = documentStage(DocumentStage.admission, () => admitDocumentSync(value))
+  return prepareAdmittedDocument(documentStage(DocumentStage.admission, () => admitDocumentSync(value)), captureValidatedJson)
+}
+/** Primitive source ownership avoids only the redundant JSON graph clone. */
+export function prepareDocumentJsonForEditing(source: string, captureValidatedJson?: (json: string) => void, syntaxFailureAttempt?: object): DesignDocument {
+  return prepareAdmittedDocument(admitDocumentJsonSync(source, syntaxFailureAttempt), captureValidatedJson)
+}
+function prepareAdmittedDocument(original: DesignDocument, captureValidatedJson?: (json: string) => void): DesignDocument {
   const prepared = documentStage(DocumentStage.layout, () => kernelLayout({
     ...original,
     schemaVersion: Math.max(2, original.schemaVersion) as 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10,

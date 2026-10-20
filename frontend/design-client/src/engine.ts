@@ -1,3 +1,7 @@
+import { canvasActions } from './canvas-action-diagnostics'
+import { validColor } from './color'
+import { clearWholeTextRunColor } from './text'
+import type { SolidFillTarget, SolidFillDraft, PropertyPreviewLease, PropertyPreviewResult, PropertyPreviewBoundary } from './property-preview'
 import { beginEditorAction } from './editor-action-route'
 import { CanvasAction, ActionSource, ActionOutcome, ActionReason, closeCanvasActions } from './canvas-action-diagnostics'
 import { gestureCategory, patchCategory, type OperationCategory } from './canvas-operation-diagnostics'
@@ -71,6 +75,7 @@ import {
   toNetwork,
   SpatialIndex,
   type SceneEntry,
+  type ParentMap,
   preciseHit,
   contains,
   pointInContours,
@@ -88,7 +93,7 @@ import {
 } from './kernel/picking'
 import { shareDocument, type EditResult } from './document-patch'
 import { createEditingHistory } from './kernel/graph-history'
-import { takePreparedDocument } from './prepared-document'
+import { ensurePreparedDocument, takePreparedDocument, preparedDocumentEncoding, forgetPreparedDocumentEncoding } from './prepared-document'
 function applyInferredFrame(doc: DesignDocument, id: string, inferred: {direction:string;gap:number|null;padding:[number,number,number,number];bannerChildren:string[];flowOrder:string[]}) {
   if (inferred.direction !== 'horizontal' && inferred.direction !== 'vertical') return
   const n=doc.nodes[id]
@@ -169,15 +174,20 @@ export type EditorEditEvent = { documentId: string; session: number; revision: n
 export class Editor {
   // Published documents are immutable snapshots. Keep topology and clip/mask
   // transforms with that snapshot, never with a mutable edit draft or a point.
-  private pickContexts = new WeakMap<DesignDocument, { nodes: DesignDocument['nodes']; pages: DesignDocument['pages']; parents: Map<string, string>; matrices: Map<string, Matrix> }>()
+  private pickContexts = new WeakMap<DesignDocument, { nodes: DesignDocument['nodes']; pages: DesignDocument['pages']; version?: number; parents: Map<string, string>; matrices: Map<string, Matrix> }>()
   private pickContext(document: DesignDocument) {
+    const version = document === this.state.doc ? this.state.version : undefined
     let context = this.pickContexts.get(document)
-    if (!context || context.nodes !== document.nodes || context.pages !== document.pages) {
-      context = { nodes: document.nodes, pages: document.pages, parents: allParents(document), matrices: new Map() }
+    if (!context || context.nodes !== document.nodes || context.pages !== document.pages ||
+      (version !== undefined && context.version !== version)) {
+      context = { nodes: document.nodes, pages: document.pages, version, parents: allParents(document), matrices: new Map() }
       this.pickContexts.set(document, context)
     }
     return context
   }
+  /** Published editor/panel snapshots only. Mutable edit drafts must use
+   * allParents so in-place hierarchy edits cannot reuse an earlier index. */
+  parentMap(document = this.state.doc): ParentMap { return this.pickContext(document).parents }
   readonly operationDiagnostics = createCanvasOperationDiagnostics()
   private diagnosticOperation: number | null = null
   observeCanvasPresentation(frame: { document: object; pageId: string; epoch: number; preview?: boolean } | null) {
@@ -198,6 +208,23 @@ export class Editor {
   private redoStack: Omit<History, 'doc'>[] = []
   private historyCore: ReturnType<typeof createEditingHistory> | null = null
   private transaction: (History & { dropIndex?: CanvasDropIndex; placementSizing?: Map<string, DesignNode['sizing']>; flow?: { base: DesignDocument; sizing: Map<string, DesignNode['sizing']> }; previewBase?: DesignDocument; copy?: { document: DesignDocument; roots: string[]; originals: string[]; flowSizing: Map<string, DesignNode['sizing']> } }) | null = null
+  private propertyPreview: {
+    lease: PropertyPreviewLease; history: History; session: number; revision: number
+    targets: readonly SolidFillTarget[]; document: DesignDocument; draft: SolidFillDraft
+    valid: boolean; trace: number
+    settlement?: Readonly<{ document: DesignDocument; revision: number }>
+  } | null = null
+  // Internal reentrancy guard, not a capability exposed to UI callbacks.
+  private propertyPreviewWrite = 0
+  /** Persistence must use authored state, never an uncommitted property preview. */
+  get authoredDocument() {
+    const owner = this.propertyPreview
+    // A replaced document is never masked by a stale lease. A newer selection
+    // alone does not promote our own uncommitted preview to authored content.
+    return owner && this.transaction === owner.history && this.state.doc === owner.document &&
+      this.sessionGeneration === owner.session && this.state.version === owner.revision ? owner.history.doc : this.state.doc
+  }
+  get propertyPreviewActive() { return this.propertyPreview !== null }
   private repeatedDuplicate: { roots: string[]; reference: Map<string, Matrix> } | null = null
   private clipboard: {
     nodes: Record<string, DesignNode>
@@ -264,8 +291,10 @@ export class Editor {
     this.editListeners.add(fn)
     return () => { this.editListeners.delete(fn) }
   }
-  private publishEdit(kind: EditorEditEvent['kind'], summary: string, source: EditorEditEvent['source'] = 'user') {
-    const event: EditorEditEvent = { documentId: this.state.doc.id, session: this.sessionGeneration, revision: this.state.version, source, kind, summary: (source === 'automation' ? (kind === 'edit' ? 'API 文档修改' : kind === 'undo' ? 'API 撤销' : 'API 重做') : summary).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 200) || '编辑' }
+  private publishEdit(kind: EditorEditEvent['kind'], summary: string, source: EditorEditEvent['source'] = 'user',
+    identity?: Readonly<Pick<EditorEditEvent, 'documentId' | 'session' | 'revision'>>) {
+    const owner = identity ?? { documentId: this.state.doc.id, session: this.sessionGeneration, revision: this.state.version }
+    const event: EditorEditEvent = { ...owner, source, kind, summary: (source === 'automation' ? (kind === 'edit' ? 'API 文档修改' : kind === 'undo' ? 'API 撤销' : 'API 重做') : summary).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 200) || '编辑' }
     for (const listener of this.editListeners) { try { listener({ ...event }) } catch { /* An audit sink must never undo or reject an editor commit. */ } }
   }
   subscribe = (fn: () => void) => {
@@ -317,11 +346,42 @@ export class Editor {
     return this.panelState
   }
   set(patch: Partial<EditorState>) {
+    let propertyNavigationCurrent: (() => boolean) | undefined
+    if (this.propertyPreview && !this.propertyPreviewWrite) {
+      if (patch.doc && patch.doc !== this.state.doc) {
+        // An externally adopted snapshot supersedes the lease. Never restore its
+        // base over the newer document or selection, including a same-id load.
+        this.retirePropertyPreview(ActionReason.superseded)
+      } else if ((patch.page !== undefined && patch.page !== this.state.page) ||
+        (patch.selection !== undefined && JSON.stringify(patch.selection) !== JSON.stringify(this.state.selection))) {
+        const owner = this.propertyPreview, before = this.state, session = this.sessionGeneration
+        const selection = JSON.stringify(before.selection)
+        // A legitimate color commit replaces its preview root and may advance
+        // one revision. Only that private settlement receipt can authorize the
+        // old navigation intent; synchronous subscribers cannot substitute a
+        // newer document/session, revision or navigation state.
+        propertyNavigationCurrent = () => {
+          const expected = owner.settlement ?? { document: before.doc, revision: before.version }
+          return !this.disposed && !this.transaction && !this.propertyPreview && this.sessionGeneration === session &&
+            this.state.doc === expected.document && this.state.version === expected.revision &&
+            this.state.page === before.page && JSON.stringify(this.state.selection) === selection &&
+            (patch.page === undefined || this.state.doc.pages.some(page => page.id === patch.page)) &&
+            (patch.selection === undefined || patch.selection.every(id => !!this.state.doc.nodes[id])) &&
+            // An explicitly supplied old root/version cannot undo the commit
+            // while applying what was otherwise a navigation-only change.
+            (patch.doc === undefined || patch.doc === expected.document) &&
+            (patch.version === undefined || patch.version === expected.revision)
+        }
+        if (!this.settleOwnedPropertyPreview('navigation') || !propertyNavigationCurrent()) return
+      }
+    }
+    if (patch.doc && this.propertyPreview && this.propertyPreviewWrite) this.propertyPreview.document = patch.doc
     // Pure navigation must not unmount an invalid or composing document input.
     // Document mutations have already updated history and are fenced at their UI boundary.
     if (!patch.doc && ((patch.page !== undefined && patch.page !== this.state.page) ||
       (patch.selection !== undefined && JSON.stringify(patch.selection) !== JSON.stringify(this.state.selection))) &&
       !commitPendingEdits(this)) return
+    if (propertyNavigationCurrent && !propertyNavigationCurrent()) return
     // A direct camera write supersedes any coalesced wheel write still parked
     // in this frame — otherwise the rAF commit would silently roll the caller's
     // zoom back to the pre-click wheel camera.
@@ -345,10 +405,15 @@ export class Editor {
       next.hover = null
       next.hoverSource = null
     }
+    if (next.doc !== this.state.doc || next.version !== this.state.version)
+      forgetPreparedDocumentEncoding(this.state.doc)
     this.state = next
     if (patch.view !== undefined || navigationChanged)
       this.cameraState.remember(next.doc.id, next.page, next.view)
-    for (const fn of this.listeners) fn()
+    // Notification callbacks do not inherit the internal preview capability.
+    const propertyWrite = this.propertyPreviewWrite
+    this.propertyPreviewWrite = 0
+    try { for (const fn of this.listeners) fn() } finally { this.propertyPreviewWrite = propertyWrite }
   }
   notify(message: string) {
     this.set({ message })
@@ -414,7 +479,7 @@ export class Editor {
     return true
   }
   get canUndo() {
-    return this.undoStack.length > 0
+    return this.propertyPreviewActive || this.undoStack.length > 0
   }
   get canRedo() {
     return this.redoStack.length > 0
@@ -427,10 +492,13 @@ export class Editor {
       label,
     }
   }
-  private push(h: History, after: DesignDocument): EditResult | undefined {
+  private push(h: History, after: DesignDocument, source: EditorEditEvent['source'] = 'user'): EditResult | undefined {
     if (!this.historyCore) this.historyCore = createEditingHistory(h.doc)
     const revision = this.historyCore.revision
-    const result = this.historyCore.apply(revision, after)
+    // Provenance is supplied by the trusted editor route, never document data.
+    // Rust calls the automation source "ai"; the UI/audit contract calls it
+    // "automation". Do not change undo policy or grant authority from this tag.
+    const result = this.historyCore.apply(revision, after, { source: source === 'automation' ? 'ai' : 'user' })
     if (result.revision === revision) return
     this.undoStack.push({ page: h.page, selection: h.selection, label: h.label })
     this.undoStack = this.undoStack.slice(-result.undoDepth)
@@ -445,7 +513,12 @@ export class Editor {
     source: EditorEditEvent['source'] = 'user',
     diagnosticCategory: OperationCategory = 'other',
   ) {
+    if (!this.propertyPreviewWrite && !this.settleOwnedPropertyPreview('edit'))
+      return { status: 'rejected' as const, revision: this.state.version, message: '请先完成颜色输入' }
     const before = this.history(label)
+    // Rebuild each color draft from the immutable lease base. Reverting an edit
+    // also restores text-run colors and instance overrides, with no hidden diff.
+    if (this.propertyPreviewWrite && this.propertyPreview) before.doc = this.propertyPreview.history.doc
     const operation = this.diagnosticOperation ?? this.operationDiagnostics.begin(this.sessionGeneration, this.state.version, diagnosticCategory, draftIds?.length ?? selection?.length ?? this.state.selection.length)
     const finish = (outcome: 'committed' | 'unchanged' | 'rejected') => { if (!this.transaction) this.operationDiagnostics.finish(operation, outcome, this.sessionGeneration, this.state.version, this.state.doc, this.state.page) }
     try {
@@ -531,7 +604,7 @@ export class Editor {
         this.set({ doc: resolved, selection: selection ?? this.state.selection.filter(id => !!resolved.nodes[id]), message: label })
         return { status: 'preview' as const, revision: this.state.version }
       }
-      const committed = this.push(before, resolved)
+      const committed = this.push(before, resolved, source)
       if (!committed) { finish('unchanged'); return { status: 'unchanged' as const, revision: this.state.version } }
       this.set({
         doc: committed.document,
@@ -549,7 +622,180 @@ export class Editor {
       return { status: 'rejected' as const, revision: this.state.version, message }
     }
   }
+  /** Acquire only after earlier input drafts settle; never borrow a pointer tx. */
+  acquirePropertyPreview(targets: readonly SolidFillTarget[]): PropertyPreviewLease | null {
+    if (this.disposed || this.state.busy || this.transaction || !commitPendingEdits(this)) return null
+    if (this.transaction || !targets.length || targets.length > 1000) return null
+    const seen = new Set<string>(), parents = allParents(this.state.doc)
+    for (const target of targets) {
+      if (target.kind !== 'solid-fill' || !Number.isSafeInteger(target.fillIndex) || target.fillIndex < 0 ||
+        !this.state.selection.includes(target.nodeId)) return null
+      const key = JSON.stringify([target.nodeId, target.fillIndex])
+      if (seen.has(key)) return null
+      seen.add(key)
+      let at = target.nodeId
+      while (parents.has(at) && this.state.doc.nodes[at]) at = parents.get(at)!
+      if (at !== this.state.page || !this.propertyTargetCurrent(this.state.doc, target)) return null
+    }
+    const lease = Object.freeze({}) as PropertyPreviewLease
+    const history = this.history('修改填充颜色和不透明度')
+    const trace = canvasActions(this).begin(CanvasAction.propertyInput, ActionSource.properties,
+      { fieldFamily: 9, inputPhase: 2, targetCount: targets.length, selectionBefore: this.state.selection.length })
+    this.diagnosticOperation = this.operationDiagnostics.begin(this.sessionGeneration, this.state.version, 'other', targets.length)
+    this.transaction = history
+    this.propertyPreview = { lease, history, trace, session: this.sessionGeneration, revision: this.state.version,
+      targets: targets.map(target => Object.freeze({ ...target })), document: this.state.doc, draft: {}, valid: true }
+    return lease
+  }
+  private propertyTargetCurrent(document: DesignDocument, target: SolidFillTarget) {
+    const n = document.nodes[target.nodeId], p = n?.fills[target.fillIndex]
+    return !!n && n.kind !== 'slice' && p?.kind === 'solid' && p.id === target.fillId &&
+      !n.styleRefs?.fills && !Object.keys(n.bindings ?? {}).some(path =>
+        path === 'fills' || path === `fills.${target.fillIndex}` || path.startsWith(`fills.${target.fillIndex}.`))
+  }
+  isPropertyPreviewCurrent(lease: PropertyPreviewLease): boolean {
+    const owner = this.propertyPreview
+    return !!owner && owner.lease === lease && !this.disposed && this.transaction === owner.history &&
+      this.sessionGeneration === owner.session && this.state.version === owner.revision &&
+      this.state.doc === owner.document && this.state.page === owner.history.page &&
+      JSON.stringify(this.state.selection) === JSON.stringify(owner.history.selection) &&
+      owner.targets.every(target => this.propertyTargetCurrent(this.state.doc, target))
+  }
+  setPropertyPreviewValidity(lease: PropertyPreviewLease, valid: boolean): boolean {
+    if (!this.isPropertyPreviewCurrent(lease)) return false
+    this.propertyPreview!.valid = valid
+    return true
+  }
+  previewProperty(lease: PropertyPreviewLease, patch: SolidFillDraft): PropertyPreviewResult {
+    if (!this.isPropertyPreviewCurrent(lease)) return 'stale'
+    const owner = this.propertyPreview!
+    if (Object.keys(patch).some(key => key !== 'color' && key !== 'opacity') ||
+      (patch.color !== undefined && !validColor(patch.color, !!owner.history.doc.colorManagement)) ||
+      (patch.opacity !== undefined && (!Number.isFinite(patch.opacity) || patch.opacity < 0 || patch.opacity > 1))) {
+      owner.valid = false
+      canvasActions(this).sample(owner.trace, { inputValid: false })
+      return 'rejected'
+    }
+    const previousDraft = owner.draft, draft = { ...owner.draft, ...patch }
+    owner.draft = draft
+    owner.valid = true
+    this.propertyPreviewWrite++
+    try {
+      const changed = owner.targets.some(target => {
+        const p = owner.history.doc.nodes[target.nodeId].fills[target.fillIndex]
+        return (draft.color !== undefined && draft.color !== p.color) || (draft.opacity !== undefined && draft.opacity !== p.opacity)
+      })
+      let result: ReturnType<Editor['change']> | undefined
+      if (!changed) {
+        this.transaction!.previewBase = undefined
+        if (this.state.doc !== owner.history.doc) this.set({ doc: owner.history.doc })
+      } else result = this.change('修改填充颜色和不透明度', document => {
+        for (const target of owner.targets) {
+          const n = document.nodes[target.nodeId], p = n.fills[target.fillIndex]
+          if (draft.color !== undefined && p.color !== draft.color) { p.color = draft.color; clearWholeTextRunColor(n) }
+          if (draft.opacity !== undefined) p.opacity = draft.opacity
+        }
+      })
+      if (this.propertyPreview !== owner || !this.isPropertyPreviewCurrent(lease)) return 'stale'
+      if (result?.status === 'rejected') { owner.draft = previousDraft; owner.valid = false; return 'rejected' }
+      owner.draft = draft
+      owner.valid = true
+      canvasActions(this).sample(owner.trace, { inputValid: true, resolvedChanged: changed })
+      if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, true)
+      return changed ? 'preview' : 'unchanged'
+    } finally { this.propertyPreviewWrite-- }
+  }
+  /** Settle only this narrow property lease; never commits arbitrary gestures. */
+  settleOwnedPropertyPreview(_boundary: PropertyPreviewBoundary): boolean {
+    const owner = this.propertyPreview
+    if (!owner) return true
+    const result = this.commitProperty(owner.lease)
+    if (result === 'committed' || result === 'unchanged') return true
+    if (result === 'stale') { this.cancelProperty(owner.lease); return !this.propertyPreview }
+    this.notify('颜色输入尚未完成或已失效，请完成输入或取消后重试')
+    return false
+  }
+  commitProperty(lease: PropertyPreviewLease): PropertyPreviewResult {
+    if (!this.isPropertyPreviewCurrent(lease)) return 'stale'
+    const owner = this.propertyPreview!
+    if (!owner.valid) return 'blocked'
+    const matches = (document: DesignDocument) => owner.targets.every(target => {
+      const n = document.nodes[target.nodeId], base = owner.history.doc.nodes[target.nodeId]
+      const p = n?.fills[target.fillIndex], original = base.fills[target.fillIndex]
+      return this.propertyTargetCurrent(document, target) &&
+        p.color === (owner.draft.color ?? original.color) && p.opacity === (owner.draft.opacity ?? original.opacity) &&
+        n.opacity === base.opacity && JSON.stringify(n.bindings) === JSON.stringify(base.bindings) &&
+        JSON.stringify(n.styleRefs) === JSON.stringify(base.styleRefs)
+    })
+    if (!matches(this.state.doc)) { owner.valid = false; return 'rejected' }
+    // Validate/apply before retiring the capability. History failures keep a
+    // recoverable draft open; they cannot masquerade as a successful commit.
+    let committed: EditResult | undefined, document: DesignDocument
+    try {
+      validateDocument(this.state.doc)
+      document = shareDocument(owner.history.doc, this.state.doc)
+      committed = document !== owner.history.doc ? this.push(owner.history, document) : undefined
+    } catch {
+      owner.valid = false
+      this.notify('颜色提交失败，输入已保留，请重试或取消')
+      return 'rejected'
+    }
+    const operation = this.diagnosticOperation
+    this.propertyPreview = null
+    this.transaction = null
+    this.diagnosticOperation = null
+    const finalDocument = committed?.document ?? document
+    const verified = matches(finalDocument), changed = !!committed
+    const finalRevision = owner.revision + Number(changed)
+    owner.settlement = { document: finalDocument, revision: finalRevision }
+    // State subscribers may synchronously load another session. Preserve the
+    // committed edit's identity without changing notification/audit ordering.
+    const editIdentity = { documentId: finalDocument.id, session: owner.session, revision: finalRevision }
+    this.set({ doc: finalDocument, version: finalRevision, message: owner.history.label })
+    if (operation !== null) this.operationDiagnostics.finish(operation, changed ? 'committed' : 'unchanged',
+      owner.session, owner.revision + Number(changed), finalDocument, owner.history.page)
+    if (changed) this.publishEdit('edit', owner.history.label, 'user', editIdentity)
+    canvasActions(this).finish(owner.trace, !verified ? ActionOutcome.rejected : changed ? ActionOutcome.committed : ActionOutcome.unchanged,
+      verified ? ActionReason.none : ActionReason.validation,
+      { fieldFamily: 9, inputPhase: 6, inputValid: verified, committedChanged: changed,
+        intentResolvedComparison: verified ? 1 : 2, resolvedCommittedComparison: verified ? 1 : 2,
+        selectionAfter: this.state.selection.length })
+    return !verified ? 'rejected' : changed ? 'committed' : 'unchanged'
+  }
+  cancelProperty(lease: PropertyPreviewLease): PropertyPreviewResult {
+    const owner = this.propertyPreview
+    if (!owner || owner.lease !== lease) return 'stale'
+    // A stale capability must not roll back another transaction or a newer doc.
+    if (!this.isPropertyPreviewCurrent(lease)) {
+      const restoreOwnPreview = this.transaction === owner.history && this.state.doc === owner.document &&
+        this.sessionGeneration === owner.session && this.state.version === owner.revision
+      this.retirePropertyPreview(ActionReason.superseded)
+      // Preserve a newer external selection/page; only remove our exact pixels.
+      if (restoreOwnPreview) this.set({ doc: owner.history.doc,
+        selection: this.state.selection.filter(id => !!owner.history.doc.nodes[id]) })
+      return 'stale'
+    }
+    this.propertyPreview = null
+    this.propertyPreviewWrite++
+    try { this.cancel() } finally { this.propertyPreviewWrite-- }
+    canvasActions(this).finish(owner.trace, ActionOutcome.cancelled, ActionReason.escape,
+      { fieldFamily: 9, inputPhase: 7, committedChanged: false,
+        resolvedCommittedComparison: this.state.doc === owner.history.doc ? 1 : 2 })
+    return 'unchanged'
+  }
+  private retirePropertyPreview(reason: typeof ActionReason[keyof typeof ActionReason]) {
+    const owner = this.propertyPreview
+    if (!owner) return
+    this.propertyPreview = null
+    if (this.transaction === owner.history) {
+      this.transaction = null
+      if (this.diagnosticOperation !== null) this.operationDiagnostics.finish(this.diagnosticOperation, 'cancelled', this.sessionGeneration, this.state.version)
+      this.diagnosticOperation = null
+    }
+    canvasActions(this).finish(owner.trace, ActionOutcome.cancelled, reason, { fieldFamily: 9, inputPhase: 7 })
+  }
   begin(label: string) {
+    if (!this.settleOwnedPropertyPreview('edit')) return
     if (!this.transaction) {
       const history = this.history(label)
       this.diagnosticOperation = this.operationDiagnostics.begin(this.sessionGeneration, this.state.version, gestureCategory(label), this.state.selection.length)
@@ -557,6 +803,7 @@ export class Editor {
     }
   }
   preview(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
+    if (this.propertyPreview && !this.propertyPreviewWrite) return false
     const previewStarted = performance.now()
     const base = this.transaction?.previewBase || this.transaction?.doc || this.state.doc
     const nodes = { ...base.nodes }
@@ -594,6 +841,7 @@ export class Editor {
     }
   }
   commit() {
+    if (this.propertyPreview && !this.propertyPreviewWrite) return
     if (!this.transaction) return
     const before = this.transaction
     const operation = this.diagnosticOperation
@@ -621,6 +869,7 @@ export class Editor {
     }
   }
   cancel() {
+    if (this.propertyPreview) { this.cancelProperty(this.propertyPreview.lease); return }
     if (this.transaction) {
       const h = this.transaction
       if (this.diagnosticOperation !== null) this.operationDiagnostics.finish(this.diagnosticOperation, 'cancelled', this.sessionGeneration, this.state.version)
@@ -630,6 +879,8 @@ export class Editor {
     }
   }
   undo(source: EditorEditEvent['source'] = 'user') {
+    // First Undo only cancels the owned draft, not the preceding authored edit.
+    if (this.propertyPreview) { this.cancelProperty(this.propertyPreview.lease); return }
     const action = beginEditorAction(this, CanvasAction.undo, ActionSource.unknown, 228)
     try {
     this.repeatedDuplicate = null
@@ -661,6 +912,7 @@ export class Editor {
     finally { action.finish() }
   }
   redo(source: EditorEditEvent['source'] = 'user') {
+    if (!this.settleOwnedPropertyPreview('edit')) return
     const action = beginEditorAction(this, CanvasAction.redo, ActionSource.unknown, 229)
     try {
     this.repeatedDuplicate = null
@@ -693,10 +945,11 @@ export class Editor {
   }
   load(value: unknown, preserveView=false) {
     if (this.disposed) return false
-    if (!commitPendingEdits(this)) return false
+    if (!this.settleOwnedPropertyPreview('navigation') || !commitPendingEdits(this)) return false
     const previous=this.state
     const previousView = this.effectiveView()
-    const doc = takePreparedDocument(value) || prepareDocumentForEditing(value)
+    const prepared = ensurePreparedDocument(value), encoding = preparedDocumentEncoding(prepared)
+    const doc = takePreparedDocument(prepared)!
     this.cameraState.remember(previous.doc.id, previous.page, previousView)
     const saved = !preserveView && interfacePreference.getSnapshot().rememberViewport
       ? this.cameraState.recall(doc.id, doc.pages.map(p => p.id)) : undefined
@@ -704,6 +957,7 @@ export class Editor {
     this.operationDiagnostics.endSession()
     this.diagnosticOperation = null
     this.sessionEpoch++
+    const adoptedSession = this.sessionEpoch, adoptedVersion = this.state.version + 1
     if (this.revealRequest) this.consumeReveal(this.revealRequest.nonce)
     this.preservedViewSession=(preserveView || saved)?this.sessionEpoch:-1
     this.geometryJob?.cancel()
@@ -720,10 +974,12 @@ export class Editor {
       hoverSource: null,
       tool: 'select', commentSelection:undefined, commentDraft:undefined,
       view:saved?.view || (preserveView?previousView:{x:40,y:40,zoom:1}),
-      version: this.state.version + 1,
+      version: adoptedVersion,
       message: '设计已打开',
       busy: false,
     })
+    encoding?.bindCurrent(doc, () => !this.disposed && this.state.doc === doc &&
+      this.state.version === adoptedVersion && this.sessionEpoch === adoptedSession)
     return true
   }
   newDocument() {
@@ -753,7 +1009,7 @@ export class Editor {
     this.set({ hover: id, hoverSource: id ? source : null })
   }
   private navigateSelection(action: 'children' | 'parent' | 'next' | 'previous') {
-    const ids = navigateSelection(this.state.doc, this.state.page, this.state.selection, action)
+    const ids = navigateSelection(this.state.doc, this.state.page, this.state.selection, action, this.parentMap())
     if (!ids) return false
     this.select(ids)
     return ids.length === this.state.selection.length && ids.every((id, i) => id === this.state.selection[i])
@@ -765,8 +1021,9 @@ export class Editor {
     const hit = this.hit(point, true, index, zoom, snapshot)
     if (!hit) return null
     const document = snapshot?.document || this.state.doc, page = snapshot?.pageId || this.state.page
-    const candidate = deeperSelectionHit(document, this.state.selection, hit, interactivePath(document, page, hit))
-    const id = interactivePath(this.state.doc, this.state.page, candidate).length ? candidate : hit
+    const parents = this.parentMap(document)
+    const candidate = deeperSelectionHit(document, this.state.selection, hit, interactivePath(document, page, hit, false, parents), parents)
+    const id = interactivePath(this.state.doc, this.state.page, candidate, false, this.parentMap()).length ? candidate : hit
     const changed = this.state.selection.length !== 1 || this.state.selection[0] !== id
     this.select([id])
     return this.state.selection.length === 1 && this.state.selection[0] === id ? { id, changed } : null
@@ -804,7 +1061,7 @@ export class Editor {
     if (deep) return this.hit(p, true, index, zoom, snapshot)
     const document = snapshot?.document || this.state.doc, page = snapshot?.pageId || this.state.page
     const parents = this.pickContext(document).parents
-    const scope = marqueeScope(document, page, this.state.selection)
+    const scope = marqueeScope(document, page, this.state.selection, parents)
     const front = this.hit(p, true, index, zoom, snapshot)
     if (!front) return null
     const path = interactivePath(document, page, front, false, parents)
@@ -1229,62 +1486,87 @@ export class Editor {
     const m = worldMatrix(this.state.doc, target)
     this.set({ view: { x: 60 - m[4], y: 60 - m[5], zoom: 1 } })
   }
+  /** Page topology must never be folded into a captured gesture's preview base.
+   * Match PageList admission, and recheck after flushing recoverable input. */
+  private admitPageMutation() {
+    if (this.interactionActive || this.state.busy) return false
+    return commitPendingEdits(this) && !this.interactionActive && !this.state.busy
+  }
   addPage() {
     const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 210)
     try {
+    const session = this.sessionGeneration, documentId = this.state.doc.id
+    const ownsDocument = () => this.sessionGeneration === session && this.state.doc.id === documentId
+    if (!this.admitPageMutation() || !ownsDocument()) { action.result(ActionOutcome.blocked, this.interactionActive || this.state.busy ? ActionReason.busy : ActionReason.validation); return false }
     const p = {
       id: uid(),
       name: `页面 ${this.state.doc.pages.length + 1}`,
       children: [],
       background: '#eeeff3',
     }
-    this.change(
+    const result = this.change(
       '新建页面',
       (d) => {
         d.pages.push(p)
       },
       [],
     )
-    if (this.state.doc.pages.some(page => page.id === p.id)) this.set({ page: p.id })
+    if (result.status !== 'committed') return false
+    if (!ownsDocument() || !this.state.doc.pages.some(page => page.id === p.id)) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return false }
+    this.set({ page: p.id })
+    return ownsDocument() && this.state.page === p.id
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
   reorderPage(id: string, before?: string) {
     const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 211)
     try {
-    if (!this.state.doc.pages.some(page => page.id === id) || id === before) return
-    this.change('调整页面顺序', d => {
+    const session = this.sessionGeneration, documentId = this.state.doc.id
+    const ownsDocument = () => this.sessionGeneration === session && this.state.doc.id === documentId
+    if (!this.admitPageMutation() || !ownsDocument()) { action.result(ActionOutcome.blocked, this.interactionActive || this.state.busy ? ActionReason.busy : ActionReason.validation); return false }
+    if (!this.state.doc.pages.some(page => page.id === id) || id === before) return false
+    const result = this.change('调整页面顺序', d => {
       const at = d.pages.findIndex(page => page.id === id), [page] = d.pages.splice(at, 1)
       const target = before ? d.pages.findIndex(page => page.id === before) : d.pages.length
       if (target < 0) throw new Error('目标页面已不存在')
       d.pages.splice(target, 0, page)
     })
+    return result.status === 'committed' && ownsDocument()
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
   duplicatePage(id = this.state.page) {
     const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 212)
     try {
+    const session = this.sessionGeneration, documentId = this.state.doc.id
+    const ownsDocument = () => this.sessionGeneration === session && this.state.doc.id === documentId
+    if (!this.admitPageMutation() || !ownsDocument()) { action.result(ActionOutcome.blocked, this.interactionActive || this.state.busy ? ActionReason.busy : ActionReason.validation); return false }
     const source = this.state.doc, page = source.pages.find(value => value.id === id)
-    if (!page) return
+    if (!page) return false
     const content = this.copyGraph(page.children), copied = { ...cloneValue(page), id: uid(), name: `${page.name} 副本`.slice(0, 200), children: [] as string[] }
-    this.change('复制页面', d => {
+    const result = this.change('复制页面', d => {
       d.pages.splice(d.pages.findIndex(value => value.id === id) + 1, 0, copied)
       duplicateGraph(d, content, { page: copied.id })
     }, [])
-    if (this.state.doc.pages.some(value => value.id === copied.id)) this.set({ page: copied.id })
+    if (result.status !== 'committed') return false
+    if (!ownsDocument() || !this.state.doc.pages.some(page => page.id === copied.id)) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return false }
+    this.set({ page: copied.id })
+    return ownsDocument() && this.state.page === copied.id
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
   removePage() {
     const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 213)
     try {
+    const session = this.sessionGeneration, documentId = this.state.doc.id
+    const ownsDocument = () => this.sessionGeneration === session && this.state.doc.id === documentId
+    if (!this.admitPageMutation() || !ownsDocument()) { action.result(ActionOutcome.blocked, this.interactionActive || this.state.busy ? ActionReason.busy : ActionReason.validation); return false }
     if (this.state.doc.pages.length === 1) {
       this.notify('至少保留一个页面')
-      return
+      return false
     }
     const page = this.state.page
-    this.change(
+    const result = this.change(
       '删除页面',
       (d) => {
         const p = d.pages.find((p) => p.id === page)!
@@ -1297,15 +1579,29 @@ export class Editor {
       },
       [],
     )
+    if (result.status !== 'committed') return false
+    if (!ownsDocument()) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return false }
     this.set({ page: this.state.doc.pages[0].id })
+    return ownsDocument()
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
   switchPage(page: string) {
     const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 214)
     try {
+    const session = this.sessionGeneration, documentId = this.state.doc.id
+    const ownsDocument = () => this.sessionGeneration === session && this.state.doc.id === documentId
+    if (!this.state.doc.pages.some(value => value.id === page)) { action.result(ActionOutcome.blocked, ActionReason.noTarget); return false }
+    if (!commitPendingEdits(this) || !this.settleOwnedPropertyPreview('navigation')) { action.result(ActionOutcome.blocked, ActionReason.validation); return false }
+    // Draft commit callbacks may replace the document. Revalidate before rollback.
+    if (!ownsDocument()) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return false }
+    if (!this.state.doc.pages.some(value => value.id === page)) { action.result(ActionOutcome.blocked, ActionReason.noTarget); return false }
     this.cancel()
+    // Cancellation publishes synchronously; a subscriber can adopt a new session
+    // or remove the target. Never carry the old navigation across that boundary.
+    if (!ownsDocument() || !this.state.doc.pages.some(value => value.id === page)) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return false }
     this.set({ page, selection: [], editingVertex: null })
+    return ownsDocument() && this.state.page === page
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
@@ -1516,6 +1812,7 @@ export class Editor {
     return { nodes, roots, document: source }
   }
   copy() {
+    if (!this.settleOwnedPropertyPreview('export')) return
     const graph = this.copyGraph(this.topSelection(true)), parents=allParents(graph.document)
     const placements=Object.fromEntries(graph.roots.map(id=> {
       const n=graph.document.nodes[id],parent=graph.document.nodes[parents.get(id)!]
@@ -1527,6 +1824,7 @@ export class Editor {
     this.notify('已复制图层')
   }
   exportClipboard(cut = false): string | null {
+    if (!this.settleOwnedPropertyPreview('export')) return null
     if (cut && this.topSelection(true).some(id => !this.topSelection().includes(id)))
       throw new Error('锁定图层可复制；剪切前请先解锁')
     this.copy()
@@ -2234,9 +2532,11 @@ export class Editor {
   }
   dispose() {
     if (this.disposed) return
+    forgetPreparedDocumentEncoding(this.state.doc)
     this.saveCamera()
     this.releaseCameraLifecycle?.()
     this.releaseCameraLifecycle = undefined
+    if (this.propertyPreview) this.cancelProperty(this.propertyPreview.lease)
     this.disposed = true
     closeCanvasActions(this)
     this.operationDiagnostics.close()

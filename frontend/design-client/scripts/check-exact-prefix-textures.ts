@@ -75,6 +75,14 @@ await runProof('forma-prefix-textures', [], async (proof) => {
     channels: 8,
     values: mixed,
   })
+  // Exercise the production scan across multiple 256-lane chunks and the
+  // actual high-zoom 117 axis length, including its partial final chunk.
+  for (const [w, h, r] of [[520, 3, 48], [3484, 2, 1224.3035888671875]]) {
+    fixtures.push({ name: `multi-chunk-${w}`, w, h, r, origin: [-13, 37], channels: 15,
+      maxBandLines: 255,
+      values: Array.from({length: w*h*4}, (_, i) =>
+        ((127 << 23) | ((i * 13171) & 0x7fffff) | (i % 7 === 0 ? 0x80000000 : 0)) >>> 0) })
+  }
   for (const f of fixtures) {
     f.kernel = Array.from(rational_tent_kernel_rgba(f.r))
     f.certified = Array.from(certified_tent_kernel_rgba(f.r))
@@ -305,7 +313,7 @@ await runProof('forma-prefix-textures', [], async (proof) => {
                 'tent',
                 rect,
                 f.channels,
-                2,
+                f.maxBandLines ?? 2,
               )
             )
               throw new Error('eligible horizontal unexpectedly declined')
@@ -319,7 +327,7 @@ await runProof('forma-prefix-textures', [], async (proof) => {
                 'tent',
                 rect,
                 f.channels,
-                2,
+                f.maxBandLines ?? 2,
               )
             )
               throw new Error('eligible vertical unexpectedly declined')

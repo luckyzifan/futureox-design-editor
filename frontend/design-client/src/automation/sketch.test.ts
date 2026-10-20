@@ -7,6 +7,7 @@ import { Editor } from '../engine'
 import { createEditorDesignAutomation } from './index'
 import { exportSketchDocument, importSketchDocument, SKETCH_LIMITS } from './sketch'
 import type { AutomationResponse } from './types'
+import { createImportedCopy } from '../import-identity'
 
 const ids = {
   page: '10000000-0000-0000-0000-000000000001',
@@ -57,6 +58,25 @@ type Exported = ReturnType<typeof exportSketchDocument>
 function current(editor: Editor) { return { expectedRevision: editor.state.version, documentId: editor.state.doc.id, session: editor.sessionGeneration } }
 
 describe('real local Sketch binary automation', () => {
+  it('same-name Sketch file adoption uses new-copy identity while preserving previous local edits',()=>{
+    const bytes=nativeArchive(),decode=()=>JSON.parse(import_sketch_json(bytes)).document
+    const original=decode(),first=createImportedCopy(original),editor=new Editor(first)
+    try {
+      editor.change('Keep original copy',d=>{d.nodes[ids.label].text='Local edit';d.nodes[ids.label].textRuns=[]})
+      const edited=editor.state.doc,second=createImportedCopy(decode())
+      expect(second.id).not.toBe(first.id);expect(second.id).not.toBe(original.id)
+      expect(editor.load(second)).toBe(true)
+      expect(editor.state.doc.nodes[ids.label].text).toBe('Original Sketch text')
+      expect(edited.nodes[ids.label].text).toBe('Local edit')
+      const changed=createImportedCopy(decode());changed.name=first.name;changed.nodes[ids.label].text='Changed file bytes';changed.nodes[ids.label].textRuns=[]
+      const archive=exportSketchDocument(changed)
+      const third=createImportedCopy(JSON.parse(import_sketch_json(new Uint8Array(Buffer.from(archive.base64,'base64')))).document)
+      expect(new Set([first.id,second.id,third.id]).size).toBe(3)
+      expect(editor.load(third)).toBe(true)
+      expect(editor.state.doc.nodes[ids.label].text).toBe('Changed file bytes')
+      expect(edited.nodes[ids.label].text).toBe('Local edit')
+    } finally {editor.dispose()}
+  })
   it('appends native ZIP nodes with fresh IDs and authored local transforms, reporting actual font substitution', () => {
     const source = nativeArchive(), report = JSON.parse(import_sketch_json(source))
     const document = blank('Destination'), documentId = document.id, ctx = context(document)
