@@ -31,9 +31,9 @@ export class RenderKernel {
     if (this.preparation) await this.call('initialize', [mips])
     else if (font) this.assets.load_font(font)
   }
-  private async call<T>(method: Exclude<PreparationMethod, 'warm_resources'>, args: unknown[] = []): Promise<T> {
+  private async call<T>(method: Exclude<PreparationMethod, 'warm_resources'>, args: unknown[] = [], signal?: AbortSignal): Promise<T> {
     if (this.preparation) {
-      const reply = await this.preparation.request(this.lane, method, args)
+      const reply = await this.preparation.request(this.lane, method, args, signal)
       if(reply.compileStats)this.compileStats=reply.compileStats
       if (reply.documentFork) this.documentForks++
       if (reply.settings !== undefined && reply.settings !== this.settings) {
@@ -67,7 +67,8 @@ export class RenderKernel {
     } catch (error) { this.packets.clear(); throw error }
     finally { this.pendingMutations-- }
   }
-  async compile_gpu_packet(options: string) {
+  async compile_gpu_packet(options: string, signal?: AbortSignal) {
+    if (signal?.aborted) throw Error('PREVIEW_CANCELLED')
     const enabled = !!this.preparation && import.meta.env.VITE_DESIGN_PACKET_CACHE !== '0'
     const hit = enabled && !this.pendingMutations ? this.packets.get(options) : undefined
     if (hit) { this.packetKeys.set(hit,{key:options,revision:this.revision}); return hit }
@@ -83,7 +84,7 @@ export class RenderKernel {
         this.packetKeys.set(bytes, { key: options, revision })
       return bytes
     }
-    const entry = { revision, bytes: this.call<Uint8Array>('compile_gpu_packet', [options]), shared: false }
+    const entry = { revision, bytes: this.call<Uint8Array>('compile_gpu_packet', [options], signal), shared: false }
     if (enabled && !this.pendingMutations) this.pendingPackets.set(options, entry)
     // Only shared requests need an extra private copy. Never let an old
     // completion remove a newer revision's request under the same key.

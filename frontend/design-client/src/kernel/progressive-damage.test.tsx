@@ -31,6 +31,8 @@ vi.mock('./client', () => ({
   renderExecutionPolicy: { hdrCompositing: false },
   KernelClient: class {
     onDamage?: (damage: unknown) => void
+    recordViewportDiagnostic = vi.fn()
+    bindNavigationInput = vi.fn(() => () => {})
     cancelPreview = vi.fn()
     cancelTileFill = vi.fn()
     dispose = vi.fn()
@@ -382,14 +384,14 @@ test('covered filtered navigation reprojects residents and resumes exact work wh
   h.render({ backend: 'webgl2' }); await flushRasterWork()
   h.render({ backend: 'webgl2' })
   const before = worker.calls.length; worker.plannedScales.length = 0
-  const view = { x: 0, y: 0, zoom: 8 }
+  const view = { x: 0, y: 0, zoom: 4 }
   worker.navigation = { active: true, suspended: false, sample: { active: true, view, sequence: 1 } }
   h.render({ backend: 'webgl2', view }); await flushRasterWork()
   expect(worker.calls).toHaveLength(before)
   expect(worker.plannedScales).toEqual([])
   worker.navigation = { active: false, suspended: false, sample: undefined }
   h.render({ backend: 'webgl2', view }); await flushRasterWork()
-  expect(worker.plannedScales).toEqual([8])
+  expect(worker.plannedScales).toEqual([4])
 })
 
 test('filtered navigation still renders a preview when retained pixels leave a gap', async () => {
@@ -932,4 +934,38 @@ test('fast zoom-out keeps the wider sampled viewport while the new wide capture 
   expect(area).toBe(1024 * 512)
   expect(draws.some(row => row.item.tile.zoom === .25)).toBe(true)
   expect(draws.some(row => row.item.tile.zoom === 4)).toBe(true)
+})
+
+// A pinned whole-page overview proves geometry coverage, not navigation-tier
+// sampling quality. It must remain visible without suppressing the next sample.
+test('coarse filtered-page overview cannot indefinitely suppress navigation-tier refresh', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const overview: RasterTile = { key: 'overview:coarse', x: -1, y: -1, width: 514, height: 514, zoom: 1 / 32 }
+  const h = harness([overview]), blur = makeNode('rectangle')
+  blur.effects = [makeEffect('blur')]
+  h.doc.nodes[blur.id] = blur; h.doc.pages[0].children.push(blur.id)
+  const view = { x: 0, y: 0, zoom: 1 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view } }
+  h.render({ backend: 'webgl2', view })
+  await vi.waitFor(() => expect(worker.calls.some(call => call.options.livePreview && call.options.renderIntent === 'preview')).toBe(true))
+  const { compositor, wrapper } = surfaceParts(h.render({ backend: 'webgl2', view }))
+  expect(compositor.props.items.find((item: any) => item.tile.key === overview.key)?.active).toBe(true)
+  expect(wrapper.props['data-detail-ready']).toBe('false')
+})
+
+test('settled native repair refines coarse-only edges before an already-sharp center', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  const bounds = { x: 0, y: 0, width: 1536, height: 512 }
+  worker.plan = planTiles(bounds, 1)
+  const center = worker.plan.find(tile => tile.x === 511)!
+  const overview: RasterTile = { key: 'overview:coarse', x: 0, y: 0, width: 48, height: 16, zoom: 1 / 32, gutter: 0 }
+  const h = harness([overview, { ...center, key: 'old-sharp-center' }])
+  h.render({ backend: 'webgl2', width: bounds.width, height: bounds.height, view: { x: 0, y: 0, zoom: 1 } })
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(1)); worker.calls[0].resolve()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
+  const ordered = worker.calls[1].options.tileViewport as RasterTile[]
+  expect(ordered.at(-1)?.key).toBe(center.key)
+  expect(ordered).toHaveLength(worker.plan.length)
+  expect(ordered.every(tile => tile.zoom === 1)).toBe(true)
+  expect(worker.calls[1].options.renderIntent).toBe('canvas')
 })

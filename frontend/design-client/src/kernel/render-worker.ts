@@ -1,4 +1,4 @@
-import { createRenderDiagnostics, setGpuDiagnosticSink } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
+import { createRenderDiagnostics, setGpuDiagnosticSink, setGpuDiagnosticsDetail } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { renderFailureEnvelope, renderErrorWithBudget } from './render-diagnostics'
 import { readAuthoredSnapshot, type AuthoredSnapshot } from './authored-snapshot'
@@ -57,6 +57,7 @@ import { TranslationPatchSession } from './gpu/translation-patch-session'
 import { DisplayCommandOrder } from './display-command-order'
 let terminalDiagnostics = createRenderDiagnostics()
 let diagnosticRequestId = 0
+let diagnosticQueueDepth=0
 let executionPolicy: RenderPolicy | undefined
 let enginePromise: Promise<RenderKernel> | undefined
 let preparation: PreparationChannel | undefined
@@ -112,6 +113,7 @@ const reportDisplay = (presentation: Record<string, unknown>) => {
 function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   if (terminalDiagnostics.enabled) {
     const original=work, started=performance.now(), requestId=diagnosticRequestId
+    terminalDiagnostics.record('compile-start',{requestId})
     work=()=>original().finally(()=>terminalDiagnostics.record('compile',{requestId,durationMs:performance.now()-started}))
   }
   if (!navigationJournal.recording) return work()
@@ -119,8 +121,8 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   navigationJournal.record(4, { sequence })
   return work().finally(() => { if (generation === navigationCaptureGeneration) navigationJournal.record(5, { sequence }) })
 }
-function compilePacket(kernel: RenderKernel, options: string) {
-  return journalCompile(() => kernel.compile_gpu_packet(options))
+function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal) {
+  return journalCompile(() => kernel.compile_gpu_packet(options, signal))
 }
 function compileSceneUpdate(kernel: RenderKernel, options: string, reset: boolean) {
   return journalCompile(() => kernel.compile_gpu_scene_update(options, reset))
@@ -147,16 +149,20 @@ const unavailable = new Map<string, string>()
 let tiledPreviewMode = false
 const previewGenerations = {canvas:0,interaction:0}
 let tileFillGeneration = 0
+// Cancellation is restricted to CPU-only packet waits before any encoder owns
+// resources. Ordered document synchronization and exact outputs always finish.
+const packetWaits = new Set<{ channel: string; tiled: boolean; controller: AbortController }>()
 let tileNamespace = ''
 const regionAdmissions = new Map<string, PreviewAdmission>()
 type TileRender = Awaited<ReturnType<typeof renderTiledPreview>>
-const tileCache = new ExactTileCache<TileRender & {worldBounds: [number,number,number,number]}>()
+const tileCache = new ExactTileCache<TileRender & {worldBounds: [number,number,number,number]}>(undefined,(reasonCode,tileCacheBytes)=>{if(terminalDiagnostics.detail)terminalDiagnostics.record('cache',{requestId:diagnosticRequestId,reasonCode,tileCacheBytes})})
 let cacheGeneration = 0
 let documentGeneration = 0
 let resourceGeneration = 0
 let loadedDocumentId = ''
 let loadedNodeCount = 0
 function invalidateTileCache() {
+  terminalDiagnostics.record('cache-invalidate',{requestId:diagnosticRequestId,generation:cacheGeneration,reasonCode:0,tileCacheBytes:tileCache.bytes})
   tileCache.clear()
   regionAdmissions.clear()
   if (tileNamespace) tileCache.reserve(tileNamespace.length * 2 + 512)
@@ -222,6 +228,7 @@ function sceneImageHydration(kernel: RenderKernel, current: () => boolean) {
   const hydration = new SceneImageHydration(diskImageCache, context, imagePersistence, ownerCurrent, current)
   return async (scene: GpuScene, isCurrent = current) => {
     const hydrationStarted=terminalDiagnostics.enabled?performance.now():0
+    terminalDiagnostics.record('hydrate-start',{requestId:diagnosticRequestId})
     await hydration.hydrate(scene, isCurrent)
     terminalDiagnostics.record('hydrate',{requestId:diagnosticRequestId,durationMs:performance.now()-hydrationStarted})
     // RenderWorkQueue owns the entire gpu.render promise. Its only priority
@@ -367,7 +374,8 @@ self.onmessage = (e) => {
   if(request.command==='terminal-diagnostics') {
     if(Number.isSafeInteger(request.session)&&request.session>=0&&request.session<1e12) {
       terminalDiagnostics.close()
-      terminalDiagnostics=createRenderDiagnostics({enabled:true,session:request.session,source:'worker',sink:record=>self.postMessage({renderDiagnostic:record})})
+      terminalDiagnostics=createRenderDiagnostics({enabled:true,detail:request.detail===true,batchSink:batch=>self.postMessage({renderDiagnostics:batch}),session:request.session,source:'worker',sink:record=>self.postMessage({renderDiagnostic:record})})
+      setGpuDiagnosticsDetail(request.detail===true)
       setGpuDiagnosticSink((event,fields)=>terminalDiagnostics.record(event,{...fields as object,requestId:diagnosticRequestId}))
       terminalDiagnostics.record('start')
     }
@@ -444,11 +452,12 @@ self.onmessage = (e) => {
     gpu?.driver.releasePresented?.(request.ids); return
   }
   if (request.command === 'cancel-preview') {
-    terminalDiagnostics.record('cancel',{channel:channel==='interaction'?1:0,reasonCode:1})
+    terminalDiagnostics.record('cancel',{channel:channel==='interaction'?1:0,reasonCode:1,generation:previewGenerations[channel],fillGeneration:tileFillGeneration,activeRequestId:diagnosticRequestId,queueDepth:diagnosticQueueDepth})
     if (navigationJournal.recording) navigationJournal.record(10, { channel: channel === 'interaction' ? 1 : 0 })
     try {
       executionPolicy = pinRenderPolicy(executionPolicy, request.executionPolicy)
       previewGenerations[channel]++
+      for (const wait of packetWaits) if (wait.channel === channel) wait.controller.abort()
     } catch {
       /* malformed control envelope has no effect */
     }
@@ -456,17 +465,27 @@ self.onmessage = (e) => {
   }
   if (request.command === 'cancel-tile-fill') {
     tileFillGeneration++
+    for (const wait of packetWaits) if (wait.channel === 'canvas' && wait.tiled) wait.controller.abort()
     return
   }
   const generation = previewGenerations[channel]
   const fillGeneration = tileFillGeneration
+  const cancellablePacket = request.options?.renderIntent === 'preview' &&
+    (request.options?.livePreview === true || !!request.options?.tileViewport) &&
+    !request.png && !request.readback && !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
+  const packetWait = cancellablePacket ? { channel, tiled: !!request.options.tileViewport, controller: new AbortController() } : undefined
+  if (packetWait) packetWaits.add(packetWait)
   let completedRegions=0
   const reportRasterProgress=()=>self.postMessage({id:request.id,rasterProgress:++completedRegions})
+  diagnosticQueueDepth++
+  terminalDiagnostics.record('queue-enqueue',{requestId:request.id,queueDepth:diagnosticQueueDepth,activeRequestId:diagnosticRequestId,generation,fillGeneration})
   const diagnosticQueuedAt=terminalDiagnostics.enabled?performance.now():0
   void queue.run(async () => {
+    diagnosticQueueDepth--
+    const previousDiagnosticRequestId=diagnosticRequestId
     diagnosticRequestId=request.id
     const diagnosticStarted=terminalDiagnostics.enabled?performance.now():0
-    terminalDiagnostics.record('queue-start',{requestId:request.id,waitMs:diagnosticStarted-diagnosticQueuedAt})
+    terminalDiagnostics.record('queue-start',{requestId:request.id,waitMs:diagnosticStarted-diagnosticQueuedAt,queueDepth:diagnosticQueueDepth,generation,fillGeneration,superseded:generation!==previewGenerations[channel]})
     if (navigationJournal.recording && request.options?.view) navigationJournal.record(3, { requestId: request.id, channel: channel === 'interaction' ? 1 : 0 })
     try {
       executionPolicy = pinRenderPolicy(executionPolicy, request.executionPolicy)
@@ -519,6 +538,13 @@ self.onmessage = (e) => {
           if (!handedOff) request.bitmap?.close()
         }
         return
+      }
+      // A camera-only request carries no revision transition for its successor.
+      // Reject it before lane initialization/deferred synchronization. Envelopes
+      // must still be applied in order even when their requested pixels are old.
+      if (packetWait?.controller.signal.aborted && request.document === undefined && request.documentPatch === undefined) {
+        terminalDiagnostics.record('skip', { requestId: request.id, reasonCode: 1, skipped: 1, generation, fillGeneration })
+        throw Error('PREVIEW_CANCELLED')
       }
       selectLane(request.channel === 'interaction' ? 'interaction' : 'canvas')
       if(channel==='interaction'){
@@ -807,7 +833,7 @@ self.onmessage = (e) => {
                 view: { ...renderOptions.view, zoom: tile.zoom }, width: tile.width, height: tile.height,
                 gpuViewport: { x: tile.x + Math.floor(renderOptions.view.x), y: tile.y + Math.floor(renderOptions.view.y), w: tile.width, h: tile.height },
                 ...(prepareViewport ? { prepareViewport } : {}),
-              }))
+              }), packetWait?.controller.signal)
               return { bytes, ms: performance.now() - at }
             }
             try { for (let tileIndex = 0; tileIndex < tileViewport.length; tileIndex++) {
@@ -838,6 +864,7 @@ self.onmessage = (e) => {
                 const prepared = await ahead.take(tileIndex) ?? await compileTile(tile)
                 const waited = performance.now() - waiting
                 preparationWaitMs += waited
+                terminalDiagnostics.record('prepare-wait',{requestId:request.id,tileIndex,waitMs:waited,compileMs:prepared.ms,generation,fillGeneration})
                 // Compilation work can overlap the previous tile's GPU work.
                 // Keep both CPU work time and exposed wait time in telemetry.
                 speculativeSavedMs = Math.max(0, prepared.ms - waited)
@@ -860,6 +887,7 @@ self.onmessage = (e) => {
                 if (!/GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(String(error))) throw error
               }
               const verifyMs = performance.now() - compileStarted + speculativeSavedMs, cached = !!result
+              terminalDiagnostics.record('cache',{requestId:request.id,tileIndex,cached,reasonCode:cached?0:disableExactCache?3:request.debug?.disableCertifiedTileReuse?4:5,generation,fillGeneration})
               tileCompileMs += verifyMs
               milliseconds += verifyMs
               if (result) {
@@ -1075,7 +1103,7 @@ self.onmessage = (e) => {
             } else {
               const t = performance.now()
               await synchronizeDeferred()
-              scene = decodeScenePacket(await compilePacket(kernel, options))
+              scene = decodeScenePacket(await compilePacket(kernel, options, packetWait?.controller.signal))
               compileMs = performance.now() - t
               if (cacheScene) compiledScene = { revision: loadedRevision, options, scene: scene! }
             }
@@ -1389,11 +1417,13 @@ self.onmessage = (e) => {
         { transfer },
       )
     } catch (error) {
-      terminalDiagnostics.record('error',{requestId:request.id,reasonCode:1})
+      terminalDiagnostics.record('error',{requestId:request.id,reasonCode:String(error).includes('PREVIEW_CANCELLED')?5:1,generation,fillGeneration,superseded:generation!==previewGenerations[channel]})
       self.postMessage({id:request.id,...renderFailureEnvelope(error)})
     } finally {
+      if (packetWait) packetWaits.delete(packetWait)
       terminalDiagnostics.record('queue-end',{requestId:request.id,durationMs:performance.now()-diagnosticStarted,resourceEpoch:gpu?.driver.resourceEpoch,completedResourceEpoch:gpu?.driver.completedResourceEpoch})
       if(terminalDiagnostics.enabled) for(const pass of gpu?.driver.stats?.().passTimings?.slice(0,16)||[]) terminalDiagnostics.record('filter',pass)
+      diagnosticRequestId=previousDiagnosticRequestId
     }
   }, channel === 'interaction' ? 1 : 0)
 }

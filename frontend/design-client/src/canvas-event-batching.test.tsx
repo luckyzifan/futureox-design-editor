@@ -1,3 +1,4 @@
+import { bindNavigationInput } from './kernel/navigation-input'
 // Actual mounted Canvas/event propagation + Editor/WASM. The render-device
 // boundary alone is replaced. Deterministic 60 Hz delivery does not claim
 // browser/GPU FPS, compositor latency, or pixel quality.
@@ -430,4 +431,37 @@ test('a stale hover cannot become a first drag input during a modifier-only tran
   await flushFrames(); expect(editor.state.doc).toBe(before)
   await act(async () => pointer('pointerup', 100, 100, { ctrlKey: true }))
   expect(editor.state.doc).toBe(before); expect(editor.canUndo).toBe(false)
+})
+
+// Audit: real DOM wheel handler -> pending camera -> first frame publication.
+test.each([1, 10, 120])('zoom audit accumulates %i native pinch samples without losing scale or adding a second input frame', async count => {
+  await render([])
+  const doc = editor.state.doc, version = editor.state.version
+  const start = { x: 0, y: 0, zoom: 1 }
+  await act(async () => editor.set({ view: start }))
+  const panel = editor.panelSnapshot()
+  const samples: { zoom: number; pinch: boolean }[] = []
+  const unbindInput = bindNavigationInput(editor, { enabled: () => true, record: (_event, _size, view, pinch) => { samples.push({ zoom: view.zoom, pinch }) } })
+  const anchor = { x: 317.25, y: 442.5 }
+  const notices: number[] = [], unsubscribe = editor.subscribe(() => notices.push(editor.state.view.zoom))
+  await act(async () => {
+    for (let i = 0; i < count; i++) host().dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true, cancelable: true, clientX: anchor.x, clientY: anchor.y,
+      ctrlKey: true, deltaX: 0, deltaY: -100 * Math.log(2) / count, deltaMode: 0,
+    }))
+  })
+  expect(samples).toHaveLength(count)
+  expect(samples.at(-1)!.zoom).toBeCloseTo(2, 12)
+  expect(samples.every(sample => sample.pinch)).toBe(true)
+  expect(editor.state.view.zoom).toBe(1)
+  expect(editor.effectiveView().zoom).toBeCloseTo(2, 12)
+  await flushFrames(1000 / 60)
+  expect(editor.state.view.zoom).toBeCloseTo(2, 12)
+  expect(editor.state.view.x + anchor.x * editor.state.view.zoom).toBeCloseTo(anchor.x, 9)
+  expect(editor.state.view.y + anchor.y * editor.state.view.zoom).toBeCloseTo(anchor.y, 9)
+  expect(notices).toHaveLength(1)
+  expect(editor.panelSnapshot()).toBe(panel)
+  expect(editor.state.doc).toBe(doc)
+  expect(editor.state.version).toBe(version)
+  unbindInput(); unsubscribe()
 })

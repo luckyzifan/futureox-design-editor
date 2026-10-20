@@ -5,7 +5,7 @@ export interface NavigationJournalClock {
   schedule(callback: () => void, delayMs: number): unknown
   cancel(handle: unknown): void
 }
-const fields = ['requestId', 'sequence', 'channel', 'x', 'y', 'zoom', 'width', 'height', 'compileMs', 'graphMs', 'finishMs', 'tiles', 'frames'] as const
+const fields = ['inputSequence', 'inputAt', 'inputTimeOrigin', 'inputAgeMs', 'deltaX', 'deltaY', 'deltaMode', 'inputKind', 'requestId', 'sequence', 'channel', 'x', 'y', 'zoom', 'width', 'height', 'compileMs', 'graphMs', 'finishMs', 'tiles', 'frames'] as const
 export type NavigationJournalEvent = { at: number; stage: number } & Partial<Record<(typeof fields)[number], number>>
 export interface NavigationJournalReport {
   timeOrigin: number

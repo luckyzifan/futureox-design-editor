@@ -301,3 +301,47 @@ test('display-import closes its bitmap if presenter preparation rejects before h
   expect((await w.finish(302)).error).toContain('Presenter attachment failed')
   expect(bitmap.close).toHaveBeenCalledTimes(1)
 })
+
+test('real render worker retires obsolete packet waits before their reply without flooding preparation or cancelling exact readback', async () => {
+  const f = fixture(4), w = await worker(), pair = new NativeMessageChannel()
+  channels.push(pair)
+  const prepared = new VectorEngine(), methods: string[] = []
+  let release!: () => void, held = false
+  pair.port2.onmessage = event => {
+    const { id, method, args } = event.data
+    methods.push(method)
+    const reply = () => {
+      let value: unknown
+      if (method !== 'initialize' && method !== 'warm_resources') value = (prepared as any)[method](...args)
+      pair.port2.postMessage({ id, value, ...(method === 'load_document' || method === 'initialize' || method === 'apply_document_patch_with_damage' ? { settings: prepared.color_settings() } : {}) })
+    }
+    if (method === 'compile_gpu_packet' && !held) { held = true; release = reply }
+    else reply()
+  }
+  w.send({ command: 'prepare-port', port: pair.port1 })
+  const preview = { ...f.options, renderIntent: 'preview', livePreview: true }
+  try {
+    w.send({ id: 701, document: JSON.stringify(f.doc), documentRevision: 1, options: preview })
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    w.send({ command: 'cancel-preview' })
+    expect((await w.finish(701)).error).toContain('PREVIEW_CANCELLED')
+    expect(state.renders).toHaveLength(0)
+    // This compile must remain locally cancellable while the first physical
+    // call is still executing. No transport-level native/WASM preemption.
+    w.send({ id: 702, documentRevision: 1, options: { ...preview, width: 49 } })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    w.send({ command: 'cancel-preview' })
+    expect((await w.finish(702)).error).toContain('PREVIEW_CANCELLED')
+    expect(methods.filter(x => x === 'compile_gpu_packet')).toHaveLength(1)
+    // Settled exact/readback work is never registered with cancellation.
+    w.send({ id: 703, documentRevision: 1, options: { ...f.options, width: 50 }, readback: true })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    w.send({ command: 'cancel-preview' })
+    release()
+    expect((await w.finish(703)).backend).toBe('webgpu')
+    w.send({ id: 704, documentRevision: 1, options: f.options, readback: true })
+    expect((await w.finish(704)).backend).toBe('webgpu')
+    expect(state.renders).toHaveLength(2)
+    expect(methods.filter(x => x === 'compile_gpu_packet')).toHaveLength(3)
+  } finally { prepared.free() }
+})
