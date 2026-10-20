@@ -385,3 +385,17 @@ test('default conservative scheduling never enables adaptive refinement for long
     expect(exact[0].at - end).toBeGreaterThanOrEqual(160 - 1e-8)
   }
 })
+
+test('pending-age diagnostics do not sample or settle navigation', () => {
+  const owner = new NavigationZoom({ x: 0, y: 0, zoom: 1 })
+  expect(owner.pendingAge(0)).toBe(0)
+  owner.update({ x: 0, y: 0, zoom: 2 }, 10)
+  expect(owner.pendingAge(20)).toBe(0)
+  owner.update({ x: 0, y: 0, zoom: 3 }, 30)
+  const sample = owner.sample
+  expect(owner.pendingAge(70)).toBe(60)
+  expect(owner.sample).toBe(sample)
+  expect(owner.active).toBe(true)
+  owner.frame(170)
+  expect(owner.pendingAge(170)).toBe(0)
+})

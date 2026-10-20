@@ -1,7 +1,15 @@
 'use strict'
 // Sandboxed preloads can require Electron, but must not expose it or ipcRenderer.
 const { contextBridge, ipcRenderer } = require('electron')
-const invoke = (name, value) => ipcRenderer.invoke(`design-desktop:${name}`, value)
+const diagnosticListeners = new Set()
+const reportDiagnostic = code => { for (const listener of diagnosticListeners) { try { listener({code}) } catch {} } }
+const invoke = (name, value) => ipcRenderer.invoke(`design-desktop:${name}`, value).then(result => {
+  if (!name.startsWith('diagnostics-') && result?.status === 'error') reportDiagnostic(result.code)
+  return result
+}, error => {
+  if (!name.startsWith('diagnostics-')) reportDiagnostic('OPERATION_FAILED')
+  throw error
+})
 function subscribe(channel, callback, validate) {
   if (typeof callback !== 'function') throw new TypeError('Expected a callback')
   const listener = (_event, value) => {
@@ -14,6 +22,9 @@ contextBridge.exposeInMainWorld(
   'coreDesktop',
   Object.freeze({
     version: 1,
+    diagnostics: Object.freeze({ read: () => invoke('diagnostics-read'), write: value => invoke('diagnostics-write', value),
+      onError: callback => { if (typeof callback !== 'function') throw new TypeError('Expected a callback'); diagnosticListeners.add(callback); return () => diagnosticListeners.delete(callback) },
+    }),
     // Enabling always requires native confirmation; renderer requests cannot
     // grant external access without that per-document approval.
     automation: Object.freeze({

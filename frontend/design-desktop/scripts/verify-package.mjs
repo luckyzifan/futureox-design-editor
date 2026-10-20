@@ -97,6 +97,7 @@ try {
   }
   asar.extractAll(archive, temporary)
   for (const [source, packaged] of [
+    [path.join(desktop, 'assets'), path.join(temporary, 'assets')],
     [path.join(desktop, 'src'), path.join(temporary, 'src')],
     [path.join(desktop, 'dist/renderer'), path.join(temporary, 'renderer')],
   ]) {

@@ -6,6 +6,7 @@ import { documentPatch } from '../document-patch'
 import { createRenderPolicy } from './render-policy'
 
 const state = vi.hoisted(() => ({
+  failAttach: false, failBudgetOnce: false, renders: [] as { readback: boolean; present: boolean; scene: any }[], transfers: [] as any[],
   keys: [] as { uri: string; variant: string; settings: string }[], reads: [] as string[],
   scenes: [] as any[], loads: [] as { uri: string; render: number; bytes?: Uint8Array; pixels: Float32Array }[],
   readGate: undefined as undefined | Promise<unknown>, keyGate: undefined as undefined | Promise<void>,
@@ -32,9 +33,12 @@ vi.mock('./gpu/factory', async () => {
         bytes: data.byteLength, resource: { image: data.slice() } })
       const resources = new GpuRenderer({ scratchBytes: 0, uploadRgba8: upload, uploadLinear: upload,
         destroy() {}, dispose() {} } as any, true, true, loader) as any
-      return { driver: { name: backend, managed: floating, displayMath, lost: false, description: 'CPU test driver' },
+      return { driver: { name: backend, managed: floating, displayMath, lost: false, description: 'CPU test driver', attachPresenter: vi.fn(() => { if (state.failAttach) throw Error('Presenter attachment failed') }), abortFrameAndReleaseFilterScratch: async () => {} },
         dispose() { expect(state.disposed).not.toContain(identity); state.disposed.push(identity); resources.dispose() },
-        async render(scene: any) {
+        abortFrameAndReleaseFilterScratch: async () => {},
+        async render(scene: any, readback = false, present = true) {
+          state.renders.push({ readback, present, scene })
+          if (state.failBudgetOnce) { state.failBudgetOnce = false; throw Error('GPU surface budget exceeded') }
           state.scenes.push(scene); resources.scene = scene
           await resources.loadImages(scene)
           for (const uri of sceneIndex(scene).images) {
@@ -45,6 +49,8 @@ vi.mock('./gpu/factory', async () => {
           }
           // Mock transport only. Pixel/texture equivalence is separately tested
           // with the real WASM and production GpuRenderer upload path.
+          if (!readback && present && (globalThis as any).__mockBitmapPreview)
+            return { bitmap: { width: scene.width, height: scene.height, close: vi.fn() }, drawCalls: 0, triangles: 0 }
           return { rgba: new Uint8Array((scene.presentation?.width ?? scene.resolve?.width ?? scene.width) *
             (scene.presentation?.height ?? scene.resolve?.height ?? scene.height) * 4), drawCalls: 0, triangles: 0 }
         },
@@ -72,10 +78,10 @@ function fixture(count = 1000) {
 }
 async function worker(desktopFullMath = false) {
   vi.resetModules()
-  Object.assign(state, { keys: [], reads: [], scenes: [], loads: [], keyGate: undefined, readGate: undefined, disposed: [], createCount: 0, onPost: undefined })
+  Object.assign(state, { failAttach: false, failBudgetOnce: false, renders: [], transfers: [], keys: [], reads: [], scenes: [], loads: [], keyGate: undefined, readGate: undefined, disposed: [], createCount: 0, onPost: undefined })
   const kernel = await import('../generated/design-kernel/design_kernel')
   await kernel.default({ module_or_path: wasm })
-  const messages: any[] = [], scope: any = { postMessage(value: unknown) { messages.push(value); state.onPost?.(value) } }
+  const messages: any[] = [], scope: any = { postMessage(value: unknown, transfer: unknown) { messages.push(value); state.transfers.push(transfer); state.onPost?.(value) } }
   vi.stubGlobal('self', scope)
   vi.stubGlobal('MessageChannel', class {
     constructor() { const channel = new NativeMessageChannel(); channels.push(channel); return channel }
@@ -168,6 +174,7 @@ test('multiple exact tiles hydrate each newly compiled dependency once in the ac
 for (const reverse of [false, true]) test(`resumed canvas tiles invalidate real image textures after repeated color-lane switches (reverse=${reverse})`, async () => {
   const f = fixture(12), w = await worker(true)
   f.doc.schemaVersion = 3; f.doc.rasterProfile = 'figma'; f.options.rasterProfile = 'figmaSubpixel'
+  f.doc.schemaVersion = 3; f.doc.rasterProfile = 'figma'
   f.doc.colorManagement = { documentSpace: 'srgb', referenceWhiteNits: reverse ? 203 : 100, peakLuminanceNits: 1000 }
   const pq = color_encode_png(1, 1, new Float32Array([0.5, 0.25, 0.125, 1]),
     JSON.stringify({ documentSpace: 'srgb', referenceWhiteNits: 203, peakLuminanceNits: 1000 }),
@@ -233,4 +240,64 @@ for (const command of ['cancel-preview', 'cancel-tile-fill']) test(`${command} d
     reference.load_document(JSON.stringify(next))
     expect(new Uint8Array(patched.buffer)).toEqual(reference.render_rgba(JSON.stringify({ ...f.options, interactiveEffects: false })))
   } finally { reference.free() }
+})
+
+for (const desktopFullMath of [false, true]) test(`regional preview recovery preserves ${desktopFullMath ? 'desktop exact' : 'web display'} math and uses bitmap transport`, async () => {
+  const f = fixture(4), w = await worker(desktopFullMath)
+  f.doc.schemaVersion = 3; f.doc.rasterProfile = 'figma'
+  f.doc.colorManagement = { documentSpace: 'srgb', referenceWhiteNits: 203, peakLuminanceNits: 1000 }
+  vi.stubGlobal('__mockBitmapPreview', true)
+  vi.stubGlobal('OffscreenCanvas', class {
+    constructor(public width: number, public height: number) {}
+    getContext() { return { drawImage: vi.fn(), imageSmoothingEnabled: false } }
+    transferToImageBitmap() { return { width: this.width, height: this.height, close: vi.fn() } }
+  })
+  w.send({ command: 'display-attach', canvas: {} })
+  state.failBudgetOnce = true
+  const options = { ...f.options, rasterProfile: 'figmaSubpixel', livePreview: true, previewTileFallback: true, renderIntent: 'preview' }
+  w.send({ id: 101, document: JSON.stringify(f.doc), documentRevision: 1, options })
+  const result = await w.finish(101)
+  expect(result.error).toBeUndefined()
+  expect(result.bitmap).toBeDefined()
+  expect(result.previewLane).toBe('regional-fallback')
+  expect(result.residentAttached).toBe(true)
+  expect(result.previewReadback).toBe(false)
+  expect(state.createCount).toBe(1)
+  expect(state.disposed).toEqual([])
+  expect(state.renders.length).toBeGreaterThan(1)
+  expect(state.renders.every(({ scene }) => scene.displayFilters === !desktopFullMath)).toBe(true)
+  expect(state.renders.slice(1).every(r => !r.readback && r.present)).toBe(true)
+  expect(state.transfers.some(t => t?.transfer?.includes(result.bitmap))).toBe(true)
+  const count = state.renders.length
+  w.send({ id: 102, documentRevision: 1, options })
+  const next = await w.finish(102)
+  expect(next.bitmap).toBeDefined()
+  expect(state.renders.slice(count).every(r => !r.readback && r.present && r.scene.displayFilters === !desktopFullMath)).toBe(true)
+  expect(state.createCount).toBe(1)
+})
+
+for (const mode of ['readback', 'webgl2', 'transparent'] as const) test(`regional ${mode} preview keeps byte transport`, async () => {
+  const f = fixture(4), w = await worker()
+  state.failBudgetOnce = true
+  w.send({ id: 201, document: JSON.stringify(f.doc), documentRevision: 1,
+    backend: mode === 'webgl2' ? 'webgl2' : 'webgpu', readback: mode === 'readback',
+    options: { ...f.options, transparent: mode === 'transparent', livePreview: true, previewTileFallback: true, renderIntent: 'preview' } })
+  const result = await w.finish(201)
+  expect(result.error).toBeUndefined()
+  expect(result.bitmap).toBeUndefined()
+  expect(result.buffer.byteLength).toBe(f.options.width * f.options.height * 4)
+  expect(result.previewReadback).toBe(true)
+  expect(state.renders.slice(1).every(r => r.readback && !r.present)).toBe(true)
+})
+
+test('display-import closes its bitmap if presenter preparation rejects before handoff', async () => {
+  const f = fixture(4), w = await worker()
+  w.send({ id: 301, document: JSON.stringify(f.doc), documentRevision: 1, options: f.options })
+  await w.finish(301)
+  state.failAttach = true
+  w.send({ command: 'display-attach', canvas: {} })
+  const bitmap = { close: vi.fn() }
+  w.send({ id: 302, command: 'display-import', bitmap })
+  expect((await w.finish(302)).error).toContain('Presenter attachment failed')
+  expect(bitmap.close).toHaveBeenCalledTimes(1)
 })

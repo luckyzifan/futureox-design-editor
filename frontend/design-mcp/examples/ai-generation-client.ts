@@ -5,6 +5,7 @@ import { performance } from 'node:perf_hooks'
 import { Editor } from '../../design-client/src/engine'
 import { blank, type DesignDocument } from '../../design-client/src/model'
 import { createEditorDesignAutomation } from '../../design-client/src/automation'
+import { attachDesktopAutomation, type DesktopAutomationRequest, type DesktopAutomationTransport } from '../../design-client/src/automation/bridge'
 import { OperationBackend } from '../src/operation-backend.mjs'
 import { DesignMcpServer } from '../src/server.mjs'
 
@@ -13,9 +14,26 @@ export const sha256 = (data: string | Buffer | Uint8Array) => createHash('sha256
 
 // This is a real NDJSON protocol client around the actual server and Editor.
 // Only transport is in-memory; operation results and WASM are not mocked.
-export async function connect(document: DesignDocument = blank('Forma / local design studio')) {
+export async function connect(document: DesignDocument = blank('Forma / local design studio'), mountedBridge = false) {
   const editor = new Editor(document), api = createEditorDesignAutomation(editor)
-  const backend = new OperationBackend({ capabilities: api.capabilities(), execute: request => api.execute(request) })
+  let disposeBridge = () => {}
+  let capabilities = api.capabilities(), execute: (request: any) => any = request => api.execute(request)
+  if (mountedBridge) {
+    let receive: (request: DesktopAutomationRequest) => void = () => {}, serial = 0
+    const replies = new Map<string, (response: any) => void>()
+    const transport = {
+      register: async (value: any) => { capabilities = { ...capabilities, methods: value.methods } },
+      respond: async (value: any) => { const resolve = replies.get(value.requestId); replies.delete(value.requestId); resolve?.(value.result ?? { ok: false, error: value.error }) },
+      recordEdit: async () => ({ accepted: true }),
+      onRequest: (callback: typeof receive) => { receive = callback; return () => {} }, onCancel: () => () => {},
+    } as unknown as DesktopAutomationTransport
+    disposeBridge = attachDesktopAutomation(editor, transport)
+    execute = request => new Promise(resolve => {
+      const requestId = `example-bridge-${++serial}`; replies.set(requestId, resolve)
+      receive({ requestId, kind: 'execute', sessionId: 'example-bridge-session', scope: 'write', documentId: editor.state.doc.id, session: editor.sessionGeneration, deadline: Date.now() + 60000, request })
+    })
+  }
+  const backend = new OperationBackend({ capabilities, execute })
   const input = new PassThrough(), output = new PassThrough(), diagnostics = new PassThrough()
   const transcript: Json[] = [], pending = new Map<number, (response: Json) => void>()
   let buffer = '', sequence = 0
@@ -83,6 +101,6 @@ export async function connect(document: DesignDocument = blank('Forma / local de
     return response
   }
   return { editor, api, tools, transcript, rpc, call, read, mutate, materialize,
-    close: async () => { await server.close(); input.destroy(); output.destroy(); diagnostics.destroy(); api.dispose(); editor.dispose() },
+    close: async () => { await server.close(); input.destroy(); output.destroy(); diagnostics.destroy(); disposeBridge(); api.dispose(); editor.dispose() },
   }
 }

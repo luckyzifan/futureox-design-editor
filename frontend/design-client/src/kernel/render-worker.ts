@@ -81,9 +81,17 @@ displayTasks.port1.onmessage=()=>{
   try{if(displayFrame)gpu?.driver.presentFrame?.(displayFrame)}catch(error){reportDisplay({error:String(error)})}
 }
 const reportDisplay = (presentation: Record<string, unknown>) => self.postMessage({ presentation })
+let reportedResidentAttachment = ''
 function prepareDisplay(capture = true) {
   if (!gpu) return
-  if (displayCanvas) gpu.driver.attachPresenter?.(displayCanvas, reportDisplay)
+  if (displayCanvas) {
+    gpu.driver.attachPresenter?.(displayCanvas, reportDisplay)
+    const reason = gpu.driver.attachPresenter ? 'attached' : 'driver-unavailable'
+    if (reportedResidentAttachment !== reason) {
+      reportedResidentAttachment = reason
+      reportDisplay({residentAttached:reason === 'attached',residentAttachmentReason:reason})
+    }
+  }
   gpu.driver.captureDisplay = !!displayCanvas && capture
 }
 async function recoverTileFailure(error:unknown) {
@@ -319,8 +327,9 @@ self.onmessage = (e) => {
     try {
       executionPolicy=pinRenderPolicy(executionPolicy,request.executionPolicy)
       if(!allowsResidentSdr(executionPolicy))throw Error('Resident SDR display is not allowed by this host policy')
-      displayCanvas=request.canvas;prepareDisplay()
-    }catch(error){reportDisplay({error:String(error)})}
+      displayCanvas=request.canvas;reportedResidentAttachment='';prepareDisplay()
+      if(!gpu)reportDisplay({residentAttached:false,residentAttachmentReason:'pending-gpu'})
+    }catch(error){reportDisplay({residentAttached:false,residentAttachmentReason:String(error),error:String(error)})}
     return
   }
   if (request.command === 'display-frame') {
@@ -421,10 +430,16 @@ self.onmessage = (e) => {
         return
       }
       if (request.command === 'display-import') {
-        prepareDisplay(false)
-        if(!gpu?.driver.importPresented) { request.bitmap?.close();throw Error('No WebGPU device for display handoff') }
-        const gpuTile=gpu.driver.importPresented(request.bitmap)
-        self.postMessage({id:request.id,gpuTile})
+        let handedOff = false
+        try {
+          prepareDisplay(false)
+          if(!gpu?.driver.importPresented) throw Error('No WebGPU device for display handoff')
+          handedOff = true // importPresented owns closure, including failures.
+          const gpuTile=gpu.driver.importPresented(request.bitmap)
+          self.postMessage({id:request.id,gpuTile})
+        } finally {
+          if (!handedOff) request.bitmap?.close()
+        }
         return
       }
       selectLane(request.channel === 'interaction' ? 'interaction' : 'canvas')
@@ -455,6 +470,13 @@ self.onmessage = (e) => {
         renderIntent, png: request.png, readback: request.readback, exportFormat,
         exportRegion: renderOptions.exportRegion, pixelPreview: renderOptions.pixelPreview,
       })
+      // Regional recovery preserves the caller's arithmetic contract; only
+      // transport changes when a whole preview exceeds its allocation budget.
+      const previewDisplayFilters = canvasDisplayFilters || usesTransientDisplayFilters(executionPolicy, {
+        renderIntent, png: request.png, readback: request.readback, exportFormat,
+        exportRegion: renderOptions.exportRegion, pixelPreview: renderOptions.pixelPreview,
+      })
+      const previewPresentOnly = !request.png && !request.readback && !exportFormat && !renderOptions.exportRegion
       const canvasMath = import.meta.env.VITE_DESIGN_DISPLAY_MATH !== '0' && request.debug?.displayMath !== false &&
         usesDisplayArithmetic(executionPolicy, { renderIntent, rasterProfile: renderOptions.rasterProfile,
           png: request.png, readback: request.readback, exportFormat, exportRegion: renderOptions.exportRegion,
@@ -949,11 +971,11 @@ self.onmessage = (e) => {
               backend,
               color,
               settingsJson,
-              256, undefined, undefined, false, undefined, false, false, false, undefined, previewCurrent, hydrateImages,
+              256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages,
             )
             self.postMessage(
-              { id: request.id, ...result, loadMs },
-              { transfer: [result.buffer, ...(result.linearBuffer ? [result.linearBuffer] : [])] },
+              { id: request.id, ...result, loadMs, previewLane: 'regional-fallback', previewReadback: !result.bitmap && !result.gpuTile, residentAttached: !!displayCanvas },
+              { transfer: [result.buffer, ...(result.linearBuffer ? [result.linearBuffer] : []), ...(result.bitmap ? [result.bitmap] : [])] },
             )
             return
           }
@@ -1001,10 +1023,7 @@ self.onmessage = (e) => {
           scene!.pairedDisplayFilters = request.debug?.pairedDisplayFilters
           scene!.compactImageFields = request.debug?.denseImageFields !== true
           scene!.disableSparseGlass = request.debug?.disableSparseGlass === true
-          scene!.displayFilters = canvasDisplayFilters || usesTransientDisplayFilters(executionPolicy, {
-            renderIntent, png: request.png, readback: request.readback, exportFormat,
-            exportRegion: renderOptions.exportRegion, pixelPreview: renderOptions.pixelPreview,
-          })
+          scene!.displayFilters = previewDisplayFilters
           const floating = scene!.floatCompositing
           const displayMath = canvasMath && backend === 'webgpu' && floating && !scene!.softwareRaster
           const arithmeticKey = JSON.stringify([floating, displayMath])
@@ -1047,11 +1066,9 @@ self.onmessage = (e) => {
           if ((livePreview || tileViewport) && !previewCurrent()) throw Error('PREVIEW_CANCELLED')
           await hydrateImages(scene!)
           prepareDisplay(!request.png && !request.readback)
+          const previewReadback = !!(request.png || request.readback || (!!color && !gpu.driver.hdr && !((retainInteraction || displayCanvas) && backend === 'webgpu')))
           const t = performance.now(),
-            result = await gpu.render(
-              scene!,
-              request.png || request.readback || (!!color && !gpu.driver.hdr && !((retainInteraction || displayCanvas) && backend === 'webgpu')),
-            )
+            result = await gpu.render(scene!, previewReadback, true, (livePreview || tileViewport) ? previewCurrent : undefined)
           const renderMs = performance.now() - t
           if ((livePreview || tileViewport) && !previewCurrent()) {
             result.bitmap?.close()
@@ -1107,6 +1124,9 @@ self.onmessage = (e) => {
             {
               id: request.id,
               gpuTile: result.gpuTile,
+              previewLane: livePreview ? 'whole-scene' : undefined,
+              previewReadback: livePreview ? previewReadback : undefined,
+              residentAttached: !!displayCanvas,
               residentInteraction:poseSession?.slot===result.gpuTile&&!!result.gpuTile,
               documentForks:kernel.documentForks,
               backgroundLinear:scene!.colors?.[scene!.background],
@@ -1219,12 +1239,12 @@ self.onmessage = (e) => {
                 backend,
                 color,
                 settingsJson,
-                256, undefined, undefined, false, undefined, false, false, false, undefined, previewCurrent, hydrateImages,
+                256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages,
               )
               self.postMessage(
-                { id: request.id, ...result, loadMs },
+                { id: request.id, ...result, loadMs, previewLane: 'regional-fallback', previewReadback: !result.bitmap && !result.gpuTile, residentAttached: !!displayCanvas },
                 {
-                  transfer: [result.buffer, ...(result.linearBuffer ? [result.linearBuffer] : [])],
+                  transfer: [result.buffer, ...(result.linearBuffer ? [result.linearBuffer] : []), ...(result.bitmap ? [result.bitmap] : [])],
                 },
               )
               return
@@ -1398,7 +1418,7 @@ async function renderTiledPreview(
         checkCurrent()
         await hydrateImages(scene, isCurrent)
         prepareDisplay()
-        const result = await gpu.render(scene, false, true)
+        const result = await gpu.render(scene, false, true, isCurrent)
         presented = result.bitmap
         residentTile = result.gpuTile
         checkCurrent()
@@ -1501,7 +1521,7 @@ async function renderTiledPreview(
         checkCurrent()
         await hydrateImages(scene, isCurrent)
         prepareDisplay(false)
-        const result = await gpu.render(scene, !bitmapAssembly, bitmapAssembly)
+        const result = await gpu.render(scene, !bitmapAssembly, bitmapAssembly, isCurrent)
         bitmap = result.bitmap
         checkCurrent()
         onRegionComplete?.()

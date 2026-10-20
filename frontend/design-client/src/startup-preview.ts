@@ -1,4 +1,4 @@
-import type { CanvasCamera } from './canvas-camera'
+import { CANVAS_ZOOM_MIN, CANVAS_ZOOM_MAX, type CanvasCamera } from './canvas-camera'
 import { localRequest, localTransaction, type LocalStoredRecord } from './local-store'
 
 /** One bounded, revision-checked display hint. It is never editor data or an
@@ -14,6 +14,7 @@ export function validStartupPreview(preview: StartupPreview, id: unknown, revisi
     typeof preview.pageId === 'string' && typeof preview.background === 'string' &&
     [preview.width, preview.height, preview.view?.zoom].every(n => Number.isFinite(n) && n > 0) &&
     [preview.view?.x, preview.view?.y].every(Number.isFinite) &&
+    preview.view.zoom >= CANVAS_ZOOM_MIN && preview.view.zoom <= CANVAS_ZOOM_MAX &&
     preview.image instanceof Blob && preview.image.type === 'image/webp' && preview.image.size <= 1_048_576
 }
 export async function readStartupPreview(): Promise<StartupPreview | undefined> {

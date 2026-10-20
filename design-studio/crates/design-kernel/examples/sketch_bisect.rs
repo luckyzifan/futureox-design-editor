@@ -6,6 +6,7 @@ fn doc_with(layer: Node, id: &str) -> Document {
     let mut doc = Document {
         design_system: None,
         prototype: None,
+        fd_compatibility: None,
         schema_version: 1,
         color_management: None,
         raster_profile: None,

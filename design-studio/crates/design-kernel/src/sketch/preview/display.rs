@@ -721,6 +721,7 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
         .take(200)
         .collect();
     let mut document = DisplayDocument {
+        fd_compatibility: None,
         schema_version: 11,
         id: session.owner().document_id.clone(),
         name,

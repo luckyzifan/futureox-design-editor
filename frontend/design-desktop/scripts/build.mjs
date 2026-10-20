@@ -79,6 +79,9 @@ await installSidecar(path.join(target, profile, prepareBinary), path.join(output
 const font = path.join(core, 'frontend/design-client/public/fonts/NotoSansSC.ttf')
 await mkdir(path.join(output, 'fonts'), { recursive: true })
 await copyFile(font, path.join(output, 'fonts', 'NotoSansSC.ttf'))
+for (const notice of ['OFL.txt', 'source.json']) {
+  await copyFile(path.join(path.dirname(font), notice), path.join(output, 'fonts', notice))
+}
 console.log(
   `Built ${process.platform}/${process.arch} desktop renderer and Rust sidecar in ${output}`,
 )

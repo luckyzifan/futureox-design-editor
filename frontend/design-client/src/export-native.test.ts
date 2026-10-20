@@ -78,3 +78,14 @@ test('SVG capability reporting rejects effects and non-isolated translucent grou
   doc.pages[0].children = [g.id]
   expect(svgExportIssues(doc, doc.pages[0].id)).toContain('带透明度或蒙版的穿透组')
 })
+
+test('real WASM SVG export applies viewport scale and opt-in precision without mutating native geometry', () => {
+  const doc = blank(), n = node('rectangle', 1.23456, 2.34567, 64.12345, 48.56789)
+  doc.nodes[n.id] = n; doc.pages[0].children = [n.id]
+  const before = JSON.stringify(doc)
+  const original = svgSource(doc, doc.pages[0].id, { kind: 'selection', nodeIds: [n.id] })
+  const rounded = svgSource(doc, doc.pages[0].id, { kind: 'selection', nodeIds: [n.id] }, 2, 2)
+  expect(rounded.source).toContain(`width="${Number((original.box.width * 2).toFixed(2))}"`)
+  expect(rounded.source).not.toBe(original.source)
+  expect(JSON.stringify(doc)).toBe(before)
+})

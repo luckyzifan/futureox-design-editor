@@ -59,7 +59,8 @@ export class ArtifactResources {
     } else if (result.format === 'futureox.design-document.v1' && result.mimeType === 'application/json') {
       text('content', 'design.json', 'application/json')
     } else if (result.format === 'futureox.design-vector.v1' && result.mimeType === 'image/svg+xml') {
-      text('content', 'design.svg', 'image/svg+xml')
+      if (result.encoding === 'base64' && result.filename === 'design.svgz') blob('base64', 'design.svgz', 'image/svg+xml')
+      else text('content', 'design.svg', 'image/svg+xml')
     } else if (result.format === 'futureox.design-document.v1' && result.nativeFormat === 'fd' && result.encoding === 'base64' && result.mimeType === 'application/vnd.futureox-desgin') {
       blob('base64', 'design.fd', result.mimeType)
     } else if (result.format === 'futureox.design-sketch.v1' && result.encoding === 'base64' && result.mimeType === 'application/zip') {
@@ -74,7 +75,7 @@ export class ArtifactResources {
     if (!candidates.length) return { value: response, links: [] }
     if (jsonBytes(metadata) > metadataBytes) {
       candidates.push({ field: '$metadata', name: 'metadata.json', mimeType: 'application/json', encoding: 'json', text: JSON.stringify(metadata) })
-      const keep = new Set(['format', 'language', 'nativeFormat', 'encoding', 'mimeType', 'filename', 'bytes', 'schemaVersion', 'lossless', 'fidelity', 'sourceDocumentId', 'documentId', 'pageId', 'session', 'revision', 'width', 'height', 'scale', 'bounds', 'backend', 'renderer', 'screenshot', 'target', 'assetCount', 'sourceNodeCount'])
+      const keep = new Set(['format', 'language', 'nativeFormat', 'encoding', 'mimeType', 'filename', 'bytes', 'schemaVersion', 'lossless', 'fidelity', 'sourceDocumentId', 'documentId', 'pageId', 'session', 'revision', 'width', 'height', 'scale', 'bounds', 'backend', 'renderer', 'screenshot', 'target', 'assetCount', 'sourceNodeCount', 'options', 'precisionLossy'])
       for (const key of Object.keys(metadata)) if (!keep.has(key)) delete metadata[key]
     }
     const prepared = candidates.map(candidate => {

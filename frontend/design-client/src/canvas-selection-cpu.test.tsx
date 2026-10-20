@@ -291,3 +291,25 @@ test('multi-move final reparenting reuses its parent scan and preserves world ge
   // the final relocation filter is removed; reparentMany has separate work.
   expect(work.explicitScans).toBeLessThanOrEqual(ids.length + 6)
 })
+
+test('entered-frame small child owns pointerdown and final release drag despite overlapping backing layer', async () => {
+  const doc = blank(), frame = node('frame', 0, 0, 400, 300),
+    child = node('rectangle', 40, 40, 40, 30), backing = node('rectangle', 20, 20, 300, 200)
+  frame.children = [child.id, backing.id]; doc.pages[0].children = [frame.id]
+  doc.nodes = Object.fromEntries([frame, child, backing].map(n => [n.id, n]))
+  const editor = new Editor(doc); cleanups.push(() => editor.dispose())
+  editor.select([child.id]); editor.set({ snap: false, snapPixels: false, view: { x: 0, y: 0, zoom: 1 } })
+  const c = await canvas(editor), before = editor.state.doc
+  c.tree.props.onPointerDown(c.event(50, 50))
+  expect(editor.state.selection).toEqual([child.id])
+  c.tree.props.onPointerMove(c.event(55, 55))
+  c.tree.props.onPointerUp(c.event(70, 80))
+  expect(editor.state.doc.nodes[child.id].transform).toEqual([1, 0, 0, 1, 60, 70])
+  expect(editor.state.doc.nodes[backing.id]).toEqual(before.nodes[backing.id])
+  expect(editor.state.doc.nodes[frame.id]).toEqual(before.nodes[frame.id])
+  expect(editor.interactionActive).toBe(false)
+  const after = editor.state.doc
+  c.flush(); expect(editor.state.doc).toBe(after)
+  editor.undo(); expect(editor.state.doc).toEqual(before); expect(editor.canUndo).toBe(false)
+  editor.redo(); expect(editor.state.doc).toEqual(after)
+})

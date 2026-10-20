@@ -49,3 +49,8 @@
 .nudge-settings label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
 .nudge-settings input { width: 140px; min-height: 36px; padding: 6px 10px; border: 1px solid var(--workspace-border); border-radius: 6px; color: var(--workspace-text); background: var(--workspace-field); }
 .nudge-settings [aria-invalid="true"] { border-color: #b42318; }
+.interface-settings { margin-bottom: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--workspace-border); }
+.interface-settings > label:not(.settings-toggle) { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.interface-settings select { padding: 7px 10px; background: var(--workspace-field); color: var(--workspace-text); border: 1px solid var(--workspace-border); border-radius: 6px; }
+.interface-settings .settings-toggle { margin-top: 16px; }
+.interface-settings > button { margin-top: 14px; min-height: 32px; border: 1px solid var(--workspace-border); border-radius: 6px; }

@@ -1,3 +1,4 @@
+import { assertFdAppendSupported } from './fd-extensions'
 import { cloneValue } from './draft'
 import { defaultColorSettings } from './color'
 import { node, uid, type DesignDocument } from './model'
@@ -9,6 +10,7 @@ import { captureClipboardSemantics, clipboardDependencyNodes, applyClipboardSema
 /** One atomic append. A static group per source page keeps authored coordinates,
  * clips and animation keyframes intact, and makes each import easy to move. */
 export function appendDocument(target: DesignDocument, source: DesignDocument, pageId: string) {
+  assertFdAppendSupported(source)
   const page = target.pages.find(p => p.id === pageId)
   if (!page) throw new Error('追加导入的页面已不存在')
   const sourcePages = source.pages.filter(p => p.children.length)

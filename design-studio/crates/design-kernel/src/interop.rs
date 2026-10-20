@@ -67,19 +67,120 @@ pub fn image_data_uri_public(bytes: &[u8]) -> String {
     image_data_uri(bytes)
 }
 
+/// Resource ceilings shared with the lossless Sketch archive adapter. These
+/// constrain compressed input and actual decompressed bytes, not just ZIP claims.
+#[derive(Clone, Copy)]
+struct ArchiveLimits {
+    input: usize,
+    entries: usize,
+    entry: u64,
+    document_entry: u64,
+    total: u64,
+}
+
+const ARCHIVE_LIMITS: ArchiveLimits = ArchiveLimits {
+    input: crate::sketch::archive::MAX_TOTAL_BYTES as usize,
+    entries: crate::sketch::archive::MAX_ENTRIES,
+    entry: crate::sketch::archive::MAX_ENTRY_BYTES,
+    document_entry: crate::sketch::archive::MAX_DOCUMENT_BYTES,
+    total: crate::sketch::archive::MAX_TOTAL_BYTES,
+};
+
+fn archive_limit(message: &str) -> Error {
+    Error::Unsupported(format!("archive resource limit: {message}"))
+}
+
 fn read_zip(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
+    read_zip_bounded(bytes, ARCHIVE_LIMITS)
+}
+
+fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<String, Vec<u8>>> {
+    if bytes.len() > limits.input {
+        return Err(archive_limit("input bytes"));
+    }
+    // Preflight the original directory before ZipArchive allocates its index.
+    // ZIP32's end record has a bounded comment. Compute the physical directory
+    // start from its size so ordinary prepended/self-extracting data still works.
+    let end = (bytes.len().saturating_sub(22 + u16::MAX as usize)..bytes.len().saturating_sub(21))
+        .rev().find(|&at| {
+            bytes.get(at..at + 4) == Some(b"PK\x05\x06")
+                && at + 22 + u16::from_le_bytes([bytes[at + 20], bytes[at + 21]]) as usize == bytes.len()
+        }).ok_or_else(|| Error::NotAZip("missing ZIP32 end record".into()))?;
+    let directory_size = u32::from_le_bytes(bytes[end + 12..end + 16].try_into().unwrap()) as usize;
+    let directory_start = end.checked_sub(directory_size)
+        .ok_or_else(|| Error::NotAZip("invalid central directory size".into()))?;
+    let mut at = directory_start;
+    // zip 2.x deduplicates central-directory names. Count original records so
+    // ambiguous duplicates cannot silently overwrite each other. As in the
+    // strict Sketch adapter, accept ZIP32 only; never extract to the filesystem.
+    let mut records = 0;
+    while bytes.get(at..at.saturating_add(4)) == Some(b"PK\x01\x02") {
+        let header = bytes.get(at..at.saturating_add(46))
+            .ok_or_else(|| Error::NotAZip("truncated central directory".into()))?;
+        let length = |offset| u16::from_le_bytes([header[offset], header[offset + 1]]) as usize;
+        at = at.checked_add(46 + length(28) + length(30) + length(32))
+            .filter(|end| *end <= bytes.len())
+            .ok_or_else(|| Error::NotAZip("truncated central entry".into()))?;
+        records += 1;
+        if records > limits.entries {
+            return Err(archive_limit("entry count"));
+        }
+    }
+    if at != end || bytes.get(at..at.saturating_add(4)) != Some(b"PK\x05\x06") {
+        return Err(Error::Unsupported("non-ZIP32 or unsupported central directory trailer".into()));
+    }
     let cursor = std::io::Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(cursor).map_err(|e| Error::NotAZip(e.to_string()))?;
+    if archive.central_directory_start() != directory_start as u64 {
+        return Err(Error::NotAZip("inconsistent central directory offset".into()));
+    }
+    if records != archive.len() {
+        return Err(Error::NotAZip("duplicate central directory identity".into()));
+    }
     let mut out = BTreeMap::new();
+    let mut names = std::collections::BTreeSet::new();
+    let mut total = 0u64;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| Error::Io(e.to_string()))?;
+        let name = file.name().to_owned();
+        let path = name.strip_suffix('/').unwrap_or(&name);
+        if !crate::sketch::archive::safe_path(path) || !names.insert(path.to_owned()) {
+            return Err(Error::NotAZip(format!("unsafe/duplicate archive path: {name}")));
+        }
+        if file.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
+            return Err(Error::NotAZip("archive symlink".into()));
+        }
         if file.is_dir() {
             continue;
         }
-        let mut data = Vec::with_capacity(file.size() as usize);
-        file.read_to_end(&mut data)
+        let declared = file.size();
+        let remaining = limits.total.saturating_sub(total);
+        let entry_limit = if name == "document.json" { limits.document_entry } else { limits.entry };
+        if declared > entry_limit {
+            return Err(archive_limit("entry expanded bytes"));
+        }
+        if declared > remaining {
+            return Err(archive_limit("total expanded bytes"));
+        }
+        let allowed = entry_limit.min(remaining);
+        // Never reserve according to untrusted metadata. Read at most the
+        // remaining budget plus one sentinel byte, including when size lies.
+        let mut data = Vec::new();
+        file.by_ref().take(allowed.saturating_add(1)).read_to_end(&mut data)
             .map_err(|e| Error::Io(e.to_string()))?;
-        out.insert(file.name().to_string(), data);
+        let actual = data.len() as u64;
+        if actual > allowed {
+            return Err(archive_limit(if remaining < entry_limit {
+                "total expanded bytes"
+            } else {
+                "entry expanded bytes"
+            }));
+        }
+        if actual != declared {
+            return Err(Error::NotAZip("entry length mismatch".into()));
+        }
+        total += actual; // actual <= remaining, so this cannot overflow.
+        out.insert(name, data);
     }
     Ok(out)
 }
@@ -858,7 +959,7 @@ impl<'a> Importer<'a> {
             node.opacity = opacity;
             node.blend = blend;
             // P1-6: shared style reference survives as a style_ref
-            if let Some(shared) = style.get("sharedStyleID").and_then(Value::as_str) {
+            if let Some(shared) = layer.get("sharedStyleID").or_else(|| style.get("sharedStyleID")).and_then(Value::as_str) {
                 node.style_refs
                     .insert("sketchSharedStyleID".into(), shared.into());
             }
@@ -1091,6 +1192,18 @@ impl<'a> Importer<'a> {
                 // FixedWidthAndHeight preserves both source extents.
                 let behaviour = layer.get("textBehaviour").and_then(Value::as_i64).unwrap_or(0);
                 style.wrap = behaviour != 0;
+                // Native sizing remains authoritative. The namespaced payload
+                // preserves the independent kernel wrap switch, which Sketch
+                // cannot express for fixed boxes. Ignore it after a native
+                // sizing-mode or text edit; ordinary foreign files need no metadata.
+                if let Some(own) = layer.pointer("/userInfo/com.futureox.design-kernel/textWrap") {
+                    if own.get("textBehaviour").and_then(Value::as_i64) == Some(behaviour)
+                        && own.get("text").and_then(Value::as_str) == Some(node.text.as_str()) {
+                        if let Some(wrap) = own.get("wrap").and_then(Value::as_bool) {
+                            style.wrap = wrap;
+                        }
+                    }
+                }
                 if matches!(behaviour, 0..=2) {
                     node.sizing = Some(crate::layout::Sizing {
                         width: if behaviour == 0 { crate::layout::SizeMode::Hug } else { crate::layout::SizeMode::Fixed },
@@ -1148,10 +1261,13 @@ impl<'a> Importer<'a> {
                             link: None,
                             font_id: font_name,
                             font_size,
-                            weight: None,
+                            weight: a.pointer("/MSAttributedStringFontAttribute/attributes/variation/2003265652")
+                                .and_then(Value::as_f64).map(|weight| weight as f32),
                         });
                         // first run fills the defaults
                         if node.text_runs.len() == 1 {
+                            if let Some(font) = node.text_runs[0].font_id.as_ref() { style.font_id = font.clone(); }
+                            if let Some(weight) = node.text_runs[0].weight { style.weight = weight; }
                             node.font_size = font_size.unwrap_or(14.);
                             if let Some(c) = &color {
                                 node.fills.push({
@@ -1695,16 +1811,45 @@ fn foreign_symbol_import(
 /// `"hotspot"` arm in [`Importer::layer`]): their prototype flow payload is
 /// preserved verbatim in `bindings.sketchRawLayer` and flagged via
 /// `bindings.interopLimited` instead of being dropped or disguised.
+// Validate both namespaces before adopting any layers or resources. Two native
+// definitions must never silently overwrite one another, including aliases in
+// our optional original-ID metadata and collisions across paint/text containers.
+fn validate_sketch_shared_style_ids(document: &Value) -> Result<()> {
+    let aliases = document.pointer("/userInfo/com.futureox.design-kernel/sharedStyleIds");
+    let mut wire_ids = std::collections::BTreeSet::new();
+    let mut resolved_ids = std::collections::BTreeSet::new();
+    for container in ["layerStyles", "layerTextStyles"] {
+        let Some(objects) = document.get(container).and_then(|c| c.get("objects")).and_then(Value::as_array) else { continue };
+        for object in objects {
+            let Some(wire) = object.get("do_objectID").and_then(Value::as_str) else { continue };
+            if !wire_ids.insert(wire) {
+                return Err(Error::MalformedJson("duplicate shared style wire ID across definitions".into()));
+            }
+            let resolved = match aliases.and_then(|ids| ids.get(wire)) {
+                Some(value) => value.as_str().filter(|id| !id.is_empty())
+                    .ok_or_else(|| Error::MalformedJson("invalid shared style original-ID mapping".into()))?,
+                None => wire,
+            };
+            if !resolved_ids.insert(resolved) {
+                return Err(Error::MalformedJson("duplicate resolved shared style ID across definitions".into()));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
     let files = crate::sketch::archive::read(bytes)
         .map_err(|e| Error::Unsupported(e.to_string()))?;
     let meta = json_part(&files, "meta.json")?;
     let document = json_part(&files, "document.json")?;
+    validate_sketch_shared_style_ids(&document)?;
 
     let mut doc = Document {
         reviews: Vec::new(),
         design_system: None,
         prototype: None,
+        fd_compatibility: None,
         schema_version: 1,
         color_management: None,
         raster_profile: None,
@@ -1837,7 +1982,9 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            let style_object = object.get("style").cloned().unwrap_or(Value::Null);
+            let style_id = document.pointer("/userInfo/com.futureox.design-kernel/sharedStyleIds")
+                .and_then(|ids| ids.get(style_id)).and_then(Value::as_str).unwrap_or(style_id);
+            let style_object = object.get("value").or_else(|| object.get("style")).cloned().unwrap_or(Value::Null);
             // Full Sketch layer styles carry borders/shadows next to their
             // fills (22 号字典 §6); they survive as paint-style parts.
             let mut strokes = Vec::new();
@@ -1862,7 +2009,7 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
                     })
                     .unwrap_or(Value::Null),
                 // text styles keep their paragraph basics
-                _ => style_object
+                _ => style_object.get("textStyle").unwrap_or(&style_object)
                     .get("encodedAttributes")
                     .map(|attrs| {
                         let para = attrs
@@ -1871,13 +2018,18 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
                             .cloned()
                             .unwrap_or(Value::Null);
                         json!({
+                            "fontId": attrs.pointer("/MSAttributedStringFontAttribute/attributes/name").and_then(Value::as_str).unwrap_or("default"),
+                            "weight": attrs.pointer("/MSAttributedStringFontAttribute/attributes/variation/2003265652").and_then(Value::as_f64).unwrap_or(400.),
+                            "letterSpacing": attrs.get("kerning").and_then(Value::as_f64).unwrap_or(0.),
+                            "paragraphSpacing": para.get("paragraphSpacing").and_then(Value::as_f64).unwrap_or(0.),
+                            "paragraphIndent": para.get("firstLineHeadIndent").and_then(Value::as_f64).unwrap_or(0.),
                             "align": alignment_from_code(
                                 para.get("alignment").and_then(Value::as_i64).unwrap_or(0)),
                             "lineHeight": para
                                 .get("minimumLineHeight")
                                 .or_else(|| para.get("maximumLineHeight"))
                                 .and_then(Value::as_f64)
-                                .map(|px| px / 16.)
+                                .map(|px| px / attrs.pointer("/MSAttributedStringFontAttribute/attributes/size").and_then(Value::as_f64).filter(|v| *v > 0.).unwrap_or(16.))
                                 .unwrap_or(1.35),
                             "wrap": false
                         })
@@ -1938,6 +2090,9 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
     // (design_system has no swatch concept) ride the raw container store;
     // the shared-style fidelity map joins them under a fixed key.
     let mut sketch_containers: BTreeMap<String, Value> = BTreeMap::new();
+    if let Some(ids) = document.pointer("/userInfo/com.futureox.design-kernel/sharedStyleIds") {
+        sketch_containers.insert("sharedStyleIds".into(), ids.clone());
+    }
     for key in [
         "sharedSwatches",
         "foreignLayerStyles",
@@ -1970,6 +2125,7 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
     // archived do_objectID; the uuid map built during layer import restores
     // the kernel id. Unmappable fields are reported on the node, not dropped.
     doc.nodes = importer.nodes;
+    crate::interop_resources::import_fonts(&document, &mut doc)?;
     let mut text_layouts = Map::new();
     for node in doc.nodes.values_mut() {
         if let Some(frame) = node.bindings.remove("sketchSourceTextFrameRaw") {
@@ -2399,6 +2555,30 @@ pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
     if omitted {
         warnings.insert("Sketch: additional compatibility notices omitted; inspect retained source fields.".into());
     }
+    // Turn native Sketch shared-style links into executable kernel references.
+    // Keep unresolved IDs as source metadata rather than inventing definitions.
+    if let Some(system) = &mut document.design_system {
+        for shared in system.styles.values_mut().filter(|style| style.kind == "text") {
+            if let Ok(mut style) = serde_json::from_value::<crate::font::TextStyle>(shared.value.clone()) {
+                if style.font_id != "default" && !document.fonts.contains_key(&style.font_id) {
+                    style.font_id = "default".into();
+                }
+                shared.value = serde_json::to_value(style).map_err(|e| Error::MalformedJson(e.to_string()))?;
+            }
+        }
+        for node in document.nodes.values_mut() {
+            if let Some(id) = node.style_refs.get("sketchSharedStyleID").cloned() {
+                let id = system.sketch_containers.get("sharedStyleIds")
+                    .and_then(|ids| ids.get(&id)).and_then(Value::as_str).unwrap_or(&id).to_owned();
+                if let Some(shared) = system.styles.get(&id) {
+                    let field = if shared.kind == "text" { "textStyle" } else { "fills" };
+                    node.style_refs.insert(field.into(), id);
+                } else {
+                    warnings.insert("Sketch: unresolved shared style reference retained as source metadata.".into());
+                }
+            }
+        }
+    }
     // Format metadata is opaque source data, never a variable binding or a
     // shared-style property. Keep it outside the executable node contract.
     let mut metadata = Map::new();
@@ -2432,6 +2612,7 @@ pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
 }
 
 struct ExportedImages {
+    font_weight_axes: BTreeMap<String, bool>,
     color_settings: ColorSettings,
     entries: Vec<(String, Vec<u8>)>,
     seen: std::collections::HashSet<String>,
@@ -2497,6 +2678,12 @@ fn hex(bytes: &[u8]) -> String {
 /// Sketch readers expect UUID-shaped object IDs; derive one deterministically
 /// from our node id so re-exports stay stable, and stash the original id in
 /// userInfo for loss-free round-trips.
+fn sketch_shared_style_id(id: &str) -> String {
+    if id.len() == 36 && id.bytes().enumerate().all(|(i, b)| {
+        if matches!(i, 8 | 13 | 18 | 23) { b == b'-' } else { b.is_ascii_hexdigit() }
+    }) { id.to_owned() } else { sketch_id(id) }
+}
+
 fn sketch_id(id: &str) -> String {
     use sha2::Digest;
     let d = sha2::Sha256::digest(id.as_bytes());
@@ -2957,6 +3144,17 @@ fn class_for_kind(kind: &str) -> &'static str {
     }
 }
 
+fn sketch_text_behaviour(node: &Node) -> i64 {
+    use crate::layout::SizeMode;
+    match node.sizing.as_ref() {
+        Some(s) if s.width == SizeMode::Hug && s.height == SizeMode::Hug => 0,
+        Some(s) if s.height == SizeMode::Hug => 1,
+        None => node.bindings.get("sketchTextBehaviour")
+            .and_then(|value| value.parse::<i64>().ok()).unwrap_or(2),
+        _ => 2,
+    }
+}
+
 fn text_layout_signature(node: &Node) -> Value {
     json!({"text":node.text,"fontSize":node.font_size,"textStyle":node.text_style,
         "textRuns":node.text_runs,"sizing":node.sizing})
@@ -3025,9 +3223,31 @@ fn sketch_font_name(doc: &Document, font_id: &str) -> String {
                 .as_deref()
                 .filter(|name| !name.is_empty())
                 .map(str::to_owned)
+                .or_else(|| {
+                    use base64::Engine as _;
+                    let data = resource.data.split_once(',').map(|(_, data)| data).unwrap_or(&resource.data);
+                    let bytes = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
+                    let face = ttf_parser::Face::parse(&bytes, resource.index).ok()?;
+                    face.names().into_iter().filter(|name| name.name_id == ttf_parser::name_id::POST_SCRIPT_NAME)
+                        .find_map(|name| name.to_string())
+                })
                 .unwrap_or_else(|| resource.family.clone())
         })
         .unwrap_or_else(|| font_id.to_owned())
+}
+
+fn sketch_font_descriptor(doc: &Document, axes: &mut BTreeMap<String, bool>, font_id: &str, size: f64, weight: f32) -> Value {
+    let mut descriptor = json!({"_class":"fontDescriptor", "attributes":{
+        "name":sketch_font_name(doc, font_id), "size":size}});
+    let has_weight = *axes.entry(font_id.into()).or_insert_with(|| {
+        let Some(resource) = doc.fonts.get(font_id) else { return false };
+        use base64::Engine as _;
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(resource.data.as_bytes()) else { return false };
+        let Ok(face) = ttf_parser::Face::parse(&bytes, resource.index) else { return false };
+        face.variation_axes().into_iter().any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"wght"))
+    });
+    if has_weight { descriptor["attributes"]["variation"] = json!({"2003265652":weight}); }
+    descriptor
 }
 
 fn exported_symbol_id(doc: &Document, id: &str) -> String {
@@ -3268,8 +3488,9 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
         }
         // P1-6: shared style reference (style_refs holds the Sketch uuid).
         let mut style = Map::new();
-        if let Some(shared) = n.style_refs.get("sketchSharedStyleID") {
-            style.insert("sharedStyleID".into(), json!(shared));
+        if let Some(shared) = n.style_refs.get("textStyle").or_else(|| n.style_refs.get("fills"))
+            .or_else(|| n.style_refs.get("sketchSharedStyleID")) {
+            layer.insert("sharedStyleID".into(), json!(sketch_shared_style_id(shared)));
         }
         style.insert("_class".into(), json!("style"));
         style.insert(
@@ -3559,8 +3780,8 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
                 // set). Kernel run offsets are UTF-16 already, so
                 // {location, length} pass through untouched.
                 let style = n.text_style.as_ref();
-                let default_font = sketch_font_name(doc, style.map(|s| s.font_id.as_str()).unwrap_or(""));
-                let default_font = default_font.as_str();
+                let default_font = style.map(|s| s.font_id.as_str()).unwrap_or("default");
+                let default_weight = style.map(|s| s.weight).unwrap_or(400.);
                 let default_color = n
                     .fills
                     .iter()
@@ -3585,10 +3806,11 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
                     .bindings
                     .get("sketchTextAllowsTightening")
                     .is_some_and(|v| v == "1" || v == "true");
-                let attribute = |location: usize,
+                let mut attribute = |location: usize,
                                  length: usize,
                                  font: &str,
                                  size: f64,
+                                 weight: f32,
                                  color: Option<&str>,
                                  underline: bool,
                                  strikethrough: bool|
@@ -3596,8 +3818,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
                     let mut attrs = Map::new();
                     attrs.insert(
                         "MSAttributedStringFontAttribute".into(),
-                        json!({"_class": "fontDescriptor",
-                               "attributes": {"name": font, "size": size}}),
+                        sketch_font_descriptor(doc, &mut images.font_weight_axes, font, size, weight),
                     );
                     if let Some(c) = color {
                         attrs.insert(
@@ -3666,6 +3887,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
                             start - cursor,
                             default_font,
                             n.font_size,
+                            default_weight,
                             default_color.as_deref(),
                             false,
                             false,
@@ -3674,8 +3896,9 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
                     attributes.push(attribute(
                         start,
                         end - start,
-                        &sketch_font_name(doc, run.font_id.as_deref().unwrap_or("default")),
+                        run.font_id.as_deref().unwrap_or(default_font),
                         run.font_size.unwrap_or(n.font_size),
+                        run.weight.unwrap_or(default_weight),
                         run.color.as_deref().or(default_color.as_deref()),
                         run.underline,
                         run.strikethrough,
@@ -3688,6 +3911,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
                         total - cursor,
                         default_font,
                         n.font_size,
+                        default_weight,
                         default_color.as_deref(),
                         false,
                         false,
@@ -3703,20 +3927,19 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
                 );
                 layer.insert("automaticallyDrawOnUnderlyingPath".into(), json!(false));
                 layer.insert("dontSynchroniseWithSymbol".into(), json!(false));
-                // Authored sizing is authoritative after editing. Metadata is
-                // retained for legacy/unsupported modes without shared sizing.
-                let behaviour = if style.is_some_and(|s| s.wrap) {
-                    match n.sizing.as_ref().map(|s| s.height) {
-                        Some(crate::layout::SizeMode::Fixed) => 2,
-                        Some(crate::layout::SizeMode::Hug) => 1,
-                        _ => n.bindings
-                            .get("sketchTextBehaviour")
-                            .and_then(|s| s.parse::<i64>().ok())
-                            .unwrap_or(1),
-                    }
-                } else {
-                    0
-                };
+                // TextBehaviour is a sizing contract, not a wrap switch. A
+                // node without Sizing has fixed authored extents in the kernel.
+                let behaviour = sketch_text_behaviour(n);
+                if n.sizing.as_ref().is_some_and(|s| {
+                    use crate::layout::SizeMode;
+                    s.width == SizeMode::Fill || s.height == SizeMode::Fill
+                        || (s.width == SizeMode::Hug && s.height != SizeMode::Hug)
+                }) {
+                    note_lossy(&mut lossy, "text-sizing-not-representable-in-native-sketch");
+                }
+                if style.is_some_and(|s| s.wrap) != (behaviour != 0) {
+                    note_lossy(&mut lossy, "text-wrap-in-userInfo-native-sketch-may-wrap-differently");
+                }
                 layer.insert("textBehaviour".into(), json!(behaviour));
                 // lineSpacingBehaviour: stored binding wins; a custom line
                 // height (written as fixed min/maxLineHeight above) derives
@@ -3911,6 +4134,13 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
         // properties) survives symbol round-trips this way.
         let mut user_info = Map::new();
         user_info.insert("originalId".into(), json!(id));
+        if n.kind == "text" {
+            let behaviour = sketch_text_behaviour(n);
+            let wrap = n.text_style.as_ref().is_some_and(|s| s.wrap);
+            if wrap != (behaviour != 0) {
+                user_info.insert("textWrap".into(), json!({"textBehaviour": behaviour, "text": n.text, "wrap": wrap}));
+            }
+        }
         if let Some(key) = &n.component_key { user_info.insert("componentKey".into(), json!(key)); }
         if n.component_set { user_info.insert("componentSet".into(), json!(true)); }
         if let Some(c) = &n.component
@@ -3980,7 +4210,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
 /// under `colors`, swatch references under `swatchID`, plus the
 /// updatableColors recolor marker.
 fn adaptable_apply_shared_style(object: &mut Value, fidelity: &Value) {
-    let Some(style) = object.get_mut("style") else {
+    let Some(style) = object.get_mut("value") else {
         return;
     };
     if let Some(colors) = fidelity.get("colors").and_then(Value::as_object) {
@@ -4070,6 +4300,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
         }
     }
     let mut images = ExportedImages {
+        font_weight_axes: BTreeMap::new(),
         color_settings: settings,
         entries: Vec::new(),
         seen: Default::default(),
@@ -4150,8 +4381,8 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     let mut style_lossy = Vec::new();
                     let (borders, shadows, inner_shadows, blur, border_options) =
                         export_style_parts(&shared.strokes, &shared.effects, &mut style_lossy, images.color_settings)?;
-                    json!({"do_objectID": style_id, "name": shared.name,
-                           "style": {"_class": "style", "do_objectID": sketch_id(style_id),
+                    json!({"_class":"sharedStyle", "do_objectID": sketch_shared_style_id(style_id), "name": shared.name,
+                           "value": {"_class": "style", "do_objectID": sketch_id(style_id),
                                      "fills": paints, "borders": borders,
                                      "shadows": shadows, "innerShadows": inner_shadows,
                                      "blur": blur, "borderOptions": border_options}})
@@ -4162,18 +4393,23 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     let encoded = style.as_ref().map(|s| {
                         json!({
                             "_class": "textStyle",
+                            "verticalAlignment":0,
                             "encodedAttributes": {
-                                "MSAttributedStringFontAttribute": {"_class": "fontDescriptor",
-                                    "attributes": {"name": sketch_font_name(doc, &s.font_id),
-                                        "size": 16.}},
-                                "textStyleBasicParagraphStyle": {"_class": "paragraphStyle",
+                                "MSAttributedStringFontAttribute": sketch_font_descriptor(doc, &mut images.font_weight_axes, &s.font_id, 16., s.weight),
+                                "kerning": s.letter_spacing,
+                                "paragraphStyle": {"_class": "paragraphStyle",
                                     "alignment": paragraph_alignment(&s.align),
-                                    "allowsDefaultTighteningForTruncation": false}
+                                    "minimumLineHeight": s.line_height * 16.,
+                                    "maximumLineHeight": s.line_height * 16.,
+                                    "paragraphSpacing": s.paragraph_spacing,
+                                    "firstLineHeadIndent": s.paragraph_indent,
+                                    "allowsDefaultTighteningForTruncation": 0}
                             }
                         })
                     });
-                    json!({"do_objectID": style_id, "name": shared.name,
-                           "style": encoded.unwrap_or(Value::Null)})
+                    json!({"_class":"sharedStyle", "do_objectID": sketch_shared_style_id(style_id), "name": shared.name,
+                           "value": {"_class":"style", "do_objectID": sketch_id(&format!("{style_id}-value")),
+                               "textStyle": encoded.unwrap_or(Value::Null)}})
                 }
                 _ => continue,
             };
@@ -4181,6 +4417,40 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
             // payloads (raw adaptable JSON / swatchID) and updatableColors
             // back at their recorded slots.
             let mut object = object;
+            // Required Style members use the same defaults as ordinary layers.
+            let value = &mut object["value"];
+            for field in ["fills", "borders"] {
+                if let Some(parts) = value.get_mut(field).and_then(Value::as_array_mut) {
+                    for part in parts {
+                        part.as_object_mut().unwrap().remove("noiseFillType");
+                        if let Some(settings) = part["contextSettings"].as_object_mut() { settings.remove("isProgressive"); }
+                        if part.get("gradient").is_none() {
+                            part["gradient"] = json!({"_class":"gradient", "gradientType":0, "elipseLength":0,
+                                "from":"{0.5, 0}", "to":"{0.5, 1}", "stops":[
+                                    {"_class":"gradientStop", "position":0, "color":part["color"]},
+                                    {"_class":"gradientStop", "position":1, "color":part["color"]}]});
+                        }
+                    }
+                }
+            }
+            if value.pointer("/textStyle/encodedAttributes/paragraphStyle/firstLineHeadIndent").and_then(Value::as_f64) == Some(0.) {
+                value["textStyle"]["encodedAttributes"]["paragraphStyle"].as_object_mut().unwrap().remove("firstLineHeadIndent");
+            }
+            value["startMarkerType"] = json!(0);
+            value["endMarkerType"] = json!(0);
+            value["miterLimit"] = json!(10);
+            value["windingRule"] = json!(1);
+            if value.get("innerShadows").is_none() { value["innerShadows"] = json!([]); }
+            if value.get("borderOptions").is_none() {
+                value["borderOptions"] = json!({"_class":"borderOptions", "isEnabled":true,
+                    "dashPattern":[], "lineCapStyle":0, "lineJoinStyle":0});
+            }
+            if let Some(options) = value["borderOptions"].as_object_mut() {
+                for field in ["startMarkerType", "endMarkerType", "miterLimit", "windingRule"] { options.remove(field); }
+                options.insert("isEnabled".into(), json!(true));
+            }
+            value["colorControls"] = json!({"_class":"colorControls", "isEnabled":false,
+                "brightness":0, "contrast":1, "hue":0, "saturation":1});
             if let Some(fidelity) = system
                 .sketch_containers
                 .get("sharedStyleFidelity")
@@ -4204,20 +4474,26 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
         "currentPageIndex": 0,
         "pages": page_refs,
         "layerStyles": {"_class": "sharedStyleContainer", "objects": layer_styles},
-        "layerTextStyles": {"_class": "sharedStyleContainer", "objects": layer_text_styles}
+        "layerTextStyles": {"_class": "sharedTextStyleContainer", "objects": layer_text_styles}
     });
+    if let Some(system) = &doc.design_system {
+        let ids: Map<String, Value> = system.styles.keys()
+            .map(|id| (sketch_shared_style_id(id), json!(id))).collect();
+        document["userInfo"] = json!({"com.futureox.design-kernel":{"sharedStyleIds":ids}});
+    }
     // P1-13: verbatim document-level containers (sharedSwatches, foreign
     // style/swatch lists, library metadata) return untouched; foreign
     // symbols are rebuilt from their local masters, with entries that had
     // no embedded copy appended raw.
     if let Some(system) = &doc.design_system {
         for (key, value) in &system.sketch_containers {
-            if matches!(key.as_str(), "sharedStyleFidelity" | "foreignSymbolsUnresolved" | "nodeMetadata" | "textSourceLayouts") {
+            if matches!(key.as_str(), "sharedStyleFidelity" | "sharedStyleIds" | "foreignSymbolsUnresolved" | "nodeMetadata" | "textSourceLayouts") {
                 continue;
             }
             document[key] = value.clone();
         }
     }
+    crate::interop_resources::export_fonts(doc, &mut document)?;
     let mut foreign_symbols = foreign_symbol_export(doc, &mut images)?;
     if let Some(system) = &doc.design_system
         && let Some(unresolved) = system
@@ -4230,6 +4506,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     if !foreign_symbols.is_empty() {
         document["foreignSymbols"] = Value::Array(foreign_symbols);
     }
+    validate_sketch_shared_style_ids(&document)?;
     let meta = json!({
         "app": "com.futureox.design-kernel",
         "appVersion": "3.0",
@@ -4342,6 +4619,106 @@ fn import_fig_via_converter(bytes: &[u8]) -> Result<Document> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn archive_test_limits() -> ArchiveLimits {
+        ArchiveLimits { input: 16 * 1024, entries: 4, entry: 1024, document_entry:1024, total: 1536 }
+    }
+
+    fn patch_zip_sizes(bytes: &mut [u8], size: u32) {
+        // Fixtures contain no accidental signatures in their compressed data.
+        for at in 0..bytes.len().saturating_sub(46) {
+            let offset = if &bytes[at..at + 4] == b"PK\x01\x02" {
+                Some(24)
+            } else if &bytes[at..at + 4] == b"PK\x03\x04" {
+                Some(22)
+            } else { None };
+            if let Some(offset) = offset {
+                bytes[at + offset..at + offset + 4].copy_from_slice(&size.to_le_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn bounded_archive_valid_exact_limits_and_high_compression() {
+        let entries = vec![("canvas.fig".into(), vec![0; 1024]),
+            ("images/a".into(), vec![1; 512])];
+        let bytes = write_zip(&entries).unwrap();
+        let mut limits = archive_test_limits();
+        limits.input = bytes.len();
+        limits.entries = entries.len();
+        assert_eq!(read_zip_bounded(&bytes, limits).unwrap(), entries.into_iter().collect());
+        // High compression is supported; the expanded-byte budget is the guard.
+        let bytes = write_zip(&[("canvas.fig".into(), vec![0; 256 * 1024])]).unwrap();
+        assert!(bytes.len() < 2048);
+        assert_eq!(read_zip_public(&bytes).unwrap()["canvas.fig"].len(), 256 * 1024);
+    }
+
+    #[test]
+    fn bounded_archive_empty_and_truncated_containers() {
+        let bytes = write_zip(&[]).unwrap();
+        assert!(read_zip(&bytes).unwrap().is_empty());
+        for end in 0..bytes.len() {
+            assert!(read_zip(&bytes[..end]).is_err());
+        }
+    }
+
+    #[test]
+    fn bounded_archive_rejects_each_budget() {
+        let bytes = write_zip(&[("a".into(), vec![0; 1024]), ("b".into(), vec![1; 513])]).unwrap();
+        let limits = archive_test_limits();
+        assert!(read_zip_bounded(&bytes, limits).unwrap_err().to_string().contains("total expanded"));
+        assert!(read_zip_bounded(&bytes, ArchiveLimits { entries: 1, ..limits }).unwrap_err().to_string().contains("entry count"));
+        assert!(read_zip_bounded(&bytes, ArchiveLimits { input: bytes.len() - 1, ..limits }).unwrap_err().to_string().contains("input bytes"));
+        assert!(read_zip_bounded(&bytes, ArchiveLimits { entry: 1023, ..limits }).unwrap_err().to_string().contains("entry expanded"));
+    }
+
+    #[test]
+    fn bounded_archive_rejects_forged_sizes_and_compression_bombs() {
+        let bytes = write_zip(&[("canvas.fig".into(), vec![0; 8192])]).unwrap();
+        for declared in [0, 1, 1024, u32::MAX] {
+            let mut forged = bytes.clone();
+            patch_zip_sizes(&mut forged, declared);
+            let error = read_zip_bounded(&forged, archive_test_limits()).unwrap_err().to_string();
+            assert!(error.contains("entry expanded bytes"), "declared={declared}: {error}");
+        }
+        // A lying second entry must also stop at the remaining total allowance.
+        let mut bytes = write_zip(&[("a".into(), vec![0; 800]), ("b".into(), vec![1; 800])]).unwrap();
+        for at in 0..bytes.len().saturating_sub(47) {
+            let offset = if &bytes[at..at + 4] == b"PK\x01\x02" && bytes[at + 46] == b'b' {
+                Some(24)
+            } else if &bytes[at..at + 4] == b"PK\x03\x04" && bytes[at + 30] == b'b' {
+                Some(22)
+            } else { None };
+            if let Some(offset) = offset {
+                bytes[at + offset..at + offset + 4].copy_from_slice(&0u32.to_le_bytes());
+            }
+        }
+        let error = read_zip_bounded(&bytes, archive_test_limits()).unwrap_err().to_string();
+        assert!(error.contains("total expanded"), "{error}");
+    }
+
+    #[test]
+    fn bounded_archive_rejects_paths_duplicates_and_symlinks() {
+        for name in ["../a", "/a", "C:a", "a\\b", "a//b", "./a"] {
+            let bytes = write_zip(&[(name.into(), vec![1])]).unwrap();
+            assert!(read_zip(&bytes).unwrap_err().to_string().contains("archive path"), "{name}");
+        }
+        let mut duplicate = write_zip(&[("a".into(), vec![1]), ("b".into(), vec![2])]).unwrap();
+        // ZipWriter itself refuses duplicate names: forge an actual ZIP instead.
+        for at in 0..duplicate.len().saturating_sub(46) {
+            if &duplicate[at..at + 4] == b"PK\x01\x02" { duplicate[at + 46] = b'a'; }
+            if &duplicate[at..at + 4] == b"PK\x03\x04" { duplicate[at + 30] = b'a'; }
+        }
+        assert!(read_zip(&duplicate).unwrap_err().to_string().contains("duplicate"));
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer.add_symlink("link", "document.json", zip::write::SimpleFileOptions::default()).unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+        assert!(read_zip(&bytes).unwrap_err().to_string().contains("symlink"));
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer.add_directory("a/", zip::write::SimpleFileOptions::default()).unwrap();
+        writer.start_file("a", zip::write::SimpleFileOptions::default()).unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+        assert!(read_zip(&bytes).unwrap_err().to_string().contains("duplicate"));
+    }
 
     #[test]
     fn text_ranges_use_utf16_and_linear_gradient_geometry_roundtrips() {
@@ -4522,6 +4899,7 @@ mod tests {
             reviews: Vec::new(),
             design_system: None,
             prototype: None,
+            fd_compatibility: None,
             schema_version: 1,
             color_management: None,
             raster_profile: None,
@@ -5384,7 +5762,7 @@ mod tests {
         let paint_objects = &document["layerStyles"]["objects"];
         assert_eq!(paint_objects.as_array().map(Vec::len), Some(1));
         assert_eq!(paint_objects[0]["name"], "Brand Fill");
-        assert_eq!(paint_objects[0]["style"]["fills"][0]["color"]["blue"], 0.8);
+        assert_eq!(paint_objects[0]["value"]["fills"][0]["color"]["blue"], 0.8);
         let text_objects = &document["layerTextStyles"]["objects"];
         assert_eq!(text_objects.as_array().map(Vec::len), Some(1));
         assert_eq!(text_objects[0]["name"], "Body");
@@ -5737,7 +6115,7 @@ mod tests {
         let bytes = export_sketch(&doc).unwrap();
         let files = read_zip(&bytes).unwrap();
         let document: Value = serde_json::from_slice(&files["document.json"]).unwrap();
-        let style = &document["layerStyles"]["objects"][0]["style"];
+        let style = &document["layerStyles"]["objects"][0]["value"];
         let border_json = &style["borders"][0];
         assert_eq!(border_json["thickness"], 2.5);
         assert_eq!(border_json["position"], 1);
@@ -5749,7 +6127,9 @@ mod tests {
         assert_eq!(style["shadows"][0]["color"]["alpha"], 0.6);
         assert_eq!(style["innerShadows"][0]["blurRadius"], 5.);
 
-        let back = import_sketch(&bytes).unwrap();
+        // Canonical admission separates provenance/loss diagnostics from
+        // executable variable bindings before design-system validation.
+        let back = import_sketch_report(&bytes).unwrap().document;
         assert_eq!(back.schema_version, 12);
         let shared = back
             .design_system

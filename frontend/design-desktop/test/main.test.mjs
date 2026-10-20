@@ -233,6 +233,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
     /import \{ app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem \} from 'electron'/,
     `const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem } = globalThis[${JSON.stringify(key)}].electron`,
   )
+  source = source.replace("from './diagnostic-file.mjs'", `from ${JSON.stringify(new URL('../src/diagnostic-file.mjs', import.meta.url).href)}`)
   source = source.replace("from './workspace-roots.mjs'", `from ${JSON.stringify(new URL('../src/workspace-roots.mjs', import.meta.url).href)}`)
   source = source.replace("from './keyboard-shortcuts.mjs'", `from ${JSON.stringify(new URL('../src/keyboard-shortcuts.mjs', import.meta.url).href)}`)
   source = source.replace("import { registerAutomationBridge } from './automation-bridge.mjs'",
@@ -1242,4 +1243,18 @@ test('actual main binds MCP workspace callbacks to the same native root and clos
     assert.equal((await workspace.select(false)).status, 'cancelled')
     assert.equal((await savedWorkspace(state)).kind, 'default'); assert.equal(state.relaunchCalls, 0)
   } finally { await state.dispose() }
+})
+
+test('diagnostics fixed-path IPC persists sanitized local records and rejects untrusted senders', async () => {
+ const h = await host()
+ try {
+  const data = JSON.stringify({schema:1,dropped:0,records:[{time:Date.now(),component:'workspace',code:'STORAGE_ERROR',severity:'error',message:'private document',requestId:'token'}]})
+  const write = await h.invoke('diagnostics-write', data)
+  assert.equal(write.ok,true)
+  const read = await h.invoke('diagnostics-read')
+  assert.equal(read.ok,true);assert.equal(JSON.parse(read.data).records.length,1)
+  assert.ok(!read.data.includes('private'));assert.ok(!read.data.includes('token'))
+  assert.equal((await h.invoke('diagnostics-write', 'broken')).status,'error')
+  await assert.rejects(h.invoke('diagnostics-read', undefined, {sender:h.window.webContents,senderFrame:{url:'design-app://app/index.html'}}))
+ } finally { await h.dispose() }
 })

@@ -1,0 +1,58 @@
+# Futureox Design local v1 development contract
+
+This is maintained project guidance, not a claim that every release gate has passed. Target: local application v1.0.0. Package manifests and the source increment must be checked separately before calling an artifact a 1.0.0 release.
+
+## Architecture and product boundary
+
+- Web and Electron reuse the same frontend, authored model, components, layout, typography, selection/edit semantics and history boundaries. Electron can provide native local acceleration, files, SQLite and scoped host dialogs; it must not become a second design product with divergent semantics.
+- UI commands handle drafts, gestures and modal decisions. MCP translates discovered operations. Both reach the existing editor/domain implementation; automation stages a candidate and commits through Editor.change. Rust owns authoritative admission, layout and render semantics; TypeScript validation improves early diagnostics, not native authority.
+- Keep local-first SQLite/Tokio and browser IndexedDB adapters. No new cloud accounts, collaboration service, arbitrary filesystem/network operations, or self-built AI workflow/model orchestrator. A client may inspect → edit → inspect using the published bounded operations; the server executes operations only.
+- There is no obligation to preserve obsolete, unreleased application implementations. This does not license dropping current authored data, bypassing validation, or conflating independent version axes: app semver, FD binary format (currently 2), document schema (currently 1–15), automation capabilities (currently 1), FD extension contract (1), storage schema and editor/session/storage revisions.
+
+## Forward extensibility without fictitious support
+
+The optional document field is fdCompatibility with contractVersion: 1, requiredCapabilities: [], and extensions: a namespace-to-JSON map. Current code supports no required capabilities: any nonempty required list rejects. Add support only with a real implementation and paired native/frontend tests.
+
+Optional opaque payloads remain inert and round-trip through native FD, editor history and local storage. Namespace syntax is lowercase reverse-domain/name, at most 128 ASCII bytes; at most 64 namespaces. Limits are depth 32, 100,000 JSON values and portable resource cost 1 MiB (128 overhead + 32 per JSON value + UTF-8 string/key bytes), separate from document wire limits. Do not normalize floats/nulls or rewrite scene arrays to satisfy a metadata budget. Reject malformed JSON values and unsafe keys before expensive serialization.
+
+Whole-document open/save preserves the envelope. Append/import cannot safely remap opaque embedded IDs, so current append rejects nonempty optional payloads before modifying the destination. External FIG/Sketch/SVG fidelity remains independently limited; preserving FD metadata does not establish external-format or pixel equivalence.
+
+Trusted host code may register synchronous operations, validators and pure deterministic expansion functions. Files cannot register code, select modules, fetch resources or authorize operations. This is not a sandbox for hostile same-process JavaScript. Extension discovery is implementation metadata, never a permission grant.
+
+## Permission and commit boundaries
+
+Read [local operation permissions](LOCAL_OPERATION_PERMISSIONS_V1.md) before changing grants. Trusted host policy binds exact document/session, explicit method names and read/write authority. Omitted policy retains trusted local authority; an explicit empty policy denies all. This optional seam does not automatically apply a page/node ACL or restrict every UI route. Native bridge opt-in and workspace/settings grants remain separate boundaries.
+
+Validate schemas and all batch wrapper/leaf permissions before mutation callbacks. Expansion is trusted pure planning, not a side-effect mechanism. Stage in isolation and preserve atomic failure, locked nodes, references, layout, component overrides and one native undo entry. Recheck document/session/revision, authorization, busy state and pending input immediately before publication and after asynchronous host decisions. Never derive authority from FD metadata or request arguments.
+
+## Local storage and readable history
+
+- SQLite workspace/catalog pools use one connection each. Desktop runtime bounds admission to eight pending requests and 64 MiB admitted wire bytes, with one mutation worker. Blocking file preflight/parsing belongs in bounded blocking work; SQLx SQLite executes on connection workers. Direct library callers must bound their own concurrency.
+- Workspace WAL and synchronous=FULL, with BEGIN IMMEDIATE, atomically publish head, snapshot, resources/references and durable mutation receipt. Storage expected revision is separate from editor expectedRevision. BUSY/LOCKED and pool acquisition timeout report WORKSPACE_BUSY; no blind retry with changed content or a new mutation identity after uncertainty.
+- Queued cancellation can prevent execution; cancellation after commit cannot promise rollback. EOF drains admitted work. A missing response can mean a successful durable write: reconcile or retry the exact identity/content.
+- Saved history offers read-only snapshot preview and human-readable adjacent-revision differences: additions, removals, moves/order/transform, text and style changes. Show bounded paths and values, omit binary font/image payloads, and do not call a textual diff a visual comparison.
+- Restore appends a new durable revision under the viewed storage-head CAS. It does not delete history or turn editor undo into disk rollback. Protect dirty edits, active input and new editing during asynchronous restore; report a durable restore that could not safely be adopted in the canvas. Browser retention is currently 50 revisions, not unlimited; UI diff rows are bounded at 500.
+
+## Performance, rendering and interaction acceptance
+
+Performance work must preserve authored semantics, typography, transforms, clipping, material/effect output, HDR/float data, undo/redo and query results. Optimize from actual CPU profiles and named hot paths, not synthetic scheduling estimates. Keep baseline/candidate workloads, source/build hashes, timing units, warm-up, sample counts, run order, profiler overhead and correctness comparisons. A single sequential sampler-on run cannot support a general speedup claim. V8 symbols are real JS symbols; stripped WASM function indexes are not resolved Rust stacks.
+
+CPU fallback must use the existing exact-frame handoff and handle missing adapters/device loss without reusing a GPU-transferred canvas as a CPU canvas. Cancellation or invalid input is not a rendering failure to hide. SDR presentation must visibly disclose retained HDR/float document data; HDR exports and data preservation do not prove HDR display output.
+
+VITE_DESIGN_DYNAMIC_UNIFORMS and VITE_DESIGN_KERNEL_CACHE remain default-off (enabled only by the explicit value 1) pending a separate actual-device gate. Their implementation gates are in frontend/design-client/src/kernel/gpu/webgpu.ts and renderer.ts respectively. Before enabling, verify pixel parity on difficult materials, real memory/resource lifetime, device loss/cancellation, interaction smoothness and supported platforms. CPU mocks or source contracts cannot discharge this gate. Ordinary established GPU rendering is a separate path, not disabled by this requirement.
+
+History/sidebar, layer/property changes and canvas gestures require pending-input/dirty-state guards and real interaction regression coverage. Hook/jsdom tests establish event/state behavior only; actual browser/Electron layout, focus, pointer behavior and visual usability remain on-device acceptance items.
+
+## Testing and delivery
+
+Use the existing suites, with exact commands and source/build identity recorded:
+
+- Rust kernel/backend: cargo test for the affected package from design-studio, respecting the checked-in toolchain and lockfile.
+- Frontend: run typecheck and targeted Vitest suites from frontend/design-client. Rust changes require regenerated portable WASM before authoritative frontend/native-crossing tests.
+- MCP adapter: frontend/design-mcp npm run check and npm test use protocol/client/stream tests. test:integration creates actual sockets and is a distinct, environment-dependent gate.
+- Actual Editor/WASM tests cover admission, authored edits, expected conflicts, rollback, one undo/redo transaction, metadata retention and export/import boundaries. Real SQLite tests additionally cover transaction rollback, lock contention, idempotence and process/database reopening.
+- Record failed initial runs and corrected reruns, skips and mocks accurately. Never sum overlapping suite counts. Browser IndexedDB doubles are not physical persistence evidence; SQLite close/reopen is not power-loss/firmware evidence.
+
+At the 2026-10-20 development checkpoint, reported targeted tests cover FD native/WASM admission/history, permission dispatch, granular/bulk mutations, typed node inputs, history diff/restore and real SQLite. CPU profile comparisons are mixed; isolated optimization measurement and broader final integration may still be running. No GPU, browser/Electron GUI, real socket, or external AI-client acceptance is established by that checkpoint. Consult the delivered verification manifest for final exact results, not this prose as a substitute for logs.
+
+Each source increment must include the repository-local skill, maintained Markdown contracts, changed implementation/tests and reproducible evidence. Do not ship tokens, local connection details, invented endpoints or private assistant context. See [MCP operation guide](MCP_OPERATION_GUIDE_V1.md) and [release acceptance](LOCAL_RELEASE_ACCEPTANCE.zh-CN.md).

@@ -6,7 +6,7 @@ import type { AutomationResponse } from './types'
 import type { captureDesignPreview } from './export'
 const cleanups: Array<() => void> = []
 afterEach(() => { cleanups.splice(0).reverse().forEach(fn => fn()); vi.restoreAllMocks() })
-function fixture(capturePreview?: typeof captureDesignPreview, host?: BridgeDependencies['host']) {
+function fixture(capturePreview?: typeof captureDesignPreview, host?: BridgeDependencies['host'], captureRaster?: BridgeDependencies['captureRaster']) {
   const document = blank('Live automation'), rectangle = node('rectangle', 10, 20, 100, 60)
   document.nodes[rectangle.id] = rectangle; document.pages[0].children.push(rectangle.id)
   const editor = new Editor(document); cleanups.push(() => editor.dispose())
@@ -19,7 +19,7 @@ function fixture(capturePreview?: typeof captureDesignPreview, host?: BridgeDepe
     onRequest: (callback: typeof receive) => { receive = callback; return () => { receive = undefined } },
     onCancel: (callback: typeof cancel) => { cancel = callback; return () => { cancel = undefined } },
   } as unknown as DesktopAutomationTransport
-  const dispose = attachDesktopAutomation(editor, transport, { capturePreview, host }); cleanups.push(dispose)
+  const dispose = attachDesktopAutomation(editor, transport, { capturePreview, host, captureRaster }); cleanups.push(dispose)
   const envelope = (scope: 'read' | 'write' = 'read'): DesktopAutomationRequest => ({ requestId: `request-${++serial}`, kind: 'execute', sessionId: 'authorized-local-session', scope, documentId: editor.state.doc.id, session: editor.sessionGeneration, deadline: Date.now() + 15_000 })
   const send = (payload: DesktopAutomationRequest) => { const promise = new Promise<unknown>(resolve => waiters.set(payload.requestId, resolve)); receive!(payload); return promise }
   const call = (method: string, params: Record<string, unknown> = {}, scope: 'read' | 'write' = 'read', overrides: Partial<DesktopAutomationRequest> = {}) => {
@@ -183,5 +183,70 @@ describe('native host-operation adapter', () => {
     const pending = f.send({ ...f.envelope(), kind: 'host', hostOperation: { method: 'workspace.open', params: {} } })
     f.editor.load(blank('Other document')); gate.resolve({ opened: true })
     expect(await pending).toMatchObject({ transportError: { code: 'STALE_SESSION' } })
+  })
+})
+
+const rasterResult = () => ({ assets: [{ name: 'test.png', blob: new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'image/png' }), backend: 'cpu' as const, width: 1, height: 1, scale: 1 }], pageId: 'page', target: 'page' as const, bounds: { x: 0, y: 0, width: 1, height: 1 }, nodeIds: [], sliceId: undefined, renderer: 'product-cpu-export', screenshot: false })
+describe('bounded asynchronous raster artifacts', () => {
+  it('exports snapshots, retrieves exact bounded bytes and releases handles', async () => {
+    const capture = vi.fn(async (_doc: unknown, _options: unknown, _signal: AbortSignal) => rasterResult()), f = fixture(undefined, undefined, capture)
+    const result = await f.call('raster.export', { scales: [1, 2, 3] }) as any
+    expect(result.ok).toBe(true)
+    expect(capture.mock.calls[0][0]).not.toBe(f.editor.state.doc)
+    const artifactId = result.result.files[0].artifactId
+    expect(await f.call('raster.read', { artifactId, offset: 1, length: 2 })).toMatchObject({ ok: true, result: { base64: 'AgM=', nextOffset: 3, totalBytes: 4 } })
+    expect(await f.call('raster.read', { artifactId, length: 65537 })).toMatchObject({ ok: false, error: { code: 'INVALID_PARAMS' } })
+    expect(await f.call('raster.read', { artifactId }, 'read', { sessionId: 'other-client' })).toMatchObject({ ok: false, error: { code: 'ARTIFACT_NOT_FOUND' } })
+    expect(await f.call('raster.release', { artifactId })).toMatchObject({ ok: true })
+    expect(await f.call('raster.read', { artifactId })).toMatchObject({ ok: false, error: { code: 'ARTIFACT_NOT_FOUND' } })
+  })
+  it('rejects unknown/unsupported options before rendering and allows retry after failure', async () => {
+    const capture = vi.fn(async (_doc: unknown, _options: unknown, _signal: AbortSignal) => rasterResult()), f = fixture(undefined, undefined, capture)
+    for (const params of [{ compression: 9 }, { quality: 90 }, { scales: [1, 1] }, { scales: [129] }, { scales: [NaN] }, { nodeIds: ['a'], sliceId: 'b' }, { sliceId: 'a', padding: 10 }])
+      expect(await f.call('raster.export', params)).toMatchObject({ ok: false })
+    expect(capture).not.toHaveBeenCalled()
+    capture.mockRejectedValueOnce(Object.assign(new Error('CPU failure'), { code: 'renderer_failed' }))
+    expect(await f.call('raster.export')).toMatchObject({ ok: false, error: { code: 'renderer_failed' } })
+    expect(await f.call('raster.export')).toMatchObject({ ok: true })
+  })
+  it('never publishes stale/cancelled completion, bounds concurrent exports, and invalidates handles on session change', async () => {
+    const gate = deferred<ReturnType<typeof rasterResult>>(), capture = vi.fn(() => gate.promise), f = fixture(undefined, undefined, capture)
+    const base = f.envelope(), pending = f.send({ ...base, request: { method: 'raster.export', documentId: base.documentId, session: base.session } })
+    expect(await f.call('raster.export')).toMatchObject({ ok: false, error: { code: 'BUSY' } })
+    f.cancel(base.requestId)
+    expect(await pending).toMatchObject({ ok: false, error: { code: 'CANCELLED' } })
+    gate.resolve(rasterResult()); await new Promise(resolve => setTimeout(resolve, 0))
+    const staleGate = deferred<ReturnType<typeof rasterResult>>()
+    capture.mockImplementationOnce(() => staleGate.promise)
+    const stale = f.call('raster.export')
+    f.editor.change('Change', doc => { doc.name = 'Changed' }); staleGate.resolve(rasterResult())
+    expect(await stale).toMatchObject({ ok: false, error: { code: 'STALE_REVISION' } })
+    const ready = await f.call('raster.export') as any
+    f.editor.load(blank('Other'))
+    expect(await f.call('raster.read', { artifactId: ready.result.files[0].artifactId })).toMatchObject({ ok: false, error: { code: 'ARTIFACT_NOT_FOUND' } })
+  })
+})
+
+describe('raster deadlines and bounded retention', () => {
+  it('aborts at deadline and permits retry when the cancelled renderer actually settles', async () => {
+    let aborted = false
+    const capture: NonNullable<BridgeDependencies['captureRaster']> = (_doc, _params, signal) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => { aborted = true; reject(signal.reason) }, { once: true })
+    })
+    const render = vi.fn(capture), f = fixture(undefined, undefined, render)
+    expect(await f.call('raster.export', {}, 'read', { deadline: Date.now() + 25 })).toMatchObject({ ok: false, error: { code: 'TIMEOUT' } })
+    expect(aborted).toBe(true)
+    render.mockImplementationOnce(async () => rasterResult())
+    expect(await f.call('raster.export')).toMatchObject({ ok: true })
+  })
+  it('preflights artifact count, expires handles, and cannot use foreign/expired bytes', async () => {
+    const capture = vi.fn(async () => rasterResult()), f = fixture(undefined, undefined, capture)
+    const first = await f.call('raster.export') as any
+    for (let i = 1; i < 32; i++) expect(await f.call('raster.export')).toMatchObject({ ok: true })
+    expect(await f.call('raster.export')).toMatchObject({ ok: false, error: { code: 'ARTIFACT_LIMIT' } })
+    expect(capture).toHaveBeenCalledTimes(32)
+    const now = Date.now(); vi.spyOn(Date, 'now').mockReturnValue(now + 300001)
+    expect(await f.call('raster.read', { artifactId: first.result.files[0].artifactId })).toMatchObject({ ok: false, error: { code: 'ARTIFACT_NOT_FOUND' } })
+    expect(await f.call('raster.export')).toMatchObject({ ok: true })
   })
 })

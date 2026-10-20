@@ -49,14 +49,27 @@ function compareSvg(doc: DesignDocument, target: ExportTarget = { kind: 'page' }
   return current
 }
 
-test('retained baseline is hash-verified and extraction leaves every other export function byte-identical', () => {
+test('retained baseline is hash-verified and only the declared SVG option changes alter export bodies', () => {
   expect(createHash('sha256').update(frozen).digest('hex')).toBe(sourceHash)
   const targets = frozen.slice(frozen.indexOf('export type ExportTarget ='), frozen.indexOf('function projectSlice('))
   const pdf = frozen.slice(frozen.indexOf('/** Content the true-vector PDF writer'), frozen.indexOf('/** Explicit visual exchange mode.'))
   const metadata = readFileSync(new URL('./export-metadata.ts', import.meta.url), 'utf8')
   expect(metadata.slice(metadata.indexOf('export type ExportTarget ='))).toBe(targets + pdf)
   const current = readFileSync(new URL('./export.tsx', import.meta.url), 'utf8')
-  expect(current.slice(current.indexOf('function projectSlice('))).toBe(frozen.slice(frozen.indexOf('function projectSlice(')).replace(pdf, ''))
+  // Keep the immutable baseline. Explicit SVG options are the only permitted
+  // body deltas; default SVG output is independently compared below.
+  const retained = frozen.slice(frozen.indexOf('function projectSlice(')).replace(pdf, '')
+  const deltas = [
+    ["scale = 1) {\n  doc = projectSlice", "scale = 1, precision?: number, textMode: 'outlines' | 'editable' = 'outlines') {\n  doc = projectSlice"],
+    ['<Scene doc={doc} pageId={pageId} exporting />', '<Scene doc={doc} pageId={pageId} exporting textMode={textMode} />'],
+    ['return { source, box: b, issues: svgExportIssues(doc, pageId) }', 'return { source: roundSvgCoordinates(source, precision), box: b, issues: svgExportIssues(doc, pageId) }'],
+  ]
+  let approved = retained
+  for (const [before, after] of deltas) {
+    expect(approved.split(before)).toHaveLength(2)
+    approved = approved.replace(before, after)
+  }
+  expect(current.slice(current.indexOf('function projectSlice('))).toBe(approved)
 })
 
 test('the existing public API keeps the exact same synchronous metadata function objects', () => {

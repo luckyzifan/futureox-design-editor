@@ -193,7 +193,7 @@ describe('real local Sketch binary automation', () => {
     } finally { api.dispose(); editor.dispose() }
   })
 
-  it('warns about actual embedded font-binary loss instead of claiming native-document fidelity', async () => {
+  it('embeds authorized Noto bytes as official FontRefs and restores the font', async () => {
     const document = blank(), text = node('text', 0, 0, 200, 50)
     const font = await readFile(new URL('../../public/fonts/NotoSansSC.ttf', import.meta.url))
     document.fonts = { local: { family: 'Noto Sans SC', data: font.toString('base64') } }
@@ -201,10 +201,20 @@ describe('real local Sketch binary automation', () => {
     document.nodes[text.id] = text; document.pages[0].children.push(text.id)
     const exported = exportSketchDocument(document)
     expect(exported.lossless).toBe(false)
-    expect(exported.warnings.some(warning => warning.code === 'SKETCH_FONT_RESOURCES')).toBe(true)
+    expect(exported.embeddedFontCount).toBe(1)
+    expect(exported.warnings.some(warning => warning.code === 'SKETCH_FONT_RESOURCES')).toBe(false)
+    const files = unzipSync(bytes(exported.base64))
+    const reference = JSON.parse(strFromU8(files['document.json'])).fontReferences[0]
+    expect(reference._class).toBe('fontReference')
+    expect(reference.fontData._ref_class).toBe('MSFontData')
+    expect(reference.fontData.data._data).toBe(font.toString('base64'))
     const reopened = JSON.parse(import_sketch_json(bytes(exported.base64))).document
-    expect(reopened.nodes[text.id].textStyle.fontId).toBe('default')
-    expect(Object.keys(reopened.fonts ?? {})).toHaveLength(0)
-    expect(exported.bytes).toBeLessThan(font.byteLength)
+    expect(reopened.nodes[text.id].textStyle.fontId).toBe('local')
+    expect(Object.keys(reopened.fonts ?? {})).toHaveLength(1)
+    expect(reopened.fonts.local.data).toBe(font.toString('base64'))
+    const destination = blank()
+    const imported = importSketchDocument(destination, { base64: exported.base64 }, context(destination))
+    const importedId = destination.nodes[imported.nodeIdMap[text.id]].textStyle!.fontId
+    expect(destination.fonts?.[importedId].data).toBe(font.toString('base64'))
   }, 30000)
 })

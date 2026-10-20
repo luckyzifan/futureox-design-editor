@@ -45,3 +45,9 @@ cd frontend/design-client && bun install && bun run test
 第二轮路径与边界见 [渲染路径说明](RENDER_PATH_PHASE2.zh-CN.md)，算法资料见 [参考来源](RENDER_ALGORITHM_REFERENCES.zh-CN.md)，原生 CPU/WASM 验证见 [准备与几何检查](testing/NATIVE_PREPARATION_CHECKS.zh-CN.md)。产品 GPU 默认路径保持；云端 CPU 测试不等于实际 GPU 帧率或像素验收。
 
 第三轮 GPU 表面与调度增量见 [内存专项说明](RENDER_MEMORY_PHASE3.zh-CN.md)。本轮包含 Rust 内核修改，需重建 WASM 与桌面本地准备程序；测试记录见 testing/verification-phase3。
+
+## 当前功能与验收文档
+
+- [本地功能矩阵](docs/LOCAL_DESIGN_FEATURE_MATRIX.zh-CN.md)与[本地发布验收](docs/LOCAL_RELEASE_ACCEPTANCE.zh-CN.md)
+- [本地能力增量说明](docs/RELEASE_2026-10-19.zh-CN.md)与[统一测试入口](testing/README.md)
+- 旧版根目录 implementation 计划、总结和完成清单已退役；[历史测试摘录与待复核事项](docs/history/IMPLEMENTATION_PASS_2026-10-19.md)保留必要背景，不作为当前完成声明。
