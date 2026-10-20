@@ -649,6 +649,7 @@ test.each([{ moving: true, batch: 4 }, { moving: false, batch: 32 }])(
       await vi.waitFor(() => expect(worker.calls).toHaveLength(callIndex + 1))
       const call = worker.calls[callIndex]
       expect(call.options.tileViewport).toEqual(expected.slice(offset, offset + batch))
+      expect(call.options.tileFillPriorities).toEqual(expected.slice(offset, offset + batch).map(tile => tile === hole ? 0 : 1))
       // Priority must not shrink the shared preparation guard or filtering
       // halos to the first visible hole; masks/effects still need the plan.
       expect(call.options.tilePrepareViewport).toEqual(
@@ -673,6 +674,7 @@ test.each(['no pixels', 'covered preview'])('%s keeps center-first native reques
   await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
   const centered = prioritizeTileFill(worker.plan, bounds).onScreen
   expect(worker.calls[1].options.tileViewport).toEqual(centered.slice(0, 4))
+  expect(worker.calls[1].options.tileFillPriorities).toEqual(Array(4).fill(coverage === 'no pixels' ? 0 : 1))
   expect(worker.calls[1].options.tileViewport[0].key).toBe('1:0:0:2:2')
   expect(worker.calls[1].options.renderIntent).toBe('canvas')
 })

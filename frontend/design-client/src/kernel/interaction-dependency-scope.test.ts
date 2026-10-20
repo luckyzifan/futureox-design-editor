@@ -9,7 +9,7 @@ import { VectorEngine } from '../generated/design-kernel/design_kernel'
 // Frozen inline localization logic from the tested pre-refactor renderer.
 function reference(document: DesignDocument, selection: string[], zoom: number, dpr: number, allowFixedBackdrop: boolean) {
   const pageId = document.pages[0].id, entries = scene(document, pageId)
-  const scope: InteractionDependencyScope = { rootBounds: new Map(), parentLinear: new Map(), localizedBounds: new Set(), fixedBounds: new Set(), dependencyPadding: 0 }
+  const scope: InteractionDependencyScope = { rootBounds: new Map(), parentLinear: new Map(), localizedBounds: new Set(), fixedBounds: new Set(), dependencyPadding: 0, finalForeground: false }
   // Bound propagation through all backdrop filters conservatively. This
   // is computed once per scene, not once per pointer sample.
   scope.dependencyPadding = pageBackdropPadding(document,entries)
@@ -104,5 +104,161 @@ test('localized capture options and real CPU-WASM bytes remain identical', () =>
     kernel.load_document(JSON.stringify(document))
     const a = kernel.render_rgba(options(old)), b = kernel.render_rgba(options(next))
     expect(b).toEqual(a); expect(a.some((value, i) => i % 4 === 3 && value > 0)).toBe(true)
+  } finally { kernel.free() }
+})
+
+function foregroundFixture() {
+  const value = fixture()
+  const { document, root, group } = value
+  const backdrop = node('rectangle', 0, 0, 75, 60)
+  backdrop.fills = [{ ...paint('#eab457'), opacity: .4 }]
+  backdrop.effects = [{ ...effect('background-blur'), radius: 3 }]
+  document.schemaVersion = 5
+  document.nodes[backdrop.id] = backdrop
+  root.clip = false
+  root.children = [backdrop.id, group.id]
+  return { ...value, backdrop }
+}
+function foregroundScope(value: ReturnType<typeof foregroundFixture>, selection = [value.group.id], allowFixedBackdrop = false) {
+  const { document } = value, pageId = document.pages[0].id
+  return buildInteractionDependencyScope(document, pageId, scene(document, pageId), selection,
+    { zoom: 1, dpr: 2, allowFixedBackdrop })
+}
+test('earlier backdrop admits the final ordinary nested foreground using the unchanged bounds', () => {
+  const value = foregroundFixture(), { document, root, group, backdrop } = value
+  const original = JSON.stringify(document)
+  const scope = foregroundScope(value)
+  expect(scope.finalForeground).toBe(true)
+  expect(scope.localizedBounds.has(group.id)).toBe(true)
+  expect(scope.fixedBounds.size).toBe(0)
+  const withoutBackdrop: DesignDocument = { ...document, nodes: { ...document.nodes,
+    [backdrop.id]: { ...backdrop, effects: [] } } }
+  expect(scope.rootBounds.get(group.id)).toEqual(reference(withoutBackdrop, [group.id], 1, 2, false).rootBounds.get(group.id))
+  expect(scope.dependencyPadding).toBe(0)
+  expect(JSON.stringify(document)).toBe(original)
+  // A clipped root can retain the smaller foreground proof as well.
+  root.clip = true
+  const clipped = foregroundScope(value, [group.id], true)
+  expect(clipped.rootBounds.get(group.id)).toEqual(scope.rootBounds.get(group.id))
+  expect(clipped.fixedBounds.size).toBe(0)
+})
+test('final foreground ordering is checked at every ancestor and at the page', () => {
+  for (const placement of ['selected-sibling', 'ancestor-sibling', 'page-sibling'] as const) {
+    const value = foregroundFixture(), { document, root, group, leaf, backdrop } = value
+    let selection = [group.id]
+    if (placement === 'selected-sibling') root.children = [group.id, backdrop.id]
+    else if (placement === 'ancestor-sibling') {
+      root.children = [group.id, backdrop.id]; selection = [leaf.id]
+    } else {
+      root.children = [group.id]; document.pages[0].children.push(backdrop.id)
+    }
+    expect(foregroundScope(value, selection).localizedBounds.size, placement).toBe(0)
+  }
+})
+test('only proven final foreground discards the padding of earlier page backdrops', () => {
+  for (const kind of ['background-blur', 'glass'] as const) {
+    const value = foregroundFixture(), { document, root, group, backdrop } = value
+    backdrop.effects = [{ ...effect(kind), radius: 3 }]
+    root.children = [group.id]
+    document.pages[0].children = [backdrop.id, root.id]
+    const pageId = document.pages[0].id
+    const padding = pageBackdropPadding(document, scene(document, pageId))
+    expect(padding).toBeGreaterThan(0)
+    const local = foregroundScope(value)
+    expect(local.localizedBounds.has(group.id)).toBe(true)
+    expect(local.dependencyPadding).toBe(0)
+    document.pages[0].children = [root.id, backdrop.id]
+    const later = foregroundScope(value)
+    expect(later.localizedBounds.size).toBe(0)
+    expect(later.finalForeground).toBe(false)
+    expect(later.dependencyPadding).toBe(padding)
+    document.pages[0].children = [backdrop.id, root.id]
+    root.opacity = .5
+    const unsupported = foregroundScope(value)
+    expect(unsupported.localizedBounds.size).toBe(0)
+    expect(unsupported.finalForeground).toBe(false)
+    expect(unsupported.dependencyPadding).toBe(padding)
+  }
+})
+test('hidden trailing siblings do not change the final visible paint order', () => {
+  const value = foregroundFixture(), hidden = node('rectangle', 1, 1, 10, 10)
+  hidden.visible = false; hidden.effects = [effect('background-blur')]
+  value.document.nodes[hidden.id] = hidden; value.root.children.push(hidden.id)
+  expect(foregroundScope(value).localizedBounds.has(value.group.id)).toBe(true)
+})
+test('a selected foreground subtree may keep its ordinary leaf text hug sizing', () => {
+  const value = foregroundFixture()
+  const text = node('text', 1, 1, 12, 10)
+  text.sizing = { width: 'hug', height: 'hug' } as typeof text.sizing
+  value.document.nodes[text.id] = text; value.group.children.push(text.id)
+  expect(foregroundScope(value).localizedBounds.has(value.group.id)).toBe(true)
+})
+const foregroundRejections: [string, (value: ReturnType<typeof foregroundFixture>) => void][] = [
+  ['parent effect', ({ root }) => { root.effects = [effect('blur')] }],
+  ['selected foreground effect', ({ group }) => { group.effects = [effect('shadow')] }],
+  ['descendant foreground effect', ({ leaf }) => { leaf.effects = [effect('blur')] }],
+  ['selected backdrop', ({ group }) => { group.effects = [effect('background-blur')] }],
+  ['descendant backdrop', ({ leaf }) => { leaf.effects = [effect('background-blur')] }],
+  ['unknown preceding effect', ({ backdrop }) => { backdrop.effects = [{ ...effect('blur'), kind: 'future-effect' as never }] }],
+  ['pass-through parent', ({ root }) => { root.blend = 'pass-through' }],
+  ['parent opacity', ({ root }) => { root.opacity = .5 }],
+  ['selected blend', ({ group }) => { group.blend = 'multiply' }],
+  ['parent mask', ({ root }) => { root.mask = true }],
+  ['selected mask', ({ group }) => { group.mask = true }],
+  ['descendant mask', ({ leaf }) => { leaf.mask = true }],
+  ['preceding sibling mask', ({ backdrop }) => { backdrop.mask = true }],
+  ['parent layout', ({ root }) => { root.layout = { mode: 'horizontal' } as typeof root.layout }],
+  ['descendant layout', ({ leaf }) => { leaf.layout = { mode: 'horizontal' } as typeof leaf.layout }],
+  ['parent hug sizing', ({ root }) => { root.sizing = { width: 'hug' } as typeof root.sizing }],
+  ['selected container hug sizing', ({ group }) => { group.sizing = { width: 'hug' } as typeof group.sizing }],
+  ['parent binding', ({ root }) => { root.bindings = { opacity: 'variable' } }],
+  ['descendant binding', ({ leaf }) => { leaf.bindings = { opacity: 'variable' } }],
+  ['inherited mode', ({ root }) => { root.variableModes = { collection: 'mode' } }],
+  ['shared style', ({ leaf }) => { leaf.styleRefs = { fill: 'style' } }],
+  ['component definition', ({ group }) => { group.componentSet = true }],
+  ['component instance', ({ group }) => { group.instance = {} as never }],
+  ['instance origin', ({ root }) => { root.instanceOrigin = { owner: 'a', key: 'b', source: 'c' } }],
+  ['component key', ({ leaf }) => { leaf.componentKey = 'component' }],
+  ['boolean ancestor', ({ root }) => { root.booleanOperation = 'union' }],
+  ['descendant repeat', ({ leaf }) => { leaf.repeat = {} as never }],
+  ['attached connector', ({ backdrop }) => { backdrop.connector = {} as never }],
+  ['animation', ({ document }) => { document.animations = [{} as never] }],
+]
+test.each(foregroundRejections)('final foreground keeps the conservative fallback for %s', (_label, change) => {
+  const value = foregroundFixture(); change(value)
+  expect(foregroundScope(value).localizedBounds.size).toBe(0)
+})
+test('new foreground admission does not broaden multi-selection or overlapping selection rules', () => {
+  const value = foregroundFixture()
+  expect(foregroundScope(value, [value.group.id, value.leaf.id]).localizedBounds.size).toBe(0)
+})
+test('complete CPU-WASM scene changes stay inside old and new final foreground footprints', () => {
+  const value = foregroundFixture(), { document, group } = value
+  document.colorManagement = { documentSpace: 'srgb', referenceWhiteNits: 203, peakLuminanceNits: 1000 }
+  document.rasterProfile = 'figma'
+  const scope = foregroundScope(value), beforeBounds = scope.rootBounds.get(group.id)!
+  const dx = 14.25, dy = -3.5
+  const moved: DesignDocument = { ...document, nodes: { ...document.nodes,
+    [group.id]: { ...group, transform: [...group.transform.slice(0, 4), group.transform[4] + dx, group.transform[5] + dy] as typeof group.transform } } }
+  const afterBounds = { ...beforeBounds, x: beforeBounds.x + dx, y: beforeBounds.y + dy }
+  const options = JSON.stringify({ pageId: document.pages[0].id, width: 128, height: 128,
+    view: { x: 0, y: 0, zoom: 1 }, transparent: true, grid: false, rasterProfile: 'figma' })
+  const kernel = new VectorEngine()
+  try {
+    kernel.load_document(JSON.stringify(document))
+    const before = kernel.render_linear(options)
+    kernel.load_document(JSON.stringify(moved))
+    const after = kernel.render_linear(options)
+    const beforeBits = new Uint32Array(before.buffer, before.byteOffset, before.length)
+    const afterBits = new Uint32Array(after.buffer, after.byteOffset, after.length)
+    let changed = 0
+    for (let pixel = 0; pixel < 128 * 128; pixel++) {
+      if ([0, 1, 2, 3].every(channel => beforeBits[pixel * 4 + channel] === afterBits[pixel * 4 + channel])) continue
+      changed++
+      const x = pixel % 128, y = Math.floor(pixel / 128)
+      expect([beforeBounds, afterBounds].some(b => x + 1 >= b.x && x <= b.x + b.width &&
+        y + 1 >= b.y && y <= b.y + b.height), `changed pixel ${x},${y} outside the admitted capture`).toBe(true)
+    }
+    expect(changed).toBeGreaterThan(0)
   } finally { kernel.free() }
 })

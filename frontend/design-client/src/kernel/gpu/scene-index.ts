@@ -1,4 +1,5 @@
 import { effectsAreKnown } from '../render-dependency'
+import { PREFIX_MIN_RADIUS } from './prefix-band'
 import type { GpuNode, GpuScene } from './types'
 
 export type SceneIndex = {
@@ -28,7 +29,7 @@ export function sceneIndex(scene: GpuScene): SceneIndex {
       hasFilters ||= ['blur','shadow','inner-shadow','background-blur','glass'].includes(effect.kind)
       if (effect.kind==='blur'||effect.kind==='shadow'||effect.kind==='glass') {
         const radius=(effect.kind==='glass'&&effect.glass?Math.max(1,effect.radius):effect.radius)*sceneScale(n.matrix)
-        hasPrefixFilter ||= radius>=48&&radius<=2048
+        hasPrefixFilter ||= radius>=PREFIX_MIN_RADIUS&&radius<=2048
       }
     }
   }

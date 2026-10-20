@@ -23,6 +23,7 @@ type ResidentInteraction = {
   parentLinear?: Map<string, number[]>
   localizedBounds?: Set<string>
   fixedBounds?: Set<string>
+  finalForeground?: boolean
   captureBounds?: Bounds
   dependencyPadding?: number
   visibleBounds?: Bounds
@@ -46,6 +47,7 @@ export class InteractionRenderer {
   private nextGeneration() {
     // A shared worker may serve other interaction owners. Retire only requests
     // issued by this obsolete capture, not the entire interaction channel.
+    this.handoff = undefined
     this.captureAbort.abort(); this.captureAbort = new AbortController()
     return ++this.generation
   }
@@ -60,6 +62,8 @@ export class InteractionRenderer {
   private livePending?: DesignDocument
   private liveRunning = false
   private liveRequested?: DesignDocument
+  private liveCancelled = false
+  private liveDeferred = false
   private viewport?: { view: CanvasCamera; width: number; height: number; dpr: number }
   private viewportRevision = 0
   private inputs = new WeakMap<DesignDocument,{sequence:number;at:number}>()
@@ -85,6 +89,11 @@ export class InteractionRenderer {
   private inlineDisabled = false
   private liveAuthored?: DesignDocument
   private endedDocument?: DesignDocument
+  /** Keep completed interaction pixels visible while the committed document
+   * transfers to exact canvas tiles, without starting another tiled capture. */
+  private handoff?: {
+    resident: ResidentInteraction; document: DesignDocument; epoch: number; viewportRevision: number
+  }
   error = ''
   warming = false
   moves = 0
@@ -111,6 +120,9 @@ export class InteractionRenderer {
         const fast=import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'
         const offsets = interactionPatchedOffsets(r.plan, document, patches,fast?this.baseOffsets(r.plan,document):undefined)
         if (!offsets) return null
+        // A new accepted gesture owns new capture work. The previous complete
+        // pixels remain available while an aborted predecessor unwinds.
+        this.handoff = undefined
         const transforms=Object.fromEntries(r.plan.ids.map(id=>[id,[...(patches[id]?.transform||document.nodes[id].transform)] as Matrix]))
         this.liveAuthored=document
         this.latestPatch={document,patches:Object.fromEntries(r.plan.ids.map(id=>[id,{transform:transforms[id]}]))}
@@ -165,6 +177,22 @@ export class InteractionRenderer {
             Object.fromEntries(r.plan.ids.map(id=>[id,document.nodes[id].transform])),this.lastInput)
           this.changed();return
         }
+        if (this.sharedClient && r.live && r.tiledExact && !r.workerPoses && offsets &&
+            this.viewport && this.props && this.sessionEpoch !== undefined && this.props.epoch === this.sessionEpoch &&
+            document.id === r.plan.document.id && this.props.document.id === document.id &&
+            this.sameIds(this.props.selection)) {
+          this.nextGeneration()
+          this.livePending = this.liveRequested = undefined
+          this.pending = undefined; this.pendingDensity = undefined
+          this.handoff = { resident: r, document, epoch: this.sessionEpoch, viewportRevision: this.viewportRevision }
+          this.liveAuthored = document
+          this.warming = false
+          // r.active describes visible preview ownership, not permission to
+          // enqueue more work. Hiding it here would jump back to old page pixels.
+          r.active = true
+          this.changed()
+          return
+        }
         if(r.live&&r.tiles[0]?.gpuTile){this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile);this.inlineDisabled=true}
         if (r.live) {
           if (r.active) this.renderLive(document)
@@ -211,6 +239,15 @@ export class InteractionRenderer {
       previousViewport.width !== size.width || previousViewport.height !== size.height)
     if (cameraChanged) this.viewportRevision++
     if (cameraChanged && this.resident?.live) {
+      if (!props?.active && !this.resident.active && (this.liveRunning || this.livePending)) {
+        // Idle selection warm-up must not finish an obsolete camera ahead of
+        // current canvas tiles. Keep any completed resident, but retire only
+        // this owner's in-flight capture and defer retry until a real gesture.
+        this.nextGeneration()
+        this.livePending = this.liveRequested = undefined
+        this.pending = undefined; this.pendingDensity = undefined
+        this.liveCancelled = true
+      }
       if(this.resident.tiles[0]?.gpuTile)this.sharedClient?.stopResidentInteraction(this.resident.tiles[0].gpuTile)
       this.inlineDisabled=true
       this.resident.captureBounds = undefined
@@ -231,6 +268,36 @@ export class InteractionRenderer {
     }
     const r = this.resident, key = props.selection.join(',')
     const samePolicy = profile === this.profile && backend === this.backend
+    const handoff = this.handoff
+    if (handoff) {
+      const sameHandoff = !!r && r === handoff.resident && props.document === handoff.document &&
+        props.epoch === handoff.epoch && r.plan.pageId === pageId && this.sameIds(props.selection) &&
+        !!this.viewport && samePolicy && !cameraChanged && this.viewportRevision === handoff.viewportRevision
+      if (r && sameHandoff && !props.active) {
+        // ProgressiveSurface supplies fullPlanReady here. Waiting for a later
+        // presentation ACK would keep the interaction layer covering that frame.
+        if (settledDocument === props.document) {
+          r.active = false
+        }
+        // Retain the ownership fence across idle React updates, even after
+        // preview retirement. A new gesture or context change revokes it.
+        return
+      }
+      this.handoff = undefined
+      this.endedDocument = undefined
+    }
+    if (r?.live && (this.liveCancelled || this.liveDeferred) && (props.active || r.active) && samePolicy && r.plan.pageId === pageId &&
+        props.document.id === r.plan.document.id && this.sameIds(props.selection)) {
+      // A deferred or cancelled capture has no reusable pixels even when its authored
+      // object and density are unchanged. Retry for an active gesture before
+      // same-document reuse can hide the interruption. Idle camera preparation
+      // must leave the queue to the exact canvas instead of warming a full view.
+      r.active = true
+      this.liveAuthored = props.document
+      const candidate = this.latestPatch?.document === props.document ? this.candidateDocument() : undefined
+      this.renderLive(candidate || props.document)
+      return
+    }
     // Normal/high zoom cannot keep a drag bitmap upscaled by up to 25% after
     // the camera settles. Only the explicitly reduced low-zoom tier retains
     // hysteresis; native tiers refresh whenever their real sampled density
@@ -314,7 +381,11 @@ export class InteractionRenderer {
           props.selection, { zoom: view.zoom, dpr, allowFixedBackdrop: import.meta.env.VITE_DESIGN_LOCAL_BACKDROP !== '0' }))
         this.liveAuthored = props.document
         this.error = ''; props.onReady()
-        this.renderLive(props.document)
+        // Navigation temporarily removes interaction props and recreates this
+        // resident when it settles. Install its control/scope now, but give the
+        // exact canvas the queue until an actual gesture needs live pixels.
+        if (props.active) this.renderLive(props.document)
+        else this.liveDeferred = true
       } else { this.releaseClient() }
       props.onReady(); this.changed(); return
     }
@@ -467,8 +538,12 @@ export class InteractionRenderer {
     this.changed()
   }
   private renderLive(document: DesignDocument) {
+    const handoff = this.handoff
+    if (handoff && handoff.resident === this.resident && handoff.document === document) return
     if (this.liveRequested === document) return
     this.liveRequested = document; this.livePending = document
+    this.liveCancelled = false
+    this.liveDeferred = false
     if (this.liveRunning) return
     this.liveRunning = true
     const token = this.generation, resident = this.resident!
@@ -511,8 +586,13 @@ export class InteractionRenderer {
           const epsilon = Math.max(1, bounds.width, bounds.height) * 1e-9
           if (!b || bounds.x - pad < b.x - epsilon || bounds.y - pad < b.y - epsilon ||
               bounds.x + bounds.width + pad > b.x + b.width + epsilon || bounds.y + bounds.height + pad > b.y + b.height + epsilon) {
-            let guard = pad + Math.max(64, this.viewport ? 96 / this.viewport.view.zoom : 0, bounds.width * .05, bounds.height * .05)
-            if (this.viewport && resident.plan.ids.every(id => resident.localizedBounds?.has(id))) {
+            // The proven final foreground needs only a short movement reserve.
+            // The complete old/new footprint and semantic pad remain in bounds;
+            // leaving this reserve still expands and recompiles the capture.
+            const finalForeground = !!(this.viewport && offsets && resident.finalForeground)
+            let guard = finalForeground ? pad + Math.max(32 / this.viewport!.view.zoom, bounds.width * .05) :
+              pad + Math.max(64, this.viewport ? 96 / this.viewport.view.zoom : 0, bounds.width * .05, bounds.height * .05)
+            if (!finalForeground && this.viewport && resident.plan.ids.every(id => resident.localizedBounds?.has(id))) {
               const travelGuard = Math.max(guard, pad + 256 / this.viewport.view.zoom)
               if ((bounds.width + 2 * travelGuard) * (bounds.height + 2 * travelGuard) * resident.scale ** 2 <= 4_194_304)
                 guard = travelGuard
@@ -638,7 +718,22 @@ export class InteractionRenderer {
           }
           this.props?.onReady(); this.changed()
         }
-      } catch (error) { if (current()) { this.error = String(error); this.props?.onReady(); this.changed() } }
+      } catch (error) {
+        if (current()) {
+          if (String(error).includes('PREVIEW_CANCELLED')) {
+            // Cancellation is an interrupted preview, not a rendering failure.
+            // Clear the request dedup fence so a later prepare or pointer input
+            // can retry. Do not call onReady here: that schedules React prepare
+            // and would turn repeated cancellations into a self-retry loop.
+            this.liveCancelled = true
+            this.liveRequested = undefined
+          } else {
+            this.error = String(error)
+            this.props?.onReady()
+          }
+          this.changed()
+        }
+      }
       finally {
         this.liveRunning = false
         // Keep the warmed WASM/font state for the next input sample. The client
@@ -657,8 +752,11 @@ export class InteractionRenderer {
     if(this.resident?.tiles[0]?.gpuTile)this.sharedClient?.stopResidentInteraction(this.resident.tiles[0].gpuTile)
     for (const tile of this.resident?.tiles || []) tile.bitmap?.close()
     this.resident = undefined; this.livePending = undefined; this.liveRequested = undefined; this.liveAuthored = undefined
+    this.liveCancelled = false
+    this.liveDeferred = false
     this.latestCandidate=undefined;this.latestPatch=undefined;this.patchBase=undefined;this.inlineDisabled=false
     this.endedDocument=undefined
+    this.handoff=undefined
   }
   dispose() {
     this.disposed = true; this.nextGeneration(); this.releaseClient(); this.pendingDensity = undefined

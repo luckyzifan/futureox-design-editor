@@ -11,9 +11,11 @@ import { exactFilterWgsl, rationalStubWgsl } from './exact-filter'
 import { compositorModes } from './compositor-modes'
 import { TexturePrefix, PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { prefixModule } from './prefix-module'
+import { PREFIX_MIN_RADIUS } from './prefix-band'
 import { displayFilterWgsl, pairedDisplayFilterWgsl } from './display-filter'
 import { displayArithmeticSource } from './display-arithmetic'
 import { imageCoordinateSource } from './image-coordinate-source'
+import { IMAGE_RESOLVE_STEP_MODE, imageResolveStepWgsl } from './image-resolve-step'
 import { scalarCoverageSource, SCALAR_COVERAGE_UNIFORM } from './scalar-coverage'
 import { ResidentPresenter, type ResidentFrame } from './resident-presenter'
 import { isDisplayBudgetError } from './display-budget'
@@ -99,6 +101,7 @@ export class WebGpuDriver implements Driver {
   readonly zeroTextureSampling = true
   readonly constantTextureSampling = true
   readonly sequentialSampleResolve = true
+  readonly exactImageResolveStep = true
   readonly scalarAlphaFilter = true
   readonly exactShadowOver = true
   private displayFilters = false
@@ -141,6 +144,7 @@ export class WebGpuDriver implements Driver {
   private normalPipeline?: GPURenderPipeline
   private solidPaintOverPipeline?: GPURenderPipeline
   private resolveStepPipeline?: GPURenderPipeline
+  private imageResolveStepPipeline?: GPURenderPipeline
   private scalarFilterPipeline?: GPURenderPipeline
   private alphaResolvePipeline?: GPURenderPipeline
   private shadowOverPipeline?: GPURenderPipeline
@@ -183,7 +187,7 @@ export class WebGpuDriver implements Driver {
   private uniformData = new Float32Array(1024 * 1024)
   private timingQueries?: GPUQuerySet
   private passTimings?: { mode: number; radius: number; width: number; height: number; count: number; ms: number }[]
-  private timingRows: { mode: number; radius: number; width: number; height: number; blend?: number; paint?: number; integerCentres?: boolean }[] = []
+  private timingRows: { mode: number; radius: number; width: number; height: number; blend?: number; paint?: number; integerCentres?: boolean; stage?: string; channel?: number }[] = []
   private timingSkipped = 0
   private encoder!: GPUCommandEncoder
   private activeOver?: GPURenderPassEncoder
@@ -270,7 +274,9 @@ export class WebGpuDriver implements Driver {
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' })
       .catch(error => { throw new Error(`GPU_UNAVAILABLE: ${String(error)}`, { cause: error }) })
     if (!adapter) throw new Error('没有可用的 WebGPU 适配器')
-    const timing = import.meta.env.DEV && import.meta.env.VITE_DESIGN_GPU_TIMINGS === '1'
+    // Explicit profiling builds only; normal development/release builds do not
+    // request timestamps or change their pass ordering.
+    const timing = import.meta.env.VITE_DESIGN_GPU_TIMINGS === '1'
     if (timing && !adapter.features.has('timestamp-query')) throw new Error('GPU timestamp queries unavailable')
     const requiredFeatures: GPUFeatureName[] = timing ? ['timestamp-query'] : []
     if (adapter.features.has('float32-filterable')) requiredFeatures.push('float32-filterable')
@@ -383,7 +389,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
  if(src.a<=0.){return dst;}if(dst.a<=0.){return src;}
  return addRN4(src,mulRN4(dst,vec4<f32>(addRN(1.,-src.a))));
 }`
-    const addressedCode = this.managed ? scalarCoverageSource(imageCoordinateSource(compositorCode)) : compositorCode
+    const addressedCode = this.managed ? scalarCoverageSource(imageCoordinateSource(compositorCode + imageResolveStepWgsl)) : compositorCode
     const module = this.device.createShaderModule({
       code: this.displayMath ? displayArithmeticSource(addressedCode, import.meta.env.VITE_DESIGN_NATIVE_DIVISION !== '0') : addressedCode,
       label: 'Self-developed vector compositor',
@@ -489,7 +495,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       const make = (entryPoint: string) => this.device.createRenderPipelineAsync({ layout,
         vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint, targets: [{ format: this.layerFormat }] },
         primitive: { topology: 'triangle-list' } })
-      ;[this.normalPipeline, this.copyPipeline, this.normalCornerPipeline, this.copyCornerPipeline, this.solidPaintOverPipeline, this.resolveStepPipeline, this.shadowOverPipeline] = await Promise.all([make('exactNormal'), make('exactPresent'), make('exactNormalCorner'), make('exactCopyCorner'), make('exactSolidPaintOver'), make('exactResolveStep'), make('exactShadowOver')])
+      ;[this.normalPipeline, this.copyPipeline, this.normalCornerPipeline, this.copyCornerPipeline, this.solidPaintOverPipeline, this.resolveStepPipeline, this.shadowOverPipeline, this.imageResolveStepPipeline] = await Promise.all([make('exactNormal'), make('exactPresent'), make('exactNormalCorner'), make('exactCopyCorner'), make('exactSolidPaintOver'), make('exactResolveStep'), make('exactShadowOver'), make('exactImageResolveStep')])
       this.alphaResolvePipeline = await this.device.createRenderPipelineAsync({ layout,
         vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'exactAlphaResolve', targets: [{ format: 'r32float' }] },
         primitive: { topology: 'triangle-list' } })
@@ -691,12 +697,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         primitive: { topology: 'triangle-list' } })
     }
     if (this.prefixEnabled && prefixUseful && !this.prefix)
-      this.prefix = await TexturePrefix.create(this.device, (u) => this.uniform(u), prefixModule(this.certifiedFilter), false)
+      this.prefix = await TexturePrefix.create(this.device, (u) => this.uniform(u), prefixModule(this.certifiedFilter), false,
+        this.timingQueries ? (stage, width, height, radius, channel) =>
+          this.timestampWrites({ stage, mode: 22, width, height, radius, channel }) : undefined)
   }
   private prefixPolicy(u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}, kernel?: Texture) {
     // Actual operator measurements: alpha-only remains faster on the old path;
-    // the tested 48/96-pixel RGBA filters benefit from 4 MiB bands.
-    return !!(!this.displayFilters && this.prefix && filter?.kind === 'tent' && filter.radius >= 48 &&
+    // eligible RGBA lines can use 4 MiB bands from the measured crossover.
+    return !!(!this.displayFilters && this.prefix && filter?.kind === 'tent' && filter.radius >= PREFIX_MIN_RADIUS &&
       !((!Number.isInteger(filter.radius) || filter.radius > 512) && kernel?.prefixRationalUnsupported === true) && channels === 15 && u[16] === 22)
   }
   prepareFilterPass(target: Texture, u: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number) {
@@ -895,6 +903,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return t
   }
   destroy(t: Texture) {
+    delete t.finitePixels
     this.replayParameterTextures.delete(t)
     if (this.textures.delete(t)) (t.resource as GPUTexture).destroy()
   }
@@ -925,6 +934,10 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       { bytesPerRow: width * 16 },
       [width, height],
     )
+    // This is the exact post-adjustment/premultiplication upload, not an
+    // assertion about the original file. A shared buffer could change between
+    // validation and the synchronous queue copy, so it receives no certificate.
+    if (values.buffer instanceof ArrayBuffer) t.finitePixels = true
     return t
   }
   uploadRgba8(bytes: Uint8Array, width: number, height: number) {
@@ -952,6 +965,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     height: number,
     values: Float32Array,
   ) {
+    delete texture.finitePixels
     if (values.length !== width * height * 4) throw new Error('无效的浮点纹理写入')
     this.device.queue.writeTexture(
       { texture: texture.resource as GPUTexture, origin: { x, y } },
@@ -968,6 +982,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     height: number,
     bytes: Uint8Array,
   ) {
+    delete texture.finitePixels
     if (this.managed) {
       this.uploadAtlasLinear(
         texture,
@@ -1019,6 +1034,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return target
   }
   clear(t: Texture) {
+    delete t.finitePixels
     this.closeOver()
     const pass = this.encoder.beginRenderPass({
       colorAttachments: [
@@ -1068,6 +1084,28 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       if(source.scalarCoverage){const values=new Float32Array(packed.buffer);return Float32Array.from({length:values.length*4},(_,i)=>values[Math.floor(i/4)])}
       return floating?new Float32Array(packed.buffer):Float32Array.from(packed,v=>v/255)
     } finally { buffer.destroy() }
+  }
+  /** Bit-preserving copy for completed, privately owned filter intermediates.
+   * It introduces no sampler, float arithmetic, readback or completion claim. */
+  copyRegion(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]) {
+    const from = source.resource as GPUTexture, to = target.resource as GPUTexture
+    if (!this.managed || !this.textures.has(source) || !this.textures.has(target) ||
+        from === to || from.format !== 'rgba32float' || to.format !== 'rgba32float' ||
+        ![sourceRegion.x, sourceRegion.y, sourceRegion.w, sourceRegion.h, ...targetOrigin].every(Number.isSafeInteger) ||
+        sourceRegion.x < 0 || sourceRegion.y < 0 || sourceRegion.w <= 0 || sourceRegion.h <= 0 ||
+        sourceRegion.x + sourceRegion.w > source.width || sourceRegion.y + sourceRegion.h > source.height ||
+        targetOrigin.length !== 2 || targetOrigin[0] < 0 || targetOrigin[1] < 0 ||
+        targetOrigin[0] + sourceRegion.w > target.width || targetOrigin[1] + sourceRegion.h > target.height)
+      throw Error('Invalid exact filter texture copy')
+    this.closeOver()
+    delete target.finitePixels
+    delete target.uniformColor
+    delete target.transparentZero
+    this.encoder.copyTextureToTexture(
+      { texture: from, origin: [sourceRegion.x, sourceRegion.y] },
+      { texture: to, origin: targetOrigin },
+      [sourceRegion.w, sourceRegion.h],
+    )
   }
   async checkpoint(reason: QueueWaitReason = 'checkpoint', admission?: GpuAdmissionDiagnostic, completedPoolEpoch?: number) {
     this.submitCommands()
@@ -1159,6 +1197,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.mask(path, target, sampleIndex, region)
   }
   mask(path: PathMesh, target: Texture, sampleIndex?: number, region = path.rect) {
+    delete target.finitePixels
     if (path.area) {
       if (!this.areaPipeline) throw new Error('Coverage program unavailable')
       const u = parameters(region)
@@ -1297,6 +1336,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return { group, offsets: this.dynamicUniformBindings ? [uniform.offset] : [] }
   }
   solidBatch(target: Texture, u: Float32Array, data: Float32Array, clip?: Texture) {
+    delete target.finitePixels
     if (clip === target) throw new Error('GPU texture feedback loop')
     this.closeOver()
     if (!this.solidBuffer) {
@@ -1335,6 +1375,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.triangles += count * 2
   }
   pass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15, filter?: {kind: 'tent'; radius: number}, clearOutside = false) {
+    delete target.finitePixels
     this.closeOver()
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
     if (this.prefixPolicy(u, channels, filter, inputs[1]) && filter && !region && this.prefix!.encode(() => this.encoder, target.resource as GPUTexture,
@@ -1346,6 +1387,11 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // integers or half-integers (<2^23). Thus the original sampler has k=0.
     // The corner helper also retains zero canonicalization and NaN neighbour order.
     const integerCentres = u.subarray(0, 16).every((v) => Number.isInteger(v) && Math.abs(v) <= 1048576) && u[242] === 0
+    if (u[16] === IMAGE_RESOLVE_STEP_MODE && (!this.managed || this.displayMath || !integerCentres ||
+        u[28] !== 3 || u[32] !== 1 || !Number.isInteger(u[17]) || u[17] < 0 || u[17] > 3 ||
+        !inputs[0]?.binaryCoverage || inputs[1]?.finitePixels !== true || !inputs[3] ||
+        channels !== 15 || !!region || !!target.binaryCoverage || !!target.scalarCoverage))
+      throw new Error('精确图片累积缺少有效的有限输入证明')
     if (target.binaryCoverage && ![12, 20, 31].includes(u[16]))
       throw new Error('Only binary coverage may write a binary mask texture')
     const displayFilter = this.managed && this.displayFilters && u[16] === 22
@@ -1367,7 +1413,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const pipelines = target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?this.scalarAreaPipeline!:this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
       ? [u[16] === 31 ? this.binaryAreaPipeline! : this.binaryPipelines.get(u[16])!]
       : this.managed && u[16] === 22 ? this.filterPipelines : [
-      u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? this.areaPipeline! : this.managed && u[16] === 3 && u[17] === 0
+      u[16] === IMAGE_RESOLVE_STEP_MODE ? this.imageResolveStepPipeline! : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? this.areaPipeline! : this.managed && u[16] === 3 && u[17] === 0
         ? (integerCentres ? this.normalCornerPipeline! : this.normalPipeline!) :
       this.managed && u[16] === 0 ? (integerCentres ? this.copyCornerPipeline! : this.copyPipeline!) :
       this.managed ? this.modePipelines.get(u[16])! : this.paintPipeline]
@@ -1398,14 +1444,10 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     let drawn = false
     for (let channel = 0; channel < pipelines.length; channel++) {
     if (this.managed && u[16] === 22 && !displayFilter && !target.scalarCoverage && !(channels & (1 << channel))) continue
-    const timingIndex = this.timingRows.length * 2
-    const timed = !!this.timingQueries && timingIndex < 4096
-    if (this.timingQueries && !timed) this.timingSkipped++
-    if (timed) this.timingRows.push({ mode: u[16], radius: u[36], width: region?.w || target.width, height: region?.h || target.height,
-      ...(u[16] === 3 ? { blend: u[17], integerCentres } : {}), ...(u[16] === 2 ? { paint: u[28] } : {}) })
+    const timestampWrites = this.timingQueries ? this.timestampWrites({ mode: u[16], radius: u[36], width: region?.w || target.width, height: region?.h || target.height,
+      ...(u[16] === 3 ? { blend: u[17], integerCentres } : {}), ...(u[16] === 2 ? { paint: u[28] } : {}) }) : undefined
     const pass = this.encoder.beginRenderPass({
-      ...(timed ? { timestampWrites: { querySet: this.timingQueries!,
-        beginningOfPassWriteIndex: timingIndex, endOfPassWriteIndex: timingIndex + 1 } } : {}),
+      ...(timestampWrites ? { timestampWrites } : {}),
       colorAttachments: [
         {
           view: this.bindingCache.view((target.resource as GPUTexture)),
@@ -1424,7 +1466,15 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.drawCalls++
     }
   }
+  private timestampWrites(row: typeof this.timingRows[number]): GPUComputePassTimestampWrites | undefined {
+    if (!this.timingQueries) return
+    const index = this.timingRows.length * 2
+    if (index >= 4096) { this.timingSkipped++; return }
+    this.timingRows.push(row)
+    return { querySet: this.timingQueries, beginningOfPassWriteIndex: index, endOfPassWriteIndex: index + 1 }
+  }
   over(target: Texture, u: Float32Array, inputs: Texture[], region: Rect) {
+    delete target.finitePixels
     if (this.managed) throw new Error('RGBA32F 合成必须使用显式着色器混合')
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
     if (this.activeTarget !== target) this.closeOver()

@@ -1,7 +1,7 @@
 import { effectsAreKnown } from './render-dependency'
 import { allowsReducedSampling } from './render-quality'
 import { pageBackdropPadding } from './interaction-layers'
-import type { Bounds, DesignDocument } from '../model'
+import type { Bounds, DesignDocument, DesignNode } from '../model'
 import { unionBounds, type SceneEntry } from '../geometry'
 
 /** Keep the existing world-space effect/stroke envelope exactly. Grouping
@@ -41,6 +41,47 @@ export type InteractionDependencyScope = {
   localizedBounds: Set<string>
   fixedBounds: Set<string>
   dependencyPadding: number
+  /** The strict final-foreground proof, not generic authored localization. */
+  finalForeground: boolean
+}
+
+/** An ordinary final foreground branch cannot feed any earlier backdrop.
+ * Check every sibling scope up to the page, not just a flattened DFS index:
+ * an ancestor's later sibling can read the complete earlier branch.
+ * This proves only dependency locality; the authored bounds below retain
+ * exactly the same geometry assumptions as the existing no-backdrop path. */
+function finalForegroundBranch(document: DesignDocument, pageId: string,
+  entries: readonly SceneEntry[], entry: SceneEntry | undefined): boolean {
+  const page = document.pages.find(page => page.id === pageId)
+  if (!page || !entry?.ancestors.length || document.animations?.length ||
+      Object.values(document.nodes).some(node => node.connector)) return false
+  const derived = (node: DesignNode) => !!node.repeat || !!node.booleanOperation ||
+    !!node.instance || !!node.instanceOrigin || !!node.component || !!node.componentSet || !!node.componentKey ||
+    Object.keys(node.bindings || {}).length > 0 || Object.keys(node.variableModes || {}).length > 0 ||
+    Object.keys(node.styleRefs || {}).length > 0 || !!node.layout && node.layout.mode !== 'none'
+  const hugs = (node: DesignNode) => node.sizing?.width === 'hug' || node.sizing?.height === 'hug'
+  const ordinary = (node: DesignNode | undefined): node is DesignNode => !!node &&
+    node.blend === 'normal' && !node.mask && !node.effects.some(effect => effect.visible) && !derived(node) &&
+    node.fills.every(paint => !paint.visible || paint.blend === 'normal') &&
+    node.strokes.every(stroke => !stroke.visible || !stroke.paint.visible || stroke.paint.blend === 'normal')
+  const finalChild = (children: readonly string[], id: string) => {
+    if (children.some(child => !document.nodes[child] || document.nodes[child].mask)) return false
+    return children.filter(child => document.nodes[child].visible).at(-1) === id
+  }
+  for (const candidate of entries) {
+    if (candidate.id !== entry.id && !candidate.ancestors.includes(entry.id)) continue
+    const node = document.nodes[candidate.id]
+    // Leaf text's own hug sizing stays within this same ordinary subtree.
+    // Container sizing/layout could change authored descendant placement.
+    if (!ordinary(node) || node.kind !== 'text' && hugs(node)) return false
+  }
+  let branch = entry.id
+  for (const id of [...entry.ancestors].reverse()) {
+    const parent = document.nodes[id]
+    if (!ordinary(parent) || parent.opacity !== 1 || hugs(parent) || !finalChild(parent.children, branch)) return false
+    branch = id
+  }
+  return finalChild(page.children, branch)
 }
 
 /** Conservative authored-scene capture estimates, NOT compiled reuse proofs.
@@ -50,7 +91,7 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
   entries: readonly SceneEntry[], selection: readonly string[],
   { zoom, dpr, allowFixedBackdrop }: { zoom: number; dpr: number; allowFixedBackdrop: boolean }): InteractionDependencyScope {
   const scope: InteractionDependencyScope = { rootBounds: new Map(), parentLinear: new Map(),
-    localizedBounds: new Set(), fixedBounds: new Set(), dependencyPadding: 0 }
+    localizedBounds: new Set(), fixedBounds: new Set(), dependencyPadding: 0, finalForeground: false }
   // Bound propagation through all backdrop filters conservatively. This
   // is computed once per scene, not once per pointer sample.
   scope.dependencyPadding = pageBackdropPadding(document,entries)
@@ -66,7 +107,13 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
   const knownEffects = entries.every(entry => effectsAreKnown(document.nodes[entry.id].effects))
   const noBackdrop = knownEffects && entries.every(entry => !document.nodes[entry.id].effects.some(e =>
     e.visible && ['background-blur', 'glass'].includes(e.kind)))
-  if (noBackdrop) for (const id of selection) {
+  const finalForeground = !noBackdrop && knownEffects && selection.length === 1 &&
+    finalForegroundBranch(document, pageId, entries, byId.get(selection[0]))
+  scope.finalForeground = finalForeground
+  // Earlier filters have already sampled their backdrop before this branch.
+  // Their read support cannot propagate a change in the final foreground.
+  if (finalForeground) scope.dependencyPadding = 0
+  if (noBackdrop || finalForeground) for (const id of selection) {
     const entry = byId.get(id), selected = document.nodes[id]
     if (!entry || !entry.ancestors.length || selected.mask || entry.ancestors.some(id => {
       const n = document.nodes[id]
@@ -84,6 +131,7 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
   scope.fixedBounds = new Set()
   const finiteBackdrop = !allowsReducedSampling(zoom) || !entries.some(entry => document.nodes[entry.id].effects.some(e => e.visible && e.kind === 'glass'))
   if (knownEffects && !noBackdrop && finiteBackdrop && allowFixedBackdrop) for (const id of selection) {
+    if (scope.localizedBounds.has(id)) continue
     const entry=byId.get(id), rootId=entry?.ancestors[0], root=rootId&&document.nodes[rootId], rootEntry=rootId&&byId.get(rootId)
     if(!entry||!root||!rootEntry||root.kind!=='frame'||!root.clip||root.mask||
       root.effects.some(e=>e.visible&&e.kind!=='background-blur'&&e.kind!=='glass')||entry.ancestors.some(id=>{
