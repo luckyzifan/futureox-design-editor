@@ -1,3 +1,6 @@
+import { RenderFailureAttempts, renderFailureFields, withRenderFailureStage } from './render-failure-telemetry'
+import { boundedPatchWire, supportsAcknowledgedPropertyPatch } from './authored-patch-transition'
+import type { PreparationStateReceiptV1 } from './preparation-state'
 import { samePreparationReceipt } from './authored-preparation-binding'
 import { renderQualityContract } from './render-quality'
 import { createRenderDiagnostics, snapshotResourceFields, setGpuDiagnosticSink, setGpuDiagnosticsDetail } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
@@ -5,12 +8,12 @@ import { NavigationJournal, validateNavigationJournalOptions } from './navigatio
 import { renderFailureEnvelope, renderErrorWithBudget } from './render-diagnostics'
 import { readAuthoredSnapshot } from './authored-snapshot'
 import initialize, {
-  transcode_export_png,
+  transcode_export_png as raw_transcode_export_png,
   VectorEngine,
-  encode_png_rgba,
-  encode_float_rgba8,
-  color_encode_rgba8,
-  color_encode_png,
+  encode_png_rgba as raw_encode_png_rgba,
+  encode_float_rgba8 as raw_encode_float_rgba8,
+  color_encode_rgba8 as raw_color_encode_rgba8,
+  color_encode_png as raw_color_encode_png,
 } from '../generated/design-kernel/design_kernel'
 import {
   allowsColorPresentation,
@@ -61,9 +64,24 @@ import { TranslationPatchSession } from './gpu/translation-patch-session'
 import { DisplayCommandOrder } from './display-command-order'
 let terminalDiagnostics = createRenderDiagnostics()
 let diagnosticRequestId = 0
+let diagnosticFailureAttempts: RenderFailureAttempts | undefined
+function failureAttempt<T>(stage: number, work: () => T): T {
+  const scope = diagnosticFailureAttempts
+  return scope ? scope.run(stage, work) : withRenderFailureStage(stage, work)
+}
+const transcode_export_png = (...args: Parameters<typeof raw_transcode_export_png>) => failureAttempt(7, () => raw_transcode_export_png(...args))
+const encode_png_rgba = (...args: Parameters<typeof raw_encode_png_rgba>) => failureAttempt(7, () => raw_encode_png_rgba(...args))
+const encode_float_rgba8 = (...args: Parameters<typeof raw_encode_float_rgba8>) => failureAttempt(7, () => raw_encode_float_rgba8(...args))
+const color_encode_rgba8 = (...args: Parameters<typeof raw_color_encode_rgba8>) => failureAttempt(7, () => raw_color_encode_rgba8(...args))
+const color_encode_png = (...args: Parameters<typeof raw_color_encode_png>) => failureAttempt(7, () => raw_color_encode_png(...args))
 let diagnosticQueueDepth=0
 let executionPolicy: RenderPolicy | undefined
 let preparation: PreparationChannel | undefined
+// Actual acknowledged preparation state paired with the corresponding worker
+// authored object. Unlike authoredSnapshot, this does not require/full-encode
+// a JSON string after edits. Revisions and deferred poses cannot mint it.
+type SynchronizedAuthoredProof = { document: DesignDocument; receipt: PreparationStateReceiptV1 }
+const synchronizedAuthored = new Map<RenderLaneName, SynchronizedAuthoredProof>()
 // A fallback is a continuation of the accepted ordered synchronization, not a
 // replay. Bound its lifetime and keep it independent of preview cancellation.
 const documentFallbacks = new Map<number, { resolve: (document: string) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
@@ -97,7 +115,7 @@ let navigationTextureSet: number[] = [], navigationTextureSequence = 0
 // immediately after queue.submit, not GPU completion or physical scanout.
 const reportDisplay = (presentation: Record<string, unknown>) => {
   const presented = presentation.presented as {view?:{x:number;y:number;zoom:number};width?:number;height?:number;dpr?:number} | undefined
-  terminalDiagnostics.record(presentation.error ? 'error' : 'camera-submit',{...presentation,...presented?.view,width:presented?.width,height:presented?.height,dpr:presented?.dpr,sequence:displayOrderSequence,reasonCode:presentation.error?4:0})
+  terminalDiagnostics.record(presentation.error ? 'error' : 'camera-submit',{...(presentation.error ? { ...renderFailureFields(presentation.error), failureStage:10 } : {}),...presentation,...presented?.view,width:presented?.width,height:presented?.height,dpr:presented?.dpr,sequence:displayOrderSequence,reasonCode:presentation.error?4:0})
   // Preserve the one forced terminal sample before another burst fills the bounded journal.
   if (presentation.qualityTerminal === true) terminalDiagnostics.flush()
   if (navigationJournal.recording) {
@@ -117,6 +135,7 @@ const reportDisplay = (presentation: Record<string, unknown>) => {
   self.postMessage({ presentation })
 }
 function journalCompile<T>(work: () => Promise<T>): Promise<T> {
+  const compile = work; work = () => failureAttempt(5, compile)
   if (terminalDiagnostics.enabled) {
     const original=work, started=performance.now(), requestId=diagnosticRequestId
     terminalDiagnostics.record('compile-start',{requestId})
@@ -231,7 +250,7 @@ function sceneImageHydration(kernel: RenderKernel, current: () => boolean) {
   return async (scene: GpuScene, isCurrent = current) => {
     const hydrationStarted=terminalDiagnostics.enabled?performance.now():0
     terminalDiagnostics.record('hydrate-start',{requestId:diagnosticRequestId})
-    await hydration.hydrate(scene, isCurrent)
+    await failureAttempt(6, () => hydration.hydrate(scene, isCurrent))
     terminalDiagnostics.record('hydrate',{requestId:diagnosticRequestId,durationMs:performance.now()-hydrationStarted})
     // RenderWorkQueue owns the entire gpu.render promise. Its only priority
     // yield is after completed tile delivery, so another lane cannot rebind
@@ -336,7 +355,7 @@ function schedulePose(){
           const hydrateImages = sceneImageHydration(await engine(), () => poseSession === session && !session.stopped)
           await hydrateImages(next)
           prepareDisplay()
-          const result=await gpu.render(next,false,true)
+          const result=await failureAttempt(12, () => gpu!.render(next,false,true))
           if(!result.gpuTile)throw Error('Resident movement did not produce a GPU texture')
           if(poseSession!==session){gpu.driver.releasePresented?.([result.gpuTile]);continue}
           gpu.driver.replacePresented(session.slot,result.gpuTile)
@@ -502,6 +521,10 @@ self.onmessage = (e) => {
   void queue.run(async () => {
     diagnosticQueueDepth--
     const previousDiagnosticRequestId=diagnosticRequestId
+    const previousFailureAttempts=diagnosticFailureAttempts
+    const failureAttempts=terminalDiagnostics.enabled ? new RenderFailureAttempts() : undefined
+    diagnosticFailureAttempts=failureAttempts
+    let diagnosticFailed=false, rendererCode=0
     diagnosticRequestId=request.id
     const diagnosticStarted=terminalDiagnostics.enabled?performance.now():0
     terminalDiagnostics.record('queue-start',{requestId:request.id,waitMs:diagnosticStarted-diagnosticQueuedAt,queueDepth:diagnosticQueueDepth,generation,fillGeneration,superseded:generation!==previewGenerations[channel]})
@@ -623,36 +646,41 @@ self.onmessage = (e) => {
       // whether the last displayed pose is exactly the patch being committed.
       let paintDamage: PaintDamage | undefined
       let derived = false
+      let derivedSource: { document: DesignDocument; json?: string } | undefined
+      let acknowledgedSource = false
       if (request.deriveFrom !== undefined) {
         const deriveAt = performance.now()
         try {
           if (channel !== 'interaction' || request.document !== undefined || request.documentPatch !== undefined) throw Error('DERIVATION_INVALID_ENVELOPE')
           const source = lanes.get('canvas'), sourceKernel = await source.enginePromise
-          const snapshot = source.authoredSnapshot
-          if (!snapshot || source.deferredInteractionDocument || source.synchronizedInteractionDocument !== snapshot.document ||
+          const proof = synchronizedAuthored.get('canvas')
+          if (!proof || source.deferredInteractionDocument || source.synchronizedInteractionDocument !== proof.document ||
+            !samePreparationReceipt(request.deriveFrom, proof.receipt) ||
             !samePreparationReceipt(request.deriveFrom, sourceKernel?.preparationStateReceipt)) throw Error('DERIVATION_STALE_SOURCE')
           await kernel.derive_document_v1(request.deriveFrom)
-          // This is the already retained authored envelope, not reconstructed
-          // native JSON. No full string is created or crosses either boundary.
-          request.document = snapshot.json
+          // Reuse the acknowledged authored object directly. A postpatch source
+          // deliberately has no freshly serialized full JSON envelope.
+          derivedSource = { document: proof.document, json: source.authoredSnapshot?.document === proof.document ? source.authoredSnapshot.json : undefined }
           derived = true
           loadStage(5, deriveAt, { derivationAdmitted: true, fullPayloadBytes: 0 })
         } catch (error) {
+          failureAttempts?.observe(error,3)
           loadStage(6, deriveAt, { derivationAdmitted: false, derivationFallback: true, derivationReasonCode: /STALE_SOURCE|STALE_BASE/.test(String(error)) ? 1 : /STALE_TARGET/.test(String(error)) ? 2 : /UNSUPPORTED/.test(String(error)) ? 3 : 4 })
-          request.document = await capturedDocumentFallback(request.id)
+          request.document = await failureAttempt(11, () => capturedDocumentFallback(request.id))
         }
       }
-      if (request.document !== undefined) {
+      if (derivedSource || request.document !== undefined) {
+        synchronizedAuthored.delete(channel)
         // A full resynchronization is a new owner even if its authored id repeats.
         laneState.deferredInteractionDocument = undefined
         laneState.documentGeneration++
         invalidateOwnerTileCache()
         laneState.authoredSnapshot = undefined
         const snapshotAt = performance.now()
-        laneState.interactionDocument = readAuthoredSnapshot(request.document,
-          channel === 'interaction' ? lanes.get('canvas')?.authoredSnapshot : undefined)
+        laneState.interactionDocument = derivedSource?.document ?? failureAttempt(2, () => readAuthoredSnapshot(request.document,
+          channel === 'interaction' ? lanes.get('canvas')?.authoredSnapshot : undefined))
         loadStage(2, snapshotAt, terminalDiagnostics.detail
-          ? snapshotResourceFields(request.document.length, laneState.interactionDocument.fonts) : {})
+          ? snapshotResourceFields(derivedSource ? 0 : request.document.length, laneState.interactionDocument.fonts) : {})
         laneState.loadedDocumentId = laneState.interactionDocument.id
         laneState.loadedNodeCount = Object.keys(laneState.interactionDocument.nodes).length
         laneState.synchronizedInteractionDocument=laneState.interactionDocument
@@ -661,22 +689,29 @@ self.onmessage = (e) => {
           const loadAt = performance.now(), forks = kernel.documentForks
           if (!derived) await kernel.load_document(request.document)
           loadStage(3, loadAt, { documentFork: kernel.documentForks > forks })
-          laneState.loadedDocument = request.document
+          laneState.loadedDocument = derivedSource?.json ?? request.document ?? ''
           laneState.compiledScene = undefined
           paintDamage = undefined
         }
         laneState.loadedRevision = request.documentRevision
         // Publish only after successful kernel synchronization. A failed load
         // or any later patch must never leave a reusable source certificate.
-        laneState.authoredSnapshot = {json:request.document,document:laneState.interactionDocument}
+        const sourceJson = derivedSource?.json ?? request.document
+        laneState.authoredSnapshot = sourceJson === undefined ? undefined : { json: sourceJson, document: laneState.interactionDocument }
+        acknowledgedSource = true
       } else if (request.documentPatch !== undefined) {
         const patchAt = performance.now()
+        const predecessor = synchronizedAuthored.get(channel)
+        synchronizedAuthored.delete(channel)
+        const actualBefore = laneState.synchronizedInteractionDocument
+        const priorAuthoredDocument = laneState.interactionDocument
+        const wasDeferred = !!laneState.deferredInteractionDocument
         laneState.authoredSnapshot = undefined
         if (request.baseDocumentRevision !== laneState.loadedRevision)
           throw new Error('文档补丁版本未同步，请重试当前画布')
-        const patch = JSON.parse(request.documentPatch) as DocumentPatch
+        const patch = failureAttempt(4, () => JSON.parse(request.documentPatch)) as DocumentPatch
         if (laneState.interactionDocument) {
-          const next = applyDocumentPatch(laneState.interactionDocument, patch)
+          const next = failureAttempt(4, () => applyDocumentPatch(laneState.interactionDocument!, patch))
           if (retainInteraction && !interactionNative && laneState.compiledScene?.revision === laneState.loadedRevision) {
             const moved = translatePreviewScene(laneState.compiledScene.scene, laneState.interactionDocument, next)
             if (moved) translated = { options: laneState.compiledScene.options, scene: moved }
@@ -690,9 +725,31 @@ self.onmessage = (e) => {
         // the latest authored snapshot before touching the CPU kernel again.
         const defer = translated?.options === options && request.debug?.disableSceneCache !== true
         if (!defer) await synchronizeDeferred()
+        // Old preparation backends may ignore extra arguments. Only the
+        // explicit guarded-patch capability certifies authoritative native CAS.
+        const guardedPatchSupported = request.patchBaseReceipt !== undefined && await kernel.supportsAcknowledgedPatches()
+        // Check the acknowledged source immediately before synchronous enqueue;
+        // the backend repeats this CAS against its actual state before mutation.
+        // Deferred translation and an incomplete proof chain are ordinary
+        // optimization misses, not rejected edits. Keep legacy synchronization
+        // semantics and never renew authored authority in those cases.
+        const guardCandidate = guardedPatchSupported && channel === 'canvas' && !defer && !wasDeferred &&
+          !!predecessor && !!actualBefore && predecessor.document === actualBefore
+        const canGuard = guardCandidate &&
+          samePreparationReceipt(request.patchBaseReceipt, predecessor.receipt) &&
+          samePreparationReceipt(request.patchBaseReceipt, kernel.preparationStateReceipt)
+        if (guardCandidate && !canGuard) { laneState.interactionDocument = priorAuthoredDocument; throw Error('STALE_AUTHORED_PATCH_BASE') }
+        // The worker's rendering projection can omit authored optional nulls.
+        // A conservative subset mismatch must not reject an otherwise valid
+        // edit: keep backend CAS but withhold renewal of authored authority.
+        const canAcknowledge = canGuard && boundedPatchWire(request.documentPatch) && supportsAcknowledgedPropertyPatch(actualBefore!, patch)
         const damage = defer ? { full: true, bounds: null, reason: 'transient-translation' } :
-          JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch)) as {full:boolean;bounds:[number,number,number,number]|null;rects?:[number,number,number,number][];reason?:string}
+          JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch, canGuard ? request.patchBaseReceipt : undefined).catch(error => {
+            if (canGuard) laneState.interactionDocument = priorAuthoredDocument
+            throw error
+          })) as {full:boolean;bounds:[number,number,number,number]|null;rects?:[number,number,number,number][];reason?:string}
         if(!defer)laneState.synchronizedInteractionDocument=laneState.interactionDocument
+        acknowledgedSource = canAcknowledge
         if (defer) laneState.deferredInteractionDocument = laneState.interactionDocument
         // Kernel-tiled frames consume the same damage: full repaint, bounded
         // world rects, or no paint change.
@@ -717,8 +774,11 @@ self.onmessage = (e) => {
         loadStage(4, patchAt)
       }
       if (request.documentRevision !== laneState.loadedRevision) throw new Error('渲染文档版本未同步')
+      const synchronizedReceipt = acknowledgedSource && !laneState.deferredInteractionDocument ? kernel.preparationStateReceipt : undefined
+      if (synchronizedReceipt && laneState.synchronizedInteractionDocument)
+        synchronizedAuthored.set(channel, { document: laneState.synchronizedInteractionDocument, receipt: synchronizedReceipt })
       if (request.document !== undefined || request.documentPatch !== undefined || request.deriveFrom !== undefined) {
-        const receipt = channel === 'canvas' && request.document !== undefined && !laneState.deferredInteractionDocument &&
+        const receipt = channel === 'canvas' && acknowledgedSource && !laneState.deferredInteractionDocument &&
           await kernel.supportsDocumentDerivation() ? kernel.preparationStateReceipt : undefined
         self.postMessage({ id: request.id, documentSynchronized: true, stateReceipt: receipt ?? null })
       }
@@ -779,6 +839,7 @@ self.onmessage = (e) => {
       let compileCacheHit = false
       const failures = new Map(unavailable)
       for (const backend of candidates) {
+        rendererCode = backend === 'webgpu' ? 2 : backend === 'webgl2' ? 3 : 0
         try {
           if (tileViewport) {
             if (
@@ -1224,7 +1285,7 @@ self.onmessage = (e) => {
           prepareDisplay(!request.png && !request.readback)
           const previewReadback = !!(request.png || request.readback || (!!color && !gpu.driver.hdr && !((retainInteraction || displayCanvas) && backend === 'webgpu')))
           const t = performance.now(),
-            result = await gpu.render(scene!, previewReadback, true, (livePreview || tileViewport) ? previewCurrent : undefined)
+            result = await failureAttempt(12, () => gpu!.render(scene!, previewReadback, true, (livePreview || tileViewport) ? previewCurrent : undefined))
           const renderMs = performance.now() - t
           if ((livePreview || tileViewport) && !previewCurrent()) {
             result.bitmap?.close()
@@ -1354,7 +1415,7 @@ self.onmessage = (e) => {
           const previewBudget = isRecoverablePreviewBudget(error, gpu?.driver.lost)
           let preservedPreview = false
           if (!tileViewport && (livePreview || renderOptions.captureViewport)) {
-            try { preservedPreview = await recoverPreviewBudget(error, gpu, invalidateTileCache) }
+            try { preservedPreview = await failureAttempt(11, () => recoverPreviewBudget(error, gpu, invalidateTileCache)) }
             catch (recoveryError) { gpu = undefined; throw recoveryError }
           }
           if (preservedPreview && (renderOptions.captureViewport || _retainInteractionGraph ||
@@ -1413,6 +1474,7 @@ self.onmessage = (e) => {
           failures.set(backend, message)
         }
       }
+      rendererCode=1
       const t = performance.now()
       await synchronizeDeferred()
       // PNG uses the standalone CPU API, including tagged 16-bit color output.
@@ -1466,12 +1528,23 @@ self.onmessage = (e) => {
         { transfer },
       )
     } catch (error) {
-      terminalDiagnostics.record('error',{requestId:request.id,reasonCode:String(error).includes('PREVIEW_CANCELLED')?5:1,generation,fillGeneration,superseded:generation!==previewGenerations[channel]})
-      self.postMessage({id:request.id,...renderFailureEnvelope(error)})
+      diagnosticFailed=true
+      const fields={...renderFailureFields(error),...failureAttempts?.fields(),backendCode:preparation?.diagnosticBackendCode ?? 0,
+        rendererCode,channel:channel==='interaction'?1:0,documentRevision:request.documentRevision ?? laneState.loadedRevision ?? 0,generation,fillGeneration}
+      terminalDiagnostics.record('error',{...fields,requestId:request.id,reasonCode:fields.failureCategory===1?5:1,superseded:generation!==previewGenerations[channel]})
+      terminalDiagnostics.flush()
+      self.postMessage({id:request.id,...renderFailureEnvelope(error),...fields})
     } finally {
       if (packetWait) packetWaits.delete(packetWait)
       terminalDiagnostics.record('queue-end',{requestId:request.id,durationMs:performance.now()-diagnosticStarted,resourceEpoch:gpu?.driver.resourceEpoch,completedResourceEpoch:gpu?.driver.completedResourceEpoch})
       if(terminalDiagnostics.enabled) for(const pass of gpu?.driver.stats?.().passTimings?.slice(0,16)||[]) terminalDiagnostics.record('filter',pass)
+      const recovered=failureAttempts?.fields()
+      if (!diagnosticFailed && recovered?.failureAttempts) {
+        terminalDiagnostics.record('failure-summary',{...recovered,requestId:request.id,recovered:true,rendererCode,
+          backendCode:preparation?.diagnosticBackendCode ?? 0,channel:channel==='interaction'?1:0,generation,fillGeneration})
+        terminalDiagnostics.flush()
+      }
+      diagnosticFailureAttempts=previousFailureAttempts
       diagnosticRequestId=previousDiagnosticRequestId
     }
   }, channel === 'interaction' ? 1 : 0)
@@ -1577,7 +1650,7 @@ async function renderTiledPreview(
         checkCurrent()
         await hydrateImages(scene, isCurrent)
         prepareDisplay()
-        const result = await gpu.render(scene, false, true, isCurrent)
+        const result = await failureAttempt(12, () => gpu!.render(scene, false, true, isCurrent))
         presented = result.bitmap
         residentTile = result.gpuTile
         checkCurrent()
@@ -1680,7 +1753,7 @@ async function renderTiledPreview(
         checkCurrent()
         await hydrateImages(scene, isCurrent)
         prepareDisplay(false)
-        const result = await gpu.render(scene, !bitmapAssembly, bitmapAssembly, isCurrent)
+        const result = await failureAttempt(12, () => gpu!.render(scene, !bitmapAssembly, bitmapAssembly, isCurrent))
         bitmap = result.bitmap
         checkCurrent()
         onRegionComplete?.()

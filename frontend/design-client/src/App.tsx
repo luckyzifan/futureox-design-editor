@@ -815,6 +815,11 @@ export default function App() {
             导出
             <ChevronDown size={12} />
           </button>
+          <button type="button" className="app-settings-button" aria-label="打开设置" title="设置"
+            aria-haspopup="dialog" aria-expanded={showSettings}
+            onClick={() => { if (commitPendingEdits(editor)) { setMenu(false); setShowSettings(true) } }}>
+            <SlidersHorizontal size={16} /><span>设置</span>
+          </button>
           <span className="avatar">我</span>
         </div>
       </header>

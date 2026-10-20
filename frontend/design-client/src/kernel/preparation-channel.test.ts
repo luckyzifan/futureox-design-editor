@@ -160,3 +160,31 @@ test('failed atomic derive preserves target receipt but failed mutation revokes 
   await expect(client.request('interaction', 'apply_document_patch_with_damage', ['bad'])).rejects.toThrow()
   expect(client.currentReceipt('interaction')).toBeUndefined()
 })
+
+test('guarded patch support is separately negotiated and definite CAS rejection preserves lane receipt', async () => {
+  const { client, server } = fixture()
+  const receipt = { protocol: 1 as const, sessionGeneration: 's', canvasOwner: 'o', documentIncarnation: 'd', lane: 'canvas' as const, synchronizedRevision: '1', resourceEpoch: '1', nonce: '1' }
+  let capabilities = 0, guardError = 'STALE_BASE'
+  server.onmessage = event => {
+    const { id, method } = event.data
+    if (method === 'preparation_capabilities_v1') { capabilities++; server.postMessage({ id, value: { protocol: 1, emptyDeltaDerivation: true, guardedPatchReceiptV1: true } }) }
+    else if (method === 'load_document') server.postMessage({ id, stateReceipt: receipt })
+    else server.postMessage({ id, error: guardError })
+  }
+  expect(await client.supportsDerivation()).toBe(true); expect(await client.supportsGuardedPatch()).toBe(true); expect(capabilities).toBe(1)
+  await client.request('canvas', 'load_document', ['doc'])
+  const guarded = client.request('canvas', 'apply_document_patch_with_damage', ['patch', { expectedBaseReceipt: receipt }])
+  expect(client.currentReceipt('canvas')).toBeUndefined()
+  await expect(guarded).rejects.toThrow('STALE_BASE'); expect(client.currentReceipt('canvas')).toEqual(receipt)
+  guardError = 'PATCH_GUARD_SCHEMA'
+  await expect(client.request('canvas', 'apply_document_patch_with_damage', ['patch', { wrong: true }])).rejects.toThrow('PATCH_GUARD_SCHEMA')
+  expect(client.currentReceipt('canvas')).toEqual(receipt)
+  guardError = 'mutation validation failed'
+  await expect(client.request('canvas', 'apply_document_patch_with_damage', ['patch', { expectedBaseReceipt: receipt }])).rejects.toThrow('mutation validation failed')
+  expect(client.currentReceipt('canvas')).toBeUndefined()
+})
+test('empty derive capability alone never implies backend patch CAS', async () => {
+  const { client, server } = fixture()
+  server.onmessage = event => server.postMessage({ id: event.data.id, value: { protocol: 1, emptyDeltaDerivation: true } })
+  expect(await client.supportsDerivation()).toBe(true); expect(await client.supportsGuardedPatch()).toBe(false)
+})

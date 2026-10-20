@@ -75,9 +75,19 @@ impl Preparation {
     pub fn request(&mut self, lane: &str, method: &str, args: &[Value]) -> Result<Reply, String> {
         let index = match lane { "canvas" => 0, "interaction" => 1, _ => return Err("Invalid preparation lane".into()) };
         if method == "preparation_capabilities_v1" {
-            return Ok(Reply { metadata: json!({"value":{"protocol":1,"emptyDeltaDerivation":true}}), bytes: Vec::new() });
+            return Ok(Reply { metadata: json!({"value":{"protocol":1,"emptyDeltaDerivation":true,"guardedPatchReceiptV1":true}}), bytes: Vec::new() });
         }
         if method == "derive_document_v1" { return self.derive(index, args); }
+        if method == "apply_document_patch_with_damage" && args.len() > 1 {
+            if args.len() != 2 || !args[1].as_object().is_some_and(|o| o.len() == 1 && o.contains_key("expectedBaseReceipt")) {
+                return Err("PATCH_GUARD_SCHEMA".into());
+            }
+            let expected: StateReceipt = serde_json::from_value(args[1]["expectedBaseReceipt"].clone())
+                .map_err(|_| "PATCH_GUARD_SCHEMA")?;
+            if expected.protocol != 1 { return Err("PATCH_GUARD_SCHEMA".into()); }
+            if self.lanes[index].receipt.as_ref() != Some(&expected) { return Err("STALE_BASE".into()); }
+            if self.sequence == u64::MAX { return Err("PREPARATION_SESSION_EXHAUSTED".into()); }
+        }
         let mutation = matches!(method, "initialize" | "load_document" | "apply_document_patch_with_damage" | "apply_interaction_transforms");
         // Failed legacy mutation cannot leave a receipt claiming synchronization.
         let previous = if mutation { self.lanes[index].receipt.take() } else { None };
@@ -282,6 +292,55 @@ mod tests {
     fn derive_request(session: &Preparation, operation: u64) -> Value {
         json!({"operationId":operation,"baseReceipt":session.lanes[0].receipt,
             "target":"interaction","expectedTarget":session.lanes[1].receipt,"delta":[]})
+    }
+
+    #[test]
+    fn guarded_patch_rejects_stale_malformed_retry_and_resource_receipts_without_retiring_state() {
+        let mut session = session();
+        let initial = session.lanes[0].receipt.clone().unwrap();
+        let mut changed = document()["nodes"]["r"].clone(); changed["width"] = json!(24);
+        let patch = json!({"nodes":{"r":changed},"fields":{}}).to_string();
+        let guard = json!({"expectedBaseReceipt":initial});
+        session.request("canvas", "apply_document_patch_with_damage", &[json!(patch), guard.clone()]).unwrap();
+        let current = session.lanes[0].receipt.clone();
+        // Lost ACK cannot turn a retry into another applied operation.
+        assert_eq!(session.request("canvas", "apply_document_patch_with_damage", &[json!(patch), guard]).err().unwrap(), "STALE_BASE");
+        assert_eq!(session.lanes[0].receipt, current);
+        for malformed in [Value::Null, json!({}), json!({"expectedBaseReceipt":null}), json!({"expectedBaseReceipt":current,"extra":1})] {
+            assert!(session.request("canvas", "apply_document_patch_with_damage", &[json!(patch), malformed]).err().unwrap().contains("SCHEMA"));
+            assert_eq!(session.lanes[0].receipt, current);
+        }
+        session.request("canvas", "initialize", &[json!(true)]).unwrap();
+        let resource = session.lanes[0].receipt.clone();
+        assert_eq!(session.request("canvas", "apply_document_patch_with_damage", &[json!(patch), json!({"expectedBaseReceipt":current})]).err().unwrap(), "STALE_BASE");
+        assert_eq!(session.lanes[0].receipt, resource);
+        session.request("canvas", "load_document", &[json!(document().to_string())]).unwrap();
+        let reset = session.lanes[0].receipt.clone();
+        assert!(session.request("canvas", "apply_document_patch_with_damage", &[json!(patch), json!({"expectedBaseReceipt":resource})]).is_err());
+        assert_eq!(session.lanes[0].receipt, reset);
+        assert!(session.request("canvas", "apply_document_patch_with_damage", &[json!("invalid"), json!({"expectedBaseReceipt":reset})]).is_err());
+        assert!(session.lanes[0].receipt.is_none());
+    }
+
+    #[test]
+    fn guarded_patch_edit_undo_redo_derive_matches_fresh_packets_and_pixels() {
+        let mut session = session();
+        let original = document(); let mut edited = original.clone();
+        edited["nodes"]["r"]["transform"][4] = json!(14);
+        edited["nodes"]["r"]["unknownAuthoredField"] = json!({"retained":"host"});
+        for (i, target) in [&edited, &original, &edited].iter().enumerate() {
+            let guard = json!({"expectedBaseReceipt":session.lanes[0].receipt});
+            let patch = json!({"nodes":{"r":target["nodes"]["r"]},"fields":{}}).to_string();
+            session.request("canvas", "apply_document_patch_with_damage", &[json!(patch), guard]).unwrap();
+            let request = derive_request(&session, i as u64 + 1);
+            session.request("interaction", "derive_document_v1", &[request]).unwrap();
+            let mut fresh = Preparation { lanes: [Lane::default(), Lane::default()], owner: session_owner(), sequence: 0, operation: 0 };
+            fresh.request("interaction", "load_document", &[json!(target.to_string())]).unwrap();
+            for method in ["compile_gpu_packet", "render_png"] {
+                assert_eq!(session.request("interaction", method, &[json!(options().to_string())]).unwrap().bytes,
+                    fresh.request("interaction", method, &[json!(options().to_string())]).unwrap().bytes);
+            }
+        }
     }
 
     #[test]

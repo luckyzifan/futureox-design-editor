@@ -1,3 +1,4 @@
+import { markRenderFailure } from './render-failure-telemetry'
 import type { PreparationStateReceiptV1 } from './preparation-state'
 import type { GpuScene } from './gpu/types'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
@@ -29,6 +30,10 @@ export class RenderKernel {
     if (import.meta.env.VITE_DESIGN_DOCUMENT_DERIVATION === '0') return Promise.resolve(false)
     return this.preparation?.supportsDerivation() ?? Promise.resolve(false)
   }
+  supportsAcknowledgedPatches() {
+    if (import.meta.env.VITE_DESIGN_DOCUMENT_DERIVATION === '0') return Promise.resolve(false)
+    return this.preparation?.supportsGuardedPatch() ?? Promise.resolve(false)
+  }
   async derive_document_v1(baseReceipt: PreparationStateReceiptV1) {
     if (this.lane !== 'interaction' || !this.preparation || !await this.supportsDocumentDerivation()) throw Error('DERIVATION_UNSUPPORTED')
     const expectedTarget = this.preparationStateReceipt ?? null
@@ -50,6 +55,7 @@ export class RenderKernel {
     else if (font) this.assets.load_font(font)
   }
   private async call<T>(method: Exclude<PreparationMethod, 'warm_resources'>, args: unknown[] = [], signal?: AbortSignal): Promise<T> {
+    try {
     if (this.preparation) {
       const reply = await this.preparation.request(this.lane, method, args, signal)
       if(reply.compileStats)this.compileStats=reply.compileStats
@@ -68,6 +74,13 @@ export class RenderKernel {
     const result = (this.assets[method] as (...args: any[]) => unknown).apply(this.assets, args)
     this.settings = this.assets.color_settings()
     return result as T
+    } catch (error) {
+      const stage = method === 'load_document' || method === 'initialize' ? 2 : method === 'derive_document_v1' ? 3 :
+        method === 'apply_document_patch_with_damage' || method === 'apply_interaction_transforms' ? 4 :
+        method === 'compile_gpu_packet' || method === 'compile_gpu_scene_update' ? 5 :
+        ['render_linear','render_png','render_color_png','render_region_png','render_cpu_frame'].includes(method) ? 7 : 0
+      throw markRenderFailure(error, { failureStage: stage })
+    }
   }
   async load_document(value: string) {
     this.sceneUpdates.clear()
@@ -75,10 +88,11 @@ export class RenderKernel {
     try { await this.call<void>('load_document', [value]) }
     finally { this.pendingMutations-- }
   }
-  async apply_document_patch_with_damage(value: string) {
+  async apply_document_patch_with_damage(value: string, expectedBaseReceipt?: PreparationStateReceiptV1) {
+    if (expectedBaseReceipt && !await this.supportsAcknowledgedPatches()) throw Error('PATCH_GUARD_UNSUPPORTED')
     this.revision++; this.pendingMutations++; this.pendingPackets.clear()
     try {
-      const result = await this.call<string>('apply_document_patch_with_damage', [value])
+      const result = await this.call<string>('apply_document_patch_with_damage', expectedBaseReceipt ? [value, { expectedBaseReceipt }] : [value])
       const patch = JSON.parse(value), damage = JSON.parse(result) as PaintDamage
       if (this.lane !== 'canvas' || Object.keys(patch.fields || {}).length) this.packets.clear()
       else this.packets.applyDamage(damage, Object.keys(patch.nodes || {}))

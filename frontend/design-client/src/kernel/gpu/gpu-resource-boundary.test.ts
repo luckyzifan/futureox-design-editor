@@ -1,3 +1,4 @@
+import { setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 // CPU-only descriptor/ownership instrumentation of production renderer/driver
 // methods. WGSL is neither executed nor validated here; these are work counts,
 // coefficient-byte and command-contract checks, never pixel or timing claims.
@@ -455,4 +456,25 @@ test('interaction fence reason retains periodic short-circuit cadence and native
   expect(internals.presentationSubmissions).toBe(1)
   await driver.abortFrameAndReleaseFilterScratch()
   driver.dispose()
+})
+
+
+test('admission context rides the existing fence event without advancing completion early', async () => {
+  const { boundary, driver } = await createDriver(true)
+  const records: { event: string; fields: any }[] = []
+  const metadata = { admissionKind: 1 as const, admissionPressure: 1 as const,
+    admissionRequiredBytes: 4096, admissionWorkingBytes: 8192, admissionBudgetBytes: 10000,
+    admissionReclaimableBytes: 2048, admissionPoolBytes: 1024, admissionPoolCount: 1,
+    admissionUploadCount: 2, admissionImageCount: 3 }
+  setGpuDiagnosticSink((event, fields) => records.push({ event, fields }))
+  try {
+    driver.begin(new Float32Array(0)); boundary.holdWait()
+    const waiting = driver.checkpoint('admission', metadata)
+    expect(records).toEqual([]); expect(driver.completedResourceEpoch).toBe(0)
+    boundary.releaseWait(); await waiting
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({ event: 'fence', fields: { ...metadata, reasonCode: 6 } })
+    expect(driver.completedResourceEpoch).toBe(0)
+    expect(driver.stats().queueWaits.reasons.admission.completed).toBe(1)
+  } finally { setGpuDiagnosticSink(undefined); driver.dispose() }
 })

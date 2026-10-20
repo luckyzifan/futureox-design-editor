@@ -1,3 +1,5 @@
+import { documentPatch } from '../document-patch'
+import { boundedPatchWire, prepareAuthoredPatchTransition } from './authored-patch-transition'
 import { operationCorrelation } from '../canvas-operation-terminal'
 import { AuthoredPreparationBinding } from './authored-preparation-binding'
 import type { PreparationStateReceiptV1 } from './preparation-state'
@@ -8,7 +10,6 @@ import { recordRenderDiagnostic, renderBudgetDiagnostic, renderErrorWithBudget }
 import type { RasterTile } from './tile-cache'
 import type { DesignDocument } from '../model'
 import type { BackendPreference } from './gpu/types'
-import { documentPatch } from '../document-patch'
 import { hostRenderPolicy, effectiveBackend, allowsResidentSdr } from './render-policy'
 import {residentFrameMessage} from './gpu/resident-frame'
 import { recordRenderProfile } from './render-profile'
@@ -764,24 +765,29 @@ export class KernelClient {
         let serialized: string | undefined
         let patch: string | undefined
         let deriveFrom: PreparationStateReceiptV1 | undefined
+        let patchBaseReceipt: PreparationStateReceiptV1 | undefined
         let acknowledge: ((receipt?: PreparationStateReceiptV1 | null) => void) | undefined
         const interaction = options.interactionChannel === true
         const snapshot = interaction ? this.interactionSnapshot : this.documentSnapshot
         const baseDocumentRevision = interaction ? this.interactionRevision : this.documentRevision
         if (document !== snapshot) {
+          // Capture predecessor authority before invalidating for this pending
+          // mutation. No ACK from an older epoch may resurrect the old object.
+          const beforeReceipt = !interaction && snapshot ? this.authoredPreparation.receiptFor(snapshot) : undefined
           if (!interaction) this.authoredPreparation.invalidate()
           deriveFrom = interaction ? this.authoredPreparation.receiptFor(document) : undefined
           if (deriveFrom) { /* Empty derivation carries no authored JSON or patch. */ }
           else if (snapshot?.id === document.id) {
-            const value = documentPatch(snapshot, document)
-            patch = nativeSerializer ? await nativeSerializer(value) : JSON.stringify(value)
+            const transition = beforeReceipt ? prepareAuthoredPatchTransition(snapshot, document) : { patch: documentPatch(snapshot, document), canAcknowledge: false }
+            patch = nativeSerializer ? await nativeSerializer(transition.patch) : JSON.stringify(transition.patch)
+            if (beforeReceipt && transition.canAcknowledge && boundedPatchWire(patch)) patchBaseReceipt = beforeReceipt
           } else serialized = nativeSerializer ? await nativeSerializer(document) : JSON.stringify(document)
           if (this.disposed || this.worker !== worker) throw new Error('渲染器已关闭')
           if (cancelled()) throw new Error('PREVIEW_CANCELLED')
           if (interaction) { this.interactionSnapshot = document; this.interactionRevision++ }
           else { this.documentSnapshot = document; this.documentRevision++ }
         }
-        if (!interaction && serialized !== undefined) acknowledge = this.authoredPreparation.capture(document)
+        if (!interaction && (serialized !== undefined || patchBaseReceipt)) acknowledge = this.authoredPreparation.capture(document)
         const synchronize = deriveFrom || acknowledge ? { document, acknowledge } : undefined
         const serializeMs = performance.now() - start
         const revision = interaction ? this.interactionRevision : this.documentRevision
@@ -789,6 +795,7 @@ export class KernelClient {
           {
             document: serialized,
             deriveFrom,
+            patchBaseReceipt,
             documentPatch: patch,
             baseDocumentRevision,
             documentRevision: revision,

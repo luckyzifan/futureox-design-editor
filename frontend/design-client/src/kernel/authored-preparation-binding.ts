@@ -1,7 +1,8 @@
 import type { PreparationStateReceiptV1 } from './preparation-state'
 
 /** This is authored identity proof, not a packet receipt or a client revision.
- * Only the closure for a successful full synchronization may establish it. */
+ * Only a successful full synchronization or a verified acknowledged patch
+ * from the exact bound predecessor may establish it. */
 export class AuthoredPreparationBinding<T extends object> {
   private epoch = 0
   private binding?: { document: T; receipt: PreparationStateReceiptV1 }
