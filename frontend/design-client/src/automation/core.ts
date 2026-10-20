@@ -1,10 +1,14 @@
+import { planArrangement, translatedLocalTransform } from '../commands/arrangement-plan'
+import { planChildReparent, planContainerPlacement, reparentedTransform } from '../commands/structure-plan'
+import { applyChildListPlan, applyTransformPlan } from '../commands/apply-plan'
+import { AUTOMATION_PROFILE } from '../commands/profiles'
 import { releaseSlotRoot } from '../component-slots'
 import { layoutSuggestionExtensions } from './layout-suggestions'
 import { NODE_FIELDS, OPTIONAL_NODE_FIELDS, nodePatchSchema as patchSchema } from './node-input-descriptors'
 import { bulkExtensions } from './bulk'
 /** Authored-document automation. This module owns no renderer or second history.
  * Every successful batch enters the existing Editor.change boundary exactly once. */
-import type { Editor } from '../engine'
+import type { Editor, CommittedEditReceipt } from '../engine'
 import { LocalAutomationPermissions, type AutomationPermissionPolicy } from './permissions'
 import { hasPendingEdits } from '../pending-edits'
 import { detachMissing } from '../components'
@@ -19,7 +23,7 @@ import { allParents, inverse, multiply, worldMatrix, bounds, boxPoints, apply } 
 import { duplicateGraph, type GraphCopy } from '../duplicate-graph'
 import { equalValue } from '../document-patch'
 import { AutomationError, type AutomationCapabilities, type AutomationContext, type AutomationExtension,
-  type AutomationMethod, type AutomationRequest, type AutomationResponse } from './types'
+  type AutomationMethod, type AutomationRequest, type AutomationResponse, type AutomationMutationCompletion } from './types'
 
 const RECEIPT_LIMIT = 128, RECEIPT_BYTES = 32 * 1024 * 1024
 const MAX_BATCH = 500, MAX_BYTES = 32 * 1024 * 1024, DEFAULT_MAX_BYTES = 8 * 1024 * 1024, MAX_RESULTS = 1000
@@ -199,12 +203,13 @@ function moveNodes(doc: DesignDocument, selected: string[], parent: string, inde
     const previous = parents.get(id)
     if (!previous) fail('invalid_structure', `Node ${id} has no parent`)
     childList(doc, previous)
-    if (preserveWorld) transforms.set(id, multiply(inverse(worldMatrix(doc, parent)), worldMatrix(doc, id)))
+    if (preserveWorld) transforms.set(id, reparentedTransform(worldMatrix(doc, parent), worldMatrix(doc, id)))
   }
-  for (const id of top) { const list = childList(doc, parents.get(id)!); list.splice(list.indexOf(id), 1) }
-  const list = childList(doc, parent), at = insertionIndex(index, list.length)
-  list.splice(at, 0, ...top)
-  for (const id of top) if (transforms.has(id)) doc.nodes[id].transform = transforms.get(id)!
+  const lists = [...new Set([...top.map(id => parents.get(id)!), parent])].map(parent => ({ parent, children: childList(doc, parent) }))
+  const remaining = childList(doc, parent).length - top.filter(id => parents.get(id) === parent).length
+  const at = insertionIndex(index, remaining)
+  applyChildListPlan(doc, planChildReparent(AUTOMATION_PROFILE, top.map(id => ({ id, parent: parents.get(id)! })), lists, parent, at))
+  applyTransformPlan(doc, [...transforms].map(([id, transform]) => ({ id, transform })))
   return top
 }
 function copyGraph(doc: DesignDocument, selected: string[]): GraphCopy {
@@ -379,7 +384,8 @@ coreExtensions.push(
       const n = doc.nodes[id]
       return boxPoints({ x: 0, y: 0, width: n.width, height: n.height }).map(point => apply(n.transform, point))
     }))
-    const group = node((p.kind ?? 'group') as 'group' | 'frame', box.x, box.y, Math.max(.01, box.width), Math.max(.01, box.height))
+    const placement = planContainerPlacement(AUTOMATION_PROFILE, box, worldMatrix(doc, parent))
+    const group = node((p.kind ?? 'group') as 'group' | 'frame', placement.transform[4], placement.transform[5], placement.width, placement.height)
     group.id = uniqueId(doc, p.id)
     if (p.name !== undefined) group.name = text(p.name, 'name', 200)
     if (group.kind === 'group') { group.fills = []; group.strokes = []; group.effects = []; group.blend = 'pass-through' }
@@ -408,7 +414,7 @@ coreExtensions.push(
     (doc, p) => alignNodes(doc, ids(p.ids), p.axis as 'x' | 'y', 'distribute')),
 )
 function alignNodes(doc: DesignDocument, selected: string[], axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
-  const top = roots(doc, selected), parents = allParents(doc), size = axis === 'x' ? 'width' : 'height'
+  const top = roots(doc, selected), parents = allParents(doc)
   const entries = top.map(id => {
     const n = getNode(doc, id), parent = parents.get(id)!, parentNode = doc.nodes[parent]
     assertUnlocked(doc, id)
@@ -423,23 +429,13 @@ function alignNodes(doc: DesignDocument, selected: string[], axis: 'x' | 'y', mo
     const e = entries[0], parent = doc.nodes[e.parent]
     if (!parent) fail('invalid_parent', 'A single node must have a node parent to align within')
     const box = bounds(boxPoints({ x: 0, y: 0, width: e.n.width, height: e.n.height }).map(point => apply(e.n.transform, point)))
-    const target = mode === 'start' ? 0 : mode === 'end' ? parent[size] - box[size] : (parent[size] - box[size]) / 2
-    e.n.transform[axis === 'x' ? 4 : 5] += target - box[axis]
+    const delta = planArrangement(AUTOMATION_PROFILE, [box], axis, mode, { x: 0, y: 0, width: parent.width, height: parent.height })!.offsets[0][axis]
+    e.n.transform[axis === 'x' ? 4 : 5] += delta
   } else {
-    const box = bounds(entries.flatMap(e => boxPoints(e.box))), targets = new Map<string, number>()
-    if (mode === 'distribute') {
-      entries.sort((a, b) => a.box[axis] - b.box[axis])
-      const gap = (box[size] - entries.reduce((sum, e) => sum + e.box[size], 0)) / (entries.length - 1)
-      let cursor = box[axis]
-      for (const e of entries) { targets.set(e.id, cursor - e.box[axis]); cursor += e.box[size] + gap }
-    } else for (const e of entries) {
-      const target = mode === 'start' ? box[axis] : mode === 'end' ? box[axis] + box[size] - e.box[size] : box[axis] + (box[size] - e.box[size]) / 2
-      targets.set(e.id, target - e.box[axis])
-    }
-    for (const e of entries) {
-      const delta = targets.get(e.id)!
-      e.n.transform = multiply(inverse(worldMatrix(doc, e.parent)), multiply([1, 0, 0, 1, axis === 'x' ? delta : 0, axis === 'y' ? delta : 0], e.matrix))
-    }
+    const plan = planArrangement(AUTOMATION_PROFILE, entries.map(e => e.box), axis, mode)!
+    applyTransformPlan(doc, entries.map((e, index) => ({ id: e.id,
+      transform: translatedLocalTransform(worldMatrix(doc, e.parent), e.matrix, plan.offsets[index]),
+    })))
   }
   return { ids: top }
 }
@@ -494,6 +490,10 @@ function canonicalJson(value: unknown): string {
   if (value && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`).join(',')}}`
   return JSON.stringify(value)
 }
+type MutationIdentity = Pick<CommittedEditReceipt, 'documentId' | 'session' | 'revision'>
+type MutationExecution = { result: Record<string, unknown>; identity: MutationIdentity }
+const receiptIdentity = ({ documentId, session, revision }: MutationIdentity): MutationIdentity => ({ documentId, revision, session })
+
 export class DesignAutomationApi {
   private readonly registry = new Map<string, AutomationExtension>()
   private readonly descriptors = new Map<string, AutomationMethod>()
@@ -557,13 +557,30 @@ export class DesignAutomationApi {
     if (!entry) fail('unsupported_method', `Unsupported automation method: ${method}`)
     return entry
   }
-  private publishContext(ctx: AutomationContext): void {
-    const doc = this.editor.state.doc
+  private publishContext(ctx: AutomationContext, owner: CommittedEditReceipt): { applied: boolean; pageId: string; selection: string[] } {
+    const doc = owner.document
     const pageId = doc.pages.some(p => p.id === ctx.pageId) ? ctx.pageId : doc.pages[0].id
     const allowed = new Set(subtree(doc, getPage(doc, pageId).children))
     const selection = ctx.selection.filter(id => allowed.has(id))
-    if (this.editor.state.page !== pageId) this.editor.switchPage(pageId)
-    if (!equalValue(this.editor.state.selection, selection)) this.editor.select(selection)
+    const current = () => !this.disposed && this.editor.sessionGeneration === owner.session &&
+      this.editor.state.doc === doc && this.editor.state.version === owner.revision
+    let expectedPage = owner.pageId, expectedSelection = [...owner.selection]
+    const ownsNavigation = () => current() && this.editor.state.page === expectedPage && equalValue(this.editor.state.selection, expectedSelection)
+    const interrupted = () => ({ applied: false, pageId: owner.pageId, selection: [...owner.selection] })
+    // A state/audit subscriber can synchronously load a same-ID document, edit
+    // again or navigate. Never carry the earlier context into that newer state.
+    if (!ownsNavigation()) return interrupted()
+    if (expectedPage !== pageId) {
+      if (!this.editor.switchPage(pageId)) return interrupted()
+      expectedPage = pageId; expectedSelection = []
+      if (!ownsNavigation()) return interrupted()
+    }
+    if (!equalValue(expectedSelection, selection)) {
+      this.editor.select(selection)
+      expectedSelection = selection
+      if (!ownsNavigation()) return interrupted()
+    }
+    return { applied: true, pageId, selection }
   }
   private expandOperations(operations: { method: string; params?: Record<string, unknown> }[], preflight: boolean) {
     const expanded: { method: string; params?: Record<string, unknown> }[] = []
@@ -636,7 +653,7 @@ export class DesignAutomationApi {
       noAuthoredChange: equalValue(before, candidate), pageId: ctx.pageId, selection: ctx.selection,
       supportedMethods: this.preflightMethods(), receiptConsumed: false }
   }
-  private mutate(request: AutomationRequest, operations: { method: string; params?: Record<string, unknown> }[], label: string, fingerprintBytes?: number, originalOperations: { method: string }[] = []): unknown {
+  private mutate(request: AutomationRequest, operations: { method: string; params?: Record<string, unknown> }[], label: string, fingerprintBytes: number | undefined, originalOperations: { method: string }[], observeCommit: (receipt: CommittedEditReceipt) => void): MutationExecution {
     const { before, candidate, ctx, results } = this.stage(operations)
     const version = this.editor.state.version
     if (fingerprintBytes !== undefined && this.receiptBytes + fingerprintBytes + receiptResultBound(before, candidate, ctx, results) > RECEIPT_BYTES)
@@ -646,6 +663,10 @@ export class DesignAutomationApi {
     this.requireFence(request, true)
     this.authorize(request.method)
     for (const operation of [...originalOperations, ...operations]) this.authorize(operation.method)
+    let owner: CommittedEditReceipt = { document: before, documentId: before.id, session: this.editor.sessionGeneration,
+      revision: version, pageId: this.editor.state.page, selection: [...this.editor.state.selection],
+      canUndo: this.editor.canUndo, canRedo: this.editor.canRedo }
+    let committed = false
     if (!equalValue(before, candidate)) {
       const changeResult = this.editor.change(label, draft => {
         if (draft.id !== candidate.id) fail('document_mismatch', 'Cannot replace the document identity')
@@ -653,21 +674,30 @@ export class DesignAutomationApi {
         Object.assign(draft, candidate)
       }, undefined, undefined, 'automation')
       if (changeResult?.status === 'rejected') fail('commit_failed', changeResult.message || this.editor.state.message)
-      if (this.editor.state.version === version && changeResult?.status !== 'unchanged')
-        fail('commit_failed', this.editor.state.message || 'The editor rejected the automation edit')
+      if (changeResult?.status === 'committed') {
+        const receipt = this.editor.committedEditReceipt(changeResult)
+        if (!receipt) fail('commit_receipt_unavailable', 'The edit committed but its trusted result receipt is unavailable; read state before another operation',
+          { committed: true, retry: 'do-not-retry', ...receiptIdentity({ ...owner, revision: changeResult.revision }) })
+        owner = receipt; committed = true; observeCommit(receipt)
+      } else if (changeResult?.status !== 'unchanged') fail('commit_failed', 'The editor did not commit the automation edit')
     }
-    this.publishContext(ctx)
-    const after = this.editor.state.doc
+    const publication = this.publishContext(ctx, owner), after = owner.document
     const changedIds = [...new Set([...Object.keys(before.nodes), ...Object.keys(after.nodes)])].filter(id => !equalValue(before.nodes[id], after.nodes[id]))
     const previousIds = knownIds(before), currentIds = knownIds(after)
     const createdIds = [...currentIds].filter(id => !previousIds.has(id))
-    return { operations: results, changedIds, createdIds, ...summarizeChanges(before, after), noChange: this.editor.state.version === version,
-      pageId: this.editor.state.page, selection: [...this.editor.state.selection], canUndo: this.editor.canUndo, canRedo: this.editor.canRedo }
+    const completion: AutomationMutationCompletion | undefined = publication.applied ? undefined : {
+      ...receiptIdentity(owner), superseded: true, contextApplied: false,
+      ...(committed ? { status: 'committed', retry: 'do-not-retry' } as const : { status: 'unchanged', retry: 'read-current-state' } as const),
+    }
+    return { identity: receiptIdentity(owner), result: { operations: results, changedIds, createdIds, ...summarizeChanges(before, after), noChange: !committed,
+      pageId: publication.pageId, selection: publication.selection, canUndo: owner.canUndo, canRedo: owner.canRedo,
+      ...(completion ? { completion } : {}) } }
   }
   execute(input: unknown): AutomationResponse {
-    let request: AutomationRequest | undefined
+    let request: AutomationRequest | undefined, resultIdentity: MutationIdentity | undefined, committedReceipt: CommittedEditReceipt | undefined
+    const observeCommit = (receipt: CommittedEditReceipt) => { committedReceipt = receipt; resultIdentity = receiptIdentity(receipt) }
     const response = () => ({ ...(request?.id === undefined ? {} : { id: request.id }), method: request?.method || '',
-      documentId: this.editor.state.doc.id, revision: this.editor.state.version, session: this.editor.sessionGeneration })
+      ...(resultIdentity ?? { documentId: this.editor.state.doc.id, revision: this.editor.state.version, session: this.editor.sessionGeneration }) })
     try {
       if (this.disposed) fail('disposed', 'The automation session has been closed')
       jsonAdmission(input)
@@ -722,30 +752,57 @@ export class DesignAutomationApi {
       let result: unknown
       if (request.method === 'api.capabilities') result = this.capabilities()
       else if (request.method === 'history.undo' || request.method === 'history.redo') {
-        const version = this.editor.state.version, possible = request.method === 'history.undo' ? this.editor.canUndo : this.editor.canRedo
-        if (request.method === 'history.undo') this.editor.undo('automation'); else this.editor.redo('automation')
-        if (possible && this.editor.state.version === version) fail('commit_failed', this.editor.state.message)
-        result = { noChange: this.editor.state.version === version, canUndo: this.editor.canUndo, canRedo: this.editor.canRedo,
-          pageId: this.editor.state.page, selection: [...this.editor.state.selection] }
+        const initial: CommittedEditReceipt = { document: this.editor.state.doc, documentId: this.editor.state.doc.id,
+          session: this.editor.sessionGeneration, revision: this.editor.state.version, pageId: this.editor.state.page,
+          selection: [...this.editor.state.selection], canUndo: this.editor.canUndo, canRedo: this.editor.canRedo }
+        const possible = request.method === 'history.undo' ? initial.canUndo : initial.canRedo
+        const historyResult = request.method === 'history.undo' ? this.editor.undo('automation') : this.editor.redo('automation')
+        const receipt = this.editor.committedEditReceipt(historyResult)
+        const owner = receipt ?? initial
+        resultIdentity = receiptIdentity(owner)
+        if (receipt) observeCommit(receipt)
+        const superseded = this.editor.state.doc !== owner.document || this.editor.sessionGeneration !== owner.session ||
+          this.editor.state.version !== owner.revision || this.editor.state.page !== owner.pageId || !equalValue(this.editor.state.selection, owner.selection)
+        if (historyResult?.status === 'committed' && !receipt) fail('commit_receipt_unavailable', 'History committed but its trusted result receipt is unavailable; read state before another operation',
+          { committed: true, retry: 'do-not-retry', ...receiptIdentity({ ...initial, revision: historyResult.revision }) })
+        if (possible && !receipt) fail('commit_failed', 'The editor did not commit the history operation',
+          { committed: false, superseded, retry: 'read-current-state', ...receiptIdentity(initial) })
+        const completion: AutomationMutationCompletion | undefined = superseded ? {
+          ...receiptIdentity(owner), superseded: true, contextApplied: false,
+          ...(receipt ? { status: 'committed', retry: 'do-not-retry' } as const : { status: 'unchanged', retry: 'read-current-state' } as const),
+        } : undefined
+        result = { noChange: !receipt, canUndo: owner.canUndo, canRedo: owner.canRedo,
+          pageId: owner.pageId, selection: [...owner.selection], ...(completion ? { completion } : {}) }
       } else if (request.method === 'batch.preflight') result = this.preflight(operations!)
       else if (request.method === 'batch.apply') {
-        result = this.mutate(request, operations!, params.label === undefined ? 'AI design batch' : text(params.label, 'label', 200), fingerprint === undefined ? undefined : new TextEncoder().encode(fingerprint).byteLength, originalOperations)
-      } else if (descriptor.mutates) result = this.mutate(request, operations!, `AI: ${request.method}`, undefined, originalOperations)
+        const execution = this.mutate(request, operations!, params.label === undefined ? 'AI design batch' : text(params.label, 'label', 200), fingerprint === undefined ? undefined : new TextEncoder().encode(fingerprint).byteLength, originalOperations!, observeCommit)
+        result = execution.result; resultIdentity = execution.identity
+      } else if (descriptor.mutates) {
+        const execution = this.mutate(request, operations!, `AI: ${request.method}`, undefined, originalOperations!, observeCommit)
+        result = execution.result; resultIdentity = execution.identity
+      }
       else {
         const snapshot = structuredClone(this.editor.authoredDocument)
         result = this.entry(request.method).execute(snapshot, params, this.context())
         if (result && typeof result === 'object' && 'then' in result) fail('unsupported_async', 'This operation requires an explicitly scoped asynchronous host flow')
       }
       if (mutationId && fingerprint) {
-        result = { ...result as Record<string, unknown>, receipt: { mutationId, revision: this.editor.state.version, replayed: false } }
+        result = { ...result as Record<string, unknown>, receipt: { mutationId, revision: resultIdentity?.revision ?? this.editor.state.version, replayed: false } }
         const saved = structuredClone(result as Record<string, unknown>)
-        this.receipts.set(mutationId, { fingerprint, result: saved })
-        this.receiptBytes += new TextEncoder().encode(fingerprint).byteLength + new TextEncoder().encode(JSON.stringify(saved)).byteLength
+        const bytes = new TextEncoder().encode(fingerprint).byteLength + new TextEncoder().encode(JSON.stringify(saved)).byteLength
+        // Reentrant subscribers may have opened another owner or stored another
+        // receipt. Never roll that cache back or exceed the precommit budgets.
+        if (!this.disposed && this.receiptOwner === owner && `${this.editor.state.doc.id}:${this.editor.sessionGeneration}` === owner &&
+          !this.receipts.has(mutationId) && this.receipts.size < RECEIPT_LIMIT && this.receiptBytes + bytes <= RECEIPT_BYTES) {
+          this.receipts.set(mutationId, { fingerprint, result: saved }); this.receiptBytes += bytes
+        } else (result as Record<string, unknown>).receipt = { ...(result as Record<string, unknown>).receipt as object, replayAvailable: false }
       }
       return { ...response(), ok: true, result: structuredClone(result ?? null) }
     } catch (error) {
       const failure = error instanceof AutomationError ? { code: error.code, message: error.message, ...(error.details === undefined ? {} : { details: error.details }) }
         : { code: 'invalid_operation', message: error instanceof Error ? error.message : String(error) }
+      if (committedReceipt) failure.details = { ...(failure.details && typeof failure.details === 'object' ? failure.details : {}),
+        committed: true, retry: 'do-not-retry', ...receiptIdentity(committedReceipt) }
       failure.message = failure.message.slice(0, 4096)
       return { ...response(), ok: false, error: failure }
     }
