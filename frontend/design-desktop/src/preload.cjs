@@ -141,7 +141,7 @@ contextBridge.exposeInMainWorld(
       ),
     onCommand: (callback) =>
       subscribe('design-desktop:command', callback, (value) =>
-        ['new', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
+        ['settings', 'new', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
       ),
   }),
 )

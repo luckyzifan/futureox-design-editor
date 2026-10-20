@@ -478,3 +478,44 @@ test('admission context rides the existing fence event without advancing complet
     expect(driver.stats().queueWaits.reasons.admission.completed).toBe(1)
   } finally { setGpuDiagnosticSink(undefined); driver.dispose() }
 })
+
+test('completed pool proof preserves submission but does not wait or advance completion',async()=>{
+  const {boundary,driver}=await createDriver(true)
+  driver.begin(new Float32Array(0));await driver.checkpoint('admission')
+  driver.begin(new Float32Array(0));await driver.checkpoint('admission')
+  expect(driver.completedResourceEpoch).toBe(1)
+  const before=driver.stats().queueWaits
+  await driver.checkpoint('admission',undefined,1)
+  const after=driver.stats().queueWaits
+  expect(after.submitCalls).toBe(before.submitCalls+1)
+  expect(after.reasons.admission.started).toBe(before.reasons.admission.started)
+  expect(driver.completedResourceEpoch).toBe(1)
+  for(const proof of [0,2,NaN,Infinity,1.5,-1]){
+    const count=driver.stats().queueWaits.reasons.admission.started
+    await driver.checkpoint('admission',undefined,proof)
+    expect(driver.stats().queueWaits.reasons.admission.started).toBe(count+1)
+  }
+  const count=driver.stats().queueWaits.reasons.readback.started
+  await driver.checkpoint('readback',undefined,1)
+  expect(driver.stats().queueWaits.reasons.readback.started).toBe(count+1)
+  boundary.rejectWait(true)
+  await expect(driver.checkpoint('admission',undefined,2)).rejects.toThrow('completion rejection')
+  boundary.rejectWait(false);await driver.checkpoint();driver.dispose()
+})
+
+test('pool completion proof leaves newly submitted work pending and does not bypass device loss',async()=>{
+  const {boundary,driver}=await createDriver(true)
+  driver.begin(new Float32Array(0));const old=driver.create(2,2);driver.clear(old);await driver.checkpoint('admission')
+  driver.begin(new Float32Array(0));await driver.checkpoint('admission')
+  const current=driver.create(2,2);driver.clear(current)
+  const waits=boundary.counts().waits
+  await driver.checkpoint('admission',undefined,1)
+  expect(boundary.counts().waits).toBe(waits)
+  expect(boundary.pending.has(current.resource as any)).toBe(true)
+  driver.destroy(old)
+  expect((old.resource as any).destroyed).toBe(true)
+  expect((current.resource as any).destroyed).toBe(false)
+  driver.lost=true
+  await expect(driver.checkpoint('admission',undefined,1)).rejects.toThrow('设备已丢失')
+  driver.lost=false;await driver.checkpoint();driver.destroy(current);driver.dispose()
+})

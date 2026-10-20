@@ -1,3 +1,5 @@
+import { beginEditorAction } from './editor-action-route'
+import { CanvasAction, ActionSource, ActionOutcome, ActionReason, closeCanvasActions } from './canvas-action-diagnostics'
 import { gestureCategory, patchCategory, type OperationCategory } from './canvas-operation-diagnostics'
 import { createCanvasOperationDiagnostics } from './canvas-operation-terminal'
 import { hasSchema15Features } from './schema-features'
@@ -628,6 +630,8 @@ export class Editor {
     }
   }
   undo(source: EditorEditEvent['source'] = 'user') {
+    const action = beginEditorAction(this, CanvasAction.undo, ActionSource.unknown, 228)
+    try {
     this.repeatedDuplicate = null
     this.cancel()
     const h = this.undoStack.at(-1)
@@ -653,8 +657,12 @@ export class Editor {
     })
     this.operationDiagnostics.finish(operation, 'committed', this.sessionGeneration, this.state.version, this.state.doc, this.state.page)
     this.publishEdit('undo', h.label, source)
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   redo(source: EditorEditEvent['source'] = 'user') {
+    const action = beginEditorAction(this, CanvasAction.redo, ActionSource.unknown, 229)
+    try {
     this.repeatedDuplicate = null
     this.cancel()
     const h = this.redoStack.at(-1)
@@ -680,6 +688,8 @@ export class Editor {
     })
     this.operationDiagnostics.finish(operation, 'committed', this.sessionGeneration, this.state.version, this.state.doc, this.state.page)
     this.publishEdit('redo', h.label, source)
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   load(value: unknown, preserveView=false) {
     if (this.disposed) return false
@@ -717,14 +727,22 @@ export class Editor {
     return true
   }
   newDocument() {
-    this.load(blank())
+    const action = beginEditorAction(this, CanvasAction.newDocument, ActionSource.unknown, 230)
+    try {
+    if (this.load(blank())) action.result(ActionOutcome.observed)
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   select(ids: string[]) {
+    const action = beginEditorAction(this, CanvasAction.selection, ActionSource.unknown, 201)
+    try {
     this.set({ selection: [...new Set(ids)], editingVertex: null, editingVertices:[],
       // Selection changes the entered hierarchy. The old canvas hit can now
       // refer to an ancestor; do not leave that outline behind a deeper select.
       ...(this.state.hoverSource === 'canvas' ? { hover: null, hoverSource: null } : {}),
     })
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   clearSelection() { this.select([]) }
   hoverLayer(id: string | null, source: 'canvas' | 'layers' = 'canvas') {
@@ -886,6 +904,8 @@ export class Editor {
     parent?: string,
     network?: Network,
   ) {
+    const action = beginEditorAction(this, CanvasAction.create, ActionSource.unknown, 202)
+    try {
     const n = node(kind, b.x, b.y, Math.max(1, b.width), Math.max(1, b.height))
     if (network) n.network = network
     this.change(
@@ -900,8 +920,12 @@ export class Editor {
       [n.id],
     )
     return n.id
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   addFreehand(n: DesignNode) {
+    const action = beginEditorAction(this, CanvasAction.create, ActionSource.unknown, 203)
+    try {
     this.change(
       '绘制铅笔路径',
       (d) => {
@@ -911,6 +935,8 @@ export class Editor {
       },
       [n.id],
     )
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   update(
     ids: string[],
@@ -918,7 +944,11 @@ export class Editor {
     label = '修改属性',
     source?: 'properties',
   ) {
-    this.change(
+    // Pointer previews are aggregated by their gesture owner, not logged per update.
+    const commandCode = typeof patch !== 'function' && Object.hasOwn(patch, 'locked') ? 241 : typeof patch !== 'function' && Object.hasOwn(patch, 'visible') ? 242 : 240
+    const action = this.interactionActive ? undefined : beginEditorAction(this, CanvasAction.layer, source === 'properties' ? ActionSource.properties : ActionSource.unknown, commandCode)
+    try {
+    const result = this.change(
       label,
       (d) => {
         for (const id of ids) {
@@ -937,6 +967,8 @@ export class Editor {
       'user',
       (label === '编辑文字' || label === '编辑富文本') ? 'text' : patchCategory(patch),
     )
+    if (result?.status === 'rejected') action?.result(ActionOutcome.rejected, ActionReason.validation)
+    } finally { action?.finish() }
   }
   /** The property panel can edit a layer selected explicitly in the layer tree.
    * Canvas gestures keep update()'s existing lock protection. */
@@ -944,11 +976,17 @@ export class Editor {
     this.update(ids, patch, label, 'properties')
   }
   remove() {
+    const action = beginEditorAction(this, CanvasAction.delete, ActionSource.unknown, 204)
+    try {
     this.removeNodes(this.topSelection(), '删除图层', [])
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   /** Explicit-id deletion for canvas tools (eraser). Locked layers and layers
    * under a locked ancestor are skipped, matching selection-based delete. */
   removeNodes(ids: string[], label = '删除图层', selection?: string[]) {
+    const action = beginEditorAction(this, CanvasAction.delete, ActionSource.unknown, 205)
+    try {
     this.change(
       label,
       (d) => {
@@ -974,6 +1012,8 @@ export class Editor {
       },
       selection,
     )
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   previewSuggestedLayout(frameId = this.topSelection()[0]): LayoutSuggestionPreview {
     return { ...previewLayoutSuggestion(this.state.doc, frameId), revision: this.state.version }
@@ -1190,6 +1230,8 @@ export class Editor {
     this.set({ view: { x: 60 - m[4], y: 60 - m[5], zoom: 1 } })
   }
   addPage() {
+    const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 210)
+    try {
     const p = {
       id: uid(),
       name: `页面 ${this.state.doc.pages.length + 1}`,
@@ -1204,8 +1246,12 @@ export class Editor {
       [],
     )
     if (this.state.doc.pages.some(page => page.id === p.id)) this.set({ page: p.id })
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   reorderPage(id: string, before?: string) {
+    const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 211)
+    try {
     if (!this.state.doc.pages.some(page => page.id === id) || id === before) return
     this.change('调整页面顺序', d => {
       const at = d.pages.findIndex(page => page.id === id), [page] = d.pages.splice(at, 1)
@@ -1213,8 +1259,12 @@ export class Editor {
       if (target < 0) throw new Error('目标页面已不存在')
       d.pages.splice(target, 0, page)
     })
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   duplicatePage(id = this.state.page) {
+    const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 212)
+    try {
     const source = this.state.doc, page = source.pages.find(value => value.id === id)
     if (!page) return
     const content = this.copyGraph(page.children), copied = { ...cloneValue(page), id: uid(), name: `${page.name} 副本`.slice(0, 200), children: [] as string[] }
@@ -1223,8 +1273,12 @@ export class Editor {
       duplicateGraph(d, content, { page: copied.id })
     }, [])
     if (this.state.doc.pages.some(value => value.id === copied.id)) this.set({ page: copied.id })
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   removePage() {
+    const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 213)
+    try {
     if (this.state.doc.pages.length === 1) {
       this.notify('至少保留一个页面')
       return
@@ -1244,18 +1298,30 @@ export class Editor {
       [],
     )
     this.set({ page: this.state.doc.pages[0].id })
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   switchPage(page: string) {
+    const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 214)
+    try {
     this.cancel()
     this.set({ page, selection: [], editingVertex: null })
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   renamePage(name: string) {
+    const action = beginEditorAction(this, CanvasAction.page, ActionSource.unknown, 215)
+    try {
     if (name.trim())
       this.change('重命名页面', (d) => {
         d.pages.find((p) => p.id === this.state.page)!.name = name.trim()
       })
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   group(mask = false, booleanOperation?: BooleanOp, kind: 'group' | 'frame' = 'group') {
+    const action = beginEditorAction(this, CanvasAction.group, ActionSource.unknown, 220)
+    try {
     const ids = this.topSelection()
     if (ids.length < (mask ? 2 : 1)) return
     const parents = allParents(this.state.doc),
@@ -1298,8 +1364,12 @@ export class Editor {
       },
       [group.id],
     )
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   ungroup() {
+    const action = beginEditorAction(this, CanvasAction.ungroup, ActionSource.unknown, 221)
+    try {
     const ids = this.topSelection()
     const selected: string[] = []
     this.change(
@@ -1321,9 +1391,13 @@ export class Editor {
       },
       selected,
     )
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   reparent(id: string, parent: string, before?: string) { this.reparentMany([id], parent, before) }
   reparentMany(ids: string[], parent: string, before?: string) {
+    const action = beginEditorAction(this, CanvasAction.layer, ActionSource.unknown, 222)
+    try {
     ids = [...new Set(ids)]
     const d = this.state.doc, parents = allParents(d), selected = new Set(ids)
     const roots = ids.filter(id => {
@@ -1353,8 +1427,12 @@ export class Editor {
         if (next.nodes[id].constraints) next.nodes[id].constraints = { ...next.nodes[id].constraints!, referenceWidth: null, referenceHeight: null }
       }
     }, roots)
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   reorder(direction: 'front' | 'back' | 'forward' | 'backward') {
+    const action = beginEditorAction(this, CanvasAction.layer, ActionSource.unknown, 223)
+    try {
     const ids = this.topSelection()
     this.change('调整图层顺序', (d) => {
       const parents = allParents(d)
@@ -1379,6 +1457,8 @@ export class Editor {
         }
       }
     })
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   private copyGraph(roots: string[], source = this.state.doc): GraphCopy {
     const nodes: Record<string, DesignNode> = {}
@@ -1498,6 +1578,8 @@ export class Editor {
     this.duplicateOffset = 24
   }
   pasteToSelection(replace = false) {
+    const action = beginEditorAction(this, CanvasAction.paste, ActionSource.unknown, 225)
+    try {
     if (!this.clipboard || this.interactionActive) return
     const content=this.clipboard, before=this.state.doc, parents=allParents(before), selected=this.topSelection()
     if(this.topSelection(true).length!==selected.length) {this.notify('粘贴目标包含锁定图层，请先解锁');return}
@@ -1556,8 +1638,12 @@ export class Editor {
       if(replace){this.select(targets);this.remove();if(targets.some(id=>this.state.doc.nodes[id]))throw new Error('替换目标无法删除')}
       this.select(selection);this.commit()
     } catch(error){this.cancel();this.notify(error instanceof Error?error.message:String(error))}
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   appendDocument(source: DesignDocument) {
+    const action = beginEditorAction(this, CanvasAction.import, ActionSource.unknown, 227)
+    try {
     if (this.interactionActive) throw new Error('请结束当前操作后追加导入')
     const prepared = prepareDocumentForEditing(source)
     let roots: string[] = []
@@ -1565,8 +1651,12 @@ export class Editor {
     if (!roots.length || roots.some(id => !this.state.doc.nodes[id])) throw new Error(this.state.message || '追加导入失败')
     this.select(roots)
     return roots
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   paste(inPlace = false, position?: Point) {
+    const action = beginEditorAction(this, CanvasAction.paste, ActionSource.unknown, 226)
+    try {
     if (!this.clipboard) return
     if (position && (!Number.isFinite(position.x) || !Number.isFinite(position.y))) {
       this.notify('粘贴位置无效'); return
@@ -1635,6 +1725,8 @@ export class Editor {
       content.selection?.map(id => ids.get(id)!) || roots,
     )
     if (!inPlace && !position) this.duplicateOffset += 24
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   /** Re-evaluate Option during a move without publishing intermediate history. */
   moveDuplication(enabled: boolean, originals: string[]): string[] {
@@ -1776,6 +1868,8 @@ export class Editor {
     this.repeatedDuplicate = { roots: [...roots], reference: new Map(reference) }
   }
   duplicate() {
+    const action = beginEditorAction(this, CanvasAction.duplicate, ActionSource.unknown, 224)
+    try {
     const originals = this.topSelection(), source = this.state.doc, parents = allParents(source)
     if (!originals.length) return
     const previous = this.repeatedDuplicate
@@ -1797,6 +1891,8 @@ export class Editor {
       this.select(roots)
       this.rememberDuplication(roots, reference)
     }
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { action.finish() }
   }
   scaleSelection(factor: number, anchor = 4): boolean {
     if (this.state.busy || this.interactionActive) return false
@@ -2142,6 +2238,7 @@ export class Editor {
     this.releaseCameraLifecycle?.()
     this.releaseCameraLifecycle = undefined
     this.disposed = true
+    closeCanvasActions(this)
     this.operationDiagnostics.close()
     this.diagnosticOperation = null
     this.sessionEpoch++

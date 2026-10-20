@@ -1,3 +1,6 @@
+import { canvasActions, CanvasAction, ActionOutcome } from './canvas-action-diagnostics'
+import { nudgePreference } from './nudge-preference'
+import { interfacePreference } from './interface-preference'
 import { desktopPet } from './desktop-pet'
 // Real React/DOM events and Editor/WASM. jsdom does not claim browser layout/GPU validation.
 // @ts-expect-error jsdom is a test-only runtime dependency.
@@ -20,6 +23,8 @@ beforeEach(() => {
   dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
   for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLButtonElement', 'HTMLInputElement', 'Node', 'Event', 'KeyboardEvent', 'StorageEvent', 'localStorage']) vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  ;(window as any).coreDesktop = { renderDiagnostics: true, renderDiagnosticsDetail: true }
+  vi.spyOn(console, 'log').mockImplementation(() => {})
   localStorage.clear(); settingsPreference.reset(); shortcutPreference.set('figma-like')
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
   canvas = document.createElement('div'); canvas.tabIndex = 0; canvas.dataset.testid = 'canvas'; document.body.append(canvas)
@@ -223,4 +228,19 @@ test('web companion tab does not offer a desktop model toggle', async () => {
   await act(async () => root.render(<Harness />)); await tab('Nomi 伙伴')
   expect(dialog().textContent).toContain('Nomi 伙伴仅适用于桌面应用')
   expect(dialog().querySelector('select[id$="-pet"]')).toBeNull()
+})
+
+
+test('non-canvas preference families emit only bounded family identifiers after actual application', async () => {
+  await act(async () => root.render(<Harness />))
+  await act(async () => checkbox('滚轮围绕鼠标缩放').click())
+  await act(async () => {
+    const profile = document.querySelector<HTMLSelectElement>('.keyboard-profile-settings select')!
+    profile.value = 'sketch-like'; profile.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await act(async () => { nudgePreference.set({ small: 2, big: 20 }); interfacePreference.set({ reducedMotion: true }) })
+  const rows = canvasActions(editor).snapshot().rows.filter(row => row.actionCode === CanvasAction.settings && row.actionPhase === 2)
+  for (const commandCode of [340, 341, 342, 344]) expect(rows.some(row => row.commandCode === commandCode && row.actionOutcome === ActionOutcome.observed)).toBe(true)
+  expect(JSON.stringify(rows)).not.toContain('sketch-like')
+  expect(JSON.stringify(rows)).not.toContain('Settings DOM')
 })

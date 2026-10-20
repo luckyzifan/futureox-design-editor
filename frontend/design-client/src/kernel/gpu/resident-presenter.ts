@@ -13,6 +13,8 @@ export type ResidentItem = Omit<CompositeItem, 'tile'> & {
   tile: Omit<CompositeItem['tile'], 'bytes' | 'bitmap'> & { gpuTile: number }
 }
 export type ResidentFrame = {
+  /** Diagnostic request ordering only, not a content identity. */
+  diagnosticSequence?: number
   overlay?: CanvasOverlay
   /** Worker-local placement from the completed resident pose, not input. */
   overlayPose?: Record<string, {x:number;y:number}>
@@ -412,6 +414,7 @@ export class ResidentPresenter {
       this.overlay.draw(encoder, output, overlay, view, width, height, dpr)
     }
     this.device.queue.submit([encoder.finish()])
+    const submittedEpoch = performance.timeOrigin + performance.now()
     this.drawn = frame
     this.frames++
     const coverageAt=performance.now()
@@ -419,6 +422,8 @@ export class ResidentPresenter {
     const measureCoverage=!!terminalQuality || import.meta.env.DEV || (gpuDiagnosticsDetail() && coverageAt-this.diagnosticCoverageAt>=250)
     if(measureCoverage)this.diagnosticCoverageAt=coverageAt
     this.report({
+      diagnosticSequence: frame.diagnosticSequence, submittedEpoch,
+      gridVisible: !!frame.overlay?.pixelGrid && view.zoom>=4, dpr,
       ...(terminalQuality ? { ...terminalQuality, qualityTerminal: true } : {}),
       coverageMeasured:measureCoverage,
       ...(measureCoverage?{coverageAt}:{}),

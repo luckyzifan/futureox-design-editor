@@ -1,3 +1,5 @@
+import { beginEditorAction } from './editor-action-route'
+import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, subscribePendingEdits } from './pending-edits'
 import type { Editor } from './engine'
@@ -59,9 +61,15 @@ export class DesktopSession {
     return this.bridge.workspace.revisions({ id, beforeRevision })
   }
   async trashWorkspace(document: WorkspaceDocument, deleted = true) {
+    const trace = beginEditorAction(this.editor, CanvasAction.delete, ActionSource.menu, deleted ? 330 : 331)
+    try {
     if (!this.bridge.workspace) throw new Error('本机文档库不可用')
     if (document.id === this.currentDocument.id) throw new Error('请先打开其他设计，再移入回收站')
-    return this.bridge.workspace.trash({ id: document.id, expectedRevision: document.revision, mutationId: crypto.randomUUID(), deleted })
+    const result = await this.bridge.workspace.trash({ id: document.id, expectedRevision: document.revision, mutationId: crypto.randomUUID(), deleted })
+    trace.result(result.status === 'ok' ? ActionOutcome.observed : result.status === 'cancelled' ? ActionOutcome.cancelled : ActionOutcome.rejected, result.status === 'ok' ? ActionReason.none : ActionReason.validation)
+    return result
+    } catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation); throw error }
+    finally { trace.finish() }
   }
   openWorkspace(id: string) {
     return this.run('open', async () => {
@@ -542,7 +550,8 @@ export class DesktopSession {
   }
 
   private run<T = boolean>(operation: DesktopStatus['operation'], action: () => Promise<T>): Promise<T | false> {
-    if (this.active || this.disposed || this.closeSnapshot !== undefined) return Promise.resolve(false)
+    const trace = beginEditorAction(this.editor, operation === 'save' ? CanvasAction.save : operation === 'new' ? CanvasAction.newDocument : CanvasAction.import, ActionSource.lifecycle, 300 + ['save','new','open','recover','close'].indexOf(operation))
+    if (this.active || this.disposed || this.closeSnapshot !== undefined) { trace.result(ActionOutcome.blocked, ActionReason.busy); trace.finish(); return Promise.resolve(false) }
     if (operation !== 'save') cancelPendingOperations(this.editor)
     clearTimeout(this.recoveryTimer)
     this.operation = operation
@@ -556,8 +565,10 @@ export class DesktopSession {
       await this.recoveryQueue
       return action()
     }).catch((error: unknown) => {
+      trace.result(ActionOutcome.rejected, ActionReason.validation)
       return this.failed({ status: 'error', code: 'RENDERER_ERROR', message: String(error) })
-    }).then((result) => { completed = !!result; return result }).finally(() => {
+    }).then((result) => { completed = !!result; trace.result(result ? ActionOutcome.observed : this.error ? ActionOutcome.rejected : ActionOutcome.cancelled, result ? ActionReason.none : this.error ? ActionReason.validation : ActionReason.unobserved); return result }).finally(() => {
+      trace.finish()
       this.active = null
       this.operation = operation === 'close' && completed ? 'close' : 'idle'
       this.publish()

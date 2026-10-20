@@ -1,3 +1,5 @@
+import { beginEditorAction } from './editor-action-route'
+import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import type { Editor } from './engine'
 import { commitPendingEdits, pendingEditsChanged, registerPendingEdit } from './pending-edits'
 
@@ -13,7 +15,7 @@ export function keyboardNudgeOwnsKey(editor: Editor, event: Pick<KeyboardEvent, 
  * are never coalesced. No idle timer can silently split a held key. */
 export function createKeyboardNudgeGesture(editor: Editor) {
   const owner = { active: false }; owners.set(editor, owner)
-  let active: { key: string; session: number; document: string; context: string } | null = null
+  let active: { key: string; session: number; document: string; context: string; trace: ReturnType<typeof beginEditorAction> } | null = null
   const context = () => JSON.stringify([editor.state.page, editor.state.selection, editor.state.tool, editor.state.editingVertex, editor.state.editingVertices])
   const finish = (cancel = false) => {
     const previous = active
@@ -22,13 +24,15 @@ export function createKeyboardNudgeGesture(editor: Editor) {
     if (previous.session === editor.sessionGeneration && previous.document === editor.state.doc.id && editor.interactionActive) {
       if (cancel) editor.cancel(); else editor.commit()
     }
+    if (cancel) previous.trace.result(ActionOutcome.cancelled, ActionReason.escape)
+    previous.trace.finish()
     pendingEditsChanged(editor)
     return true
   }
   const stopPending = registerPendingEdit(editor, { dirty: () => !!active, commit: () => { finish(); return true } })
   const stopEditor = editor.subscribe(() => {
     if (!active) return
-    if (!editor.interactionActive || active.session !== editor.sessionGeneration || active.document !== editor.state.doc.id) { active = null; owner.active = false; pendingEditsChanged(editor) }
+    if (!editor.interactionActive || active.session !== editor.sessionGeneration || active.document !== editor.state.doc.id) { const previous = active; active = null; owner.active = false; previous.trace.result(ActionOutcome.cancelled, ActionReason.superseded); previous.trace.finish(); pendingEditsChanged(editor) }
     else if (active.context !== context() || editor.state.busy) finish()
   })
   return {
@@ -38,7 +42,7 @@ export function createKeyboardNudgeGesture(editor: Editor) {
       if (!active) {
         if (event.repeat) return
         if (editor.state.busy || editor.interactionActive || !commitPendingEdits(editor)) return
-        active = { key: event.key, session: editor.sessionGeneration, document: editor.state.doc.id, context: context() }
+        active = { key: event.key, session: editor.sessionGeneration, document: editor.state.doc.id, context: context(), trace: beginEditorAction(editor, CanvasAction.move, ActionSource.keyboard, 320) }
         owner.active = true
         editor.begin(label); pendingEditsChanged(editor)
       }

@@ -1,3 +1,5 @@
+import { beginEditorAction } from './editor-action-route'
+import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
 import { validateSvgOptions, svgFileBytes } from './export-options'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
@@ -101,8 +103,10 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
     }
   }, [release])
   async function generate() {
-    if (request.current) return
-    if (!commitExportEdits(editor)) return
+    const trace = beginEditorAction(editor, CanvasAction.export, ActionSource.menu, 350 + ['png','jpeg','webp','pdf','pdf-vector','svg'].indexOf(format))
+    try {
+    if (request.current) { trace.result(ActionOutcome.blocked, ActionReason.busy); return }
+    if (!commitExportEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
     const committed = editor.state
     const controller = new AbortController()
     request.current = controller
@@ -138,9 +142,10 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
         if (options.fontMode === 'embed') {
           const { createSvgArtifact } = await import('./svg-artifact')
           const artifact = await createSvgArtifact(document, page, target, options, controller.signal)
-          if (controller.signal.aborted || request.current !== controller) return
+          if (controller.signal.aborted || request.current !== controller) { trace.result(ActionOutcome.cancelled, ActionReason.superseded); return }
           const url=URL.createObjectURL(artifact.blob); urls.current.push(url)
-          desktopPet.event('export')
+          trace.result(ActionOutcome.observed)
+        desktopPet.event('export')
           setAssets([{name:`${filename(document.name)}.${options.compression === 'gzip' ? 'svgz' : 'svg'}`,url,width:artifact.bounds.width*options.scale,height:artifact.bounds.height*options.scale,scale:options.scale,pdf:false,pdfVector:false}])
           setStatus('已生成含完整字体的 SVG；宿主可能忽略字体，外部显示仍可能不同。大型文件通过受限 SVG 字体文件通道导入。')
           return
@@ -150,6 +155,7 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
         const bytes = svgFileBytes(result.source, options.compression)
         const url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type: 'image/svg+xml' }))
         urls.current.push(url)
+        trace.result(ActionOutcome.observed)
         desktopPet.event('export')
         setAssets([{ name: `${filename(document.name)}.${options.compression === 'gzip' ? 'svgz' : 'svg'}`, url, width: result.box.width * options.scale, height: result.box.height * options.scale, scale: options.scale, pdf: false, pdfVector: false }])
         setStatus(`已生成 SVG${options.compression === 'gzip' ? 'Z（无损 gzip 压缩）' : ''}${options.precision === undefined ? '' : '；坐标已按所选精度进行有损舍入'}`)
@@ -159,9 +165,10 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
         // Vector PDF is resolution-independent; one file covers every scale.
         const { exportPdfVector } = await import('./export')
         const asset = await exportPdfVector(document, page, target, controller.signal)
-        if (controller.signal.aborted || request.current !== controller) return
+        if (controller.signal.aborted || request.current !== controller) { trace.result(ActionOutcome.cancelled, ActionReason.superseded); return }
         const url = URL.createObjectURL(asset.blob)
         urls.current.push(url)
+        trace.result(ActionOutcome.observed)
         desktopPet.event('export')
         setAssets([
           {
@@ -191,7 +198,7 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
         controller.signal,
         format,
       )
-      if (controller.signal.aborted || request.current !== controller) return
+      if (controller.signal.aborted || request.current !== controller) { trace.result(ActionOutcome.cancelled, ActionReason.superseded); return }
       const next = results.map((asset) => {
         const url = URL.createObjectURL(asset.blob)
         urls.current.push(url)
@@ -205,10 +212,12 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
           pdfVector: false,
         }
       })
-      desktopPet.event('export')
+      trace.result(ActionOutcome.observed)
+        desktopPet.event('export')
       setAssets(next)
       setStatus(`已生成 ${next.length} 个 ${format.toUpperCase()} 文件`)
     } catch (error) {
+      trace.result(controller.signal.aborted || request.current !== controller ? ActionOutcome.cancelled : ActionOutcome.rejected, controller.signal.aborted || request.current !== controller ? ActionReason.superseded : ActionReason.validation)
       if (!controller.signal.aborted && request.current === controller) {
         desktopPet.event('error')
         release()
@@ -220,6 +229,7 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
         setBusy(false)
       }
     }
+    } finally { trace.finish() }
   }
   return (
     <div className="feature-backdrop">

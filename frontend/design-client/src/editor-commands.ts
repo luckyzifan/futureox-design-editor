@@ -1,3 +1,5 @@
+import { beginEditorAction } from './editor-action-route'
+import { CanvasAction, ActionSource, ActionOutcome, ActionReason, type ActionSourceCode } from './canvas-action-diagnostics'
 import {PROPERTY_PREFIX,copyProperties,readProperties,pasteProperties,type PropertyKind} from './property-clipboard'
 import { requestBatchRename } from './batch-rename-session'
 import {activateTool} from './tool-activation'
@@ -25,16 +27,24 @@ export type EditorCommand = DimensionNudgeCommand | 'copy-properties'|'paste-pro
 export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','convert-vector']
 const copiedPackets = new WeakMap<Editor, string>()
 function packet(document: DesignDocument) { return JSON.stringify({ format:'forma-nodes', version:1, document, roots:document.pages[0].children }) }
-export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: { worldPoint?: Point; pageId?: string; zoomAnchor?: Point; shortcutProfile?: ShortcutProfile } = {}): Promise<void> {
+export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: { worldPoint?: Point; pageId?: string; zoomAnchor?: Point; shortcutProfile?: ShortcutProfile; actionSource?: ActionSourceCode } = {}): Promise<void> {
+  const category = command === 'copy' ? CanvasAction.copy : command === 'cut' ? CanvasAction.cut : command.startsWith('paste') ? CanvasAction.paste : command === 'undo' ? CanvasAction.undo : command === 'redo' ? CanvasAction.redo : command === 'delete' ? CanvasAction.delete : command === 'duplicate' ? CanvasAction.duplicate : command === 'group' || command === 'frame-selection' ? CanvasAction.group : command === 'ungroup' ? CanvasAction.ungroup : command === 'select-all' ? CanvasAction.selectAll : CanvasAction.command
+  const action = beginEditorAction(editor, category, options.actionSource ?? ActionSource.unknown, editorCommands.indexOf(command) + 1)
+  try {
   const active = typeof document === 'undefined' ? null : document.activeElement
   const editable = editableOwnsKeyboard(active)
   // Native menu accelerators arrive without a DOM KeyboardEvent. Preserve the
   // focused text control and modal ownership at the shared command boundary too.
-  if ((editable && !['undo', 'redo', 'cut', 'copy', 'paste', 'paste-in-place', 'paste-over-selection', 'select-all'].includes(command)) || (!editable && modalOwnsKeyboard(active))) return
+  if ((editable && !['undo', 'redo', 'cut', 'copy', 'paste', 'paste-in-place', 'paste-over-selection', 'select-all'].includes(command)) || (!editable && modalOwnsKeyboard(active))) { action.result(ActionOutcome.blocked, ActionReason.wrongOwner); return }
   if (typeof command === 'string' && command.startsWith('set-tool-')) {
     const tool = toolForCommand(command)
-    if (tool) await activateTool(editor,tool as import('./engine').Tool)
+    if (tool) {
+      const session = editor.sessionGeneration, beforeTool = editor.state.tool
+      await activateTool(editor,tool as import('./engine').Tool)
+      action.result(session !== editor.sessionGeneration ? ActionOutcome.cancelled : editor.state.tool !== beforeTool ? ActionOutcome.observed : ActionOutcome.unchanged, session !== editor.sessionGeneration ? ActionReason.staleSession : ActionReason.none)
+    }
     else {
+      action.result(ActionOutcome.unsupported, ActionReason.unsupported)
       // Never let a decoded-but-unimplemented tool command pass silently.
       const entry = TOOL_COMMANDS.find((c) => c.id === command)
       editor.notify(
@@ -48,13 +58,14 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
     const native = desktopBridge()?.performTextCommand
     try {
       if (native) await native(textCommand as 'undo'|'redo'|'cut'|'copy'|'paste'|'selectAll')
-      else document.execCommand(textCommand)
-    } catch (error) { editor.notify(String(error)) }
+      else if (!document.execCommand(textCommand)) { action.result(ActionOutcome.rejected, ActionReason.validation); return }
+      action.result(ActionOutcome.observed, ActionReason.editingText)
+    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); editor.notify(String(error)) }
     return
   }
-  if (editor.state.busy) return
-  if (editor.interactionActive) { editor.notify('请先结束拖动，或按 Esc 取消'); return }
-  if (!commitPendingEdits(editor)) return
+  if (editor.state.busy) { action.result(ActionOutcome.blocked, ActionReason.busy); return }
+  if (editor.interactionActive) { action.result(ActionOutcome.blocked, ActionReason.wrongOwner); editor.notify('请先结束拖动，或按 Esc 取消'); return }
+  if (!commitPendingEdits(editor)) { action.result(ActionOutcome.blocked, ActionReason.validation); return }
   const before = editor.state.doc, epoch = editor.sessionGeneration, version = editor.state.version, page = editor.state.page, selection = editor.state.selection.join('\n')
   const matches = () => editor.state.doc === before && !editor.state.busy && editor.sessionGeneration === epoch && editor.state.version === version && editor.state.page === page &&
     editor.state.selection.join('\n') === selection && !editor.interactionActive &&
@@ -82,13 +93,13 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       if(native){const result=await native.write({text});if(result.status!=='ok')throw Error(result.status==='cancelled'?'复制已取消':result.message)}
       else if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(text)
       else throw Error('系统剪贴板不可用')
-      editor.notify('已复制属性');return
+      action.result(ActionOutcome.observed);editor.notify('已复制属性');return
     }
     if(command==='paste-properties'){
       const content=await readClipboard();if(!current())throw Error('读取剪贴板期间设计已变化，请重新粘贴')
       if(!content?.text)throw Error('剪贴板中没有属性');applyProperties(content.text);return
     }
-    if (command === 'copy-as-png' || command === 'copy-as-svg') { await copySelectionAsset(editor,command==='copy-as-png'?'png':'svg'); return }
+    if (command === 'copy-as-png' || command === 'copy-as-svg') { await copySelectionAsset(editor,command==='copy-as-png'?'png':'svg'); action.result(ActionOutcome.observed); return }
     if (command === 'copy' || command === 'cut') {
       const forma = editor.exportClipboard(command === 'cut')
       if (!forma) return
@@ -98,10 +109,13 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         const result = await native.write({ forma, text: editor.state.selection.map(id => { const n=editor.state.doc.nodes[id]; return n?.kind==='text'?n.text:n?.name||'' }).join('\n') })
         if (result.status !== 'ok') throw new Error(result.status === 'cancelled' ? '复制已取消' : result.message)
       } else await writeWebGraphClipboard(forma)
+      action.result(command === 'copy' ? ActionOutcome.observed : ActionOutcome.unchanged)
       copiedPackets.set(editor, forma)
       if (command === 'cut') {
         if (!current()) throw new Error('复制期间选择已变化，原图层已保留')
+        const version = editor.state.version
         editor.remove()
+        action.result(editor.state.version !== version ? ActionOutcome.committed : ActionOutcome.unchanged)
       }
       return
     }
@@ -120,14 +134,14 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
         else if (content.svg || /^\s*(?:<\?xml[^>]*>\s*)?<svg[\s>]/i.test(content.text || '')) {
           const { importSvg } = await import('./import-svg')
           const input = content.svg || content.text!; assertSize(input)
-          if (!current()) return
+          if (!current()) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return }
           const imported = importSvg(input, '粘贴的矢量')
           normalized = packet(imported.document)
         } else if (content.image) {
           assertSize(content.image)
           if (!/^data:image\/(png|jpeg|webp);base64,/.test(content.image)) throw new Error('剪贴板图片格式不支持')
           const image = new Image(); image.src = content.image; await image.decode()
-          if (!current()) return
+          if (!current()) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return }
           if (image.naturalWidth * image.naturalHeight > 16_777_216) throw new Error('剪贴板图片像素过大')
           const doc = blank('粘贴的图片'), n = node('rectangle', 0, 0, image.naturalWidth, image.naturalHeight)
           n.fills = [{ ...paint(), kind:'image', image:content.image, fit:'cover' }]
@@ -211,7 +225,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'hide-selection': editor.update(editor.state.selection, { visible: false }, '切换可见性'); break
       case 'show-selection': editor.update(editor.state.selection, { visible: true }, '切换可见性'); break
       case 'convert-vector': editor.convert(); break
-      case 'outline-stroke': await editor.geometry('outline'); break
+      case 'outline-stroke': await editor.geometry('outline'); action.result(ActionOutcome.observed, ActionReason.unobserved); break
       case 'flip-horizontal':
       case 'flip-vertical': {
         const box = editor.selectionBounds()
@@ -222,6 +236,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       }
       case 'select-all': editor.select(selectAllCanvasIds(editor.state.doc, editor.state.page, editor.state.selection, options.shortcutProfile ?? shortcutPreference.getSnapshot())); break
     }
-  } catch (error) { editor.notify(error instanceof Error ? error.message : String(error)) }
+  } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); editor.notify(error instanceof Error ? error.message : String(error)) }
   finally { stopFence() }
+  } finally { action.finish() }
 }

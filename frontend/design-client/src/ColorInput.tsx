@@ -1,4 +1,5 @@
-import { useContext, useEffect, useRef, useState } from 'react'
+import { createInputDiagnostics, InputFamily, InputPhase } from './input-diagnostics'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Pipette } from 'lucide-react'
 import { DraftInput } from './DraftInput'
 import { validColor } from './color'
@@ -19,6 +20,14 @@ export function ColorInput({
     controller = useRef<AbortController | null>(null),
     mounted = useRef(true),
     [error, setError] = useState('')
+  const diagnostic = useMemo(() => createInputDiagnostics(editor, InputFamily.color), [editor])
+  useEffect(() => () => diagnostic.dispose(), [diagnostic])
+  const applyColor = (next: string) => {
+    diagnostic.start()
+    const before = editor?.state.doc
+    current.current.onChange(next)
+    diagnostic.finish(!!editor && editor.state.doc !== before, !!editor && (editor.state.doc !== before || next === current.current.value))
+  }
   current.current = { value, onChange }
   useEffect(() => {
     mounted.current = true
@@ -46,10 +55,11 @@ export function ColorInput({
       page = editor?.state.page,
       selection = editor?.state.selection.join(','),
       original = current.current.value
+    diagnostic.start()
     try {
       setError('')
       const result = editor ? await requestCanvasColor(editor,owner.signal) : await new EyeDropper!().open({ signal: owner.signal })
-      if (!mounted.current || owner.signal.aborted) return
+      if (!mounted.current || owner.signal.aborted) { diagnostic.cancel(); return }
       if (
         editor
           ? editor.state.version !== version ||
@@ -60,8 +70,9 @@ export function ColorInput({
       )
         throw new Error('取样期间属性已变化，请重试')
       if (!/^#[\da-f]{6}$/i.test(result.sRGBHex)) throw new Error('取样颜色无效')
-      current.current.onChange(result.sRGBHex)
+      applyColor(result.sRGBHex)
     } catch (e) {
+      if (owner.signal.aborted || (e as Error).name === 'AbortError') diagnostic.cancel(); else { diagnostic.valid(false); diagnostic.finish(false, false) }
       if (!owner.signal.aborted && (e as Error).name !== 'AbortError' && mounted.current) setError(String(e))
     } finally {
       if (controller.current === owner) controller.current = null
@@ -86,9 +97,9 @@ export function ColorInput({
       }}
     >
       {simple ? (
-        <input aria-label={label} type="color" value={value} onChange={(e) => onChange(e.target.value)} />
+        <input aria-label={label} type="color" value={value} onFocus={() => diagnostic.event(InputPhase.focus)} onBlur={() => diagnostic.event(InputPhase.blur)} onChange={(e) => applyColor(e.target.value)} />
       ) : (
-        <DraftInput
+        <DraftInput diagnosticFamily={InputFamily.color}
           aria-label={label}
           value={value}
           onCommit={onChange}

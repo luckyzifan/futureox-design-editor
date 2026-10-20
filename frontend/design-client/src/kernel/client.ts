@@ -1,3 +1,6 @@
+import { markRenderFailure } from './render-failure-telemetry'
+import { FrameMeasurements } from './frame-measurements'
+import { bindCanvasGrid, GridMeasurements } from './grid-measurements'
 import { documentPatch } from '../document-patch'
 import { boundedPatchWire, prepareAuthoredPatchTransition } from './authored-patch-transition'
 import { operationCorrelation } from '../canvas-operation-terminal'
@@ -338,11 +341,31 @@ export class KernelClient {
     batchSink: batch=>console.log(PREFIX+JSON.stringify({batch})),
     session: this.diagnosticSession, source: 'main', sink: record => console.log(PREFIX + JSON.stringify(record)),
   })
+  private gridMeasurements = new GridMeasurements((event,fields)=>this.terminalDiagnostics.record(event,fields))
+  private frameMeasurements = new FrameMeasurements((event,fields)=>this.terminalDiagnostics.record(event,fields))
+  private frameObservers = 0
+  private stopFrameObservers?: () => void
+  private observeFrames() {
+    if (!this.terminalDiagnostics.enabled || typeof document === 'undefined' || typeof requestAnimationFrame !== 'function') return () => {}
+    this.frameObservers++
+    if (!this.stopFrameObservers) {
+      let handle=0
+      const frame=(at:number)=>{this.frameMeasurements.raf(at);handle=requestAnimationFrame(frame)}
+      const visibility=()=>this.frameMeasurements.visibility(document.visibilityState!=='hidden')
+      visibility();handle=requestAnimationFrame(frame)
+      const timer=setInterval(()=>this.frameMeasurements.tick(),1000)
+      document.addEventListener('visibilitychange',visibility)
+      this.stopFrameObservers=()=>{cancelAnimationFrame(handle);clearInterval(timer);document.removeEventListener('visibilitychange',visibility);this.frameMeasurements.reset();this.stopFrameObservers=undefined}
+    }
+    return ()=>{if(--this.frameObservers===0)this.stopFrameObservers?.()}
+  }
   private navigationJournal = new NavigationJournal()
-  private inputTrace = new NavigationInputTrace(this.navigationJournal, this.terminalDiagnostics)
+  private inputTrace = new NavigationInputTrace(this.navigationJournal, this.terminalDiagnostics, undefined, undefined, (sequence,epoch)=>{if(this.terminalDiagnostics.enabled)this.frameMeasurements.input(sequence,epoch)})
   bindNavigationInput(owner: object) {
     const unbind = bindNavigationInput(owner, this.inputTrace)
-    return () => { unbind(); this.inputTrace.reset() }
+    const stopFrames=this.observeFrames()
+    const stopGrid=bindCanvasGrid(owner,fields=>{if(this.terminalDiagnostics.enabled)this.gridMeasurements.record(fields)})
+    return () => { unbind(); stopGrid(); stopFrames(); this.inputTrace.reset() }
   }
   /** Explicit diagnostic control only. No per-frame IPC, readback or GPU
    * fence. Worker and main clocks must be aligned by their timeOrigin. */
@@ -376,7 +399,8 @@ export class KernelClient {
     const input = this.inputTrace.correlation(frame.view)
     this.terminalDiagnostics.record('camera-request',{...input,sequence,x:frame.view.x,y:frame.view.y,zoom:frame.view.zoom,width:frame.width,height:frame.height})
     if (this.navigationJournal.recording) this.navigationJournal.record(2, { ...input, sequence, x: frame.view.x, y: frame.view.y, zoom: frame.view.zoom })
-    this.worker?.postMessage({ command: 'display-frame', sequence, frame:residentFrameMessage(frame) })
+    if(this.terminalDiagnostics.enabled)this.frameMeasurements.request(sequence,frame.view,input)
+    this.worker?.postMessage({ command: 'display-frame', sequence, frame:residentFrameMessage({...frame, diagnosticSequence:this.terminalDiagnostics.enabled?sequence:undefined}) })
   }
   async readContentPixel(u:number,v:number,expected?:import('./resident-presentation').ResidentAcknowledgement){const result=await this.request({command:'display-read-pixel',u,v,expected});if(!result.contentPixel)throw Error('Missing document sample');return result.contentPixel}
   async captureContentBitmap(){const result=await this.request({command:'display-capture-content'});if(!result.bitmap||!result.contentFrame)throw Error('Missing document snapshot');return{bitmap:result.bitmap,frame:result.contentFrame}}
@@ -412,7 +436,7 @@ export class KernelClient {
   private authoredPreparation = new AuthoredPreparationBinding<DesignDocument>()
   // Separate from cancellable presentation promises: accepted mutations still
   // need acknowledgments (and possibly fallback input) after preview cancellation.
-  private synchronizationInputs = new Map<number, { document: DesignDocument; acknowledge?: (receipt?: PreparationStateReceiptV1 | null) => void }>()
+  private synchronizationInputs = new Map<number, { document: DesignDocument; acknowledge?: (receipt?: PreparationStateReceiptV1 | null) => void; settled?: () => void }>()
   private documentSnapshot?: DesignDocument
   private documentRevision = 0
   private interactionSnapshot?: DesignDocument
@@ -493,11 +517,25 @@ export class KernelClient {
       if (e.data.documentSynchronized === true) {
         const captured = this.synchronizationInputs.get(e.data.id)
         captured?.acknowledge?.(e.data.stateReceipt)
+        captured?.settled?.()
         this.synchronizationInputs.delete(e.data.id)
         return
       }
-      if (e.data.error) this.synchronizationInputs.delete(e.data.id)
+      if (e.data.error) {
+        const captured = this.synchronizationInputs.get(e.data.id)
+        // A cancelled visual promise no longer observes worker errors. A failed
+        // accepted replica mutation must still invalidate its submission base.
+        if (captured?.settled && this.documentSnapshot === captured.document) {
+          this.documentSnapshot = undefined
+          this.authoredPreparation.invalidate()
+        }
+        captured?.settled?.()
+        this.synchronizationInputs.delete(e.data.id)
+      }
       if (e.data.presentation) {
+        const stats=e.data.presentation, presented=stats.presented
+        if(this.terminalDiagnostics.enabled && presented?.view && Number.isSafeInteger(stats.diagnosticSequence) && typeof stats.submittedEpoch==='number')
+          this.frameMeasurements.submit(stats.diagnosticSequence,presented.view,presented.dpr,stats.submittedEpoch)
         if (this.navigationJournal.recording && typeof e.data.presentation.compositorFrames === 'number')
           this.navigationJournal.record(9, { frames: e.data.presentation.compositorFrames })
         if (e.data.presentation.residentSample) recordRenderProfile('拖动中间帧', e.data.presentation.residentSample)
@@ -560,7 +598,9 @@ export class KernelClient {
       clearTimeout(p.timer)
       this.pending.delete(e.data.id)
       if (e.data.error) {
-        const error = renderErrorWithBudget(e.data.error, undefined, e.data.budgetDiagnostic)
+        const error = markRenderFailure(renderErrorWithBudget(e.data.error, undefined, e.data.budgetDiagnostic), {
+          failureCategory: e.data.failureCategory, failureCode: e.data.failureCode, failureStage: e.data.failureStage,
+        })
         const budget = renderBudgetDiagnostic(error)
         // Capture allocation rejection even if a caller recovers from it.
         // The journal itself stays opt-in and stores only validated scalars.
@@ -594,6 +634,7 @@ export class KernelClient {
     }
   }
   private reset(error: Error) {
+    this.frameMeasurements.reset();this.gridMeasurements.close()
     this.terminalDiagnostics.record('error',{reasonCode:this.disposed?3:2})
     this.navigationJournal.stop(/device lost|GPU device|设备已丢失/i.test(error.message) ? 5 : 4)
     if(this.presentationAttached&&!this.disposed){
@@ -612,6 +653,7 @@ export class KernelClient {
     this.serializeNative = undefined
     this.nativeSubmission = Promise.resolve()
     this.authoredPreparation.invalidate()
+    for (const captured of this.synchronizationInputs.values()) captured.settled?.()
     this.synchronizationInputs.clear()
     this.documentSnapshot = undefined
     this.interactionSnapshot = undefined
@@ -788,10 +830,40 @@ export class KernelClient {
           else { this.documentSnapshot = document; this.documentRevision++ }
         }
         if (!interaction && (serialized !== undefined || patchBaseReceipt)) acknowledge = this.authoredPreparation.capture(document)
-        const synchronize = deriveFrom || acknowledge ? { document, acknowledge } : undefined
+        // Admission happens before dispatch, never by dropping accepted patches.
+        // A cancelled queued preview can be omitted because the next immutable
+        // snapshot is diffed from the last actually submitted snapshot. Hold the
+        // submission fence until mutation ACK, not the cancellable pixel promise.
+        const fenceMutation = !!nativeSerializer && !interaction && options.renderIntent === 'preview' &&
+          (options.livePreview === true || !!options.tileViewport) && !png && !readback &&
+          !options.exportFormat && !options.exportRegion && !options.pixelPreview &&
+          (serialized !== undefined || patch !== undefined)
+        let releaseSynchronization: (() => void) | undefined
+        let synchronizationTimer: ReturnType<typeof setTimeout> | undefined
+        const synchronized = fenceMutation ? new Promise<void>(resolve => {
+          releaseSynchronization = () => {
+            if (synchronizationTimer !== undefined) { clearTimeout(synchronizationTimer); synchronizationTimer = undefined }
+            resolve()
+          }
+          synchronizationTimer = setTimeout(() => {
+            if (this.worker === worker && !this.disposed) this.reset(new Error('Document synchronization timed out'))
+            else releaseSynchronization?.()
+          }, 30000)
+        }) : undefined
+        const synchronize = deriveFrom || acknowledge || fenceMutation ? { document, acknowledge, settled: releaseSynchronization } : undefined
         const serializeMs = performance.now() - start
         const revision = interaction ? this.interactionRevision : this.documentRevision
-        return { result: this.request(
+        const rejectSubmission = () => {
+          // request() can refuse admission synchronously after prepare advanced
+          // its optimistic snapshot. Invalidate before releasing the queue, not
+          // in a later promise catch which can race the following preparation.
+          if (this.worker !== worker) return
+          if ((interaction ? this.interactionSnapshot : this.documentSnapshot) !== document ||
+            (interaction ? this.interactionRevision : this.documentRevision) !== revision) return
+          if (interaction) this.interactionSnapshot = undefined
+          else { this.documentSnapshot = undefined; this.authoredPreparation.invalidate() }
+        }
+        return { synchronized, result: this.request(
           {
             document: serialized,
             deriveFrom,
@@ -813,7 +885,7 @@ export class KernelClient {
             referenceGpu: import.meta.env.DEV && referenceGpu,
             debug: import.meta.env.DEV ? debug : undefined,
           },
-          progress, [], signal, synchronize, diagnosticOperation,
+          progress, [], signal, synchronize, diagnosticOperation, rejectSubmission,
         )
           .then((result) => ({ ...result, serializeMs }))
           .catch((error) => {
@@ -827,11 +899,11 @@ export class KernelClient {
             throw error
           }) }
       }
-      // Serialize/submit in revision order, but release this queue immediately
-      // after dispatch so a long render cannot hold later cancellation/input.
+      // Serialize/submit in revision order. Preview mutations release on the real
+      // synchronization ACK; pixel rendering never holds the admission fence.
       if (nativeSerializer) {
         const pending = this.nativeSubmission.then(prepare)
-        this.nativeSubmission = pending.then(() => undefined, () => undefined)
+        this.nativeSubmission = pending.then(({ synchronized }) => synchronized, () => undefined)
         return pending.then(({ result }) => result)
       }
       return prepare().then(({ result }) => result)
@@ -875,10 +947,10 @@ export class KernelClient {
     }
     this.worker?.postMessage({ command: 'cancel-preview', channel, executionPolicy: renderExecutionPolicy })
   }
-  private request(payload: object, progress?: (tile: TileResult) => void, transfer:Transferable[]=[], signal?: AbortSignal, synchronize?: { document: DesignDocument; acknowledge?: (receipt?: PreparationStateReceiptV1 | null) => void }, diagnosticOperation?: Record<string, number>): Promise<KernelResult> {
-    if (this.disposed) return Promise.reject(new Error('渲染器已关闭'))
-    if (signal?.aborted) return Promise.reject(new Error('PREVIEW_CANCELLED'))
-    if (synchronize && this.synchronizationInputs.size >= 128) return Promise.reject(new Error('Document synchronization input budget exceeded'))
+  private request(payload: object, progress?: (tile: TileResult) => void, transfer:Transferable[]=[], signal?: AbortSignal, synchronize?: { document: DesignDocument; acknowledge?: (receipt?: PreparationStateReceiptV1 | null) => void; settled?: () => void }, diagnosticOperation?: Record<string, number>, rejectSubmission?: () => void): Promise<KernelResult> {
+    if (this.disposed) { rejectSubmission?.(); synchronize?.settled?.(); return Promise.reject(new Error('渲染器已关闭')) }
+    if (signal?.aborted) { rejectSubmission?.(); synchronize?.settled?.(); return Promise.reject(new Error('PREVIEW_CANCELLED')) }
+    if (synchronize && this.synchronizationInputs.size >= 128) { rejectSubmission?.(); synchronize.settled?.(); return Promise.reject(new Error('Document synchronization input budget exceeded')) }
     const id = ++this.next
     if (synchronize) this.synchronizationInputs.set(id, synchronize)
     let cleanup: (() => void) | undefined
@@ -913,6 +985,7 @@ export class KernelClient {
           x: options.view?.x, y: options.view?.y, zoom: options.view?.zoom, width: options.width, height: options.height })
         this.worker!.postMessage({ id, ...payload, executionPolicy: renderExecutionPolicy },transfer)
       } catch (error) {
+        rejectSubmission?.()
         this.reset(error instanceof Error ? error : new Error(String(error)))
       }
     })
@@ -921,6 +994,8 @@ export class KernelClient {
   dispose() {
     if (this.disposed) return
     this.disposed = true
+    this.stopFrameObservers?.()
+    this.gridMeasurements.flush();this.gridMeasurements.close()
     activeClients.delete(this)
     this.reset(new Error('渲染器已关闭'))
     this.terminalDiagnostics.flush(); this.terminalDiagnostics.close()

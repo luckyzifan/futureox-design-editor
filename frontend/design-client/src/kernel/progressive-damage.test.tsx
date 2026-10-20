@@ -1,3 +1,4 @@
+import { markRenderFailure } from './render-failure-telemetry'
 import React from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { blank, node as makeNode, effect as makeEffect } from '../model'
@@ -968,4 +969,55 @@ test('settled native repair refines coarse-only edges before an already-sharp ce
   expect(ordered).toHaveLength(worker.plan.length)
   expect(ordered.every(tile => tile.zoom === 1)).toBe(true)
   expect(worker.calls[1].options.renderIntent).toBe('canvas')
+})
+
+const compileBudget = () => markRenderFailure(new Error('PREVIEW_BUDGET: GPU surface budget exceeded'), { failureCategory: 3, failureCode: 64, failureStage: 5 })
+test('budget latch suppresses same sampled target despite thirteen changing live inputs, then admits changed target', async () => {
+ vi.stubGlobal('WebGL2RenderingContext', class {})
+ const h=harness(false), sample={x: -18431.35,y: -17471.41,zoom:31.913}
+ worker.navigation={active:true,suspended:false,sample:{active:true,sequence:1,view:sample}}
+ h.render({backend:'webgl2',view:sample}); await vi.waitFor(()=>expect(worker.calls).toHaveLength(1))
+ worker.calls[0].reject(compileBudget()); await settleRejected()
+ for(let i=1;i<=13;i++){h.render({backend:'webgl2',view:{...sample,x:sample.x+i}});await settleRejected();if(worker.calls.length>i){worker.calls.at(-1).reject(compileBudget());await settleRejected()}}
+ expect(worker.calls).toHaveLength(1)
+ const next={...sample,x:sample.x+20}
+ worker.navigation={active:true,suspended:false,sample:{active:true,sequence:2,view:next}}
+ h.render({backend:'webgl2',view:next});await vi.waitFor(()=>expect(worker.calls).toHaveLength(2))
+})
+test('budget latch cannot poison final exact fill after navigation exit', async () => {
+ vi.stubGlobal('WebGL2RenderingContext', class {})
+ const h=harness(false), view={x:0,y:0,zoom:32}
+ worker.navigation={active:true,suspended:false,sample:{active:true,sequence:1,view}}
+ h.render({backend:'webgl2',view});await vi.waitFor(()=>expect(worker.calls).toHaveLength(1))
+ worker.calls[0].reject(compileBudget());await settleRejected()
+ worker.navigation={active:false,suspended:false,sample:undefined}
+ h.render({backend:'webgl2',view});await vi.waitFor(()=>expect(worker.calls).toHaveLength(2))
+ expect(worker.calls[1].options.livePreview).not.toBe(true)
+})
+
+async function settleRejected(){for(let i=0;i<32;i++)await Promise.resolve()}
+
+test('old navigation rejection cannot clear newer admission or its budget latch', async () => {
+ vi.stubGlobal('WebGL2RenderingContext', class {})
+ const h=harness(false), first={x:0,y:0,zoom:32},next={x:10,y:0,zoom:32}
+ worker.navigation={active:true,suspended:false,sample:{active:true,sequence:1,view:first}}
+ h.render({backend:'webgl2',view:first});await vi.waitFor(()=>expect(worker.calls).toHaveLength(1))
+ worker.navigation={active:true,suspended:false,sample:{active:true,sequence:2,view:next}}
+ h.render({backend:'webgl2',view:next});await settleRejected()
+ worker.calls[0].reject(compileBudget());await settleRejected()
+ expect(worker.calls).toHaveLength(2)
+ h.render({backend:'webgl2',view:{...next,x:11}});await settleRejected()
+ expect(worker.calls).toHaveLength(2)
+ worker.calls[1].reject(compileBudget());await settleRejected()
+ h.render({backend:'webgl2',view:{...next,x:12}});await settleRejected()
+ expect(worker.calls).toHaveLength(2)
+})
+test.each(['document','fonts','epoch'] as const)('failed navigation budget is invalidated by %s',async change=>{
+ vi.stubGlobal('WebGL2RenderingContext', class {})
+ const h=harness(false),view={x:0,y:0,zoom:32}
+ worker.navigation={active:true,suspended:false,sample:{active:true,sequence:1,view}}
+ h.render({backend:'webgl2',view});await vi.waitFor(()=>expect(worker.calls).toHaveLength(1))
+ worker.calls[0].reject(compileBudget());await settleRejected()
+ const override=change==='document'?{document:blank('new')}:change==='fonts'?{document:{...h.doc,fonts:{...h.doc.fonts}}}:{presentationEpoch:1}
+ h.render({backend:'webgl2',view,...override});await vi.waitFor(()=>expect(worker.calls).toHaveLength(2))
 })

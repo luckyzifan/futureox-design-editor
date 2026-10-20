@@ -6,7 +6,7 @@ export type DesktopResult<T = Record<never, never>> =
 export type DesktopFile = { pendingCount?: number; handle: string; displayName: string; documentJson?: string; warning?: string }
 export type DesktopFont = { id: string; family: string; style: string; postscript: string; index: number; sourceIndex?: number }
 export type DesktopFontData = { font: DesktopFont; data: string; index: number; sourceIndex: number; extracted: boolean }
-export type DesktopCommand = 'copy-properties'|'paste-properties'|'select-matching'|'select-inverse'| 'open' | 'openPending' | 'save' | 'saveAs' | 'new' | 'recover' | 'zoomIn' | 'zoomOut' | 'zoom100' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'copy-as-png' | 'copy-as-svg' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'select-all' | 'duplicate' | 'group' | 'ungroup' | 'delete' | 'zoom-fit' | 'zoom-selection' | 'center-selection'
+export type DesktopCommand = 'settings' | 'copy-properties'|'paste-properties'|'select-matching'|'select-inverse'| 'open' | 'openPending' | 'save' | 'saveAs' | 'new' | 'recover' | 'zoomIn' | 'zoomOut' | 'zoom100' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'copy-as-png' | 'copy-as-svg' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'select-all' | 'duplicate' | 'group' | 'ungroup' | 'delete' | 'zoom-fit' | 'zoom-selection' | 'center-selection'
 export type CatalogProject = { id: string; name: string; updatedAt: number }
 export type CatalogDirectory = { id: string; projectId: string; displayName: string; updatedAt: number; directoryHandle?: string; requiresReselection: boolean }
 export type CatalogFile = { id: string; directoryId: string; relativePath: string; size: number; modifiedAt: number; indexedAt: number }

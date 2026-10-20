@@ -1,3 +1,4 @@
+import { utilityAction, runUtilityAction, ActionSource, CanvasAction, ActionReason, type UtilityAction } from './canvas-utility-action'
 import { boardObjects, resizeBoardObjects, boardToolNames, type BoardTool } from './board-tools'
 import { reviewPoint } from './ReviewsPanel'
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
@@ -39,6 +40,10 @@ export function vectorTool(
 export {pickSelectionColor as sampleScreenColor} from './canvas-color-picker'
 import {pickSelectionColor as sampleScreenColor,hasCanvasColorPicker} from './canvas-color-picker'
 type Gesture = {
+  action: UtilityAction
+  rejectedTargets: number
+  selectionBefore: string[]
+  verticesBefore: string[]
   pointer: number
   session: number
   page: string
@@ -68,6 +73,7 @@ export function useUtilityTools(
     if (typeof pointer === 'number' && drag.current?.pointer !== pointer) return
     if (drag.current) {
       editor.cancel()
+      drag.current.action.cancel()
       drag.current = null
     }
     setDrawing(null)
@@ -101,7 +107,7 @@ export function useUtilityTools(
     return () => {
       window.removeEventListener('keydown', key, true)
       window.removeEventListener('blur', blur)
-      if (drag.current) editor.cancel()
+      if (drag.current) { editor.cancel(); drag.current.action.cancel(ActionReason.sessionEnd) }
     }
   }, [editor])
   function connectorEnd(p: Point): ConnectorEndpoint {
@@ -144,7 +150,8 @@ export function useUtilityTools(
       ].includes(tool)
     )
       return false
-    if (tool === 'eyedropper') return true
+    if (tool === 'eyedropper') return true // Async picker owns its lifecycle; no synthetic commit.
+    const action = utilityAction(editor, tool === 'eraser' ? CanvasAction.eraser : tool in boardToolNames ? CanvasAction.boardCreate : tool === 'measure' ? CanvasAction.measure : tool === 'vector-lasso' ? CanvasAction.lasso : tool === 'bend' ? CanvasAction.bend : tool === 'offset-path' ? CanvasAction.offsetPath : tool === 'paint-bucket' ? CanvasAction.paintBucket : tool === 'text-path' ? CanvasAction.textPath : tool === 'comments' || tool === 'annotate' ? CanvasAction.review : CanvasAction.utility)
     if (tool === 'comments' || tool === 'annotate') {
       editor.set({
         commentSelection: undefined,
@@ -154,10 +161,12 @@ export function useUtilityTools(
           kind: tool === 'comments' ? 'comment' : 'annotation',
         },
       })
+      action.finish(true)
       return true
     }
-    if (e.button !== 0 || !e.isPrimary || drag.current || !commitPendingEdits(editor)) return true
+    if (e.button !== 0 || !e.isPrimary || drag.current || !commitPendingEdits(editor)) { action.block(ActionReason.busy); return true }
     const g: Gesture = {
+      action, rejectedTargets: 0, selectionBefore: [...editor.state.selection], verticesBefore: [...(editor.state.editingVertices || [])],
       pointer: e.pointerId,
       session: editor.sessionGeneration,
       page: editor.state.page,
@@ -188,6 +197,7 @@ export function useUtilityTools(
         const id = editor.state.selection.length === 1 ? editor.state.selection[0] : hit(p, true),
           source = id && editor.state.doc.nodes[id]
         if (!source || ['text', 'frame', 'section', 'group', 'slice'].includes(source.kind)) {
+          action.block(ActionReason.noTarget)
           editor.notify('请先选择一条连续路径')
           return true
         }
@@ -207,12 +217,14 @@ export function useUtilityTools(
           [text.id],
         )
         editor.set({ tool: 'select' })
+        action.finish()
         return true
       }
       if (tool === 'paint-bucket') {
         const id = editor.state.selection.length === 1 ? editor.state.selection[0] : hit(p, true),
           n = id && editor.state.doc.nodes[id]
         if (!n || n.locked || ['frame', 'section', 'group', 'text', 'slice'].includes(n.kind)) {
+          action.block(ActionReason.noTarget)
           editor.notify('请先选择矢量，再点击封闭区域')
           return true
         }
@@ -236,6 +248,7 @@ export function useUtilityTools(
           },
           '切换矢量区域填充',
         )
+        action.finish()
         return true
       }
       if (tool === 'bend' || tool === 'cut' || tool === 'offset-path') {
@@ -245,12 +258,14 @@ export function useUtilityTools(
               : hit(p, true),
           n = id && editor.state.doc.nodes[id]
         if (!n || n.locked || ['frame', 'group', 'section', 'text', 'slice'].includes(n.kind)) {
+          action.block(ActionReason.noTarget)
           editor.notify('请在可编辑矢量线段上操作')
           return true
         }
         const local = apply(inverse(worldMatrix(editor.state.doc, n.id)), p),
           pick = vectorTool(n, 'nearest', local)
         if (tool !== 'offset-path' && pick.distance > 8 / displayZoom) {
+          action.block(ActionReason.noTarget)
           editor.notify('请靠近路径线段')
           return true
         }
@@ -270,6 +285,7 @@ export function useUtilityTools(
               }),
             '裁切路径',
           )
+          action.finish()
           return true
         }
         Object.assign(g, { node: structuredClone(n), local, edge: pick.edge, parameter: pick.parameter })
@@ -281,6 +297,7 @@ export function useUtilityTools(
       move(e, p)
       return true
     } catch (error) {
+      action.cancel(ActionReason.validation)
       cancel()
       editor.notify(String(error))
       return true
@@ -291,6 +308,7 @@ export function useUtilityTools(
     if (!g) return false
     if (g.pointer !== e.pointerId || g.session !== editor.sessionGeneration || g.page !== editor.state.page)
       return true
+    g.action.sample()
     p = { x: (e.clientX - g.origin.x) / g.scale, y: (e.clientY - g.origin.y) / g.scale }
     try {
       if (g.points.length >= 10000) throw new Error('手势超过10000个采样点，请分段操作')
@@ -337,7 +355,7 @@ export function useUtilityTools(
         if (n && !n.locked && !n.fills.length && ['line', 'vector'].includes(n.kind)) {
           g.erased.add(n.id)
           editor.preview(Object.fromEntries([...g.erased].map((id) => [id, { visible: false }])))
-        }
+        } else if (n) { g.rejectedTargets++; g.action.sample({ lockedCount: n.locked ? 1 : 0 }) }
         editor.notify(`橡皮：${g.erased.size} 条路径，松开删除`)
       }
       if (g.tool in boardToolNames || g.tool === 'measure' || g.tool === 'bend') g.points = [g.start, p]
@@ -420,6 +438,11 @@ export function useUtilityTools(
         editor.remove()
       }
     }
+    if (g.tool === 'eraser' && !g.erased.size && g.rejectedTargets) g.action.block(ActionReason.validation, { targetCount: 0 })
+    else {
+      const selectionChanged = g.selectionBefore.join('\n') !== editor.state.selection.join('\n') || g.verticesBefore.join('\n') !== (editor.state.editingVertices || []).join('\n')
+      g.action.finish(g.tool === 'measure' ? g.points.length > 1 : selectionChanged, { targetCount: g.erased.size, motionObserved: g.points.length > 1, selectionChanged, selectionBefore: g.selectionBefore.length, selectionAfter: editor.state.selection.length })
+    }
     if (g.tool !== 'measure') setDrawing(null)
     return true
   }
@@ -466,12 +489,12 @@ export function useUtilityTools(
               tabIndex={0}
               onPointerDown={(e) => {
                 e.stopPropagation()
-                editor.set({ tool: 'comments', commentSelection: r.id, commentDraft: undefined })
+                runUtilityAction(editor, CanvasAction.review, ActionSource.pointer, () => editor.set({ tool: 'comments', commentSelection: r.id, commentDraft: undefined }), true)
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.stopPropagation()
-                  editor.set({ tool: 'comments', commentSelection: r.id, commentDraft: undefined })
+                  runUtilityAction(editor, CanvasAction.review, ActionSource.keyboard, () => editor.set({ tool: 'comments', commentSelection: r.id, commentDraft: undefined }), true)
                 }
               }}
             >
