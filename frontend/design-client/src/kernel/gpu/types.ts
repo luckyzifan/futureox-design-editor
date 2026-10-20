@@ -213,6 +213,10 @@ export type GpuAdmissionDiagnostic = Readonly<{
   admissionPoolCount: number
   admissionUploadCount: number
   admissionImageCount: number
+  /** Actual candidate families: pool=1, retired uploads=2, coordinates=4, forced images=8. */
+  admissionRetiredKinds?: number
+  admissionRetiredUploadCount?: number
+  admissionCoordinateCount?: number
 }>
 
 export interface Driver {

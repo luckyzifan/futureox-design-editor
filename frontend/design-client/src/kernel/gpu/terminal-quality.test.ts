@@ -34,7 +34,7 @@ test('actual resident draw forces a measured post-complete low-density sample in
  const Presenter=new Function('TerminalQualityGate','gpuDiagnosticsDetail','presentationQuality','compositeDrawPlan','compositeRasterQuad','physicalCoverage','env',js)(TerminalQualityGate,()=>detail,presentationQuality,compositeDrawPlan,compositeRasterQuad,physicalCoverage,{DEV:false})
  const reports:any[]=[],pass={setScissorRect(){},setPipeline(){},setBindGroup(){},draw(){},end(){}}
  const submit=vi.fn(),wait=vi.fn(()=>{throw Error('unexpected GPU fence')})
- const p=Object.assign(Object.create(Presenter.prototype),{terminalQualityGate:new TerminalQualityGate(),diagnosticCoverageAt:100,frames:0,imports:0,captures:0,bytes:0,
+ const p=Object.assign(Object.create(Presenter.prototype),{terminalQualityGate:new TerminalQualityGate(),diagnosticCoverageAt:100,diagnosticFields:()=>({}),frames:0,imports:0,captures:0,bytes:0,
   device:{limits:{maxTextureDimension2D:4096},queue:{submit,onSubmittedWorkDone:wait},createCommandEncoder:()=>({beginRenderPass:()=>pass,copyTextureToTexture(){},finish(){return {}}})},
   textures:new Map([[42,{texture:{},bind:{},bytes:100}]]),canvas:{width:100,height:100},context:{getCurrentTexture:()=>({})},
   backbuffer:{width:100,height:100,texture:{createView:()=>({})}},transformData:{begin(){},set(){},changed(){return undefined}},report:(r:any)=>reports.push(r)})

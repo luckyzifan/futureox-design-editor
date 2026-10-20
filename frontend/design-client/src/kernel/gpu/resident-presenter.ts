@@ -1,3 +1,4 @@
+import { deviceDiagnosticFields, registerDeviceDiagnosticOwner, recordDeviceLifecycle, deviceLifecyclePhase } from './device-lifecycle-diagnostics'
 import { TerminalQualityGate, type TerminalQuality } from './terminal-quality'
 import { gpuDiagnosticsDetail } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import type { CanvasCamera } from '../../canvas-camera'
@@ -77,6 +78,14 @@ export class ResidentPresenter {
   private bytes = 0
   private disposed = false
   private overlay?: CanvasOverlayRenderer
+  private diagnosticCaptures = 0
+  private diagnosticCapturePayload = 0
+  private diagnosticReadbacks = 0
+  diagnosticFields() {
+    return { ...deviceDiagnosticFields(this), deviceCounterMask: 7, devicePendingCaptures: this.diagnosticCaptures,
+      devicePendingCapturePayloadBytes: this.diagnosticCapturePayload, devicePendingReadbacks: this.diagnosticReadbacks,
+      deviceLogicalPayloadBytes: this.residentBytes }
+  }
   attachCanvas(canvas: OffscreenCanvas) {
     if (this.canvas === canvas) return
     this.context.unconfigure()
@@ -91,6 +100,7 @@ export class ResidentPresenter {
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
     })
     this.repaint()
+    recordDeviceLifecycle(this, deviceLifecyclePhase.attached, this.diagnosticFields())
   }
   constructor(
     private device: GPUDevice,
@@ -98,6 +108,7 @@ export class ResidentPresenter {
     readonly format: GPUTextureFormat,
     private report: (stats: Record<string, unknown>) => void,
   ) {
+    registerDeviceDiagnosticOwner(this, device, 2)
     this.context = canvas.getContext('webgpu')!
     if (!this.context) throw Error('WebGPU display canvas unavailable')
     this.context.configure({ device, format, alphaMode: 'premultiplied', colorSpace: 'srgb',
@@ -144,6 +155,7 @@ export class ResidentPresenter {
       size: 4096 * 256,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
+    recordDeviceLifecycle(this, deviceLifecyclePhase.attached, this.diagnosticFields())
   }
   capture(width: number, height: number) {
     if (this.disposed) throw Error('Display device retired')
@@ -245,6 +257,7 @@ export class ResidentPresenter {
     if(expected&&(expected.presentationId!==frame.presentationId||expected.view.x!==frame.view.x||expected.view.y!==frame.view.y||expected.view.zoom!==frame.view.zoom||expected.width!==frame.width||expected.height!==frame.height||expected.dpr!==frame.dpr))
       throw Error('画面已变化，请重新取色')
     const buffer=this.device.createBuffer({size:256,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ})
+    this.diagnosticReadbacks++
     try{
       const encoder=this.device.createCommandEncoder()
       encoder.copyTextureToBuffer({texture,origin:[Math.floor(u*width),Math.floor(v*height),0]},{buffer,bytesPerRow:256},[1,1])
@@ -253,7 +266,7 @@ export class ResidentPresenter {
       if(this.format.startsWith('bgra'))[bytes[0],bytes[2]]=[bytes[2],bytes[0]]
       const alpha=bytes[3]/255
       return {contentPixel:[...bytes.slice(0,3)].map(c=>alpha?Math.min(255,Math.round(c/alpha)):0).concat(bytes[3]),contentFrame:frame}
-    }finally{buffer.destroy()}
+    }finally{try{buffer.destroy()}finally{this.diagnosticReadbacks--}}
   }
   async captureContentBitmap() {
     if(!this.backbuffer)throw Error('No displayed document content')
@@ -261,12 +274,13 @@ export class ResidentPresenter {
     if(this.residentBytes+width*height*4>DISPLAY_TEXTURE_BUDGET)throw Error('Content snapshot budget exceeded')
     const canvas=new OffscreenCanvas(width,height),context=canvas.getContext('webgpu')!
     context.configure({device:this.device,format:this.format,alphaMode:'premultiplied',usage:GPUTextureUsage.COPY_DST|GPUTextureUsage.RENDER_ATTACHMENT})
+    this.diagnosticCaptures++;this.diagnosticCapturePayload+=width*height*4
     try{
       const encoder=this.device.createCommandEncoder()
       encoder.copyTextureToTexture({texture},{texture:context.getCurrentTexture()},[width,height])
       this.device.queue.submit([encoder.finish()]);await this.device.queue.onSubmittedWorkDone()
       return {bitmap:canvas.transferToImageBitmap(),contentFrame:frame}
-    }finally{context.unconfigure()}
+    }finally{try{context.unconfigure()}finally{this.diagnosticCaptures--;this.diagnosticCapturePayload-=width*height*4}}
   }
   draw(frame: ResidentFrame) {
     this.latest = frame
@@ -422,6 +436,7 @@ export class ResidentPresenter {
     const measureCoverage=!!terminalQuality || import.meta.env.DEV || (gpuDiagnosticsDetail() && coverageAt-this.diagnosticCoverageAt>=250)
     if(measureCoverage)this.diagnosticCoverageAt=coverageAt
     this.report({
+      ...this.diagnosticFields(),
       diagnosticSequence: frame.diagnosticSequence, submittedEpoch,
       gridVisible: !!frame.overlay?.pixelGrid && view.zoom>=4, dpr,
       ...(terminalQuality ? { ...terminalQuality, qualityTerminal: true } : {}),
@@ -475,12 +490,13 @@ export class ResidentPresenter {
     )
   }
   lost(message: string) {
-    this.report({ error: `GPU display device lost: ${message}` })
+    this.report({ ...this.diagnosticFields(), error: `GPU display device lost: ${message}` })
   }
   dispose() {
     this.overlay?.dispose()
     if (this.disposed) return
     this.disposed = true
+    recordDeviceLifecycle(this, deviceLifecyclePhase.disposed, this.diagnosticFields())
     this.release([...this.textures.keys()])
     this.linearTarget?.texture.destroy()
     this.backbuffer?.texture.destroy()
