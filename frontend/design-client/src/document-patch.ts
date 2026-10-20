@@ -51,12 +51,49 @@ export function shareDocument(before: DesignDocument, candidate: DesignDocument)
       Object.assign(result, { [key]: before[key] })
   return equalValue(before, result) ? before : result
 }
+// Contract: published documents and their node records are immutable. This is
+// the same identity contract used by the client lane revision snapshots.
+// Only complete, computed diffs and applied patches create witnesses. Caller
+// hints (selection/draft IDs) are deliberately not accepted. Weak references
+// retain neither old documents nor resource payloads; traversal and metadata
+// are bounded, with an unconditional full-diff fallback when proof is absent.
+const MAX_TRANSITION_IDS = 4096
+const MAX_TRANSITION_HOPS = 32
+const documentTransitions = new WeakMap<DesignDocument, {
+  before: WeakRef<DesignDocument>; ids: readonly string[]
+}>()
+function rememberTransition(before: DesignDocument, after: DesignDocument, ids: string[]) {
+  if (before !== after && ids.length <= MAX_TRANSITION_IDS)
+    documentTransitions.set(after, { before: new WeakRef(before), ids })
+}
+function witnessedIds(before: DesignDocument, after: DesignDocument): Set<string> | undefined {
+  let cursor = after
+  const ids = new Set<string>()
+  for (let hop = 0; hop < MAX_TRANSITION_HOPS; hop++) {
+    const transition = documentTransitions.get(cursor)
+    const previous = transition?.before.deref()
+    if (!transition || !previous) return
+    for (const id of transition.ids) ids.add(id)
+    if (ids.size > MAX_TRANSITION_IDS) return
+    if (previous === before) return ids
+    cursor = previous
+  }
+}
 export function documentPatch(before: DesignDocument, after: DesignDocument): DocumentPatch {
   if (before.id !== after.id) throw new Error('编辑操作不能改变文件标识')
   const nodes: DocumentPatch['nodes'] = {},
     fields: DocumentPatch['fields'] = {}
-  for (const [id, n] of Object.entries(after.nodes)) if (n !== before.nodes[id]) nodes[id] = n
-  for (const id of Object.keys(before.nodes)) if (!after.nodes[id]) nodes[id] = null
+  const ids = before.nodes === after.nodes ? new Set<string>() : witnessedIds(before, after)
+  if (ids) {
+    for (const id of ids)
+      if (after.nodes[id] !== before.nodes[id]) nodes[id] = after.nodes[id] ?? null
+  } else {
+    for (const [id, n] of Object.entries(after.nodes)) if (n !== before.nodes[id]) nodes[id] = n
+    for (const id of Object.keys(before.nodes)) if (!after.nodes[id]) nodes[id] = null
+    rememberTransition(before, after, Object.keys(nodes))
+  }
+  // Root fields are small, and include resources, pages and optional extensions.
+  // Always inspect them rather than relying on an incomplete edit-field hint.
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)]))
     if (
       key !== 'nodes' &&
@@ -70,6 +107,9 @@ export function documentPatch(before: DesignDocument, after: DesignDocument): Do
 }
 /** Normalise a kernel-round-tripped node: drop explicit null optionals. */
 export function nodeFromKernel(n: DesignNode): DesignNode {
+  // Transport records can also be shared authored snapshots. Normalize by
+  // copy-on-write, never delete properties from the patch or an older snapshot.
+  let result = n
   for (const key of [
     'network',
     'layout',
@@ -81,13 +121,30 @@ export function nodeFromKernel(n: DesignNode): DesignNode {
     'componentKey',
     'textStyle',
   ] as const)
-    if (n[key] === null) delete n[key]
-  for (const paint of [...n.fills, ...n.strokes.map((s) => s.paint)])
-    if (paint.image === null) delete paint.image
-  return n
+    if (n[key] === null) {
+      if (result === n) result = { ...n }
+      delete result[key]
+    }
+  if (n.fills.some(paint => paint.image === null)) {
+    if (result === n) result = { ...n }
+    result.fills = n.fills.map(paint => {
+      if (paint.image !== null) return paint
+      const copy = { ...paint }; delete copy.image; return copy
+    })
+  }
+  if (n.strokes.some(stroke => stroke.paint.image === null)) {
+    if (result === n) result = { ...n }
+    result.strokes = n.strokes.map(stroke => {
+      if (stroke.paint.image !== null) return stroke
+      const paint = { ...stroke.paint }; delete paint.image
+      return { ...stroke, paint }
+    })
+  }
+  return result
 }
 export function applyDocumentPatch(doc: DesignDocument, patch: DocumentPatch): DesignDocument {
-  const next = { ...doc, nodes: { ...doc.nodes } }
+  const ids = Object.keys(patch.nodes)
+  const next = { ...doc, nodes: ids.length ? { ...doc.nodes } : doc.nodes }
   for (const [key, value] of Object.entries(patch.fields)) {
     if (value === null) delete (next as unknown as Record<string, unknown>)[key]
     else Object.assign(next, { [key]: value })
@@ -96,5 +153,8 @@ export function applyDocumentPatch(doc: DesignDocument, patch: DocumentPatch): D
     if (node) next.nodes[id] = nodeFromKernel(node)
     else delete next.nodes[id]
   }
+  // Reserved root replacement is not produced by documentPatch, but legacy
+  // callers may supply it. It has no bounded node-change proof.
+  if (!Object.hasOwn(patch.fields, 'nodes')) rememberTransition(doc, next, ids)
   return next
 }

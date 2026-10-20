@@ -1,3 +1,4 @@
+import { backdropEffect, backdropRadius, classifyCompiledSourceReuse } from '../render-dependency'
 import { prefixRationalUnsupported } from './prefix-preflight'
 import { renderErrorWithBudget, sanitizeRenderBudget, type RenderBudgetDiagnostic } from '../render-diagnostics'
 import { textureByteLength } from './texture-byte-length'
@@ -95,24 +96,6 @@ const containsRect = (outer: Rect | undefined, inner: Rect) => !!outer &&
   outer.x <= inner.x && outer.y <= inner.y && outer.x + outer.w >= inner.x + inner.w && outer.y + outer.h >= inner.y + inner.h
 const sameSurface = (a: Surface | undefined, b: Surface | undefined) => a === b || !!a && !!b &&
   a.texture === b.texture && a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
-function backdropEffect(effects: Effect[]) {
-  const first = effects.find(
-    (e) => e.visible && (e.kind === 'glass' || e.kind === 'background-blur'),
-  )
-  return first &&
-    (backdropRadius(first) > 0 ||
-      (first.kind === 'glass' &&
-        (first.glass
-          ? first.glass.refraction !== 0 ||
-            first.glass.dispersion !== 0 ||
-            first.glass.lightIntensity !== 0
-          : first.amount !== 0 || first.opacity !== 0)))
-    ? first
-    : undefined
-}
-function backdropRadius(effect: Effect) {
-  return effect.kind === 'glass' && effect.glass ? Math.max(1, effect.radius) : effect.radius
-}
 const rgb = (hex: string) => {
   if (!/^#[0-9a-f]{6}$/i.test(hex)) throw new Error('无效颜色')
   return [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255)
@@ -306,7 +289,7 @@ export class GpuRenderer {
       const first=this.scene.nodes[this.scene.roots[0]]
       return !!first&&(!!first.passthrough||!!first.mask||!!backdropEffect(first.effects))
     })()
-    const canRetainPrefix=this.driver.captureDisplay&&this.driver.displayMath&&!this.scene.coherentSamples&&
+    const canRetainPrefix=index.unknownEffectSubtrees.size===0&&this.driver.captureDisplay&&this.driver.displayMath&&!this.scene.coherentSamples&&
       import.meta.env.VITE_DESIGN_RETAIN_PREFIX==='1'&&worthwhilePrefix&&
       this.scene.roots.slice(0,firstMoving).every(id=>!this.scene.nodes[id]?.previewDynamic)
     const {nodes:_nodes,vertices:_vertices,curves:_curves,...policy}=this.scene
@@ -335,7 +318,7 @@ export class GpuRenderer {
       }
       const id=this.scene.roots[at]
       const n = this.scene.nodes[id]
-      if (!n || n.previewDynamic || n.mask || n.passthrough || backdropEffect(n.effects) || !n.rect.w || !n.rect.h) {
+      if (!n || !classifyCompiledSourceReuse(n, index.unknownEffectSubtrees.has(id)).reusable) {
         targets = await draw(id, targets); continue
       }
       const key = n.previewSource || n, cached = this.interactionRoots.get(key)
@@ -1601,7 +1584,7 @@ export class GpuRenderer {
       !this.scene.coherentSamples && !this.interactionCapturing && !sceneIndex(this.scene).roots.has(id) &&
       (n.children.length > 1 || n.fills.some(paint=>paint.kind==='image') ||
         n.effects.some(effect=>effect.visible) || n.rect.w*n.rect.h>=262144&&n.fills.length>0) &&
-      n.rect.w > 0 && n.rect.h > 0 && !n.mask && !n.passthrough && !backdropEffect(n.effects)
+      classifyCompiledSourceReuse(n, sceneIndex(this.scene).unknownEffectSubtrees.has(id)).reusable
     if (!cacheable) return this.node(id, backdrop)
     const key = n.previewSource || n, cached = this.interactionRoots.get(key)
     if (cached?.source && cached.anchor.w === n.rect.w && cached.anchor.h === n.rect.h) {

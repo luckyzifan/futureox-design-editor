@@ -316,3 +316,39 @@ test('accepted Canvas input correlates with client stage2 without changing displ
     expect(report[1].inputAgeMs).toBeGreaterThanOrEqual(0)
   } finally { unbind(); client.dispose() }
 })
+
+test('capture cancellation targets only its request and preserves sibling owner, revision chain and export', async () => {
+  const client = new KernelClient(), doc = blank(), first = new AbortController(), sibling = new AbortController()
+  const options = { pageId: doc.pages[0].id, width: 20, height: 20, view: { x: 0, y: 0, zoom: 1 }, transparent: false, grid: false, livePreview: true, renderIntent: 'preview' as const, interactionChannel: true }
+  try {
+    const a = client.render(doc, options, false, 'cpu', false, false, undefined, undefined, first.signal)
+    const rejection = expect(a).rejects.toThrow('PREVIEW_CANCELLED')
+    const b = client.render(doc, options, false, 'cpu', false, false, undefined, undefined, sibling.signal)
+    const w = WorkerStub.instances[0]
+    first.abort(); await rejection
+    expect(w.messages.filter(m => m.command === 'cancel-request')).toEqual([expect.objectContaining({ requestId: w.messages[0].id })])
+    expect(w.messages.some(m => m.command === 'cancel-preview')).toBe(false)
+    expect(w.messages[1].document).toBeUndefined()
+    expect(w.messages[1].documentRevision).toBe(w.messages[0].documentRevision)
+    w.reply(1); await b
+    const exportAbort = new AbortController()
+    const exact = client.render(doc, options, true, 'cpu', true, false, undefined, undefined, exportAbort.signal)
+    const index = w.messages.length - 1
+    exportAbort.abort()
+    expect(w.messages.filter(m => m.command === 'cancel-request')).toHaveLength(1)
+    w.reply(index); await exact
+  } finally { client.dispose() }
+})
+
+test('completed capture removes abort listener and later abort sends no cancellation', async () => {
+  const client = new KernelClient(), doc = blank(), controller = new AbortController()
+  const removed = vi.spyOn(controller.signal, 'removeEventListener')
+  const options = { pageId: doc.pages[0].id, width: 20, height: 20, view: { x: 0, y: 0, zoom: 1 }, transparent: false, grid: false, livePreview: true, renderIntent: 'preview' as const, interactionChannel: true }
+  try {
+    const result = client.render(doc, options, false, 'cpu', false, false, undefined, undefined, controller.signal)
+    const w = WorkerStub.instances[0]; w.reply(0); await result
+    expect(removed).toHaveBeenCalledOnce()
+    controller.abort(); controller.abort()
+    expect(w.messages.some(m => m.command === 'cancel-request')).toBe(false)
+  } finally { client.dispose() }
+})

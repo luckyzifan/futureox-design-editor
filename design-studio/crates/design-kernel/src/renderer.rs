@@ -1683,6 +1683,44 @@ impl Engine {
         if !source.animations.is_empty() || self.animation_sample.is_some() { return None; }
         Some(self.snapshot_worker())
     }
+    /// Renew a native lane certificate after ordered patches. Compare the full
+    /// canonical authored representation, including float spelling/sign and
+    /// array order. IDs, revisions and approximate hashes are not evidence.
+    pub(crate) fn snapshot_static_worker_matching(&self, json: &str) -> Option<Engine> {
+        if json.len() > 32 * 1024 * 1024 { return None; }
+        let source = self.source_doc.as_ref()?;
+        if !source.animations.is_empty() || self.animation_sample.is_some() { return None; }
+        let candidate: Document = serde_json::from_str(json).ok()?;
+        if candidate.nodes.len() != source.nodes.len() || candidate.pages.len() != source.pages.len() { return None; }
+        struct BoundedBytes(Vec<u8>);
+        impl std::io::Write for BoundedBytes {
+            fn write(&mut self, chunk: &[u8]) -> std::io::Result<usize> {
+                if self.0.len().saturating_add(chunk.len()) > 32 * 1024 * 1024 {
+                    return Err(std::io::Error::other("snapshot exceeds document byte budget"));
+                }
+                self.0.extend_from_slice(chunk);
+                Ok(chunk.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        }
+        let mut encoded = BoundedBytes(Vec::new());
+        serde_json::to_writer(&mut encoded, &candidate).ok()?;
+        let bytes = encoded.0;
+        struct EqualBytes<'a> { bytes: &'a [u8], offset: usize }
+        impl std::io::Write for EqualBytes<'_> {
+            fn write(&mut self, chunk: &[u8]) -> std::io::Result<usize> {
+                let end = self.offset.checked_add(chunk.len()).ok_or_else(|| std::io::Error::other("snapshot mismatch"))?;
+                if self.bytes.get(self.offset..end) != Some(chunk) { return Err(std::io::Error::other("snapshot mismatch")); }
+                self.offset = end;
+                Ok(chunk.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        }
+        let mut equal = EqualBytes { bytes: &bytes, offset: 0 };
+        serde_json::to_writer(&mut equal, source).ok()?;
+        if equal.offset != bytes.len() { return None; }
+        self.snapshot_static_worker()
+    }
     pub(crate) fn static_scene_revision(&self) -> Option<(u64, bool, bool)> {
         let source = self.source_doc.as_ref()?;
         (!self.layout_dirty && source.animations.is_empty() && self.animation_sample.is_none())

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { MessageChannel } from 'node:worker_threads'
-import {createRenderDiagnostics,renderRequestCategories,renderResultReason,sanitizeRecord,sanitizeFields,PREFIX,setGpuDiagnosticSink,recordGpuDiagnostic} from '../src/render-terminal-diagnostics.mjs'
+import {createRenderDiagnostics,renderRequestCategories,renderResultReason,sanitizeRecord,sanitizeFields,snapshotResourceFields,PREFIX,setGpuDiagnosticSink,recordGpuDiagnostic} from '../src/render-terminal-diagnostics.mjs'
 test('schema rejects arbitrary content, nonfinite numbers and forged enums',()=>{
   const secret={text:'private document',path:'/private/file',url:'https://secret',stack:'credential',images:['image'],requestId:4,zoom:NaN,width:Infinity,cached:true}
   assert.deepEqual(sanitizeFields(secret),{requestId:4,cached:1})
@@ -85,4 +85,26 @@ test('only exact cancellation sentinel is intentional cancellation',()=>{
   assert.equal(renderResultReason('GPU lost'),1)
   assert.equal(renderResultReason('error PREVIEW_CANCELLED elsewhere'),1)
   assert.equal(renderResultReason(undefined),0)
+})
+
+test('capture and physical preparation detail remains numeric and excludes authored content',()=>{
+  const fields=renderRequestCategories({document:'private',options:{renderIntent:'preview',livePreview:true,
+    retainInteractionGraph:true,interactionNative:true,interactionOwner:2,interactionGeneration:3,interactionBranch:1}})
+  assert.equal(fields.documentEnvelope,1);assert.equal(fields.retainInteractionGraph,true)
+  assert.equal(fields.interactionNative,true);assert.equal(fields.interactionOwner,2);assert.equal(fields.interactionGeneration,3)
+  const row=sanitizeRecord({v:1,session:1,seq:1,at:1,source:'worker',event:'preparation',requestId:9,
+    preparationId:10,methodCode:3,activePreparationId:10,phase:4,durationMs:20,documentFork:true,document:'secret'})
+  assert.equal(row.methodCode,3);assert.equal(row.documentFork,1);assert(!('document'in row))
+  assert.equal(sanitizeRecord({...row,event:'load-stage',phase:2}).phase,2)
+})
+
+test('DETAIL resource context is bounded numeric metadata, never resource content',()=>{
+  assert.deepEqual(snapshotResourceFields(123,undefined),{sourceCodeUnits:123,embeddedFontCount:0,embeddedFontCodeUnits:0})
+  assert.deepEqual(snapshotResourceFields(123,{privateFontName:{data:'private-payload'}}),{sourceCodeUnits:123,embeddedFontCount:1,embeddedFontCodeUnits:15})
+  assert.deepEqual(sanitizeFields({sourceCodeUnits:-1,embeddedFontCount:33,embeddedFontCodeUnits:Infinity}),{})
+  assert.deepEqual(sanitizeFields({sourceCodeUnits:32*1024*1024+1,embeddedFontCount:1.5,embeddedFontCodeUnits:true}),{})
+  assert.deepEqual(snapshotResourceFields(123,Object.fromEntries(Array.from({length:33},(_,i)=>[i,{data:''}]))),{sourceCodeUnits:123})
+  assert.deepEqual(snapshotResourceFields(123,{a:{data:null}}),{sourceCodeUnits:123})
+  const worker=readFileSync(new URL('../../design-client/src/kernel/render-worker.ts',import.meta.url),'utf8')
+  assert(worker.includes('terminalDiagnostics.detail\n          ? snapshotResourceFields(request.document.length, laneState.interactionDocument.fonts) : {}'))
 })

@@ -4,7 +4,7 @@ use crate::{Engine, scene_delta::SceneDelta};
 use serde_json::{Value, json};
 
 #[derive(Default)]
-struct Lane { engine: Engine, delta: SceneDelta, source: Option<String> }
+struct Lane { engine: Engine, delta: SceneDelta, source: Option<String>, reusable: bool }
 pub struct Preparation {
     lanes: [Lane; 2],
 }
@@ -23,9 +23,19 @@ impl Preparation {
             Ok(value)
         };
         let mut fork = false;
-        if method == "load_document" && index == 1 && self.lanes[0].source.as_deref() == Some(string(0)?)
+        if method == "load_document" && index == 1 && self.lanes[0].reusable
             && self.lanes[0].engine.image_mips() == self.lanes[1].engine.image_mips() {
-            if let Some(engine) = self.lanes[0].engine.snapshot_static_worker() {
+            let json = string(0)?;
+            let engine = if self.lanes[0].source.as_deref() == Some(json) {
+                self.lanes[0].engine.snapshot_static_worker()
+            } else if self.lanes[0].source.is_none() {
+                self.lanes[0].engine.snapshot_static_worker_matching(json)
+            } else { None };
+            if let Some(engine) = engine {
+                // Cache the exact host spelling only after canonical equality
+                // proved the authoritative current source. Later camera/selection
+                // forks of this revision avoid reparsing it.
+                if self.lanes[0].source.is_none() { self.lanes[0].source = Some(json.to_owned()); }
                 self.lanes[1].engine = engine; fork = true;
             }
         }
@@ -37,18 +47,19 @@ impl Preparation {
             "warm_resources" => (),
             "initialize" => engine.set_image_mips(args.first().and_then(Value::as_bool).ok_or("Expected mip flag")?),
             "load_document" => {
-                lane.source = None; lane.delta.clear();
+                lane.source = None; lane.reusable = false; lane.delta.clear();
                 if !fork { engine.load_document(string(0)?)?; }
-                lane.source = Some(string(0)?.to_owned());
+                lane.source = Some(string(0)?.to_owned()); lane.reusable = true;
             }
             "apply_document_patch_with_damage" => {
-                lane.source = None;
+                lane.source = None; lane.reusable = false;
                 let patch = serde_json::from_str(string(0)?).map_err(|e|format!("Invalid patch: {e}"))?;
                 value = json!(serde_json::to_string(&engine.apply_document_patch_with_damage(&patch)?).map_err(|e|e.to_string())?);
+                lane.reusable = true;
             }
             "apply_interaction_transforms" => {
                 if index != 1 || string(0)?.len() > 65536 { return Err("Invalid interaction transforms".into()); }
-                lane.source = None;
+                lane.source = None; lane.reusable = false;
                 let transforms = serde_json::from_str(string(0)?).map_err(|e|format!("Invalid transforms: {e}"))?;
                 value = json!(engine.apply_interaction_transforms(&transforms)?);
             }
@@ -291,4 +302,50 @@ mod tests {
         assert_eq!(updated.bytes, exact(&mut session, &options));
         assert_eq!(session.lanes[0].engine.tiled_renderer().unwrap().last_committed().len(), 2);
     }
+
+    #[test]
+    fn patched_canvas_renews_full_content_fork_and_isolates_resources() {
+        let mut session = session();
+        let before: crate::scene::Document = serde_json::from_value(document()).unwrap();
+        let mut after = before.clone();
+        after.nodes.get_mut("r").unwrap().transform.0[4] = 12.;
+        let patch = crate::editing::DocumentPatch::between(&before, &after).unwrap();
+        session.request("canvas", "apply_document_patch_with_damage", &[json!(serde_json::to_string(&patch).unwrap())]).unwrap();
+        let input = serde_json::to_string(&after).unwrap();
+        let reply = session.request("interaction", "load_document", &[json!(&input)]).unwrap();
+        assert_eq!(reply.metadata["documentFork"], true);
+        let request = options().to_string();
+        let canvas = session.request("canvas", "compile_gpu_packet", &[json!(&request)]).unwrap().bytes;
+        assert_eq!(canvas, session.request("interaction", "compile_gpu_packet", &[json!(&request)]).unwrap().bytes);
+        session.request("interaction", "apply_interaction_transforms", &[json!(r#"{"r":[1,0,0,1,18,8]}"#)]).unwrap();
+        assert_eq!(canvas, session.request("canvas", "compile_gpu_packet", &[json!(&request)]).unwrap().bytes);
+        assert_eq!(session.request("interaction", "load_document", &[json!(serde_json::to_string(&before).unwrap())]).unwrap().metadata["documentFork"], false);
+        session.request("interaction", "initialize", &[json!(true)]).unwrap();
+        assert_eq!(session.request("interaction", "load_document", &[json!(&input)]).unwrap().metadata["documentFork"], false);
+    }
+
+    #[test]
+    fn failed_canvas_patch_revokes_native_fork_certificate() {
+        let mut session = session();
+        assert!(session.request("canvas", "apply_document_patch_with_damage", &[json!("invalid")]).is_err());
+        assert_eq!(session.request("interaction", "load_document", &[json!(document().to_string())]).unwrap().metadata["documentFork"], false);
+    }
+
+    #[test]
+    fn native_renewal_compares_float_bits_and_ordered_document_fields() {
+        let mut engine = Engine::new();
+        let source = document();
+        engine.load_document(&source.to_string()).unwrap();
+        assert!(engine.snapshot_static_worker_matching(&source.to_string()).is_some());
+        let mut different = source.clone();
+        different["nodes"]["r"]["transform"][1] = json!(-0.0);
+        assert!(engine.snapshot_static_worker_matching(&different.to_string()).is_none());
+        different = source.clone();
+        different["pages"].as_array_mut().unwrap().reverse();
+        assert!(engine.snapshot_static_worker_matching(&different.to_string()).is_none());
+        different = source.clone();
+        different["nodes"]["r"]["fills"][0]["color"] = json!("#00ff00");
+        assert!(engine.snapshot_static_worker_matching(&different.to_string()).is_none());
+    }
+
 }

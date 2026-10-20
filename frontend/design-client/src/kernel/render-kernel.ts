@@ -6,6 +6,7 @@ import { renderCpuFrame } from './cpu-frame'
 import { PreparationChannel, type PreparationMethod } from './preparation-channel'
 import { CompiledPacketCache } from './compiled-packet-cache'
 import { SceneDeltaDecoder } from './gpu/scene-delta'
+import { PreparedPacket, waitForPacket } from './prepared-packet'
 
 /** The GPU worker keeps only the image decoder on its synchronous boundary.
  * Document/layout/geometry work lives in the preparation worker. CPU-only hosts
@@ -79,13 +80,15 @@ export class RenderKernel {
       pending.shared = true
       // The first consumer may transfer or mutate its packet immediately.
       // Each waiter needs independent ownership, including before cache admission.
-      const bytes = (await pending.bytes).slice()
+      const bytes = (await waitForPacket(pending.bytes, signal)).slice()
       if (revision === this.revision && !this.pendingMutations)
         this.packetKeys.set(bytes, { key: options, revision })
       return bytes
     }
     const entry = { revision, bytes: this.call<Uint8Array>('compile_gpu_packet', [options], signal), shared: false }
-    if (enabled && !this.pendingMutations) this.pendingPackets.set(options, entry)
+    // A cancellable physical compile cannot be the shared owner of an exact
+    // request (or another preview owner). Only noncancellable jobs are shared.
+    if (enabled && !this.pendingMutations && !signal) this.pendingPackets.set(options, entry)
     // Only shared requests need an extra private copy. Never let an old
     // completion remove a newer revision's request under the same key.
     let bytes: Uint8Array
@@ -97,6 +100,16 @@ export class RenderKernel {
       this.packets.put(options, bytes, this.lane === 'canvas' && !!request.gpuViewport && !request.animation && !request.pixelPreview)
     }
     return bytes
+  }
+  /** A packet may wait outside GPU ownership only with this version receipt.
+   * Its bytes have one consumer and admission rechecks the kernel epoch. */
+  async prepare_gpu_packet(options: string, signal?: AbortSignal): Promise<PreparedPacket> {
+    if (this.pendingMutations) throw Error('DOCUMENT_PREPARATION_PENDING')
+    const revision = this.revision, settings = this.settings
+    const bytes = await this.compile_gpu_packet(options, signal)
+    const current = () => revision === this.revision && !this.pendingMutations && settings === this.settings
+    if (!current()) throw Error('STALE_PREPARED_PACKET')
+    return new PreparedPacket({ lane: this.lane, revision, options, settings }, bytes, current, signal)
   }
   async apply_interaction_transforms(value: string) {
     if (this.lane !== 'interaction') throw Error('Transform-only updates require the interaction lane')

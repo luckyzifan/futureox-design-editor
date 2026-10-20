@@ -12,3 +12,5 @@ export function sanitizeBatch(value:unknown):Record<string,number|string>[]
 
 export function renderRequestCategories(payload:unknown):Record<string,number|boolean>
 export function renderResultReason(error:unknown):number
+
+export function snapshotResourceFields(sourceCodeUnits: number, fonts: unknown): Record<string, number>
