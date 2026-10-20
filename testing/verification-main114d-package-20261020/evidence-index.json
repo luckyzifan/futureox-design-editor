@@ -1,0 +1,101 @@
+{
+  "note": "Original logs retained; index does not assert all attempts passed. See verification.json for outcomes.",
+  "logs": [
+    {
+      "scope": "main-baseline",
+      "file": "main-full-real-fixtures.log",
+      "bytes": 447,
+      "sha256": "3094f050d283754b1ca33762268018e9e656a7cd9a5f9a3dbd24ce3e2bbb0f41"
+    },
+    {
+      "scope": "main-baseline",
+      "file": "vite-production.log",
+      "bytes": 3736,
+      "sha256": "21b7317be05e1715e790a5cb5519fe80a955dfcf353c7a09d3514dfc8159ea3f"
+    },
+    {
+      "scope": "main-baseline",
+      "file": "matching-native-runtime.log",
+      "bytes": 2002,
+      "sha256": "a47243eb26e5c6e247362791017d2718fbef847caf30c245d8236537dd6c8b4c"
+    },
+    {
+      "scope": "main-baseline",
+      "file": "client-node-contracts-official-loader.log",
+      "bytes": 63892,
+      "sha256": "2b1a45eb7d3a15e533f295ef3993cf553713616030e0cb3aa7cf5054d08e2ecc"
+    },
+    {
+      "scope": "main-baseline",
+      "file": "desktop-node-contracts.log",
+      "bytes": 59860,
+      "sha256": "64d05f717f200d58b674f8ef8732f9bc046b63b7d4f5a9efdd8c3102ef897f36"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "full-real-fixtures.log",
+      "bytes": 455,
+      "sha256": "402a0d2e3ebf307dce36b5a34dbc8658f2765f3a5e67e5493eeb062aa3de87ef"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "typecheck.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "vite-production.log",
+      "bytes": 3736,
+      "sha256": "8d024de6b6139d1f7a07a656d146dcffab3c1d8d41814bd42a933c98acf927a1"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "matching-native-runtime.log",
+      "bytes": 2000,
+      "sha256": "21f0fe5ec170f2c1e449bbf83efecdc6d80ec9968d1b725e798b4c9512f79b31"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "client-node-contracts-official-loader.log",
+      "bytes": 64249,
+      "sha256": "74af51a23e9bb0389bd68edb291641d58b67bc70fd839bc12a5d49b018ff30a6"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "desktop-node-contracts.log",
+      "bytes": 60591,
+      "sha256": "e4563d5d0e2a7061ea8f1e8fc74c48ce45e19e81979625f8e4211c9dfddf9258"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "client-node-final.log",
+      "bytes": 32997,
+      "sha256": "46bbe64bfb5a9c26374256bf5dac0d3f08fb6716115275be42108ee5af812fff"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "desktop-node-final-nonsocket.log",
+      "bytes": 40423,
+      "sha256": "c617b84160953a871ad10962c0e835ddadffd85520f87c184e49b08cdaf92329"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "desktop-sqlite-final.log",
+      "bytes": 556,
+      "sha256": "15b4efb8fb0a4cfd54db45eb3a262ac74e16ce6db198fcabef53610196c70f26"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "node-repaired-focused.log",
+      "bytes": 6389,
+      "sha256": "acd007add59188ff57180bec3b74ed370217cf65f7828c14d25700182b5cc802"
+    },
+    {
+      "scope": "integrated-candidate",
+      "file": "settings-repaired-focused.log",
+      "bytes": 2000,
+      "sha256": "552270006a3e1d437a5a03646db476056c1edf29fc62e91d58ff4d86d5cc1cf9"
+    }
+  ]
+}

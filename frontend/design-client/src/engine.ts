@@ -1,3 +1,7 @@
+import { planArrangement, translatedLocalTransform } from './commands/arrangement-plan'
+import { planChildReparent, planContainerPlacement, reparentedTransform } from './commands/structure-plan'
+import { applyChildListPlan, applyTransformPlan } from './commands/apply-plan'
+import { UI_SELECTION_PROFILE } from './commands/profiles'
 import { canvasActions } from './canvas-action-diagnostics'
 import { validColor } from './color'
 import { clearWholeTextRunColor } from './text'
@@ -168,6 +172,12 @@ export type EditorState = {
   editingVertex: string | null
   version: number
 }
+/** Internal audit receipt, not replay authorization. The normalized document is
+ * borrowed under the editor's immutable-snapshot contract; callers must not mutate it. */
+export type CommittedEditReceipt = Readonly<{
+  document: DesignDocument; documentId: string; session: number; revision: number; pageId: string
+  selection: readonly string[]; canUndo: boolean; canRedo: boolean
+}>
 type History = { doc: DesignDocument; page: string; selection: string[]; label: string }
 class GeometryCancelled extends Error {}
 export type EditorEditEvent = { documentId: string; session: number; revision: number; source: 'user' | 'automation'; kind: 'edit' | 'undo' | 'redo'; summary: string }
@@ -286,6 +296,12 @@ export class Editor {
       this.releaseCameraLifecycle = () => remove('pagehide', this.saveCamera)
     }
   }
+  private committedEditReceipts = new WeakMap<object, CommittedEditReceipt>()
+  /** Only this editor's actual change/undo/redo result can resolve a receipt.
+   * Copies/JSON never carry receipt authority; this grants no mutation permission. */
+  committedEditReceipt(result: unknown): CommittedEditReceipt | undefined {
+    return result !== null && typeof result === 'object' ? this.committedEditReceipts.get(result) : undefined
+  }
   private editListeners = new Set<(event: EditorEditEvent) => void>()
   subscribeEdits = (fn: (event: EditorEditEvent) => void) => {
     this.editListeners.add(fn)
@@ -379,8 +395,19 @@ export class Editor {
     // Pure navigation must not unmount an invalid or composing document input.
     // Document mutations have already updated history and are fenced at their UI boundary.
     if (!patch.doc && ((patch.page !== undefined && patch.page !== this.state.page) ||
-      (patch.selection !== undefined && JSON.stringify(patch.selection) !== JSON.stringify(this.state.selection))) &&
-      !commitPendingEdits(this)) return
+      (patch.selection !== undefined && JSON.stringify(patch.selection) !== JSON.stringify(this.state.selection)))) {
+      const before = this.state, session = this.sessionGeneration, transaction = this.transaction
+      const selection = JSON.stringify(before.selection)
+      if (!commitPendingEdits(this)) return
+      // Ordinary text/property input may legitimately advance the authored root
+      // and revision. It must not carry an older navigation intent into a load
+      // or overwrite navigation performed by a synchronous commit subscriber.
+      if (this.disposed || this.sessionGeneration !== session || this.state.doc.id !== before.doc.id ||
+        this.state.page !== before.page || JSON.stringify(this.state.selection) !== selection ||
+        this.transaction !== transaction ||
+        (this.state.doc !== before.doc && ((patch.page !== undefined && !this.state.doc.pages.some(page => page.id === patch.page)) ||
+          (patch.selection !== undefined && !patch.selection.every(id => !!this.state.doc.nodes[id]))))) return
+    }
     if (propertyNavigationCurrent && !propertyNavigationCurrent()) return
     // A direct camera write supersedes any coalesced wheel write still parked
     // in this frame — otherwise the rAF commit would silently roll the caller's
@@ -606,15 +633,21 @@ export class Editor {
       }
       const committed = this.push(before, resolved, source)
       if (!committed) { finish('unchanged'); return { status: 'unchanged' as const, revision: this.state.version } }
+      const editIdentity = { documentId: committed.document.id, session: this.sessionGeneration, revision: this.state.version + 1 }
+      const committedPage = this.state.page
+      const result = { status: 'committed' as const, revision: editIdentity.revision }
+      const committedSelection = selection ?? this.state.selection.filter((id) => !!committed.document.nodes[id])
+      this.committedEditReceipts.set(result, Object.freeze({ ...editIdentity, document: committed.document, pageId: committedPage,
+        selection: Object.freeze([...committedSelection]), canUndo: this.canUndo, canRedo: this.canRedo }))
       this.set({
         doc: committed.document,
-        selection: selection ?? this.state.selection.filter((id) => !!committed.document.nodes[id]),
-        version: this.state.version + 1,
+        selection: committedSelection,
+        version: editIdentity.revision,
         message: detached ? `${label}（相关实例已分离）` : label,
       })
-      finish('committed')
-      this.publishEdit('edit', label, source)
-      return { status: 'committed' as const, revision: this.state.version }
+      this.operationDiagnostics.finish(operation, 'committed', editIdentity.session, editIdentity.revision, committed.document, committedPage)
+      this.publishEdit('edit', label, source, editIdentity)
+      return result
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.notify(message)
@@ -859,9 +892,11 @@ export class Editor {
       const doc = shareDocument(before.doc, this.state.doc)
       const committed = doc !== before.doc ? this.push(before, doc) : undefined
       if (committed) {
-        this.set({ doc: committed.document, version: this.state.version + 1, message: before.label })
-        finish('committed')
-        this.publishEdit('edit', before.label)
+        const editIdentity = { documentId: committed.document.id, session: this.sessionGeneration, revision: this.state.version + 1 }
+        const committedPage = this.state.page
+        this.set({ doc: committed.document, version: editIdentity.revision, message: before.label })
+        if (operation !== null) this.operationDiagnostics.finish(operation, 'committed', editIdentity.session, editIdentity.revision, committed.document, committedPage)
+        this.publishEdit('edit', before.label, 'user', editIdentity)
       } else { if (doc !== this.state.doc) this.set({ doc }); finish('unchanged') }
     } catch (error) {
       finish('rejected')
@@ -898,16 +933,21 @@ export class Editor {
     }
     this.undoStack.pop()
     this.redoStack.push({ page: this.state.page, selection: this.state.selection, label: h.label })
+    const editIdentity = { documentId: doc.id, session: this.sessionGeneration, revision: this.state.version + 1 }
+    const result = { status: 'committed' as const, revision: editIdentity.revision }
+    this.committedEditReceipts.set(result, Object.freeze({ ...editIdentity, document: doc, pageId: h.page,
+      selection: Object.freeze([...h.selection]), canUndo: this.canUndo, canRedo: this.canRedo }))
     this.set({
       ...h,
       doc,
       tool: 'select', commentSelection:undefined, commentDraft:undefined,
       editingVertex: null, editingVertices: [],
-      version: this.state.version + 1,
+      version: editIdentity.revision,
       message: `撤销：${h.label}`,
     })
-    this.operationDiagnostics.finish(operation, 'committed', this.sessionGeneration, this.state.version, this.state.doc, this.state.page)
-    this.publishEdit('undo', h.label, source)
+    this.operationDiagnostics.finish(operation, 'committed', editIdentity.session, editIdentity.revision, doc, h.page)
+    this.publishEdit('undo', h.label, source, editIdentity)
+    return result
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
@@ -930,16 +970,21 @@ export class Editor {
     }
     this.redoStack.pop()
     this.undoStack.push({ page: this.state.page, selection: this.state.selection, label: h.label })
+    const editIdentity = { documentId: doc.id, session: this.sessionGeneration, revision: this.state.version + 1 }
+    const result = { status: 'committed' as const, revision: editIdentity.revision }
+    this.committedEditReceipts.set(result, Object.freeze({ ...editIdentity, document: doc, pageId: h.page,
+      selection: Object.freeze([...h.selection]), canUndo: this.canUndo, canRedo: this.canRedo }))
     this.set({
       ...h,
       doc,
       tool: 'select', commentSelection:undefined, commentDraft:undefined,
       editingVertex: null, editingVertices: [],
-      version: this.state.version + 1,
+      version: editIdentity.revision,
       message: `重做：${h.label}`,
     })
-    this.operationDiagnostics.finish(operation, 'committed', this.sessionGeneration, this.state.version, this.state.doc, this.state.page)
-    this.publishEdit('redo', h.label, source)
+    this.operationDiagnostics.finish(operation, 'committed', editIdentity.session, editIdentity.revision, doc, h.page)
+    this.publishEdit('redo', h.label, source, editIdentity)
+    return result
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
@@ -1629,7 +1674,8 @@ export class Editor {
     const entries = this.entries(),
       box = unionBounds(entries.filter((e) => ids.includes(e.id)).map((e) => e.bounds))
     const parentWorld = worldMatrix(this.state.doc, parent),
-      group = node(kind, 0, 0, box.width, box.height)
+      placement = planContainerPlacement(UI_SELECTION_PROFILE, box, parentWorld),
+      group = node(kind, 0, 0, placement.width, placement.height)
     if (kind === 'frame') { group.fills = []; group.clip = false }
     group.name = booleanOperation ? `布尔组合 · ${booleanOperation}` : mask ? '蒙版组' : kind === 'frame' ? '画板' : '编组'
     if (booleanOperation) {
@@ -1639,7 +1685,7 @@ export class Editor {
       group.strokes = cloneValue(this.state.doc.nodes[ids[0]].strokes)
     }
     group.blend = booleanOperation ? 'normal' : 'pass-through'
-    group.transform = multiply(inverse(parentWorld), translate(box.x, box.y))
+    group.transform = placement.transform
     this.change(
       mask ? '创建蒙版' : kind === 'frame' ? '创建选区画板' : '编组',
       (d) => {
@@ -1647,16 +1693,17 @@ export class Editor {
         const ordered = list.filter((id) => ids.includes(id))
         const position = Math.min(...ids.map((id) => list.indexOf(id)))
         const worlds = ordered.map((id) => worldMatrix(d, id))
-        group.children = ordered
-        for (let i = 0; i < ordered.length; i++)
-          d.nodes[ordered[i]].transform = multiply(
-            inverse(multiply(parentWorld, group.transform)),
-            worlds[i],
-          )
+        const transforms = ordered.map((id, i) => ({ id, transform: reparentedTransform(multiply(parentWorld, group.transform), worlds[i]) }))
         if (mask) d.nodes[ordered[0]].mask = true
-        list.splice(0, list.length, ...list.filter((id) => !ids.includes(id)))
+        // Insert first, then use the shared pure reparent plan. The adapter owns
+        // selection, mask policy, defaults, validation and the sole transaction.
         list.splice(position, 0, group.id)
         d.nodes[group.id] = group
+        const plan = planChildReparent(UI_SELECTION_PROFILE, ordered.map(id => ({ id, parent })), [
+          { parent, children: list }, { parent: group.id, children: [] },
+        ], group.id)
+        applyChildListPlan(d, plan)
+        applyTransformPlan(d, transforms)
       },
       [group.id],
     )
@@ -1676,12 +1723,16 @@ export class Editor {
           if (!n || (!['group', 'frame', 'section'].includes(n.kind) && !n.booleanOperation) || n.component || n.instance || n.componentSet) continue
           const parent = allParents(d).get(id)!
           const list = d.nodes[parent]?.children || d.pages.find((p) => p.id === parent)!.children
-          for (const c of n.children) {
-            d.nodes[c].transform = multiply(n.transform, d.nodes[c].transform)
-            d.nodes[c].mask = false
-          }
-          selected.push(...n.children)
-          list.splice(list.indexOf(id), 1, ...n.children)
+          const children = [...n.children]
+          const transforms = children.map(child => ({ id: child, transform: multiply(n.transform, d.nodes[child].transform) }))
+          const plan = planChildReparent(UI_SELECTION_PROFILE, children.map(child => ({ id: child, parent: id })), [
+            { parent: id, children }, { parent, children: list },
+          ], parent, list.indexOf(id))
+          applyChildListPlan(d, plan)
+          applyTransformPlan(d, transforms)
+          for (const child of children) d.nodes[child].mask = false
+          for (const child of children) selected.push(child)
+          list.splice(list.indexOf(id), 1)
           delete d.nodes[id]
         }
       },
@@ -2226,46 +2277,20 @@ export class Editor {
       const entry = entries[0], doc = this.state.doc, parents = allParents(doc)
       const parent = doc.nodes[parents.get(entry.id) || '']
       if (!parent) return
-      const n = doc.nodes[entry.id], size = axis === 'x' ? 'width' : 'height'
+      const n = doc.nodes[entry.id]
       const box = bounds(boxPoints(kernelBounds(n) || { x: 0, y: 0, width: n.width, height: n.height }).map(p => apply(n.transform, p)))
-      const delta = (mode === 'start' ? 0 : mode === 'end' ? parent[size] - box[size] : (parent[size] - box[size]) / 2) - box[axis]
+      const delta = planArrangement(UI_SELECTION_PROFILE, [box], axis, mode, { x: 0, y: 0, width: parent.width, height: parent.height })!.offsets[0][axis]
       this.updateProperties([entry.id], target => { target.transform[axis === 'x' ? 4 : 5] += delta }, '对齐到父级')
       return
     }
     if (entries.length < 2) return
-    const box = unionBounds(entries.map((e) => e.bounds)),
-      size = axis === 'x' ? 'width' : 'height'
-    const targets = new Map<string, number>()
-    if (mode === 'distribute') {
-      if (entries.length < 3) return
-      entries.sort((a, b) => a.bounds[axis] - b.bounds[axis])
-      const gap =
-        (box[size] - entries.reduce((s, e) => s + e.bounds[size], 0)) / (entries.length - 1)
-      let cursor = box[axis]
-      for (const e of entries) {
-        targets.set(e.id, cursor - e.bounds[axis])
-        cursor += e.bounds[size] + gap
-      }
-    } else {
-      for (const e of entries) {
-        const t =
-          mode === 'start'
-            ? box[axis]
-            : mode === 'end'
-              ? box[axis] + box[size] - e.bounds[size]
-              : box[axis] + (box[size] - e.bounds[size]) / 2
-        targets.set(e.id, t - e.bounds[axis])
-      }
-    }
+    const plan = planArrangement(UI_SELECTION_PROFILE, entries.map(e => e.bounds), axis, mode)
+    if (!plan) return
     const parents = allParents(this.state.doc)
     this.change(mode === 'distribute' ? '等距分布' : '对齐图层', (d) => {
-      for (const e of entries) {
-        const delta = targets.get(e.id)!
-        d.nodes[e.id].transform = multiply(
-          inverse(worldMatrix(d, parents.get(e.id)!)),
-          multiply(translate(axis === 'x' ? delta : 0, axis === 'y' ? delta : 0), e.matrix),
-        )
-      }
+      applyTransformPlan(d, entries.map((e, index) => ({ id: e.id,
+        transform: translatedLocalTransform(worldMatrix(d, parents.get(e.id)!), e.matrix, plan.offsets[index]),
+      })))
     })
   }
   convert() {

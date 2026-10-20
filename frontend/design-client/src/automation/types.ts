@@ -38,6 +38,25 @@ export interface AutomationCapabilities {
   editing?: Record<string, unknown>
   unsupported: string[]
 }
+/** Additive output only on interrupted/superseded publication. This reports
+ * prior facts, never a callable receipt or permission to replay a mutation. */
+export type AutomationMutationCompletion = {
+  documentId: string; session: number; revision: number
+  superseded: true; contextApplied: false
+} & ({ status: 'committed'; retry: 'do-not-retry' } | { status: 'unchanged'; retry: 'read-current-state' })
+export const automationMutationCompletionSchema = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    documentId: { type: 'string', minLength: 1 }, session: { type: 'integer', minimum: 0 }, revision: { type: 'integer', minimum: 0 },
+    superseded: { const: true }, contextApplied: { const: false },
+    status: { enum: ['committed', 'unchanged'] }, retry: { enum: ['do-not-retry', 'read-current-state'] },
+  },
+  required: ['documentId', 'session', 'revision', 'superseded', 'contextApplied', 'status', 'retry'],
+  oneOf: [
+    { properties: { status: { const: 'committed' }, retry: { const: 'do-not-retry' } } },
+    { properties: { status: { const: 'unchanged' }, retry: { const: 'read-current-state' } } },
+  ],
+} as const
 export interface AutomationFailure {
   code: string
   message: string
