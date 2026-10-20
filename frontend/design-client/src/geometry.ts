@@ -371,13 +371,16 @@ export function scene(d: DesignDocument, pageId: string): SceneEntry[] {
   page.children.forEach((id) => visit(id, page.id, identity(), [], false))
   return result
 }
+/** Read-only topology shared within an immutable snapshot or one operation.
+ * allParents deliberately stays fresh for callers working on mutable drafts. */
+export type ParentMap = ReadonlyMap<string, string>
 export function allParents(d: DesignDocument): Map<string, string> {
   const map = new Map<string, string>()
   d.pages.forEach((p) => p.children.forEach((c) => map.set(c, p.id)))
   Object.values(d.nodes).forEach((n) => n.children.forEach((c) => map.set(c, n.id)))
   return map
 }
-export function worldMatrix(d: DesignDocument, id: string, parents = allParents(d)): Matrix {
+export function worldMatrix(d: DesignDocument, id: string, parents: ParentMap = allParents(d)): Matrix {
   const n = d.nodes[id]
   if (!n) return identity()
   const parent = parents.get(id)

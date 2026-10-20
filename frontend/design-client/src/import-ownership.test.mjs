@@ -130,7 +130,7 @@ test('production imports capture ownership before read/hash/verify and wire canc
 function switchHarness() {
   const source = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8')
   const header = '  async function switchDocument(\n    document: DesignDocument,\n    record?: LocalRecord,\n    preserveCurrent = true,\n    request?: ImportRequest,\n  ) {'
-  const end = '\n  async function openLocalFiles()'
+  const end = '\n  async function trashLocalFile('
   assert.equal(source.split(header).length, 2, 'switchDocument signature changed; review extraction')
   assert.equal(source.split(end).length, 2, 'switchDocument boundary changed; review extraction')
   const start = source.indexOf(header), stop = source.indexOf(end, start)
@@ -145,6 +145,10 @@ function switchHarness() {
   let cleanup
   const context = vm.createContext({
     editor: current, fileImports, desktopSession: undefined, ready: true,
+    beginEditorAction: () => ({ result() {}, finish() {} }),
+    CanvasAction: { import: 'import' }, ActionSource: { lifecycle: 'lifecycle' },
+    ActionOutcome: { cancelled: 'cancelled', observed: 'observed', rejected: 'rejected' },
+    ActionReason: { unobserved: 'unobserved', validation: 'validation' },
     recordLocalError: (...args) => {
       diagnostics.push(args)
       return recordLocalError(...args)

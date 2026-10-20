@@ -9,6 +9,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub type Overrides = BTreeMap<String, BTreeMap<String, Value>>;
@@ -43,6 +44,94 @@ pub fn check_budget(doc: &Document) -> Result<(), String> {
         encoded_len(doc, DOCUMENT_BYTES)?;
     }
     Ok(())
+}
+/// Borrow unchanged nodes while expanding into a separate result map. Keep
+/// Document's own serializer authoritative for every other field, including
+/// optional metadata; the budget remains the exact complete JSON byte count.
+struct ResolvedDocument<'a, 'node> {
+    document: &'a Document,
+    nodes: &'a BTreeMap<String, Cow<'node, Node>>,
+}
+impl Serialize for ResolvedDocument<'_, '_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.document.serialize(NodeMapSerializer { serializer, nodes: self.nodes })
+    }
+}
+struct NodeMapSerializer<'a, 'node, S> {
+    serializer: S,
+    nodes: &'a BTreeMap<String, Cow<'node, Node>>,
+}
+struct NodeMapStruct<'a, 'node, S> {
+    serializer: S,
+    nodes: &'a BTreeMap<String, Cow<'node, Node>>,
+}
+impl<S: serde::ser::SerializeStruct> serde::ser::SerializeStruct for NodeMapStruct<'_, '_, S> {
+    type Ok = S::Ok;
+    type Error = S::Error;
+    fn serialize_field<T: ?Sized + Serialize>(&mut self, key: &'static str, value: &T) -> Result<(), S::Error> {
+        if key == "nodes" {
+            self.serializer.serialize_field(key, self.nodes)
+        } else {
+            self.serializer.serialize_field(key, value)
+        }
+    }
+    fn skip_field(&mut self, key: &'static str) -> Result<(), S::Error> {
+        self.serializer.skip_field(key)
+    }
+    fn end(self) -> Result<S::Ok, S::Error> { self.serializer.end() }
+}
+macro_rules! delegate_scalar_serializers {
+    ($($name:ident($value:ty)),* $(,)?) => {
+        $(fn $name(self, value: $value) -> Result<Self::Ok, Self::Error> {
+            self.serializer.$name(value)
+        })*
+    };
+}
+impl<'a, 'node, S: serde::Serializer> serde::Serializer for NodeMapSerializer<'a, 'node, S> {
+    type Ok = S::Ok;
+    type Error = S::Error;
+    type SerializeSeq = S::SerializeSeq;
+    type SerializeTuple = S::SerializeTuple;
+    type SerializeTupleStruct = S::SerializeTupleStruct;
+    type SerializeTupleVariant = S::SerializeTupleVariant;
+    type SerializeMap = S::SerializeMap;
+    type SerializeStruct = NodeMapStruct<'a, 'node, S::SerializeStruct>;
+    type SerializeStructVariant = S::SerializeStructVariant;
+    delegate_scalar_serializers!(
+        serialize_bool(bool), serialize_i8(i8), serialize_i16(i16), serialize_i32(i32),
+        serialize_i64(i64), serialize_i128(i128), serialize_u8(u8), serialize_u16(u16),
+        serialize_u32(u32), serialize_u64(u64), serialize_u128(u128), serialize_f32(f32),
+        serialize_f64(f64), serialize_char(char), serialize_str(&str), serialize_bytes(&[u8]),
+    );
+    fn serialize_none(self) -> Result<S::Ok, S::Error> { self.serializer.serialize_none() }
+    fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<S::Ok, S::Error> { self.serializer.serialize_some(value) }
+    fn serialize_unit(self) -> Result<S::Ok, S::Error> { self.serializer.serialize_unit() }
+    fn serialize_unit_struct(self, name: &'static str) -> Result<S::Ok, S::Error> { self.serializer.serialize_unit_struct(name) }
+    fn serialize_unit_variant(self, name: &'static str, index: u32, variant: &'static str) -> Result<S::Ok, S::Error> {
+        self.serializer.serialize_unit_variant(name, index, variant)
+    }
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(self, name: &'static str, value: &T) -> Result<S::Ok, S::Error> {
+        self.serializer.serialize_newtype_struct(name, value)
+    }
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(self, name: &'static str, index: u32, variant: &'static str, value: &T) -> Result<S::Ok, S::Error> {
+        self.serializer.serialize_newtype_variant(name, index, variant, value)
+    }
+    fn serialize_seq(self, len: Option<usize>) -> Result<S::SerializeSeq, S::Error> { self.serializer.serialize_seq(len) }
+    fn serialize_tuple(self, len: usize) -> Result<S::SerializeTuple, S::Error> { self.serializer.serialize_tuple(len) }
+    fn serialize_tuple_struct(self, name: &'static str, len: usize) -> Result<S::SerializeTupleStruct, S::Error> {
+        self.serializer.serialize_tuple_struct(name, len)
+    }
+    fn serialize_tuple_variant(self, name: &'static str, index: u32, variant: &'static str, len: usize) -> Result<S::SerializeTupleVariant, S::Error> {
+        self.serializer.serialize_tuple_variant(name, index, variant, len)
+    }
+    fn serialize_map(self, len: Option<usize>) -> Result<S::SerializeMap, S::Error> { self.serializer.serialize_map(len) }
+    fn serialize_struct(self, name: &'static str, len: usize) -> Result<Self::SerializeStruct, S::Error> {
+        Ok(NodeMapStruct { serializer: self.serializer.serialize_struct(name, len)?, nodes: self.nodes })
+    }
+    fn serialize_struct_variant(self, name: &'static str, index: u32, variant: &'static str, len: usize) -> Result<S::SerializeStructVariant, S::Error> {
+        self.serializer.serialize_struct_variant(name, index, variant, len)
+    }
+    fn is_human_readable(&self) -> bool { self.serializer.is_human_readable() }
 }
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -752,7 +841,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
         return Ok(());
     }
     validate(doc)?;
-    let mut source = std::borrow::Cow::Borrowed(&*doc);
+    let mut source = Cow::Borrowed(&*doc);
     // Definition defaults modify authored targets. Nested properties stay on their
     // nested component; a containing definition exposes a swap on the nested root.
     let definitions: Vec<_> = source
@@ -783,7 +872,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
             }
         }
     }
-    if matches!(source, std::borrow::Cow::Owned(_)) { validate(&source)?; }
+    if matches!(source, Cow::Owned(_)) { validate(&source)?; }
     let owned = slot_owned_nodes(&source)?;
     let roots: Vec<_> = source
         .nodes
@@ -793,30 +882,34 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
         .collect();
     let inherited_modes = crate::design_system::node_mode_contexts(&source)?;
     let mut bytes = encoded_len(source.as_ref(), DOCUMENT_BYTES)?;
-    let mut result = source.as_ref().clone();
+    // Builders always read the immutable source. The result owns only rebuilt
+    // nodes, so unrelated images, paths, text and metadata are never deep-cloned.
+    // Do not publish either removals or replacements until every check succeeds.
+    let mut result: BTreeMap<_, _> = source.nodes.iter()
+        .map(|(id, node)| (id.clone(), Cow::Borrowed(node))).collect();
     for id in roots {
         let mut removed = Vec::new();
-        fn descendants(d: &Document, id: &str, out: &mut Vec<String>) {
-            for child in &d.nodes[id].children {
-                descendants(d, child, out);
+        fn descendants(nodes: &BTreeMap<String, Cow<'_, Node>>, id: &str, out: &mut Vec<String>) {
+            for child in &nodes[id].children {
+                descendants(nodes, child, out);
                 out.push(child.clone());
             }
         }
         descendants(&result, &id, &mut removed);
         for child in removed {
-            if let Some(n) = result.nodes.remove(&child) {
+            if let Some(n) = result.remove(&child) {
                 bytes = bytes.saturating_sub(encoded_len(&n, DOCUMENT_BYTES)? + child.len() + 4);
             }
         }
         let placement = &source.nodes[&id];
         bytes =
-            bytes.saturating_sub(encoded_len(&result.nodes[&id], DOCUMENT_BYTES)? + id.len() + 4);
+            bytes.saturating_sub(encoded_len(&result[&id], DOCUMENT_BYTES)? + id.len() + 4);
         let mut builder = Builder {
             source: &source,
             output: BTreeMap::new(),
             owner: id.clone(),
             stack: Vec::new(),
-            budget: 20001usize.saturating_sub(result.nodes.len()),
+            budget: 20001usize.saturating_sub(result.len()),
             remaining_bytes: DOCUMENT_BYTES.saturating_sub(bytes),
             slots: BTreeMap::new(),
         };
@@ -833,14 +926,24 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
         )?;
         bytes = DOCUMENT_BYTES - builder.remaining_bytes;
         for (key, n) in builder.output {
-            if key != id && result.nodes.contains_key(&key) {
+            if key != id && result.contains_key(&key) {
                 return Err("Generated instance layer collides with an authored layer".into());
             }
-            result.nodes.insert(key, n);
+            result.insert(key, Cow::Owned(n));
         }
     }
-    check_budget(&result)?;
-    *doc = result;
+    encoded_len(&ResolvedDocument { document: &source, nodes: &result }, DOCUMENT_BYTES)?;
+    let removed: Vec<_> = source.nodes.keys().filter(|id| !result.contains_key(*id)).cloned().collect();
+    let replacements: Vec<_> = result.into_iter().filter_map(|(id, node)| match node {
+        Cow::Owned(node) => Some((id, node)),
+        Cow::Borrowed(_) => None,
+    }).collect();
+    // Definition defaults can own a modified source; ordinary documents keep
+    // their original allocation. All remaining operations are infallible map
+    // publication, after the source/result read borrows have ended.
+    if let Cow::Owned(source) = source { *doc = source; }
+    for id in removed { doc.nodes.remove(&id); }
+    doc.nodes.extend(replacements);
     Ok(())
 }
 #[derive(Serialize)]
@@ -877,4 +980,48 @@ pub fn changes(json: &str, fonts: &Fonts) -> Result<String, String> {
             .collect(),
     };
     serde_json::to_string(&changes).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod resolved_document_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn borrowed_result_view_serializes_exact_document_bytes_and_budget_boundaries() {
+        let source: Document = serde_json::from_value(json!({
+            "schemaVersion":15, "id":"d", "name":"metadata \\ \" 😀",
+            "fdCompatibility":{"contractVersion":1,"requiredCapabilities":[],"extensions":{
+                "test.snapshot":{"nodes":{"keep":"metadata, not the scene node map"},"value":-0.0}
+            }},
+            "designSystem":{},
+            "pages":[{"id":"p","name":"Page","background":"#ffffff","children":["stay","old","replace"]}],
+            "nodes":{
+                "stay":{"id":"stay","kind":"rectangle","width":10,"height":20,"text":"unchanged"},
+                "old":{"id":"old","kind":"rectangle","width":10,"height":20},
+                "replace":{"id":"replace","kind":"text","width":10,"height":20,"text":"old text"}
+            }
+        })).unwrap();
+        let before = source.clone();
+        let mut nodes: BTreeMap<_, _> = source.nodes.iter()
+            .map(|(id, node)| (id.clone(), Cow::Borrowed(node))).collect();
+        nodes.remove("old");
+        let mut changed = source.nodes["replace"].clone();
+        changed.text = "new text, with \\ \" and 中文".into();
+        nodes.insert(changed.id.clone(), Cow::Owned(changed));
+        let mut added = source.nodes["old"].clone();
+        added.id = "new\\\"😀".into();
+        nodes.insert(added.id.clone(), Cow::Owned(added));
+        for empty in [false, true] {
+            if empty { nodes.clear(); }
+            let view = ResolvedDocument { document: &source, nodes: &nodes };
+            let mut materialized = source.clone();
+            materialized.nodes = nodes.iter().map(|(id, node)| (id.clone(), node.as_ref().clone())).collect();
+            let expected = serde_json::to_vec(&materialized).unwrap();
+            assert_eq!(serde_json::to_vec(&view).unwrap(), expected);
+            assert_eq!(encoded_len(&view, expected.len()).unwrap(), expected.len());
+            assert!(encoded_len(&view, expected.len() - 1).is_err());
+        }
+        assert_eq!(source, before, "serializing staged replacements never modifies the read source");
+    }
 }

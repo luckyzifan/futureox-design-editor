@@ -6,6 +6,8 @@ import { figArchive, importFig } from './import-fig'
 import { uid, validateDocument } from './model'
 import { kernelSvgPaths, prepareDocumentForEditing } from './kernel/picking'
 import { export_sketch_json, import_sketch_json, VectorEngine } from './generated/design-kernel/design_kernel'
+import { createImportedCopy } from './import-identity'
+import { Editor } from './engine'
 
 // Generated regression files use the schema from a real Figma local export.
 // They prove preservation/rejection of encoded inputs, not external image parity.
@@ -42,6 +44,27 @@ function subject(layer: Record<string, unknown>) {
   const reopened = prepareDocumentForEditing(JSON.parse(JSON.stringify(result.document)))
   return { ...result, node: Object.values(reopened.nodes).find((n) => n.name === 'Subject')! }
 }
+
+test('same-name repeated FIG adoption creates independent new documents, never overwriting the earlier edit',()=>{
+  const bytes=encoded({name:'Repeated layer'}),source=importFig(bytes,'Same filename').document
+  const first=createImportedCopy(source),editor=new Editor(first)
+  try {
+    const firstId=editor.state.doc.id,layerId=Object.keys(editor.state.doc.nodes)[0],session=editor.sessionGeneration
+    editor.change('Retain first edit',d=>{d.nodes[layerId].name='Local edit'})
+    const edited=editor.state.doc
+    const second=createImportedCopy(importFig(bytes,'Same filename').document)
+    expect(second.id).not.toBe(firstId);expect(second.id).not.toBe(source.id)
+    expect(second.name).toBe(first.name)
+    expect(editor.load(second)).toBe(true);expect(editor.sessionGeneration).toBeGreaterThan(session)
+    expect(edited.nodes[layerId].name).toBe('Local edit')
+    expect(Object.values(editor.state.doc.nodes).some(n=>n.name==='Local edit')).toBe(false)
+    const changed=createImportedCopy(importFig(encoded({name:'Changed layer',size:{x:52,y:24}}),'Same filename').document)
+    expect(new Set([source.id,firstId,second.id,changed.id]).size).toBe(4)
+    expect(changed.name).toBe(first.name);expect(editor.load(changed)).toBe(true)
+    expect(Object.values(editor.state.doc.nodes).find(n=>n.name==='Changed layer')?.width).toBe(52)
+    expect(source.nodes[layerId]?.name).not.toBe('Local edit')
+  } finally {editor.dispose()}
+})
 const blackStroke = { type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }
 
 test('native FIG text casing and styled ranges remain authored through WASM reopening',()=>{

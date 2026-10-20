@@ -1,4 +1,4 @@
-import { allParents } from './geometry'
+import { allParents, type ParentMap } from './geometry'
 import { container, type DesignDocument } from './model'
 
 export type LayerDropPosition = 'above' | 'inside' | 'below'
@@ -20,9 +20,10 @@ export function layerDropPosition(isContainer: boolean, fraction: number): Layer
 
 /** Rows run front-to-back while children are stored back-to-front. */
 export function layerDropPlan(doc: DesignDocument, page: string, dragged: readonly string[], target: string | null,
-  position: LayerDropPosition): { parent: string; before?: string } | undefined {
+  position: LayerDropPosition, parents?: ParentMap): { parent: string; before?: string } | undefined {
   if (!dragged.length) return
-  const parents = allParents(doc), selected = new Set(dragged)
+  parents ??= allParents(doc)
+  const selected = new Set(dragged)
   if (target && (!doc.nodes[target] || selected.has(target))) return
   const parent = target ? position === 'inside' ? target : parents.get(target) : page
   if (!parent || (doc.nodes[parent] ? !container(doc.nodes[parent]) : parent !== page)) return

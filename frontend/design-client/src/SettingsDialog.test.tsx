@@ -2,6 +2,7 @@ import { canvasActions, CanvasAction, ActionOutcome } from './canvas-action-diag
 import { nudgePreference } from './nudge-preference'
 import { interfacePreference } from './interface-preference'
 import { desktopPet } from './desktop-pet'
+import { pageMemoryPreference, PAGE_MEMORY_PREFERENCE_KEY } from './page-memory-preference'
 // Real React/DOM events and Editor/WASM. jsdom does not claim browser layout/GPU validation.
 // @ts-expect-error jsdom is a test-only runtime dependency.
 import { JSDOM } from 'jsdom'
@@ -25,7 +26,7 @@ beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   ;(window as any).coreDesktop = { renderDiagnostics: true, renderDiagnosticsDetail: true }
   vi.spyOn(console, 'log').mockImplementation(() => {})
-  localStorage.clear(); settingsPreference.reset(); shortcutPreference.set('figma-like')
+  localStorage.clear(); pageMemoryPreference.reset(); settingsPreference.reset(); shortcutPreference.set('figma-like')
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
   canvas = document.createElement('div'); canvas.tabIndex = 0; canvas.dataset.testid = 'canvas'; document.body.append(canvas)
   trigger = document.createElement('button'); trigger.textContent = 'Settings trigger'; document.body.append(trigger); trigger.focus()
@@ -243,4 +244,20 @@ test('non-canvas preference families emit only bounded family identifiers after 
   for (const commandCode of [340, 341, 342, 344]) expect(rows.some(row => row.commandCode === commandCode && row.actionOutcome === ActionOutcome.observed)).toBe(true)
   expect(JSON.stringify(rows)).not.toContain('sketch-like')
   expect(JSON.stringify(rows)).not.toContain('Settings DOM')
+})
+
+test('page memory tier select persists, resets and never edits the document or undo history', async () => {
+  const original = editor.snapshot().doc, version = editor.state.version
+  await act(async () => root.render(<Harness />)); await tab('画布辅助')
+  const select = dialog().querySelector<HTMLSelectElement>('select[id$="-memory-tier"]')!
+  expect(select.value).toBe('balanced')
+  await act(async () => { select.value = 'expanded'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect(pageMemoryPreference.getSnapshot()).toBe('expanded')
+  expect(localStorage.getItem(PAGE_MEMORY_PREFERENCE_KEY)).toBe('expanded')
+  expect(editor.snapshot().doc).toBe(original); expect(editor.state.version).toBe(version); expect(editor.canUndo).toBe(false)
+  await act(async () => button('完成').click()); await act(async () => mount.querySelector('button')!.click())
+  await tab('画布辅助')
+  expect(dialog().querySelector<HTMLSelectElement>('select[id$="-memory-tier"]')!.value).toBe('expanded')
+  await act(async () => pageMemoryPreference.reset())
+  expect(dialog().querySelector<HTMLSelectElement>('select[id$="-memory-tier"]')!.value).toBe('balanced')
 })

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { interfaceText } from './interface-messages'
 
 export type InterfaceLocale = 'zh-CN' | 'en'
 export type InterfacePreferences = Readonly<{ leftWidth: number; rightWidth: number; leftOpen: boolean; rightOpen: boolean; reducedMotion: boolean; rememberViewport: boolean; locale: InterfaceLocale }>
@@ -35,7 +36,5 @@ export function createInterfacePreference(storage: () => Pick<Storage, 'getItem'
 }
 export const interfacePreference = createInterfacePreference(() => typeof localStorage === 'undefined' ? undefined : localStorage)
 export function useInterfacePreferences() { return useSyncExternalStore(interfacePreference.subscribe, interfacePreference.getSnapshot, () => DEFAULT_INTERFACE_PREFERENCES) }
-export const interfaceText = {
-  'zh-CN': { interface: '界面', language: '面板控件语言', languageHelp: '仅影响新增的界面与面板控件；其他编辑功能暂保留原有语言。', rememberViewport: '重新打开时恢复上次视图', rememberViewportHelp: '默认适应页面；开启后记住每个文档的页面、缩放和位置。', motion: '减少动态效果', motionHelp: '关闭界面过渡动画；同时尊重系统的减少动态效果偏好。', reset: '重置面板布局', left: '图层面板', right: '属性面板', resize: '调整面板宽度', collapse: '收起', expand: '展开', temporary: '存储不可用，界面偏好仅在本次会话生效。', design: '设计', prototype: '原型' },
-  en: { interface: 'Interface', language: 'Panel controls language', languageHelp: 'Applies to the new interface and panel controls only. Other editor features retain their existing language.', rememberViewport: 'Restore last view when reopening', rememberViewportHelp: 'Fit the page by default. Enable to remember each document’s page, zoom and position.', motion: 'Reduce motion', motionHelp: 'Disable interface transitions. The system’s reduced-motion preference is also respected.', reset: 'Reset panel layout', left: 'Layers panel', right: 'Properties panel', resize: 'Resize panel', collapse: 'Collapse', expand: 'Expand', temporary: 'Storage is unavailable. Interface preferences apply to this session only.', design: 'Design', prototype: 'Prototype' },
-} as const
+export { interfaceText } from './interface-messages'
+export function useInterfaceText() { return interfaceText[useInterfacePreferences().locale] }

@@ -1,14 +1,16 @@
 import {sliceExportTarget} from './export-metadata'
 import type { Editor } from './engine'
 import { desktopBridge } from './desktop'
-import { ExportOwner } from './export-ownership'
+import { commitExportEdits, ExportOwner } from './export-ownership'
 const active = new WeakMap<Editor, ExportOwner>()
 export async function copySelectionAsset(editor: Editor, format: 'png'|'svg') {
+  if (!commitExportEdits(editor)) return
   if (!editor.state.selection.length) throw new Error('请选择要复制的图层')
   if (format === 'png' && editor.state.doc.colorManagement) throw new Error('系统图像剪贴板不能保证 HDR/广色域原始颜色；请使用保留色彩配置的 PNG 导出')
   active.get(editor)?.dispose()
   const owner=new ExportOwner();active.set(editor,owner);owner.activate(editor)
-  const request=owner.begin(editor,`clipboard:${format}`)!
+  const request=owner.begin(editor,`clipboard:${format}`)
+  if (!request) { owner.dispose(); active.delete(editor); return }
   try {
     const {exportImage}=await import('./export')
     const asset=await exportImage(request.document,request.page,format,format==='png'?2:1,undefined,request.signal,request.selection.length===1&&request.document.nodes[request.selection[0]].kind==='slice'?sliceExportTarget(request.document,request.selection[0]):{kind:'selection',nodeIds:[...request.selection]})

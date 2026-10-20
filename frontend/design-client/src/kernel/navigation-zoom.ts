@@ -1,8 +1,9 @@
 import type { CanvasCamera } from '../canvas-camera'
 
-/** Navigation-only timing: object edits and fixed-scale panning never enter
- * this tier. A wheel/pinch burst keeps one latest target rather than refining
- * every intermediate scale. These are host policy values, not kernel limits. */
+/** Navigation-only timing. A wheel/pinch burst keeps one latest target rather
+ * than refining every intermediate camera. Expensive filtered panning may opt
+ * into the same preview tier; object edits remain outside it. These are host
+ * policy values, not kernel limits or estimates of the device frame rate. */
 export const NAVIGATION_ZOOM_SAMPLE_MS = 160
 export const NAVIGATION_ZOOM_QUIET_MS = 160
 // Sparse wheel input retains the conservative quiet window. Once a dense
@@ -17,7 +18,7 @@ const CADENCE_REQUIRED_INTERVALS = CADENCE_INTERVALS
 const CADENCE_QUIET_MULTIPLIER = 3
 /** Experimental only: the normal React hook deliberately uses conservative
  * settling until hardware-backed input/display measurements justify a change. */
-export type NavigationZoomOptions = { adaptiveQuiet?: boolean }
+export type NavigationZoomOptions = { adaptiveQuiet?: boolean; includeTranslation?: boolean }
 export type NavigationZoomSample = { active: boolean; view: CanvasCamera; sequence: number }
 export class NavigationZoom {
   private target: CanvasCamera
@@ -26,6 +27,7 @@ export class NavigationZoom {
   private stableFrames = 0
   private intervals: number[] = []
   private resumedBeforeQuiet = false
+  private held = false
   sample: NavigationZoomSample
   constructor(view: CanvasCamera, private readonly options: NavigationZoomOptions = {}) {
     this.target = { ...view }
@@ -37,9 +39,23 @@ export class NavigationZoom {
   }
   get active() { return this.sample.active }
   get zoom() { return this.target.zoom }
-  update(view: CanvasCamera, now: number): NavigationZoomSample {
-    const changed = view.zoom !== this.target.zoom
+  get pointerHeld() { return this.held }
+  inputChanged(view: CanvasCamera) {
+    return view.zoom !== this.target.zoom || !!this.options.includeTranslation &&
+      (view.x !== this.target.x || view.y !== this.target.y)
+  }
+  update(view: CanvasCamera, now: number, pointerHeld = false): NavigationZoomSample {
+    const held = !!this.options.includeTranslation && pointerHeld
+    const released = this.held && !held
+    const changed = this.inputChanged(view) || held && !this.held
+    this.held = held
     this.target = { ...view }
+    // Canvas flushes the final pointer position before releasing its gesture.
+    // A known release needs no guessed quiet interval before exact refinement.
+    if (released) {
+      this.changedAt = now; this.stableFrames = 0
+      return this.publish(false, now)
+    }
     if (changed) {
       // A short resume proves that the previous adaptive settle was early.
       // Keep the original quiet window for this entire logical gesture, not
@@ -67,7 +83,7 @@ export class NavigationZoom {
     const quiet = !this.options.adaptiveQuiet || this.resumedBeforeQuiet || this.intervals.length < CADENCE_REQUIRED_INTERVALS ? NAVIGATION_ZOOM_QUIET_MS :
       Math.min(NAVIGATION_ZOOM_QUIET_MS,
         Math.max(NAVIGATION_ZOOM_DENSE_QUIET_MS, ...this.intervals.map(interval => interval * CADENCE_QUIET_MULTIPLIER)))
-    if (this.stableFrames >= 2 && now - this.changedAt >= quiet) return this.publish(false, now)
+    if (!this.held && this.stableFrames >= 2 && now - this.changedAt >= quiet) return this.publish(false, now)
     if (now - this.sampledAt >= NAVIGATION_ZOOM_SAMPLE_MS && this.hasUnsampledView())
       return this.publish(true, now)
     return this.sample

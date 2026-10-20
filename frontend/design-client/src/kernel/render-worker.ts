@@ -59,7 +59,7 @@ import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
 import { RenderLaneStates, type RenderLaneName } from './render-lane-state'
 import { loadKernelResources } from './kernel-resources'
-import { preparedTileCanFill } from './prepared-tile-fallback'
+import { preparedTileCanFill, preparedTileContinuation } from './prepared-tile-fallback'
 import { reuseExactSceneSources } from './gpu/exact-scene-reuse'
 import { PrepareAhead } from './prepare-ahead'
 import { withResidentPose } from './gpu/resident-pose-frame'
@@ -1037,11 +1037,13 @@ self.onmessage = (e) => {
                   ahead.start(tileIndex + 1, () => compileTile(next))
                   overlappedPreparations++
                 }
+                const tileCurrent = preparedTileContinuation(tile, current, cameraFallback, () => displayFrame)
                 result = await renderTiledPreview(kernel, tileOptions, backend, color,
                   settingsJson, TILE_SIDE + 2, crop, preparedScene,
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
                   prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
-                  () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] && (cameraFallback || current()), hydrateImages)
+                  () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
+                    tileCurrent(), hydrateImages)
                 undelivered = result
                 if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.

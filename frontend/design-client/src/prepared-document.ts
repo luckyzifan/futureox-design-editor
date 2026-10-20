@@ -1,7 +1,8 @@
-import { activateDocumentFonts, prepareDocumentForEditing } from './kernel/picking'
+import { activateDocumentFonts, prepareDocumentForEditing, prepareDocumentJsonForEditing } from './kernel/picking'
 import type { DesignDocument } from './model'
 
 const owned = new WeakMap<object, { document?: DesignDocument; validatedJson?: string }>()
+const currentEncodings = new WeakMap<DesignDocument, { json: string; current: () => boolean }>()
 export type PreparedDocument = Readonly<{ id: string; snapshot(): DesignDocument }>
 
 /** One-use ownership transfer across save/adoption. The admitted document is
@@ -13,10 +14,23 @@ export function prepareDocument(value: unknown): PreparedDocument {
   return ownDocument(document, validatedJson)
 }
 
+/** The source string, not a decoded caller object, is the private owner boundary. */
+export function prepareDocumentJson(source: string, syntaxFailureAttempt?: object): PreparedDocument {
+  let validatedJson: string | undefined
+  const document = prepareDocumentJsonForEditing(source, json => { validatedJson = json }, syntaxFailureAttempt)
+  return ownDocument(document, validatedJson)
+}
+
 /** Normalize every adoption path through the private ownership boundary.
  * An existing live token is already admitted; do not prepare it a second time. */
 export function ensurePreparedDocument(value: unknown): PreparedDocument {
-  if (value && typeof value === 'object' && owned.get(value)?.document) return value as PreparedDocument
+  if (value && typeof value === 'object') {
+    const record = owned.get(value)
+    if (record) {
+      if (!record.document) throw Error('已准备的文档已被接收')
+      return value as PreparedDocument
+    }
+  }
   return prepareDocument(value)
 }
 
@@ -76,6 +90,28 @@ export function preparedDocumentEncoding(value: unknown) {
   const record = owned.get(value)
   if (!record?.document || record.validatedJson === undefined) return
   const document = record.document, json = record.validatedJson
+  const adopted = (candidate: DesignDocument) => record.document === undefined && candidate === document
   return { format: 'json-stringify-v1' as const, json,
-    adopted: (candidate: DesignDocument) => record.document === undefined && candidate === document }
+    adopted,
+    bindCurrent(candidate: DesignDocument, current: () => boolean) {
+      // Only this private one-use certificate can supply the bytes. The editor
+      // also binds its exact version/session, including reentrant subscribers.
+      if (adopted(candidate) && current()) currentEncodings.set(candidate, { json, current })
+    } }
+}
+
+/** A renderer may reuse exact bytes only while the certifying editor still owns
+ * that same version and session. Arbitrary objects and old history snapshots do
+ * not gain a serialization cache by structural equality or document ID. */
+export function currentPreparedDocumentJson(document: DesignDocument): string | undefined {
+  const encoding = currentEncodings.get(document)
+  if (!encoding) return
+  if (encoding.current()) return encoding.json
+  currentEncodings.delete(document)
+}
+
+/** Release retained wire bytes as soon as the editor changes or disposes, even
+ * if an old document object remains alive in editing history. */
+export function forgetPreparedDocumentEncoding(document: DesignDocument) {
+  currentEncodings.delete(document)
 }

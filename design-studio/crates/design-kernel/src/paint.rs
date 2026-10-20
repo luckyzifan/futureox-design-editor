@@ -414,14 +414,6 @@ impl ImageCoordinates {
         let valid = self.fit != "contain" || (q >= -0.5 && q < extent - 0.5);
         Some((value, f32::from(valid)))
     }
-    fn linear_axis(&self, point: Point, axis: usize) -> Option<(f64, i8)> {
-        if self.pattern.is_some() { return None; }
-        let raw = self.linear_point(point);
-        let q = if axis == 0 { raw.x } else { raw.y };
-        if !q.is_finite() { return None; }
-        let region = if self.fit != "contain" { 0 } else if q < 0. { -1 } else if q >= self.image[axis] { 1 } else { 0 };
-        Some((q.clamp(0.5, self.image[axis] - 0.5), region))
-    }
     fn byte_index_at(&self, device: Point) -> Option<[f32; 2]> {
         let q = self.byte_point(device);
         let (iw, ih) = (self.image[0], self.image[1]);
@@ -468,6 +460,65 @@ impl ImageCoordinates {
             y = (p.y - (self.size[1] - ih * ratio) / 2.) / ratio;
         }
         Point::new(x, y)
+    }
+}
+/// One row of the original linear mapping, with only placement constants
+/// hoisted. Do not compose its arithmetic into a single affine transform:
+/// division/translation order decides the exact cell and f32 fraction.
+struct ImageLinearAxis<'a> {
+    coordinates: &'a ImageCoordinates,
+    axis: usize,
+    inverse: [f64; 3],
+    fit_placement: Option<(f64, f64)>,
+    contain: bool,
+}
+struct ImageAxisSample {
+    cell: f64,
+    fraction: f32,
+    region: i8,
+}
+impl ImageAxisSample {
+    fn same_bits(&self, other: &Self) -> bool {
+        self.cell.to_bits() == other.cell.to_bits()
+            && self.fraction.to_bits() == other.fraction.to_bits()
+            && self.region == other.region
+    }
+}
+impl<'a> ImageLinearAxis<'a> {
+    fn new(coordinates: &'a ImageCoordinates, axis: usize) -> Self {
+        let m = coordinates.inverse.0;
+        let fit_placement = if coordinates.paint_inverse.is_none() && coordinates.fit != "stretch" {
+            let ratios = [coordinates.size[0] / coordinates.image[0], coordinates.size[1] / coordinates.image[1]];
+            let ratio = if coordinates.fit == "contain" { ratios[0].min(ratios[1]) } else { ratios[0].max(ratios[1]) };
+            Some((ratio, (coordinates.size[axis] - coordinates.image[axis] * ratio) / 2.))
+        } else {
+            None
+        };
+        Self { coordinates, axis, inverse: [m[axis], m[axis + 2], m[axis + 4]], fit_placement, contain: coordinates.fit == "contain" }
+    }
+    #[inline]
+    fn sample(&self, device: Point) -> Option<ImageAxisSample> {
+        let coordinates = self.coordinates;
+        let axis = self.axis;
+        let q = if coordinates.paint_inverse.is_some() {
+            // Even a diagonal paint transform multiplies the other UV by
+            // signed zero. Retain the full original chain, including its
+            // behavior for overflow and signed-zero intermediate values.
+            let raw = coordinates.linear_point(device);
+            if axis == 0 { raw.x } else { raw.y }
+        } else {
+            let local = self.inverse[0] * device.x + self.inverse[1] * device.y + self.inverse[2];
+            if let Some((ratio, inset)) = self.fit_placement {
+                (local - inset) / ratio
+            } else {
+                (local / coordinates.size[axis]) * coordinates.image[axis]
+            }
+        };
+        if !q.is_finite() { return None; }
+        let region = if !self.contain { 0 } else if q < 0. { -1 } else if q >= coordinates.image[axis] { 1 } else { 0 };
+        let value = q.clamp(0.5, coordinates.image[axis] - 0.5) - 0.5;
+        let cell = value.floor();
+        Some(ImageAxisSample { cell, fraction: (value - cell) as f32, region })
     }
 }
 /// Minification-driven mip level for an image fill, the geometric half of
@@ -588,7 +639,8 @@ pub fn image_sampling_grid_placed(
 }
 /// Exact compact linear-image coordinates. W=-1 tags two independent rows;
 /// X/Y/Z contain cell, fractional part and validity. Empty means the caller
-/// must use the dense grid. No colors or resampled pixels are stored here.
+/// must use the dense grid for this sample plane; another phase is certified
+/// independently. No colors or resampled pixels are stored here.
 #[allow(clippy::too_many_arguments)]
 pub fn image_sampling_axes_placed(
     rect: Rect, matrix: Transform, size: [f64; 2], image: [u32; 2],
@@ -619,45 +671,33 @@ pub fn image_sampling_axes_placed(
     if count > 16_777_216 { return Err("Sampling coordinate field exceeds 64 MiB".into()); }
     // With no cross-axis paint transform, each coordinate is monotone in the
     // other device axis. Certify BOTH endpoint cell/fraction bits for every
-    // row/column and sample plane, without zeroing tiny rotation coefficients.
+    // row/column of this sample plane, without zeroing tiny rotation coefficients.
     // Equal endpoint cells and rounded fractions imply identical interior
     // metadata. Contain's below/inside/above class prevents two invalid ends
     // from hiding a valid interior (notably for one-texel images).
-    let signature = |point: Point, axis| coordinates.linear_axis(point, axis).map(|(value, region)| {
-        let q = value - 0.5; let cell = q.floor();
-        (cell.to_bits(), ((q - cell) as f32).to_bits(), region)
-    });
-    for phase in crate::fidelity::SAMPLE_OFFSETS.into_iter().chain([(0.5, 0.5)]) {
-        for axis in 0..2 {
-            let length = if axis == 0 { rect.w } else { rect.h };
-            for index in 0..length {
-                let x = rect.x + if axis == 0 { index as i32 } else { 0 };
-                let y = rect.y + if axis == 1 { index as i32 } else { 0 };
-                let first = Point::new(f64::from(x) + phase.0, f64::from(y) + phase.1);
-                let last = if axis == 0 { Point::new(first.x, f64::from(rect.bottom() - 1) + phase.1) }
-                    else { Point::new(f64::from(rect.right() - 1) + phase.0, first.y) };
-                let a = signature(first, axis);
-                if a.is_none() || a != signature(last, axis) {
-                    return Ok(Vec::new());
-                }
-            }
-        }
-    }
+    // Every field belongs to one sample; another phase can independently use
+    // the dense fallback. Proving all five phases on every call repeated the
+    // same unrelated work. Emit the already-certified first endpoint as well,
+    // so each output coordinate needs two evaluations instead of eleven.
     let mut values = Vec::new();
-    values.try_reserve_exact(count).map_err(|_| "Sampling coordinate allocation failed")?;
-    values.resize(count, 0.);
     for (axis, shift) in origin.iter().enumerate() {
+        let mapping = ImageLinearAxis::new(&coordinates, axis);
         let length = if axis == 0 { rect.w } else { rect.h };
         for index in 0..length {
             let x = rect.x + if axis == 0 { index as i32 } else { 0 };
             let y = rect.y + if axis == 1 { index as i32 } else { 0 };
-            let (point, region) = coordinates.linear_axis(Point::new(f64::from(x) + offset.0, f64::from(y) + offset.1), axis)
-                .expect("all supported phases certified above");
-            let q = point - 0.5;
-            let cell = q.floor();
-            let start = (axis * span + index as usize) * 4;
-            values[start..start + 4].copy_from_slice(&[cell as f32 + *shift as f32, (q - cell) as f32, f32::from(region == 0), -1.]);
+            let first = Point::new(f64::from(x) + offset.0, f64::from(y) + offset.1);
+            let last = if axis == 0 { Point::new(first.x, f64::from(rect.bottom() - 1) + offset.1) }
+                else { Point::new(f64::from(rect.right() - 1) + offset.0, first.y) };
+            let Some(a) = mapping.sample(first) else { return Ok(Vec::new()); };
+            let Some(b) = mapping.sample(last) else { return Ok(Vec::new()); };
+            if !a.same_bits(&b) { return Ok(Vec::new()); }
+            if values.is_empty() {
+                values.try_reserve_exact(count).map_err(|_| "Sampling coordinate allocation failed")?;
+            }
+            values.extend([a.cell as f32 + *shift as f32, a.fraction, f32::from(a.region == 0), -1.]);
         }
+        values.resize((axis + 1) * span * 4, 0.);
     }
     Ok(values)
 }
@@ -1202,6 +1242,43 @@ fn premultiply_byte_color(color: Pixel, opacity: f32) -> Pixel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prepared_linear_axes_match_original_point_chain_at_float_boundaries() {
+        for fit in ["cover", "contain", "stretch"] {
+            for inverse in [
+                Transform::default(),
+                Transform([0.0078125, 1.9135106236677394e-18, -1.9135106236677394e-18, 0.0078125, 8.775390625, -0.21484375]),
+                Transform([-0.75, 0.25, -0.125, 1.5, 10., -3.]),
+                Transform([1e300, 0., -0., 1e-300, -0., 0.]),
+            ] {
+                for paint_inverse in [None, Some(Transform([0.7, -0., 0., -1.1, 0.2, 0.4]))] {
+                    for size in [[1920., 1080.], [31., 19.], [1e-300, 1e300]] {
+                        for image in [[1920., 1080.], [1., 1.], [4_294_967_295., 7.]] {
+                            let coordinates = ImageCoordinates { inverse, paint_inverse, size, image, fit: fit.into(), pattern: None };
+                            for x in [-2_147_483_648., -0.5, -0., 0., f64::from_bits(0.5f64.to_bits() - 1), 0.5, f64::from_bits(0.5f64.to_bits() + 1), 2_147_483_646.875] {
+                                for y in [-1281.875, -0., 0.125, 0.5, 3480.875] {
+                                    let point = coordinates.linear_point(Point::new(x, y));
+                                    for (axis, q) in [point.x, point.y].into_iter().enumerate() {
+                                        let actual = ImageLinearAxis::new(&coordinates, axis).sample(Point::new(x, y));
+                                        if !q.is_finite() {
+                                            assert!(actual.is_none());
+                                            continue;
+                                        }
+                                        let value = q.clamp(0.5, image[axis] - 0.5) - 0.5;
+                                        let cell = value.floor();
+                                        let region = if fit != "contain" { 0 } else if q < 0. { -1 } else if q >= image[axis] { 1 } else { 0 };
+                                        let expected = ImageAxisSample { cell, fraction: (value - cell) as f32, region };
+                                        assert!(actual.expect("finite axis").same_bits(&expected), "axis={axis}, fit={fit}, x={x}, y={y}, size={size:?}, image={image:?}");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     fn png_uri(width: u32, height: u32) -> String {
         let mut buffer = Vec::new();

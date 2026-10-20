@@ -9,12 +9,17 @@ import {
   shaderRoot,
   sha256,
 } from './exact-prefix-proof-utils'
+import { wideGpuVectors } from './exact-prefix-division-vectors'
 const generator = join(repository, 'design-studio/scripts/generate-prefix-vectors.py')
 const oracle = join(repository, 'design-studio/scripts/generate-precision-vectors.py')
-await runProof('forma-prefix-math', [generator, oracle], async (proof) => {
+await runProof('forma-prefix-math', [generator, oracle, join(project,'scripts/exact-prefix-division-vectors.ts')], async (proof) => {
   const vectors = join(proof.output, 'vectors')
   await command('python3', [generator, '--output', vectors])
   const fixture = JSON.parse(await readFile(join(vectors, 'helper-vectors.json'), 'utf8'))
+  const wide = wideGpuVectors()
+  await proof.write('wide-division-vectors.json',wide)
+  fixture.rows.push(...wide.rows)
+  fixture.counts={...fixture.counts,...wide.counts}
   const helper = await readFile(join(project, 'src/kernel/gpu/prefix-int128.wgsl'), 'utf8')
   const sampling = await readFile(join(shaderRoot, 'sampling.wgsl'), 'utf8')
   if (!sampling.includes('fn bsParts') || !helper.includes('fn prefix_round_ratio'))
@@ -36,6 +41,9 @@ await runProof('forma-prefix-math', [generator, oracle], async (proof) => {
  case 3u:{result=prefix_mul_i32(a,bitcast<i32>(b.x));}
  case 4u:{result=prefix_shl(a,b.x);}
  case 5u:{result=prefix_sample(a.x,b.x);}
+ case 6u:{let value=prefix_round_wide(a,b,bitcast<i32>(inputs[at+9u]));result=vec4<u32>(value,0u,0u);}
+ case 7u:{let value=prefix_try_quotient(a,b,bitcast<f32>(inputs[at+9u]));result=vec4<u32>(value.quotient,value.accepted,0u,0u);}
+ case 8u:{let value=prefix_try_quotient(a,b,bitcast<f32>(inputs[at+9u]));result=value.remainder;}
  default:{}
  }
  outputs[id.x]=result;
@@ -45,7 +53,7 @@ await runProof('forma-prefix-math', [generator, oracle], async (proof) => {
     checks: fixture.rows.length,
     counts: fixture.counts,
     shaderSha256: sha256(code),
-    expectedSource: 'Independent Python integers/Fraction; no WGSL model in expectation generation',
+    expectedSource: 'Independent Python integers/Fraction plus BigInt rational division for wide/RNE and adversarial quotient estimates; no WGSL reducer in expectation generation',
   }
   if (proof.prepareOnly) return prepared
   const result = await proof.browser((page) =>

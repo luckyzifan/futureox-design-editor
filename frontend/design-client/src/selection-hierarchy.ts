@@ -1,12 +1,11 @@
-import { allParents } from './geometry'
+import { allParents, type ParentMap } from './geometry'
 import type { DesignDocument, DesignNode } from './model'
 
 const boundary = (node: DesignNode) => node.kind === 'frame' || node.kind === 'group' ||
   !!node.component || !!node.instance || !!node.componentSet
 
 /** Marquee stays in the entered hierarchy shared by the current selection. */
-export function marqueeScope(document: DesignDocument, page: string, selection: readonly string[]): string {
-  const parents = allParents(document)
+export function marqueeScope(document: DesignDocument, page: string, selection: readonly string[], parents: ParentMap = allParents(document)): string {
   const paths = selection.map(id => interactivePath(document, page, id, false, parents).slice(0, -1)).filter(path => path.length)
   if (!paths.length || paths.length !== selection.length) return page
   let shared = page
@@ -20,7 +19,7 @@ export function marqueeScope(document: DesignDocument, page: string, selection: 
 
 /** A page-local path, including the node, with inherited visibility/lock checks. */
 export function interactivePath(document: DesignDocument, page: string, id: string,
-  allowLocked = false, parents = allParents(document)): string[] {
+  allowLocked = false, parents: ParentMap = allParents(document)): string[] {
   const path: string[] = [], seen = new Set<string>()
   let at: string | undefined = id
   while (at && at !== page) {
@@ -34,7 +33,7 @@ export function interactivePath(document: DesignDocument, page: string, id: stri
 /** Selection establishes an entered scope via its ancestors, not via the
  * selected container itself. A second ordinary click therefore stays selected. */
 export function shallowSelectionHit(document: DesignDocument, selection: readonly string[],
-  hit: string, path: readonly string[], parents = allParents(document)): string {
+  hit: string, path: readonly string[], parents: ParentMap = allParents(document)): string {
   const entered = new Set<string>()
   for (const id of selection) {
     const ancestors: string[] = []
@@ -46,16 +45,15 @@ export function shallowSelectionHit(document: DesignDocument, selection: readonl
 }
 
 export function deeperSelectionHit(document: DesignDocument, selection: readonly string[],
-  hit: string, path: readonly string[]): string {
+  hit: string, path: readonly string[], parents?: ParentMap): string {
   const chain = path.filter(id => id === hit || boundary(document.nodes[id]))
   const selected = chain.findIndex(id => selection.includes(id))
   return selected >= 0 ? chain[Math.min(selected + 1, chain.length - 1)] :
-    shallowSelectionHit(document, selection, hit, path)
+    shallowSelectionHit(document, selection, hit, path, parents)
 }
 
 export function navigateSelection(document: DesignDocument, page: string, selection: readonly string[],
-  action: 'children' | 'parent' | 'next' | 'previous'): string[] | null {
-  const parents = allParents(document)
+  action: 'children' | 'parent' | 'next' | 'previous', parents: ParentMap = allParents(document)): string[] | null {
   const eligible = (id: string) => interactivePath(document, page, id, false, parents).length > 0
   const roots = [...new Set(selection)].filter(id => eligible(id) &&
     !interactivePath(document, page, id, false, parents).slice(0, -1).some(parent => selection.includes(parent)))

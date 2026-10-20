@@ -66,3 +66,29 @@ test('real image update publishes immutable resource bytes under a new document 
   expect(before.nodes[id].fills[0].image).toBeUndefined()
   expect(editor.snapshot().doc.nodes[id].fills[0].image).toBe(image)
 })
+
+test('background page edits and color changes cannot restore obsolete completed pixels', () => {
+  const { editor, first, second, text } = fixture(), cache = new PageResidencyCache<object>()
+  const original = editor.snapshot().doc, pixels = {}
+  cache.synchronize(original, 'session'); cache.store(first, [pixels], 4)
+  editor.switchPage(second)
+  editor.update([text], { fills: [paint('#ff0000')] }, 'Background page edit')
+  expect(editor.snapshot().doc).not.toBe(original)
+  expect(cache.synchronize(editor.snapshot().doc, 'session')).toBe(true)
+  editor.switchPage(first); expect(cache.take(first)).toBeUndefined()
+  expect(cache.hits).toBe(0)
+})
+
+test('real managed color edits revoke cached pixels across undo and redo', async () => {
+  const { colorFixture } = await import('./color-fixture')
+  const editor = new Editor(colorFixture()); editors.push(editor)
+  const cache = new PageResidencyCache<object>(), page = editor.state.page
+  cache.synchronize(editor.snapshot().doc, 'device:1'); cache.store(page, [{}], 4)
+  editor.change('亮度', document => { document.colorManagement!.peakLuminanceNits = 2000 })
+  expect(cache.synchronize(editor.snapshot().doc, 'device:1')).toBe(true)
+  expect(cache.take(page)).toBeUndefined()
+  cache.store(page, [{}], 4); editor.undo()
+  expect(cache.synchronize(editor.snapshot().doc, 'device:1')).toBe(true)
+  cache.store(page, [{}], 4); editor.redo()
+  expect(cache.synchronize(editor.snapshot().doc, 'device:1')).toBe(true)
+})

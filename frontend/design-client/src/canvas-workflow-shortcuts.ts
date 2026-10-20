@@ -32,7 +32,7 @@ export function nudgeSelectionDimensions(editor: Editor, command: DimensionNudge
   const { axis, direction, large } = dimensionNudges[command]
   const preference = nudgePreference.getSnapshot()
   const delta = direction * (large ? preference.big : preference.small)
-  const document = editor.state.doc, parents = allParents(document)
+  const document = editor.state.doc, parents = editor.parentMap()
   const edits = new Map(editor.topSelection().flatMap(id => {
     if (!interactivePath(document, editor.state.page, id, false, parents).length) return []
     const node = document.nodes[id], units = propertyUnits(document, id, parents)
@@ -55,7 +55,7 @@ export function nudgeSelectionDimensions(editor: Editor, command: DimensionNudge
  * Neither includes hidden/locked paths or claims the forced-selection variants. */
 export function selectAllCanvasIds(document: DesignDocument, page: string, selection: readonly string[], profile: ShortcutProfile): string[] {
   const parents = allParents(document)
-  const scope = profile === 'sketch-like' ? marqueeScope(document, page, selection) : page
+  const scope = profile === 'sketch-like' ? marqueeScope(document, page, selection, parents) : page
   const children = scope === page ? document.pages.find(value => value.id === page)?.children : document.nodes[scope]?.children
   return (children || []).filter(id => interactivePath(document, page, id, false, parents).length > 0)
 }

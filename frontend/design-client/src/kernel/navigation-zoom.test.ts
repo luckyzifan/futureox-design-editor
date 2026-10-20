@@ -96,6 +96,35 @@ test('fixed-scale pans never enter the temporary zoom tier', () => {
   }
 })
 
+test('opted-in pointer pan stays provisional through pauses and releases the exact final camera immediately', () => {
+  const owner = new NavigationZoom(camera(32), { includeTranslation: true })
+  expect(owner.update(camera(32), 0, true).active).toBe(true)
+  for (let index = 1; index <= 20; index++) {
+    owner.update(camera(32, index * 12.25, index * -3.5), index * 16, true)
+    expect(owner.frame(index * 16).active).toBe(true)
+  }
+  expect(owner.frame(5000).active).toBe(true)
+  const final = camera(32, 250.375, -80.125)
+  const released = owner.update(final, 5001, false)
+  expect(released).toMatchObject({ active: false, view: final })
+  expect(owner.frame(5010)).toBe(released)
+  expect(owner.update(final, 5020)).toBe(released)
+})
+
+test('opted-in wheel translation waits for the existing quiet boundary and emits one latest exact camera', () => {
+  const owner = new NavigationZoom(camera(32), { includeTranslation: true }), log = journal(owner)
+  for (let at = 0; at <= 640; at += 80) {
+    log.record(at, owner.update(camera(32, at + 1, -at), at))
+    log.record(at + 16, owner.frame(at + 16))
+    expect(owner.active).toBe(true)
+  }
+  log.record(799, owner.frame(799)); expect(owner.active).toBe(true)
+  log.record(800, owner.frame(800)); expect(owner.active).toBe(false)
+  const finals = log.samples.filter(sample => !sample.value.active)
+  expect(finals).toHaveLength(1)
+  expect(finals[0].value.view).toEqual(camera(32, 641, -640))
+})
+
 test('a pan during zoom retains the most recent camera for the exact final sample', () => {
   const owner = new NavigationZoom(camera(1))
   owner.update(camera(32), 0)

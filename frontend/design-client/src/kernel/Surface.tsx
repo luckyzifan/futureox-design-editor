@@ -51,6 +51,8 @@ export type PresentedFrame = ExactPresentation & {
 export type SurfaceProps = {
   /** Opaque Canvas identity for opt-in numeric input diagnostics only. */
   navigationInputOwner?: object
+  /** Explicit hand/space/middle-button pan ownership; never object editing. */
+  panGestureActive?: boolean
   overlay?: { document: DesignDocument; pageId: string; epoch: number; commands: import('./gpu/canvas-overlay').CanvasOverlay }
   interaction?: import('./interaction-layers').InteractionProps
   interactionPreview?: boolean

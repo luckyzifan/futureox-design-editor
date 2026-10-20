@@ -5,7 +5,7 @@ import { createRenderDiagnostics, PREFIX } from '../../design-desktop/src/render
 export const DocumentStage = {
   read: 201, decode: 202, admission: 203, layout: 204, derivedValidation: 205,
   adoption: 206, recoveryWait: 207, encode: 208, leave: 209, freshRead: 210,
-  reuse: 211, prepare: 212, save: 213, recovery: 214, baselineReuse: 215,
+  reuse: 211, prepare: 212, save: 213, recovery: 214, baselineReuse: 215, snapshotReuse: 216, rawJsonPrepare: 219,
 } as const
 let serial = 0
 let collector: ReturnType<typeof createRenderDiagnostics> | undefined

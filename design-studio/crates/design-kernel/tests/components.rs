@@ -357,9 +357,11 @@ fn expanded_text_payloads_have_a_byte_budget() {
         roots.push(id)
     }
     let mut d = doc(nodes, &roots.iter().map(String::as_str).collect::<Vec<_>>());
+    let before = d.clone();
     let error = components::resolve(&mut d).unwrap_err();
     assert!(error.contains("32 MiB"));
     assert_eq!(d.nodes.len(), 122);
+    assert_eq!(d, before, "byte-budget failure cannot publish a partial expansion");
 }
 
 fn reference_document() -> Document {
@@ -625,4 +627,75 @@ fn instance_reference_overrides_reject_missing_and_mistyped_references_and_alias
     let error =
         components::changes(&serde_json::to_string(&d).unwrap(), &Fonts::new()).unwrap_err();
     assert!(error.contains("cycle"));
+}
+
+#[test]
+fn staged_expansion_keeps_read_baseline_and_input_on_late_override_error() {
+    for property_defaults in [false, true] {
+        let mut d = basic();
+        if property_defaults {
+            d.nodes.get_mut("main").unwrap().component.as_mut().unwrap().properties =
+                serde_json::from_value(json!({
+                    "title":{"name":"Title","kind":"text","targetKey":"label","defaultValue":"Changed source default"}
+                })).unwrap();
+        }
+        // The first instance expands successfully before the second fails.
+        // Both the borrowed source and property-default-owned source must
+        // retain the entire original document on failure.
+        d.nodes.insert("z".into(), serde_json::from_value(instance("z", "main")).unwrap());
+        d.pages[0].children.push("z".into());
+        d.nodes.get_mut("z").unwrap().instance.as_mut().unwrap().overrides.insert(
+            "label".into(), serde_json::from_value(json!({"width":"not a number"})).unwrap(),
+        );
+        let before = d.clone();
+        assert!(components::resolve(&mut d).unwrap_err().contains("Invalid instance override"));
+        assert_eq!(d, before);
+    }
+}
+
+#[test]
+fn escaped_instance_ids_support_add_remove_and_stable_changes() {
+    let main = "main\\\"😀";
+    let label = "label\\\"😀";
+    let owner = "owner\\\"😀";
+    let mut text = shape(label, "text");
+    text["text"] = json!("A quoted \\ \" label");
+    let mut d = doc(vec![main_node(main, &[label]), text, instance(owner, main)], &[main, owner]);
+    resolve(&mut d);
+    let old = generated(&d, owner, label);
+    assert_eq!(resolved_changes(&d), d);
+    d.nodes.insert("replacement".into(), serde_json::from_value(shape("replacement", "ellipse")).unwrap());
+    d.nodes.get_mut(main).unwrap().children = vec!["replacement".into()];
+    d.nodes.remove(label);
+    let next = resolved_changes(&d);
+    assert!(!next.nodes.contains_key(&old));
+    let new = generated(&next, owner, "replacement");
+    assert_eq!(next.nodes[&new].kind, "ellipse");
+    assert_eq!(next.nodes[owner].children, [new]);
+    assert_eq!(resolved_changes(&next), next);
+}
+
+#[test]
+fn missing_component_reference_retains_original_document() {
+    let mut d = basic();
+    d.nodes.get_mut("i").unwrap().instance.as_mut().unwrap().component_id = "missing".into();
+    let before = d.clone();
+    assert!(components::resolve(&mut d).unwrap_err().contains("Missing main component"));
+    assert_eq!(d, before);
+}
+
+#[test]
+fn unrelated_payload_allocation_survives_component_resolution() {
+    let mut d = basic();
+    let mut unrelated = shape("unrelated", "text");
+    unrelated["text"] = json!("unrelated payload ".repeat(4096));
+    d.nodes.insert("unrelated".into(), serde_json::from_value(unrelated).unwrap());
+    d.pages[0].children.push("unrelated".into());
+    let text_allocation = d.nodes["unrelated"].text.as_ptr();
+    let text = d.nodes["unrelated"].text.clone();
+    for _ in 0..2 {
+        resolve(&mut d);
+        assert_eq!(d.nodes["unrelated"].text, text);
+        assert_eq!(d.nodes["unrelated"].text.as_ptr(), text_allocation, "unrelated payload must stay borrowed through staging and retain its allocation");
+    }
 }

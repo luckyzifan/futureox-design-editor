@@ -11,6 +11,11 @@ export function useAdaptivePanels() {
     root.setAttribute('data-reduced-motion', String(preferences.reducedMotion))
     return () => { if (previous === null) root.removeAttribute('data-reduced-motion'); else root.setAttribute('data-reduced-motion', previous) }
   }, [preferences.reducedMotion])
+  useEffect(() => {
+    const root = document.documentElement, previous = root.getAttribute('lang')
+    root.setAttribute('lang', preferences.locale)
+    return () => { if (previous === null) root.removeAttribute('lang'); else root.setAttribute('lang', previous) }
+  }, [preferences.locale])
   // Compact screens start with panels closed; opening one never hides the other's pending fields.
   const [compactLeft, setCompactLeft] = useState(false), [compactRight, setCompactRight] = useState(false)
   const leftOpen = narrow ? compactLeft : preferences.leftOpen, rightOpen = narrow ? compactRight : preferences.rightOpen

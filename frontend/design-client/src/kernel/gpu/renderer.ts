@@ -1,3 +1,4 @@
+import { prefixAlignedStrip } from './prefix-band'
 import { gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { markRenderFailure } from '../render-failure-telemetry'
 import { backdropEffect, backdropRadius, classifyCompiledSourceReuse } from '../render-dependency'
@@ -31,6 +32,7 @@ import { parameters, blends, rect, intersect } from './types'
 import type { Paint, Effect, ImageAdjust } from '../../model'
 import { CoverageCache } from './coverage-cache'
 import { ImmutableKernelCache, immutableKernelKey } from './immutable-kernel-cache'
+import { CoefficientByteCache } from './coefficient-byte-cache'
 import { ReverseIndexMap } from './reverse-index-map'
 import { solidRgba8 } from './rgba8'
 import { batchableSolid, solidInstances } from './solid-batch'
@@ -386,6 +388,9 @@ export class GpuRenderer {
   private blurKernels = new Map<string, Surface>()
   private certifiedKernels = new Map<string, Surface>()
   private kernelCache = new ImmutableKernelCache(4 * 1024 * 1024, 64, texture => this.forgetUpload(texture))
+  // CPU-only retention for the pure certified-tent constructor. This does
+  // not enable GPU kernel residency or alter any upload/fence lifetime.
+  private coefficientBytes = new CoefficientByteCache(1024 * 1024, 64)
   private retiredKernels: { texture: Texture; epoch: number }[] = []
   private kernelBuilds = 0
   private kernelResidentHits = 0
@@ -397,6 +402,9 @@ export class GpuRenderer {
       this.driver.resourceEpoch !== undefined && this.driver.completedResourceEpoch !== undefined
   }
   private coordinateMaps = new Set<Texture>()
+  // Row strips share one immutable, certified support field per sample.
+  // Samples that cannot separate keep their original dense strip fallback.
+  private filterImageFields?: { rect: Rect; fields: Map<string, Surface | null>; pinned: Set<Texture> }
   private imageGrids = new Map<GpuPaint, Map<number, Surface>>()
   private gradientLookups = new Map<GpuPaint, Surface>()
   private textureLookups = new Map<string, Surface>()
@@ -1288,6 +1296,53 @@ export class GpuRenderer {
     // dense field. Preserve the original GPU budget check before a dense
     // fallback allocates its (bounded) CPU coordinate array.
     const compact = this.driver.managed && this.driver.name === 'webgpu' && this.scene.compactImageFields !== false && import.meta.env.VITE_DESIGN_IMAGE_AXES !== '0'
+    const scope = compact && import.meta.env.VITE_DESIGN_STREAM_IMAGE_FIELDS !== '0' ? this.filterImageFields : undefined
+    if (scope && containsRect(scope.rect, n.rect) && exactBlendLattice([scope.rect, n.rect])) {
+      const key = JSON.stringify([(n.previewSource || n).matrix, n.size, baseDims, paintJson, sample, level, origin],
+        (_key, value) => Object.is(value, -0) ? '-0' : value)
+      let field = scope.fields.get(key)
+      if (field === undefined) {
+        const inputs = ['image-axes-support', scope.rect, key]
+        const retain = this.optimized && import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS !== '0'
+        const cached = retain ? this.materialFields.get(JSON.stringify(inputs,
+          (_key, value) => Object.is(value, -0) ? '-0' : value), new Uint32Array()) : undefined
+        field = null
+        if (cached) {
+          this.fieldHits++
+          this.busy.add(cached); this.used.add(cached)
+          field = {texture: cached, rect: scope.rect}
+        } else {
+          // Whole-support admission is optional. A larger proof may fail the
+          // composed-transform precision/size guard even when a strip is valid.
+          // Let the unchanged strip path report genuinely invalid input.
+          const started = performance.now()
+          let values: Float32Array = new Float32Array()
+          try {
+            values = image_sampling_axes_placed(JSON.stringify(scope.rect), ...arguments_.slice(1) as
+              [Float64Array, Float64Array, Uint32Array, string, number, number, Int32Array])
+          } catch { /* bounded strip proof below remains authoritative */ }
+          this.fieldBuildMs += performance.now() - started
+          if (values.length && this.workingBytes + values.byteLength <= this.frameBudget) {
+            field = this.materialField(inputs, scope.rect, () => {
+              this.imageFieldBytes += values.byteLength
+              return values
+            }, this.driver.uploadParameters, () => [Math.max(scope.rect.w, scope.rect.h), 2], values.byteLength, retain)
+          }
+        }
+        if (field) {
+          this.imageAxes.set(field.texture, true)
+          // Cache admission can fail at its byte/count ceiling. Such a
+          // transient must survive checkpoints until the filter's last read.
+          scope.pinned.add(field.texture)
+        }
+        scope.fields.set(key, field)
+      }
+      if (field) {
+        this.touch(field.texture)
+        this.imageAxisFields++
+        return field
+      }
+    }
     let separated: boolean | undefined
     const surface = this.materialField(['image-grid',this.driver.managed,compact,[n.rect.w,n.rect.h],(n.previewSource || n).rect,
       (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin], n.rect, () => {
@@ -1385,6 +1440,8 @@ export class GpuRenderer {
         : [mask]
     return this.run(2, n.rect, inputs, (u) => {
       this.configurePaint(u, n, p)
+      if (p.kind === 'image' && inputs[3])
+        u.set([inputs[3].rect.x, inputs[3].rect.y], 204)
     })
   }
   private configurePaint(u: Float32Array, n: GpuNode, p: GpuPaint) {
@@ -1694,18 +1751,19 @@ export class GpuRenderer {
     }
     const pooled: Texture[] = []
     for (const list of this.free.values()) pooled.push(...list)
+    const coordinates = [...this.coordinateMaps].filter(texture => !this.filterImageFields?.pinned.has(texture))
     // Dead uploads leave first, then the oldest pool generations and the
     // oldest cached coordinates. One bounded batch per checkpoint cycle keeps
     // each GPU wait short and lets younger reusable entries survive.
     const imagesUnderPressure = this.workingBytes > this.frameBudget * .75 && this.images.size > 0
-    if (!this.retiredUploads.length && !pooled.length && !this.coordinateMaps.size && !imagesUnderPressure)
+    if (!this.retiredUploads.length && !pooled.length && !coordinates.length && !imagesUnderPressure)
       return
     // A large managed source image or ancestor surface can keep the ledger
     // above 64 MiB throughout a frame. Waiting on the GPU for every tiny dead
     // leaf then destroys reusable targets and serializes hundreds of nodes.
     // Reclaim one meaningful batch, or synchronize immediately at the pressure
     // line; the unchanged allocation gate still enforces the 256 MiB ceiling.
-    const reclaimableBytes = [...pooled, ...this.retiredUploads, ...this.coordinateMaps]
+    const reclaimableBytes = [...pooled, ...this.retiredUploads, ...coordinates]
       .reduce((sum, texture) => sum + texture.bytes, 0)
     if (!pressure && this.workingBytes < this.frameBudget * .75 && reclaimableBytes < RECLAIM_BATCH_BYTES) return
     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
@@ -1714,7 +1772,7 @@ export class GpuRenderer {
     // batch below image pressure can use prior-frame completion evidence.
     pooled.sort((a, b) => (this.lastUsed.get(a) || 0) - (this.lastUsed.get(b) || 0))
     let completedPoolEpoch: number | undefined
-    if (required === 0 && !this.retiredUploads.length && !this.coordinateMaps.size &&
+    if (required === 0 && !this.retiredUploads.length && !coordinates.length &&
         this.workingBytes <= this.frameBudget * .75) {
       const completed = this.driver.completedResourceEpoch, current = this.driver.resourceEpoch
       if (Number.isSafeInteger(completed) && Number.isSafeInteger(current)) {
@@ -1738,10 +1796,10 @@ export class GpuRenderer {
       admissionBudgetBytes: this.frameBudget, admissionReclaimableBytes: reclaimableBytes,
       admissionPoolBytes: pooled.reduce((bytes, texture) => bytes + texture.bytes, 0),
       admissionPoolCount: pooled.length,
-      admissionUploadCount: this.retiredUploads.length + this.coordinateMaps.size,
-      admissionRetiredKinds: (pooled.length ? 1 : 0) | (this.retiredUploads.length ? 2 : 0) | (this.coordinateMaps.size ? 4 : 0) | (imagesUnderPressure ? 8 : 0),
+      admissionUploadCount: this.retiredUploads.length + coordinates.length,
+      admissionRetiredKinds: (pooled.length ? 1 : 0) | (this.retiredUploads.length ? 2 : 0) | (coordinates.length ? 4 : 0) | (imagesUnderPressure ? 8 : 0),
       admissionRetiredUploadCount: this.retiredUploads.length,
-      admissionCoordinateCount: this.coordinateMaps.size,
+      admissionCoordinateCount: coordinates.length,
       admissionImageCount: this.images.size,
     } : undefined
     // Submission is still mandatory. Only the completion wait may be omitted,
@@ -1771,7 +1829,7 @@ export class GpuRenderer {
       destroyed++
       batchBytes += texture.bytes
     }
-    const uploads = [...this.coordinateMaps].sort(
+    const uploads = coordinates.sort(
       (a, b) => (this.lastUsed.get(a) || 0) - (this.lastUsed.get(b) || 0),
     )
     for (const texture of uploads) {
@@ -2286,12 +2344,20 @@ export class GpuRenderer {
     if (!exactBlendLattice([input, output]) || input.w > 8192 || input.h > 8192) return
     // Reserve room for the persistent horizontal result and four RGBA strips.
     await this.reclaimScratch(output.w*input.h*16 + input.w*64*16*4)
+    const alignBands = this.driver.name === 'webgpu' && this.prefixAllowed &&
+      import.meta.env.VITE_DESIGN_PREFIX_ALIGNED_STRIPS !== '0' &&
+      !this.filterKernel('rational-tent', radius, () => rational_tent_kernel_rgba(radius)).texture.prefixRationalUnsupported
+    const stripRows = alignBands ? prefixAlignedStrip(input.w) : 64
+    const stripColumns = alignBands ? prefixAlignedStrip(input.h) : 64
+    const previousFields = this.filterImageFields
+    this.filterImageFields = { rect: input, fields: new Map(), pinned: new Set() }
+    try {
     const horizontal = this.acquire({x:output.x,y:input.y,w:output.w,h:input.h})
     this.driver.clear(horizontal.texture)
-    for (let y=input.y;y<input.y+input.h;y+=64) {
+    for (let y=input.y;y<input.y+input.h;y+=stripRows) {
       await this.reclaimScratch()
       const pause=this.yieldEncoding(); if(pause) await pause
-      const region={x:input.x,y,w:input.w,h:Math.min(64,input.y+input.h-y)}
+      const region={x:input.x,y,w:input.w,h:Math.min(stripRows,input.y+input.h-y)}
       let resolved:Surface|undefined
       for(let i=0;i<4;i++) {
         const layer=this.filterSource(n,region,i)
@@ -2310,10 +2376,10 @@ export class GpuRenderer {
     this.driver.clear(blurred.texture)
     // Bound vertical encoding too: one whole-width prefix pass can otherwise
     // delay camera-presentation messages behind hundreds of dispatches.
-    for(let x=output.x;x<output.x+output.w;x+=64){
+    for(let x=output.x;x<output.x+output.w;x+=stripColumns){
       const pause=this.yieldEncoding();if(pause)await pause
       await this.reclaimScratch()
-      const region={x,y:output.y,w:Math.min(64,output.x+output.w-x),h:output.h}
+      const region={x,y:output.y,w:Math.min(stripColumns,output.x+output.w-x),h:output.h}
       const filtered=this.exactTentAxis(horizontal,radius,1,region)
       const u=parameters(output,filtered.rect);u[16]=0
       this.driver.pass(blurred.texture,u,[filtered.texture],{x:x-output.x,y:0,w:region.w,h:region.h})
@@ -2337,6 +2403,9 @@ export class GpuRenderer {
     this.release(blurred)
     this.orderedEffectLayers++
     return targets
+    } finally {
+      this.filterImageFields = previousFields
+    }
   }
   private async applySampleEffects(
     n: GpuNode,
@@ -2493,7 +2562,15 @@ export class GpuRenderer {
     let texture = this.retainKernels ? this.kernelCache.get(key, this.driver.resourceEpoch!) : undefined
     if (texture) this.kernelResidentHits++
     else {
-      const values = build()
+      const cpuKey = operator === 'certified-tent' ? `cpu-u8-v1/${key}` : undefined
+      let values: Uint8Array | Float32Array | undefined = cpuKey ? this.coefficientBytes.get(cpuKey) : undefined
+      if (!values) {
+        values = build()
+        // Only this audited Uint8Array constructor is eligible. Other kernel
+        // families retain the exact existing construction path.
+        if (cpuKey && values instanceof Uint8Array)
+          values = this.coefficientBytes.put(cpuKey, values) || values
+      }
       const [width, height] = shape ? shape(values) : [values.length / 4, 1]
       const bytes = values.byteLength * (values instanceof Uint8Array && this.driver.managed ? 4 : 1)
       if (this.overBudget(bytes, width, height)) throw this.budgetError('GPU 表面内存预算超限')
@@ -3509,6 +3586,7 @@ export class GpuRenderer {
     }
   }
   dispose() {
+    this.coefficientBytes.clear()
     this.encodeYield.dispose()
     this.interactionPrefix = undefined
     this.stationaryBackdrop = undefined
