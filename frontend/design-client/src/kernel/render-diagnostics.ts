@@ -1,3 +1,4 @@
+import { inheritRenderFailure } from './render-failure-telemetry'
 /** Privacy-safe companion to render-profile's stage timings.
  * Recording is opt-in, in-memory and bounded. Only allowlisted scalar values
  * enter the journal: never document/node IDs, image URIs, payloads or raw
@@ -69,7 +70,7 @@ export function renderErrorWithBudget(error: unknown, message?: string, candidat
   const budgetDiagnostic = renderBudgetDiagnostic(error, candidate)
   if (budgetDiagnostic && renderDiagnosticError(result) === 'budget')
     Object.defineProperty(result, 'budgetDiagnostic', { value: budgetDiagnostic })
-  return result
+  return inheritRenderFailure(error, result)
 }
 
 export function renderFailureEnvelope(error: unknown) {

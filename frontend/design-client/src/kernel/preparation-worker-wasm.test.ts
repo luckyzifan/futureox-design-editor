@@ -61,3 +61,23 @@ test('real WASM owner, resource, retry, failed load and ABA receipts are fenced'
   await first.request('interaction','load_document',[json])
   expect((await first.request('interaction','render_png',[options])).value).toEqual(retained)
 })
+
+test('real WASM guarded patch rejects stale out-of-band/lost ACK and malformed guards before state mutation', async () => {
+  const client = await setup(), json = JSON.stringify(document())
+  expect((await client.request('canvas','preparation_capabilities_v1')).value).toMatchObject({guardedPatchReceiptV1:true})
+  const initial = await client.request('canvas','load_document',[json])
+  const changed = {...document().nodes.r,width:24,unknownAuthoredField:{retained:'host'}}
+  const patch = JSON.stringify({nodes:{r:changed},fields:{}})
+  const current = await client.request('canvas','apply_document_patch_with_damage',[patch,{expectedBaseReceipt:initial.stateReceipt}])
+  for (const guard of [{expectedBaseReceipt:initial.stateReceipt}, {expectedBaseReceipt:current.stateReceipt,extra:true}, null, {}]) {
+    await expect(client.request('canvas','apply_document_patch_with_damage',[patch,guard])).rejects.toThrow()
+  }
+  const request = {operationId:1,baseReceipt:current.stateReceipt,target:'interaction',expectedTarget:null,delta:[]}
+  const derived = await client.request('interaction','derive_document_v1',[request])
+  const retained = (await client.request('interaction','render_png',[options])).value
+  const resources = await client.request('canvas','initialize',[true])
+  await expect(client.request('canvas','apply_document_patch_with_damage',[patch,{expectedBaseReceipt:current.stateReceipt}])).rejects.toThrow('STALE_BASE')
+  await expect(client.request('canvas','apply_document_patch_with_damage',['invalid',{expectedBaseReceipt:resources.stateReceipt}])).rejects.toThrow()
+  await expect(client.request('interaction','derive_document_v1',[{...request,operationId:2,baseReceipt:resources.stateReceipt,expectedTarget:derived.stateReceipt}])).rejects.toThrow('STALE_BASE')
+  expect((await client.request('interaction','render_png',[options])).value).toEqual(retained)
+})

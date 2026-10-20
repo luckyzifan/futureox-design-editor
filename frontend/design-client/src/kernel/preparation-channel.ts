@@ -17,7 +17,7 @@ export class PreparationChannel {
   private sequence = 0
   private operationSequence = 0
   private receipts = new Map<string, PreparationStateReceiptV1>()
-  private capability?: Promise<boolean>
+  private capability?: Promise<{ emptyDeltaDerivation: boolean; guardedPatchReceiptV1: boolean }>
   private static mutates(method: PreparationMethod) {
     return ['initialize', 'load_document', 'apply_document_patch_with_damage', 'apply_interaction_transforms', 'derive_document_v1'].includes(method)
   }
@@ -26,14 +26,22 @@ export class PreparationChannel {
       job.lane === lane)) return undefined
     return this.receipts.get(lane)
   }
-  supportsDerivation(): Promise<boolean> {
+  private capabilities() {
     return this.capability ??= this.request('canvas', 'preparation_capabilities_v1').then(reply => {
-      const value = reply.value as { protocol?: unknown; emptyDeltaDerivation?: unknown } | undefined
-      return value?.protocol === 1 && value.emptyDeltaDerivation === true
-    }, () => false)
+      const value = reply.value as { protocol?: unknown; emptyDeltaDerivation?: unknown; guardedPatchReceiptV1?: unknown } | undefined
+      return { emptyDeltaDerivation: value?.protocol === 1 && value.emptyDeltaDerivation === true,
+        guardedPatchReceiptV1: value?.protocol === 1 && value.guardedPatchReceiptV1 === true }
+    }, () => ({ emptyDeltaDerivation: false, guardedPatchReceiptV1: false }))
+  }
+  supportsDerivation(): Promise<boolean> { return this.capabilities().then(value => value.emptyDeltaDerivation) }
+  supportsGuardedPatch(): Promise<boolean> { return this.capabilities().then(value => value.guardedPatchReceiptV1) }
+  private static guardedPatch(job: Pick<Job, 'method' | 'args'>) {
+    return job.method === 'apply_document_patch_with_damage' && job.args.length === 2
   }
   nextDerivationOperation() { return ++this.operationSequence }
   private readonly originChannelId = (() => { const words = crypto.getRandomValues(new Uint32Array(2)); return (words[0] & 0xffff) * 0x100000000 + words[1] })()
+  private observedBackendCode = 0
+  get diagnosticBackendCode() { return this.observedBackendCode }
   private closed?: Error
   private active?: Job
   private queued: Job[] = []
@@ -48,6 +56,7 @@ export class PreparationChannel {
         const p = reply.progress
         if (p && (p.backendCode === 1 || p.backendCode === 2) && Number.isInteger(p.boundaryCode) && p.boundaryCode >= 1 && p.boundaryCode <= 16 &&
           (p.boundaryDurationMs === undefined || (Number.isFinite(p.boundaryDurationMs) && p.boundaryDurationMs >= 0 && p.boundaryDurationMs <= 120000))) {
+          this.observedBackendCode = p.backendCode
           job.backendCode = p.backendCode; job.boundaryCode = p.boundaryCode
           this.trace(job, 5, { backendCode: p.backendCode, boundaryCode: p.boundaryCode, ...(p.boundaryDurationMs === undefined ? {} : { boundaryDurationMs: p.boundaryDurationMs }) })
         }
@@ -58,7 +67,8 @@ export class PreparationChannel {
       this.active = undefined
       if (PreparationChannel.mutates(job.method)) {
         if (!reply.error && reply.stateReceipt) this.receipts.set(job.lane, reply.stateReceipt)
-        else if (job.method !== 'derive_document_v1' || !reply.error) this.receipts.delete(job.lane)
+        else if (!(job.method === 'derive_document_v1' && reply.error) &&
+          !(PreparationChannel.guardedPatch(job) && (reply.error === 'STALE_BASE' || reply.error === 'PATCH_GUARD_SCHEMA'))) this.receipts.delete(job.lane)
       }
       job.cleanup?.()
       // A late packet owns only CPU bytes, never a GPU resource. Do not
@@ -93,7 +103,7 @@ export class PreparationChannel {
         signal.addEventListener('abort', cancel, { once: true })
         job.cleanup = () => signal.removeEventListener('abort', cancel)
       }
-      if (PreparationChannel.mutates(method) && method !== 'derive_document_v1') {
+      if (PreparationChannel.mutates(method) && method !== 'derive_document_v1' && !PreparationChannel.guardedPatch(job)) {
         this.receipts.delete(lane)
       }
       this.queued.push(job)

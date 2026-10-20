@@ -200,6 +200,21 @@ export function previewUniforms(
     u.set([p.offsetX, p.offsetY, p.scale, 0], 36)
   }
 }
+/** Scalar admission snapshot captured BEFORE the queue wait; never reclaimed-byte totals. */
+export type GpuAdmissionDiagnostic = Readonly<{
+  /** 0=proactive cleanup, 1=known-allocation preflight. */
+  admissionKind: 0 | 1
+  admissionPressure: 0 | 1
+  admissionRequiredBytes: number
+  admissionWorkingBytes: number
+  admissionBudgetBytes: number
+  admissionReclaimableBytes: number
+  admissionPoolBytes: number
+  admissionPoolCount: number
+  admissionUploadCount: number
+  admissionImageCount: number
+}>
+
 export interface Driver {
   /** Submit encoded work in queue order without waiting or freeing resources.
    * Used at CPU task yields so display and raster submissions can interleave. */
@@ -274,7 +289,7 @@ export interface Driver {
   prepareFilters?(prefixUseful?: boolean): Promise<void>
   begin(vertices: Float32Array, curves?: Float32Array): void
   /** Complete prior commands before reclaiming frame-local scratch textures. */
-  checkpoint?(reason?: import('./queue-wait-stats').QueueWaitReason): Promise<void>
+  checkpoint?(reason?: import('./queue-wait-stats').QueueWaitReason, admission?: GpuAdmissionDiagnostic): Promise<void>
   /** Raw premultiplied storage; used by exact Rust f64 effect composition. */
   readSurface?(source: Texture): Promise<Float32Array>
   create(width: number, height: number): Texture

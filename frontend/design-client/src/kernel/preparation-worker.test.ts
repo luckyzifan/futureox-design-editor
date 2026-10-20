@@ -65,7 +65,7 @@ test('a successful canvas patch renews exact-source fork without another font/lo
 
 test('explicit empty derive uses receipts without a full snapshot and rejects stale target/retry', async () => {
   const client = await setup()
-  expect((await client.request('canvas', 'preparation_capabilities_v1')).value).toEqual({ protocol: 1, emptyDeltaDerivation: true })
+  expect((await client.request('canvas', 'preparation_capabilities_v1')).value).toEqual({ protocol: 1, emptyDeltaDerivation: true, guardedPatchReceiptV1: true })
   const loaded = await client.request('canvas', 'load_document', ['{"id":"document"}'])
   const request = { operationId: 1, baseReceipt: loaded.stateReceipt, target: 'interaction', expectedTarget: null, delta: [] }
   const derived = await client.request('interaction', 'derive_document_v1', [request])

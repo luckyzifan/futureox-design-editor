@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest'
-import { blank } from '../model'
+import { blank, node } from '../model'
 import type { PreparationStateReceiptV1 } from './preparation-state'
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules() })
 const receipt = (nonce = '1'): PreparationStateReceiptV1 => ({ protocol: 1, sessionGeneration: 'session', canvasOwner: 'owner', documentIncarnation: 'incarnation', lane: 'canvas', synchronizedRevision: nonce, resourceEpoch: nonce, nonce })
@@ -110,5 +110,70 @@ test('cancelled accepted synchronizations remain bounded and reset clears captur
     expect((f.client as any).synchronizationInputs.size).toBe(0)
     f.ack(one)
     expect((f.client as any).authoredPreparation.receiptFor(f.document)).toBeUndefined()
+  } finally { f.client.dispose() }
+})
+test('acknowledged property edit, undo and redo bind exact after objects and derive without full serialization', async () => {
+  const f = await fixture(), shape = node('rectangle', 1, 1, 10, 10)
+  f.document.nodes[shape.id] = shape; f.document.pages[0].children = [shape.id]
+  Object.assign(f.document, { extension: { field: null, keep: ['raw'] } })
+  const edited = { ...f.document, nodes: { ...f.document.nodes, [shape.id]: { ...shape, opacity: .5 } } }
+  try {
+    const initial = f.render(), one = await f.next(1); f.ack(one); f.finish(one); await initial
+    let count = 1, lastReceipt = receipt()
+    for (const target of [edited, f.document, edited]) {
+      const change = f.render(target), request = await f.next(++count)
+      expect(request.patchBaseReceipt).toEqual(lastReceipt); expect(request.document).toBeUndefined()
+      lastReceipt = receipt(String(count)); f.ack(request, lastReceipt); f.finish(request); await change
+      const serializations = f.native.request.mock.calls.length
+      const drag = f.render(target, { interactionChannel: true }), derived = await f.next(++count)
+      expect(derived.deriveFrom).toEqual(lastReceipt); expect(derived.document).toBeUndefined(); expect(derived.documentPatch).toBeUndefined()
+      expect(f.native.request).toHaveBeenCalledTimes(serializations)
+      f.ack(derived, null); f.finish(derived); await drag
+    }
+    expect((edited as any).extension).toBe((f.document as any).extension)
+  } finally { f.client.dispose() }
+})
+test('lost/reordered patch ACK, resource updates and rejected patch cannot publish postpatch authority', async () => {
+  const f = await fixture(), shape = node('rectangle', 1, 1, 10, 10)
+  f.document.nodes[shape.id] = shape; f.document.pages[0].children = [shape.id]
+  const edited = { ...f.document, nodes: { ...f.document.nodes, [shape.id]: { ...shape, opacity: .5 } } }
+  const again = { ...edited, nodes: { ...edited.nodes, [shape.id]: { ...edited.nodes[shape.id], opacity: .75 } } }
+  try {
+    const initial = f.render(), one = await f.next(1); f.ack(one); f.finish(one); await initial
+    const a = f.render(edited), two = await f.next(2)
+    const b = f.render(again), three = await f.next(3)
+    expect(two.patchBaseReceipt).toEqual(receipt()); expect(three.patchBaseReceipt).toBeUndefined()
+    f.ack(three, receipt('3')); f.ack(two, receipt('2')); f.finish(two); f.finish(three); await Promise.all([a, b])
+    expect((f.client as any).authoredPreparation.receiptFor(again)).toBeUndefined()
+    const resource = { ...again, fonts: {} }, c = f.render(resource), four = await f.next(4)
+    expect(four.patchBaseReceipt).toBeUndefined(); f.ack(four, receipt('4')); f.finish(four); await c
+    expect((f.client as any).authoredPreparation.receiptFor(resource)).toBeUndefined()
+    const failure = f.render({ ...resource, name: 'will fail' }), rejected = expect(failure).rejects.toThrow('rejected patch'), five = await f.next(5)
+    f.worker.reply({ id: five.id, error: 'rejected patch' }); await rejected
+    expect((f.client as any).documentSnapshot).toBeUndefined()
+    expect((f.client as any).authoredPreparation.receiptFor(resource)).toBeUndefined()
+  } finally { f.client.dispose() }
+})
+test('definite guarded CAS rejection keeps intended edits available for exact full-sync recovery', async () => {
+  const f = await fixture(), shape = node('rectangle', 1, 1, 10, 10)
+  f.document.nodes[shape.id] = shape; f.document.pages[0].children = [shape.id]
+  Object.assign(f.document, { unknownRoot: { keep: null } })
+  const intended = { ...f.document, nodes: { ...f.document.nodes, [shape.id]: { ...shape, opacity: .25 } } }
+  try {
+    const initial = f.render(), one = await f.next(1); f.ack(one); f.finish(one); await initial
+    const update = f.render(intended), rejected = expect(update).rejects.toThrow('STALE_BASE'), two = await f.next(2)
+    expect(two.patchBaseReceipt).toEqual(receipt())
+    f.worker.reply({ id: two.id, error: 'STALE_BASE' }); await rejected
+    expect((f.client as any).documentSnapshot).toBeUndefined()
+    expect((f.client as any).authoredPreparation.receiptFor(intended)).toBeUndefined()
+    const recovery = f.render(intended), three = await f.next(3)
+    expect(three.document).toBe(JSON.stringify(intended))
+    expect(three.documentPatch).toBeUndefined(); expect(three.patchBaseReceipt).toBeUndefined()
+    f.ack(three, receipt('recovered')); f.finish(three); await recovery
+    const drag = f.render(intended, { interactionChannel: true }), four = await f.next(4)
+    expect(four.deriveFrom).toEqual(receipt('recovered')); expect(four.document).toBeUndefined()
+    f.ack(four, null); f.finish(four); await drag
+    expect(intended.nodes[shape.id].opacity).toBe(.25)
+    expect((intended as any).unknownRoot).toEqual({ keep: null })
   } finally { f.client.dispose() }
 })

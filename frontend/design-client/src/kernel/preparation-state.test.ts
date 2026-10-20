@@ -20,3 +20,16 @@ test('exhaustion and missing CAS reject before publication', () => {
   expect(() => state.validateDerive('interaction', [{operationId:1,baseReceipt:base,target:'interaction',expectedTarget:target,delta:[]}])).toThrow('EXHAUSTED')
   expect(state.current('interaction')).toBe(target)
 })
+test('guarded patch validates exact acknowledged base without retiring state', () => {
+  const state = new PreparationStates(), initial = state.mint('canvas', null, true)
+  const args = ['{}', {expectedBaseReceipt:initial}]
+  state.validatePatch('canvas', args)
+  const next = state.mint('canvas', initial)
+  expect(() => state.validatePatch('canvas', args)).toThrow('STALE_BASE')
+  expect(state.current('canvas')).toBe(next)
+  for (const guard of [null, {}, {expectedBaseReceipt:null}, {expectedBaseReceipt:next, extra:true}]) {
+    expect(() => state.validatePatch('canvas', ['{}',guard])).toThrow('SCHEMA')
+    expect(state.current('canvas')).toBe(next)
+  }
+  expect(() => state.validatePatch('canvas', ['{}'])).not.toThrow()
+})
