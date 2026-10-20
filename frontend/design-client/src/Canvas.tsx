@@ -1,3 +1,4 @@
+import { recordNavigationInput } from './kernel/navigation-input'
 import { desktopPet } from './desktop-pet'
 import { nudgePreference } from './nudge-preference'
 import { createKeyboardNudgeGesture } from './keyboard-nudge-gesture'
@@ -1014,12 +1015,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       // keydown. Track keyboard modifiers separately so Ctrl/⌘+wheel keeps
       // its mouse-wheel step instead of being magnified as a pinch.
       const pinch = isNativePinch(e, wheelModifiers.current)
-      const next = wheelCamera(v, e, { width: el.clientWidth, height: el.clientHeight }, screenPoint(e), editor.state.scrollWheelZoom, pinch)
+      const wheelSize = { width: el.clientWidth, height: el.clientHeight }
+      const next = wheelCamera(v, e, wheelSize, screenPoint(e), editor.state.scrollWheelZoom, pinch)
       if (drag.current?.kind === 'pan') {
         const d = drag.current
         // Retain the pointer displacement already consumed by this gesture.
         d.view = { ...next, x: d.view.x + next.x - v.x, y: d.view.y + next.y - v.y }
       }
+      recordNavigationInput(editor, e, wheelSize, next, pinch)
       scheduleView(next)
     }
     el.addEventListener('wheel', wheel, { passive: false })
@@ -2037,6 +2040,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return false
       }}/>
       <KernelSurface
+        navigationInputOwner={editor}
         overlay={overlay}
         interaction={gpuInteraction}
         onPresentation={presentedSignal.set}

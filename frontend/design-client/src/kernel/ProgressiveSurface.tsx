@@ -564,6 +564,19 @@ export function ProgressiveSurfaceImpl(
     stableDensity === detailLevel &&
     syncedDoc.current === doc && view.x === requestedView.x &&
     view.y === requestedView.y && view.zoom === requestedView.zoom
+  const diagnosticPage = useRef({id:pageId,token:1})
+  if(diagnosticPage.current.id!==pageId)diagnosticPage.current={id:pageId,token:diagnosticPage.current.token+1}
+  const diagnosticContent = useRef({frame:displayed,at:performance.now()})
+  if(diagnosticContent.current.frame!==displayed)diagnosticContent.current={frame:displayed,at:performance.now()}
+  useEffect(()=>{
+    rasterClient?.recordViewportDiagnostic({pageToken:diagnosticPage.current.token,
+      phase:navigationZoom.suspended?3:navigationZoom.active?1:complete?4:2,
+      navigating:navigationZoom.active,targetDensity:detailLevel,effectiveDensity:renderScale,
+      phaseX:renderPhase.x,phaseY:renderPhase.y,finalComplete:complete,
+      oldContentAgeMs:displayed?performance.now()-diagnosticContent.current.at:0,
+      state:displayed?1:0,x:view.x,y:view.y,zoom:view.zoom,width,height,
+      sceneReady:syncedDoc.current===doc})
+  },[rasterClient,pageId,view.x,view.y,view.zoom,width,height,navigationZoom.active,navigationZoom.suspended,complete,detailLevel,renderScale,renderPhase.x,renderPhase.y,displayed,doc])
   const requestedContract = {
     document: doc, pageId, epoch: props.presentationEpoch || 0, view: requestedView,
     width, height, pixelRatio: dpr, grid: props.grid, checkerboard: props.checkerboard,
@@ -670,6 +683,10 @@ export function ProgressiveSurfaceImpl(
       pageResidency.clear()
     }
   }, [owner, lodSnapshots, damageHandler])
+  useEffect(() => {
+    if (rasterClient && props.navigationInputOwner && !props.paused && props.visible !== false)
+      return rasterClient.bindNavigationInput(props.navigationInputOwner)
+  }, [rasterClient, props.navigationInputOwner, props.paused, props.visible])
   useLayoutEffect(() => {
     const old = pageOwner.current
     const invalidated = pageResidency.synchronize(doc, pageScope)
@@ -1019,26 +1036,25 @@ export function ProgressiveSurfaceImpl(
     const run = async () => {
       try {
         if (navigationZoom.active) {
-          // Filtered captures can be far more expensive than reprojecting an
-          // already complete view. While zooming, retain its real pixels when
-          // they cover the requested viewport; exact refinement still starts
-          // on the independent navigation-settled transition below. Exposed
-          // gaps keep the bounded preview path rather than showing holes.
+          const sample = navigationZoom.sample
+          if (!sample) return
+          const ratio = navigationPreviewDensity(dpr, width, height), scale = sample.view.zoom * ratio
+          // A coarse overview supplies continuity, not navigation-tier detail.
+          // Skip expensive filtered captures only when retained pixels cover
+          // the viewport at the sampling density this sample would produce.
+          // Keep low-density pixels visible while that bounded refresh runs.
           const retained = filteredContent ? [...tileRef.current.values()].filter(tile =>
             tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key)) : []
-          if (retained.length && tilesCoverBounds(retained, viewport)) {
+          if (retained.length && tilesCoverBounds(retained, viewport, scale)) {
             if (previewAdmission.current.key !== 'covered-navigation') c.cancelPreview()
             previewAdmission.current = { contract, key: 'covered-navigation', active: true }
             return
           }
           // Continuous zoom owns a separate transient lane. Do not plan,
           // compile or rasterize intermediate native-density tile levels.
-          const sample = navigationZoom.sample
-          if (!sample) return
           navigationRequest = JSON.stringify([sample.sequence, width, height, dpr])
           if (previewAdmission.current.contract === contract && previewAdmission.current.key === navigationRequest) return
           previewAdmission.current = { contract, key: navigationRequest, active: true }
-          const ratio = navigationPreviewDensity(dpr, width, height), scale = sample.view.zoom * ratio
           const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
           const requested = () => sameContent() && latestNavigationZoom.current.active &&
             latestNavigationZoom.current.sample?.sequence === sample.sequence &&
@@ -1729,6 +1745,7 @@ export const ProgressiveSurface = memo(ProgressiveSurfaceImpl, (prev, next) =>
   prev.onPresentation === next.onPresentation &&
   prev.onFallback === next.onFallback &&
   prev.onRenderFailure === next.onRenderFailure &&
+  prev.navigationInputOwner === next.navigationInputOwner &&
   (prev.requestedView || prev.view).x === (next.requestedView || next.view).x &&
   (prev.requestedView || prev.view).y === (next.requestedView || next.view).y &&
   (prev.requestedView || prev.view).zoom === (next.requestedView || next.view).zoom &&

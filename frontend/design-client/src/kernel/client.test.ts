@@ -294,3 +294,25 @@ test('a pixel budget rejection does not reload an already synchronized document'
     worker.reply(1);await next
   }finally{client.dispose()}
 })
+
+test('accepted Canvas input correlates with client stage2 without changing display command payload', async () => {
+  const { recordNavigationInput } = await import('./navigation-input')
+  const client = new KernelClient(), owner = {}, view = { x: 13, y: -21, zoom: 2 }
+  const unbind = client.bindNavigationInput(owner)
+  try {
+    const start = client.navigationCapture('start', { capacity: 16, durationMs: 1000 })
+    WorkerStub.instances[0].reply(0); await start
+    recordNavigationInput(owner, { deltaX: 0, deltaY: -69.314718, deltaMode: 0 }, { width: 100, height: 100 }, view, true)
+    const frame = { view, width: 100, height: 100, dpr: 1, items: [] }
+    client.present(frame)
+    const sent = WorkerStub.instances[0].messages[1] as unknown as Record<string, unknown>
+    expect(sent).toEqual({ command: 'display-frame', sequence: 1, frame })
+    const snapshot = client.navigationCapture('snapshot')
+    WorkerStub.instances[0].reply(2)
+    const report = (await snapshot).main.events.filter(event => event.stage === 1 || event.stage === 2)
+    expect(report.map(event => event.stage)).toEqual([1, 2])
+    expect(report[1].inputSequence).toBe(report[0].inputSequence)
+    expect(report[1].inputAt).toBe(report[0].inputAt)
+    expect(report[1].inputAgeMs).toBeGreaterThanOrEqual(0)
+  } finally { unbind(); client.dispose() }
+})

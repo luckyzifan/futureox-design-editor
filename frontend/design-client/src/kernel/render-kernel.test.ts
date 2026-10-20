@@ -4,6 +4,26 @@ import { blank } from '../model'
 import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
 
+// Deliberately adversarial transport for cache revision race tests. Production
+// PreparationChannel now fences physical jobs, just like the serial worker;
+// these tests must still cover late/out-of-order replies independently of it.
+function unorderedPreparation(port: MessagePort): PreparationChannel {
+  let id = 0
+  const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>()
+  port.onmessage = event => {
+    const reply = event.data, waiter = pending.get(reply.id)
+    if (!waiter) return
+    pending.delete(reply.id)
+    if (reply.error) waiter.reject(new Error(reply.error)); else waiter.resolve(reply)
+  }
+  port.start()
+  return { request(lane: string, method: string, args: unknown[]) {
+    const key = ++id
+    return new Promise((resolve, reject) => { pending.set(key, { resolve, reject }); port.postMessage({ id: key, lane, method, args }) })
+  }, close() { port.close(); for (const p of pending.values()) p.reject(new Error('closed')); pending.clear() } } as unknown as PreparationChannel
+}
+
+
 test('remote managed documents synchronize a valid image-decoder color space and restore unmanaged state', async () => {
   const remote = new VectorEngine(), assets = new VectorEngine(), ports = new MessageChannel()
   const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
@@ -50,7 +70,7 @@ test('packet reuse is byte-exact, privately owned and invalidated by document ch
 
 test('pending patches bypass old cache hits and late compiles cannot repopulate a newer revision',async()=>{
   const remote=new VectorEngine(),assets=new VectorEngine(),ports=new MessageChannel()
-  const channel=new PreparationChannel(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
+  const channel=unorderedPreparation(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
   let hold=false,release:(()=>void)|undefined,notice:(()=>void)|undefined,compiles=0
   ports.port2.onmessage=event=>{
     const {id,method,args}=event.data
@@ -108,7 +128,7 @@ test('concurrent identical compiles share work, never transferable ownership, an
 
 test('completion from an old revision cannot remove or share the newer in-flight packet', async () => {
   const assets = new VectorEngine(), ports = new MessageChannel()
-  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  const channel = unorderedPreparation(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
   const requests: (() => void)[] = []
   let notice: (() => void) | undefined, compilations = 0
   ports.port2.onmessage = event => {

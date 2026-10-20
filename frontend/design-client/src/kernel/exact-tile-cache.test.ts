@@ -72,3 +72,17 @@ test('shared owner/render envelope consumes the same bounded cache budget', () =
   c.clear();expect(c.bytes).toBe(0)
   expect(()=>c.reserve(1025)).toThrow('envelope')
 })
+
+test('diagnostics explain cache misses and eviction without exposing keys or affecting lookup',()=>{
+  const reasons:number[]=[]
+  const cache=new ExactTileCache<number>(1100,(reason,bytes)=>{reasons.push(reason);expect(Number.isFinite(bytes)).toBe(true)})
+  expect(cache.get('private-key',new Uint8Array([1]))).toBeUndefined()
+  cache.set('a',new Uint8Array([1]),1,1)
+  cache.revoke(()=>true);expect(cache.certified('a')).toBeUndefined()
+  expect(cache.get('a',new Uint8Array([2]))).toBeUndefined()
+  cache.set('a',new Uint8Array([1]),1,1);cache.set('b',new Uint8Array([1]),2,1);cache.set('c',new Uint8Array([1]),3,1)
+  cache.set('big',new Uint8Array([1]),3,5000);cache.clear()
+  for(const code of [10,11,12,13,14,15])expect(reasons).toContain(code)
+  const safe=new ExactTileCache<number>(1100,()=>{throw Error('sink failed')})
+  expect(safe.get('a',new Uint8Array())).toBeUndefined()
+})

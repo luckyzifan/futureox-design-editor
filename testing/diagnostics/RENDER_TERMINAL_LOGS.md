@@ -39,3 +39,32 @@ bun run dev 2>&1 | tee ~/Desktop/core-dev-full.log
 每个 main/worker collector 每秒最多 8 条即时记录，随后每种固定事件仅保留最新字段与聚合次数；下一秒输出 summary.suppressed 与聚合记录 sampleCount。所有事件种类有限，内存只保存每种事件的一个标量记录，不保存场景、图像或完整帧历史。聚合 sampleCount 是本窗口同类事件次数，原始 filter count 保留为最后一次采样值；这是定位用日志，不是逐帧完整 trace。工作结束或退出前尚未刷新的一小段 worker 聚合可能丢失。
 
 日志仅能证明 CPU 事件、已有 GPU 队列完成信号及提交情况；不能证明真实屏幕已显示、物理帧率或视觉流畅。可与原有手动 navigation capture / queue timing 配合，但新增默认日志不自动开启它们。
+
+## 更细日志：DETAIL 模式
+
+如普通摘要丢失了请求之间的因果关系，请使用：
+
+```sh
+cd frontend/design-desktop
+CORE_RENDER_DIAGNOSTICS=detail bun run dev 2>&1 | grep --line-buffered '^\[render-diag\] ' | tee ~/Desktop/core-render-detail.log
+```
+
+detail 不改变渲染开关、质量或 GPU 等待。每个 collector 最多保存 512 条标量事件，每 250ms 刷新为最多 64 条/批的 JSON batch。记录保留采集时 at/seq/requestId，不再被每秒“最新一条”替代。极端事件风暴只丢最旧记录，并明确输出 summary.dropped；不要把缺失区间误判为没有发生。worker 退出前未刷新的尾部仍可能丢失。每帧不直接 printf，但批次输出仍有一定 CPU/日志开销，比较性能时可用关闭模式作对照。
+
+新增字段与界限：
+- queue-enqueue → queue-start → compile-start/compile、hydrate-start/hydrate、prepare-wait → queue-end，并保留取消、失败、缓存与 tile/result。queueDepth 是本 worker 的请求队列计数，不包括额外的 pose/preparation 内部队列；activeRequestId 为当前请求，0 为无活动请求。generation / fillGeneration 为预览/填充版本；superseded 只说明此时 generation 已过时。
+- compile 为现有编译 Promise 墙钟完成，prepare-wait 为瓦片取得预备编译结果的暴露等待，不能相加视为纯 CPU 时间。error.reasonCode 5 为 PREVIEW_CANCELLED，1 为其他错误；不输出错误文本。
+- viewport-state.pageToken 是该 surface 内从 1 递增的匿名页面序号，既不包含原始页面 ID，也不包含标题。phase: 1 导航、2 等待精细帧、3 suspended、4 UI 完整契约满足。state 1 有 retained displayed frame，0 没有。targetDensity / effectiveDensity 为世界坐标采样倍率；phaseX/Y 为既有栅格相位。finalComplete 是现有 UI 的精确帧判定，不能当作物理 scanout。oldContentAgeMs 是当前 retained frame 对象自本组件观察到之后的年龄，不是文件修改时间或精确像素年龄。
+- detail 模式即使是 bun run dev 使用的前端构建，也每最多 250ms 从现有呈现几何计算 coverage / sharpCoverage / nativePhaseCoverage、pixelCoverageComplete / nativeCoverageComplete。coverageMeasured=1 才表示本条测量，coverageAt 是 worker performance.now()。未测量的条目不补旧值；不要把缺失字段当 0 或 complete。这里仅测覆盖/采样几何，不做 GPU 读回，不证明最终像素颜色正确。
+- cache.reasonCode: 0 复用；3 debug 禁用 exact cache；4 debug 禁用 certified reuse；5 未命中后需渲染；10 坐标槽不存在；11 编译 witness 不匹配；12 certificate 已撤销；13 单项超出预算；14 LRU 预算逐出；15 clear。原有 1/2 仍表示停泊 GPU 配置不符/device lost。cache-invalidate.reasonCode=0 仅表示共享失效函数被调用，具体上层原因尚未细分，不应猜测。
+- camera-input 及输入时间字段由输入链路诊断提供；仅数值 wheel deltas / kind / sequence / timing，不记录键盘文本、事件对象或设备标识。
+
+DETAIL cancel.reasonCode 2 表示客户端按 requestId 取消交付中的预览；附当前 generation / fillGeneration / channel，不表示 GPU 已停止运行。
+
+### 请求类别与取消归因
+
+request 的 purpose: 0 未声明、1 preview、2 settled、3 canvas、4 PNG/exportRegion 导出、5 控制命令；renderIntent: 0 未声明、1 preview、2 settled、3 canvas。channel: 0 canvas、1 interaction、2 control。commandCode: 0 未知、1 render（无 command）、2 display-read-pixel、3 display-capture-content、4 display-import、5 gpu-memory、6 park-gpu、7 lose-device、8 navigation-diagnostic。不会输出原始 command 字符串。
+
+preview 标志沿用请求的可取消预览条件（tileViewport 或 livePreview），与 renderIntent 不同；finalRequest 只表示显式 settled 意图，不表示已完成。coverageTiles、tileViewport、livePreview、readback、png 为独立 0/1 标志。readback 表示显式 readback 或 PNG 请求，不推断底层实际读回。所有 request（包括控制请求）均有类别，可通过 session/requestId 关联 queue-start/end 和结果。
+
+客户端 result/error 对精确 PREVIEW_CANCELLED 记录 reasonCode=5（有意取消），其他错误为1，无错误为0。不把含该单词的其他错误误认为取消，也不输出异常文本。cancel.reasonCode=2 表示客户端已逐个取消 pending preview 并阻止后续交付。

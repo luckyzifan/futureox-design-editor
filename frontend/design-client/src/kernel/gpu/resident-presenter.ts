@@ -1,3 +1,4 @@
+import { gpuDiagnosticsDetail } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import type { CanvasCamera } from '../../canvas-camera'
 import type { CompositeItem } from './tile-compositor'
 import { presentationQuality } from './presentation-quality'
@@ -64,6 +65,7 @@ export class ResidentPresenter {
   private latest?: ResidentFrame
   private drawn?: ResidentFrame
   private backbuffer?: { texture: GPUTexture; width: number; height: number }
+  private diagnosticCoverageAt = -Infinity
   private frames = 0
   private captures = 0
   private imports = 0
@@ -409,7 +411,12 @@ export class ResidentPresenter {
     this.device.queue.submit([encoder.finish()])
     this.drawn = frame
     this.frames++
+    const coverageAt=performance.now()
+    const measureCoverage=import.meta.env.DEV || (gpuDiagnosticsDetail() && coverageAt-this.diagnosticCoverageAt>=250)
+    if(measureCoverage)this.diagnosticCoverageAt=coverageAt
     this.report({
+      coverageMeasured:measureCoverage,
+      ...(measureCoverage?{coverageAt}:{}),
       compositor: 'webgpu-resident',
       compositorFrames: this.frames,
       compositorTransformUploadBytes: upload?.data.byteLength || 0,
@@ -434,8 +441,8 @@ export class ResidentPresenter {
       },
       input: frame.input,
       missingTextureCount: missing.length,
-      ...(import.meta.env.DEV ? presentationQuality(available as CompositeItem[], view, width, height, dpr) : {}),
-      ...(import.meta.env.DEV ? physicalCoverage(rows.map(row=>({...row.raster,
+      ...(measureCoverage ? presentationQuality(available as CompositeItem[], view, width, height, dpr) : {}),
+      ...(measureCoverage ? physicalCoverage(rows.map(row=>({...row.raster,
         blend:row.item.blend,native:Math.min(row.item.tile.width*row.raster.uv[2]/row.raster.box[2],row.item.tile.height*row.raster.uv[3]/row.raster.box[3])>=dpr*(1-1e-10)})),w,h):{}),
       // Diagnostic geometry of pixels actually submitted, excluding missing
       // textures. Tests can distinguish absent document content from the known
