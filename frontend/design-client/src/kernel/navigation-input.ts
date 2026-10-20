@@ -24,7 +24,8 @@ export class NavigationInputTrace implements Sink {
   private latest: { view: CanvasCamera; inputSequence: number; inputAt: number; inputTimeOrigin: number; generation: number } | undefined
   constructor(private journal: NavigationJournal,
     private terminal: { enabled: boolean; record(event: string, values: Record<string, number>): void },
-    private now = () => performance.now(), private origin = () => performance.timeOrigin) {}
+    private now = () => performance.now(), private origin = () => performance.timeOrigin,
+    private observed: (sequence:number,epoch:number)=>void = () => {}) {}
   enabled() { return this.journal.recording || this.terminal.enabled }
   reset() { this.latest = undefined }
   record(event: Wheel, size: CanvasSize, view: CanvasCamera, pinch: boolean) {
@@ -37,6 +38,7 @@ export class NavigationInputTrace implements Sink {
       inputTimeOrigin: values.inputTimeOrigin, generation: this.journal.generation }
     this.journal.record(1, values)
     this.terminal.record('camera-input', values)
+    this.observed(values.inputSequence,values.inputAt+values.inputTimeOrigin)
   }
   // Identity proves this is the accepted camera, not an equal-valued camera
   // restored on another page or a different programmatic navigation.

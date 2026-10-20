@@ -17,7 +17,7 @@ export function nativeShortcutRoute(input, platform) {
     if (!input.shift) command = { KeyC: 'copy-properties', KeyV: 'paste-properties', KeyA: 'select-matching' }[input.code]
   } else if (zoom) command = key === '-' ? 'zoomOut' : 'zoomIn'
   else if (input.shift) command = { z: 'redo', c: 'copy-as-png', r: 'paste-to-replace', v: 'paste-over-selection', a: 'select-inverse', g: 'ungroup' }[key]
-  else command = { '0': 'zoom100', z: 'undo', c: 'copy', x: 'cut', v: 'paste', a: 'select-all', d: 'duplicate', g: 'group' }[key]
+  else command = { ',': 'settings', '0': 'zoom100', z: 'undo', c: 'copy', x: 'cut', v: 'paste', a: 'select-all', d: 'duplicate', g: 'group' }[key]
   return { suppressMenu, consume: !!command, command: suppressMenu ? undefined : command }
 }
 export function forwardNativeEditorShortcut(event, input, { platform, sendCommand, setIgnoreMenuShortcuts }) {

@@ -1,3 +1,5 @@
+import { beginEditorAction } from './editor-action-route'
+import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import type {Editor,Tool} from './engine'
 import type {DesignDocument} from './model'
 import {desktopBridge} from './desktop'
@@ -21,13 +23,16 @@ async function loadCodeFont(document:DesignDocument){
 const owners=new WeakMap<Editor,{generation:number}>()
 export function cancelToolActivation(editor:Editor){const owner=owners.get(editor);if(owner){owners.delete(editor);if(owner.generation===editor.sessionGeneration)editor.set({busy:false})}}
 export async function activateTool(editor:Editor,tool:Tool){
+ const action=beginEditorAction(editor,CanvasAction.tool,ActionSource.unknown)
+ try {
  if(owners.has(editor))cancelToolActivation(editor)
- if(editor.interactionActive||editor.state.busy||!commitPendingEdits(editor))return
+ if(editor.interactionActive||editor.state.busy||!commitPendingEdits(editor)){action.result(ActionOutcome.blocked,editor.state.busy?ActionReason.busy:ActionReason.wrongOwner);return}
  if(tool==='code-block'){
   const generation=editor.sessionGeneration,owner={generation};owners.set(editor,owner)
   editor.set({tool,busy:true,message:'正在载入本机等宽字体…'})
-  try{await(loading??=loadCodeFont(editor.state.doc).finally(()=>{loading=undefined}));if(editor.sessionGeneration!==generation||owners.get(editor)!==owner)return;const font=codeFontResource(),existing=editor.state.doc.fonts?.[font.id];if(existing&&existing.data!==font.resource.data)throw new Error('等宽字体标识冲突');if(!existing&&Object.keys(editor.state.doc.fonts||{}).length>=32)throw new Error('文档已达到32份字体资源上限');editor.set({busy:false,message:'代码块：拖动创建'})}
-  catch(e){if(editor.sessionGeneration===generation&&owners.get(editor)===owner)editor.set({tool:'select',busy:false,message:String(e)})}
+  try{await(loading??=loadCodeFont(editor.state.doc).finally(()=>{loading=undefined}));if(editor.sessionGeneration!==generation||owners.get(editor)!==owner){action.result(ActionOutcome.cancelled,ActionReason.superseded);return;}const font=codeFontResource(),existing=editor.state.doc.fonts?.[font.id];if(existing&&existing.data!==font.resource.data)throw new Error('等宽字体标识冲突');if(!existing&&Object.keys(editor.state.doc.fonts||{}).length>=32)throw new Error('文档已达到32份字体资源上限');editor.set({busy:false,message:'代码块：拖动创建'});action.result(ActionOutcome.observed)}
+  catch(e){action.result(ActionOutcome.rejected,ActionReason.validation);if(editor.sessionGeneration===generation&&owners.get(editor)===owner)editor.set({tool:'select',busy:false,message:String(e)})}
   finally{if(owners.get(editor)===owner)owners.delete(editor)}
  }else editor.set({tool})
+ } finally {action.finish()}
 }

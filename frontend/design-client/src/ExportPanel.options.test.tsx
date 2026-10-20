@@ -8,11 +8,14 @@ import { gunzipSync } from 'fflate'
 import { Editor } from './engine'
 import { blank, node } from './model'
 import { ExportPanel } from './ExportPanel'
+import { canvasActions, CanvasAction, ActionOutcome } from './canvas-action-diagnostics'
 
 test('UI SVG controls generate real bounded SVGZ with selected precision and scale', async () => {
   const dom = new JSDOM('<html><body><div id="root"></div></body></html>', { url: 'https://design.invalid' })
   for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'Node', 'Event', 'KeyboardEvent']) vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  ;(window as any).coreDesktop = { renderDiagnostics: true, renderDiagnosticsDetail: true }
+  vi.spyOn(console, 'log').mockImplementation(() => {})
   const doc = blank(), shape = node('text', 0, 0, 100.12345, 80.12345)
   doc.nodes[shape.id] = shape; doc.pages[0].children = [shape.id]
   const editor = new Editor(doc); editor.select([shape.id])
@@ -33,5 +36,8 @@ test('UI SVG controls generate real bounded SVGZ with selected precision and sca
     expect(content).toContain('width="100.12"')
     expect(document.querySelector('a')?.download).toMatch(/\.svgz$/)
     expect(document.querySelector('[role="status"]')?.textContent).toContain('有损舍入')
+    const rows = canvasActions(editor).snapshot().rows.filter(row => row.actionCode === CanvasAction.export && row.actionPhase === 2)
+    expect(rows.at(-1)).toMatchObject({ commandCode: 355, actionOutcome: ActionOutcome.observed, committedChanged: 0 })
+    expect(JSON.stringify(rows)).not.toContain(shape.text)
   } finally { await act(async () => root.unmount()); editor.dispose(); vi.restoreAllMocks(); vi.unstubAllGlobals(); dom.window.close() }
 })

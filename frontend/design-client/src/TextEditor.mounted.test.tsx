@@ -1,3 +1,5 @@
+import { canvasActions, closeCanvasActions, ActionOutcome } from './canvas-action-diagnostics'
+import { InputPhase } from './input-diagnostics'
 // Mounted React/real Editor/WASM; jsdom CSS contracts, not GUI/GPU layout evidence.
 // @ts-expect-error jsdom is a test-only runtime dependency.
 import { JSDOM } from 'jsdom'
@@ -22,12 +24,13 @@ beforeEach(() => {
   dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
   for (const key of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLTextAreaElement', 'Node', 'Event', 'MouseEvent', 'KeyboardEvent', 'CompositionEvent']) vi.stubGlobal(key, key === 'window' ? dom.window : dom.window[key])
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  ;(window as any).coreDesktop = { renderDiagnostics: true, renderDiagnosticsDetail: true }
   const css = document.createElement('style'); css.textContent = readFileSync(new URL('./styles.css', import.meta.url), 'utf8'); document.head.append(css)
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
   const doc = blank(); text = node('text', 0, 0, 200, 50); text.text = 'Hello text'; doc.nodes[text.id] = text; doc.pages[0].children.push(text.id)
   editor = new Editor(doc); close.mockClear(); preview.mockClear()
 })
-afterEach(async () => { await act(async () => root.unmount()); editor.dispose(); dom.window.close(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(async () => { await act(async () => root.unmount()); closeCanvasActions(editor); editor.dispose(); dom.window.close(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 async function render(matrix: Matrix, width = 1000, height = 700) {
   await act(async () => root.render(<CanvasTextEditor node={editor.state.doc.nodes[text.id]} document={editor.state.doc} editor={editor} matrix={matrix} viewport={{ width, height }} onClose={close} onPreview={preview} />))
 }
@@ -72,6 +75,11 @@ test('zoom preserves composition and external blur waits for composition end to 
   await act(async () => outside.focus()); expect(close).not.toHaveBeenCalled()
   await act(async () => { area.value = 'Hello text文'; area.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '文' })) })
   expect(close).toHaveBeenCalledTimes(1); expect(editor.state.doc.nodes[text.id].text).toBe('Hello text文')
+  const rows = canvasActions(editor).snapshot().rows
+  expect(rows.some(r => r.actionOutcome === ActionOutcome.committed && r.inputPhase === InputPhase.commit)).toBe(true)
+  expect(rows.some(r => r.inputPhase === InputPhase.compositionStart)).toBe(true)
+  expect(JSON.stringify(rows)).not.toContain('Hello text')
+  expect(JSON.stringify(rows)).not.toContain('文')
 })
 
 test('measured wrapped toolbar height reclamps via ResizeObserver and releases observer', async () => {
@@ -85,4 +93,16 @@ test('measured wrapped toolbar height reclamps via ResizeObserver and releases o
   await act(async () => resize())
   expect(toolbar().style.top).toBe('136px')
   await act(async () => root.render(null)); expect(disconnect).toHaveBeenCalledTimes(1)
+})
+
+test('rich-text composition cancellation leaves authored state intact and logs no contents', async () => {
+  await render([1, 0, 0, 1, 0, 0]); const area = input(), before = editor.state.doc
+  await act(async () => area.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: 'private' })))
+  await act(async () => { area.value = 'secret-composition-value'; area.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'private' })) })
+  await act(async () => area.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })))
+  expect(editor.state.doc).toBe(before); expect(close).toHaveBeenCalledTimes(1)
+  const rows = canvasActions(editor).snapshot().rows
+  expect(rows.some(r => r.actionOutcome === ActionOutcome.cancelled)).toBe(true)
+  expect(rows.every(r => Object.values(r).every(v => v === undefined || typeof v === 'number'))).toBe(true)
+  expect(JSON.stringify(rows)).not.toContain('secret-composition-value')
 })

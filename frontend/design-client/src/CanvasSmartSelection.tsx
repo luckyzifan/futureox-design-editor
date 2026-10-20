@@ -1,3 +1,4 @@
+import { utilityAction, CanvasAction, ActionReason, type UtilityAction } from './canvas-utility-action'
 import {useEffect,useRef,useState} from 'react'
 import type {Editor} from './engine'
 import type {DesignDocument,Point} from './model'
@@ -7,9 +8,9 @@ import {smartSelection,smartSpacing,smartReorder,type SmartSelection} from './sm
 
 export function CanvasSmartSelection({editor,view,size,visible}:{editor:Editor;view:CanvasCamera;size:CanvasSize;visible:boolean}){
   const host=useRef<HTMLDivElement>(null),[marked,setMarked]=useState<string[]>([]),[label,setLabel]=useState<{point:Point;text:string}|null>(null)
-  const active=useRef<{pointer:number;session:number;page:string;doc:DesignDocument;model:SmartSelection;view:CanvasCamera;start:Point;axis?:'x'|'y';marked:string[];moved:boolean}|null>(null)
+  const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;doc:DesignDocument;model:SmartSelection;view:CanvasCamera;start:Point;axis?:'x'|'y';marked:string[];moved:boolean}|null>(null)
   const selectionKey=editor.state.selection.join('\n'),page=editor.state.page,session=editor.sessionGeneration
-  const cancel=()=>{const a=active.current;active.current=null;setLabel(null);if(a?.session===editor.sessionGeneration&&a.page===editor.state.page)editor.cancel()}
+  const cancel=()=>{const a=active.current;active.current=null;setLabel(null);if(a?.session===editor.sessionGeneration&&a.page===editor.state.page)editor.cancel();a?.action.cancel()}
   useEffect(()=>{cancel();setMarked([])},[session,page,selectionKey,editor.state.tool])
   useEffect(()=>{
     const key=(e:KeyboardEvent)=>{if(e.key==='Escape'&&active.current){e.preventDefault();e.stopImmediatePropagation();cancel()}}
@@ -20,14 +21,15 @@ export function CanvasSmartSelection({editor,view,size,visible}:{editor:Editor;v
   if(!model||editor.state.tool!=='select')return null
   const point=(e:{clientX:number;clientY:number},camera=view)=>{const b=host.current!.getBoundingClientRect();return screenToWorld(camera,{x:e.clientX-b.left,y:e.clientY-b.top})}
   const begin=(e:React.PointerEvent,axis?:'x'|'y',id?:string)=>{
-    e.stopPropagation();if(e.button!==0||editor.interactionActive||editor.state.busy)return
+    e.stopPropagation();const action=utilityAction(editor,CanvasAction.smartSelection);if(e.button!==0||editor.interactionActive||editor.state.busy){action.block(ActionReason.busy);return}
     e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId)
     const next=id?(e.shiftKey&&model.x.length*model.y.length===Math.max(model.x.length,model.y.length)?marked.includes(id)?marked.filter(k=>k!==id):[...marked,id]:marked.includes(id)?marked:[id]):marked
     setMarked(next);editor.begin(axis?'调整智能选区间距':'重排智能选区')
-    active.current={pointer:e.pointerId,session,page,doc:editor.state.doc,model,view:{...view},start:point(e),axis,marked:next,moved:false}
+    active.current={action,pointer:e.pointerId,session,page,doc:editor.state.doc,model,view:{...view},start:point(e),axis,marked:next,moved:false}
   }
   const move=(e:React.PointerEvent)=>{
     e.stopPropagation();const a=active.current;if(!a||a.pointer!==e.pointerId||a.session!==editor.sessionGeneration||a.page!==editor.state.page)return
+    a.action.sample({snapEnabled:!!a.axis&&!e.ctrlKey})
     const p=point(e,a.view);a.moved ||= Math.hypot(p.x-a.start.x,p.y-a.start.y)*a.view.zoom>2
     if(!a.moved)return
     if(a.axis){
@@ -42,7 +44,7 @@ export function CanvasSmartSelection({editor,view,size,visible}:{editor:Editor;v
       editor.preview(Object.fromEntries(a.model.ids.map(id=>[id,patches[id]||{transform:a.doc.nodes[id].transform}])))
     }
   }
-  const end=(e:React.PointerEvent)=>{const a=active.current;if(!a||a.pointer!==e.pointerId)return;move(e);active.current=null;setLabel(null);if(a.session===editor.sessionGeneration&&a.page===editor.state.page)editor.commit()}
+  const end=(e:React.PointerEvent)=>{const a=active.current;if(!a||a.pointer!==e.pointerId)return;move(e);active.current=null;setLabel(null);const resolved=a.model.ids.map(id=>editor.state.doc.nodes[id]?.transform);if(a.session===editor.sessionGeneration&&a.page===editor.state.page)editor.commit();a.action.finish(false,{motionObserved:a.moved,resolvedCommittedComparison:JSON.stringify(resolved)===JSON.stringify(a.model.ids.map(id=>editor.state.doc.nodes[id]?.transform))?1:2})}
   const screen=(p:Point)=>({x:p.x*view.zoom+view.x,y:p.y*view.zoom+view.y})
   return <div ref={host} className="canvas-smart-selection" onPointerMove={move} onPointerUp={end} onPointerCancel={cancel} onLostPointerCapture={()=>{if(active.current)cancel()}}>
     <svg width={size.width} height={size.height} style={{visibility:visible?'visible':'hidden'}}>

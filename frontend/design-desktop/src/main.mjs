@@ -1106,6 +1106,8 @@ async function buildWindow() {
         ],
       },
       { label: 'Edit', submenu: [
+        { label: 'Settings… / 设置', accelerator: 'CmdOrCtrl+,', click: () => sendCommand('settings') },
+        { type: 'separator' },
         { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => sendCommand('undo') },
         { label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', click: () => sendCommand('redo') },
         { type: 'separator' },
