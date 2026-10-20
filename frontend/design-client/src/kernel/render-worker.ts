@@ -1,3 +1,4 @@
+import { samePreparationReceipt } from './authored-preparation-binding'
 import { renderQualityContract } from './render-quality'
 import { createRenderDiagnostics, snapshotResourceFields, setGpuDiagnosticSink, setGpuDiagnosticsDetail } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
@@ -44,7 +45,7 @@ import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../docume
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
 import { tilePrepareViewport } from './tile-prepare-viewport'
-import { RenderWorkQueue } from './render-work-queue'
+import { GPU_PRIORITY_BURST, RenderWorkQueue } from './render-work-queue'
 import { paintDamageIntersects, type PaintDamage } from './paint-damage'
 import {residentFrameSignature} from './gpu/resident-frame'
 import { canCommitResidentFrame } from './gpu/retained-commit'
@@ -63,6 +64,17 @@ let diagnosticRequestId = 0
 let diagnosticQueueDepth=0
 let executionPolicy: RenderPolicy | undefined
 let preparation: PreparationChannel | undefined
+// A fallback is a continuation of the accepted ordered synchronization, not a
+// replay. Bound its lifetime and keep it independent of preview cancellation.
+const documentFallbacks = new Map<number, { resolve: (document: string) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+function capturedDocumentFallback(id: number): Promise<string> {
+  if (documentFallbacks.size >= 8) return Promise.reject(Error('DERIVATION_FALLBACK_BUDGET'))
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { documentFallbacks.delete(id); reject(Error('DERIVATION_FALLBACK_TIMEOUT')) }, 15000)
+    documentFallbacks.set(id, { resolve, reject, timer })
+    self.postMessage({ id, documentFallback: true })
+  })
+}
 let colorKey = ''
 let floatingKey: string | undefined
 let referenceGpu = false
@@ -84,8 +96,10 @@ let navigationTextureSet: number[] = [], navigationTextureSequence = 0
 // Numeric stages are documented in the diagnostic collector. The callback is
 // immediately after queue.submit, not GPU completion or physical scanout.
 const reportDisplay = (presentation: Record<string, unknown>) => {
-  const presented = presentation.presented as {view?:{x:number;y:number;zoom:number};width?:number;height?:number} | undefined
-  terminalDiagnostics.record(presentation.error ? 'error' : 'camera-submit',{...presentation,...presented?.view,width:presented?.width,height:presented?.height,sequence:displayOrderSequence,reasonCode:presentation.error?4:0})
+  const presented = presentation.presented as {view?:{x:number;y:number;zoom:number};width?:number;height?:number;dpr?:number} | undefined
+  terminalDiagnostics.record(presentation.error ? 'error' : 'camera-submit',{...presentation,...presented?.view,width:presented?.width,height:presented?.height,dpr:presented?.dpr,sequence:displayOrderSequence,reasonCode:presentation.error?4:0})
+  // Preserve the one forced terminal sample before another burst fills the bounded journal.
+  if (presentation.qualityTerminal === true) terminalDiagnostics.flush()
   if (navigationJournal.recording) {
     if (typeof presentation.compositorFrames === 'number') {
       const ids = (presentation.presented as {ids?:unknown} | undefined)?.ids
@@ -359,6 +373,15 @@ function schedulePose(){
 }
 self.onmessage = (e) => {
   const request = e.data
+  if (request.command === 'document-fallback') {
+    const pending = documentFallbacks.get(request.id)
+    if (pending) {
+      documentFallbacks.delete(request.id); clearTimeout(pending.timer)
+      if (typeof request.document === 'string') pending.resolve(request.document)
+      else pending.reject(Error(request.error || 'DERIVATION_FALLBACK_INVALID'))
+    }
+    return
+  }
   if(request.command==='terminal-diagnostics') {
     if(Number.isSafeInteger(request.session)&&request.session>=0&&request.session<1e12) {
       terminalDiagnostics.close()
@@ -538,13 +561,13 @@ self.onmessage = (e) => {
       // A camera-only request carries no revision transition for its successor.
       // Reject it before lane initialization/deferred synchronization. Envelopes
       // must still be applied in order even when their requested pixels are old.
-      if (packetWait?.controller.signal.aborted && request.document === undefined && request.documentPatch === undefined) {
+      if (packetWait?.controller.signal.aborted && request.document === undefined && request.documentPatch === undefined && request.deriveFrom === undefined) {
         terminalDiagnostics.record('skip', { requestId: request.id, reasonCode: 1, skipped: 1, generation, fillGeneration })
         throw Error('PREVIEW_CANCELLED')
       }
       selectLane(request.channel === 'interaction' ? 'interaction' : 'canvas')
       if(channel==='interaction'){
-        if(poseSession?.patch && request.document===undefined){
+        if(poseSession?.patch && request.document===undefined && request.deriveFrom===undefined){
           laneState.interactionDocument=poseSession.document=poseSession.patch.snapshot()
           laneState.deferredInteractionDocument=laneState.interactionDocument
         }
@@ -594,11 +617,31 @@ self.onmessage = (e) => {
         laneState.deferredInteractionDocument = undefined
       }
       const loadStage = (phase: number, at: number, fields = {}) => terminalDiagnostics.record('load-stage', { requestId: request.id, phase, durationMs: performance.now() - at, ...fields })
-      if (!retainInteraction) { const at = performance.now(); await synchronizeDeferred(); loadStage(1, at) }
+      if (!retainInteraction && !request.deriveFrom) { const at = performance.now(); await synchronizeDeferred(); loadStage(1, at) }
       let translated: { options: string; scene: GpuScene } | undefined
       // Keep the immutable authored snapshot in both lanes. It also proves
       // whether the last displayed pose is exactly the patch being committed.
       let paintDamage: PaintDamage | undefined
+      let derived = false
+      if (request.deriveFrom !== undefined) {
+        const deriveAt = performance.now()
+        try {
+          if (channel !== 'interaction' || request.document !== undefined || request.documentPatch !== undefined) throw Error('DERIVATION_INVALID_ENVELOPE')
+          const source = lanes.get('canvas'), sourceKernel = await source.enginePromise
+          const snapshot = source.authoredSnapshot
+          if (!snapshot || source.deferredInteractionDocument || source.synchronizedInteractionDocument !== snapshot.document ||
+            !samePreparationReceipt(request.deriveFrom, sourceKernel?.preparationStateReceipt)) throw Error('DERIVATION_STALE_SOURCE')
+          await kernel.derive_document_v1(request.deriveFrom)
+          // This is the already retained authored envelope, not reconstructed
+          // native JSON. No full string is created or crosses either boundary.
+          request.document = snapshot.json
+          derived = true
+          loadStage(5, deriveAt, { derivationAdmitted: true, fullPayloadBytes: 0 })
+        } catch (error) {
+          loadStage(6, deriveAt, { derivationAdmitted: false, derivationFallback: true, derivationReasonCode: /STALE_SOURCE|STALE_BASE/.test(String(error)) ? 1 : /STALE_TARGET/.test(String(error)) ? 2 : /UNSUPPORTED/.test(String(error)) ? 3 : 4 })
+          request.document = await capturedDocumentFallback(request.id)
+        }
+      }
       if (request.document !== undefined) {
         // A full resynchronization is a new owner even if its authored id repeats.
         laneState.deferredInteractionDocument = undefined
@@ -614,9 +657,9 @@ self.onmessage = (e) => {
         laneState.loadedNodeCount = Object.keys(laneState.interactionDocument.nodes).length
         laneState.synchronizedInteractionDocument=laneState.interactionDocument
 
-        if (request.document !== laneState.loadedDocument || request.documentRevision !== laneState.loadedRevision) {
+        if (derived || request.document !== laneState.loadedDocument || request.documentRevision !== laneState.loadedRevision) {
           const loadAt = performance.now(), forks = kernel.documentForks
-          await kernel.load_document(request.document)
+          if (!derived) await kernel.load_document(request.document)
           loadStage(3, loadAt, { documentFork: kernel.documentForks > forks })
           laneState.loadedDocument = request.document
           laneState.compiledScene = undefined
@@ -674,6 +717,11 @@ self.onmessage = (e) => {
         loadStage(4, patchAt)
       }
       if (request.documentRevision !== laneState.loadedRevision) throw new Error('渲染文档版本未同步')
+      if (request.document !== undefined || request.documentPatch !== undefined || request.deriveFrom !== undefined) {
+        const receipt = channel === 'canvas' && request.document !== undefined && !laneState.deferredInteractionDocument &&
+          await kernel.supportsDocumentDerivation() ? kernel.preparationStateReceipt : undefined
+        self.postMessage({ id: request.id, documentSynchronized: true, stateReceipt: receipt ?? null })
+      }
       // Apply the versioned document envelope even when its pixels were
       // superseded; the following request may legitimately patch this revision.
       if ((livePreview || tileViewport) && (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw Error('PREVIEW_CANCELLED')
@@ -1017,7 +1065,7 @@ self.onmessage = (e) => {
               // Allow input/control messages and higher-priority interaction
               // work through without interleaving command encoders.
               await yieldPreviewTask()
-              await queue.yieldToHigherPriority(channel === 'interaction' ? 1 : 0)
+              await queue.yieldToHigherPriority(channel === 'interaction' ? 1 : 0, GPU_PRIORITY_BURST)
               // A canceled returning lane must not retire the interaction's
               // current resources merely to restore an obsolete canvas owner.
               if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel]) ||

@@ -124,3 +124,39 @@ test('physical preparation telemetry keeps original owner after cancellation and
   pair.port2.postMessage({ id: received[1].id, documentFork: true }); await load
   expect(rows.at(-1)).toMatchObject({ phase: 4, requestId: 11, documentFork: true })
 })
+
+test('receipts certify only acknowledged lane state and pending edits suppress old proofs', async () => {
+  const { client, server } = fixture(), received: any[] = []
+  const receipt = (lane: 'canvas' | 'interaction', nonce: string) => ({ protocol: 1 as const, sessionGeneration: 's', canvasOwner: 'o', documentIncarnation: 'd', lane, synchronizedRevision: nonce, resourceEpoch: nonce, nonce })
+  server.onmessage = event => { received.push(event.data) }
+  const one = client.request('canvas', 'load_document', ['doc'])
+  expect(client.currentReceipt('canvas')).toBeUndefined()
+  await new Promise(resolve => setTimeout(resolve, 10))
+  server.postMessage({ id: received[0].id, stateReceipt: receipt('canvas', '1') }); await one
+  expect(client.currentReceipt('canvas')).toEqual(receipt('canvas', '1'))
+  const warm = client.request('interaction', 'warm_resources')
+  expect(client.currentReceipt('canvas')).toEqual(receipt('canvas', '1'))
+  await new Promise(resolve => setTimeout(resolve, 10)); server.postMessage({ id: received[1].id }); await warm
+  const init = client.request('interaction', 'initialize', [false])
+  expect(client.currentReceipt('canvas')).toEqual(receipt('canvas', '1'))
+  await new Promise(resolve => setTimeout(resolve, 10)); server.postMessage({ id: received[2].id, stateReceipt: null }); await init
+  const patch = client.request('canvas', 'apply_document_patch_with_damage', ['patch'])
+  const second = client.request('canvas', 'load_document', ['next'])
+  expect(client.currentReceipt('canvas')).toBeUndefined()
+  await new Promise(resolve => setTimeout(resolve, 10)); server.postMessage({ id: received[3].id, stateReceipt: receipt('canvas', '2') }); await patch
+  expect(client.currentReceipt('canvas')).toBeUndefined()
+  await new Promise(resolve => setTimeout(resolve, 10)); server.postMessage({ id: received[4].id, stateReceipt: receipt('canvas', '3') }); await second
+  expect(client.currentReceipt('canvas')).toEqual(receipt('canvas', '3'))
+  client.close(); expect(client.currentReceipt('canvas')).toBeUndefined()
+})
+test('failed atomic derive preserves target receipt but failed mutation revokes it', async () => {
+  const { client, server } = fixture()
+  const receipt = { protocol: 1 as const, sessionGeneration: 's', canvasOwner: 'o', documentIncarnation: 'd', lane: 'interaction' as const, synchronizedRevision: '1', resourceEpoch: '1', nonce: '1' }
+  server.onmessage = event => server.postMessage(event.data.method === 'load_document'
+    ? { id: event.data.id, stateReceipt: receipt } : { id: event.data.id, error: 'STALE_TARGET' })
+  await client.request('interaction', 'load_document', ['doc'])
+  await expect(client.request('interaction', 'derive_document_v1', [{}])).rejects.toThrow('STALE_TARGET')
+  expect(client.currentReceipt('interaction')).toEqual(receipt)
+  await expect(client.request('interaction', 'apply_document_patch_with_damage', ['bad'])).rejects.toThrow()
+  expect(client.currentReceipt('interaction')).toBeUndefined()
+})

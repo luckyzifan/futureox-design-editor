@@ -62,3 +62,29 @@ test('a successful canvas patch renews exact-source fork without another font/lo
   expect(counts).toEqual({engines:2,fonts:1,forks:1,loads:1})
   expect((await client.request('interaction', 'load_document', [JSON.stringify(doc)])).documentFork).toBe(false)
 })
+
+test('explicit empty derive uses receipts without a full snapshot and rejects stale target/retry', async () => {
+  const client = await setup()
+  expect((await client.request('canvas', 'preparation_capabilities_v1')).value).toEqual({ protocol: 1, emptyDeltaDerivation: true })
+  const loaded = await client.request('canvas', 'load_document', ['{"id":"document"}'])
+  const request = { operationId: 1, baseReceipt: loaded.stateReceipt, target: 'interaction', expectedTarget: null, delta: [] }
+  const derived = await client.request('interaction', 'derive_document_v1', [request])
+  expect(derived.documentFork).toBe(true); expect(derived.stateReceipt).toBeTruthy()
+  expect(counts.loads).toBe(1)
+  await expect(client.request('interaction', 'derive_document_v1', [request])).rejects.toThrow('RETRY')
+  await expect(client.request('interaction', 'derive_document_v1', [{ ...request, operationId: 2 }])).rejects.toThrow('STALE_TARGET')
+  const next = await client.request('interaction', 'derive_document_v1', [{ ...request, operationId: 3, expectedTarget: derived.stateReceipt }])
+  expect(next.documentFork).toBe(true)
+})
+
+test('state receipts retire on reset, resource changes and failed mutations', async () => {
+  const client = await setup()
+  const loaded = await client.request('canvas', 'load_document', ['{"id":"document"}'])
+  const request = { operationId: 1, baseReceipt: loaded.stateReceipt, target: 'interaction', expectedTarget: null, delta: [] }
+  await client.request('canvas', 'load_document', ['{"id":"document"}'])
+  await expect(client.request('interaction', 'derive_document_v1', [request])).rejects.toThrow('STALE_BASE')
+  const changed = await client.request('canvas', 'initialize', [true])
+  await expect(client.request('interaction', 'derive_document_v1', [{ ...request, operationId: 2, baseReceipt: changed.stateReceipt }])).rejects.toThrow('RESOURCE_POLICY')
+  await expect(client.request('canvas', 'load_document', ['invalid'])).rejects.toThrow()
+  await expect(client.request('interaction', 'derive_document_v1', [{ ...request, operationId: 3, baseReceipt: changed.stateReceipt }])).rejects.toThrow('STALE_BASE')
+})

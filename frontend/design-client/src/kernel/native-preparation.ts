@@ -14,18 +14,24 @@ export function connectNativePreparation(bridge: NonNullable<DesktopBridge['prep
   const session = bridge.open()
   session.catch(failed)
   port.onmessage = async event => {
-    const { id, lane, method, args } = event.data as { id: number; lane: string; method: PreparationMethod; args: unknown[] }
+    const { id, lane, method, args, diagnostics } = event.data as { id: number; lane: string; method: PreparationMethod; args: unknown[]; diagnostics?: { originChannelId: number; requestId: number } }
+    const receivedAt = performance.now()
+    const progress = (boundaryCode: number) => { const elapsed = performance.now() - receivedAt; if (diagnostics && !closed) port.postMessage({ id, progress: { backendCode: 2, boundaryCode, ...(elapsed <= 120000 ? { boundaryDurationMs: elapsed } : {}) } }) }
+    progress(1)
     try {
       const owner = await session
       if (closed) return
-      const reply = await bridge.request(owner, { lane, method, args })
+      progress(5)
+      const reply = await bridge.request(owner, { lane, method, args, ...(diagnostics ? { diagnostics: { originChannelId: diagnostics.originChannelId, requestId: diagnostics.requestId, preparationId: id } } : {}) })
+      progress(6)
       if (closed) return
       const transfer = reply.value instanceof Uint8Array || reply.value instanceof Float32Array ? [reply.value.buffer] : []
       port.postMessage({ ...reply, id }, transfer)
     } catch (error) {
       // Application errors arrive as replies. An IPC rejection means the
       // transport failed: retire the session without replaying this job.
-      failed(error)
+      if (method === 'preparation_capabilities_v1') port.postMessage({ id, error: 'DERIVATION_UNSUPPORTED' })
+      else failed(error)
     }
   }
   port.start()

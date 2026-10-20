@@ -51,7 +51,7 @@ import {
   type StrokeHandle,
 } from './kernel/picking'
 import { profileTopology } from './stroke-profile'
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor, Tool } from './engine'
 import { KernelSurface, type PresentedFrame } from './kernel/Surface'
 import type { GpuMoveControl, InteractionProps } from './kernel/interaction-layers'
@@ -225,6 +225,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const presentedRef = useRef<PresentedSignal | null>(null)
   presentedRef.current ??= new PresentedSignal()
   const presentedSignal = presentedRef.current
+  const recordPresentation = useCallback((frame: PresentedFrame | null) => {
+    editor.observeCanvasPresentation(frame)
+    presentedSignal.set(frame)
+  }, [editor, presentedSignal])
   const presented = useSyncExternalStore(presentedSignal.subscribe, presentedSignal.getSnapshot).frame
   const presentationScopeMatches = presented?.epoch === editor.sessionGeneration &&
     presented.pageId === state.page && presented.document.id === state.doc.id
@@ -2043,7 +2047,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         navigationInputOwner={editor}
         overlay={overlay}
         interaction={gpuInteraction}
-        onPresentation={presentedSignal.set}
+        onPresentation={recordPresentation}
         overview={refineOverview}
         presentationEpoch={editor.sessionGeneration}
         document={refineDocument.id === renderedDocument.id && refineDocument.pages.some(page => page.id === state.page) ? refineDocument : renderedDocument}

@@ -1,3 +1,6 @@
+import { operationCorrelation } from '../canvas-operation-terminal'
+import { AuthoredPreparationBinding } from './authored-preparation-binding'
+import type { PreparationStateReceiptV1 } from './preparation-state'
 import { bindNavigationInput, NavigationInputTrace } from './navigation-input'
 import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch, renderRequestCategories, renderResultReason, sanitizeFields as sanitizeRecordFields, PREFIX } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
@@ -364,7 +367,10 @@ export class KernelClient {
     this.presentationAttached = true
     this.worker!.postMessage({ command: 'display-attach', canvas, executionPolicy: renderExecutionPolicy }, [canvas])
   }
+  presentationDiagnosticsEnabled() { return this.terminalDiagnostics.detail }
   present(frame: import('./gpu/resident-presenter').ResidentFrame) {
+    if (frame.terminalQuality && this.terminalDiagnostics.detail) frame = { ...frame, terminalQuality: { ...frame.terminalQuality,
+      documentRevision: this.documentRevision, generation: this.previewEpochs.canvas, fillGeneration: this.tileFillEpoch } }
     const sequence = ++this.displaySequence
     const input = this.inputTrace.correlation(frame.view)
     this.terminalDiagnostics.record('camera-request',{...input,sequence,x:frame.view.x,y:frame.view.y,zoom:frame.view.zoom,width:frame.width,height:frame.height})
@@ -402,6 +408,10 @@ export class KernelClient {
   private gpuPermitWaiter?: GpuPermitWaiter
   private gpuPermitPromise?: Promise<void>
   private parkingGpu?: Promise<void>
+  private authoredPreparation = new AuthoredPreparationBinding<DesignDocument>()
+  // Separate from cancellable presentation promises: accepted mutations still
+  // need acknowledgments (and possibly fallback input) after preview cancellation.
+  private synchronizationInputs = new Map<number, { document: DesignDocument; acknowledge?: (receipt?: PreparationStateReceiptV1 | null) => void }>()
   private documentSnapshot?: DesignDocument
   private documentRevision = 0
   private interactionSnapshot?: DesignDocument
@@ -465,6 +475,27 @@ export class KernelClient {
         e.data.bitmap?.close()
         return
       }
+      if (e.data.documentFallback === true) {
+        const captured = this.synchronizationInputs.get(e.data.id)
+        const serializer = this.serializeNative
+        void (async () => {
+          try {
+            if (!captured) throw Error('DERIVATION_CAPTURE_RETIRED')
+            const document = serializer ? await serializer(captured.document) : JSON.stringify(captured.document)
+            if (this.worker === worker) worker.postMessage({ command: 'document-fallback', id: e.data.id, document })
+          } catch (error) {
+            if (this.worker === worker) worker.postMessage({ command: 'document-fallback', id: e.data.id, error: String(error) })
+          }
+        })()
+        return
+      }
+      if (e.data.documentSynchronized === true) {
+        const captured = this.synchronizationInputs.get(e.data.id)
+        captured?.acknowledge?.(e.data.stateReceipt)
+        this.synchronizationInputs.delete(e.data.id)
+        return
+      }
+      if (e.data.error) this.synchronizationInputs.delete(e.data.id)
       if (e.data.presentation) {
         if (this.navigationJournal.recording && typeof e.data.presentation.compositorFrames === 'number')
           this.navigationJournal.record(9, { frames: e.data.presentation.compositorFrames })
@@ -579,6 +610,8 @@ export class KernelClient {
     this.closeNativePreparation = undefined
     this.serializeNative = undefined
     this.nativeSubmission = Promise.resolve()
+    this.authoredPreparation.invalidate()
+    this.synchronizationInputs.clear()
     this.documentSnapshot = undefined
     this.interactionSnapshot = undefined
     this.fail(error)
@@ -707,6 +740,7 @@ export class KernelClient {
     if (options.renderIntent !== 'preview' || (!options.livePreview && !options.tileViewport) || png || readback || options.exportFormat || options.exportRegion || options.pixelPreview) signal = undefined
     // File pixels must not depend on editor/backend preference or device DPR.
     backend = effectiveBackend(renderExecutionPolicy, backend, png)
+    const diagnosticOperation = operationCorrelation(document)
     const channel = options.interactionChannel ? 'interaction' : 'canvas'
     const previewEpoch = this.previewEpochs[channel], tileEpoch = this.tileFillEpoch
     const cancelled = () => signal?.aborted || ((!!options.tileViewport || options.livePreview === true) && this.previewEpochs[channel] !== previewEpoch) ||
@@ -729,11 +763,16 @@ export class KernelClient {
         const start = performance.now()
         let serialized: string | undefined
         let patch: string | undefined
+        let deriveFrom: PreparationStateReceiptV1 | undefined
+        let acknowledge: ((receipt?: PreparationStateReceiptV1 | null) => void) | undefined
         const interaction = options.interactionChannel === true
         const snapshot = interaction ? this.interactionSnapshot : this.documentSnapshot
         const baseDocumentRevision = interaction ? this.interactionRevision : this.documentRevision
         if (document !== snapshot) {
-          if (snapshot?.id === document.id) {
+          if (!interaction) this.authoredPreparation.invalidate()
+          deriveFrom = interaction ? this.authoredPreparation.receiptFor(document) : undefined
+          if (deriveFrom) { /* Empty derivation carries no authored JSON or patch. */ }
+          else if (snapshot?.id === document.id) {
             const value = documentPatch(snapshot, document)
             patch = nativeSerializer ? await nativeSerializer(value) : JSON.stringify(value)
           } else serialized = nativeSerializer ? await nativeSerializer(document) : JSON.stringify(document)
@@ -742,11 +781,14 @@ export class KernelClient {
           if (interaction) { this.interactionSnapshot = document; this.interactionRevision++ }
           else { this.documentSnapshot = document; this.documentRevision++ }
         }
+        if (!interaction && serialized !== undefined) acknowledge = this.authoredPreparation.capture(document)
+        const synchronize = deriveFrom || acknowledge ? { document, acknowledge } : undefined
         const serializeMs = performance.now() - start
         const revision = interaction ? this.interactionRevision : this.documentRevision
         return { result: this.request(
           {
             document: serialized,
+            deriveFrom,
             documentPatch: patch,
             baseDocumentRevision,
             documentRevision: revision,
@@ -764,7 +806,7 @@ export class KernelClient {
             referenceGpu: import.meta.env.DEV && referenceGpu,
             debug: import.meta.env.DEV ? debug : undefined,
           },
-          progress, [], signal,
+          progress, [], signal, synchronize, diagnosticOperation,
         )
           .then((result) => ({ ...result, serializeMs }))
           .catch((error) => {
@@ -826,14 +868,16 @@ export class KernelClient {
     }
     this.worker?.postMessage({ command: 'cancel-preview', channel, executionPolicy: renderExecutionPolicy })
   }
-  private request(payload: object, progress?: (tile: TileResult) => void, transfer:Transferable[]=[], signal?: AbortSignal): Promise<KernelResult> {
+  private request(payload: object, progress?: (tile: TileResult) => void, transfer:Transferable[]=[], signal?: AbortSignal, synchronize?: { document: DesignDocument; acknowledge?: (receipt?: PreparationStateReceiptV1 | null) => void }, diagnosticOperation?: Record<string, number>): Promise<KernelResult> {
     if (this.disposed) return Promise.reject(new Error('渲染器已关闭'))
     if (signal?.aborted) return Promise.reject(new Error('PREVIEW_CANCELLED'))
+    if (synchronize && this.synchronizationInputs.size >= 128) return Promise.reject(new Error('Document synchronization input budget exceeded'))
     const id = ++this.next
+    if (synchronize) this.synchronizationInputs.set(id, synchronize)
     let cleanup: (() => void) | undefined
     const result = new Promise<KernelResult>((resolve, reject) => {
       const options = (payload as { options?: KernelOptions }).options
-      this.terminalDiagnostics.record('request',{...renderRequestCategories(payload),requestId:id,x:options?.view?.x,y:options?.view?.y,zoom:options?.view?.zoom,width:options?.width,height:options?.height})
+      this.terminalDiagnostics.record('request',{...renderRequestCategories(payload),...diagnosticOperation,requestId:id,x:options?.view?.x,y:options?.view?.y,zoom:options?.view?.zoom,width:options?.width,height:options?.height})
       const preview = !!options?.tileViewport || options?.livePreview === true
       const timer = setTimeout(() => {
         // Reject this attempt. A subsequent user/render request starts a fresh

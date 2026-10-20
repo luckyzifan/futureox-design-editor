@@ -1,3 +1,4 @@
+import type { PreparationStateReceiptV1 } from './preparation-state'
 import type { GpuScene } from './gpu/types'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
 import { blank } from '../model'
@@ -23,6 +24,22 @@ export class RenderKernel {
   private pendingPackets = new Map<string, { revision: number; bytes: Promise<Uint8Array>; shared: boolean }>()
   packetCoalesced = 0
   private packetKeys = new WeakMap<Uint8Array,{key:string;revision:number}>()
+  get preparationStateReceipt() { return this.preparation?.currentReceipt(this.lane) }
+  supportsDocumentDerivation() {
+    if (import.meta.env.VITE_DESIGN_DOCUMENT_DERIVATION === '0') return Promise.resolve(false)
+    return this.preparation?.supportsDerivation() ?? Promise.resolve(false)
+  }
+  async derive_document_v1(baseReceipt: PreparationStateReceiptV1) {
+    if (this.lane !== 'interaction' || !this.preparation || !await this.supportsDocumentDerivation()) throw Error('DERIVATION_UNSUPPORTED')
+    const expectedTarget = this.preparationStateReceipt ?? null
+    this.sceneUpdates.clear()
+    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.packets.clear()
+    try {
+      await this.call('derive_document_v1', [{ operationId: this.preparation.nextDerivationOperation(), baseReceipt,
+        target: 'interaction', expectedTarget, delta: [] }])
+      if (!this.preparationStateReceipt) throw Error('DERIVATION_RECEIPT_MISSING')
+    } finally { this.pendingMutations-- }
+  }
   get canPrepareConcurrently() { return !!this.preparation }
   get packetCacheHits() { return this.packets.hits }
   get packetCacheBytes() { return this.packets.bytes }
@@ -45,6 +62,7 @@ export class RenderKernel {
       }
       return reply.value as T
     }
+    if (method === 'derive_document_v1' || method === 'preparation_capabilities_v1') throw Error('DERIVATION_UNSUPPORTED')
     if (method === 'render_cpu_frame') return renderCpuFrame(this.assets, args[0] as string, args[1] as PaintDamage | undefined) as T
     if (method === 'initialize') return undefined as T
     const result = (this.assets[method] as (...args: any[]) => unknown).apply(this.assets, args)
