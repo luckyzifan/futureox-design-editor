@@ -42,7 +42,7 @@ self.onmessage = event => {
         if (!Number.isSafeInteger(id) || !allowed.has(method) || !Array.isArray(args)) throw Error('Invalid CPU preparation request')
         if (lane !== 'canvas' && lane !== 'interaction') throw Error('Invalid CPU preparation lane')
         if (method === 'preparation_capabilities_v1') {
-          port.postMessage({ id, value: { protocol: 1, emptyDeltaDerivation: true } }); return
+          port.postMessage({ id, value: { protocol: 1, emptyDeltaDerivation: true, guardedPatchReceiptV1: true } }); return
         }
         if (method === 'derive_document_v1') {
           const request = states.validateDerive(lane, args)
@@ -58,6 +58,7 @@ self.onmessage = event => {
           previous?.free()
           port.postMessage({ id, settings, stateReceipt, documentFork: true }); return
         }
+        if (method === 'apply_document_patch_with_damage') states.validatePatch(lane, args)
         const mutation = ['initialize', 'load_document', 'apply_document_patch_with_damage', 'apply_interaction_transforms'].includes(method)
         const previousReceipt = mutation ? states.revoke(lane) : null
         if (method === 'apply_interaction_transforms' && lane !== 'interaction') throw Error('Transform-only updates require the interaction lane')
@@ -85,7 +86,7 @@ self.onmessage = event => {
         if (method === 'initialize') { kernel.set_image_mips(args[0] === true); snapshots.initialize(lane, args[0] === true) }
         else if (method === 'load_document' && documentFork) value = undefined
         else if (method === 'render_cpu_frame') value = renderCpuFrame(kernel, args[0] as string, args[1] as Parameters<typeof renderCpuFrame>[2])
-        else value = (kernel[method] as (...args: any[]) => unknown).apply(kernel, args)
+        else value = (kernel[method] as (...args: any[]) => unknown).apply(kernel, method === 'apply_document_patch_with_damage' ? args.slice(0, 1) : args)
         progress(3)
         commitSnapshot?.()
         if (method === 'load_document') snapshots.loaded(lane, args[0] as string)

@@ -106,7 +106,7 @@ test('DETAIL resource context is bounded numeric metadata, never resource conten
   assert.deepEqual(snapshotResourceFields(123,Object.fromEntries(Array.from({length:33},(_,i)=>[i,{data:''}]))),{sourceCodeUnits:123})
   assert.deepEqual(snapshotResourceFields(123,{a:{data:null}}),{sourceCodeUnits:123})
   const worker=readFileSync(new URL('../../design-client/src/kernel/render-worker.ts',import.meta.url),'utf8')
-  assert(worker.includes('terminalDiagnostics.detail\n          ? snapshotResourceFields(request.document.length, laneState.interactionDocument.fonts) : {}'))
+  assert(worker.includes('terminalDiagnostics.detail\n          ? snapshotResourceFields(derivedSource ? 0 : request.document.length, laneState.interactionDocument.fonts) : {}'))
 })
 
  test('derivation telemetry admits bounded counts and categories without receipts or authored data',()=>{
@@ -140,4 +140,22 @@ test('existing viewport-state detail stream carries eligibility without another 
   assert.equal(rows.length, 1)
   assert.equal(rows[0].event, 'viewport-state')
   assert.equal(rows[0].retainNativePanPhase, 1)
+})
+
+const admissionValid = { admissionKind: 0, admissionPressure: 1, admissionRequiredBytes: 0,
+ admissionWorkingBytes: 220*1024*1024, admissionBudgetBytes:256*1024*1024,
+ admissionReclaimableBytes: 1024, admissionPoolBytes:512, admissionPoolCount:1,
+ admissionUploadCount:2, admissionImageCount:3 }
+test('existing fence transports bounded admission decision metadata only', () => {
+ assert.deepEqual(sanitizeFields({...admissionValid, document:{secret:true}, nodeId:'private'}), admissionValid)
+ assert.equal(sanitizeRecord({v:1,session:1,seq:1,at:1,source:'worker',event:'fence',...admissionValid}).event,'fence')
+})
+test('admission enums, bytes and counts reject forged/nonfinite/noninteger values', () => {
+ for (const value of [-1,.5,Infinity,NaN,'1',true,{},null])
+   assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(admissionValid).map(key=>[key,value]))),{})
+ for (const key of ['admissionKind','admissionPressure']) assert.deepEqual(sanitizeFields({[key]:2}),{})
+ for (const key of Object.keys(admissionValid).filter(key=>key.endsWith('Bytes')))
+   assert.deepEqual(sanitizeFields({[key]:16*1024**3+1}),{})
+ for (const key of Object.keys(admissionValid).filter(key=>key.endsWith('Count')))
+   assert.deepEqual(sanitizeFields({[key]:1000001}),{})
 })

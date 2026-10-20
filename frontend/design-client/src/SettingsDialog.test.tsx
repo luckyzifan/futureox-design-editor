@@ -198,33 +198,29 @@ test('unmount with disconnected trigger restores canvas and releases every backg
 })
 
 
-test('desktop companion setting defaults off, changes mode and resets with preferences', async () => {
+test('desktop companion has its own tab, no model toggle before verification, and no old fallback', async () => {
   desktopPet.configure('off')
   await act(async () => root.render(<Harness desktop />))
-  await tab('保存与范围')
-  const select = dialog().querySelector<HTMLSelectElement>('select[id$="-pet"]')!
-  expect(select.value).toBe('off')
-  await act(async () => { select.value = 'quiet'; select.dispatchEvent(new Event('change', { bubbles: true })) })
-  expect(desktopPet.snapshot()).toBe('quiet'); expect(localStorage.getItem('core-desktop-pet-mode')).toBe('quiet')
-  await act(async () => button('恢复偏好默认值').click())
-  expect(desktopPet.snapshot()).toBe('off'); expect(select.value).toBe('off')
+  await tab('Nomi 伙伴')
+  expect(dialog().querySelector('select[id$="-pet"]')).toBeNull()
+  expect(dialog().textContent).toContain('不会回退使用旧版素材')
+  expect(dialog().textContent).toContain('目前不可启用')
+  expect(dialog().textContent).not.toContain('请先关闭再开启')
 })
 
-
-test('desktop companion reports sanitized rejected configuration and explains off-first recovery', async () => {
-  Object.defineProperty(window, 'coreDesktop', { configurable: true, value: { version: 1, petConfigure: vi.fn().mockRejectedValue(Error('private credential string')) } })
+test('old enabled preference can be turned off without enabling unverified replacement', async () => {
+  const configure = vi.fn().mockResolvedValue({ mode: 'off', phase: 'off', revision: 1000 })
+  Object.defineProperty(window, 'coreDesktop', { configurable: true, value: { version: 1, petConfigure: configure } })
   await act(async () => { desktopPet.configure('active'); root.render(<Harness desktop />) })
-  await tab('保存与范围')
-  expect(dialog().textContent).toContain('桌面伙伴暂不可用')
-  expect(dialog().textContent).not.toContain('private credential string')
-  expect(dialog().textContent).toContain('请先关闭再开启')
-  const select = dialog().querySelector<HTMLSelectElement>('select[id$="-pet"]')!
-  let revision = 100
-  const configure = vi.fn().mockImplementation(async mode => ({ ok: true, failed: false, mode, phase: mode === 'off' ? 'off' : 'ready', revision: ++revision }))
-  window.coreDesktop!.petConfigure = configure
-  await act(async () => { select.value = 'off'; select.dispatchEvent(new Event('change', { bubbles: true })) })
-  await act(async () => { select.value = 'active'; select.dispatchEvent(new Event('change', { bubbles: true })) })
-  expect(configure.mock.calls).toEqual([['off'], ['active']])
-  expect(dialog().textContent).not.toContain('桌面伙伴暂不可用')
-  expect(desktopPet.statusSnapshot()).toBe('ready')
+  await tab('Nomi 伙伴')
+  await act(async () => button('关闭已保存的伙伴偏好').click())
+  expect(desktopPet.snapshot()).toBe('off')
+  expect(localStorage.getItem('core-desktop-pet-mode')).toBe('off')
+  expect(configure.mock.calls).toEqual([['active'], ['off']])
+})
+
+test('web companion tab does not offer a desktop model toggle', async () => {
+  await act(async () => root.render(<Harness />)); await tab('Nomi 伙伴')
+  expect(dialog().textContent).toContain('Nomi 伙伴仅适用于桌面应用')
+  expect(dialog().querySelector('select[id$="-pet"]')).toBeNull()
 })

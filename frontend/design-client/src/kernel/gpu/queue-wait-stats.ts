@@ -1,3 +1,4 @@
+import { markRenderFailure } from '../render-failure-telemetry'
 /** CPU-side queue-completion observations, never GPU timestamp duration or
  * queue.submit return/acknowledgement latency. Fixed-size driver-lifetime data.
  * Timing is opt-in; counts remain available without clock reads or samples. */
@@ -13,7 +14,7 @@ export class QueueWaitStats {
   private histogram = Array<number>(upperBoundsMs.length + 1).fill(0)
   constructor(readonly timingEnabled = false, private now: () => number = () => performance.now()) {}
   submit(action: () => void) {
-    try { action(); this.submits++ } catch (error) { this.submitFailures++; throw error }
+    try { action(); this.submits++ } catch (error) { this.submitFailures++; throw markRenderFailure(error, { failureStage: 8 }) }
   }
   async wait(reason: QueueWaitReason, action: () => Promise<void>, lost: () => boolean) {
     const entry = this.reasons[reason]
@@ -24,7 +25,7 @@ export class QueueWaitStats {
       this.waits.completed++; entry.completed++
     } catch (error) {
       this.waits.rejected++; entry.rejected++
-      throw error
+      throw markRenderFailure(error, { failureStage: 9 })
     } finally {
       this.waits.pending--; entry.pending--
       if (lost()) { this.waits.deviceLost++; entry.deviceLost++ }

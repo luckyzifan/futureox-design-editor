@@ -1,3 +1,5 @@
+import { gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
+import { markRenderFailure } from '../render-failure-telemetry'
 import { backdropEffect, backdropRadius, classifyCompiledSourceReuse } from '../render-dependency'
 import { prefixRationalUnsupported } from './prefix-preflight'
 import { renderErrorWithBudget, sanitizeRenderBudget, type RenderBudgetDiagnostic } from '../render-diagnostics'
@@ -608,7 +610,7 @@ export class GpuRenderer {
   private budgetError(message: string): Error {
     const diagnostic = this.lastBudgetFailure
     this.lastBudgetFailure = undefined
-    return renderErrorWithBudget(message, undefined, diagnostic)
+    return markRenderFailure(renderErrorWithBudget(message, undefined, diagnostic), { failureStage: 13, failureCategory: 3, failureCode: 200 })
   }
   private release(...surfaces: (Surface | undefined)[]) {
     for (const s of new Set(surfaces)) {
@@ -1697,7 +1699,17 @@ export class GpuRenderer {
     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
     const resourceLimit = pressure ? 4096 : RECLAIM_BATCH_RESOURCES
     const checkpointStart = performance.now()
-    await this.driver.checkpoint('admission')
+    // Diagnostic-only snapshot of the decision already made above. The fence
+    // record precedes destruction, so these are candidate bytes, not freed bytes.
+    await this.driver.checkpoint('admission', gpuDiagnosticsEnabled() ? {
+      admissionKind: required > 0 ? 1 : 0, admissionPressure: pressure ? 1 : 0,
+      admissionRequiredBytes: required, admissionWorkingBytes: this.workingBytes,
+      admissionBudgetBytes: this.frameBudget, admissionReclaimableBytes: reclaimableBytes,
+      admissionPoolBytes: pooled.reduce((bytes, texture) => bytes + texture.bytes, 0),
+      admissionPoolCount: pooled.length,
+      admissionUploadCount: this.retiredUploads.length + this.coordinateMaps.size,
+      admissionImageCount: this.images.size,
+    } : undefined)
     this.checkpointMs += performance.now() - checkpointStart
     // Every surface still needed by an ancestor is in busy. GPU commands that
     // used a released surface or an upload have completed at this boundary.
@@ -3367,7 +3379,7 @@ export class GpuRenderer {
         scene.presentation,
         present,
         scene.output,
-      ) } finally {
+      ) } catch (error) { throw markRenderFailure(error, { failureStage: 7 }) } finally {
         // Driver finish may retire scratch before a later readback fails.
         this.bytes += (this.driver.scratchBytes || 0) - finishingScratch
       }
@@ -3418,6 +3430,7 @@ export class GpuRenderer {
         description: this.driver.description,
       }
     } catch (error) {
+      markRenderFailure(error, { failureStage: 12 })
       if (error instanceof Error && error.message === 'PREVIEW_CANCELLED') {
         // Never pool/destroy frame resources while submitted commands still
         // reference them. This leaves the separately owned presented frame alive.

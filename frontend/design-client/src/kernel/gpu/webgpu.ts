@@ -1,3 +1,4 @@
+import { markRenderFailure, renderFailureFields, withRenderFailureStage } from '../render-failure-telemetry'
 import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { QueueWaitStats, type QueueWaitReason } from './queue-wait-stats'
 import { textureByteLength } from './texture-byte-length'
@@ -17,7 +18,7 @@ import { ResidentPresenter, type ResidentFrame } from './resident-presenter'
 import { isDisplayBudgetError } from './display-budget'
 import byteSamplingShader from '../../../../../design-studio/crates/design-kernel/shaders/byte-sampling.wgsl?raw'
 import { areaShaderWgsl } from './area-shader'
-import type { Driver, Texture, PathMesh, Rect, GpuScene } from './types'
+import type { Driver, Texture, PathMesh, Rect, GpuScene, GpuAdmissionDiagnostic } from './types'
 import { parameters, previewUniforms, type PreviewPresentation } from './types'
 import { MAX_SOLID_INSTANCES, SOLID_INSTANCE_FLOATS } from './solid-batch'
 import { GpuBindingCache } from './binding-cache'
@@ -46,11 +47,11 @@ type ParkedDriver = {
 }
 export class WebGpuDriver implements Driver {
   private queueWaitStats = new QueueWaitStats(import.meta.env.VITE_DESIGN_QUEUE_WAIT_TIMING === '1')
-  private waitForQueue(reason: QueueWaitReason) {
+  private waitForQueue(reason: QueueWaitReason, admission?: GpuAdmissionDiagnostic) {
     const started=gpuDiagnosticsEnabled()?performance.now():0
     const pending=this.queueWaitStats.wait(reason, () => this.device.queue.onSubmittedWorkDone(), () => this.lost)
     if(!gpuDiagnosticsEnabled())return pending
-    return pending.finally(()=>recordGpuDiagnostic('fence',{reasonCode:['readback','timing','prefix-scratch','interaction','periodic','admission','checkpoint','cancel','initialization','park'].indexOf(reason)+1,queueWaitMs:performance.now()-started,resourceEpoch:this.resourceEpoch,completedResourceEpoch:this.completedResourceEpoch}))
+    return pending.finally(()=>recordGpuDiagnostic('fence',{...admission,reasonCode:['readback','timing','prefix-scratch','interaction','periodic','admission','checkpoint','cancel','initialization','park'].indexOf(reason)+1,queueWaitMs:performance.now()-started,resourceEpoch:this.resourceEpoch,completedResourceEpoch:this.completedResourceEpoch}))
   }
   private bindingCache = new GpuBindingCache()
   // Rollout gate until real-device validation and timings are available. The
@@ -698,7 +699,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (!this.lost) this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
     if (this.frameScopeOpen) {
       const error = await this.device.popErrorScope(); this.frameScopeOpen = false
-      if (error || this.errors.length) throw new Error([error?.message, ...this.errors].filter(Boolean).join('\n'))
+      if (error || this.errors.length) throw markRenderFailure(new Error([error?.message, ...this.errors].filter(Boolean).join('\n')), { failureStage: 7, failureCategory: error ? renderFailureFields(error).failureCategory : this.lost ? 4 : 0, failureCode: 201 })
     }
     this.prefix?.releaseScratch()
     for (const target of this.transientTargets) this.destroy(target)
@@ -1049,10 +1050,10 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       return floating?new Float32Array(packed.buffer):Float32Array.from(packed,v=>v/255)
     } finally { buffer.destroy() }
   }
-  async checkpoint(reason: QueueWaitReason = 'checkpoint') {
+  async checkpoint(reason: QueueWaitReason = 'checkpoint', admission?: GpuAdmissionDiagnostic) {
     this.submitCommands()
     const epoch = this.resourceEpoch
-    await this.waitForQueue(reason)
+    await this.waitForQueue(reason, admission)
     if (this.lost) throw new Error('GPU 设备已丢失')
     // The current frame may encode more reads after this checkpoint. Only
     // earlier frames are eligible for immutable-resource eviction.
@@ -1447,7 +1448,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // readback target, MAP_READ staging). Pure accounting.
     let finishTransient = 0
     if (present) {
-    if (this.captureDisplay && this.presenter && !readback && !this.hdr) captured = this.presenter.capture(width, height)
+    if (this.captureDisplay && this.presenter && !readback && !this.hdr) captured = withRenderFailureStage(10, () => this.presenter!.capture(width, height))
     if (this.canvas.width !== width) this.canvas.width = width
     if (this.canvas.height !== height) this.canvas.height = height
     const u = parameters(outputRect || { x: 0, y: 0, w: width, h: height }, r)
@@ -1474,7 +1475,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const pass = this.encoder.beginRenderPass({
       colorAttachments: [
         {
-          view: this.bindingCache.view((captured?.texture || this.context.getCurrentTexture())),
+          view: this.bindingCache.view((captured?.texture || withRenderFailureStage(10, () => this.context.getCurrentTexture()))),
           loadOp: 'clear',
           storeOp: 'store',
           clearValue: [0, 0, 0, 0],
@@ -1541,7 +1542,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const error = await this.device.popErrorScope()
     this.frameScopeOpen = false
     if (error || this.errors.length)
-      throw new Error([error?.message, ...this.errors].filter(Boolean).join('\n'))
+      throw markRenderFailure(new Error([error?.message, ...this.errors].filter(Boolean).join('\n')), { failureStage: 7, failureCategory: error ? renderFailureFields(error).failureCategory : this.lost ? 4 : 0, failureCode: 201 })
     // All frame commands have completed (the fence above): safe to reclaim
     // overprovisioned geometry buffers for the next frame.
     this.shrinkCapacities()
@@ -1596,7 +1597,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       straightRgba = minifiedPreviewRgba8(rgba)
       rgba = undefined
     }
-    const bitmap = present && !captured ? this.canvas.transferToImageBitmap() : undefined
+    const bitmap = present && !captured ? withRenderFailureStage(10, () => this.canvas.transferToImageBitmap()) : undefined
     if (bitmap) this.crossDeviceBitmaps++
     if (captured) this.residentCaptures++
     return { gpuTile: captured?.id, bitmap, rgba, linear, straightRgba }

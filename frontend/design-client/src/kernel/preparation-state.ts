@@ -30,6 +30,18 @@ export class PreparationStates {
     this.receipts.set(lane, receipt)
     return receipt
   }
+  validatePatch(lane: string, args: unknown[]) {
+    if (args.length <= 1) return
+    const guard = args[1]
+    if (args.length !== 2 || !guard || typeof guard !== 'object' ||
+      Object.keys(guard).join(',') !== 'expectedBaseReceipt') throw Error('PATCH_GUARD_SCHEMA')
+    const expected = (guard as {expectedBaseReceipt: unknown}).expectedBaseReceipt
+    if (!expected || typeof expected !== 'object' || Object.keys(expected).length !== fields.length ||
+      !fields.every(key => Object.hasOwn(expected, key)) || (expected as Record<string, unknown>).protocol !== 1 ||
+      !fields.filter(key => key !== 'protocol').every(key => typeof (expected as Record<string, unknown>)[key] === 'string')) throw Error('PATCH_GUARD_SCHEMA')
+    if (!this.current(lane) || !same(expected, this.current(lane))) throw Error('STALE_BASE')
+    if (!Number.isSafeInteger(this.sequence + 1)) throw Error('PREPARATION_SESSION_EXHAUSTED')
+  }
   validateDerive(lane: string, args: unknown[]): DeriveDocumentRequestV1 {
     if (!Number.isSafeInteger(this.sequence + 1)) throw Error('PREPARATION_SESSION_EXHAUSTED')
     const request = args[0] as DeriveDocumentRequestV1

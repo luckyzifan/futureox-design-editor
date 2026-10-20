@@ -1,3 +1,4 @@
+import { setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { expect, test, vi } from 'vitest'
 import { GpuRenderer } from './renderer'
 import type { Driver, GpuScene, GpuPaint, Texture, Rect } from './types'
@@ -920,4 +921,43 @@ test('unsafe surface products, non-finite origins, and invalid byte admissions c
     expect(() => renderer.overBudget(bytes)).toThrow(/字节数/)
   expect(renderer.overBudget(0)).toBe(false)
   expect(renderer.bytes).toBe(0); expect(create).not.toHaveBeenCalled()
+})
+
+
+test('admission diagnostics classify proactive and required pressure without early destruction', async () => {
+  const MiB = 1024 * 1024
+  for (const required of [0, 64 * MiB]) {
+    let finish!: () => void, metadata: any, completed = false
+    const destroyed: Texture[] = []
+    const driver = { name: 'webgpu', managed: true, scratchBytes: 0,
+      checkpoint: vi.fn(async (_reason: unknown, fields: unknown) => { metadata = fields; await new Promise<void>(resolve => { finish = resolve }); completed = true }),
+      destroy(texture: Texture) { expect(completed).toBe(true); destroyed.push(texture) },
+    } as unknown as Driver
+    const renderer = new GpuRenderer(driver) as any
+    renderer.scene = {}; renderer.bytes = 220 * MiB
+    const texture = { width: 256, height: 256, bytes: MiB, resource: {} } as Texture
+    renderer.free.set('256:256', [texture])
+    setGpuDiagnosticSink(() => {})
+    try {
+      const pending = renderer.reclaimScratch(required)
+      expect(metadata).toEqual({ admissionKind: required ? 1 : 0, admissionPressure: required ? 1 : 0,
+        admissionRequiredBytes: required, admissionWorkingBytes: 220 * MiB, admissionBudgetBytes: 256 * MiB,
+        admissionReclaimableBytes: MiB, admissionPoolBytes: MiB, admissionPoolCount: 1,
+        admissionUploadCount: 0, admissionImageCount: 0 })
+      expect(destroyed).toEqual([]); expect(renderer.bytes).toBe(220 * MiB)
+      finish(); await pending
+      expect(destroyed).toEqual([texture]); expect(renderer.bytes).toBe(219 * MiB)
+    } finally { setGpuDiagnosticSink(undefined) }
+  }
+})
+
+test('disabled admission diagnostics preserve the same fence with no metadata payload', async () => {
+  const driver = { name: 'webgpu', managed: true, scratchBytes: 0, checkpoint: vi.fn(async () => {}), destroy() {} } as unknown as Driver
+  const renderer = new GpuRenderer(driver) as any
+  renderer.scene = {}; renderer.bytes = 220 * 1024 * 1024
+  const texture = { width: 256, height: 256, bytes: 1024 * 1024, resource: {} } as Texture
+  renderer.free.set('256:256', [texture])
+  setGpuDiagnosticSink(undefined)
+  await renderer.reclaimScratch()
+  expect(driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission', undefined)
 })
