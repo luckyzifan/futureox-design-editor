@@ -35,6 +35,7 @@ export function ResidentCompositeSurface(props: {
   onGone: (key: string, serial: number) => void
   onError?: (key: string, serial: number, message: string) => void
   onFailure: (message: string) => void
+  terminalQuality?: ResidentFrame['terminalQuality']
   presentation: PresentedFrame | null
   overlay?: SurfaceProps['overlay']
   onPresented?: (frame: ResidentAcknowledgement, source?: PresentedFrame) => void
@@ -121,6 +122,7 @@ export function ResidentCompositeSurface(props: {
     catch (error) { p.onFailure(String(error)); return }
     const frame: ResidentFrame = {
       presentationId,
+      terminalQuality: !moved && p.client.presentationDiagnosticsEnabled() ? p.terminalQuality : undefined,
       overlay,
       view: p.view,
       width: p.width,

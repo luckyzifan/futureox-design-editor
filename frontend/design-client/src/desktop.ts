@@ -91,7 +91,7 @@ export interface DesktopBridge {
   readonly documentCodec?: { encode(document: unknown): Promise<string>; decode(json: string): Promise<unknown> }
   readonly preparation?: {
     open(): Promise<string>
-    request(session: string, request: { lane: string; method: string; args: unknown[] }): Promise<import('./kernel/preparation-channel').PreparationReply>
+    request(session: string, request: { lane: string; method: string; args: unknown[]; diagnostics?: { originChannelId: number; requestId: number; preparationId: number } }): Promise<import('./kernel/preparation-channel').PreparationReply>
     close(session: string): Promise<void>
   }
   readonly sketchSession?: SketchSessionBridge

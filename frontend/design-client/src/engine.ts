@@ -1,3 +1,5 @@
+import { gestureCategory, patchCategory, type OperationCategory } from './canvas-operation-diagnostics'
+import { createCanvasOperationDiagnostics } from './canvas-operation-terminal'
 import { hasSchema15Features } from './schema-features'
 import { expandRepeats, repeatSourceId } from './repeat-transforms'
 import * as ComponentSlots from './component-slots'
@@ -173,6 +175,13 @@ export class Editor {
       this.pickContexts.set(document, context)
     }
     return context
+  }
+  readonly operationDiagnostics = createCanvasOperationDiagnostics()
+  private diagnosticOperation: number | null = null
+  observeCanvasPresentation(frame: { document: object; pageId: string; epoch: number; preview?: boolean } | null) {
+    // A stale frame or an interaction reprojection cannot certify current authored state.
+    if (!frame || frame.document !== this.state.doc || frame.epoch !== this.sessionGeneration || frame.pageId !== this.state.page || this.interactionActive) return
+    this.operationDiagnostics.acknowledge(frame.epoch, this.state.version, frame.document, frame.pageId, !!frame.preview)
   }
   lastPreviewTiming = { prepareMs: 0, layoutMs: 0, publishMs: 0 }
   pointerLocation:Point|null=null
@@ -432,12 +441,15 @@ export class Editor {
     selection?: string[],
     draftIds?: string[],
     source: EditorEditEvent['source'] = 'user',
+    diagnosticCategory: OperationCategory = 'other',
   ) {
     const before = this.history(label)
-    const components = Object.values(before.doc.nodes).some(
-      (n) => n.component || n.instance || n.instanceOrigin || n.componentSet,
-    )
+    const operation = this.diagnosticOperation ?? this.operationDiagnostics.begin(this.sessionGeneration, this.state.version, diagnosticCategory, draftIds?.length ?? selection?.length ?? this.state.selection.length)
+    const finish = (outcome: 'committed' | 'unchanged' | 'rejected') => { if (!this.transaction) this.operationDiagnostics.finish(operation, outcome, this.sessionGeneration, this.state.version, this.state.doc, this.state.page) }
     try {
+      const components = Object.values(before.doc.nodes).some(
+        (n) => n.component || n.instance || n.instanceOrigin || n.componentSet,
+      )
       // Finalize only the authored mutation before inspecting topology. This
       // keeps the check on plain structurally shared records and prevents any
       // component/connector/layout walk from observing an invalid tree.
@@ -511,30 +523,36 @@ export class Editor {
         if ((n.pathOffset || n.vectorBrush) && n !== before.doc.nodes[n.id]) kernelBounds(n)
       validateStructure(resolved)
       validateDocument(resolved)
-      if (resolved === before.doc) return { status: 'unchanged' as const, revision: this.state.version }
+      if (resolved === before.doc) { finish('unchanged'); return { status: 'unchanged' as const, revision: this.state.version } }
       if (this.transaction) {
         this.transaction.previewBase = resolved
         this.set({ doc: resolved, selection: selection ?? this.state.selection.filter(id => !!resolved.nodes[id]), message: label })
         return { status: 'preview' as const, revision: this.state.version }
       }
       const committed = this.push(before, resolved)
-      if (!committed) return { status: 'unchanged' as const, revision: this.state.version }
+      if (!committed) { finish('unchanged'); return { status: 'unchanged' as const, revision: this.state.version } }
       this.set({
         doc: committed.document,
         selection: selection ?? this.state.selection.filter((id) => !!committed.document.nodes[id]),
         version: this.state.version + 1,
         message: detached ? `${label}（相关实例已分离）` : label,
       })
+      finish('committed')
       this.publishEdit('edit', label, source)
       return { status: 'committed' as const, revision: this.state.version }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.notify(message)
+      finish('rejected')
       return { status: 'rejected' as const, revision: this.state.version, message }
     }
   }
   begin(label: string) {
-    if (!this.transaction) this.transaction = this.history(label)
+    if (!this.transaction) {
+      const history = this.history(label)
+      this.diagnosticOperation = this.operationDiagnostics.begin(this.sessionGeneration, this.state.version, gestureCategory(label), this.state.selection.length)
+      this.transaction = history
+    }
   }
   preview(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
     const previewStarted = performance.now()
@@ -564,9 +582,11 @@ export class Editor {
         if((n.pathOffset||n.vectorBrush)&&n!==this.state.doc.nodes[n.id])kernelBounds(n)
       const published = performance.now()
       this.set({ doc: resolved })
+      if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, true)
       this.lastPreviewTiming = { prepareMs: layoutStarted - previewStarted, layoutMs: published - layoutStarted, publishMs: performance.now() - published }
       return true
     } catch (error) {
+      if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, false)
       this.notify(error instanceof Error ? error.message : String(error))
       return false
     }
@@ -574,10 +594,14 @@ export class Editor {
   commit() {
     if (!this.transaction) return
     const before = this.transaction
+    const operation = this.diagnosticOperation
+    this.diagnosticOperation = null
+    const finish = (outcome: 'committed' | 'unchanged' | 'rejected') => { if (operation !== null) this.operationDiagnostics.finish(operation, outcome, this.sessionGeneration, this.state.version, this.state.doc, this.state.page) }
     this.transaction = null
     try {
       validateDocument(this.state.doc)
     } catch (error) {
+      finish('rejected')
       this.set({ doc: before.doc, selection: before.selection, message: String(error) })
       return
     }
@@ -586,15 +610,19 @@ export class Editor {
       const committed = doc !== before.doc ? this.push(before, doc) : undefined
       if (committed) {
         this.set({ doc: committed.document, version: this.state.version + 1, message: before.label })
+        finish('committed')
         this.publishEdit('edit', before.label)
-      } else if (doc !== this.state.doc) this.set({ doc })
+      } else { if (doc !== this.state.doc) this.set({ doc }); finish('unchanged') }
     } catch (error) {
+      finish('rejected')
       this.set({ doc: before.doc, selection: before.selection, message: String(error) })
     }
   }
   cancel() {
     if (this.transaction) {
       const h = this.transaction
+      if (this.diagnosticOperation !== null) this.operationDiagnostics.finish(this.diagnosticOperation, 'cancelled', this.sessionGeneration, this.state.version)
+      this.diagnosticOperation = null
       this.transaction = null
       this.set({ doc: h.doc, selection: h.selection })
     }
@@ -604,10 +632,12 @@ export class Editor {
     this.cancel()
     const h = this.undoStack.at(-1)
     if (!h) return
+    const operation = this.operationDiagnostics.begin(this.sessionGeneration, this.state.version, 'undo', this.state.selection.length)
     let doc: DesignDocument
     try {
       doc = this.historyCore!.undo().document
     } catch (error) {
+      this.operationDiagnostics.finish(operation, 'rejected', this.sessionGeneration, this.state.version)
       this.notify(String(error))
       return
     }
@@ -621,6 +651,7 @@ export class Editor {
       version: this.state.version + 1,
       message: `撤销：${h.label}`,
     })
+    this.operationDiagnostics.finish(operation, 'committed', this.sessionGeneration, this.state.version, this.state.doc, this.state.page)
     this.publishEdit('undo', h.label, source)
   }
   redo(source: EditorEditEvent['source'] = 'user') {
@@ -628,10 +659,12 @@ export class Editor {
     this.cancel()
     const h = this.redoStack.at(-1)
     if (!h) return
+    const operation = this.operationDiagnostics.begin(this.sessionGeneration, this.state.version, 'redo', this.state.selection.length)
     let doc: DesignDocument
     try {
       doc = this.historyCore!.redo().document
     } catch (error) {
+      this.operationDiagnostics.finish(operation, 'rejected', this.sessionGeneration, this.state.version)
       this.notify(String(error))
       return
     }
@@ -645,6 +678,7 @@ export class Editor {
       version: this.state.version + 1,
       message: `重做：${h.label}`,
     })
+    this.operationDiagnostics.finish(operation, 'committed', this.sessionGeneration, this.state.version, this.state.doc, this.state.page)
     this.publishEdit('redo', h.label, source)
   }
   load(value: unknown, preserveView=false) {
@@ -657,6 +691,8 @@ export class Editor {
     const saved = !preserveView && interfacePreference.getSnapshot().rememberViewport
       ? this.cameraState.recall(doc.id, doc.pages.map(p => p.id)) : undefined
     this.restoredCamera = !!saved
+    this.operationDiagnostics.endSession()
+    this.diagnosticOperation = null
     this.sessionEpoch++
     if (this.revealRequest) this.consumeReveal(this.revealRequest.nonce)
     this.preservedViewSession=(preserveView || saved)?this.sessionEpoch:-1
@@ -898,6 +934,8 @@ export class Editor {
       },
       undefined,
       ids,
+      'user',
+      (label === '编辑文字' || label === '编辑富文本') ? 'text' : patchCategory(patch),
     )
   }
   /** The property panel can edit a layer selected explicitly in the layer tree.
@@ -2104,6 +2142,8 @@ export class Editor {
     this.releaseCameraLifecycle?.()
     this.releaseCameraLifecycle = undefined
     this.disposed = true
+    this.operationDiagnostics.close()
+    this.diagnosticOperation = null
     this.sessionEpoch++
     this.geometryJob?.cancel()
     this.discardPendingView()

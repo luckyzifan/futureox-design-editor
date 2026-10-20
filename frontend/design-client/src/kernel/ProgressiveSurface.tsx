@@ -10,7 +10,7 @@ import type { BackendPreference } from './gpu/types'
 import type { ColorPresenter } from './color-presenter'
 import { TILE_SIDE, budgetTileLimit, displayTileBudget, tilesCoverBounds, type RasterTile } from './tile-cache'
 import { planTilesAligned, planTilesWithPrefetchRim, tilePrefetchRingsFromHost } from './tile-plan-aligned'
-import { canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale } from './canvas-raster-plan'
+import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale } from './canvas-raster-plan'
 import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
@@ -40,6 +40,8 @@ import {
   type TileFillCounters,
 } from './tile-scheduler'
 import { patternCameraPeriod, snapPatternAxis, tileComputationDependsOnCamera, tileComputationKey } from './tile-computation-key'
+
+let nextTerminalQualitySequence = 0
 
 type PaintedTile = TileResult & {
   revision: number
@@ -514,11 +516,20 @@ export function ProgressiveSurfaceImpl(
     ? motionRasterScale(view, dpr, width, height)
     : canvasSamplingScale(view, dpr, width, height, stableDensity, hdrCompositing && !!doc.colorManagement)
   const samplingDpr = nativeSampling ? dpr : samplingScale / view.zoom
+  const priorRasterPlan = activePlan.current
+  // contract.revision includes node/font/resource/color/profile changes; the
+  // remaining fields prevent cross-page/session/backend/presentation reuse.
+  const retainNativePanPhase = !zooming && priorRasterPlan?.document === doc &&
+    priorRasterPlan.revision === contract.revision && priorRasterPlan.pageId === pageId &&
+    priorRasterPlan.epoch === (props.presentationEpoch || 0) &&
+    priorRasterPlan.computeBackend === backend && priorRasterPlan.displayCapability === displayCapability &&
+    priorRasterPlan.managed === (hdrCompositing && !!doc.colorManagement) &&
+    preservesNativePanPhase(view, dpr, samplingScale, cameraDependent, priorRasterPlan)
   const rasterPlan = canvasRasterPlan(view, samplingDpr, width, height, {
     rasterProfile, pixelPreview: props.pixelPreview, checkerboard: props.checkerboard,
     grid: props.grid, hdr: hdrCompositing && !!doc.colorManagement,
     samplingScale: nativeSampling ? undefined : samplingScale,
-    exactPhase: !cameraMoving && !zooming,
+    exactPhase: (!cameraMoving && !zooming) || retainNativePanPhase,
   })
   const renderScale = rasterPlan.scale
   const renderCamera = rasterPlan.camera
@@ -564,6 +575,10 @@ export function ProgressiveSurfaceImpl(
     stableDensity === detailLevel &&
     syncedDoc.current === doc && view.x === requestedView.x &&
     view.y === requestedView.y && view.zoom === requestedView.zoom
+  const terminalQualityState = useRef({ key: '', complete: false, sequence: 0 })
+  if (complete && (!terminalQualityState.current.complete || terminalQualityState.current.key !== frameKey))
+    terminalQualityState.current.sequence = ++nextTerminalQualitySequence
+  terminalQualityState.current.complete = complete; terminalQualityState.current.key = frameKey
   const diagnosticPage = useRef({id:pageId,token:1})
   if(diagnosticPage.current.id!==pageId)diagnosticPage.current={id:pageId,token:diagnosticPage.current.token+1}
   const diagnosticContent = useRef({frame:displayed,at:performance.now()})
@@ -573,10 +588,12 @@ export function ProgressiveSurfaceImpl(
       phase:navigationZoom.suspended?3:navigationZoom.active?1:complete?4:2,
       navigating:navigationZoom.active,targetDensity:detailLevel,effectiveDensity:renderScale,
       phaseX:renderPhase.x,phaseY:renderPhase.y,finalComplete:complete,
+      retainNativePanPhase:!!retainNativePanPhase,cameraDependent,samplingMode:rasterPlan.mode==='native'?1:2,
+      qualityRevision:contract.revision,dpr,
       oldContentAgeMs:displayed?performance.now()-diagnosticContent.current.at:0,
       state:displayed?1:0,x:view.x,y:view.y,zoom:view.zoom,width,height,
       sceneReady:syncedDoc.current===doc})
-  },[rasterClient,pageId,view.x,view.y,view.zoom,width,height,navigationZoom.active,navigationZoom.suspended,complete,detailLevel,renderScale,renderPhase.x,renderPhase.y,displayed,doc])
+  },[rasterClient,pageId,view.x,view.y,view.zoom,width,height,navigationZoom.active,navigationZoom.suspended,complete,detailLevel,renderScale,renderPhase.x,renderPhase.y,displayed,doc,retainNativePanPhase,cameraDependent,rasterPlan.mode,contract.revision,dpr])
   const requestedContract = {
     document: doc, pageId, epoch: props.presentationEpoch || 0, view: requestedView,
     width, height, pixelRatio: dpr, grid: props.grid, checkerboard: props.checkerboard,
@@ -1623,6 +1640,8 @@ export function ProgressiveSurfaceImpl(
           })}
           view={requestedView} width={width} height={height} dpr={dpr}
           presentation={presentation}
+          terminalQuality={complete ? { qualitySequence: terminalQualityState.current.sequence,
+            qualityRevision: contract.revision, pageToken: diagnosticPage.current.token } : undefined}
           overlay={props.overlay}
           sourceDocument={doc} translationItems={visible.filter(tile=>syncedDoc.current===doc&&tile.revision===contract.revision&&ready.current.has(tile.key))
             .map(tile=>({tile,active:true,layer:0}))} allowPageTranslation={!props.grid&&!props.checkerboard&&!props.pixelPreview}

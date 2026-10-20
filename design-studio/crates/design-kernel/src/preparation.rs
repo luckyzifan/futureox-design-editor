@@ -4,19 +4,83 @@ use crate::{Engine, scene_delta::SceneDelta};
 use serde_json::{Value, json};
 
 #[derive(Default)]
-struct Lane { engine: Engine, delta: SceneDelta, source: Option<String>, reusable: bool }
+struct Lane { engine: Engine, delta: SceneDelta, source: Option<String>, reusable: bool, receipt: Option<StateReceipt> }
 pub struct Preparation {
     lanes: [Lane; 2],
+    owner: String,
+    sequence: u64,
+    operation: u64,
+}
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StateReceipt {
+    protocol: u8, session_generation: String, canvas_owner: String,
+    document_incarnation: String, lane: String, synchronized_revision: String,
+    resource_epoch: String, nonce: String,
+}
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DeriveRequest {
+    operation_id: u64, base_receipt: StateReceipt, target: String,
+    expected_target: Option<StateReceipt>, delta: Vec<Value>,
+}
+fn session_owner() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    format!("{}-{}-{}", std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 }
 pub struct Reply { pub metadata: Value, pub bytes: Vec<u8> }
 impl Preparation {
     pub fn new(font: &[u8]) -> Result<Self, String> {
         let mut canvas = Lane::default(); canvas.engine.load_font(font)?;
         let mut interaction = Lane::default(); interaction.engine.fonts = canvas.engine.fonts.clone();
-        Ok(Self { lanes: [canvas, interaction] })
+        Ok(Self { lanes: [canvas, interaction], owner: session_owner(), sequence: 0, operation: 0 })
+    }
+    fn mint(&mut self, index: usize, previous: Option<StateReceipt>, new_document: bool) -> StateReceipt {
+        self.sequence = self.sequence.checked_add(1).expect("preparation receipt exhausted");
+        let serial = self.sequence.to_string();
+        let receipt = StateReceipt { protocol: 1, session_generation: self.owner.clone(),
+            canvas_owner: self.owner.clone(), document_incarnation: if new_document { serial.clone() }
+                else { previous.as_ref().map(|r| r.document_incarnation.clone()).unwrap_or_else(|| serial.clone()) },
+            lane: if index == 0 { "canvas" } else { "interaction" }.into(),
+            synchronized_revision: serial.clone(), resource_epoch: serial.clone(), nonce: serial };
+        self.lanes[index].receipt = Some(receipt.clone()); receipt
+    }
+    fn derive(&mut self, index: usize, args: &[Value]) -> Result<Reply, String> {
+        if index != 1 || args.len() != 1 || serde_json::to_vec(&args[0]).map_err(|e|e.to_string())?.len() > 8192 {
+            return Err("DERIVE_SCHEMA".into());
+        }
+        if !args[0].as_object().is_some_and(|o| o.len() == 5 && o.contains_key("expectedTarget")) {
+            return Err("DERIVE_SCHEMA".into());
+        }
+        if self.sequence == u64::MAX { return Err("PREPARATION_SESSION_EXHAUSTED".into()); }
+        let request: DeriveRequest = serde_json::from_value(args[0].clone()).map_err(|_|"DERIVE_SCHEMA")?;
+        if request.operation_id == 0 || request.operation_id > 9_007_199_254_740_991 || request.target != "interaction" || !request.delta.is_empty() {
+            return Err("DERIVE_SCHEMA".into());
+        }
+        // Single-session high-watermark: never replay an uncertain operation.
+        if request.operation_id <= self.operation { return Err("DERIVE_RETRY_REJECTED".into()); }
+        self.operation = request.operation_id;
+        if self.lanes[0].receipt.as_ref() != Some(&request.base_receipt) { return Err("STALE_BASE".into()); }
+        if self.lanes[1].receipt != request.expected_target { return Err("STALE_TARGET".into()); }
+        if self.lanes[0].engine.image_mips() != self.lanes[1].engine.image_mips() { return Err("RESOURCE_POLICY_MISMATCH".into()); }
+        let candidate = self.lanes[0].engine.snapshot_static_worker().ok_or("DERIVE_UNSUPPORTED_STATE")?;
+        let settings = serde_json::to_string(&candidate.color_settings()).map_err(|e|e.to_string())?;
+        // All fallible work precedes publication. Immutable resources remain Arc-owned.
+        self.lanes[1] = Lane { engine: candidate, reusable: true, ..Lane::default() };
+        let receipt = self.mint(1, Some(request.base_receipt), false);
+        Ok(Reply { metadata: json!({"stateReceipt":receipt,"settings":settings,"documentFork":true}), bytes: Vec::new() })
     }
     pub fn request(&mut self, lane: &str, method: &str, args: &[Value]) -> Result<Reply, String> {
         let index = match lane { "canvas" => 0, "interaction" => 1, _ => return Err("Invalid preparation lane".into()) };
+        if method == "preparation_capabilities_v1" {
+            return Ok(Reply { metadata: json!({"value":{"protocol":1,"emptyDeltaDerivation":true}}), bytes: Vec::new() });
+        }
+        if method == "derive_document_v1" { return self.derive(index, args); }
+        let mutation = matches!(method, "initialize" | "load_document" | "apply_document_patch_with_damage" | "apply_interaction_transforms");
+        // Failed legacy mutation cannot leave a receipt claiming synchronization.
+        let previous = if mutation { self.lanes[index].receipt.take() } else { None };
         let string = |index: usize| -> Result<&str,String> {
             let value = args.get(index).and_then(Value::as_str).ok_or("Expected string argument")?;
             if value.len() > 32*1024*1024 { return Err("Preparation argument exceeds 32 MiB".into()); }
@@ -102,6 +166,12 @@ impl Preparation {
         if let Some(settings) = settings { metadata["settings"] = json!(settings); }
         if method.starts_with("compile_gpu") { metadata["compileStats"] = engine.gpu_compile_cache_stats(); }
         if let Some(mode) = cpu_frame_mode { metadata["cpuFrameMode"] = json!(mode); }
+        if mutation {
+            let receipt = if method == "load_document" || previous.is_some() {
+                Some(self.mint(index, previous, method == "load_document"))
+            } else { None };
+            metadata["stateReceipt"] = json!(receipt);
+        }
         Ok(Reply { metadata, bytes })
     }
 }
@@ -189,7 +259,7 @@ mod tests {
 
     fn session() -> Preparation {
         // Geometry-only fixtures do not require a system or bundled font.
-        let mut session = Preparation { lanes: [Lane::default(), Lane::default()] };
+        let mut session = Preparation { lanes: [Lane::default(), Lane::default()], owner: session_owner(), sequence: 0, operation: 0 };
         session.request("canvas", "load_document", &[json!(document().to_string())]).unwrap();
         session
     }
@@ -207,6 +277,124 @@ mod tests {
         let engine = &mut session.lanes[0].engine;
         let parsed = engine.parse_options(options.clone()).unwrap();
         engine.render(&parsed).unwrap()
+    }
+
+    fn derive_request(session: &Preparation, operation: u64) -> Value {
+        json!({"operationId":operation,"baseReceipt":session.lanes[0].receipt,
+            "target":"interaction","expectedTarget":session.lanes[1].receipt,"delta":[]})
+    }
+
+    #[test]
+    fn derivation_receipts_cas_retry_and_reset_are_fail_closed() {
+        let mut session = session();
+        let request = derive_request(&session, 1);
+        let first = session.request("interaction", "derive_document_v1", &[request.clone()]).unwrap();
+        assert_eq!(first.metadata["documentFork"], true);
+        let target = session.lanes[1].receipt.clone();
+        assert!(session.request("interaction", "derive_document_v1", &[request.clone()]).err().unwrap().contains("RETRY"));
+        let mut stale_target = request.clone(); stale_target["operationId"] = json!(2);
+        assert!(session.request("interaction", "derive_document_v1", &[stale_target]).err().unwrap().contains("STALE_TARGET"));
+        assert_eq!(target, session.lanes[1].receipt);
+        let mut old_source = derive_request(&session, 3);
+        session.request("canvas", "load_document", &[json!(document().to_string())]).unwrap();
+        assert!(session.request("interaction", "derive_document_v1", &[old_source.clone()]).err().unwrap().contains("STALE_BASE"));
+        old_source["operationId"] = json!(4);
+        let mut other = Preparation { lanes: [Lane::default(), Lane::default()], owner: session_owner(), sequence: 0, operation: 0 };
+        assert!(other.request("interaction", "derive_document_v1", &[old_source]).is_err());
+        assert_eq!(target, session.lanes[1].receipt);
+    }
+
+    #[test]
+    fn derivation_resource_and_mutation_failures_preserve_target_pixels() {
+        let mut session = session();
+        let request = derive_request(&session, 1);
+        session.request("interaction", "derive_document_v1", &[request]).unwrap();
+        let target = session.lanes[1].receipt.clone();
+        let opts = options().to_string();
+        let before = session.request("interaction", "render_png", &[json!(opts)]).unwrap().bytes;
+        let request = derive_request(&session, 2);
+        session.request("canvas", "initialize", &[json!(true)]).unwrap();
+        assert!(session.request("interaction", "derive_document_v1", &[request]).is_err());
+        let request = derive_request(&session, 3);
+        assert!(session.request("interaction", "derive_document_v1", &[request]).err().unwrap().contains("RESOURCE_POLICY"));
+        assert!(session.request("canvas", "load_document", &[json!("invalid")]).is_err());
+        assert!(session.lanes[0].receipt.is_none());
+        assert_eq!(target, session.lanes[1].receipt);
+        assert_eq!(before, session.request("interaction", "render_png", &[json!(opts)]).unwrap().bytes);
+    }
+
+    #[test]
+    fn derivation_exhaustion_and_missing_cas_preserve_target() {
+        let mut session = session();
+        let mut request = derive_request(&session, 1);
+        request.as_object_mut().unwrap().remove("expectedTarget");
+        assert!(session.request("interaction", "derive_document_v1", &[request]).is_err());
+        let request = derive_request(&session, 2);
+        session.sequence = u64::MAX;
+        assert!(session.request("interaction", "derive_document_v1", &[request]).err().unwrap().contains("EXHAUSTED"));
+        assert!(session.lanes[1].receipt.is_none());
+    }
+
+    #[test]
+    fn derivation_rejects_animation_and_nonempty_delta_without_publishing() {
+        let mut session = session();
+        let request = derive_request(&session, 1);
+        session.request("interaction", "derive_document_v1", &[request]).unwrap();
+        let target = session.lanes[1].receipt.clone();
+        let mut animated = document();
+        let node: crate::scene::Node = serde_json::from_value(animated["nodes"]["r"].clone()).unwrap();
+        let pose = crate::animation::Pose::from(&node);
+        animated["animations"] = json!([{"id":"a","name":"a","pageId":"p","durationMs":100,
+            "tracks":[{"nodeId":"r","keyframes":[{"timeMs":0,"value":pose}]}]}]);
+        session.request("canvas", "load_document", &[json!(animated.to_string())]).unwrap();
+        let request = derive_request(&session, 2);
+        assert!(session.request("interaction", "derive_document_v1", &[request]).err().unwrap().contains("UNSUPPORTED_STATE"));
+        let mut request = derive_request(&session, 3); request["delta"] = json!([{"putNode":{}}]);
+        assert!(session.request("interaction", "derive_document_v1", &[request]).is_err());
+        assert_eq!(target, session.lanes[1].receipt);
+    }
+
+    #[test]
+    fn derivation_shares_image_resources_surviving_source_disposal() {
+        use base64::Engine as _;
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut bytes, 2, 2);
+            encoder.set_color(png::ColorType::Rgba); encoder.set_depth(png::BitDepth::Eight);
+            encoder.write_header().unwrap().write_image_data(&[200u8, 40, 20, 255].repeat(4)).unwrap();
+        }
+        let uri = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
+        let mut doc = document();
+        doc["nodes"]["r"]["fills"] = json!([{"kind":"image","image":uri,"color":"#000000"}]);
+        let mut derived = session();
+        derived.request("canvas", "load_document", &[json!(doc.to_string())]).unwrap();
+        let source_image = derived.lanes[0].engine.image_data(&uri).unwrap();
+        let request = derive_request(&derived, 1);
+        derived.request("interaction", "derive_document_v1", &[request]).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&source_image, &derived.lanes[1].engine.image_data(&uri).unwrap()));
+        derived.lanes[0] = Lane::default(); drop(source_image);
+        let mut fresh = session();
+        fresh.request("interaction", "load_document", &[json!(doc.to_string())]).unwrap();
+        for method in ["compile_gpu_packet", "render_png"] {
+            let args = [json!(options().to_string())];
+            assert_eq!(derived.request("interaction", method, &args).unwrap().bytes,
+                fresh.request("interaction", method, &args).unwrap().bytes);
+        }
+    }
+
+    #[test]
+    fn derivation_packet_and_pixels_match_fresh_load_after_source_disposal() {
+        let mut derived = session();
+        let request = derive_request(&derived, 1);
+        derived.request("interaction", "derive_document_v1", &[request]).unwrap();
+        derived.lanes[0] = Lane::default();
+        let mut fresh = session();
+        fresh.request("interaction", "load_document", &[json!(document().to_string())]).unwrap();
+        for method in ["compile_gpu_packet", "render_png"] {
+            let args = [json!(options().to_string())];
+            assert_eq!(derived.request("interaction", method, &args).unwrap().bytes,
+                fresh.request("interaction", method, &args).unwrap().bytes);
+        }
     }
 
     #[test]
