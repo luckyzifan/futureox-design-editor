@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { PassThrough } from 'node:stream'
-import { readFile } from 'node:fs/promises'
+import { readFile, mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { Editor } from '../engine'
@@ -14,10 +15,10 @@ type Json = Record<string, any>
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => { for (const close of cleanup.splice(0)) await close() })
 
-async function fixture(document = blank('MCP live document')) {
+async function fixture(document = blank('MCP live document'), scope: 'read' | 'write' = 'write') {
   const editor = new Editor(document)
   const api = createEditorDesignAutomation(editor)
-  const backend = new OperationBackend({ capabilities: api.capabilities(), execute: request => api.execute(request) })
+  const backend = new OperationBackend({ capabilities: api.capabilities(), execute: request => api.execute(request), scope })
   const input = new PassThrough(), output = new PassThrough(), diagnostics = new PassThrough()
   let buffer = '', id = 0
   const pending = new Map<number, (message: Json) => void>()
@@ -194,6 +195,128 @@ describe('MCP JSON-RPC -> shared operation API -> real Editor/WASM', () => {
     expect(f.editor.state.doc).toBe(before)
     expect(f.editor.state.version).toBe(version)
     expect(f.editor.state.doc.nodes[ids.title].text).toBe('Changed by another edit')
+  }, 30000)
+
+  it('discovers granular tools, stages an authored diff, applies once, roundtrips FD, then undoes one edit through JSON-RPC', async () => {
+    const f = await fixture()
+    for (const name of ['design_node_patch', 'design_layout_patch', 'design_paint_patch', 'design_text_styleRange', 'design_text_replaceRange', 'design_batch_preflight'])
+      expect(f.tools.some(tool => tool.name === name)).toBe(true)
+    expect((await f.mutate('batch.apply', { operations })).isError).toBe(false)
+    const before = f.editor.state.doc, input = before.nodes[ids.input], originalRevision = f.editor.state.version
+    const beforeSvg = await f.read('vector.export', { nodeIds: [ids.frame] })
+    const edits = [
+      { method: 'layout.patch', params: { ids: [ids.frame], patch: { layout: { gap: 22 } }, expected: { layout: { gap: 16 } } } },
+      { method: 'node.patch', params: { ids: [ids.input], patch: { radii: { topLeft: 14 } }, expected: { radii: { topLeft: 8 } } } },
+      { method: 'paint.patch', params: { ids: [ids.input], target: 'fill', paintId: input.fills[0].id, patch: { color: '#ddddee' }, expected: { color: '#f0f2f6' } } },
+      { method: 'text.styleRange', params: { nodeId: ids.title, start: 0, end: 4, expectedText: 'Sign', patch: { weight: 600 } } },
+    ]
+    const staged = await f.read('batch.preflight', { operations: edits })
+    expect(staged.result).toMatchObject({ validation: 'authored-only', derivedResolution: 'deferred', authoritativeCommitValidationRequired: true, receiptConsumed: false })
+    expect(f.editor.state.doc).toBe(before); expect(f.editor.state.version).toBe(originalRevision)
+    const fences = { documentId: staged.documentId, session: staged.session, expectedRevision: staged.revision }
+    const params = { operations: edits, mutationId: 'fine-edit-mcp' }
+    const applied = await f.call('batch.apply', params, fences)
+    expect(applied.isError, JSON.stringify(applied)).toBe(false)
+    expect(Buffer.byteLength(JSON.stringify(applied))).toBeLessThan(256 * 1024)
+    expect(applied.structuredContent.result.receipt).toMatchObject({ mutationId: 'fine-edit-mcp', replayed: false })
+    expect(applied.structuredContent.result.changedPaths).toContain(`/nodes/${ids.input}/radii/0`)
+    const after = f.editor.state.doc, revision = f.editor.state.version
+    const expected = structuredClone(before)
+    expected.nodes[ids.frame].layout!.gap = 22
+    expected.nodes[ids.input].radii[0] = 14; expected.nodes[ids.input].fills[0].color = '#ddddee'
+    expected.nodes[ids.title].textRuns = [{ start: 0, end: 4, weight: 600 }]
+    expected.nodes[ids.input].transform[5] += 6; expected.nodes[ids.button].transform[5] += 12
+    expect(after).toEqual(expected)
+    expect(applied.structuredContent.result.changedPaths.sort()).toEqual([
+      `/nodes/${ids.frame}/layout/gap`, `/nodes/${ids.input}/radii/0`, `/nodes/${ids.input}/fills/0/color`,
+      `/nodes/${ids.title}/textRuns/0`, `/nodes/${ids.input}/transform/5`, `/nodes/${ids.button}/transform/5`,
+    ].sort())
+    expect(after.nodes[ids.label]).toEqual(before.nodes[ids.label])
+    const afterSvg = await f.read('vector.export', { nodeIds: [ids.frame] })
+    expect(afterSvg.result.content).toContain('<svg'); expect(afterSvg.result.content).not.toBe(beforeSvg.result.content)
+    const replay = await f.call('batch.apply', params, fences)
+    expect(replay.structuredContent.result.receipt.replayed).toBe(true)
+    expect(f.editor.state.version).toBe(revision)
+    const exported = await f.read('document.export', { format: 'fd' })
+    const destination = await fixture()
+    const imported = await destination.mutate('document.import', { format: 'fd', base64: exported.result.base64 })
+    expect(imported.isError, JSON.stringify(imported)).toBe(false)
+    const mapping = imported.structuredContent.result.operations[0].result.nodeIdMap
+    expect(destination.editor.state.doc.nodes[mapping[ids.input]].radii).toEqual([14, 8, 8, 8])
+    expect(destination.editor.state.doc.nodes[mapping[ids.input]].fills).toEqual(after.nodes[ids.input].fills)
+    expect(destination.editor.state.doc.nodes[mapping[ids.title]].textRuns).toEqual(after.nodes[ids.title].textRuns)
+    expect((await f.mutate('history.undo')).isError).toBe(false)
+    expect(f.editor.state.doc).toEqual(before)
+    const evidence = process.env.FUTUREOX_GRANULAR_MCP_EVIDENCE_DIR
+    if (evidence) {
+      await mkdir(evidence, { recursive: true })
+      const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n'
+      await Promise.all([
+        writeFile(join(evidence, 'before.svg'), beforeSvg.result.content), writeFile(join(evidence, 'after.svg'), afterSvg.result.content),
+        writeFile(join(evidence, 'before.json'), json(before)), writeFile(join(evidence, 'after.json'), json(after)),
+        writeFile(join(evidence, 'roundtrip.json'), json(destination.editor.state.doc)), writeFile(join(evidence, 'undo.json'), json(f.editor.state.doc)),
+        writeFile(join(evidence, 'preflight.json'), json(staged)), writeFile(join(evidence, 'apply.json'), json(applied)), writeFile(join(evidence, 'replay.json'), json(replay)),
+        writeFile(join(evidence, 'small-edit.fd'), Buffer.from(exported.result.base64, 'base64')),
+        writeFile(join(evidence, 'manifest.json'), json({ protocol: 'MCP JSON-RPC in-memory byte streams', model: 'real Editor + scalar WASM', vectorExport: 'native SVG, not GPU or desktop screenshot', requestedChanges: 4, declaredDerivedPositionChanges: 2, exactDocumentAssertion: true, fdRoundtrip: true, oneUndo: true, receiptReplay: true })),
+      ])
+    }
+  }, 30000)
+
+  it('replaces the selected repeated text through MCP, preserves rich styles, exports FD and undoes once', async () => {
+    const document = blank('Explicit small text edit'), title = node('text', 20, 20, 300, 80)
+    title.text = 'Go Go'; title.textRuns = [{ start: 0, end: 2, weight: 600 }, { start: 3, end: 5, weight: 300, underline: true }]
+    document.schemaVersion = 15; document.nodes[title.id] = title; document.pages[0].children.push(title.id)
+    const f = await fixture(document), before = f.editor.state.doc
+    expect(f.tools.some(tool => tool.name === 'design_text_replaceRange')).toBe(true)
+    const operations = [{ method: 'text.replaceRange', params: { nodeId: title.id, start: 0, end: 2, text: 'Start', expectedText: 'Go' } }]
+    const staged = await f.read('batch.preflight', { operations })
+    expect(staged.result).toMatchObject({ derivedResolution: 'deferred', authoritativeCommitValidationRequired: true, receiptConsumed: false })
+    expect(f.editor.state.doc).toBe(before); expect(f.editor.canUndo).toBe(false)
+    const fences = { documentId: staged.documentId, session: staged.session, expectedRevision: staged.revision }
+    const params = { operations, mutationId: 'replace-first-go' }, applied = await f.call('batch.apply', params, fences)
+    expect(applied.isError, JSON.stringify(applied)).toBe(false)
+    const expected = structuredClone(before)
+    expected.nodes[title.id].text = 'Start Go'
+    expected.nodes[title.id].textRuns = [{ start: 0, end: 5, weight: 600 }, { start: 6, end: 8, weight: 300, underline: true }]
+    expect(f.editor.state.doc).toEqual(expected)
+    expect(applied.structuredContent.result.changedPaths.sort()).toEqual([
+      `/nodes/${title.id}/text`, `/nodes/${title.id}/textRuns/0/end`, `/nodes/${title.id}/textRuns/1/start`, `/nodes/${title.id}/textRuns/1/end`,
+    ].sort())
+    const version = f.editor.state.version, replay = await f.call('batch.apply', params, fences)
+    expect(replay.structuredContent.result.receipt.replayed).toBe(true); expect(f.editor.state.version).toBe(version)
+    const exported = await f.read('document.export', { format: 'fd' }), destination = await fixture()
+    const imported = await destination.mutate('document.import', { format: 'fd', base64: exported.result.base64 })
+    expect(imported.isError, JSON.stringify(imported)).toBe(false)
+    const mapped = imported.structuredContent.result.operations[0].result.nodeIdMap[title.id]
+    expect(destination.editor.state.doc.nodes[mapped]).toMatchObject({ text: 'Start Go', textRuns: expected.nodes[title.id].textRuns })
+    expect((await f.mutate('history.undo')).isError).toBe(false)
+    expect(f.editor.state.doc).toEqual(before); expect(f.editor.canUndo).toBe(false)
+    const evidence = process.env.FUTUREOX_GRANULAR_MCP_EVIDENCE_DIR
+    if (evidence) {
+      const directory = join(evidence, 'text-replace'); await mkdir(directory, { recursive: true })
+      const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n'
+      await Promise.all([
+        writeFile(join(directory, 'before.json'), json(before)), writeFile(join(directory, 'after.json'), json(expected)),
+        writeFile(join(directory, 'preflight.json'), json(staged)), writeFile(join(directory, 'apply.json'), json(applied)), writeFile(join(directory, 'replay.json'), json(replay)),
+        writeFile(join(directory, 'roundtrip.json'), json(destination.editor.state.doc)), writeFile(join(directory, 'undo.json'), json(f.editor.state.doc)),
+        writeFile(join(directory, 'text-edit.fd'), Buffer.from(exported.result.base64, 'base64')),
+        writeFile(join(directory, 'manifest.json'), json({ protocol: 'MCP JSON-RPC in-memory byte streams', model: 'real Editor + scalar WASM', explicitRange: [0, 2], original: 'Go Go', replacement: 'Start Go', exactDocumentAssertion: true, inheritedStyle: 'right-biased at start', fdRoundtrip: true, oneUndo: true, receiptReplay: true })),
+      ])
+    }
+  }, 30000)
+
+  it('exposes only read-only preflight under a read grant and rejects hidden mutation tools through JSON-RPC', async () => {
+    const document = blank('Read scope'), rectangle = node('rectangle')
+    document.nodes[rectangle.id] = rectangle; document.pages[0].children.push(rectangle.id)
+    const f = await fixture(document, 'read'), before = f.editor.state.doc
+    expect(f.tools.some(tool => tool.name === 'design_node_patch')).toBe(false)
+    expect(f.tools.some(tool => tool.name === 'design_text_replaceRange')).toBe(false)
+    expect(f.tools.some(tool => tool.name === 'design_batch_apply')).toBe(false)
+    const preview = await f.read('batch.preflight', { operations: [{ method: 'node.patch', params: { ids: [rectangle.id], patch: { opacity: .3 } } }] })
+    expect(preview.result.changedPaths).toEqual([`/nodes/${rectangle.id}/opacity`])
+    const denied = await f.rpc('tools/call', { name: 'design_node_patch', arguments: { params: { ids: [rectangle.id], patch: { opacity: .3 } } } })
+    expect(denied.error || denied.result?.isError).toBeTruthy()
+    expect(f.editor.state.doc).toBe(before); expect(f.editor.canUndo).toBe(false)
   }, 30000)
 
   it('exports actual native SVG geometry, with no preview renderer substitute', async () => {

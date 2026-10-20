@@ -1,3 +1,6 @@
+import { nudgePreference } from './nudge-preference'
+import { createKeyboardNudgeGesture } from './keyboard-nudge-gesture'
+import { isDimensionNudgeCommand, nudgeSelectionDimensions } from './canvas-workflow-shortcuts'
 import { canvasMarqueeSelection } from './canvas-selection-workflows'
 import { CanvasSceneSnapshots } from './canvas-scene-snapshots'
 import { StartupPreview } from './StartupPreview'
@@ -741,9 +744,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     editor.set({ tool: 'select' })
   }
   useEffect(() => {
+    const nudge = createKeyboardNudgeGesture(editor)
+    const arrows = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']
     const down = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || shortcutTargetOwnsKeyboard(e.target)) return
-      if (e.getModifierState?.('AltGraph')) return
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || shortcutTargetOwnsKeyboard(e.target) || e.getModifierState?.('AltGraph')) { nudge.finish(); return }
+      if (nudge.active && e.key === 'Escape') { e.preventDefault(); if (!e.repeat) nudge.finish(true); return }
+      if (nudge.active && !arrows.includes(e.key) && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key)) nudge.finish()
       if(e.key==='Escape')cancelToolActivation(editor)
       const shortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge() }
       const shortcut = resolveShortcut(e, shortcutContext)
@@ -871,7 +877,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return
       }
       if (penRef.current && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && e.code !== 'Space') finishPen()
+      if (shortcut && isDimensionNudgeCommand(shortcut.command)) {
+        e.preventDefault()
+        if (['select', 'scale'].includes(editor.state.tool) && editor.topSelection().length) {
+          const command = shortcut.command
+          nudge.step(e, '键盘调整图层尺寸', () => nudgeSelectionDimensions(editor, command, true))
+        }
+        return
+      }
       if (shortcut && !(shortcut.command === 'delete' && editor.state.tool === 'vector' && editor.state.editingVertex)) {
+        nudge.finish()
         void dispatchEditorShortcut(editor, e, shortcutContext)
         return
       }
@@ -895,33 +910,35 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         } else editor.remove()
       } else if (!mod && !e.altKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         e.preventDefault()
-        const amount = e.shiftKey ? 10 : 1
+        if (editor.state.busy || (editor.interactionActive && !nudge.active)) return
+        const preference = nudgePreference.getSnapshot(), amount = e.shiftKey ? preference.big : preference.small
         if (editor.state.tool === 'vector' && editor.state.editingVertex) {
           const vertices=editor.state.editingVertices?.length?editor.state.editingVertices:[editor.state.editingVertex]
-          editor.update(editor.state.selection, n => {
+          nudge.step(e, '微移矢量节点', () => editor.update(editor.topSelection(), n => {
             const inv = inverse(worldMatrix(editor.state.doc, n.id))
             const dx = e.key === 'ArrowLeft' ? -amount : e.key === 'ArrowRight' ? amount : 0
             const dy = e.key === 'ArrowUp' ? -amount : e.key === 'ArrowDown' ? amount : 0
             const delta = { x: inv[0] * dx + inv[2] * dy, y: inv[1] * dx + inv[3] * dy }
             if (!n.network) { n.network = editableNetwork(n); n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
             n.network=translateVertices(n.network,vertices,delta)
-          }, '微移矢量节点')
+          }, '微移矢量节点'))
         } else if (!editor.state.selection.length) {
           // Fold any parked wheel camera first so the nudge starts from what
           // the user currently sees, not the pre-gesture committed camera.
           const view = editor.flushPendingView(), amount = e.shiftKey ? 100 : 20
           editor.set({ view: { ...view, x: view.x + (e.key === 'ArrowLeft' ? amount : e.key === 'ArrowRight' ? -amount : 0),
             y: view.y + (e.key === 'ArrowUp' ? amount : e.key === 'ArrowDown' ? -amount : 0) } })
-        } else editor.transformSelection(
+        } else if (editor.topSelection().length) nudge.step(e, '微移图层', () => editor.transformSelection(
           translate(
             e.key === 'ArrowLeft' ? -amount : e.key === 'ArrowRight' ? amount : 0,
             e.key === 'ArrowUp' ? -amount : e.key === 'ArrowDown' ? amount : 0,
           ),
           '微移图层',
-        )
+        ))
       }
     }
     const up = (e: KeyboardEvent) => {
+      nudge.release(e.key)
       if (e.code === 'KeyX' || e.key.toLowerCase() === 'x') { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
       if(['Alt','Meta','Control'].includes(e.key))setMeasureKeys({alt:e.altKey,deep:e.metaKey||e.ctrlKey})
       if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
@@ -930,6 +947,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         updateCreation(drag.current, { shift: e.shiftKey, alt: e.altKey })
     }
     const blur = () => {
+      nudge.finish()
       cancelQueuedMove()
       wheelModifiers.current = { ctrl: false, meta: false }
       setMeasureKeys({alt:false,deep:false})
@@ -950,14 +968,21 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     window.addEventListener('keyup', up)
     window.addEventListener('blur', blur)
     const releaseMarquee = () => { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
-    const visibility = () => { if (document.hidden) releaseMarquee() }
-    const focus = (e: FocusEvent) => { if (shortcutTargetOwnsKeyboard(e.target)) releaseMarquee() }
+    const visibility = () => { if (document.hidden) { releaseMarquee(); nudge.finish() } }
+    const focus = (e: FocusEvent) => { if (e.target !== host.current) nudge.finish(); if (shortcutTargetOwnsKeyboard(e.target)) releaseMarquee() }
+    const pointer = () => { nudge.finish() }
+    const unsubscribeNudge = nudgePreference.subscribe(() => { nudge.finish() })
     const unsubscribeProfile = shortcutPreference.subscribe(() => {
+      nudge.finish()
       if (shortcutPreference.getSnapshot() !== 'sketch-like') releaseMarquee()
     })
     document.addEventListener('visibilitychange', visibility)
     document.addEventListener('focusin', focus)
+    window.addEventListener('pointerdown', pointer, true)
     return () => {
+      nudge.dispose()
+      unsubscribeNudge()
+      window.removeEventListener('pointerdown', pointer, true)
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', blur)

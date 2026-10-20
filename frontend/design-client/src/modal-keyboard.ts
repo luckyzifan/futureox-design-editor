@@ -14,9 +14,10 @@ export function modalOwnsKeyboard(target: EventTarget | null) {
 /** Preserve native button activation; only Escape and focus wrapping are intercepted. */
 export function modalKeyDown(event: ReactKeyboardEvent<HTMLElement>, close: () => void) {
   event.stopPropagation()
-  if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+  if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
+  if (event.key === 'Escape') {
     event.preventDefault()
-    close()
+    if (!event.repeat) close()
   }
   if (event.key !== 'Tab') return
   const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(

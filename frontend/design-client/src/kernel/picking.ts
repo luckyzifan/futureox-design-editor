@@ -154,6 +154,8 @@ export function activateDocumentFonts(input: DesignDocument) {
     for (const n of Object.values(input.nodes)) invalidateGeometry(n)
   }
 }
+const layoutDefaultKeys = Object.keys(defaultLayout())
+const sizingDefaultKeys = Object.keys(defaultSizing())
 export function kernelLayout(input: DesignDocument, previous?: DesignDocument): DesignDocument {
   validateVariableModes(input)
   activateDocumentFonts(input)
@@ -161,9 +163,10 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
     if (!ready || !layoutEngine) throw new Error('动画内核尚未就绪')
     layoutEngine.validate_animations(JSON.stringify(input))
   }
-  const connectors=Object.values(input.nodes).some(n=>!!n.connector || (n.board?.kind==='code-block'&&!!n.board.language))
+  const inputNodes = Object.values(input.nodes)
+  const connectors=inputNodes.some(n=>!!n.connector || (n.board?.kind==='code-block'&&!!n.board.language))
   let document = input
-  for (const n of Object.values(input.nodes)) {
+  for (const n of inputNodes) {
     const patch: Partial<DesignNode> = {}
     if (n.component && (!n.component.variants || !n.component.properties))
       patch.component = {
@@ -177,15 +180,18 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
         overrides: n.instance.overrides ?? {},
         propertyValues: n.instance.propertyValues ?? {},
       }
-    if (n.layout && Object.keys(defaultLayout()).some((key) => !(key in n.layout!)))
+    if (n.layout && layoutDefaultKeys.some((key) => !(key in n.layout!)))
       patch.layout = { ...defaultLayout(), ...n.layout }
-    if (n.sizing && Object.keys(defaultSizing()).some((key) => !(key in n.sizing!)))
+    if (n.sizing && sizingDefaultKeys.some((key) => !(key in n.sizing!)))
       patch.sizing = { ...defaultSizing(), ...n.sizing }
     if (Object.keys(patch).length) {
       if (document === input) document = { ...input, nodes: { ...input.nodes } }
       document.nodes[n.id] = { ...n, ...patch }
     }
   }
+  // Resolution may have replaced incomplete legacy nodes; never classify the
+  // stale input records after normalization.
+  const documentNodes = document === input ? inputNodes : Object.values(document.nodes)
   if (previous) {
     const translated = translationOnlyChanges(previous, document)
     if (translated) {
@@ -210,7 +216,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
       (id) => document.nodes[id] !== previous.nodes[id],
     )
     const parents = new Map<string, string>()
-    for (const n of Object.values(document.nodes))
+    for (const n of documentNodes)
       for (const id of n.children) parents.set(id, n.id)
     const independent = (id: string) => {
       let at: string | undefined = id
@@ -263,15 +269,15 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
   const components =
     !!document.designSystem ||
     !!document.prototype ||
-    Object.values(document.nodes).some(
+    documentNodes.some(
       (n) => n.booleanOperation || Object.keys(n.variableModes || {}).length,
     ) ||
-    Object.values(document.nodes).some(
+    documentNodes.some(
       (n) => n.component || n.componentSet || n.instance || n.instanceOrigin,
     )
   if (
     !components && !connectors &&
-    !Object.values(document.nodes).some((n) => n.layout || n.sizing || n.constraints)
+    !documentNodes.some((n) => n.layout || n.sizing || n.constraints)
   )
     return document
   if (
@@ -313,7 +319,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
     // Page roots are independent layout islands. Resolve only islands that
     // contain a changed node, retaining the normal full validation on publish.
     const parents = new Map<string, string>()
-    for (const n of Object.values(document.nodes))
+    for (const n of documentNodes)
       for (const id of n.children) parents.set(id, n.id)
     const roots = new Set(
       changed.map((id) => {
