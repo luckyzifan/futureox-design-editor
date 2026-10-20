@@ -1,3 +1,4 @@
+import { dispatchEditorCommand } from './editor-commands'
 import { layerTreeRows } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
@@ -300,7 +301,7 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
                       if (next && (!expand || next.depth > depth)) choose(next.id, false, false, true)
                     }
                   }
-                  if (e.key === 'F2') { e.preventDefault(); e.stopPropagation(); setRenaming(id) }
+                  if (e.key === 'F2') { e.preventDefault(); e.stopPropagation(); if (selected && s.selection.length > 1) void dispatchEditorCommand(editor, 'rename'); else if (commitPendingEdits(editor)) setRenaming(id) }
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
                     e.stopPropagation()

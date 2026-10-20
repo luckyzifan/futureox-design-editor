@@ -1,6 +1,8 @@
 import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from './engine'
+import { NudgeSettings } from './NudgeSettings'
+import { nudgePreference } from './nudge-preference'
 import { KeyboardProfileSettings } from './KeyboardProfileSettings'
 import { shortcutPreference } from './shortcut-preference'
 import { settingsPreference, useSettingsPersistence, type CanvasSetting } from './settings-preference'
@@ -30,6 +32,7 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
 }) {
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const persistence = useSettingsPersistence()
+  const nudgePersistence = useSyncExternalStore(nudgePreference.subscribe, nudgePreference.getPersistenceSnapshot)
   const id = useId(), dialog = useRef<HTMLElement>(null), backdrop = useRef<HTMLDivElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null), close = useRef(onClose), closing = useRef(false)
   const restoreTarget = useRef(returnFocus), [section, setSection] = useState<SettingsSection>('input')
@@ -77,9 +80,10 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
   const restoreDefaults = () => {
     const canvasSaved = settingsPreference.reset()
     const keyboardSaved = shortcutPreference.set('figma-like')
+    const nudgeSaved = nudgePreference.reset()
     const wheelSaved = setWheel(false)
     setKeyboardReset(value => value + 1)
-    setMessage(canvasSaved && keyboardSaved && wheelSaved ? '已恢复当前配置的偏好默认值。' : '已恢复默认值；部分偏好仅在本次会话生效。')
+    setMessage(canvasSaved && keyboardSaved && nudgeSaved && wheelSaved ? '已恢复当前配置的偏好默认值。' : '已恢复默认值；部分偏好仅在本次会话生效。')
   }
 
   return createPortal(<div ref={backdrop} className="settings-backdrop"
@@ -121,6 +125,7 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
           <section role="tabpanel" id={`${id}-panel-input`} aria-labelledby={`${id}-tab-input`} hidden={section !== 'input'}>
             <h3>键盘</h3>
             <KeyboardProfileSettings key={keyboardReset} />
+            <NudgeSettings key={`nudge-${keyboardReset}`} />
             <h3>画布导航</h3>
             <label className="settings-toggle"><input type="checkbox" checked={state.scrollWheelZoom} aria-describedby={`${id}-wheel-help`}
               onChange={event => { setMessage(''); setWheel(event.target.checked) }} /><span>滚轮围绕鼠标缩放</span></label>
@@ -143,13 +148,13 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
             <p className="settings-help">以上是当前保存机制的说明，间隔不可在此调整。待完成的输入、拖动、恢复失败或存储错误可能延后保存，请以工作区保存状态和错误提示为准。</p>
             <h3>偏好与文档</h3>
             <p>本页偏好保存在当前应用配置中，不会同步到其他设备。{desktop ? '独立打开的本地窗口使用各自配置，偏好不保证跨窗口共享或在新窗口中恢复。' : '使用其他浏览器或清除网站数据后，需要重新设置。'}文档色彩设置、页面背景与参考线内容属于各自文档，仍在对应文档工具中编辑。</p>
-            <p className="settings-help">恢复默认值只重置本页的快捷键、滚轮行为和画布辅助偏好，不删除文档或修改渲染精度。</p>
+            <p className="settings-help">恢复默认值只重置本页的快捷键、微移步长、滚轮行为和画布辅助偏好，不删除文档或修改渲染精度。</p>
           </section>
         </div>
       </div>
       <footer className="settings-footer">
         <div className="settings-status" role="status" aria-live="polite">
-          {message || ((persistence === 'session-only' || wheelTemporary) ? '当前存储不可用；部分偏好仅在本次会话生效。' : '更改立即生效。偏好会尝试保存在当前配置。')}
+          {message || ((persistence === 'session-only' || nudgePersistence === 'session-only' || wheelTemporary) ? '当前存储不可用；部分偏好仅在本次会话生效。' : '更改立即生效。偏好会尝试保存在当前配置。')}
         </div>
         <div className="settings-actions"><button type="button" className="secondary" disabled={busy} onClick={restoreDefaults}>恢复偏好默认值</button><button type="button" className="primary" disabled={busy} onClick={dismiss}>完成</button></div>
       </footer>

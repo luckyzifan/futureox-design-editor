@@ -32,6 +32,7 @@ export interface AutomationCapabilities {
   version: 1
   methods: AutomationMethod[]
   limits: { maxBatchOperations: number; maxRequestBytes: number; defaultMaxRequestBytes?: number; maxQueryResults: number }
+  editing?: Record<string, unknown>
   unsupported: string[]
 }
 export interface AutomationFailure {

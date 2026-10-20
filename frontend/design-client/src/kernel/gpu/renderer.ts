@@ -25,6 +25,7 @@ import type {
 import { parameters, blends, rect, intersect } from './types'
 import type { Paint, Effect, ImageAdjust } from '../../model'
 import { CoverageCache } from './coverage-cache'
+import { ImmutableKernelCache, immutableKernelKey } from './immutable-kernel-cache'
 import { ReverseIndexMap } from './reverse-index-map'
 import { solidRgba8 } from './rgba8'
 import { batchableSolid, solidInstances } from './solid-batch'
@@ -390,8 +391,19 @@ export class GpuRenderer {
   // Conservative per-frame use history, not a lifetime refcount. A mask ever
   // used by another node cannot be retired by a leaf in the current frame.
   private maskOwners = new ReverseIndexMap<Texture, Set<string>, string>(owners => owners)
-  private blurKernels = new Map<number, Surface>()
-  private certifiedKernels = new Map<number, Surface>()
+  private blurKernels = new Map<string, Surface>()
+  private certifiedKernels = new Map<string, Surface>()
+  private kernelCache = new ImmutableKernelCache(4 * 1024 * 1024, 64, texture => this.forgetUpload(texture))
+  private retiredKernels: { texture: Texture; epoch: number }[] = []
+  private kernelBuilds = 0
+  private kernelResidentHits = 0
+  private kernelUploadBytes = 0
+  // Opt-in pending real-device validation. Drivers without a completion
+  // contract retain the original per-attempt lifetime, even with the flag.
+  private get retainKernels() {
+    return this.optimized && import.meta.env.VITE_DESIGN_KERNEL_CACHE === '1' &&
+      this.driver.resourceEpoch !== undefined && this.driver.completedResourceEpoch !== undefined
+  }
   private coordinateMaps = new Set<Texture>()
   private imageGrids = new Map<GpuPaint, Map<number, Surface>>()
   private gradientLookups = new Map<GpuPaint, Surface>()
@@ -577,6 +589,8 @@ export class GpuRenderer {
     this.lastBudgetFailure = undefined
     if (!Number.isSafeInteger(required) || required < 0) throw new Error('无效的 GPU 分配字节数')
     if (this.workingBytes + required <= this.frameBudget) return false
+    this.reapRetiredKernels()
+    this.kernelCache.evictCompleted(this.workingBytes + required - this.frameBudget, this.driver.completedResourceEpoch ?? -1)
     this.materialFields.evictUnused(this.workingBytes + required - this.frameBudget)
     this.coverage.evictUnused(this.workingBytes + required - this.frameBudget)
     if (this.workingBytes + required <= this.frameBudget) return false
@@ -2410,32 +2424,65 @@ export class GpuRenderer {
     }
     return planes
   }
+  private reapRetiredKernels() {
+    const completed = this.driver.completedResourceEpoch ?? -1
+    this.retiredKernels = this.retiredKernels.filter(({ texture, epoch }) => {
+      if (epoch > completed) return true
+      this.forgetUpload(texture)
+      return false
+    })
+  }
+  private beginKernelFrame() {
+    for (const { texture } of [...this.blurKernels.values(), ...this.certifiedKernels.values()]) {
+      if (this.kernelCache.has(texture)) continue
+      if (this.retainKernels) this.retiredKernels.push({ texture, epoch: this.driver.resourceEpoch! })
+      else this.forgetUpload(texture)
+    }
+    this.blurKernels.clear()
+    this.certifiedKernels.clear()
+    this.reapRetiredKernels()
+    this.kernelBuilds = this.kernelResidentHits = this.kernelUploadBytes = 0
+  }
+  private filterKernel(operator: string, radius: number, build: () => Uint8Array | Float32Array,
+    shape?: (values: Uint8Array | Float32Array) => [number, number]): Surface {
+    const domain = [this.driver.managed ? 'float' : 'byte', !!this.driver.linearLight,
+      !!this.driver.hdr, !!this.driver.certifiedFilter].join(':')
+    const key = immutableKernelKey(operator, radius, domain)
+    const frame = operator.startsWith('certified-') ? this.certifiedKernels : this.blurKernels
+    const existing = frame.get(key)
+    if (existing) return existing
+    let texture = this.retainKernels ? this.kernelCache.get(key, this.driver.resourceEpoch!) : undefined
+    if (texture) this.kernelResidentHits++
+    else {
+      const values = build()
+      const [width, height] = shape ? shape(values) : [values.length / 4, 1]
+      const bytes = values.byteLength * (values instanceof Uint8Array && this.driver.managed ? 4 : 1)
+      if (this.overBudget(bytes, width, height)) throw this.budgetError('GPU 表面内存预算超限')
+      if (values instanceof Float32Array) {
+        if (!this.driver.uploadLinear) throw new Error('Backend cannot upload linear coefficients')
+        texture = this.driver.uploadLinear(values, width, height)
+      } else {
+        if (!this.driver.uploadRgba8) throw new Error('Backend cannot upload exact coefficients')
+        texture = this.driver.uploadRgba8(values, width, height)
+      }
+      this.kernelBuilds++
+      this.kernelUploadBytes += bytes
+      this.bytes += texture.bytes
+      this.peak = Math.max(this.peak, this.bytes)
+      if (this.retainKernels) this.kernelCache.put(key, texture, this.driver.resourceEpoch!, this.driver.completedResourceEpoch!)
+    }
+    const surface = { texture, rect: rect(0, 0, texture.width, texture.height) }
+    frame.set(key, surface)
+    return surface
+  }
   private certifiedKernel(radius: number, box = false) {
     if (!this.driver.certifiedFilter) return undefined
-    const key = box ? -radius - 1 : radius
-    let kernel = this.certifiedKernels.get(key)
-    if (!kernel) {
-      const bytes = box ? certified_box_kernel_rgba(radius) : certified_tent_kernel_rgba(radius)
-      if (!this.driver.uploadRgba8) throw new Error('Backend cannot upload certified coefficients')
-      if (this.overBudget(bytes.length * 4, bytes.length / 4, 1)) throw this.budgetError('GPU 表面内存预算超限')
-      const texture = this.driver.uploadRgba8(bytes, bytes.length / 4, 1)
-      kernel = { texture, rect: rect(0, 0, bytes.length / 4, 1) }
-      this.bytes += texture.bytes
-      this.certifiedKernels.set(key, kernel)
-    }
-    return kernel
+    return this.filterKernel(box ? 'certified-box' : 'certified-tent', radius,
+      () => box ? certified_box_kernel_rgba(radius) : certified_tent_kernel_rgba(radius))
   }
   private exactTentAxis(input: Surface, radius: number, axis: number, output: Rect) {
     if (!(radius > 0 && radius <= 2048)) throw Error('GPU exact blur radius exceeds 2048 pixels')
-    let kernel=this.blurKernels.get(radius)
-    if(!kernel) {
-      const bytes=rational_tent_kernel_rgba(radius)
-      if(!this.driver.uploadRgba8)throw Error('Backend cannot upload exact coefficients')
-      if(this.overBudget(bytes.length*4,bytes.length/4,1))throw this.budgetError('GPU 表面内存预算超限')
-      const texture=this.driver.uploadRgba8(bytes,bytes.length/4,1)
-      kernel={texture,rect:rect(0,0,bytes.length/4,1)}
-      this.bytes+=texture.bytes;this.blurKernels.set(radius,kernel)
-    }
+    const kernel = this.filterKernel('rational-tent', radius, () => rational_tent_kernel_rgba(radius))
     const certified=this.certifiedKernel(radius)
     return this.run(22,output,[input,kernel,...(certified?[certified]:[])],u=>u.set([radius,axis,0,1],36),15,{kind:'tent',radius})
   }
@@ -2457,16 +2504,12 @@ export class GpuRenderer {
     if (this.scene.displayFilters && this.driver.managed && this.driver.supportsDisplayFilters && this.scene.integratedBlur) {
       const radius = sigma * 2
       if (radius <= 0) return input
-      let kernel = this.blurKernels.get(radius)
-      if (!kernel) {
+      const kernel = this.filterKernel('display-tent', radius, () => {
         const weights = displayFilterWeights(radius), height = Math.ceil(weights.length / 256)
         const data = new Float32Array(256 * height * 4)
         weights.forEach((weight, i) => { data[i * 4] = weight })
-        if (this.overBudget(data.byteLength, 256, height)) throw this.budgetError('GPU 表面内存预算超限')
-        const texture = this.driver.uploadLinear!(data, 256, height)
-        kernel = { texture, rect: rect(0, 0, 256, height) }
-        this.bytes += texture.bytes; this.blurKernels.set(radius, kernel)
-      }
+        return data
+      }, values => [256, values.length / (256 * 4)])
       const horizontal = this.run(22, input.rect, [input, kernel], u => u.set([radius, 0, clampEdges ? 1 : 0, 1], 36), channels)
       const vertical = this.run(22, input.rect, [horizontal, kernel], u => u.set([radius, 1, clampEdges ? 1 : 0, 1], 36), channels)
       this.release(horizontal)
@@ -2478,19 +2521,8 @@ export class GpuRenderer {
       if (radius > 512) throw new Error('GPU 积分模糊半径超过 512 像素')
       let kernel: Surface | undefined
       if (this.driver.managed || !Number.isInteger(radius)) {
-        kernel = this.blurKernels.get(radius)
-        if (!kernel) {
-          const bytes = this.driver.managed
-            ? rational_tent_kernel_rgba(radius)
-            : quantized_tent_kernel_rgba(radius)
-          if (!this.driver.uploadRgba8) throw new Error('后端不支持精确模糊系数')
-          if (this.overBudget(bytes.length * (this.driver.managed ? 4 : 1), bytes.length / 4, 1))
-            throw this.budgetError('GPU 表面内存预算超限')
-          const texture = this.driver.uploadRgba8(bytes, bytes.length / 4, 1)
-          kernel = { texture, rect: rect(0, 0, bytes.length / 4, 1) }
-          this.bytes += texture.bytes
-          this.blurKernels.set(radius, kernel)
-        }
+        kernel = this.filterKernel(this.driver.managed ? 'rational-tent' : 'quantized-tent', radius,
+          () => this.driver.managed ? rational_tent_kernel_rgba(radius) : quantized_tent_kernel_rgba(radius))
       }
       const certified = this.certifiedKernel(radius)
       const horizontal = this.run(22, input.rect, kernel ? [input, kernel, ...(certified ? [certified] : [])] : [input], (u) =>
@@ -2505,18 +2537,7 @@ export class GpuRenderer {
     let current = input
     for (const r of gaussianRadii(sigma)) {
       if (r <= 0) continue
-      const key = -r - 1
-      let kernel = this.blurKernels.get(key)
-      if (!kernel) {
-        const bytes = rational_box_kernel_rgba(r)
-        if (!this.driver.uploadRgba8) throw new Error('后端不支持精确模糊系数')
-        const size = bytes.length * (this.driver.managed ? 4 : 1)
-        if (this.overBudget(size, bytes.length / 4, 1)) throw this.budgetError('GPU 表面内存预算超限')
-        const texture = this.driver.uploadRgba8(bytes, bytes.length / 4, 1)
-        kernel = { texture, rect: rect(0, 0, bytes.length / 4, 1) }
-        this.bytes += texture.bytes
-        this.blurKernels.set(key, kernel)
-      }
+      const kernel = this.filterKernel('rational-box', r, () => rational_box_kernel_rgba(r))
       const certified = this.certifiedKernel(r, true)
       for (const axis of [0, 1]) {
         const next = this.run(22, input.rect, [current, kernel, ...(certified ? [certified] : [])], (u) => u.set([r, axis, 0, 1], 36), channels)
@@ -3208,12 +3229,7 @@ export class GpuRenderer {
     this.interactionInvalid = false; this.interactionHits = 0; this.prefixHits = 0
     this.interactionWarm = !!retainRoots && this.interactionRoots.size > 0
     this.imageAxisFields = this.imageFieldBytes = 0
-    for (const kernel of [...this.blurKernels.values(), ...this.certifiedKernels.values()]) {
-      this.driver.destroy(kernel.texture)
-      this.bytes -= kernel.texture.bytes
-    }
-    this.blurKernels.clear()
-    this.certifiedKernels.clear()
+    this.beginKernelFrame()
     const trimLarge=nativeDisplay&&scene.nativeInteraction&&import.meta.env.VITE_DESIGN_TRIM_LARGE_POOL==='1'
     const upcomingLargeSizes=trimLarge?new Set([scene.extent,scene.output,workingTarget,...Object.values(scene.nodes).map(n=>n.rect)]
       .filter((r):r is Rect=>!!r).map(r=>`${r.w}:${r.h}`)):undefined
@@ -3379,6 +3395,12 @@ export class GpuRenderer {
         materialFieldBuildMs: this.fieldBuildMs,
         materialFieldUploadBytes: this.fieldUploadBytes,
         materialFieldCacheBytes: this.materialFields.bytes,
+        kernelBuilds: this.kernelBuilds,
+        kernelResidentHits: this.kernelResidentHits,
+        kernelUploadBytes: this.kernelUploadBytes,
+        kernelCacheBytes: this.kernelCache.bytes,
+        kernelCacheEntries: this.kernelCache.size,
+        kernelRetiredBytes: this.retiredKernels.reduce((sum, entry) => sum + entry.texture.bytes, 0),
         backdropReads: this.backdropReads,
         drawCalls: this.driver.drawCalls,
         commandSubmissions: this.driver.commandSubmissions,
@@ -3439,6 +3461,8 @@ export class GpuRenderer {
     this.movingBackdrop=undefined
     this.materialFields.clear()
     this.coverage.clear()
+    this.kernelCache.abandon()
+    this.retiredKernels.length = 0
     this.driver.dispose()
     this.images.clear()
     this.blurKernels.clear()

@@ -405,12 +405,19 @@ export class Editor {
       (n) => n.component || n.instance || n.instanceOrigin || n.componentSet,
     )
     try {
+      // Finalize only the authored mutation before inspecting topology. This
+      // keeps the check on plain structurally shared records and prevents any
+      // component/connector/layout walk from observing an invalid tree.
+      const authored = produceDraft(before.doc, draft => { fn(draft as DesignDocument) })
+      validateStructure(authored)
       let detached = false
-      const d = produceDraft(before.doc, (draft) => {
-        fn(draft as DesignDocument)
+      const d = produceDraft(authored, (draft) => {
         draft.schemaVersion = Math.max(2, draft.schemaVersion) as 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
         draft.rasterProfile ??= before.doc.rasterProfile || 'analytic'
-        if (
+        // Schema promotion is monotonic. Once a version is supported, scanning
+        // every Immer node again cannot change it. Full validation still runs
+        // after dependency cleanup and authoritative layout below.
+        if (draft.schemaVersion < 4 && (
           draft.designSystem ||
           draft.prototype ||
           Object.values(draft.nodes).some(
@@ -427,9 +434,9 @@ export class Editor {
                   s.paint.transform || s.paint.kind === 'angular' || s.paint.kind === 'diamond',
               ),
           )
-        )
+        ))
           draft.schemaVersion = Math.max(draft.schemaVersion, 4) as 4 | 5 | 6 | 7 | 8 | 9 | 10
-        if (
+        if (draft.schemaVersion < 5 && (
           Object.values(draft.nodes).some((n) => n.effects.some((e) => e.glass || e.texture)) ||
           draft.animations?.some((c) =>
             c.tracks.some((t) =>
@@ -442,21 +449,21 @@ export class Editor {
               Array.isArray(s.value) &&
               s.value.some((e) => e?.glass || e?.texture),
           )
-        )
+        ))
           draft.schemaVersion = Math.max(draft.schemaVersion, 5) as 5 | 6 | 7 | 8 | 9 | 10
         detached = !!(components && Components.detachMissing(before.doc, draft as DesignDocument))
         if (components) Components.captureOverrides(before.doc, draft as DesignDocument)
-        if (hasLocalVariableModes(draft as DesignDocument)) draft.schemaVersion = Math.max(draft.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
-        if (Object.values(draft.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions) ||
-          draft.animations?.some(c => c.tracks.some(t => t.keyframes.some(k => k.value.arc || k.value.cornerRadius)))) draft.schemaVersion = Math.max(7, draft.schemaVersion) as 7 | 8 | 9 | 10
-        if (hasGradientBlur(draft as DesignDocument)) draft.schemaVersion = Math.max(9,draft.schemaVersion) as 9 | 10
-        if(hasLocalTools(draft as DesignDocument))draft.schemaVersion=Math.max(10,draft.schemaVersion) as DesignDocument['schemaVersion'];if(hasRulerGuides(draft as DesignDocument))draft.schemaVersion=Math.max(11,draft.schemaVersion) as DesignDocument['schemaVersion'];if(hasLayoutGrids(draft as DesignDocument))draft.schemaVersion=Math.max(12,draft.schemaVersion) as DesignDocument['schemaVersion'];if(hasImageAdjusts(draft as DesignDocument))draft.schemaVersion=Math.max(13,draft.schemaVersion) as DesignDocument['schemaVersion'];if(hasPatternTiles(draft as DesignDocument))draft.schemaVersion=Math.max(14,draft.schemaVersion) as DesignDocument['schemaVersion']
+        if (draft.schemaVersion < 6 && hasLocalVariableModes(draft as DesignDocument)) draft.schemaVersion = Math.max(draft.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
+        if (draft.schemaVersion < 7 && (Object.values(draft.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions) ||
+          draft.animations?.some(c => c.tracks.some(t => t.keyframes.some(k => k.value.arc || k.value.cornerRadius))))) draft.schemaVersion = Math.max(7, draft.schemaVersion) as 7 | 8 | 9 | 10
+        if (draft.schemaVersion < 9 && hasGradientBlur(draft as DesignDocument)) draft.schemaVersion = Math.max(9,draft.schemaVersion) as 9 | 10
+        if(draft.schemaVersion < 10 && hasLocalTools(draft as DesignDocument))draft.schemaVersion=Math.max(10,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 11 && hasRulerGuides(draft as DesignDocument))draft.schemaVersion=Math.max(11,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 12 && hasLayoutGrids(draft as DesignDocument))draft.schemaVersion=Math.max(12,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 13 && hasImageAdjusts(draft as DesignDocument))draft.schemaVersion=Math.max(13,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 14 && hasPatternTiles(draft as DesignDocument))draft.schemaVersion=Math.max(14,draft.schemaVersion) as DesignDocument['schemaVersion']
         for(const n of Object.values(draft.nodes))if(n.connector)for(const e of [n.connector.from,n.connector.to])if(e.nodeId&&!draft.nodes[e.nodeId]){const old=before.doc.nodes[e.nodeId];if(old&&e.anchor)e.point=apply(worldMatrix(before.doc,e.nodeId),{x:old.width*e.anchor.x,y:old.height*e.anchor.y});delete e.nodeId;delete e.anchor}
         if(draft.reviews) {
           draft.reviews=draft.reviews.filter(r=>draft.pages.some(p=>p.id===r.pageId))
           for(const r of draft.reviews)if(r.nodeId&&!draft.nodes[r.nodeId]){if(before.doc.nodes[r.nodeId])r.position=apply(worldMatrix(before.doc,r.nodeId),r.position);delete r.nodeId}
         }
-        if (hasStrokeMarkers(draft as DesignDocument) || hasLayerExports(draft as DesignDocument)) draft.schemaVersion = Math.max(8,draft.schemaVersion) as 8 | 9 | 10
+        if (draft.schemaVersion < 8 && (hasStrokeMarkers(draft as DesignDocument) || hasLayerExports(draft as DesignDocument))) draft.schemaVersion = Math.max(8,draft.schemaVersion) as 8 | 9 | 10
         pruneAnimations(draft as DesignDocument)
         prunePrototypeReferences(before.doc, draft as DesignDocument)
       })
@@ -499,6 +506,11 @@ export class Editor {
     for (const [id, patch] of Object.entries(patches)) nodes[id] = { ...nodes[id], ...patch }
     try {
       const candidate = { ...base, nodes }
+      // Ordinary pointer patches preserve the published tree. Explicit
+      // topology/ID edits must be checked before any dependency traversal.
+      if (Object.entries(patches).some(([id, patch]) => !base.nodes[id] ||
+          Object.hasOwn(patch, 'children') || Object.hasOwn(patch, 'id')))
+        validateStructure(candidate)
       Components.captureOverrides(base, candidate)
       if (hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
       if (Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
@@ -506,6 +518,7 @@ export class Editor {
       if(hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion']
       if (hasStrokeMarkers(candidate) || hasLayerExports(candidate)) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
       const visible=move?this.movePreviewDocument(candidate,move.ids,move.point,move.force,move.preserveParent):candidate
+      if (visible !== candidate) validateStructure(visible)
       const layoutStarted = performance.now()
       const resolved=kernelLayout(visible,this.state.doc)
       // A failed derived offset must never become the React scene. Scene/hit

@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: '0'
+      VITEST_MAX_WORKERS: '2'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,6 +40,8 @@ jobs:
       - name: Install locked frontend dependencies
         working-directory: frontend/design-client
         run: bun install --frozen-lockfile
+      - name: Install pinned real-font fixture generator
+        run: python -m pip install --requirement testing/font-fixtures-requirements.txt
       - name: Build this checkout's portable WASM
         shell: bash
         run: python design-studio/scripts/build-web.py --profile dev
@@ -46,7 +49,9 @@ jobs:
         run: node testing/verify-local.mjs --profile portable --output test-results/portable
       - name: Build native CPU processes from this checkout
         shell: bash
-        run: cargo build --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --bin design-prepare -p futureox-design-desktop-backend
+        run: |
+          cargo build --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --bin design-prepare
+          cargo build --locked --manifest-path design-studio/Cargo.toml -p futureox-design-desktop-backend --bin futureox-design-desktop-backend
       - name: Run real native CPU and SQLite suites
         run: node testing/verify-local.mjs --profile native --output test-results/native
       - name: Retain logs even when a suite fails

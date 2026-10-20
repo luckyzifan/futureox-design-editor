@@ -45,7 +45,7 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
     for(const [query,label] of [['matching','匹配图层'],['properties','相同属性'],['fill','相同填充'],['stroke','相同描边'],['effect','相同效果'],['text','相同文字属性'],['font','相同字体'],['instance','同一组件实例']] as const)
       items.push({command:`select-${query}`,label:`选择${label}`,group:'selection',disabled:busy})
     items.push({command:'select-inverse',label:'反选',group:'selection',disabled:busy})
-    if (nodes.length === 1) items.push({ command: 'rename', label: '重命名', group: 'structure', disabled: busy || editor.interactionActive })
+    items.push({ command: 'rename', label: nodes.length > 1 ? '批量重命名…' : '重命名', group: 'structure', disabled: busy || editor.interactionActive || (nodes.length > 1 && (!mutable || nodes.some(n => n.instanceOrigin))) })
     items.push({ command: 'duplicate', label: '创建副本', group: 'clipboard', disabled: !mutable })
     items.push(
       { command: 'flip-horizontal', label: '水平翻转', group: 'transform', disabled: !mutable },

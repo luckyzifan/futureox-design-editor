@@ -48,6 +48,11 @@ type ParkedDriver = {
 }
 export class WebGpuDriver implements Driver {
   private bindingCache = new GpuBindingCache()
+  // Rollout gate until real-device validation and timings are available. The
+  // static-offset route remains an exact negative control for bisection.
+  private dynamicUniformBindings = import.meta.env.VITE_DESIGN_DYNAMIC_UNIFORMS === '1'
+  resourceEpoch = 0
+  completedResourceEpoch = 0
   private pipelines = new PipelineRegistry()
   private curveMirror = new ResidentGeometry()
   private vertexMirror = new ResidentGeometry()
@@ -258,6 +263,11 @@ export class WebGpuDriver implements Driver {
     const requiredFeatures: GPUFeatureName[] = timing ? ['timestamp-query'] : []
     if (adapter.features.has('float32-filterable')) requiredFeatures.push('float32-filterable')
     this.device = await adapter.requestDevice({ requiredFeatures })
+    if (this.dynamicUniformBindings) {
+      const alignment = this.device.limits.minUniformBufferOffsetAlignment
+      if (!Number.isInteger(alignment) || alignment < 1 || 1024 % alignment !== 0)
+        throw new Error('WebGPU dynamic uniform alignment does not support the exact 1024-byte stride')
+    }
     if (timing) this.timingQueries = this.device.createQuerySet({ type: 'timestamp', count: 4096 })
     this.description = adapter.info?.description || adapter.info?.architecture || 'WebGPU'
     this.device.lost.then((info) => {
@@ -367,7 +377,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         {
           binding: 0,
           visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
-          buffer: { type: 'uniform', minBindingSize: 1024 },
+          buffer: { type: 'uniform', minBindingSize: 1024, hasDynamicOffset: this.dynamicUniformBindings },
         },
         ...[1, 2, 3, 5].map((binding) => ({
           binding,
@@ -742,7 +752,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // Abandon recorded commands; already submitted commands retain their
     // resources until this explicit completion boundary.
     this.encoder = this.device.createCommandEncoder()
+    const epoch = this.resourceEpoch
     await this.device.queue.onSubmittedWorkDone()
+    if (!this.lost) this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
     if (this.frameScopeOpen) {
       const error = await this.device.popErrorScope(); this.frameScopeOpen = false
       if (error || this.errors.length) throw new Error([error?.message, ...this.errors].filter(Boolean).join('\n'))
@@ -758,6 +770,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.bindingCache.begin()
     this.pairedFilterPasses = 0
     if (this.disposed || this.lost) throw new Error('WebGPU 设备已丢失')
+    this.resourceEpoch++
     this.drawCalls = 0
     this.finishTransientBytes = 0
     this.frameScratchBytes = 0
@@ -1096,8 +1109,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   }
   async checkpoint() {
     this.submitCommands()
+    const epoch = this.resourceEpoch
     await this.device.queue.onSubmittedWorkDone()
     if (this.lost) throw new Error('GPU 设备已丢失')
+    // The current frame may encode more reads after this checkpoint. Only
+    // earlier frames are eligible for immutable-resource eviction.
+    this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch - 1)
   }
   submitPending() {
     // Reuse exactly the uniform-arena overflow submission contract. No
@@ -1285,10 +1302,11 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     u[254] = 9
     u[255] = 19 // Exact sampler limb count; keep compiler loops bounded.
     const uniform = this.uniform(u), textures = [0, 1, 2, 3].map(i => (inputs[i] || this.blank).resource as GPUTexture)
+    const offset = this.dynamicUniformBindings ? 0 : uniform.offset
     const create = () => this.device.createBindGroup({
       layout: this.layout,
       entries: [
-        { binding: 0, resource: uniform },
+        { binding: 0, resource: { ...uniform, offset } },
         ...[0, 1, 2, 3].map((i) => ({
           binding: i === 3 ? 5 : i + 1,
           resource: this.bindingCache.view(textures[i]),
@@ -1296,8 +1314,10 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         { binding: 4, resource: { buffer: this.curves! } },
       ],
     })
-    if (import.meta.env.VITE_DESIGN_BINDING_CACHE === '0') { this.bindingCache.groupCreates++; return create() }
-    return this.bindingCache.group([this.layout, uniform.buffer, this.curves!, ...textures], uniform.offset, create)
+    let group: GPUBindGroup
+    if (import.meta.env.VITE_DESIGN_BINDING_CACHE === '0') { this.bindingCache.groupCreates++; group = create() }
+    else group = this.bindingCache.group([this.layout, uniform.buffer, this.curves!, ...textures], offset, create)
+    return { group, offsets: this.dynamicUniformBindings ? [uniform.offset] : [] }
   }
   solidBatch(target: Texture, u: Float32Array, data: Float32Array, clip?: Texture) {
     if (clip === target) throw new Error('GPU texture feedback loop')
@@ -1329,7 +1349,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       ],
     })
     pass.setPipeline(this.solidPipeline)
-    pass.setBindGroup(0, bind)
+    pass.setBindGroup(0, bind.group, bind.offsets)
     pass.setBindGroup(1, this.solidBind!)
     const count = data.length / SOLID_INSTANCE_FLOATS
     pass.draw(6, count)
@@ -1483,7 +1503,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       ],
     })
     pass.setPipeline(pipelines[channel])
-    pass.setBindGroup(0, bind)
+    pass.setBindGroup(0, bind.group, bind.offsets)
     if (region) pass.setScissorRect(region.x, region.y, region.w, region.h)
     pass.draw(3)
     pass.end()
@@ -1510,7 +1530,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.activeOver = pass
     this.activeTarget = target
     pass.setPipeline(this.overPipeline)
-    pass.setBindGroup(0, bind)
+    pass.setBindGroup(0, bind.group, bind.offsets)
     pass.setScissorRect(region.x, region.y, region.w, region.h)
     pass.draw(3)
     this.drawCalls++
@@ -1573,7 +1593,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       ],
     })
     pass.setPipeline(this.presentPipeline)
-    pass.setBindGroup(0, bind)
+    pass.setBindGroup(0, bind.group, bind.offsets)
     pass.draw(3)
     pass.end()
     this.drawCalls++
@@ -1619,7 +1639,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // Readbacks/probes still fence before reading or reusing mapped storage.
     if (readback || timingRead || this.prefix?.scratchBytes || this.interactionPresentation &&
         (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') || ++this.presentationSubmissions >= 4) {
+      const epoch = this.resourceEpoch
       await this.device.queue.onSubmittedWorkDone()
+      if (!this.lost) this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
       this.presentationSubmissions = 0
     }
     const error = await this.device.popErrorScope()
@@ -1720,6 +1742,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       bindGroupCreates: this.bindingCache.groupCreates,
       bindGroupHits: this.bindingCache.groupHits,
       bindGroupCacheSize: this.bindingCache.size,
+      dynamicUniformBindings: this.dynamicUniformBindings,
     }
   }
   async loseDeviceForTesting() {
