@@ -12,8 +12,8 @@ struct PrefixMetadata {
 // u49=(channel,integer-radius or linear-interior reach,rational flag,CPU bound bits).
 // u50=(output offset along source axis,output length,cross-axis offset,0).
 fn prefixPixel(x:u32,line:u32)->vec2<i32>{
- if(u(48u).w<0.5){return vec2<i32>(i32(x),i32(line));}
- return vec2<i32>(i32(line),i32(x));
+ if(u(48u).w<0.5){return filterSourcePixel(vec2<i32>(i32(x),i32(line)));}
+ return filterSourcePixel(vec2<i32>(i32(line),i32(x)));
 }
 fn prefixDecline(line:u32,reason:u32){prefixMetadata.lines[line]=vec4<u32>(0u,0u,0u,reason);atomicAdd(&prefixMetadata.declined,1u);}
 fn prefixCoefficient(distance:u32)->PrefixInt {

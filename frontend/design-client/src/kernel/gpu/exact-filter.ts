@@ -15,6 +15,11 @@ export function exactFilterWgsl(certified: boolean) {
 @group(0) @binding(2) var sourceB:texture_2d<f32>;
 @group(0) @binding(3) var sourceC:texture_2d<f32>;
 fn u(i:u32)->vec4<f32>{return params.values[i];}
+const FILTER_SOURCE_WINDOWS:bool=${import.meta.env.VITE_DESIGN_FILTER_SOURCE_WINDOW === '1'};
+fn filterSourcePixel(q:vec2<i32>)->vec2<i32>{
+ if(FILTER_SOURCE_WINDOWS&&u(52u).z==1.){return q+vec2<i32>(u(52u).xy);}
+ return q;
+}
 ` + samplingWgsl.slice(0, samplingWgsl.indexOf('fn bsParts')) + rationalWgsl + (certified ? certifiedWgsl : '') + `
 fn exactFilterChannel(p:vec2<f32>,axis:vec2<f32>,channel:u32)->f32{
 ${certified ? 'let result=rfCertifiedChannel(p,axis,channel);if(result.y!=0u){return bitcast<f32>(result.x);}' : ''}
@@ -29,7 +34,7 @@ return vec4<f32>(exactFilterChannel(p,axis,FILTER_CHANNEL));
   // Shadow filtering consumes only alpha. R32F stores that f32 unchanged;
   // expand at the source boundary so the identical channel reducer still runs.
   return source.replaceAll('return textureLoad(sourceA,q,0);',
-    'let value=textureLoad(sourceA,q,0);return select(value,vec4<f32>(value.r),(u32(u(62).w)&1u)!=0u);')
+    'let value=textureLoad(sourceA,filterSourcePixel(q),0);return select(value,vec4<f32>(value.r),(u32(u(62).w)&1u)!=0u);')
 }
 export function exactFilterGlsl(certified: boolean) {
   return `#version 300 es

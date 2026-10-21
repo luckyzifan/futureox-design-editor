@@ -2,6 +2,7 @@ import { prefixAlignedStrip, prefixAlignedRgbStrip } from './prefix-band'
 import { PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { IMAGE_RESOLVE_STEP_MODE } from './image-resolve-step'
 import { exactFilterKey, fullSampleCoverage, HorizontalFilterCache } from './horizontal-filter-cache'
+import { StaticImageBlurCache, largeStaticImageBlurWindow, type StaticImageBlurSource } from './static-image-blur-cache'
 import { planExactImageXTable } from './exact-image-x-table'
 import type { ExactImageTable } from './types'
 import { completeFilterAxisSupport } from './opaque-filter'
@@ -157,6 +158,11 @@ export class GpuRenderer {
   lastBudgetFailure?: RenderBudgetDiagnostic
   private frameBudget = SURFACE_BUDGET_BYTES
   private horizontalFilters = new HorizontalFilterCache(plane => this.release(plane))
+  private staticImageBlurs = new StaticImageBlurCache(plane => this.release(plane), texture => this.driver.imageTableRange?.(texture))
+  private staticImageTableProofs = new WeakMap<ExactImageTable, { source: StaticImageBlurSource; input: Rect }>()
+  private staticImageBlurEligible = 0
+  private staticImageBlurHits = 0
+  private staticImageBlurPixels = 0
   private imageXTableBuilds = 0
   private imageXTablePixels = 0
   private imageXTableBytes = 0
@@ -172,6 +178,9 @@ export class GpuRenderer {
   private backdropEligibleFrames=0
   private backdropAdmittedFrames=0
   memoryPolicy() { return { workingBudgetBytes: this.frameBudget, interactionBudgetBytes: this.interactionBudget,
+    staticImageBlurEligible:this.staticImageBlurEligible,staticImageBlurHits:this.staticImageBlurHits,
+    staticImageBlurPixels:this.staticImageBlurPixels,staticImageBlurBytes:this.staticImageBlurs.bytes,
+    staticImageBlurEntries:this.staticImageBlurs.count,
     backdropReuseFrames:this.backdropReuseFrames,backdropReusePixels:this.backdropReusePixels,
     backdropEligibleFrames:this.backdropEligibleFrames,backdropAdmittedFrames:this.backdropAdmittedFrames } }
   /** Retained subtree pixels have their own cap; they are not scratch. */
@@ -592,6 +601,7 @@ export class GpuRenderer {
     const candidates = [...this.images]
       .filter(([, surface]) => !pageTextures.has(surface.texture))
       .filter(([, surface]) => !this.pendingImageTableSources.has(surface.texture) && !this.driver.hasActiveImageTableSource?.(surface.texture))
+      .filter(([, surface]) => !this.staticImageBlurs.pinsSource(surface.texture))
       .filter(([, surface]) => forced || !this.used.has(surface.texture))
       .sort((a, b) => (this.lastUsed.get(a[1].texture) || 0) - (this.lastUsed.get(b[1].texture) || 0))
     for (const [uri, surface] of candidates) {
@@ -608,6 +618,7 @@ export class GpuRenderer {
     for (const page of [...this.atlasPages]) {
       if (required <= 0) break
       if (this.pendingImageTableSources.has(page.texture) || this.driver.hasActiveImageTableSource?.(page.texture)) continue
+      if (this.staticImageBlurs.pinsSource(page.texture)) continue
       if (!forced && this.used.has(page.texture)) continue
       this.destroyAtlasPage(page)
       required -= page.texture.bytes
@@ -621,8 +632,10 @@ export class GpuRenderer {
    * nothing is silently downgraded. */
   private overBudget(required: number, width?: number, height?: number): boolean {
     this.lastBudgetFailure = undefined
+    this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     if (!Number.isSafeInteger(required) || required < 0) throw new Error('无效的 GPU 分配字节数')
     if (this.workingBytes + required <= this.frameBudget) return false
+    this.staticImageBlurs.discardPending(this.driver.resourceEpoch)
     // Optional retained filter work never expands the common working budget.
     // Pool release preserves ordering when the entry was copied this frame.
     this.horizontalFilters.clear()
@@ -643,6 +656,16 @@ export class GpuRenderer {
     }
     if (this.workingBytes + required <= this.frameBudget) return false
     this.evictImages(this.workingBytes + required - this.frameBudget)
+    if (this.workingBytes + required > this.frameBudget) {
+      this.staticImageBlurs.clear()
+      // Only GPU-completed entries can reach the pool here. Borrowed or
+      // in-flight results retain their source/plane pins until their fence.
+      for (const list of [...this.free.values()]) for (const texture of [...list]) {
+        if (this.workingBytes + required <= this.frameBudget) break
+        if (!this.used.has(texture)) this.destroyFree(texture)
+      }
+      this.evictImages(this.workingBytes + required - this.frameBudget)
+    }
     if (this.workingBytes + required > this.frameBudget && !this.driver.captureDisplay && !this.scene?.interactionRetained && this.interactionRoots.size)
       this.retireInteractionRoots()
     const exceeded = this.workingBytes + required > this.frameBudget
@@ -736,7 +759,7 @@ export class GpuRenderer {
         destination.texture.binaryCoverage || destination.texture.scalarCoverage || !this.busy.has(destination.texture) ||
         this.releasedAliases.has(destination) || (this.aliases.get(destination.texture) || 1) > 1 ||
         this.coverage.has(destination.texture) || this.materialFields.has(destination.texture) || this.interactionTextures.has(destination.texture) ||
-        this.horizontalFilters.has(destination.texture) ||
+        this.horizontalFilters.has(destination.texture) || this.staticImageBlurs.has(destination.texture) ||
         inputs.some(input => input.texture === destination.texture || input.texture.resource === destination.texture.resource)))
       throw Error('Invalid private exact filter destination')
     const out = destination || this.acquire(r, false, scalarOutput),
@@ -1093,6 +1116,13 @@ export class GpuRenderer {
     u.set([n.inverse[4], n.inverse[5], ...n.size], 24)
     u.set(n.matrix.slice(0, 4), 180)
   }
+  private staticImageSourceDescriptor(uri: string, level: number, intoAtlas: boolean, adjust?: ImageAdjust) {
+    if (import.meta.env.VITE_DESIGN_STATIC_IMAGE_BLUR_CACHE !== '1' || level !== 0 || intoAtlas ||
+      this.driver.name !== 'webgpu' || !this.driver.managed || this.driver.displayMath) return
+    const policy = exactFilterKey([adjust, this.scene.colorManagement, this.scene.floatCompositing,
+      this.driver.name, this.driver.linearLight, this.driver.hdr])
+    return policy ? { uri, policy } : undefined
+  }
   private uploadImage(uri: string, level: number, intoAtlas: boolean, adjust?: ImageAdjust): Surface {
     if (uri.length > 12 * 1024 * 1024 || !/^data:image\/(png|jpeg|webp);base64,/.test(uri))
       throw new Error('无效的 GPU 图片资源')
@@ -1115,6 +1145,8 @@ export class GpuRenderer {
       if (intoAtlas && image.width <= ATLAS_MAX_IMAGE && image.height <= ATLAS_MAX_IMAGE)
         return this.writeAtlasSlot(uri, level, image.width, image.height, { floats: bakeFloats(image.pixels) }, adjust)
       const texture = this.driver.uploadLinear(bakeFloats(image.pixels), image.width, image.height)
+      const descriptor = this.staticImageSourceDescriptor(uri, level, intoAtlas, adjust), proof = this.driver.imageTableRange?.(texture)
+      if (descriptor && proof) this.staticImageBlurs.registerUpload(texture, proof, descriptor.uri, descriptor.policy)
       this.bytes += texture.bytes
       this.peak = Math.max(this.peak, this.bytes)
       this.used.add(texture)
@@ -1284,6 +1316,10 @@ export class GpuRenderer {
       // some of its image slots are no longer needed by this scene.
       if (pageTextures.has(surface.texture)) continue
       if ([...needed].some(uri => isLevelKey(key, uri))) continue
+      this.staticImageBlurs.retireSource(surface.texture)
+      // A canceled prior frame can still own GPU reads. Such an optional
+      // source leaves on a later completed frame, never before those reads.
+      if (this.staticImageBlurs.pinsSource(surface.texture)) continue
       this.images.delete(key)
       this.used.delete(surface.texture)
       this.lastUsed.delete(surface.texture)
@@ -1780,15 +1816,16 @@ export class GpuRenderer {
    * slots share that ownership with their entire page, including empty pages. */
   private hasEvictableImage() {
     const eligible = (texture: Texture) => !this.pendingImageTableSources.has(texture) &&
-      !this.driver.hasActiveImageTableSource?.(texture)
+      !this.driver.hasActiveImageTableSource?.(texture) && !this.staticImageBlurs.pinsSource(texture)
     for (const surface of this.images.values()) if (eligible(surface.texture)) return true
     for (const page of this.atlasPages) if (eligible(page.texture)) return true
     return false
   }
   private async reclaimScratch(required = 0) {
     this.checkFrameCurrent()
+    this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     const pressure = required > 0 && this.workingBytes + required > this.frameBudget
-    if (pressure) this.horizontalFilters.clear()
+    if (pressure) { this.horizontalFilters.clear(); this.staticImageBlurs.discardPending(this.driver.resourceEpoch) }
     // The shared worker replaces two former 256 MiB raster owners. Keep the
     // active interaction working set warm below its bounded pressure line.
     if (!pressure && this.driver.captureDisplay && this.scene.interactionRetained &&
@@ -1805,7 +1842,8 @@ export class GpuRenderer {
     // oldest cached coordinates. One bounded batch per checkpoint cycle keeps
     // each GPU wait short and lets younger reusable entries survive.
     const imagesUnderPressure = this.workingBytes > this.frameBudget * .75 && this.hasEvictableImage()
-    if (!this.retiredUploads.length && !pooled.length && !coordinates.length && !imagesUnderPressure)
+    const staticCachePressure = pressure && this.staticImageBlurs.bytes > 0
+    if (!this.retiredUploads.length && !pooled.length && !coordinates.length && !imagesUnderPressure && !staticCachePressure)
       return
     // A large managed source image or ancestor surface can keep the ledger
     // above 64 MiB throughout a frame. Waiting on the GPU for every tiny dead
@@ -1856,6 +1894,7 @@ export class GpuRenderer {
     if (completedPoolEpoch === undefined) await this.driver.checkpoint('admission', diagnostic)
     else await this.driver.checkpoint('admission', diagnostic, completedPoolEpoch)
     this.checkpointMs += performance.now() - checkpointStart
+    this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     // Every surface still needed by an ancestor is in busy. Completion is
     // proven for every selected destruction: by this fence, or (pool-only)
     // by the completed prior-frame release stamps checked above.
@@ -1892,6 +1931,19 @@ export class GpuRenderer {
     // least-recently-used ones so later nodes keep allocation headroom.
     if (this.workingBytes > this.frameBudget * .75)
       this.evictImages(this.workingBytes - this.frameBudget * .75, true)
+    if (pressure && this.workingBytes + required > this.frameBudget) {
+      this.staticImageBlurs.clear()
+      this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
+      // This checkpoint completed all prior reads. Prefer ordinary reclaimable
+      // storage above; retire optional blur residency only as a last resort.
+      for (const list of [...this.free.values()]) for (const texture of [...list]) {
+        if (this.workingBytes + required <= this.frameBudget) break
+        if ((this.poolReleaseEpoch.get(texture) ?? Infinity) <= (this.driver.completedResourceEpoch ?? -1))
+          this.destroyFree(texture)
+      }
+      if (this.workingBytes + required > this.frameBudget)
+        this.evictImages(this.workingBytes + required - this.frameBudget, true)
+    }
   }
   private independentSamples(n: GpuNode): boolean {
     const cached = this.independentSampleNodes.get(n.id)
@@ -2436,6 +2488,30 @@ export class GpuRenderer {
       this.driver.linearLight, this.driver.hdr, this.driver.certifiedFilter])
     return key === undefined ? undefined : { lease, key, image: image.texture }
   }
+  private staticImageFilterWindowEligible(output: Rect) { return largeStaticImageBlurWindow(output, this.scene.output) }
+  private staticImageFilterIdentity(n: GpuNode, input: Rect, output: Rect, radius: number) {
+    // This first candidate targets the measured 100% interaction blur. Cold
+    // high-radius tiles keep their established H-cache working set unchanged.
+    if (import.meta.env.VITE_DESIGN_STATIC_IMAGE_BLUR_CACHE !== '1' || !this.staticImageFilterWindowEligible(output) ||
+      !(radius >= 32 && radius < 64) || this.imageMips || this.imageAtlas ||
+      this.driver.name !== 'webgpu' || !this.driver.managed || this.driver.displayMath || !this.driver.imageTableRange ||
+      this.scene.coherentSamples !== true || this.scene.compactImageFields === false ||
+      import.meta.env.VITE_DESIGN_IMAGE_AXES === '0' || import.meta.env.VITE_DESIGN_STREAM_IMAGE_FIELDS === '0' ||
+      import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE === '0' || !this.filterSourceSupported(n) || n.children.length ||
+      !completeFilterAxisSupport(input, output, 0, radius) || !completeFilterAxisSupport(input, output, 1, radius) ||
+      !fullSampleCoverage(n.fill, this.scene.curves, input)) return
+    const effects = n.effects.filter(effect => effect.visible), fills = n.fills.filter(paint => paint.visible), paint = fills[0]
+    if (effects.length !== 1 || effects[0].kind !== 'blur' || effects[0].gradientBlur || fills.length !== 1 ||
+      paint.kind !== 'image' || !paint.image || paint.blend !== 'normal' || paint.opacity !== 1) return
+    const descriptor = this.staticImageSourceDescriptor(paint.image, 0, false, paint.adjust)
+    const { image: _uri, ...paintPolicy } = paint
+    const key = exactFilterKey([n.id, n.matrix, n.inverse, n.size, paintPolicy, effects, radius,
+      this.scene.view, this.scene.colorManagement, this.scene.integratedBlur, this.scene.floatCompositing,
+      this.scene.coherentSamples, this.scene.compactImageFields, this.scene.displayFilters, this.scene.softwareRaster,
+      this.scene.resolve, this.scene.presentation, this.driver.linearLight, this.driver.hdr, this.driver.certifiedFilter,
+      import.meta.env.VITE_DESIGN_IMAGE_RESOLVE_FUSION !== '0', import.meta.env.VITE_DESIGN_WHOLE_IMAGE_FILTER !== '0'])
+    return descriptor && key ? { key, descriptor, imageKey: this.imageKey(paint.image, 0, false, paint.adjust) } : undefined
+  }
   private async prepareFilterImageTable(n: GpuNode, input: Rect): Promise<ExactImageTable | undefined> {
     if(import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE === '0' || this.imageMips || !this.driver.managed ||
         this.driver.displayMath || !this.driver.prepareImageTable || !this.driver.resolveImageTable ||
@@ -2473,7 +2549,12 @@ export class GpuRenderer {
     const before=this.driver.scratchBytes||0
     try{
       const table=await this.driver.prepareImageTable(image.texture,plan,this.frameBudget-this.workingBytes-headroom)
-      if(table){this.imageXTableBuilds++;this.imageXTableBytes=Math.max(this.imageXTableBytes,table.bytes)}
+      if(table){
+        this.imageXTableBuilds++;this.imageXTableBytes=Math.max(this.imageXTableBytes,table.bytes)
+        const descriptor = this.staticImageSourceDescriptor(paint.image || '', 0, this.imageAtlas, paint.adjust)
+        const source = descriptor && this.staticImageBlurs.source(image.texture, descriptor.uri, descriptor.policy)
+        if (source) this.staticImageTableProofs.set(table, { source, input: { ...input } })
+      }
       return table
     }
     finally{this.bytes+=(this.driver.scratchBytes||0)-before;this.peak=Math.max(this.peak,this.bytes)}
@@ -2496,6 +2577,33 @@ export class GpuRenderer {
     const reach = Math.ceil(radius) + 1
     const input = intersect(n.rect, {x:output.x-reach,y:output.y-reach,w:output.w+reach*2,h:output.h+reach*2})
     if (!exactBlendLattice([input, output]) || input.w > 8192 || input.h > 8192) return
+    const staticIdentity = this.staticImageFilterIdentity(n, input, output, radius)
+    if (staticIdentity) {
+      this.staticImageBlurEligible++
+      // Peek only. A cache hit must not upload the source or allocate H/table
+      // scratch before discovering the already-completed exact result.
+      const image = this.images.get(staticIdentity.imageKey)
+      const source = image && this.staticImageBlurs.source(image.texture, staticIdentity.descriptor.uri, staticIdentity.descriptor.policy)
+      const borrowed = source && this.staticImageBlurs.borrow(source, staticIdentity.key, input, output,
+        this.driver.completedResourceEpoch, this.driver.resourceEpoch)
+      if (borrowed) {
+        this.used.add(borrowed.plane.texture); this.touch(borrowed.plane.texture)
+        try {
+          for (let sample = 0; sample < 4; sample++) {
+            await this.reclaimScratch()
+            targets[sample] = this.merge(borrowed.plane, targets[sample], n.blend, n.opacity, clip?.[sample])
+          }
+          this.staticImageBlurHits++; this.staticImageBlurPixels += output.w * output.h
+          this.sampleIndex = undefined; this.orderedEffectLayers++
+          return targets
+        } finally { borrowed.release() }
+      }
+      // Only a complete large-tile miss retires the single old slot. Narrow
+      // edge tiles never enter this branch, so cannot evict the reusable first
+      // tile. Release before cold H/table allocation rather than after it.
+      this.staticImageBlurs.clear()
+      this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
+    }
     // Reserve room for the persistent horizontal result and four RGBA strips.
     await this.reclaimScratch(output.w*input.h*16 + input.w*64*16*4)
     const alignBands = this.driver.name === 'webgpu' && this.prefixAllowed &&
@@ -2505,6 +2613,7 @@ export class GpuRenderer {
     const stripColumns = alignBands ? prefixAlignedStrip(input.h) : 64
     const previousFields = this.filterImageFields
     this.filterImageFields = { rect: input, fields: new Map(), pinned: new Set() }
+    let staticSourcePin: Texture | undefined
     try {
     const reusable = this.horizontalFilterSource(n, input, output, radius)
     const horizontal = this.acquire({x:output.x,y:input.y,w:output.w,h:input.h})
@@ -2531,6 +2640,11 @@ export class GpuRenderer {
       this.horizontalFilters.clear()
     }
     const imageTable=missing.length?await this.prepareFilterImageTable(n,input):undefined
+    const staticTable = staticIdentity && imageTable && this.staticImageTableProofs.get(imageTable)
+    if (staticTable) {
+      staticSourcePin = this.images.get(staticIdentity.imageKey)?.texture
+      if (staticSourcePin) this.pendingImageTableSources.add(staticSourcePin)
+    }
     const opaqueHorizontal = !!imageTable?.opaqueAlpha && completeFilterAxisSupport(input, horizontal.rect, 0, radius)
     const rows = alignBands && opaqueHorizontal && import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0'
       ? prefixAlignedRgbStrip(input.w, output.w) : stripRows
@@ -2623,10 +2737,15 @@ export class GpuRenderer {
       if(shadow)this.release(source)
     }
     this.sampleIndex=undefined
-    this.release(blurred)
+    const nativeSameInput = staticTable && Object.keys(input).every(key =>
+      Object.is(input[key as keyof Rect], staticTable.input[key as keyof Rect]))
+    if (!staticIdentity || !nativeSameInput ||
+      !this.staticImageBlurs.stage(staticTable.source, staticIdentity.key, input, blurred, this.driver.resourceEpoch))
+      this.release(blurred)
     this.orderedEffectLayers++
     return targets
     } finally {
+      if (staticSourcePin) this.pendingImageTableSources.delete(staticSourcePin)
       this.filterImageFields = previousFields
     }
   }
@@ -3528,6 +3647,16 @@ export class GpuRenderer {
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
     this.horizontalFilters.begin(scene.filterBatchLease)
+    // A tile origin/crop is part of each entry, not a reason to discard other
+    // completed tiles. Zoom and arithmetic-policy changes retire the batch.
+    this.staticImageBlurs.begin(import.meta.env.VITE_DESIGN_STATIC_IMAGE_BLUR_CACHE === '1' ? exactFilterKey([
+      scene.view.zoom, scene.colorManagement, scene.floatCompositing, scene.coherentSamples, scene.integratedBlur,
+      scene.compactImageFields, scene.displayFilters, scene.softwareRaster, scene.resolve?.scale, scene.presentation?.scale,
+      this.driver.name, this.driver.linearLight, this.driver.hdr, this.driver.certifiedFilter,
+      import.meta.env.VITE_DESIGN_IMAGE_AXES !== '0', import.meta.env.VITE_DESIGN_STREAM_IMAGE_FIELDS !== '0',
+      import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE !== '0', import.meta.env.VITE_DESIGN_WHOLE_IMAGE_FILTER !== '0',
+    ]) : undefined, this.driver.completedResourceEpoch)
+    this.staticImageBlurEligible = this.staticImageBlurHits = this.staticImageBlurPixels = 0
     this.imageXTableBuilds = this.imageXTablePixels = this.imageXTableBytes = 0
     this.wholeFilterAxes = 0
     this.horizontalFilterHits = this.horizontalFilterPixels = this.horizontalFilterRows = 0
@@ -3727,8 +3856,12 @@ export class GpuRenderer {
       }
       completed = true
       this.horizontalFilters.finish(!this.frameCurrent || this.frameCurrent())
+      this.staticImageBlurs.finish(!this.frameCurrent || this.frameCurrent(), this.driver.completedResourceEpoch)
       return {
         ...result,
+        staticImageBlurEligible: this.staticImageBlurEligible, staticImageBlurHits: this.staticImageBlurHits,
+        staticImageBlurPixels: this.staticImageBlurPixels, staticImageBlurBytes: this.staticImageBlurs.bytes,
+        staticImageBlurEntries: this.staticImageBlurs.count,
         opaqueTentPasses: this.driver.opaqueTentPasses || 0, imageXTableBuilds: this.imageXTableBuilds, imageXTablePixels: this.imageXTablePixels, imageXTableBytes: this.imageXTableBytes,
         wholeFilterAxes: this.wholeFilterAxes,
         horizontalFilterHits: this.horizontalFilterHits,
@@ -3791,7 +3924,7 @@ export class GpuRenderer {
       this.constantTargets.clear()
       this.aliases.clear()
       this.releasedAliases = new WeakSet()
-      if (!completed) { this.horizontalFilters.clear(); this.coverage.clear(); this.materialFields.clear(); this.interactionInvalid = true }
+      if (!completed) { this.horizontalFilters.clear(); this.staticImageBlurs.finish(false, this.driver.completedResourceEpoch); this.coverage.clear(); this.materialFields.clear(); this.interactionInvalid = true }
       for (const texture of this.coordinateMaps) {
         this.busy.delete(texture)
         this.used.delete(texture)
@@ -3812,7 +3945,7 @@ export class GpuRenderer {
       this.replayParameters = undefined
       for (const texture of [...this.busy])
         if (!this.coverage.has(texture) && !this.materialFields.has(texture) && !this.interactionTextures.has(texture) &&
-            !this.horizontalFilters.has(texture))
+            !this.horizontalFilters.has(texture) && !this.staticImageBlurs.has(texture))
           this.release({ texture, rect: rect(0, 0, texture.width, texture.height) })
       this.sampleIndex = undefined
       this.masks.clear()
@@ -3823,6 +3956,7 @@ export class GpuRenderer {
   }
   dispose() {
     this.horizontalFilters.clear()
+    this.staticImageBlurs.dispose()
     this.coefficientBytes.clear()
     this.encodeYield.dispose()
     this.interactionPrefix = undefined
