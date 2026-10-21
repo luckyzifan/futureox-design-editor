@@ -1,0 +1,69 @@
+--- a/frontend/design-client/src/kernel/ProgressiveSurface.tsx
++++ b/frontend/design-client/src/kernel/ProgressiveSurface.tsx
+@@ -423,6 +423,7 @@
+   const [failure, setFailure] = useState('')
+   const [displayRetry, setDisplayRetry] = useState(0)
+   const [sharpHeadroomBlocked, setSharpHeadroomBlocked] = useState<object | null>(null)
++  const sharpViewportPending = useRef<{ contract: object; key: string; current: () => boolean } | null>(null)
+   const displayRetries = useRef<{ key: string; attempts: number; timer?: ReturnType<typeof setTimeout> }>({ key: '', attempts: 0 })
+   const [displayed, setDisplayed] = useState<DisplayFrame | null>(null)
+   useLayoutEffect(() => {
+@@ -503,6 +504,8 @@
+   latestNavigationZoom.current = navigationZoom
+   const frameZooming=useZoomActivity(view.zoom,identity)
+   const sharpZooming=useSharpZoomActivity(view.zoom,identity)
++  const latestSharpZooming=useRef(sharpZooming)
++  latestSharpZooming.current=sharpZooming
+   const zooming=sharpNavigation?sharpZooming:frameZooming
+   const cameraMoving = useCameraActivity(view, identity)
+   const motionPreview=!sharpNavigation&&residentDisplay&&zooming&&!props.interaction?.active&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&
+@@ -1171,6 +1174,49 @@
+               description: result.description || '', milliseconds: result.milliseconds, cached: false })
+             return
+           } finally { intent.settle() }
++        }
++        if (sharpNavigation && zooming && import.meta.env.VITE_DESIGN_SHARP_ZOOM_VIEWPORT === '1') {
++          const ratio = renderScale / view.zoom, w = Math.ceil(width * ratio), h = Math.ceil(height * ratio)
++          const key = JSON.stringify([renderScale, view.x, view.y, view.zoom, w, h])
++          const workKey = JSON.stringify([renderScale, width, height, dpr])
++          // One native-density viewport amortizes per-tile compilation and
++          // handoff. Same-bucket work remains useful while the camera moves;
++          // a later request replaces queued work through the existing owner.
++          const pending = sharpViewportPending.current
++          activePlan.current = { key: frameKey, revision: contract.revision, document: doc, view: { ...view },
++            dpr, width, height, rasterScale: renderScale, samplingDensity: ratio, samplingMode: 'native',
++            pageId, epoch: props.presentationEpoch || 0, grid: false, pixelPreview: props.pixelPreview,
++            rasterProfile: props.rasterProfile, managed: false, displayCapability, computeBackend: backend,
++            ids: new Set(), residents: new Map() }
++          if (pending?.contract === contract && pending.key === workKey && pending.current()) return
++          const admission = { contract, key: workKey, current: () => false as boolean }
++          sharpViewportPending.current = admission
++          const options = { pageId, width: w, height: h,
++            view: { x: view.x * ratio, y: view.y * ratio, zoom: renderScale },
++            transparent: false, grid: false, rasterProfile, livePreview: true, renderIntent: 'preview' as const }
++          const intent = navigationIntentOwner.begin(c, { sequence: token }, options)!
++          admission.current = intent.current
++          const requested = () => sameContent() && sharpViewportPending.current === admission && intent.current()
++          try {
++            const result = await mailbox.run(requested,
++              () => c.render(doc, options, false, backend, false, false, undefined, undefined, intent.signal))
++            if (!requested()) { result.bitmap?.close(); if (result.gpuTile) c.releasePresented([result.gpuTile]); return }
++            syncedDoc.current = doc
++            receive({ key: `sharp-viewport:${contract.revision}:${key}`, x: -view.x * ratio,
++              y: -view.y * ratio, width: w, height: h, zoom: renderScale, gutter: 0, viewportPreview: true,
++              bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile, backend: result.backend,
++              description: result.description || '', milliseconds: result.milliseconds, cached: false })
++            return
++          } finally {
++            if (sharpViewportPending.current === admission) {
++              sharpViewportPending.current = null
++              const latest = latestContext.current.view
++              if (sameContent() && intent.current() && latestSharpZooming.current &&
++                  (latest.x !== view.x || latest.y !== view.y || latest.zoom !== view.zoom))
++                setDisplayRetry(value => value + 1)
++            }
++            intent.settle()
++          }
+         }
+         // Planning now calls Rust on the main thread. Its module must be
+         // initialized before the first blank frame, independently of the worker.

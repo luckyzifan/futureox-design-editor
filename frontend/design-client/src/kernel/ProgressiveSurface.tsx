@@ -2,6 +2,8 @@ import { NavigationIntentOwner } from './navigation-intent-owner'
 import { NavigationBudgetLatch } from './navigation-budget-latch'
 import { initializeKernelModule } from './module'
 import { shouldUseExactCpuFallback } from './cpu-fallback'
+import { renderFailureFields } from './render-failure-telemetry'
+import { isRecoverablePreviewBudget } from './preview-budget-recovery'
 import { allowsResidentSdr } from './render-policy'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SurfaceProps } from './Surface'
@@ -19,6 +21,7 @@ import { LodSnapshotCache } from './lod-snapshot-cache'
 import { tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
+import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { navigationPreviewDensity } from './navigation-zoom'
 import { RenderMailbox } from './render-mailbox'
@@ -36,6 +39,7 @@ import { isDisplayBudgetError } from './gpu/display-budget'
 import { progressiveTileLayer } from './progressive-quality'
 import { hasRetainedOverview } from './overview-coverage'
 import { allowsReducedSampling } from './render-quality'
+import { sharpZoomScale, usesSharpZoom } from './gpu/sharp-zoom-policy'
 import { CoverageRetention } from './coverage-retention'
 import { prioritizeUncoveredTiles } from './coverage-priority'
 import {
@@ -418,6 +422,7 @@ export function ProgressiveSurfaceImpl(
   })
   const [failure, setFailure] = useState('')
   const [displayRetry, setDisplayRetry] = useState(0)
+  const [sharpHeadroomBlocked, setSharpHeadroomBlocked] = useState<object | null>(null)
   const displayRetries = useRef<{ key: string; attempts: number; timer?: ReturnType<typeof setTimeout> }>({ key: '', attempts: 0 })
   const [displayed, setDisplayed] = useState<DisplayFrame | null>(null)
   useLayoutEffect(() => {
@@ -488,14 +493,19 @@ export function ProgressiveSurfaceImpl(
     grid: !!props.grid, checkerboard: !!props.checkerboard, pixelPreview: props.pixelPreview || 0,
     rasterProfile, displayCapability, hdrCompositing })
   const filteredContent = useMemo(() => pageHasFilteredContent(doc, pageId), [doc.nodes, doc.pages, pageId])
+  const sharpNavigation = import.meta.env.VITE_DESIGN_SHARP_ZOOM === '1' && usesSharpZoom(renderExecutionPolicy,
+    { resident: residentDisplay, pixelPreview: props.pixelPreview, grid: props.grid, checkerboard: props.checkerboard }) &&
+    rasterProfile !== 'figmaSoftware'
   const navigationZoom = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
-    !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing,
+    !sharpNavigation && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing,
     residentDisplay && filteredContent, props.panGestureActive === true)
   const latestNavigationZoom = useRef(navigationZoom)
   latestNavigationZoom.current = navigationZoom
-  const zooming=useZoomActivity(view.zoom,identity)
+  const frameZooming=useZoomActivity(view.zoom,identity)
+  const sharpZooming=useSharpZoomActivity(sharpNavigation?view.zoom:1,sharpNavigation?identity:'sharp-disabled')
+  const zooming=sharpNavigation?sharpZooming:frameZooming
   const cameraMoving = useCameraActivity(view, identity)
-  const motionPreview=residentDisplay&&zooming&&!props.interaction?.active&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&
+  const motionPreview=!sharpNavigation&&residentDisplay&&zooming&&!props.interaction?.active&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&
     import.meta.env.VITE_DESIGN_VIEWPORT_PREVIEW!=='0'
   const lastIdentity = useRef(identity)
   const contract = useMemo(
@@ -529,7 +539,10 @@ export function ProgressiveSurfaceImpl(
   // speculative larger density can cross the surface limit before the exact
   // requested density is even scheduled. Keep full screen density for these
   // documents, without oversampling a future camera that may never be used.
-  const samplingScale = nativeSampling || filteredContent ? detailLevel : zooming && !cameraDependent && singleCanvas
+  const samplingScale = sharpNavigation ? zooming && !cameraDependent
+    ? sharpZoomScale(view, dpr, width, height, { headroom: sharpHeadroomBlocked !== contract,
+      hdr: hdrCompositing && !!doc.colorManagement }) : detailLevel
+    : nativeSampling || filteredContent ? detailLevel : zooming && !cameraDependent && singleCanvas
     ? motionRasterScale(view, dpr, width, height)
     : canvasSamplingScale(view, dpr, width, height, stableDensity, hdrCompositing && !!doc.colorManagement)
   const samplingDpr = nativeSampling ? dpr : samplingScale / view.zoom
@@ -578,7 +591,7 @@ export function ProgressiveSurfaceImpl(
   })
   const coarseCamera = { x: snapPatternAxis(Math.floor(view.x * dpr * (lodScale / detailLevel)), coarsePeriod),
     y: snapPatternAxis(Math.floor(view.y * dpr * (lodScale / detailLevel)), coarsePeriod), zoom: lodScale }
-  const lodActive = detailLevel / lodScale >= 1.02
+  const lodActive = !sharpNavigation && detailLevel / lodScale >= 1.02
   const frameKey = JSON.stringify([
     contract.revision,
     width,
@@ -826,7 +839,7 @@ export function ProgressiveSurfaceImpl(
     // A new document with no pixels gets one complete viewport preview before
     // progressive detail. Revisited cameras and edits with retained coverage
     // do not pay for a second full-scene render.
-    const needsStartupPreview = singleCanvas && !hdrCompositing && !props.grid && !props.checkerboard &&
+    const needsStartupPreview = !sharpNavigation && singleCanvas && !hdrCompositing && !props.grid && !props.checkerboard &&
       !props.pixelPreview && !reusableFrame && startupPreviewAttempt.current !== contract &&
       ![...tileRef.current.values()].some(tile => tile.document === doc && tile.revision === contract.revision &&
         ready.current.has(tile.key) && tileIntersectsView(tile, requestedView, { width, height }))
@@ -1390,7 +1403,7 @@ export function ProgressiveSurfaceImpl(
           }
         }
         if (!current()) return
-        const bootstrap = !displayed && residentDisplay && !cameraDependent && extent && !pageFitsView &&
+        const bootstrap = !sharpNavigation && !displayed && residentDisplay && !cameraDependent && extent && !pageFitsView &&
           !props.interaction?.active && coverageBootstrap.current !== contract.revision ? async () => {
           coverageBootstrap.current = contract.revision
           const scale = Math.min(renderScale, 2046 / Math.max(extent.width, extent.height))
@@ -1422,7 +1435,7 @@ export function ProgressiveSurfaceImpl(
         // A selected object is about to move (or is warming its live scene).
         // A monolithic overview tile cannot be preempted inside WASM, so do
         // not put it behind selection warm-up and ahead of the first pose.
-        if (!pageFitsView && !cameraMoving && !props.interaction?.selection.length && current()) warmOverview()
+        if (!sharpNavigation && !pageFitsView && !cameraMoving && !props.interaction?.selection.length && current()) warmOverview()
         if (current()) {
           setStats((s) => ({
             ...s,
@@ -1431,6 +1444,19 @@ export function ProgressiveSurfaceImpl(
           }))
         }
       } catch (error) {
+        const headroomFailure = renderFailureFields(error)
+        const speculativeLimit = headroomFailure.failureCategory === 2 &&
+          [40, 41, 42].includes(headroomFailure.failureCode)
+        if (sharpNavigation && renderScale > detailLevel && sharpHeadroomBlocked !== contract &&
+            current() && headroomFailure.failureCategory !== 1 && headroomFailure.failureCategory !== 4 &&
+            !/device lost|GPU device|has been lost|设备已丢失|PREVIEW_CANCELLED/i.test(String(error)) &&
+            (isDisplayBudgetError(error) || isRecoverablePreviewBudget(error) ||
+              headroomFailure.failureCategory === 3 || speculativeLimit)) {
+          // Speculation may exceed a filter's halo/working-set budget. Retry at
+          // the current physical density, never at a low-resolution preview.
+          setSharpHeadroomBlocked(contract)
+          return
+        }
         // An aborted A can reject after a newer A reused the same sample/size
         // key. Cleanup belongs to this admission object, even after finally
         // has settled its presentation intent.
@@ -1492,6 +1518,7 @@ export function ProgressiveSurfaceImpl(
     props.interaction?.active,
     props.interaction?.selection.join(','),
     motionPreview,
+    sharpNavigation,
     cameraMoving,
     displayRetry,
     residencyBudget,

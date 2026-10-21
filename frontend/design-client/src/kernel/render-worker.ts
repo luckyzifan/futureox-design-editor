@@ -29,6 +29,7 @@ import {
   usesCanvasDisplayFilters,
   usesTransientDisplayFilters,
   usesDisplayArithmetic,
+  usesDesktopDisplay,
   type RenderPolicy,
 } from './render-policy'
 import type { GpuRenderer } from './gpu/renderer'
@@ -50,6 +51,7 @@ import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
+import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport } from './tile-prepare-viewport'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
 import { GPU_PRIORITY_BURST, RenderWorkQueue } from './render-work-queue'
@@ -297,6 +299,7 @@ function yieldPreviewTask() {
 const queue = new RenderWorkQueue()
 type ResidentPose={slot:number;transforms:Record<string,Matrix>;input:{sequence:number;at:number}}
 type PoseSession={slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
+  origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;delta?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
 function displayedOverlayOffsets(frame:import('./gpu/resident-presenter').ResidentFrame) {
@@ -335,10 +338,16 @@ function schedulePose(){
         const scale=session.scene.view.zoom,base=session.window
         const deltas = ids.map(id => previewTranslationDelta(session.scene, id, pose.transforms[id]))
         if (deltas.some(delta => !delta)) { rebasePose(pose); break }
-        const shifts=session.fixedWindow?[{x:0,y:0}]:ids.map((id,index)=>{const node=session.scene.nodes[id],source=node.previewSource||node,delta=deltas[index]!
-          return {x:node.matrix[4]+delta[0]-source.matrix[4],y:node.matrix[5]+delta[1]-source.matrix[5]}})
-        let x=base.x+Math.min(0,...shifts.map(p=>p.x)),y=base.y+Math.min(0,...shifts.map(p=>p.y))
-        let right=base.x+base.w+Math.max(0,...shifts.map(p=>p.x)),bottom=base.y+base.h+Math.max(0,...shifts.map(p=>p.y))
+        // session.window belongs to the initial capture. Native recompilation
+        // replaces moved nodes, so their current previewSource cannot anchor a
+        // cumulative displacement (a same-pose pointerup has delta zero).
+        const shifts=session.fixedWindow?[{x:0,y:0}]:ids.map((id,index)=>{
+          const origin=session.origins.get(id)
+          return origin && residentPoseShift(origin,session.scene.nodes[id].matrix,deltas[index]!)
+        })
+        if(shifts.some(shift=>!shift)){rebasePose(pose);break}
+        let x=base.x+Math.min(0,...shifts.map(p=>p!.x)),y=base.y+Math.min(0,...shifts.map(p=>p!.y))
+        let right=base.x+base.w+Math.max(0,...shifts.map(p=>p!.x)),bottom=base.y+base.h+Math.max(0,...shifts.map(p=>p!.y))
         if(displayFrame){
           const view=displayFrame.view,camera=session.scene.view
           const left=-view.x/view.zoom*scale+camera.x,top=-view.y/view.zoom*scale+camera.y
@@ -365,7 +374,9 @@ function schedulePose(){
           next={...preparePreviewSelection(compiled,session.scene.interactionSelection||[]),
             interactionSelection:session.scene.interactionSelection,interactionRetained:true,nativeInteraction:true,interactionLease:session.scene.interactionLease,interactionWindow:window,
             floatCompositing:session.scene.floatCompositing,pairedDisplayFilters:session.scene.pairedDisplayFilters,
-            compactImageFields:session.scene.compactImageFields,displayFilters:session.scene.displayFilters}
+            compactImageFields:session.scene.compactImageFields,displayFilters:session.scene.displayFilters,
+            displayFilterRadiusLimit:session.scene.displayFilterRadiusLimit,
+            displayImageSource:session.scene.displayImageSource,displayMaterialSource:session.scene.displayMaterialSource}
           next=reuseExactSceneSources(session.scene,next,session.patch?.changedNodes)
         }else next=session.patch?session.patch.prepare(session.scene,pose.transforms,window):
           translatePreviewScene({...session.scene,interactionWindow:window},session.document,document!)
@@ -634,7 +645,11 @@ self.onmessage = (e) => {
       // preview may simplify effects; settled frames and exports never do.
       renderOptions.interactiveEffects = renderQualityContract({ renderIntent, png: request.png, exportFormat,
         exportRegion: renderOptions.exportRegion, desktopFullMath: executionPolicy.desktopFullMath }).existingInteractiveEffectsPolicy
-      const canvasDisplayFilters = usesCanvasDisplayFilters(executionPolicy, {
+      const boundedDisplayLimit = import.meta.env.VITE_DESIGN_BOUNDED_DISPLAY_FILTER === '1' && backend === 'webgpu' &&
+        usesDesktopDisplay(executionPolicy, { renderIntent, rasterProfile: renderOptions.rasterProfile,
+          png: request.png, readback: request.readback, exportFormat, exportRegion: renderOptions.exportRegion,
+          pixelPreview: renderOptions.pixelPreview }) ? 32 : undefined
+      const canvasDisplayFilters = boundedDisplayLimit !== undefined || usesCanvasDisplayFilters(executionPolicy, {
         renderIntent, png: request.png, readback: request.readback, exportFormat,
         exportRegion: renderOptions.exportRegion, pixelPreview: renderOptions.pixelPreview,
       })
@@ -646,7 +661,16 @@ self.onmessage = (e) => {
       })
       const previewPresentOnly = !request.png && !request.readback && !exportFormat && !renderOptions.exportRegion
       const canvasMath = import.meta.env.VITE_DESIGN_DISPLAY_MATH !== '0' && request.debug?.displayMath !== false &&
+        (!executionPolicy.desktopFullMath || import.meta.env.VITE_DESIGN_DESKTOP_NATIVE_MATH === '1') &&
         usesDisplayArithmetic(executionPolicy, { renderIntent, rasterProfile: renderOptions.rasterProfile,
+          png: request.png, readback: request.readback, exportFormat, exportRegion: renderOptions.exportRegion,
+          pixelPreview: renderOptions.pixelPreview })
+      const canvasImageSource = import.meta.env.VITE_DESIGN_DESKTOP_IMAGE_SOURCE === '1' &&
+        usesDesktopDisplay(executionPolicy, { renderIntent, rasterProfile: renderOptions.rasterProfile,
+          png: request.png, readback: request.readback, exportFormat, exportRegion: renderOptions.exportRegion,
+          pixelPreview: renderOptions.pixelPreview })
+      const canvasMaterialSource = import.meta.env.VITE_DESIGN_DISPLAY_MATERIAL_SOURCE === '1' &&
+        usesDesktopDisplay(executionPolicy, { renderIntent, rasterProfile: renderOptions.rasterProfile,
           png: request.png, readback: request.readback, exportFormat, exportRegion: renderOptions.exportRegion,
           pixelPreview: renderOptions.pixelPreview })
       // Canvas chrome is never authored/exported content.
@@ -943,7 +967,9 @@ self.onmessage = (e) => {
               renderOptions.rasterProfile,
               renderOptions.interactiveEffects,
               canvasDisplayFilters,
+              boundedDisplayLimit,
               canvasMath,
+              canvasImageSource, canvasMaterialSource,
               renderOptions.grid,
               renderOptions.checkerboard,
               renderOptions.pixelPreview,
@@ -979,7 +1005,8 @@ self.onmessage = (e) => {
             })
             const allowFilterOrder = channel === 'canvas' && renderIntent === 'canvas' && !coverageTiles &&
               !request.png && !request.readback && !exportFormat && !renderOptions.exportRegion && !renderOptions.pixelPreview &&
-              backend === 'webgpu' && !wantsReference && !executionPolicy.imageMips && !canvasDisplayFilters && !canvasMath &&
+              backend === 'webgpu' && !wantsReference && !executionPolicy.imageMips &&
+              (!canvasDisplayFilters || boundedDisplayLimit !== undefined) && !canvasMath &&
               import.meta.env.VITE_DESIGN_FILTER_COLUMN_ORDER !== '0' &&
               import.meta.env.VITE_DESIGN_HORIZONTAL_FILTER_REUSE !== '0' &&
               import.meta.env.VITE_DESIGN_IMAGE_RESOLVE_FUSION !== '0'
@@ -1085,7 +1112,7 @@ self.onmessage = (e) => {
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
                   prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
                   () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
-                    tileCurrent(), hydrateImages, filterBatchLease)
+                    tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource)
                 undelivered = result
                 if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
@@ -1273,7 +1300,7 @@ self.onmessage = (e) => {
               backend,
               color,
               settingsJson,
-              256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages,
+              256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit, canvasMaterialSource,
             )
             self.postMessage(
               { id: request.id, ...result, loadMs, previewLane: 'regional-fallback', previewReadback: !result.bitmap && !result.gpuTile, residentAttached: !!displayCanvas },
@@ -1326,6 +1353,9 @@ self.onmessage = (e) => {
           scene!.compactImageFields = request.debug?.denseImageFields !== true
           scene!.disableSparseGlass = request.debug?.disableSparseGlass === true
           scene!.displayFilters = previewDisplayFilters
+          scene!.displayFilterRadiusLimit = boundedDisplayLimit
+          scene!.displayImageSource = canvasImageSource
+          scene!.displayMaterialSource = canvasMaterialSource
           const floating = scene!.floatCompositing
           const displayMath = canvasMath && backend === 'webgpu' && floating && !scene!.softwareRaster
           const arithmeticKey = JSON.stringify([floating, displayMath])
@@ -1418,7 +1448,8 @@ self.onmessage = (e) => {
             // Cached coverage is reused only for integer device-pixel moves.
             // Fractional poses request a fresh capture through the normal rebase
             // path; warming their former bilinear approximation is unnecessary.
-            poseSession={slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,
+            const origins=capturePoseOrigins(scene!,interactionSelection||[])
+            if(origins)poseSession={slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,
               scene:scene!,native:interactionNative===true,delta:!!incrementalScene,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
               patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,laneState.interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
           }
@@ -1551,7 +1582,7 @@ self.onmessage = (e) => {
                 backend,
                 color,
                 settingsJson,
-                256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages,
+                256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit, canvasMaterialSource,
               )
               self.postMessage(
                 { id: request.id, ...result, loadMs, previewLane: 'regional-fallback', previewReadback: !result.bitmap && !result.gpuTile, residentAttached: !!displayCanvas },
@@ -1665,6 +1696,9 @@ async function renderTiledPreview(
   isCurrent?: () => boolean,
   hydrateImages: HydrateSceneImages = sceneImageHydration(kernel, isCurrent ?? (() => true)),
   filterBatchLease?: object,
+  canvasImageSource = false,
+  boundedDisplayLimit?: number,
+  canvasMaterialSource = false,
 ) {
   const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
   const checkCurrent = () => {
@@ -1686,7 +1720,7 @@ async function renderTiledPreview(
   let horizontalFilterHits = 0, horizontalFilterPixels = 0, horizontalFilterRows = 0
   const managedOutput = !!(executionPolicy?.hdrCompositing && color)
   const admissionKey=JSON.stringify(activeLane) + "/" + JSON.stringify([laneState.documentGeneration,laneState.resourceGeneration,options.pageId,options.view.zoom,
-    options.rasterProfile,options.interactiveEffects,backend,managedOutput,canvasDisplayFilters,canvasMath,referenceGpu])
+    options.rasterProfile,options.interactiveEffects,backend,managedOutput,canvasDisplayFilters,boundedDisplayLimit,canvasMaterialSource,canvasMath,referenceGpu])
   let admission=regionAdmissions.get(admissionKey)
   if(!admission){
     admission=new PreviewAdmission();regionAdmissions.set(admissionKey,admission)
@@ -1728,6 +1762,9 @@ async function renderTiledPreview(
     scene.floatCompositing = requiresFloatCompositing(executionPolicy!, scene)
     const displayMath = canvasMath && backend === 'webgpu' && scene.floatCompositing && !scene.softwareRaster
     scene.displayFilters = canvasDisplayFilters || (options.interactiveEffects === true && !executionPolicy?.desktopFullMath)
+    scene.displayFilterRadiusLimit = boundedDisplayLimit
+    scene.displayImageSource = canvasImageSource
+    scene.displayMaterialSource = canvasMaterialSource
     {
       try {
         if (gpu && (gpu.driver.lost || gpu.driver.name !== backend || !!gpu.driver.managed !== scene.floatCompositing || !!gpu.driver.displayMath !== displayMath)) {
@@ -1847,6 +1884,9 @@ async function renderTiledPreview(
         // Budget splitting changes transport, not the caller's canvas intent.
         // Keep the same filter contract on every child region.
         scene.displayFilters = canvasDisplayFilters
+        scene.displayFilterRadiusLimit = boundedDisplayLimit
+        scene.displayImageSource = canvasImageSource
+        scene.displayMaterialSource = canvasMaterialSource
         const floating = scene.floatCompositing
         const displayMath = canvasMath && backend === 'webgpu' && floating && !scene.softwareRaster
         floatingFrame ||= floating

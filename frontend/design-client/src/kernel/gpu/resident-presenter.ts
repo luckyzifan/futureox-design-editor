@@ -10,6 +10,7 @@ import { DISPLAY_TEXTURE_BUDGET } from './display-budget'
 import { CanvasOverlayRenderer, translateOverlay, type CanvasOverlay } from './canvas-overlay'
 import { ResidentUniforms } from './resident-uniforms'
 import { physicalCoverage } from './physical-coverage'
+import { presentedFragmentQuality } from './presented-fragment-quality'
 
 export type ResidentItem = Omit<CompositeItem, 'tile'> & {
   tile: Omit<CompositeItem['tile'], 'bytes' | 'bitmap'> & { gpuTile: number }
@@ -334,6 +335,8 @@ export class ResidentPresenter {
     const { view, width, height, dpr } = frame,
       w = Math.max(1, Math.ceil(width * dpr)),
       h = Math.max(1, Math.ceil(height * dpr))
+    const detailedDiagnostics = gpuDiagnosticsDetail()
+    const strictSharpDiagnostics = import.meta.env.VITE_DESIGN_SHARP_ZOOM === '1' && detailedDiagnostics
     if (
       w > this.device.limits.maxTextureDimension2D ||
       h > this.device.limits.maxTextureDimension2D
@@ -347,7 +350,11 @@ export class ResidentPresenter {
     // A nonresident tile cannot occlude a valid lower-density source. Filter
     // before planning, not after covered rectangles have removed that source.
     const available = frame.items.filter(item => this.textures.has(item.tile.gpuTile))
-    const missing = frame.items.filter(item => item.active && !this.textures.has(item.tile.gpuTile)).map(item => item.tile.gpuTile)
+    const missing = strictSharpDiagnostics ? [...new Set(compositeDrawPlan(frame.items as CompositeItem[], view, width, height)
+      .filter(planned => !this.textures.has((planned.item as ResidentItem).tile.gpuTile) &&
+        compositeRasterQuad(planned.placement, planned.clip, width, height, dpr))
+      .map(planned => (planned.item as ResidentItem).tile.gpuTile))] :
+      frame.items.filter(item => item.active && !this.textures.has(item.tile.gpuTile)).map(item => item.tile.gpuTile)
     if (missing.length) this.report({ missingGpuTiles: missing })
     for (const planned of compositeDrawPlan(available as CompositeItem[], view, width, height)) {
       const item = planned.item as ResidentItem
@@ -487,8 +494,8 @@ export class ResidentPresenter {
     this.drawn = frame
     this.frames++
     const coverageAt=performance.now()
-    const terminalQuality = this.terminalQualityGate.claim(frame.terminalQuality, gpuDiagnosticsDetail())
-    const measureCoverage=!!terminalQuality || import.meta.env.DEV || (gpuDiagnosticsDetail() && coverageAt-this.diagnosticCoverageAt>=250)
+    const terminalQuality = this.terminalQualityGate.claim(frame.terminalQuality, detailedDiagnostics)
+    const measureCoverage=strictSharpDiagnostics || !!terminalQuality || import.meta.env.DEV || (detailedDiagnostics && coverageAt-this.diagnosticCoverageAt>=250)
     if(measureCoverage)this.diagnosticCoverageAt=coverageAt
     this.report({
       ...this.diagnosticFields(),
@@ -521,9 +528,11 @@ export class ResidentPresenter {
       },
       input: frame.input,
       missingTextureCount: missing.length,
-      ...(measureCoverage ? presentationQuality(available as CompositeItem[], view, width, height, dpr) : {}),
-      ...(measureCoverage ? physicalCoverage(rows.map(row=>({...row.raster,
-        blend:row.item.blend,native:Math.min(row.item.tile.width*row.raster.uv[2]/row.raster.box[2],row.item.tile.height*row.raster.uv[3]/row.raster.box[3])>=dpr*(1-1e-10)})),w,h):{}),
+      ...(strictSharpDiagnostics ? presentedFragmentQuality(rows.map(row => ({ ...row.raster,
+        sourceWidth: row.entry.texture.width, sourceHeight: row.entry.texture.height, blend: row.item.blend })), w, h) :
+        measureCoverage ? { ...presentationQuality(available as CompositeItem[], view, width, height, dpr),
+          ...physicalCoverage(rows.map(row=>({...row.raster,
+            blend:row.item.blend,native:Math.min(row.item.tile.width*row.raster.uv[2]/row.raster.box[2],row.item.tile.height*row.raster.uv[3]/row.raster.box[3])>=dpr*(1-1e-10)})),w,h) } : {}),
       // Diagnostic geometry of pixels actually submitted, excluding missing
       // textures. Tests can distinguish absent document content from the known
       // empty page background outside the document's paint bounds.

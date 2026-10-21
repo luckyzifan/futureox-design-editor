@@ -1,0 +1,12 @@
+*
+!.gitignore
+!*.mjs
+!*.py
+!*.md
+!summary.json
+!gpu-summary.json
+!motion-summary.json
+!build-manifest.json
+!*.patch
+
+!complete-filter-cache-parked.manifest.json

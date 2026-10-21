@@ -26,6 +26,13 @@ test('static image blur telemetry contains only five bounded numeric counters',(
     assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(sample).map(key=>[key,value]))),{})
   assert.deepEqual(sanitizeFields({staticImageBlurBytes:17825793,staticImageBlurEntries:2}),{})
 })
+test('display image and nested-prefix telemetry never carries document data',()=>{
+  const sample={displayImageSourcePasses:2912,nestedPrefixHits:3,nestedPrefixBuilds:1,nestedPrefixBytes:67108864}
+  assert.deepEqual(sanitizeFields({...sample,nestedPrefixSource:'private',imageSourceUri:'private'}),sample)
+  for(const value of [NaN,Infinity,-1,.5,'1',true,{}])
+    assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(sample).map(key=>[key,value]))),{})
+  assert.deepEqual(sanitizeFields({nestedPrefixBytes:67108865,displayImageSourcePasses:1e9+1}),{})
+})
 test('disabled path never reads clocks, schedules, serializes payloads, or emits',()=>{
   const fail=()=>{throw Error('disabled side effect')}
   const d=createRenderDiagnostics({sink:fail,now:fail,schedule:fail})
@@ -77,11 +84,14 @@ test('detail retains event timestamps and request lifecycle in batched bounded r
   assert.equal(rows.at(-1).dropped,1488);assert.equal(rows[0].inputSequence,1488)
   assert(!JSON.stringify(rows).includes('secret'));d.close()
 })
-test('detail enables bounded production coverage measurement without enabling GPU profiling',()=>{
+test('detail keeps ordinary coverage throttled and explicitly gates per-frame sharp diagnostics',()=>{
   const presenter=readFileSync(new URL('../../design-client/src/kernel/gpu/resident-presenter.ts',import.meta.url),'utf8')
-  assert(presenter.includes('gpuDiagnosticsDetail() && coverageAt-this.diagnosticCoverageAt>=250'))
+  assert.match(presenter,/const detailedDiagnostics\s*=\s*gpuDiagnosticsDetail\(\)/)
+  assert.match(presenter,/VITE_DESIGN_SHARP_ZOOM\s*===\s*'1'\s*&&\s*detailedDiagnostics/)
+  assert.match(presenter,/detailedDiagnostics\s*&&\s*coverageAt\s*-\s*this\.diagnosticCoverageAt\s*>=\s*250/)
   assert(presenter.includes('coverageMeasured:measureCoverage'))
-  assert(presenter.includes('measureCoverage ? physicalCoverage'))
+  assert(presenter.includes('physicalCoverage('))
+  assert(presenter.includes('presentedFragmentQuality('))
 })
 
 test('request purpose is scalar and separates transient, settled, coverage and readback work',()=>{

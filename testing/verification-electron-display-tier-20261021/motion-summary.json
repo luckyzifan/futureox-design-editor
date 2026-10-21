@@ -1,0 +1,509 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-21T05:58:50.318797+00:00",
+  "purpose": "Motion-clarity evidence snapshot; no new tests or rendering were run to create this record.",
+  "acceptance": {
+    "continuousZoomAlwaysSharp": false,
+    "figmaFluidityOrPhysicalFpsEstablished": false,
+    "generalSpeedupEstablished": false
+  },
+  "metricContract": {
+    "ack": "Worker presentation/submission acknowledgement, not GPU completion or photons.",
+    "inputToAckMs": "Trusted input event to matched presentation acknowledgement; includes input/main-thread delay.",
+    "requestToAckMs": "Camera-request observation to matched acknowledgement.",
+    "maximumUpscale": "Maximum magnification of actually drawn source pixels relative to requested device density.",
+    "visual": "Raw 8-bit PNG RGB differences; report-only and not a post-hoc visual threshold.",
+    "firstHighZoomStageTotalMs": "Full harness stage duration including input and wait; not pure GPU time.",
+    "heldPreviewWaitMs": "Harness wait for held preview acknowledgement; verified-pixel upper bound is separate."
+  },
+  "motionRuns": [
+    {
+      "run": "sharp-v6-fresh-117",
+      "status": "failed",
+      "motionGatePassed": false,
+      "startedAt": "2026-10-21T05:33:05.487Z",
+      "completedAt": "2026-10-21T05:33:29.128Z",
+      "fixture": "117.sketch",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "harnessSha256": "e873c3b14b8089ab967bd62daf6b16030076bc9764d31bf3154b985405572080",
+      "metrics": {
+        "acknowledgementCount": 256,
+        "motionAcknowledgements": 235,
+        "settlingAcknowledgements": 21,
+        "measuredQualityCount": 256,
+        "minimumSharpCoverage": 0,
+        "maximumUpscale": 15.894608384206839,
+        "maximumRequestedZoom": 32,
+        "maximumAcknowledgedZoom": 32,
+        "inputToAckMs": {
+          "p50": 20,
+          "p95": 260.300048828125,
+          "max": 951.5
+        },
+        "requestToAckMs": {
+          "p50": 2,
+          "p95": 9.800048828125,
+          "max": 59.89990234375
+        },
+        "actualInputGapsMs": {
+          "p50": 16.699951171875,
+          "p95": 250.60009765625,
+          "max": 952.800048828125
+        }
+      },
+      "violationsByKind": {
+        "incomplete-or-under-density": 236,
+        "upscaled-content": 236,
+        "input-ack-lag": 23
+      },
+      "phases": [
+        {
+          "phase": "up-to-700",
+          "acknowledgements": 60,
+          "fullySharpAcknowledgements": 0,
+          "maximumUpscale": 6.4067787045882
+        },
+        {
+          "phase": "up-to-3200",
+          "acknowledgements": 51,
+          "fullySharpAcknowledgements": 0,
+          "maximumUpscale": 15.894608384206839
+        },
+        {
+          "phase": "down-to-100",
+          "acknowledgements": 127,
+          "fullySharpAcknowledgements": 2,
+          "maximumUpscale": 15.45303941815282
+        },
+        {
+          "phase": "settling",
+          "acknowledgements": 18,
+          "fullySharpAcknowledgements": 18,
+          "maximumUpscale": 1
+        }
+      ],
+      "documentPreserved": true,
+      "sourceFilePreserved": true,
+      "artifacts": {
+        "results.json": "sharp-v6-fresh-117/results.json",
+        "zoom-trace.json": "sharp-v6-fresh-117/zoom-trace.json",
+        "build-manifest.json": "sharp-v6-fresh-117/build-manifest.json",
+        "runtime-artifacts.json": "sharp-v6-fresh-117/runtime-artifacts.json"
+      }
+    },
+    {
+      "run": "material-v7-fresh-117",
+      "status": "failed",
+      "motionGatePassed": false,
+      "startedAt": "2026-10-21T05:44:09.269Z",
+      "completedAt": "2026-10-21T05:44:26.410Z",
+      "fixture": "117.sketch",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "harnessSha256": "671dc3cb9ebc85042d0db8290b1a8ec9722b80d5cd9391960447df26c7d95074",
+      "metrics": {
+        "acknowledgementCount": 286,
+        "motionAcknowledgements": 260,
+        "settlingAcknowledgements": 26,
+        "measuredQualityCount": 286,
+        "minimumSharpCoverage": 0,
+        "maximumUpscale": 11.586095439086932,
+        "maximumRequestedZoom": 32,
+        "maximumAcknowledgedZoom": 32,
+        "inputToAckMs": {
+          "p50": 20.199951171875,
+          "p95": 35.699951171875,
+          "max": 55.2998046875
+        },
+        "requestToAckMs": {
+          "p50": 2.199951171875,
+          "p95": 12.300048828125,
+          "max": 33.7998046875
+        },
+        "actualInputGapsMs": {
+          "p50": 16.699951171875,
+          "p95": 19.89990234375,
+          "max": 36.800048828125
+        }
+      },
+      "violationsByKind": {
+        "incomplete-or-under-density": 261,
+        "upscaled-content": 261
+      },
+      "phases": [
+        {
+          "phase": "up-to-700",
+          "acknowledgements": 64,
+          "fullySharpAcknowledgements": 0,
+          "maximumUpscale": 6.406778704588201
+        },
+        {
+          "phase": "up-to-3200",
+          "acknowledgements": 57,
+          "fullySharpAcknowledgements": 0,
+          "maximumUpscale": 11.495779366410272
+        },
+        {
+          "phase": "down-to-100",
+          "acknowledgements": 140,
+          "fullySharpAcknowledgements": 0,
+          "maximumUpscale": 11.586095439086932
+        },
+        {
+          "phase": "settling",
+          "acknowledgements": 25,
+          "fullySharpAcknowledgements": 25,
+          "maximumUpscale": 1
+        }
+      ],
+      "documentPreserved": true,
+      "sourceFilePreserved": true,
+      "artifacts": {
+        "results.json": "material-v7-fresh-117/results.json",
+        "zoom-trace.json": "material-v7-fresh-117/zoom-trace.json",
+        "build-manifest.json": "material-v7-fresh-117/build-manifest.json",
+        "runtime-artifacts.json": "material-v7-fresh-117/runtime-artifacts.json"
+      }
+    }
+  ],
+  "setupFailure": {
+    "run": "viewport-v8-fresh-117",
+    "status": "failed",
+    "motionEntered": false,
+    "acknowledgementCount": null,
+    "timeoutMs": 120000,
+    "phase": "import",
+    "errors": [
+      {
+        "phase": "import",
+        "error": "TimeoutError: page.waitForFunction: Timeout 120000ms exceeded."
+      }
+    ],
+    "budgetDiagnostics": [
+      {
+        "source": "worker",
+        "event": "error",
+        "requestId": 2,
+        "failureCategory": 3,
+        "failureStage": 13,
+        "failureCode": 20
+      },
+      {
+        "source": "main",
+        "event": "error",
+        "requestId": 2,
+        "failureCategory": 3,
+        "failureStage": 13,
+        "failureCode": 20
+      },
+      {
+        "source": "worker",
+        "event": "error",
+        "requestId": 49,
+        "failureCategory": 3,
+        "failureStage": 13,
+        "failureCode": 20
+      },
+      {
+        "source": "main",
+        "event": "error",
+        "requestId": 49,
+        "failureCategory": 3,
+        "failureStage": 13,
+        "failureCode": 20
+      }
+    ],
+    "budgetDiagnosticNote": "Worker/main forwarded observations may duplicate the same underlying failure; these are not four independent failures.",
+    "closure": {
+      "observation": "Natural process closure; no successful external termination signal is established.",
+      "source": "Coordinating run owner observation",
+      "successfulKillSignalConfirmed": false
+    },
+    "disposition": "Whole-viewport production branch removed and preserved as parked-sharp-viewport.patch.",
+    "artifacts": {
+      "results": "viewport-v8-fresh-117/results.json",
+      "diagnostics": "viewport-v8-fresh-117/host-stdout.log",
+      "patch": "parked-sharp-viewport.patch"
+    }
+  },
+  "standardRuns": [
+    {
+      "run": "material-v7-export-117",
+      "rawResultsOnly": false,
+      "status": "completed",
+      "continuousMotionAcceptance": "not established by this standard export workload",
+      "firstHighZoomStageTotalMs": 624.8142079999998,
+      "heldPreviewWaitMs": 222.72225000000253,
+      "heldVerifiedPixelsUpperMs": 432.80733300000065,
+      "undoRestoredCompleteDocument": true,
+      "exportDocumentHashUnchanged": true,
+      "sourceFilePreserved": true,
+      "exportStatus": "completed",
+      "exportReference": "origin-v3-export-117",
+      "exportsByteExact": true,
+      "exportAssets": [
+        {
+          "scale": 1,
+          "referenceSha256": "c999666d823112b9a6e0b5f82e9a1ca24c2afc493bd2bb19edb58a143c30dc18",
+          "candidateSha256": "c999666d823112b9a6e0b5f82e9a1ca24c2afc493bd2bb19edb58a143c30dc18",
+          "referenceBytes": 20889,
+          "candidateBytes": 20889,
+          "referenceSize": [
+            239,
+            119
+          ],
+          "candidateSize": [
+            239,
+            119
+          ],
+          "byteEqual": true
+        },
+        {
+          "scale": 2,
+          "referenceSha256": "a38921b34b71acfd6624e713a6238a21c9a5189db20a013e05454eb4305fade0",
+          "candidateSha256": "a38921b34b71acfd6624e713a6238a21c9a5189db20a013e05454eb4305fade0",
+          "referenceBytes": 42286,
+          "candidateBytes": 42286,
+          "referenceSize": [
+            477,
+            237
+          ],
+          "candidateSize": [
+            477,
+            237
+          ],
+          "byteEqual": true
+        },
+        {
+          "scale": 3,
+          "referenceSha256": "78efd838e76afa9aed8be8473884d3d27301b6f4b0d75ec02cb047c51a783447",
+          "candidateSha256": "78efd838e76afa9aed8be8473884d3d27301b6f4b0d75ec02cb047c51a783447",
+          "referenceBytes": 65580,
+          "candidateBytes": 65580,
+          "referenceSize": [
+            715,
+            355
+          ],
+          "candidateSize": [
+            715,
+            355
+          ],
+          "byteEqual": true
+        }
+      ],
+      "canvasReference": "origin-v3-export-117",
+      "canvasExact": false,
+      "canvasGate": "report-only; visual review required",
+      "visualMetrics": [
+        {
+          "name": "pan-3200-canvas.png",
+          "kind": "cross-run",
+          "pixels": 3036960,
+          "differentRgbaPixels": 1410246,
+          "differentAlphaPixels": 0,
+          "rgbMean": 0.2709629585726077,
+          "rgbP99": 1.0,
+          "rgbMax": 2,
+          "rgbGt4Pixels": 0,
+          "rgbGt16Pixels": 0
+        },
+        {
+          "name": "zoom-3200-canvas.png",
+          "kind": "cross-run",
+          "pixels": 3036960,
+          "differentRgbaPixels": 1410246,
+          "differentAlphaPixels": 0,
+          "rgbMean": 0.2709629585726077,
+          "rgbP99": 1.0,
+          "rgbMax": 2,
+          "rgbGt4Pixels": 0,
+          "rgbGt16Pixels": 0
+        },
+        {
+          "name": "zoom-repeat-3200-canvas.png",
+          "kind": "cross-run",
+          "pixels": 3036960,
+          "differentRgbaPixels": 1410246,
+          "differentAlphaPixels": 0,
+          "rgbMean": 0.2709629585726077,
+          "rgbP99": 1.0,
+          "rgbMax": 2,
+          "rgbGt4Pixels": 0,
+          "rgbGt16Pixels": 0
+        },
+        {
+          "name": "candidate-held-vs-settled",
+          "kind": "within-run",
+          "pixels": 3036960,
+          "differentRgbaPixels": 17705,
+          "differentAlphaPixels": 0,
+          "rgbMean": 0.004649386228333597,
+          "rgbP99": 0.0,
+          "rgbMax": 5,
+          "rgbGt4Pixels": 2,
+          "rgbGt16Pixels": 0
+        }
+      ],
+      "artifacts": {
+        "results.json": "material-v7-export-117/results.json",
+        "visual-comparison.json": "material-v7-export-117/visual-comparison.json",
+        "export-byte-comparison.json": "material-v7-export-117/export-byte-comparison.json",
+        "build-manifest.json": "material-v7-export-117/build-manifest.json",
+        "runtime-artifacts.json": "material-v7-export-117/runtime-artifacts.json"
+      }
+    },
+    {
+      "run": "material-v9-export-117",
+      "rawResultsOnly": true,
+      "status": "completed",
+      "continuousMotionAcceptance": "not established by this standard export workload",
+      "firstHighZoomStageTotalMs": 710.708541,
+      "heldPreviewWaitMs": 723.393500000002,
+      "heldVerifiedPixelsUpperMs": 943.6395420000008,
+      "undoRestoredCompleteDocument": true,
+      "exportDocumentHashUnchanged": true,
+      "sourceFilePreserved": true,
+      "exportStatus": "completed",
+      "exportReference": "origin-v3-export-117",
+      "exportsByteExact": true,
+      "exportAssets": [
+        {
+          "scale": 1,
+          "referenceSha256": "c999666d823112b9a6e0b5f82e9a1ca24c2afc493bd2bb19edb58a143c30dc18",
+          "candidateSha256": "c999666d823112b9a6e0b5f82e9a1ca24c2afc493bd2bb19edb58a143c30dc18",
+          "referenceBytes": 20889,
+          "candidateBytes": 20889,
+          "referenceSize": [
+            239,
+            119
+          ],
+          "candidateSize": [
+            239,
+            119
+          ],
+          "byteEqual": true
+        },
+        {
+          "scale": 2,
+          "referenceSha256": "a38921b34b71acfd6624e713a6238a21c9a5189db20a013e05454eb4305fade0",
+          "candidateSha256": "a38921b34b71acfd6624e713a6238a21c9a5189db20a013e05454eb4305fade0",
+          "referenceBytes": 42286,
+          "candidateBytes": 42286,
+          "referenceSize": [
+            477,
+            237
+          ],
+          "candidateSize": [
+            477,
+            237
+          ],
+          "byteEqual": true
+        },
+        {
+          "scale": 3,
+          "referenceSha256": "78efd838e76afa9aed8be8473884d3d27301b6f4b0d75ec02cb047c51a783447",
+          "candidateSha256": "78efd838e76afa9aed8be8473884d3d27301b6f4b0d75ec02cb047c51a783447",
+          "referenceBytes": 65580,
+          "candidateBytes": 65580,
+          "referenceSize": [
+            715,
+            355
+          ],
+          "candidateSize": [
+            715,
+            355
+          ],
+          "byteEqual": true
+        }
+      ],
+      "canvasReference": "origin-v3-export-117",
+      "canvasExact": false,
+      "canvasGate": "report-only; visual review required",
+      "visualMetrics": [
+        {
+          "name": "pan-3200-canvas.png",
+          "kind": "cross-run",
+          "pixels": 3036960,
+          "differentRgbaPixels": 1410246,
+          "differentAlphaPixels": 0,
+          "rgbMean": 0.2709629585726077,
+          "rgbP99": 1.0,
+          "rgbMax": 2,
+          "rgbGt4Pixels": 0,
+          "rgbGt16Pixels": 0
+        },
+        {
+          "name": "zoom-3200-canvas.png",
+          "kind": "cross-run",
+          "pixels": 3036960,
+          "differentRgbaPixels": 1410246,
+          "differentAlphaPixels": 0,
+          "rgbMean": 0.2709629585726077,
+          "rgbP99": 1.0,
+          "rgbMax": 2,
+          "rgbGt4Pixels": 0,
+          "rgbGt16Pixels": 0
+        },
+        {
+          "name": "zoom-repeat-3200-canvas.png",
+          "kind": "cross-run",
+          "pixels": 3036960,
+          "differentRgbaPixels": 1410246,
+          "differentAlphaPixels": 0,
+          "rgbMean": 0.2709629585726077,
+          "rgbP99": 1.0,
+          "rgbMax": 2,
+          "rgbGt4Pixels": 0,
+          "rgbGt16Pixels": 0
+        },
+        {
+          "name": "candidate-held-vs-settled",
+          "kind": "within-run",
+          "pixels": 3036960,
+          "differentRgbaPixels": 17705,
+          "differentAlphaPixels": 0,
+          "rgbMean": 0.004649386228333597,
+          "rgbP99": 0.0,
+          "rgbMax": 5,
+          "rgbGt4Pixels": 2,
+          "rgbGt16Pixels": 0
+        }
+      ],
+      "artifacts": {
+        "results.json": "material-v9-export-117/results.json",
+        "visual-comparison.json": "material-v9-export-117/visual-comparison.json",
+        "export-byte-comparison.json": "material-v9-export-117/export-byte-comparison.json",
+        "build-manifest.json": "material-v9-export-117/build-manifest.json",
+        "runtime-artifacts.json": "material-v9-export-117/runtime-artifacts.json"
+      }
+    }
+  ],
+  "featureDisposition": {
+    "acceptedDefaults": [
+      "desktop screen-density tier",
+      "pending resident pose",
+      "nested prefix reuse"
+    ],
+    "strictOptInCandidates": [
+      "display source material prefilter",
+      "sharp zoom scheduling",
+      "idle interaction prewarm"
+    ],
+    "parked": [
+      "whole-viewport sharp-zoom branch"
+    ],
+    "materialMeaning": "Screen approximation: source-space prefilter/reconstruction changes the device-lattice operation order. It is not an exact cache, even when its H/V filters themselves use exact arithmetic."
+  },
+  "sourceSha256": {
+    "viewport-v8-fresh-117/results.json": "3e8826e2e552606643bea49382d7dad9c2299ebf2ff0ac9ec07aa1636e02f2f4",
+    "sharp-v6-fresh-117/results.json": "1599d07248a93b770326d58b25ef1ae90dca92c840bb8f2a093765ab48ee27a9",
+    "sharp-v6-fresh-117/zoom-trace.json": "e01cbddfd3f79d91ec5476c339cb66f65e4a6155e1157cf39abb396ad12992d0",
+    "material-v7-fresh-117/results.json": "50e0f5626b469f36f8ac4951183e70e45a56ff102a9b66b5264dcf52bb594cb8",
+    "material-v7-fresh-117/zoom-trace.json": "1e6f78e994b5420382d579d3435dc36ce1be1fc369f397669cff18284dcf68aa",
+    "material-v7-export-117/results.json": "74245a3cc00151acb7d881f443bac265302c8b2045f9dfea764f35db760fdba8",
+    "material-v7-export-117/visual-comparison.json": "582a71baec252e53b65b3606f5f39eedc7ccfe184cc61c6be0b6cd4825b5b19c",
+    "material-v7-export-117/export-byte-comparison.json": "25ecd30b52ca981817fddfa8229572e6ab4995cc9876ff38b18820f0e5d14d34",
+    "material-v9-export-117/results.json": "439b4f1d013a681b489de7f2e45820c9761409ad8400ea61edcf636aa2bb8e62",
+    "material-v9-export-117/visual-comparison.json": "b03c899e7370840f51d6903ee2274984d4698417929823dfd3b2d62becbddafa",
+    "material-v9-export-117/export-byte-comparison.json": "dab70699d6606dcf2b47172f687b81774c58b20ed3a24f4adc36ee35555c8108"
+  }
+}

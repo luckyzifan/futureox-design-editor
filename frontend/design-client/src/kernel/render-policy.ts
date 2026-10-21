@@ -10,8 +10,22 @@
  * default because level selection changes minified image bytes; the CPU
  * reference and GPU paths derive the level from the same kernel geometry.
  */
-export type RenderPolicy = Readonly<{ cpuOnly: boolean; hdrCompositing: boolean; imageMips: boolean; imageAtlas: boolean; desktopFullMath: boolean }>
+export type RenderPolicy = Readonly<{ cpuOnly: boolean; hdrCompositing: boolean; imageMips: boolean; imageAtlas: boolean;
+  desktopFullMath: boolean; desktopDisplay: boolean }>
 export type RenderBackend = 'auto' | 'webgpu' | 'webgl2' | 'cpu'
+export type DisplayRenderRequest = {
+  renderIntent?: string; png?: boolean; readback?: boolean; exportFormat?: unknown;
+  exportRegion?: unknown; pixelPreview?: number; rasterProfile?: string
+}
+/** Desktop display quality is independent of effect admission. It never
+ * authorizes skipped effects, single-plane coverage or changed authored data.
+ * Explicit exact output keeps its requested sampling/arithmetic contract. */
+export function usesDesktopDisplay(policy: RenderPolicy, request: DisplayRenderRequest): boolean {
+  return policy.desktopDisplay && policy.desktopFullMath && !policy.cpuOnly && !policy.hdrCompositing &&
+    (request.renderIntent === 'canvas' || request.renderIntent === 'preview') &&
+    !request.png && !request.readback && !request.exportFormat && !request.exportRegion && !request.pixelPreview &&
+    request.rasterProfile !== 'figmaSoftware'
+}
 /** Presentation residency does not select arithmetic, sampling or effects.
  * Exact desktop frames can stay on the same WebGPU device just like Web frames.
  * HDR and CPU/WebGL transports keep their existing independent paths. */
@@ -27,30 +41,30 @@ type SamplingProfile = 'analytic' | 'figma' | 'figmaSubpixel' | 'figmaSoftware'
 /** The browser display keeps four correlated coverage samples at screen
  * density. The file's Figma export profile additionally doubles both axes;
  * that supersampling belongs to export/exact reference, not every camera move.
- * Explicit surface profiles, HDR, pixel preview and desktop remain exact. */
+ * The separately admitted desktop display tier can use that same screen AA,
+ * while retaining desktop effect admission and four correlated samples. */
 export function canvasSamplingProfile(policy: RenderPolicy, profile: SamplingProfile,
-  backend: RenderBackend, managed: boolean, pixelPreview = 0): SamplingProfile {
-  return !policy.cpuOnly && !policy.desktopFullMath && !policy.hdrCompositing &&
-    backend !== 'cpu' && managed && !pixelPreview && profile === 'figma'
+  backend: RenderBackend, managed: boolean, pixelPreview = 0,
+  request: DisplayRenderRequest = { renderIntent: 'canvas' }): SamplingProfile {
+  const display = { ...request, rasterProfile: profile, pixelPreview: pixelPreview || request.pixelPreview }
+  const screenRequest = (request.renderIntent === 'canvas' || request.renderIntent === 'preview') &&
+    !request.png && !request.readback && !request.exportFormat && !request.exportRegion && !display.pixelPreview
+  return !policy.cpuOnly && !policy.hdrCompositing && screenRequest &&
+    (!policy.desktopFullMath || usesDesktopDisplay(policy, display)) &&
+    backend !== 'cpu' && managed && profile === 'figma'
     ? 'figmaSubpixel' : profile
 }
 /** Full-density canvas filters use the same integrated coefficients with
  * compensated f32 accumulation. Exact readbacks/exports retain rational
  * accumulation; the screen path does not reduce geometry or AA samples. */
-export function usesCanvasDisplayFilters(policy: RenderPolicy, request: {
-  renderIntent?: string; png?: boolean; readback?: boolean; exportFormat?: unknown;
-  exportRegion?: unknown; pixelPreview?: number
-}) {
+export function usesCanvasDisplayFilters(policy: RenderPolicy, request: DisplayRenderRequest) {
   return !policy.cpuOnly && !policy.desktopFullMath && !policy.hdrCompositing && request.renderIntent === 'canvas' &&
     !request.png && !request.readback && !request.exportFormat && !request.exportRegion && !request.pixelPreview
 }
 /** A transient scene can travel as bytes without becoming an exact export.
  * This also covers whole-scene interaction snapshots, which don't use the
  * viewport-tile transport. Explicit reference/settled/export paths stay exact. */
-export function usesTransientDisplayFilters(policy: RenderPolicy, request: {
-  renderIntent?: string; png?: boolean; readback?: boolean; exportFormat?: unknown;
-  exportRegion?: unknown; pixelPreview?: number
-}) {
+export function usesTransientDisplayFilters(policy: RenderPolicy, request: DisplayRenderRequest) {
   return !policy.cpuOnly && !policy.desktopFullMath && !policy.hdrCompositing &&
     request.renderIntent === 'preview' && !request.png && !request.exportFormat && !request.exportRegion && !request.pixelPreview
 }
@@ -65,8 +79,9 @@ export function prefersNativeBackend(preference: unknown): preference is NativeB
   return preference === 'native'
 }
 
-export function createRenderPolicy(cpuOnly: boolean, hdrCompositing = false, imageMips = false, imageAtlas = false, desktopFullMath = false): RenderPolicy {
-  return Object.freeze({ cpuOnly, hdrCompositing, imageMips, imageAtlas, desktopFullMath })
+export function createRenderPolicy(cpuOnly: boolean, hdrCompositing = false, imageMips = false, imageAtlas = false,
+  desktopFullMath = false, desktopDisplay = false): RenderPolicy {
+  return Object.freeze({ cpuOnly, hdrCompositing, imageMips, imageAtlas, desktopFullMath, desktopDisplay })
 }
 
 // Older/malformed desktop bridges fail safely; ordinary web use still defaults
@@ -77,11 +92,13 @@ export function hostRenderPolicy(
   hdrCompositing = false,
   imageMips = false,
   imageAtlas = false,
+  desktopDisplay = false,
 ): RenderPolicy {
-  // Web and Electron are separate tiers: the browser canvas runs the
-  // measured interactive degradation (sub-threshold effects skip on managed
-  // documents), desktop keeps full-math interactive frames.
-  return createRenderPolicy(desktopPresent && cpuOnly !== false, hdrCompositing, imageMips, imageAtlas, desktopPresent)
+  // Desktop continues to require complete effects/correlated coverage. Its
+  // optional screen-density/arithmetic capability is a separate launch bit;
+  // it must not inherit the browser's effect-skipping policy.
+  return createRenderPolicy(desktopPresent && cpuOnly !== false, hdrCompositing, imageMips, imageAtlas, desktopPresent,
+    desktopPresent && desktopDisplay)
 }
 
 export function effectiveBackend(
@@ -111,9 +128,9 @@ export function requiresFloatCompositing(
 }
 
 /** Native GPU arithmetic is a display tier, never an exact-output shortcut. */
-export function usesDisplayArithmetic(policy: RenderPolicy, request: Parameters<typeof usesCanvasDisplayFilters>[1] & { rasterProfile?: string }) {
+export function usesDisplayArithmetic(policy: RenderPolicy, request: DisplayRenderRequest) {
   return request.rasterProfile !== 'figmaSoftware' &&
-    (usesCanvasDisplayFilters(policy, request) || usesTransientDisplayFilters(policy, request))
+    (usesDesktopDisplay(policy, request) || usesCanvasDisplayFilters(policy, request) || usesTransientDisplayFilters(policy, request))
 }
 
 export function rasterCandidates(
@@ -143,8 +160,10 @@ export function pinRenderPolicy(current: RenderPolicy | undefined, incoming: unk
   const atlasRaw = (incoming as { imageAtlas?: unknown }).imageAtlas
   const imageAtlas = atlasRaw === true
   const desktopFullMath = (incoming as { desktopFullMath?: unknown }).desktopFullMath === true
+  const desktopDisplay = (incoming as { desktopDisplay?: unknown }).desktopDisplay === true
   if (current && (current.cpuOnly !== cpuOnly || current.hdrCompositing !== hdrCompositing ||
-      current.imageMips !== imageMips || current.imageAtlas !== imageAtlas || current.desktopFullMath !== desktopFullMath))
+      current.imageMips !== imageMips || current.imageAtlas !== imageAtlas || current.desktopFullMath !== desktopFullMath ||
+      current.desktopDisplay !== desktopDisplay))
     throw new Error('Render execution policy cannot change within a worker')
-  return current ?? createRenderPolicy(cpuOnly, hdrCompositing, imageMips, imageAtlas, desktopFullMath)
+  return current ?? createRenderPolicy(cpuOnly, hdrCompositing, imageMips, imageAtlas, desktopFullMath, desktopDisplay)
 }
