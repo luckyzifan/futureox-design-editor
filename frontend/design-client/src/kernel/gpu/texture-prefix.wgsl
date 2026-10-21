@@ -9,7 +9,7 @@ struct PrefixMetadata {
 @group(1) @binding(1) var<storage,read_write> prefixMetadata:PrefixMetadata;
 @group(1) @binding(2) var<storage,read_write> prefixResults:array<vec2<u32>>;
 // Mode22 uniform contract: u48=(length,first,count,axis),
-// u49=(channel,integer-radius or linear-interior reach,rational flag,0).
+// u49=(channel,integer-radius or linear-interior reach,rational flag,CPU bound bits).
 // u50=(output offset along source axis,output length,cross-axis offset,0).
 fn prefixPixel(x:u32,line:u32)->vec2<i32>{
  if(u(48u).w<0.5){return vec2<i32>(i32(x),i32(line));}
@@ -34,6 +34,17 @@ var<workgroup> scanMin:array<u32,256>;
 var<workgroup> scanMax:array<u32,256>;
 var<workgroup> scanCarry:PrefixPair;
 var<workgroup> scanAccepted:u32;
+var<workgroup> scanNarrow:u32;
+// A complete row bounds every signed sum/moment below 2^63. Storage and
+// solver operands stay signed-128; only this row's scan addition is narrower.
+fn prefix_scan_add(a:PrefixInt,b:PrefixInt)->PrefixInt {
+ if(PREFIX_SCAN64&&scanNarrow!=0u){
+  let low=a.x+b.x;let high=a.y+b.y+select(0u,1u,low<a.x);
+  let sign=select(0u,0xffffffffu,(high&0x80000000u)!=0u);
+  return PrefixInt(low,high,sign,sign);
+ }
+ return prefix_add(a,b);
+}
 @compute @workgroup_size(256)
 fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_index) lane:u32){
  let localLine=group.x;let length=u32(u(48u).x);let first=u32(u(48u).y);let count=u32(u(48u).z);let radius=u32(u(49u).y);
@@ -58,15 +69,31 @@ fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_i
   if(span>40u){reason=3u;}
   if(rational){
    if(rfLoad(0u)>4u||prefix_high(prefixDenominator())>95){reason=4u;}
-   let slope=prefix_sub(prefixCoefficient(1u),prefixCoefficient(2u));let lineBits=i32(bsHigh(length))+1;
+   // The immutable upload's CPU certificate supplies this exact bit length.
+   // Keep all finite/span/kernel guards, and retain the old gate on a miss.
+   let boundBits=u(49u).w;
+   if(PREFIX_TIGHT_BOUND&&boundBits>0.&&boundBits<=120.&&floor(boundBits)==boundBits){
+    if(24+i32(span)+i32(boundBits)>123){reason=5u;}
+   }else{
+   // Unweighted whole-line sums/moments fit independently under span<=40
+   // and length<=16384. Only the completed window differences are weighted:
+   // at most L samples and distance<L, including the complete tail support.
+   let slope=prefix_sub(prefixCoefficient(1u),prefixCoefficient(2u));
+   let windowLength=min(length,2u*rfLoad(2u)+1u);let lineBits=i32(bsHigh(windowLength))+1;
    let weightedBits=max(prefix_high(prefixCoefficient(0u))+lineBits+3,prefix_high(slope)+2*lineBits+4);
    if(24+i32(span)+weightedBits+3>123){reason=5u;}
+   }
   }
+  // bit_length is deliberately conservative at powers of two. Mixed signs,
+  // zeros and subnormals are allowed; the original row admission still rules.
+  scanNarrow=0u;
+  if(PREFIX_SCAN64&&reason==0u&&24u+span+2u*(bsHigh(length)+1u)<=63u){scanNarrow=1u;}
   scanAccepted=select(1u,0u,reason!=0u);scanCarry=PrefixPair(PrefixInt(0u),PrefixInt(0u));
   if(reason!=0u){prefixDecline(localLine,reason);}else{
    scanCarry=PrefixPair(PrefixInt(0u),PrefixInt(0u));prefixes[localLine*(length+1u)]=scanCarry;
    prefixMetadata.lines[localLine]=vec4<u32>(minimum,maximum,1u,0u);
    atomicAdd(&prefixMetadata.accepted,1u);atomicAdd(&prefixMetadata.pixels,length);
+   if(scanNarrow!=0u){atomicAdd(&prefixMetadata.unused,1u);}
   }
  }
  workgroupBarrier();
@@ -81,8 +108,8 @@ fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_i
   for(var stride=1u;stride<256u;stride=stride*2u){
    let index=(lane+1u)*stride*2u-1u;
    if(index<256u){
-    scanSums[index]=prefix_add(scanSums[index],scanSums[index-stride]);
-    scanMoments[index]=prefix_add(scanMoments[index],scanMoments[index-stride]);
+    scanSums[index]=prefix_scan_add(scanSums[index],scanSums[index-stride]);
+    scanMoments[index]=prefix_scan_add(scanMoments[index],scanMoments[index-stride]);
    }
    workgroupBarrier();
   }
@@ -94,12 +121,12 @@ fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_i
     let leftSum=scanSums[index-stride];let leftMoment=scanMoments[index-stride];
     let parentSum=scanSums[index];let parentMoment=scanMoments[index];
     scanSums[index-stride]=parentSum;scanMoments[index-stride]=parentMoment;
-    scanSums[index]=prefix_add(parentSum,leftSum);scanMoments[index]=prefix_add(parentMoment,leftMoment);
+    scanSums[index]=prefix_scan_add(parentSum,leftSum);scanMoments[index]=prefix_scan_add(parentMoment,leftMoment);
    }
    workgroupBarrier();
   }
-  scanSums[lane]=prefix_add(scanSums[lane],value);scanMoments[lane]=prefix_add(scanMoments[lane],moment);
-  let total=PrefixPair(prefix_add(scanCarry.sum,scanSums[lane]),prefix_add(scanCarry.moment,scanMoments[lane]));
+  scanSums[lane]=prefix_scan_add(scanSums[lane],value);scanMoments[lane]=prefix_scan_add(scanMoments[lane],moment);
+  let total=PrefixPair(prefix_scan_add(scanCarry.sum,scanSums[lane]),prefix_scan_add(scanCarry.moment,scanMoments[lane]));
   if(j<length){prefixes[base+j+1u]=total;}
   workgroupBarrier();if(lane==255u){scanCarry=total;}workgroupBarrier();
  }
@@ -108,6 +135,34 @@ fn prefixPairAt(base:u32,index:u32)->PrefixPair{return prefixes[base+index];}
 fn prefixValueAt(base:u32,index:u32)->PrefixInt{return prefix_sub(prefixPairAt(base,index+1u).sum,prefixPairAt(base,index).sum);}
 fn prefixValueOrZero(base:u32,index:i32,length:u32)->PrefixInt{
  if(index<0||index>=i32(length)){return PrefixInt(0u);}return prefixValueAt(base,u32(index));
+}
+struct PrefixLinearFactor{numerator:PrefixInt,accepted:u32}
+fn prefix_low(value:PrefixInt)->u32{
+ if(value.x!=0u){return countTrailingZeros(value.x);}
+ if(value.y!=0u){return 32u+countTrailingZeros(value.y);}
+ if(value.z!=0u){return 64u+countTrailingZeros(value.z);}
+ if(value.w!=0u){return 96u+countTrailingZeros(value.w);}return 128u;
+}
+// Verify the identities from the actual immutable coefficient words, not a
+// reconstructed floating radius. I=C0+D and S=3D, with D a power of two,
+// give I*(pixel+sums)-D*(pixel+3*distances). Factor their common power of
+// two only when the remaining I multiplier fits u32 exactly. Window admission
+// bounds these signed intermediates; direct tail products remain unchanged.
+fn prefix_try_linear_factor(pixel:PrefixInt,sums:PrefixInt,distances:PrefixInt,
+ center:PrefixInt,slope:PrefixInt,intercept:PrefixInt)->PrefixLinearFactor{
+ let declined=PrefixLinearFactor(PrefixInt(0u),0u);
+ if(prefix_compare(intercept,center)<=0){return declined;}
+ let difference=prefix_sub(intercept,center);
+ if(prefix_compare(difference,center)>0||any((difference&prefix_sub(difference,PrefixInt(1u,0u,0u,0u)))!=PrefixInt(0u))){return declined;}
+ let dShift=prefix_low(difference);
+ if(dShift>125u||any(slope!=prefix_add(difference,prefix_add(difference,difference)))){return declined;}
+ let shift=min(prefix_low(intercept),dShift);let word=shift/32u;let offset=shift%32u;
+ var factor=intercept[word]>>offset;
+ if(offset!=0u&&word<3u){factor=factor|(intercept[word+1u]<<(32u-offset));}
+ if(factor==0u||any(prefix_shl(PrefixInt(factor,0u,0u,0u),shift)!=intercept)){return declined;}
+ let correction=prefix_add(pixel,prefix_add(distances,prefix_add(distances,distances)));
+ let scaled=prefix_sub(prefix_mul_u32(prefix_add(pixel,sums),factor),prefix_shl(correction,dShift-shift));
+ return PrefixLinearFactor(prefix_shl(scaled,shift),1u);
 }
 fn prefixRational(base:u32,x:u32,length:u32,interior:u32,quantum:i32)->vec2<u32>{
  let center=prefixCoefficient(0u);let slope=prefix_sub(prefixCoefficient(1u),prefixCoefficient(2u));
@@ -118,7 +173,10 @@ fn prefixRational(base:u32,x:u32,length:u32,interior:u32,quantum:i32)->vec2<u32>
  let sums=prefix_add(leftSum,rightSum);
  let distances=prefix_add(prefix_sub(prefix_mul_u32(leftSum,x),prefix_sub(middle.moment,before.moment)),
   prefix_sub(prefix_sub(after.moment,afterCenter.moment),prefix_mul_u32(rightSum,x)));
- var numerator=prefix_add(prefix_mul(prefixValueAt(base,x),center),prefix_sub(prefix_mul(sums,intercept),prefix_mul(distances,slope)));
+ let pixel=prefixValueAt(base,x);var factored=PrefixLinearFactor(PrefixInt(0u),0u);
+ if(PREFIX_FACTOR){factored=prefix_try_linear_factor(pixel,sums,distances,center,slope,intercept);}
+ var numerator=factored.numerator;
+ if(factored.accepted==0u){numerator=prefix_add(prefix_mul(pixel,center),prefix_sub(prefix_mul(sums,intercept),prefix_mul(distances,slope)));}
  let reach=rfLoad(2u);
  for(var d=interior+1u;d<=reach;d=d+1u){
   let samples=prefix_add(prefixValueOrZero(base,i32(x)-i32(d),length),prefixValueOrZero(base,i32(x)+i32(d),length));
@@ -142,6 +200,51 @@ fn prefixSolve(@builtin(global_invocation_id) id:vec3<u32>){
  if(x>=radius){numerator=prefix_add(numerator,prefixValueAt(base,x-radius));}
  if(x+radius<length){numerator=prefix_add(numerator,prefixValueAt(base,x+radius));}
  prefixResults[resultIndex]=prefix_round_ratio(numerator,6u*radius*radius,i32(lineInfo.x)-150);
+}
+// Opaque RGB candidate: two vec2 slots per output pixel hold RGB bits and
+// a validity mask. Channel zero resets both slots, so a later band cannot
+// consume stale validity. Separate scan/solve passes serialize channel writes.
+fn prefixStoreRgbResult(index:u32,value:vec2<u32>){
+ let at=index*2u;let channel=u32(u(49u).x);
+ if(channel==0u){
+  prefixResults[at]=vec2<u32>(value.x,0u);
+  prefixResults[at+1u]=vec2<u32>(0u,select(0u,1u,value.y!=0u));return;
+ }
+ var rg=prefixResults[at];var bv=prefixResults[at+1u];
+ if(channel==1u){rg.y=value.x;}else{bv.x=value.x;}
+ let mask=1u<<channel;bv.y=(bv.y&~mask)|select(0u,mask,value.y!=0u);
+ prefixResults[at]=rg;prefixResults[at+1u]=bv;
+}
+@compute @workgroup_size(64)
+fn prefixSolveRgb(@builtin(global_invocation_id) id:vec3<u32>){
+ let length=u32(u(48u).x);let count=u32(u(48u).z);let radius=u32(u(49u).y);let x=id.x+u32(u(50u).x);let localLine=id.y;
+ let outputLength=u32(u(50u).y);
+ if(localLine>=count||id.x>=outputLength){return;}let resultIndex=localLine*outputLength+id.x;
+ prefixStoreRgbResult(resultIndex,vec2<u32>(0u));let lineInfo=prefixMetadata.lines[localLine];if(lineInfo.z==0u){return;}
+ let base=localLine*(length+1u);let left=u32(max(0,i32(x)-i32(radius)+1));let right=min(length,x+radius);
+ if(u(49u).z>0.5){prefixStoreRgbResult(resultIndex,prefixRational(base,x,length,radius,i32(lineInfo.x)-150));return;}
+ let before=prefixPairAt(base,left);let center=prefixPairAt(base,x+1u);let after=prefixPairAt(base,right);
+ let a=prefix_mul_i32(prefix_sub(center.sum,before.sum),i32(radius)-i32(x));
+ let b=prefix_mul_i32(prefix_sub(after.sum,center.sum),i32(radius)+i32(x));
+ let triangle=prefix_add(prefix_add(a,prefix_sub(center.moment,before.moment)),prefix_sub(b,prefix_sub(after.moment,center.moment)));
+ var numerator=prefix_sub(prefix_mul_u32(triangle,6u),prefix_mul_u32(prefixValueAt(base,x),2u));
+ if(x>=radius){numerator=prefix_add(numerator,prefixValueAt(base,x-radius));}
+ if(x+radius<length){numerator=prefix_add(numerator,prefixValueAt(base,x+radius));}
+ prefixStoreRgbResult(resultIndex,prefix_round_ratio(numerator,6u*radius*radius,i32(lineInfo.x)-150));
+}
+fn prefixRgbChannel(index:u32,channel:u32,point:vec2<f32>,direction:vec2<f32>)->f32{
+ let rg=prefixResults[index*2u];let bv=prefixResults[index*2u+1u];
+ if((bv.y&(1u<<channel))!=0u){
+  let bits=select(select(rg.x,rg.y,channel==1u),bv.x,channel==2u);return bitcast<f32>(bits);
+ }
+ return exactFilterChannel(point,direction,channel);
+}
+@fragment fn prefixResolveRgb(@builtin(position) position:vec4<f32>)->@location(0) vec4<f32>{
+ let pixel=vec2<u32>(floor(position.xy));let axis=u(48u).w;
+ let x=select(pixel.y,pixel.x,axis<0.5);let localLine=select(pixel.x,pixel.y,axis<0.5)-u32(u(48u).y);
+ let index=localLine*u32(u(50u).y)+x;
+ let p=position.xy+u(0u).xy;let direction=select(vec2<f32>(0.0,1.0),vec2<f32>(1.0,0.0),axis<0.5);
+ return vec4<f32>(prefixRgbChannel(index,0u,p,direction),prefixRgbChannel(index,1u,p,direction),prefixRgbChannel(index,2u,p,direction),1.0);
 }
 override PREFIX_CHANNEL:u32=0u;
 @fragment fn prefixResolve(@builtin(position) position:vec4<f32>)->@location(0) vec4<f32>{

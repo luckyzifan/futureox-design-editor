@@ -12,10 +12,15 @@ import { compositorModes } from './compositor-modes'
 import { TexturePrefix, PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { prefixModule } from './prefix-module'
 import { PREFIX_MIN_RADIUS } from './prefix-band'
+import { certifyPrefixRationalBound, prefixRationalBoundBits, type PrefixRationalBoundCertificate } from './prefix-preflight'
+import { completeFilterAxisSupport } from './opaque-filter'
 import { displayFilterWgsl, pairedDisplayFilterWgsl } from './display-filter'
 import { displayArithmeticSource } from './display-arithmetic'
 import { imageCoordinateSource } from './image-coordinate-source'
 import { IMAGE_RESOLVE_STEP_MODE, imageResolveStepWgsl } from './image-resolve-step'
+import { certifyExactImageRange, imageXTablePlanRange, type ExactImageRange, type ExactImageXTablePlan } from './exact-image-x-table'
+import { ImageXTablePipeline, ImageXTableStorage } from './image-x-table-gpu'
+import type { ExactImageTable } from './types'
 import { scalarCoverageSource, SCALAR_COVERAGE_UNIFORM } from './scalar-coverage'
 import { ResidentPresenter, type ResidentFrame } from './resident-presenter'
 import { isDisplayBudgetError } from './display-budget'
@@ -55,7 +60,7 @@ export class WebGpuDriver implements Driver {
     const started=gpuDiagnosticsEnabled()?performance.now():0
     const pending=this.queueWaitStats.wait(reason, () => this.device.queue.onSubmittedWorkDone(), () => this.lost)
     if(!gpuDiagnosticsEnabled())return pending
-    return pending.finally(()=>recordDeviceDiagnostic('fence',{...admission,...diagnosticIdentity,reasonCode:['readback','timing','prefix-scratch','interaction','periodic','admission','checkpoint','cancel','initialization','park'].indexOf(reason)+1,queueWaitMs:performance.now()-started,resourceEpoch:this.resourceEpoch,completedResourceEpoch:this.completedResourceEpoch}))
+    return pending.finally(()=>recordDeviceDiagnostic('fence',{...admission,...diagnosticIdentity,reasonCode:['readback','timing','prefix-scratch','interaction','periodic','admission','checkpoint','cancel','initialization','park','image-table-scratch'].indexOf(reason)+1,queueWaitMs:performance.now()-started,resourceEpoch:this.resourceEpoch,completedResourceEpoch:this.completedResourceEpoch}))
   }
   private bindingCache = new GpuBindingCache()
   // Rollout gate until real-device validation and timings are available. The
@@ -63,6 +68,7 @@ export class WebGpuDriver implements Driver {
   private dynamicUniformBindings = import.meta.env.VITE_DESIGN_DYNAMIC_UNIFORMS === '1'
   resourceEpoch = 0
   completedResourceEpoch = 0
+  private rationalKernelBounds = new WeakMap<Texture, { packet: PrefixRationalBoundCertificate; resource: unknown; width: number; height: number }>()
   private pipelines = new PipelineRegistry()
   private curveMirror = new ResidentGeometry()
   private vertexMirror = new ResidentGeometry()
@@ -117,6 +123,7 @@ export class WebGpuDriver implements Driver {
   description = 'WebGPU'
   lost = false
   drawCalls = 0
+  opaqueTentPasses = 0
   private mergedExactFilterPasses = 0
   triangles = 0
   commandSubmissions = 0
@@ -131,7 +138,75 @@ export class WebGpuDriver implements Driver {
    * readback target and MAP_READ staging coexist at this peak). Frame-scoped:
    * begin() resets it. */
   finishTransientBytes = 0
-  get scratchBytes(){ return this.prefix?.scratchBytes || 0 }
+  private imageRanges = new WeakMap<Texture, ExactImageRange>()
+  private imageAxisPrograms = new WeakMap<Texture, Float32Array>()
+  private imageTablePipeline?: Promise<ImageXTablePipeline>
+  private imageTables = new Map<ExactImageTable, {storage: ImageXTableStorage; pipeline: ImageXTablePipeline; image: Texture; opaqueAlpha: boolean}>()
+  private preparingImageTables = new Map<Texture, number>()
+  get scratchBytes(){ return (this.prefix?.scratchBytes || 0) + [...(this.imageTables?.keys() || [])].reduce((sum,table)=>sum+table.bytes,0) }
+  imageTableRange(image: Texture) { return image.finitePixels === true && this.textures.has(image) ? this.imageRanges.get(image) : undefined }
+  imageTableAxes(field: Texture) { return field.finitePixels === true && this.textures.has(field) ? this.imageAxisPrograms.get(field)?.slice() : undefined }
+  hasActiveImageTableSource(image: Texture) {
+    return this.preparingImageTables.has(image) || [...this.imageTables.values()].some(entry => entry.image === image)
+  }
+  private releaseImageTables() {
+    for(const entry of this.imageTables?.values() || [])entry.storage.destroy()
+    this.imageTables?.clear()
+  }
+  async prepareImageTable(image: Texture, plan: ExactImageXTablePlan, availableBytes: number): Promise<ExactImageTable | undefined> {
+    const range=this.imageTableRange(image)
+    const bytes=256+plan.tableBytes+plan.x.byteLength+plan.y.byteLength
+    if(import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE === '0' || !this.managed || this.displayMath ||
+        !range || imageXTablePlanRange(plan)!==range || plan.uniform.length!==16 ||
+        plan.uniform[4]!==image.width || plan.uniform[5]!==image.height ||
+        plan.uniform[7]!==Number(range.opaqueAlpha) ||
+        range.minimum.some((value,index)=>plan.uniform[8+index]!==value) ||
+        !Number.isSafeInteger(bytes) || !Number.isSafeInteger(availableBytes) || availableBytes<0 || bytes>availableBytes) return
+    // Pipeline compilation can yield. Freeze the admitted inputs before that
+    // boundary; later caller writes cannot change the uploaded table program.
+    const captured={...plan,x:plan.x.slice(),y:plan.y.slice(),uniform:plan.uniform.slice()}
+    this.preparingImageTables.set(image,(this.preparingImageTables.get(image)||0)+1)
+    try {
+    const pipeline=await (this.imageTablePipeline ??= ImageXTablePipeline.create(this.device))
+    if(this.disposed || this.lost || this.imageTableRange(image)!==range)throw Error('Image interpolation source retired')
+    const storage=new ImageXTableStorage(this.device,captured)
+    const handle:ExactImageTable=Object.freeze({resource:Object.freeze({}),width:storage.width,height:storage.height,bytes:storage.bytes,
+      ...(range.opaqueAlpha?{opaqueAlpha:true as const}:{}),
+      ...(range.nonnegativeRgb?{nonnegativeResolved:true as const}:{})})
+    this.imageTables.set(handle,{storage,pipeline,image,opaqueAlpha:range.opaqueAlpha})
+    this.frameScratchBytes=Math.max(this.frameScratchBytes,this.scratchBytes)
+    this.closeOver()
+    pipeline.encodeBuild(this.encoder,image.resource as GPUTexture,storage)
+    return handle
+    } finally {
+      const remaining=(this.preparingImageTables.get(image)||1)-1
+      if(remaining)this.preparingImageTables.set(image,remaining)
+      else this.preparingImageTables.delete(image)
+    }
+  }
+  resolveImageTable(target: Texture, table: ExactImageTable, offsetX: number, offsetY: number) {
+    const entry=this.imageTables.get(table)
+    if(!entry || !this.imageTableRange(entry.image) || !this.textures.has(target) || target.resource===entry.image.resource ||
+        (target.resource as GPUTexture).format!=='rgba32float' ||
+        ![offsetX,offsetY].every(Number.isSafeInteger) || offsetX<0 || offsetY<0 ||
+        offsetX+target.width>table.width || offsetY+target.height>table.height)
+      throw Error('Invalid exact image table window')
+    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha;delete target.uniformColor;delete target.transparentZero
+    this.closeOver()
+    const words=new Uint32Array(256);words.set(entry.storage.config)
+    words.set([offsetX,offsetY,target.width,target.height],12)
+    const binding=this.uniformWords(words)
+    entry.pipeline.encodeResolve(this.encoder,target.resource as GPUTexture,entry.storage,binding)
+    this.drawCalls++
+    if(entry.opaqueAlpha)target.opaqueAlpha=true
+  }
+  async retireImageTable(table: ExactImageTable) {
+    const entry=this.imageTables.get(table);if(!entry)return
+    // This table's final source read has been encoded. A real completion
+    // boundary, not a submission ACK, permits reclaim before parent blending.
+    await this.checkpoint('image-table-scratch')
+    entry.storage.destroy();this.imageTables.delete(table)
+  }
   private device!: GPUDevice
   private context!: GPUCanvasContext
   private format!: GPUTextureFormat
@@ -707,6 +782,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return !!(!this.displayFilters && this.prefix && filter?.kind === 'tent' && filter.radius >= PREFIX_MIN_RADIUS &&
       !((!Number.isInteger(filter.radius) || filter.radius > 512) && kernel?.prefixRationalUnsupported === true) && channels === 15 && u[16] === 22)
   }
+  private rationalKernelBoundBits(kernel: Texture | undefined, radius: number) {
+    const proof = kernel && this.rationalKernelBounds?.get(kernel)
+    if (!proof || !this.textures.has(kernel!) || kernel!.resource !== proof.resource ||
+        kernel!.width !== proof.width || kernel!.height !== proof.height) return 0
+    return prefixRationalBoundBits(proof.packet, radius)
+  }
   prepareFilterPass(target: Texture, u: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number) {
     if (!this.prefixPolicy(u, channels, filter, inputs[1]) || this.prefix!.scratchBytes) return
     recordGpuDiagnostic('prefix',{reasonCode:availableBytes<PREFIX_SCRATCH_BYTES?1:0,availableBytes,scratchBytes:PREFIX_SCRATCH_BYTES,radius:filter.radius,width:u[2],height:u[3]})
@@ -729,6 +810,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       if (error || this.errors.length) throw markRenderFailure(new Error([error?.message, ...this.errors].filter(Boolean).join('\n')), { failureStage: 7, failureCategory: error ? renderFailureFields(error).failureCategory : this.lost ? 4 : 0, failureCode: 201 })
     }
     this.prefix?.releaseScratch()
+    this.releaseImageTables()
     for (const target of this.transientTargets) this.destroy(target)
     this.transientTargets = []
     for (const texture of this.transient) texture.destroy()
@@ -741,6 +823,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (this.disposed || this.lost) throw new Error('WebGPU 设备已丢失')
     this.resourceEpoch++
     this.drawCalls = 0
+    this.opaqueTentPasses = 0
     this.mergedExactFilterPasses = 0
     this.finishTransientBytes = 0
     this.frameScratchBytes = 0
@@ -903,7 +986,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return t
   }
   destroy(t: Texture) {
-    delete t.finitePixels
+    this.rationalKernelBounds?.delete(t);delete t.finitePixels;delete t.opaqueAlpha
+    this.imageRanges?.delete(t);this.imageAxisPrograms?.delete(t)
     this.replayParameterTextures.delete(t)
     if (this.textures.delete(t)) (t.resource as GPUTexture).destroy()
   }
@@ -918,7 +1002,19 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   }
   uploadLinear(values: Float32Array, width: number, height: number) {
     if (!this.managed || values.length !== width * height * 4) throw new Error('无效的浮点纹理')
-    return this.uploadParameters(values, width, height)
+    const range=import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE !== '0' && values.buffer instanceof ArrayBuffer
+      ? certifyExactImageRange(values) : undefined
+    // The same synchronous range proof already visited every actual f32 word
+    // and rejected nonfinite values. Reuse it without repeating that full scan.
+    // Shared, unknown and invalid uploads still pass through public validation.
+    if(!range)return this.uploadParameters(values,width,height)
+    const texture=this.createFormat(width,height,'rgba32float')
+    this.device.queue.writeTexture({texture:texture.resource as GPUTexture},values,
+      {bytesPerRow:width*16},[width,height])
+    texture.finitePixels=true
+    if(height===2 && values[3]===-1 && width<=8192)this.imageAxisPrograms.set(texture,values.slice())
+    this.imageRanges.set(texture,range)
+    return texture
   }
   uploadParameters(values: Float32Array, width: number, height: number) {
     if (values.length !== width * height * 4)
@@ -938,16 +1034,25 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // assertion about the original file. A shared buffer could change between
     // validation and the synchronous queue copy, so it receives no certificate.
     if (values.buffer instanceof ArrayBuffer) t.finitePixels = true
+    if(import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE !== '0' && values.buffer instanceof ArrayBuffer &&
+        height===2 && values[3]===-1 && width<=8192)this.imageAxisPrograms.set(t,values.slice())
     return t
   }
   uploadRgba8(bytes: Uint8Array, width: number, height: number) {
-    if (this.managed)
-      return this.uploadLinear(
+    if (bytes.length !== width * height * 4) throw new Error('无效的 RGBA8 数据纹理')
+    // The synchronous upload captures these actual bytes. Keep only the
+    // parser's small immutable coefficient proof, never an image-sized copy.
+    const packet = import.meta.env.VITE_DESIGN_PREFIX_TIGHT_BOUND === '1' && bytes.buffer instanceof ArrayBuffer
+      ? certifyPrefixRationalBound(bytes) : undefined
+    if (this.managed) {
+      const t = this.uploadLinear(
         Float32Array.from(bytes, (v) => v / 255),
         width,
         height,
       )
-    if (bytes.length !== width * height * 4) throw new Error('无效的 RGBA8 数据纹理')
+      if (packet) this.rationalKernelBounds.set(t, { packet, resource: t.resource, width, height })
+      return t
+    }
     const t = this.create(width, height)
     this.device.queue.writeTexture(
       { texture: t.resource as GPUTexture },
@@ -955,6 +1060,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       { bytesPerRow: width * 4 },
       [width, height],
     )
+    if (packet) this.rationalKernelBounds.set(t, { packet, resource: t.resource, width, height })
     return t
   }
   uploadAtlasLinear(
@@ -965,7 +1071,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     height: number,
     values: Float32Array,
   ) {
-    delete texture.finitePixels
+    this.rationalKernelBounds?.delete(texture);delete texture.finitePixels;delete texture.opaqueAlpha
     if (values.length !== width * height * 4) throw new Error('无效的浮点纹理写入')
     this.device.queue.writeTexture(
       { texture: texture.resource as GPUTexture, origin: { x, y } },
@@ -982,7 +1088,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     height: number,
     bytes: Uint8Array,
   ) {
-    delete texture.finitePixels
+    this.rationalKernelBounds?.delete(texture);delete texture.finitePixels;delete texture.opaqueAlpha
     if (this.managed) {
       this.uploadAtlasLinear(
         texture,
@@ -1025,6 +1131,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       target = this.createFormat(1024, 1024, 'rgba32float')
       this.replayParameterTextures.add(target)
     }
+    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
     this.device.queue.writeTexture(
       { texture: target.resource as GPUTexture },
       values,
@@ -1034,7 +1141,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return target
   }
   clear(t: Texture) {
-    delete t.finitePixels
+    this.rationalKernelBounds?.delete(t);delete t.finitePixels;delete t.opaqueAlpha
     this.closeOver()
     const pass = this.encoder.beginRenderPass({
       colorAttachments: [
@@ -1055,6 +1162,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.offset += 1024
     this.uniformData.set(u, offset / 4)
     return { buffer: this.uniforms, offset, size: 1024 }
+  }
+  private uniformWords(words: Uint32Array) {
+    if(++this.uniformCommands>262144)throw Error('GPU frame command work budget exceeded')
+    if(this.offset+1024>this.uniformData.byteLength)this.submitCommands()
+    const offset=this.offset;this.offset+=1024
+    new Uint32Array(this.uniformData.buffer,this.uniformData.byteOffset+offset,256).set(words)
+    return {buffer:this.uniforms,offset,size:1024}
   }
   private submitCommands() {
     this.closeOver()
@@ -1098,7 +1212,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         targetOrigin[0] + sourceRegion.w > target.width || targetOrigin[1] + sourceRegion.h > target.height)
       throw Error('Invalid exact filter texture copy')
     this.closeOver()
-    delete target.finitePixels
+    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
     delete target.uniformColor
     delete target.transparentZero
     this.encoder.copyTextureToTexture(
@@ -1197,7 +1311,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.mask(path, target, sampleIndex, region)
   }
   mask(path: PathMesh, target: Texture, sampleIndex?: number, region = path.rect) {
-    delete target.finitePixels
+    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
     if (path.area) {
       if (!this.areaPipeline) throw new Error('Coverage program unavailable')
       const u = parameters(region)
@@ -1336,7 +1450,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return { group, offsets: this.dynamicUniformBindings ? [uniform.offset] : [] }
   }
   solidBatch(target: Texture, u: Float32Array, data: Float32Array, clip?: Texture) {
-    delete target.finitePixels
+    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
     if (clip === target) throw new Error('GPU texture feedback loop')
     this.closeOver()
     if (!this.solidBuffer) {
@@ -1375,12 +1489,23 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.triangles += count * 2
   }
   pass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15, filter?: {kind: 'tent'; radius: number}, clearOutside = false) {
-    delete target.finitePixels
+    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
     this.closeOver()
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
+    const rationalBoundBits = filter ? this.rationalKernelBoundBits(inputs[1], filter.radius) : 0
+    if (this.prefixPolicy(u, channels, filter, inputs[1]) && filter && !region && channels===15 &&
+        !this.displayMath && inputs[0]?.opaqueAlpha && import.meta.env.VITE_DESIGN_OPAQUE_TENT !== '0') {
+      const complete=completeFilterAxisSupport({x:u[4],y:u[5],w:u[6],h:u[7]},
+        {x:u[0],y:u[1],w:u[2],h:u[3]},u[37],filter.radius)
+      if(complete && this.prefix!.encode(()=>this.encoder,target.resource as GPUTexture,
+          [0,1,2].map(i=>(inputs[i]||this.blank).resource as GPUTexture),u,filter.radius,filter.kind,
+          {x:u[0],y:u[1],w:u[2],h:u[3]},7,255,true,rationalBoundBits)) {
+        this.drawCalls+=this.prefix!.lastRenderPasses;this.opaqueTentPasses++;target.opaqueAlpha=true;return
+      }
+    }
     if (this.prefixPolicy(u, channels, filter, inputs[1]) && filter && !region && this.prefix!.encode(() => this.encoder, target.resource as GPUTexture,
       [0, 1, 2].map((i) => (inputs[i] || this.blank).resource as GPUTexture), u, filter.radius, filter.kind,
-      {x:u[0],y:u[1],w:u[2],h:u[3]}, channels)) { this.drawCalls += this.prefix!.lastRenderPasses; return }
+      {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,false,rationalBoundBits)) { this.drawCalls += this.prefix!.lastRenderPasses; return }
     const bind = this.bind(u, inputs)
     // With integer origins/sizes bounded by 2^20, pixel centres and every
     // subtraction/addition forming q/base are exactly representable binary32
@@ -1474,7 +1599,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return { querySet: this.timingQueries, beginningOfPassWriteIndex: index, endOfPassWriteIndex: index + 1 }
   }
   over(target: Texture, u: Float32Array, inputs: Texture[], region: Rect) {
-    delete target.finitePixels
+    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
     if (this.managed) throw new Error('RGBA32F 合成必须使用显式着色器混合')
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
     if (this.activeTarget !== target) this.closeOver()
@@ -1603,7 +1728,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // Primary trigger uses the original short-circuit order, including the
     // periodic counter increment only when no earlier trigger applies.
     const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' :
-      this.prefix?.scratchBytes ? 'prefix-scratch' : this.interactionPresentation &&
+      this.prefix?.scratchBytes ? 'prefix-scratch' : this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation &&
         (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') ? 'interaction' :
         ++this.presentationSubmissions >= 4 ? 'periodic' : undefined
     if (waitReason) {
@@ -1619,6 +1744,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // All frame commands have completed (the fence above): safe to reclaim
     // overprovisioned geometry buffers for the next frame.
     this.shrinkCapacities()
+    this.releaseImageTables()
     if (this.prefix?.scratchBytes) {
       const counters=await this.prefix.readCounters()
       recordGpuDiagnostic('prefix',counters)
@@ -1818,6 +1944,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
    * a safe no-op). */
   private releaseFrameResources() {
     this.prefix?.releaseScratch()
+    this.releaseImageTables()
     for (const t of [...this.textures]) this.destroy(t)
     for (const t of this.transientTargets) this.destroy(t)
     this.transientTargets = []

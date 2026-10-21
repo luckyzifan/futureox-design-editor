@@ -1,4 +1,4 @@
-import { PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES, prefixBandSize } from './prefix-band'
+import { PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES, prefixBandSize, prefixRgbBandSize } from './prefix-band'
 import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 /// <reference types="@webgpu/types" />
 /** Exact tent filtering, including fractional radii and cropped outputs,
@@ -21,6 +21,8 @@ export class TexturePrefix {
   private scratchGroup?: GPUBindGroup
   private scan!: GPUComputePipeline
   private solve!: GPUComputePipeline
+  private solveRgb?: GPUComputePipeline
+  private resolveRgb?: GPURenderPipeline
   lastRenderPasses = 0
   lastComputePasses = 0
   private resolve: GPURenderPipeline[] = []
@@ -140,6 +142,16 @@ export class TexturePrefix {
           primitive: { topology: 'triangle-list' },
         }),
       )
+    if (import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0') {
+      this.solveRgb = await this.device.createComputePipelineAsync({
+        layout, compute: { module, entryPoint: 'prefixSolveRgb' },
+      })
+      this.resolveRgb = await this.device.createRenderPipelineAsync({
+        layout, vertex: { module, entryPoint: 'quad' },
+        fragment: { module, entryPoint: 'prefixResolveRgb', targets: [{ format: 'rgba32float' }] },
+        primitive: { topology: 'triangle-list' },
+      })
+    }
   }
   resetCounters(encoder: GPUCommandEncoder) {
     if (this.metadata) encoder.clearBuffer(this.metadata, 0, 16)
@@ -160,7 +172,7 @@ export class TexturePrefix {
     recordGpuDiagnostic('prefix',{mapMs:performance.now()-started})
     const values = Array.from(new Uint32Array(this.readback.getMappedRange(), 0, 4))
     this.readback.unmap()
-    return { acceptedLines: values[0], declinedLines: values[1], acceptedPixels: values[2] }
+    return { acceptedLines: values[0], declinedLines: values[1], acceptedPixels: values[2], narrowLines: values[3] }
   }
   canEncode(
     target: GPUTexture,
@@ -235,6 +247,8 @@ export class TexturePrefix {
     rect: Rectangle,
     channels = 15,
     maxBandLines = 255,
+    opaqueAlpha = false,
+    rationalBoundBits = 0,
   ): boolean {
     this.lastRenderPasses = 0
     this.lastComputePasses = 0
@@ -244,6 +258,13 @@ export class TexturePrefix {
       !this.canEncode(target, inputs, base, originalRadius, kind, rect, channels, maxBandLines)
     )
       return false
+    // The caller obtains this bound from the actual immutable coefficient
+    // upload. Zero/unknown values retain the existing shader admission gate.
+    const boundBits = Number.isInteger(rationalBoundBits) && rationalBoundBits >= 1 && rationalBoundBits <= 120
+      ? rationalBoundBits : 0
+    if (import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0' && opaqueAlpha && channels === 7 &&
+        this.solveRgb && this.resolveRgb)
+      return this.encodeOpaqueRgb(getEncoder, target, inputs, base, originalRadius, rect, maxBandLines, boundBits)
     const axis = base[37],
       length = axis === 0 ? inputs[0].width : inputs[0].height,
       lineCount = axis === 0 ? rect.h : rect.w
@@ -259,7 +280,7 @@ export class TexturePrefix {
         const count = Math.min(bandSize, lineCount - first)
         const u = base.slice()
         u.set([length, first, count, axis], 192)
-        u.set([channel, rational ? Math.floor(originalRadius) - 1 : originalRadius, rational ? 1 : 0, 0], 196)
+        u.set([channel, rational ? Math.floor(originalRadius) - 1 : originalRadius, rational ? 1 : 0, boundBits], 196)
         u.set([offset, outputLength, crossOffset, 0], 200)
         const group = this.device.createBindGroup({
           layout: this.sourceLayout,
@@ -296,7 +317,7 @@ export class TexturePrefix {
               view: target.createView(),
               loadOp: drawn ? 'load' : 'clear',
               storeOp: 'store',
-              clearValue: [0, 0, 0, 0],
+              clearValue: [0, 0, 0, opaqueAlpha ? 1 : 0],
             },
           ],
         })
@@ -311,6 +332,52 @@ export class TexturePrefix {
         this.lastRenderPasses++
         this.lastComputePasses += 2
       }
+    }
+    return true
+  }
+  /** Opaque-alpha specialization only. Each band completes all three channel
+   * scans/solves before one full-RGB resolve. Uniform allocation may roll the
+   * encoder between channels; always reacquire it after creating the group. */
+  private encodeOpaqueRgb(getEncoder: () => GPUCommandEncoder, target: GPUTexture, inputs: GPUTexture[],
+    base: Float32Array, radius: number, rect: Rectangle, maxBandLines: number, rationalBoundBits: number): boolean {
+    const axis = base[37], length = axis === 0 ? inputs[0].width : inputs[0].height
+    const outputLength = axis === 0 ? rect.w : rect.h, lineCount = axis === 0 ? rect.h : rect.w
+    const bandSize = prefixRgbBandSize(length, outputLength, maxBandLines)
+    if (!bandSize) return false
+    const offset = axis === 0 ? rect.x - base[4] : rect.y - base[5]
+    const crossOffset = axis === 0 ? rect.y - base[5] : rect.x - base[4]
+    const rational = !Number.isInteger(radius) || radius > 512
+    let drawn = false
+    for (let first = 0; first < lineCount; first += bandSize) {
+      const count = Math.min(bandSize, lineCount - first)
+      let lastGroup!: GPUBindGroup
+      for (let channel = 0; channel < 3; channel++) {
+        const u = base.slice()
+        u.set([length, first, count, axis], 192)
+        u.set([channel, rational ? Math.floor(radius) - 1 : radius, rational ? 1 : 0, rationalBoundBits], 196)
+        u.set([offset, outputLength, crossOffset, 0], 200)
+        lastGroup = this.device.createBindGroup({ layout: this.sourceLayout, entries: [
+          { binding: 0, resource: this.uniform(u) },
+          ...[0, 1, 2].map(i => ({ binding: i + 1, resource: (inputs[i] || inputs[0]).createView() })),
+        ] })
+        const encoder = getEncoder()
+        const scan = encoder.beginComputePass({ timestampWrites: this.measure?.('prefix-scan', length, count, radius, channel) })
+        scan.setPipeline(this.scan); scan.setBindGroup(0, lastGroup); scan.setBindGroup(1, this.scratchGroup!)
+        scan.dispatchWorkgroups(count); scan.end()
+        const solve = encoder.beginComputePass({ timestampWrites: this.measure?.('prefix-solve', outputLength, count, radius, channel) })
+        solve.setPipeline(this.solveRgb!); solve.setBindGroup(0, lastGroup); solve.setBindGroup(1, this.scratchGroup!)
+        solve.dispatchWorkgroups(Math.ceil(outputLength / 64), count); solve.end()
+        this.lastComputePasses += 2
+      }
+      const resolve = getEncoder().beginRenderPass({
+        timestampWrites: this.measure?.('prefix-resolve', outputLength, count, radius, -1),
+        colorAttachments: [{ view: target.createView(), loadOp: drawn ? 'load' : 'clear',
+          storeOp: 'store', clearValue: [0, 0, 0, 1] }],
+      })
+      resolve.setPipeline(this.resolveRgb!); resolve.setBindGroup(0, lastGroup); resolve.setBindGroup(1, this.scratchGroup!)
+      if (axis === 0) resolve.setScissorRect(0, first, rect.w, count)
+      else resolve.setScissorRect(first, 0, count, rect.h)
+      resolve.draw(3); resolve.end(); drawn = true; this.lastRenderPasses++
     }
     return true
   }

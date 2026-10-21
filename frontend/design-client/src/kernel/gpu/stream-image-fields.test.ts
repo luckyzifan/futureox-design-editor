@@ -67,6 +67,9 @@ test('uncached full-support uploads survive strip checkpoints and retire after s
   f.renderer.filterImageFields=undefined
   f.renderer.bytes=220*1024*1024
   await f.renderer.reclaimScratch()
+  expect(f.driver.checkpoint).not.toHaveBeenCalled()
+  expect(f.destroyed).not.toContain(field.texture)
+  await f.renderer.reclaimScratch(64*1024*1024)
   expect(f.driver.checkpoint).toHaveBeenCalled()
   expect(f.destroyed).toContain(field.texture)
 })

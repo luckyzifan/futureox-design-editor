@@ -172,6 +172,7 @@ export class DesktopSession {
   private recoveryError?: string
   private recoveryWarning?: string
   private recoveryPaused = false
+  private workspaceBusyRetries = 0
   private readonly recoveryHandles = new Set<string>()
   private readonly unsubscribe: () => void
   private readonly unsubscribeDrafts: () => void
@@ -754,8 +755,12 @@ export class DesktopSession {
       const result = await documentStageAsync(DocumentStage.save, () => store.commit({ documentJson: older.documentJson, expectedRevision: older.expectedRevision, mutationId: older.mutationId }), older.documentJson.length)
       if (result.status !== 'ok') {
         if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
+        this.retryWorkspaceBusy(result)
         return result.status === 'cancelled' ? false : this.failed(result)
       }
+      if (result.id !== older.id || !Number.isSafeInteger(result.revision) || result.revision < 1)
+        throw new Error('本机库保存响应无效')
+      this.workspaceBusyRetries = 0
       desktopPet.event('save')
       this.workspaceHeads.set(result.id, result.revision)
       this.workspacePending = undefined
@@ -763,19 +768,30 @@ export class DesktopSession {
         this.baselineGeneration = older.generation
         this.baselineJson = older.documentJson
         this.baselineDocument = undefined
+        this.displayName = result.name
+        this.error = undefined
+        this.conflict = false
       }
-      if (snapshot === older.documentJson && this.currentDocument.id === older.id) { this.publish(); return true }
+      if (snapshot === older.documentJson && this.currentDocument.id === older.id) {
+        // A draft may have ended without changing authored bytes. The same
+        // acknowledged payload also covers the exact newer captured generation,
+        // never an edit that arrived after that capture.
+        this.baselineGeneration = generation
+        this.publish(); return true
+      }
     }
     const submitted = { documentJson: snapshot, expectedRevision: this.workspaceHeads.get(id) ?? null, mutationId: crypto.randomUUID(), generation, id }
     this.workspacePending = submitted
     const result = await documentStageAsync(DocumentStage.save, () => store.commit({ documentJson: submitted.documentJson, expectedRevision: submitted.expectedRevision, mutationId: submitted.mutationId }), submitted.documentJson.length)
     if (result.status !== 'ok') {
       if (rejectedWorkspaceWrite(result)) this.workspacePending = undefined
+      this.retryWorkspaceBusy(result)
       return result.status === 'cancelled' ? false : this.failed(result)
     }
     if (result.id !== id || !Number.isSafeInteger(result.revision) || result.revision < 1)
       throw new Error('本机库保存响应无效')
     this.workspacePending = undefined
+    this.workspaceBusyRetries = 0
     desktopPet.event('save')
     this.workspaceHeads.set(result.id, result.revision)
     if (!this.disposed && this.currentDocument.id === id) {
@@ -865,10 +881,30 @@ export class DesktopSession {
     return false
   }
 
-  private scheduleRecovery() {
+  private retryWorkspaceBusy(result: DesktopResult<unknown>) {
+    // Large workspace reads can temporarily own the native IPC/SQLite gate.
+    // An autosave has no run() finally to reschedule its still-dirty snapshot.
+    // Retain workspacePending: every retry settles the exact original receipt
+    // before a newer edit can submit its own CAS. Unknown outcomes do not loop.
+    if (result.status !== 'ok' && result.status !== 'cancelled' &&
+        (result.code === 'BUSY' || result.code === 'WORKSPACE_BUSY')) {
+      this.workspaceBusyRetries = Math.max(1, this.workspaceBusyRetries)
+    } else this.workspaceBusyRetries = 0
+  }
+
+  private scheduleWorkspaceBusyRetry() {
+    if (!this.dirty) { this.workspaceBusyRetries = 0; return }
+    if (!this.workspaceBusyRetries || !this.started || this.disposed || this.recoveryPaused ||
+        this.closeSnapshot !== undefined || this.operation !== 'idle') return
+    const delay = Math.min(5000, 600 * 2 ** (this.workspaceBusyRetries - 1))
+    this.workspaceBusyRetries = Math.min(5, this.workspaceBusyRetries + 1)
+    this.scheduleRecovery(delay)
+  }
+
+  private scheduleRecovery(delay = 600) {
     clearTimeout(this.recoveryTimer)
     if (this.pristineBlankGeneration === this.generation) return
-    this.recoveryTimer = setTimeout(() => { void this.updateRecovery() }, 600)
+    this.recoveryTimer = setTimeout(() => { void this.updateRecovery() }, delay)
   }
 
   private updateRecovery(discardSnapshot?: number) {
@@ -915,7 +951,13 @@ export class DesktopSession {
         this.publish()
       }
     })).catch((error: unknown) => {
+      this.workspaceBusyRetries = 0
       this.editor.notify(`恢复副本写入失败；请手动保存设计：${String(error)}`)
+    }).finally(() => {
+      // A known-busy retry may meet a draft/gesture/busy gate without writing.
+      // Keep its bounded retry alive; cancel-only gestures need not emit a new
+      // authored revision. Disposal, close, paused recovery and clean state stop it.
+      this.scheduleWorkspaceBusyRetry()
     })
     this.recoveryQueue = next
     return next

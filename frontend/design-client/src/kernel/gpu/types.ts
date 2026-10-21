@@ -170,6 +170,8 @@ export type Texture = {
   /** Actual immutable rgba32float upload was checked after all CPU transforms.
    * Any render/partial upload write revokes this finite-pixel certificate. */
   finitePixels?: true
+  /** Entire physical texture alpha is exactly +1; revoked on every write. */
+  opaqueAlpha?: true
   /** Immutable rational coefficient metadata; exact prefix reason 4 only. */
   prefixRationalUnsupported?: boolean
   /** Lossless storage for proven 0/1 sample coverage; never a color target. */
@@ -225,7 +227,15 @@ export type GpuAdmissionDiagnostic = Readonly<{
   admissionCoordinateCount?: number
 }>
 
+export type ExactImageTable = { resource: unknown; width: number; height: number; bytes: number; opaqueAlpha?: true; nonnegativeResolved?: true }
 export interface Driver {
+  imageTableRange?(image: Texture): import('./exact-image-x-table').ExactImageRange | undefined
+  imageTableAxes?(field: Texture): Float32Array | undefined
+  hasActiveImageTableSource?(image: Texture): boolean
+  prepareImageTable?(image: Texture, plan: import('./exact-image-x-table').ExactImageXTablePlan, availableBytes: number): Promise<ExactImageTable | undefined>
+  resolveImageTable?(target: Texture, table: ExactImageTable, offsetX: number, offsetY: number): void
+  retireImageTable?(table: ExactImageTable): Promise<void>
+  readonly opaqueTentPasses?: number
   /** Submit encoded work in queue order without waiting or freeing resources.
    * Used at CPU task yields so display and raster submissions can interleave. */
   submitPending?(): void

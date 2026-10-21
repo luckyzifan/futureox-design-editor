@@ -1,6 +1,10 @@
-import { prefixAlignedStrip } from './prefix-band'
+import { prefixAlignedStrip, prefixAlignedRgbStrip } from './prefix-band'
+import { PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { IMAGE_RESOLVE_STEP_MODE } from './image-resolve-step'
 import { exactFilterKey, fullSampleCoverage, HorizontalFilterCache } from './horizontal-filter-cache'
+import { planExactImageXTable } from './exact-image-x-table'
+import type { ExactImageTable } from './types'
+import { completeFilterAxisSupport } from './opaque-filter'
 import { gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { markRenderFailure } from '../render-failure-telemetry'
 import { backdropEffect, backdropRadius, classifyCompiledSourceReuse } from '../render-dependency'
@@ -153,6 +157,11 @@ export class GpuRenderer {
   lastBudgetFailure?: RenderBudgetDiagnostic
   private frameBudget = SURFACE_BUDGET_BYTES
   private horizontalFilters = new HorizontalFilterCache(plane => this.release(plane))
+  private imageXTableBuilds = 0
+  private imageXTablePixels = 0
+  private imageXTableBytes = 0
+  private wholeFilterAxes = 0
+  private pendingImageTableSources = new Set<Texture>()
   private horizontalFilterHits = 0
   private horizontalFilterPixels = 0
   private horizontalFilterRows = 0
@@ -548,6 +557,7 @@ export class GpuRenderer {
     delete texture.transparentZero
     delete texture.uniformColor
     delete texture.finitePixels
+    delete texture.opaqueAlpha
     this.touch(texture)
     this.busy.add(texture)
     this.used.add(texture)
@@ -581,6 +591,7 @@ export class GpuRenderer {
     const pageTextures = new Set(this.atlasPages.map((p) => p.texture))
     const candidates = [...this.images]
       .filter(([, surface]) => !pageTextures.has(surface.texture))
+      .filter(([, surface]) => !this.pendingImageTableSources.has(surface.texture) && !this.driver.hasActiveImageTableSource?.(surface.texture))
       .filter(([, surface]) => forced || !this.used.has(surface.texture))
       .sort((a, b) => (this.lastUsed.get(a[1].texture) || 0) - (this.lastUsed.get(b[1].texture) || 0))
     for (const [uri, surface] of candidates) {
@@ -596,6 +607,7 @@ export class GpuRenderer {
     // slot survives outside forced (post-checkpoint) pressure.
     for (const page of [...this.atlasPages]) {
       if (required <= 0) break
+      if (this.pendingImageTableSources.has(page.texture) || this.driver.hasActiveImageTableSource?.(page.texture)) continue
       if (!forced && this.used.has(page.texture)) continue
       this.destroyAtlasPage(page)
       required -= page.texture.bytes
@@ -717,14 +729,24 @@ export class GpuRenderer {
     }
     return region
   }
-  private run(mode: number, r: Rect, inputs: Surface[], configure?: (u: Float32Array) => void, channels = 15, filter?: {kind: 'tent'; radius: number}, scalarOutput = false) {
-    const out = this.acquire(r, false, scalarOutput),
+  private run(mode: number, r: Rect, inputs: Surface[], configure?: (u: Float32Array) => void, channels = 15, filter?: {kind: 'tent'; radius: number}, scalarOutput = false, destination?: Surface) {
+    if (destination && (mode !== 22 || !filter || channels !== 15 || scalarOutput || !this.driver.managed ||
+        r.w <= 0 || r.h <= 0 || !exactBlendLattice([r, destination.rect]) || !Object.keys(r).every(key => Object.is(r[key as keyof Rect], destination.rect[key as keyof Rect])) ||
+        destination.texture.width !== r.w || destination.texture.height !== r.h || destination.texture.bytes !== r.w * r.h * 16 ||
+        destination.texture.binaryCoverage || destination.texture.scalarCoverage || !this.busy.has(destination.texture) ||
+        this.releasedAliases.has(destination) || (this.aliases.get(destination.texture) || 1) > 1 ||
+        this.coverage.has(destination.texture) || this.materialFields.has(destination.texture) || this.interactionTextures.has(destination.texture) ||
+        this.horizontalFilters.has(destination.texture) ||
+        inputs.some(input => input.texture === destination.texture || input.texture.resource === destination.texture.resource)))
+      throw Error('Invalid private exact filter destination')
+    const out = destination || this.acquire(r, false, scalarOutput),
       u = parameters(r, inputs[0]?.rect, inputs[1]?.rect, inputs[2]?.rect)
     if (import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile')
       this.traceSurfaces.set(out.texture,{node:this.activeNode,mode,sample:this.sampleIndex})
     u[16] = mode
     configure?.(u)
     const region=this.drawRegion(r)
+    if (destination && region) throw Error('Private exact filter destination cannot be scissored')
     if(region&&(!region.w||!region.h)){this.driver.clear(out.texture);return out}
     if (filter && this.prefixAllowed) {
       const before = this.driver.scratchBytes || 0
@@ -1754,6 +1776,15 @@ export class GpuRenderer {
     const missing=Math.max(0,copies-available)
     if(missing)await this.reclaimScratch(r.w*r.h*16*missing)
   }
+  /** Forced image retirement still excludes an exact-table source. Atlas
+   * slots share that ownership with their entire page, including empty pages. */
+  private hasEvictableImage() {
+    const eligible = (texture: Texture) => !this.pendingImageTableSources.has(texture) &&
+      !this.driver.hasActiveImageTableSource?.(texture)
+    for (const surface of this.images.values()) if (eligible(surface.texture)) return true
+    for (const page of this.atlasPages) if (eligible(page.texture)) return true
+    return false
+  }
   private async reclaimScratch(required = 0) {
     this.checkFrameCurrent()
     const pressure = required > 0 && this.workingBytes + required > this.frameBudget
@@ -1773,7 +1804,7 @@ export class GpuRenderer {
     // Dead uploads leave first, then the oldest pool generations and the
     // oldest cached coordinates. One bounded batch per checkpoint cycle keeps
     // each GPU wait short and lets younger reusable entries survive.
-    const imagesUnderPressure = this.workingBytes > this.frameBudget * .75 && this.images.size > 0
+    const imagesUnderPressure = this.workingBytes > this.frameBudget * .75 && this.hasEvictableImage()
     if (!this.retiredUploads.length && !pooled.length && !coordinates.length && !imagesUnderPressure)
       return
     // A large managed source image or ancestor surface can keep the ledger
@@ -1783,7 +1814,7 @@ export class GpuRenderer {
     // line; the unchanged allocation gate still enforces the 256 MiB ceiling.
     const reclaimableBytes = [...pooled, ...this.retiredUploads, ...coordinates]
       .reduce((sum, texture) => sum + texture.bytes, 0)
-    if (!pressure && this.workingBytes < this.frameBudget * .75 && reclaimableBytes < RECLAIM_BATCH_BYTES) return
+    if (!pressure && !imagesUnderPressure && reclaimableBytes < RECLAIM_BATCH_BYTES) return
     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
     const resourceLimit = pressure ? 4096 : RECLAIM_BATCH_RESOURCES
     // Preserve the exact oldest-first batch. Only a pool-only maintenance
@@ -2405,6 +2436,49 @@ export class GpuRenderer {
       this.driver.linearLight, this.driver.hdr, this.driver.certifiedFilter])
     return key === undefined ? undefined : { lease, key, image: image.texture }
   }
+  private async prepareFilterImageTable(n: GpuNode, input: Rect): Promise<ExactImageTable | undefined> {
+    if(import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE === '0' || this.imageMips || !this.driver.managed ||
+        this.driver.displayMath || !this.driver.prepareImageTable || !this.driver.resolveImageTable ||
+        !this.driver.imageTableRange || !this.driver.imageTableAxes || n.children.length ||
+        !fullSampleCoverage(n.fill,this.scene.curves,input))return
+    const fills=n.fills.filter(p=>p.visible),paint=fills[0]
+    if(fills.length!==1 || paint.kind!=='image' || paint.blend!=='normal' || paint.opacity!==1)return
+    const image=this.imageFor(paint.image||'',0,this.imageAtlas,paint.adjust),range=this.driver.imageTableRange(image.texture)
+    if(!range || image.rect.x!==0 || image.rect.y!==0 ||
+        image.rect.w!==image.texture.width || image.rect.h!==image.texture.height)return
+    const clone={...paint},node={...n,rect:input,fills:[clone]},axes:Float32Array[]=[]
+    const previous=this.sampleIndex
+    try{
+      for(let sample=0;sample<4;sample++){
+        this.sampleIndex=sample
+        const field=this.imageGrid(node,clone,image,0,[0,0])
+        if(field.rect.x!==input.x || field.rect.y!==input.y || field.rect.w!==input.w || field.rect.h!==input.h)return
+        const values=this.driver.imageTableAxes(field.texture);if(!values)return
+        axes.push(values)
+      }
+    }finally{this.sampleIndex=previous;this.imageGrids.delete(clone)}
+    const plan=planExactImageXTable({axes,width:input.w,height:input.h,
+      imageWidth:image.rect.w,imageHeight:image.rect.h,range,
+      maxTableBytes:import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE_LARGE !== '0'?32*1024*1024:16*1024*1024})
+    if(!plan)return
+    const required=256+plan.tableBytes+plan.x.byteLength+plan.y.byteLength
+    // Pinning the source until table retirement must leave room for the next
+    // resolved strip, its H result and the bounded prefix scratch. Otherwise
+    // keep the original strip sampler instead of failing a later allocation.
+    const headroom=input.w*Math.min(input.h,64)*16*2+PREFIX_SCRATCH_BYTES
+    this.pendingImageTableSources.add(image.texture)
+    try {
+    await this.reclaimScratch(required+headroom)
+    if(this.workingBytes+required+headroom>this.frameBudget)return
+    const before=this.driver.scratchBytes||0
+    try{
+      const table=await this.driver.prepareImageTable(image.texture,plan,this.frameBudget-this.workingBytes-headroom)
+      if(table){this.imageXTableBuilds++;this.imageXTableBytes=Math.max(this.imageXTableBytes,table.bytes)}
+      return table
+    }
+    finally{this.bytes+=(this.driver.scratchBytes||0)-before;this.peak=Math.max(this.peak,this.bytes)}
+    } finally { this.pendingImageTableSources.delete(image.texture) }
+  }
   private async streamIsolatedFilter(n: GpuNode, targets: Surface[], clip?: Surface[]): Promise<Surface[] | undefined> {
     const effects = n.effects.filter(e => e.visible)
     if (!this.optimized || !this.driver.managed || this.driver.displayMath || !this.driver.maskRegion ||
@@ -2415,7 +2489,8 @@ export class GpuRenderer {
           effects[0].x === 0 && effects[0].y === 0 && this.driver.exactShadowOver) ||
         n.fills.some(p => p.kind !== 'solid' && p.kind !== 'image')) return
     const radius = effects[0].radius * scale(n.matrix)
-    if (!(radius >= 64 && radius <= 2048)) return
+    const wholeCandidate = import.meta.env.VITE_DESIGN_WHOLE_IMAGE_FILTER !== '0'
+    if (!(radius >= (wholeCandidate && effects[0].kind === 'blur' ? 32 : 64) && radius <= 2048)) return
     const output = intersect(n.rect, targets[0].rect)
     if (!output.w || !output.h) return targets
     const reach = Math.ceil(radius) + 1
@@ -2455,12 +2530,41 @@ export class GpuRenderer {
       // ordered pool immediately rather than keep two cache entries alive.
       this.horizontalFilters.clear()
     }
-    for (const part of missing) for (let y=part.y;y<part.y+part.h;y+=stripRows) {
+    const imageTable=missing.length?await this.prepareFilterImageTable(n,input):undefined
+    const opaqueHorizontal = !!imageTable?.opaqueAlpha && completeFilterAxisSupport(input, horizontal.rect, 0, radius)
+    const rows = alignBands && opaqueHorizontal && import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0'
+      ? prefixAlignedRgbStrip(input.w, output.w) : stripRows
+    let whole = false
+    // The original strip blits canonicalize -0. Nonnegative resolved RGBA and
+    // positive tent weights cannot produce -0, including underflow, so only
+    // this private upload proof permits omitting those intermediate blits.
+    if (wholeCandidate && radius >= 32 && radius < 64 && imageTable?.nonnegativeResolved === true && alignBands &&
+        missing.length === 1 && missing[0].y === input.y && missing[0].h === input.h && input.w * input.h <= 1_500_000) {
+      const required = input.w * input.h * 16 + PREFIX_SCRATCH_BYTES
+      await this.reclaimScratch(required)
+      this.checkFrameCurrent()
+      if (this.workingBytes + required <= this.frameBudget) {
+        const resolved = this.acquire(input)
+        try {
+          this.driver.resolveImageTable!(resolved.texture, imageTable, 0, 0)
+          this.imageXTablePixels += input.w * input.h; this.passPixels += input.w * input.h
+          this.sampleIndex = undefined
+          this.exactTentAxis(resolved, radius, 0, horizontal.rect, horizontal)
+          this.wholeFilterAxes++; whole = true
+        } finally { this.release(resolved) }
+      }
+    }
+    if (!whole) for (const part of missing) for (let y=part.y;y<part.y+part.h;y+=rows) {
       await this.reclaimScratch()
       const pause=this.yieldEncoding(); if(pause) await pause
-      const region={x:input.x,y,w:input.w,h:Math.min(stripRows,part.y+part.h-y)}
+      const region={x:input.x,y,w:input.w,h:Math.min(rows,part.y+part.h-y)}
       let resolved:Surface|undefined
-      for(let i=0;i<4;i++) {
+      if(imageTable){
+        resolved=this.acquire(region)
+        this.driver.resolveImageTable!(resolved.texture,imageTable,region.x-input.x,region.y-input.y)
+        this.imageXTablePixels+=region.w*region.h
+        this.passPixels+=region.w*region.h
+      }else for(let i=0;i<4;i++) {
         const fused = this.resolveFilterImageSample(n, region, i, resolved)
         if (fused) { this.release(resolved); resolved = fused; continue }
         const layer=this.filterSource(n,region,i)
@@ -2474,15 +2578,28 @@ export class GpuRenderer {
       this.driver.pass(horizontal.texture,u,[filtered.texture],{x:0,y:y-input.y,w:output.w,h:region.h})
       this.release(filtered)
     }
-    await this.reclaimScratch(output.w*output.h*16 + output.h*64*16)
+    if(opaqueHorizontal)
+      horizontal.texture.opaqueAlpha=true
+    if(imageTable && this.driver.retireImageTable){
+      const before=this.driver.scratchBytes||0,at=performance.now()
+      try{await this.driver.retireImageTable(imageTable)}
+      finally{this.bytes+=(this.driver.scratchBytes||0)-before;this.checkpointMs+=performance.now()-at}
+    }
+    await this.reclaimScratch(output.w*output.h*16 + (whole ? 0 : output.h*64*16))
     const blurred=this.acquire(output)
-    this.driver.clear(blurred.texture)
+    if (!whole) this.driver.clear(blurred.texture)
     // Bound vertical encoding too: one whole-width prefix pass can otherwise
     // delay camera-presentation messages behind hundreds of dispatches.
-    for(let x=output.x;x<output.x+output.w;x+=stripColumns){
+    const columns = alignBands && horizontal.texture.opaqueAlpha && completeFilterAxisSupport(horizontal.rect, output, 1, radius) &&
+      import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0' ? prefixAlignedRgbStrip(input.h, output.h) : stripColumns
+    if (whole) {
+      const pause = this.yieldEncoding(); if (pause) await pause
+      this.exactTentAxis(horizontal, radius, 1, output, blurred)
+      this.wholeFilterAxes++
+    } else for(let x=output.x;x<output.x+output.w;x+=columns){
       const pause=this.yieldEncoding();if(pause)await pause
       await this.reclaimScratch()
-      const region={x,y:output.y,w:Math.min(stripColumns,output.x+output.w-x),h:output.h}
+      const region={x,y:output.y,w:Math.min(columns,output.x+output.w-x),h:output.h}
       const filtered=this.exactTentAxis(horizontal,radius,1,region)
       const u=parameters(output,filtered.rect);u[16]=0
       this.driver.pass(blurred.texture,u,[filtered.texture],{x:x-output.x,y:0,w:region.w,h:region.h})
@@ -2704,11 +2821,11 @@ export class GpuRenderer {
     return this.filterKernel(box ? 'certified-box' : 'certified-tent', radius,
       () => box ? certified_box_kernel_rgba(radius) : certified_tent_kernel_rgba(radius))
   }
-  private exactTentAxis(input: Surface, radius: number, axis: number, output: Rect) {
+  private exactTentAxis(input: Surface, radius: number, axis: number, output: Rect, destination?: Surface) {
     if (!(radius > 0 && radius <= 2048)) throw Error('GPU exact blur radius exceeds 2048 pixels')
     const kernel = this.filterKernel('rational-tent', radius, () => rational_tent_kernel_rgba(radius))
     const certified=this.certifiedKernel(radius)
-    return this.run(22,output,[input,kernel,...(certified?[certified]:[])],u=>u.set([radius,axis,0,1],36),15,{kind:'tent',radius})
+    return this.run(22,output,[input,kernel,...(certified?[certified]:[])],u=>u.set([radius,axis,0,1],36),15,{kind:'tent',radius},false,destination)
   }
   private blur(input: Surface, sigma: number, clampEdges = false, alphaOnly = false): Surface {
     // Every finite normalized kernel maps the all-+0 field to itself, with
@@ -3411,6 +3528,8 @@ export class GpuRenderer {
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
     this.horizontalFilters.begin(scene.filterBatchLease)
+    this.imageXTableBuilds = this.imageXTablePixels = this.imageXTableBytes = 0
+    this.wholeFilterAxes = 0
     this.horizontalFilterHits = this.horizontalFilterPixels = this.horizontalFilterRows = 0
     this.encodeYield.begin()
     this.lastBudgetFailure = undefined
@@ -3610,6 +3729,8 @@ export class GpuRenderer {
       this.horizontalFilters.finish(!this.frameCurrent || this.frameCurrent())
       return {
         ...result,
+        opaqueTentPasses: this.driver.opaqueTentPasses || 0, imageXTableBuilds: this.imageXTableBuilds, imageXTablePixels: this.imageXTablePixels, imageXTableBytes: this.imageXTableBytes,
+        wholeFilterAxes: this.wholeFilterAxes,
         horizontalFilterHits: this.horizontalFilterHits,
         horizontalFilterPixels: this.horizontalFilterPixels,
         horizontalFilterRows: this.horizontalFilterRows,

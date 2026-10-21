@@ -935,18 +935,18 @@ test('admission diagnostics classify proactive and required pressure without ear
     } as unknown as Driver
     const renderer = new GpuRenderer(driver) as any
     renderer.scene = {}; renderer.bytes = 220 * MiB
-    const texture = { width: 256, height: 256, bytes: MiB, resource: {} } as Texture
-    renderer.free.set('256:256', [texture])
+    const texture = { width: 1536, height: 2048, bytes: 48 * MiB, resource: {} } as Texture
+    renderer.free.set('1536:2048', [texture])
     setGpuDiagnosticSink(() => {})
     try {
       const pending = renderer.reclaimScratch(required)
       expect(metadata).toEqual({ admissionKind: required ? 1 : 0, admissionPressure: required ? 1 : 0,
         admissionRequiredBytes: required, admissionWorkingBytes: 220 * MiB, admissionBudgetBytes: 256 * MiB,
-        admissionReclaimableBytes: MiB, admissionPoolBytes: MiB, admissionPoolCount: 1,
+        admissionReclaimableBytes: 48 * MiB, admissionPoolBytes: 48 * MiB, admissionPoolCount: 1,
         admissionUploadCount: 0, admissionImageCount: 0, admissionRetiredKinds: 1, admissionRetiredUploadCount: 0, admissionCoordinateCount: 0 })
       expect(destroyed).toEqual([]); expect(renderer.bytes).toBe(220 * MiB)
       finish(); await pending
-      expect(destroyed).toEqual([texture]); expect(renderer.bytes).toBe(219 * MiB)
+      expect(destroyed).toEqual([texture]); expect(renderer.bytes).toBe(172 * MiB)
     } finally { setGpuDiagnosticSink(undefined) }
   }
 })
@@ -955,8 +955,8 @@ test('disabled admission diagnostics preserve the same fence with no metadata pa
   const driver = { name: 'webgpu', managed: true, scratchBytes: 0, checkpoint: vi.fn(async () => {}), destroy() {} } as unknown as Driver
   const renderer = new GpuRenderer(driver) as any
   renderer.scene = {}; renderer.bytes = 220 * 1024 * 1024
-  const texture = { width: 256, height: 256, bytes: 1024 * 1024, resource: {} } as Texture
-  renderer.free.set('256:256', [texture])
+  const texture = { width: 1536, height: 2048, bytes: 48 * 1024 * 1024, resource: {} } as Texture
+  renderer.free.set('1536:2048', [texture])
   setGpuDiagnosticSink(undefined)
   await renderer.reclaimScratch()
   expect(driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission', undefined)
