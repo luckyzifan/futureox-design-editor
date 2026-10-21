@@ -3,10 +3,12 @@ import { PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { IMAGE_RESOLVE_STEP_MODE } from './image-resolve-step'
 import { exactFilterKey, fullSampleCoverage, HorizontalFilterCache } from './horizontal-filter-cache'
 import { StaticImageBlurCache, largeStaticImageBlurWindow, type StaticImageBlurSource } from './static-image-blur-cache'
+import { planNestedPrefix, type NestedPrefixPlan } from './nested-prefix-plan'
+import { planDisplayMaterialSource } from './display-material-source'
 import { planExactImageXTable } from './exact-image-x-table'
 import type { ExactImageTable } from './types'
 import { completeFilterAxisSupport } from './opaque-filter'
-import { gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
+import { gpuDiagnosticsEnabled, recordGpuDiagnostic } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { markRenderFailure } from '../render-failure-telemetry'
 import { backdropEffect, backdropRadius, classifyCompiledSourceReuse } from '../render-dependency'
 import { prefixRationalUnsupported } from './prefix-preflight'
@@ -163,6 +165,16 @@ export class GpuRenderer {
   private staticImageBlurEligible = 0
   private staticImageBlurHits = 0
   private staticImageBlurPixels = 0
+  private displayMaterial?: { source: Texture; key: string; surface: Surface; published: boolean }
+  private displayMaterialBorrowed = false
+  private displayMaterialBuilds = 0
+  private displayMaterialHits = 0
+  private retireDisplayMaterial() {
+    if (this.displayMaterialBorrowed) return
+    const retained = this.displayMaterial
+    this.displayMaterial = undefined
+    if (retained) this.release(retained.surface)
+  }
   private imageXTableBuilds = 0
   private imageXTablePixels = 0
   private imageXTableBytes = 0
@@ -181,19 +193,78 @@ export class GpuRenderer {
     staticImageBlurEligible:this.staticImageBlurEligible,staticImageBlurHits:this.staticImageBlurHits,
     staticImageBlurPixels:this.staticImageBlurPixels,staticImageBlurBytes:this.staticImageBlurs.bytes,
     staticImageBlurEntries:this.staticImageBlurs.count,
+    displayMaterialBuilds:this.displayMaterialBuilds,displayMaterialHits:this.displayMaterialHits,
+    displayMaterialBytes:this.displayMaterial?.surface.texture.bytes || 0,
     backdropReuseFrames:this.backdropReuseFrames,backdropReusePixels:this.backdropReusePixels,
     backdropEligibleFrames:this.backdropEligibleFrames,backdropAdmittedFrames:this.backdropAdmittedFrames } }
   /** Retained subtree pixels have their own cap; they are not scratch. */
-  private get workingBytes() { return this.bytes - (this.driver.captureDisplay ? this.interactionBytes : 0) }
+  private get workingBytes() { return this.bytes - (this.driver.captureDisplay ? this.interactionBytes - this.nestedPrefixBytes : 0) }
   private get interactionBudget() {
     return this.driver.captureDisplay ? 512 * 1024 * 1024 : 64 * 1024 * 1024
   }
   private interactionRoots = new Map<GpuNode, { anchor: Rect; planes: Surface[]; source?: boolean }>()
+  private interactionArithmetic = ''
   private interactionCapturing = false
   private interactionTextures = new Set<Texture>()
   private interactionBytes = 0
   private interactionHits = 0
   private interactionInvalid = false
+  // A single unchanged nested prefix, before the final moving foreground.
+  // Unlike general presentation residency, these four planes also remain in
+  // the common working ledger. Retaining them never buys allocation headroom.
+  private nestedPrefix?: { plan: NestedPrefixPlan; policy: string; planes: Surface[] }
+  private nestedPrefixBytes = 0
+  private nestedPrefixAllowed = true
+  private nestedPrefixPressure = false
+  private retireNestedPrefix() {
+    const old = this.nestedPrefix
+    if (!old) return
+    this.nestedPrefix = undefined
+    for (const { texture } of old.planes) {
+      this.interactionTextures.delete(texture)
+      this.interactionBytes -= texture.bytes
+      this.nestedPrefixBytes -= texture.bytes
+    }
+    // Returning storage to the ordinary ordered pool preserves queued readers;
+    // reclaimScratch still requires its real completion proof before destroy.
+    this.release(...old.planes)
+  }
+  private nestedPrefixPolicy(scopeId: string, targets: Surface[]) {
+    return exactFilterKey([scopeId, targets.map(p => p.rect), this.scene.view,
+      this.scene.width, this.scene.height, this.scene.extent, this.scene.output,
+      this.scene.resolve, this.scene.presentation, this.scene.colorManagement,
+      this.scene.floatCompositing, this.scene.coherentSamples, this.scene.integratedBlur,
+      this.scene.displayFilters, this.scene.displayFilterRadiusLimit, this.scene.softwareRaster, this.driver.name,
+      this.scene.displayImageSource, this.scene.displayMaterialSource, this.driver.displayMath, this.driver.linearLight, this.driver.hdr])
+  }
+  private nestedPrefixMatches(plan: NestedPrefixPlan, policy: string) {
+    const old = this.nestedPrefix
+    return !!old && old.policy === policy && old.plan.lease === plan.lease &&
+      old.plan.scopeId === plan.scopeId && old.plan.selectedId === plan.selectedId &&
+      old.plan.count === plan.count && old.plan.prefixIds.length === plan.prefixIds.length &&
+      old.plan.prefixIds.every((id, i) => id === plan.prefixIds[i]) &&
+      old.plan.sources.length === plan.sources.length &&
+      old.plan.sources.every((entry, i) => entry.id === plan.sources[i].id && entry.node === plan.sources[i].node)
+  }
+  private saveNestedPrefix(plan: NestedPrefixPlan, policy: string, targets: Surface[]) {
+    const needed = targets.reduce((bytes, p) => bytes + p.rect.w * p.rect.h * 16, 0)
+    if (!policy || this.nestedPrefix || targets.length !== 4 || needed > 64 * 1024 * 1024 ||
+      this.interactionBytes + needed > this.interactionBudget || this.overBudget(needed)) return
+    const planes: Surface[] = []
+    try { for (const target of targets) planes.push(this.copyInteractionSource(target)) }
+    catch (error) {
+      this.release(...planes)
+      if (error instanceof Error && error.message === 'GPU 表面内存预算超限') return
+      throw error
+    }
+    this.nestedPrefix = { plan, policy, planes }
+    for (const { texture } of planes) {
+      this.interactionTextures.add(texture)
+      this.interactionBytes += texture.bytes
+      this.nestedPrefixBytes += texture.bytes
+    }
+    recordGpuDiagnostic('cache', { nestedPrefixBuilds: 1, nestedPrefixBytes: needed })
+  }
 
   private stationaryBackdrop?: { lease: object; key: string; plane: Surface }
   private movingBackdrop?: { lease: object; key: string; plane: Surface }
@@ -635,6 +706,7 @@ export class GpuRenderer {
     this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     if (!Number.isSafeInteger(required) || required < 0) throw new Error('无效的 GPU 分配字节数')
     if (this.workingBytes + required <= this.frameBudget) return false
+    if (this.nestedPrefix) this.nestedPrefixPressure = true
     this.staticImageBlurs.discardPending(this.driver.resourceEpoch)
     // Optional retained filter work never expands the common working budget.
     // Pool release preserves ordering when the entry was copied this frame.
@@ -658,6 +730,7 @@ export class GpuRenderer {
     this.evictImages(this.workingBytes + required - this.frameBudget)
     if (this.workingBytes + required > this.frameBudget) {
       this.staticImageBlurs.clear()
+      this.retireDisplayMaterial()
       // Only GPU-completed entries can reach the pool here. Borrowed or
       // in-flight results retain their source/plane pins until their fence.
       for (const list of [...this.free.values()]) for (const texture of [...list]) {
@@ -781,7 +854,7 @@ export class GpuRenderer {
       out.texture,
       u,
       inputs.map((s) => s.texture),
-      region, channels, this.prefixAllowed ? filter : undefined, !!region,
+      region, channels, this.prefixAllowed || filter && this.driver.usesDisplayFilter?.(filter.radius, channels) ? filter : undefined, !!region,
     )
     this.passPixels += region ? region.w * region.h : r.w * r.h
     return out
@@ -1487,7 +1560,7 @@ export class GpuRenderer {
       this.driver.uploadParameters,undefined,n.rect.w*n.rect.h*16,import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS !== '0')
   }
 
-  private paint(n: GpuNode, p: GpuPaint, mask: Surface): Surface {
+  private paint(n: GpuNode, p: GpuPaint, mask: Surface, material?: Surface): Surface {
     let image: Surface | undefined
     let imageLevel = 0
     let imageOrigin: [number, number] = [0, 0]
@@ -1501,7 +1574,7 @@ export class GpuRenderer {
       // Source fidelity and grid coordinates use the same geometric level.
       // Memory pressure must never silently substitute a coarser image.
       imageLevel = this.imageLevel(n, p)
-      image = this.imageFor(uri, imageLevel, intoAtlas, p.adjust)
+      image = material || this.imageFor(uri, imageLevel, intoAtlas, p.adjust)
       if (intoAtlas)
         imageOrigin = this.imageOrigins.get(this.imageKey(uri, imageLevel, true, p.adjust)) ?? [0, 0]
     }
@@ -1825,7 +1898,12 @@ export class GpuRenderer {
     this.checkFrameCurrent()
     this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     const pressure = required > 0 && this.workingBytes + required > this.frameBudget
-    if (pressure) { this.horizontalFilters.clear(); this.staticImageBlurs.discardPending(this.driver.resourceEpoch) }
+    if (pressure) {
+      this.retireDisplayMaterial()
+      if (this.nestedPrefix) this.nestedPrefixPressure = true
+      this.retireNestedPrefix()
+      this.horizontalFilters.clear(); this.staticImageBlurs.discardPending(this.driver.resourceEpoch)
+    }
     // The shared worker replaces two former 256 MiB raster owners. Keep the
     // active interaction working set warm below its bounded pressure line.
     if (!pressure && this.driver.captureDisplay && this.scene.interactionRetained &&
@@ -1960,10 +2038,37 @@ export class GpuRenderer {
     ids: string[],
     targets: Surface[],
     clip?: Surface[],
+    prefix?: { plan: NestedPrefixPlan; policy: string },
   ): Promise<Surface[]> {
     const previousNode = this.activeNode
+    const previousCapturing = this.interactionCapturing
     try {
-    for (let at = 0; at < ids.length; at++) {
+    let begin = 0
+    if (prefix) {
+      if (this.nestedPrefixMatches(prefix.plan, prefix.policy)) {
+        const cached = this.nestedPrefix!
+        // Always restore into mutable frame storage. A later source-over can
+        // write its destination in place and must never modify saved pixels.
+        for (const plane of cached.planes) this.used.add(plane.texture)
+        this.release(...targets)
+        const restored: Surface[] = []
+        try { for (const plane of cached.planes) restored.push(this.copyInteractionSource(plane)) }
+        catch (error) { this.release(...restored); throw error }
+        targets = restored
+        begin = prefix.plan.count
+        this.prefixHits++
+        recordGpuDiagnostic('cache', { nestedPrefixHits: 1, nestedPrefixBytes: this.nestedPrefixBytes })
+      } else this.retireNestedPrefix()
+    }
+    // A cached background must cover the whole fixed capture, including
+    // pixels outside this pose's swept interaction window. Only the moving
+    // suffix may use that window's scissor/halo optimization.
+    if (prefix && begin === 0) this.interactionCapturing = true
+    for (let at = begin; at < ids.length; at++) {
+      if (prefix && at === prefix.plan.count) {
+        this.interactionCapturing = previousCapturing
+        if (!this.nestedPrefix) this.saveNestedPrefix(prefix.plan, prefix.policy, targets)
+      }
       const pause = this.yieldEncoding()
       if (pause) await pause
       const id = ids[at]
@@ -2276,7 +2381,18 @@ export class GpuRenderer {
           this.release(content[i], coverageMask ? undefined : maskTargets[i])
         }
         this.release(...content, ...(coverageMask ? [] : maskTargets))
-      } else layers = await this.drawBundle(n.children, layers, n.clip ? masks : undefined)
+      } else {
+        const plan = this.nestedPrefixAllowed && import.meta.env.VITE_DESIGN_NESTED_PREFIX !== '0'
+          ? planNestedPrefix(this.scene, n.id, this.nativeChanging) : undefined
+        const policy = plan && !n.clip ? this.nestedPrefixPolicy(n.id, layers) : undefined
+        if (this.nestedPrefix && (this.nestedPrefix.plan.scopeId === n.id || plan) &&
+            (!plan || !policy || !this.nestedPrefixMatches(plan, policy))) this.retireNestedPrefix()
+        const needed = plan ? layers.reduce((bytes, p) => bytes + p.rect.w * p.rect.h * 16, 0) : 0
+        const admitted = !!(plan && policy && (this.nestedPrefixMatches(plan, policy) ||
+          needed <= 64 * 1024 * 1024 && this.interactionBytes + needed <= this.interactionBudget && !this.overBudget(needed)))
+        layers = await this.drawBundle(n.children, layers, n.clip ? masks : undefined,
+          admitted && plan && policy ? { plan, policy } : undefined)
+      }
       for (let i = 0; i < 4; i++) {
         await this.reclaimScratch()
         this.sampleIndex = i
@@ -2347,7 +2463,7 @@ export class GpuRenderer {
     }
     this.sampleIndex = undefined
     return targets
-    } finally { this.activeNode = previousNode }
+    } finally { this.activeNode = previousNode; this.interactionCapturing = previousCapturing }
   }
   /** The four sample colors are independent after capturing the shared backdrop.
    * Complete one leaf sample at a time so its layer/masks do not coexist with
@@ -2485,6 +2601,7 @@ export class GpuRenderer {
     const key = exactFilterKey([n.id, n.matrix, n.inverse, n.size, paint, radius,
       input.x, input.w, output.x, output.w, image.rect, this.baseDims(paint.image || ''), 0, origin,
       this.scene.view, this.scene.colorManagement, this.scene.integratedBlur, this.scene.floatCompositing,
+      this.scene.displayImageSource, this.scene.displayMaterialSource, this.scene.displayFilters, this.scene.displayFilterRadiusLimit,
       this.driver.linearLight, this.driver.hdr, this.driver.certifiedFilter])
     return key === undefined ? undefined : { lease, key, image: image.texture }
   }
@@ -2507,7 +2624,8 @@ export class GpuRenderer {
     const { image: _uri, ...paintPolicy } = paint
     const key = exactFilterKey([n.id, n.matrix, n.inverse, n.size, paintPolicy, effects, radius,
       this.scene.view, this.scene.colorManagement, this.scene.integratedBlur, this.scene.floatCompositing,
-      this.scene.coherentSamples, this.scene.compactImageFields, this.scene.displayFilters, this.scene.softwareRaster,
+      this.scene.coherentSamples, this.scene.compactImageFields, this.scene.displayFilters, this.scene.displayFilterRadiusLimit,
+      this.scene.displayImageSource, this.scene.displayMaterialSource, this.scene.softwareRaster,
       this.scene.resolve, this.scene.presentation, this.driver.linearLight, this.driver.hdr, this.driver.certifiedFilter,
       import.meta.env.VITE_DESIGN_IMAGE_RESOLVE_FUSION !== '0', import.meta.env.VITE_DESIGN_WHOLE_IMAGE_FILTER !== '0'])
     return descriptor && key ? { key, descriptor, imageKey: this.imageKey(paint.image, 0, false, paint.adjust) } : undefined
@@ -2520,6 +2638,9 @@ export class GpuRenderer {
     const fills=n.fills.filter(p=>p.visible),paint=fills[0]
     if(fills.length!==1 || paint.kind!=='image' || paint.blend!=='normal' || paint.opacity!==1)return
     const image=this.imageFor(paint.image||'',0,this.imageAtlas,paint.adjust),range=this.driver.imageTableRange(image.texture)
+    // The narrow display sampler uses the original four coordinate phases.
+    // Do not build the exact interpolation table only to bypass it afterwards.
+    if (this.driver.usesDisplayImageSource?.(image.texture)) return
     if(!range || image.rect.x!==0 || image.rect.y!==0 ||
         image.rect.w!==image.texture.width || image.rect.h!==image.texture.height)return
     const clone={...paint},node={...n,rect:input,fills:[clone]},axes:Float32Array[]=[]
@@ -2562,21 +2683,25 @@ export class GpuRenderer {
   }
   private async streamIsolatedFilter(n: GpuNode, targets: Surface[], clip?: Surface[]): Promise<Surface[] | undefined> {
     const effects = n.effects.filter(e => e.visible)
+    const radius = effects[0] ? effects[0].radius * scale(n.matrix) : 0
     if (!this.optimized || !this.driver.managed || this.driver.displayMath || !this.driver.maskRegion ||
-        !this.driver.sequentialSampleResolve || !this.scene.integratedBlur || this.scene.displayFilters ||
-        !this.filterSourceSupported(n) || this.interactionCapturing || this.scene.interactionRetained ||
+        !this.driver.sequentialSampleResolve || !this.scene.integratedBlur || this.displayFilterActive(radius) ||
+        !this.filterSourceSupported(n) ||
         effects.length !== 1 || effects[0].gradientBlur ||
         !(effects[0].kind === 'blur' || effects[0].kind === 'shadow' && effects[0].spread === 0 &&
           effects[0].x === 0 && effects[0].y === 0 && this.driver.exactShadowOver) ||
         n.fills.some(p => p.kind !== 'solid' && p.kind !== 'image')) return
-    const radius = effects[0].radius * scale(n.matrix)
     const wholeCandidate = import.meta.env.VITE_DESIGN_WHOLE_IMAGE_FILTER !== '0'
-    if (!(radius >= (wholeCandidate && effects[0].kind === 'blur' ? 32 : 64) && radius <= 2048)) return
+    if (!(radius > 0 && radius <= 2048)) return
     const output = intersect(n.rect, targets[0].rect)
     if (!output.w || !output.h) return targets
     const reach = Math.ceil(radius) + 1
     const input = intersect(n.rect, {x:output.x-reach,y:output.y-reach,w:output.w+reach*2,h:output.h+reach*2})
     if (!exactBlendLattice([input, output]) || input.w > 8192 || input.h > 8192) return
+    const material = await this.streamDisplayMaterial(n, targets, input, output, clip)
+    if (material) return material
+    if (this.interactionCapturing || this.scene.interactionRetained) return
+    if (radius < (wholeCandidate && effects[0].kind === 'blur' ? 32 : 64)) return
     const staticIdentity = this.staticImageFilterIdentity(n, input, output, radius)
     if (staticIdentity) {
       this.staticImageBlurEligible++
@@ -2749,6 +2874,83 @@ export class GpuRenderer {
       this.filterImageFields = previousFields
     }
   }
+  /** Screen-only material approximation. Keep native geometry, the original
+   * four coordinate phases and painter order. Only an interior opaque image's
+   * single blur is evaluated once in its source lattice, independently of
+   * camera zoom. No exact/finite certificate is attached to the cached result.
+   */
+  private async streamDisplayMaterial(n: GpuNode, targets: Surface[], input: Rect, output: Rect, clip?: Surface[]) {
+    if (!this.scene.displayMaterialSource || import.meta.env.VITE_DESIGN_DISPLAY_MATERIAL_SOURCE !== '1' ||
+        !this.driver.imageTableRange || this.imageMips || this.imageAtlas || this.scene.displayFilters ||
+        this.driver.name !== 'webgpu' || this.driver.hdr || this.driver.displayMath) return
+    const paint = n.fills.filter(p => p.visible)[0]
+    if (!paint?.image || !fullSampleCoverage(n.fill, this.scene.curves, input)) return
+    const image = this.imageFor(paint.image, 0, false, paint.adjust)
+    const plan = planDisplayMaterialSource(this.scene, n, input, image.rect.w, image.rect.h,
+      this.driver.imageTableRange(image.texture))
+    if (!plan) return
+    // Keep the complete screen-space halo away from image-edge clamping.
+    // The original full affine transform remains in the sampling program.
+    const ratio = image.rect.w / n.size[0], m = n.inverse, margin = plan.radius + 2
+    for (const x of [input.x - 1, input.x + input.w + 1]) for (const y of [input.y - 1, input.y + input.h + 1]) {
+      const sx = (m[0] * x + m[2] * y + m[4]) * ratio
+      const sy = (m[1] * x + m[3] * y + m[5]) * ratio
+      if (sx < margin || sy < margin || sx > image.rect.w - margin || sy > image.rect.h - margin) return
+    }
+    const key = exactFilterKey([plan.radius, image.rect, this.scene.colorManagement,
+      this.driver.linearLight, this.driver.hdr, this.driver.certifiedFilter])
+    if (!key) return
+    let cached = this.displayMaterial
+    if (!cached || cached.source !== image.texture || cached.key !== key) {
+      this.retireDisplayMaterial()
+      const required = image.rect.w * image.rect.h * 16 * 2
+      this.pendingImageTableSources.add(image.texture)
+      try {
+        await this.reclaimScratch(required)
+        this.checkFrameCurrent()
+        if (this.workingBytes + required > this.frameBudget) return
+        // The cache lives in source pixels, outside the current pose window.
+        // Never apply a screen-space interaction scissor to its H/V passes.
+        const capturing = this.interactionCapturing
+        let surface: Surface
+        try { this.interactionCapturing = true; surface = this.blur(image, plan.radius / 2, true) }
+        finally { this.interactionCapturing = capturing }
+        if (surface === image) return
+        cached = this.displayMaterial = { source: image.texture, key, surface, published: false }
+        this.displayMaterialBuilds++
+      } finally { this.pendingImageTableSources.delete(image.texture) }
+    } else this.displayMaterialHits++
+    this.used.add(cached.surface.texture); this.touch(cached.surface.texture)
+    this.displayMaterialBorrowed = true
+    let resolved: Surface | undefined
+    try {
+      const node = { ...n, rect: output }, samplePaint = { ...paint }
+      for (let sample = 0; sample < 4; sample++) {
+        await this.reclaimScratch()
+        const pause = this.yieldEncoding(); if (pause) await pause
+        this.sampleIndex = sample
+        const mask = this.acquire(output, !!this.driver.createBinaryCoverage)
+        let layer: Surface | undefined
+        try {
+          this.driver.maskRegion!(n.fill, mask.texture, sample, output)
+          layer = this.paint(node, samplePaint, mask, cached.surface)
+          const next = this.run(48, output, resolved ? [layer, resolved] : [layer], u => { u[17] = sample })
+          this.release(resolved); resolved = next
+        } finally { this.release(mask, layer); this.imageGrids.delete(samplePaint) }
+      }
+      this.sampleIndex = undefined
+      for (let sample = 0; sample < 4; sample++) {
+        await this.reclaimScratch()
+        targets[sample] = this.merge(resolved!, targets[sample], n.blend, n.opacity, clip?.[sample])
+      }
+      this.orderedEffectLayers++
+      return targets
+    } finally {
+      this.sampleIndex = undefined
+      this.release(resolved)
+      this.displayMaterialBorrowed = false
+    }
+  }
   private async applySampleEffects(
     n: GpuNode,
     planes: Surface[],
@@ -2790,7 +2992,7 @@ export class GpuRenderer {
         }
       } else if (fx.kind === 'shadow' || fx.kind === 'inner-shadow') {
         const scalarAlpha = !!(this.optimized && this.driver.managed && this.driver.scalarAlphaFilter &&
-          this.scene.integratedBlur && !this.scene.displayFilters && fx.spread === 0)
+          this.scene.integratedBlur && !this.displayFilterActive(fx.radius * scale(n.matrix)) && fx.spread === 0)
         const resolved = resolvedFirstBlur || this.run(scalarAlpha ? 49 : 23, n.rect, planes, undefined, 15, undefined, scalarAlpha)
         resolvedFirstBlur = undefined
         const inner = fx.kind === 'inner-shadow'
@@ -2946,13 +3148,20 @@ export class GpuRenderer {
     const certified=this.certifiedKernel(radius)
     return this.run(22,output,[input,kernel,...(certified?[certified]:[])],u=>u.set([radius,axis,0,1],36),15,{kind:'tent',radius},false,destination)
   }
+  private displayFilterActive(radius: number, channels = 15) {
+    if (!this.scene.displayFilters || !this.driver.managed || !this.driver.supportsDisplayFilters) return false
+    return this.driver.usesDisplayFilter ? this.driver.usesDisplayFilter(radius, channels) :
+      this.scene.displayFilterRadiusLimit === undefined
+  }
   private blur(input: Surface, sigma: number, clampEdges = false, alphaOnly = false): Surface {
     // Every finite normalized kernel maps the all-+0 field to itself, with
     // either transparent or clamped edges. Filter pipelines can keep using
     // physical inputs without allocating a transparent expansion first.
     if (input.texture.transparentZero) return input
+    const channels = this.optimized && this.driver.managed && alphaOnly ? 8 : 15
+    const displayFilter = this.displayFilterActive(sigma * 2, channels)
     const scalarAlpha = this.optimized && alphaOnly && this.driver.managed &&
-      this.driver.scalarAlphaFilter && this.scene.integratedBlur && !this.scene.displayFilters
+      this.driver.scalarAlphaFilter && this.scene.integratedBlur && !displayFilter
     if ((input.texture.uniformColor || input.texture.scalarCoverage && !scalarAlpha) && sigma > 0) {
       // Filter kernels have independent layouts. Expand losslessly before
       // entering them rather than letting R32F's default alpha become one.
@@ -2960,8 +3169,7 @@ export class GpuRenderer {
       if(result!==expanded)this.release(expanded)
       return result
     }
-    const channels = this.optimized && this.driver.managed && alphaOnly ? 8 : 15
-    if (this.scene.displayFilters && this.driver.managed && this.driver.supportsDisplayFilters && this.scene.integratedBlur) {
+    if (displayFilter && this.scene.integratedBlur) {
       const radius = sigma * 2
       if (radius <= 0) return input
       const kernel = this.filterKernel('display-tent', radius, () => {
@@ -2970,8 +3178,8 @@ export class GpuRenderer {
         weights.forEach((weight, i) => { data[i * 4] = weight })
         return data
       }, values => [256, values.length / (256 * 4)])
-      const horizontal = this.run(22, input.rect, [input, kernel], u => u.set([radius, 0, clampEdges ? 1 : 0, 1], 36), channels)
-      const vertical = this.run(22, input.rect, [horizontal, kernel], u => u.set([radius, 1, clampEdges ? 1 : 0, 1], 36), channels)
+      const horizontal = this.run(22, input.rect, [input, kernel], u => u.set([radius, 0, clampEdges ? 1 : 0, 1], 36), channels, { kind: 'tent', radius })
+      const vertical = this.run(22, input.rect, [horizontal, kernel], u => u.set([radius, 1, clampEdges ? 1 : 0, 1], 36), channels, { kind: 'tent', radius })
       this.release(horizontal)
       return vertical
     }
@@ -3630,28 +3838,45 @@ export class GpuRenderer {
     // Cancellation requires an explicit encoder-abandon/completion boundary.
     // WebGL and older drivers retain their existing completed-frame checks.
     this.frameCurrent = this.driver.abortFrameAndReleaseFilterScratch ? isCurrent : undefined
+    this.nestedPrefixPressure = false
     try { this.checkFrameCurrent(); return await this.renderAttempt(scene, readback, present) }
     catch (error) {
       this.horizontalFilters.clear()
       const reserved = this.driver.scratchBytes || 0
-      if (!(error instanceof Error) || error.message !== 'GPU 表面内存预算超限' || !reserved || !this.driver.abortFrameAndReleaseFilterScratch) throw error
+      if (!(error instanceof Error) || error.message !== 'GPU 表面内存预算超限' ||
+          (!reserved && !this.nestedPrefixPressure) || !this.driver.abortFrameAndReleaseFilterScratch) throw error
       // Drop unsubmitted commands, wait for submitted references, then retire
       // scratch. The original exact graph gets one attempt at its old capacity.
       await this.abortFrameAndReleaseFilterScratch()
       if (this.driver.scratchBytes) throw new Error('Prefix scratch was not retired after frame abort')
-      this.prefixAllowed = false
+      this.prefixAllowed = !reserved
+      this.nestedPrefixAllowed = false
       console.debug('DESIGN_GPU_PREFIX_BUDGET_FALLBACK ' + JSON.stringify({ reserved, extent: scene.extent }))
       try { return await this.renderAttempt(scene, readback, present) }
-      finally { this.prefixAllowed = true }
+      finally { this.prefixAllowed = true; this.nestedPrefixAllowed = true }
     } finally { this.frameCurrent = undefined }
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
+    // A display sampler never changes exact readback/export/reference output,
+    // even when a caller reuses a previously displayed compiled scene object.
+    if (scene.displayImageSource && (readback || !present || this.driver.hdr))
+      scene = { ...scene, displayImageSource: false }
+    if (scene.displayMaterialSource && (readback || !present || this.driver.hdr))
+      scene = { ...scene, displayMaterialSource: false }
+    if (!scene.displayMaterialSource) this.retireDisplayMaterial()
+    if (scene.displayFilterRadiusLimit !== undefined && (readback || !present || this.driver.hdr))
+      scene = { ...scene, displayFilters: false, displayFilterRadiusLimit: undefined }
+    const arithmetic = JSON.stringify([!!scene.displayFilters, scene.displayFilterRadiusLimit ?? null,
+      !!scene.displayImageSource, !!scene.displayMaterialSource])
+    if (this.interactionArithmetic && this.interactionArithmetic !== arithmetic) this.interactionInvalid = true
+    this.interactionArithmetic = arithmetic
     this.horizontalFilters.begin(scene.filterBatchLease)
     // A tile origin/crop is part of each entry, not a reason to discard other
     // completed tiles. Zoom and arithmetic-policy changes retire the batch.
     this.staticImageBlurs.begin(import.meta.env.VITE_DESIGN_STATIC_IMAGE_BLUR_CACHE === '1' ? exactFilterKey([
       scene.view.zoom, scene.colorManagement, scene.floatCompositing, scene.coherentSamples, scene.integratedBlur,
-      scene.compactImageFields, scene.displayFilters, scene.softwareRaster, scene.resolve?.scale, scene.presentation?.scale,
+      scene.compactImageFields, scene.displayFilters, scene.displayFilterRadiusLimit,
+      scene.displayImageSource, scene.displayMaterialSource, scene.softwareRaster, scene.resolve?.scale, scene.presentation?.scale,
       this.driver.name, this.driver.linearLight, this.driver.hdr, this.driver.certifiedFilter,
       import.meta.env.VITE_DESIGN_IMAGE_AXES !== '0', import.meta.env.VITE_DESIGN_STREAM_IMAGE_FIELDS !== '0',
       import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE !== '0', import.meta.env.VITE_DESIGN_WHOLE_IMAGE_FILTER !== '0',
@@ -3695,6 +3920,8 @@ export class GpuRenderer {
         while(parent){this.nativeChanging.add(parent);parent=index.parents.get(parent)}}
     }
     const retainRoots = this.optimized && this.driver.managed && scene.interactionRetained === true
+    if (this.interactionInvalid || !retainRoots || this.nestedPrefix?.plan.lease !== scene.interactionLease)
+      this.retireNestedPrefix()
     // Canvas tiles and transient movement share this renderer/device. A
     // settled tile must not evict the selection's warmed subtree textures.
     // The next interaction scene validates identity and retires stale roots.
@@ -3855,6 +4082,7 @@ export class GpuRenderer {
         this.bytes += (this.driver.scratchBytes || 0) - finishingScratch
       }
       completed = true
+      if (this.displayMaterial) this.displayMaterial.published = true
       this.horizontalFilters.finish(!this.frameCurrent || this.frameCurrent())
       this.staticImageBlurs.finish(!this.frameCurrent || this.frameCurrent(), this.driver.completedResourceEpoch)
       return {
@@ -3924,7 +4152,12 @@ export class GpuRenderer {
       this.constantTargets.clear()
       this.aliases.clear()
       this.releasedAliases = new WeakSet()
-      if (!completed) { this.horizontalFilters.clear(); this.staticImageBlurs.finish(false, this.driver.completedResourceEpoch); this.coverage.clear(); this.materialFields.clear(); this.interactionInvalid = true }
+      if (!completed) {
+        // An abort may advance the resource-retirement epoch even after
+        // discarding an unsubmitted encoder. That never publishes its pixels.
+        if (this.displayMaterial && !this.displayMaterial.published) this.retireDisplayMaterial()
+        this.retireNestedPrefix(); this.horizontalFilters.clear(); this.staticImageBlurs.finish(false, this.driver.completedResourceEpoch); this.coverage.clear(); this.materialFields.clear(); this.interactionInvalid = true
+      }
       for (const texture of this.coordinateMaps) {
         this.busy.delete(texture)
         this.used.delete(texture)
@@ -3945,7 +4178,7 @@ export class GpuRenderer {
       this.replayParameters = undefined
       for (const texture of [...this.busy])
         if (!this.coverage.has(texture) && !this.materialFields.has(texture) && !this.interactionTextures.has(texture) &&
-            !this.horizontalFilters.has(texture) && !this.staticImageBlurs.has(texture))
+            !this.horizontalFilters.has(texture) && !this.staticImageBlurs.has(texture) && this.displayMaterial?.surface.texture !== texture)
           this.release({ texture, rect: rect(0, 0, texture.width, texture.height) })
       this.sampleIndex = undefined
       this.masks.clear()
@@ -3955,11 +4188,13 @@ export class GpuRenderer {
     }
   }
   dispose() {
+    this.displayMaterial = undefined
     this.horizontalFilters.clear()
     this.staticImageBlurs.dispose()
     this.coefficientBytes.clear()
     this.encodeYield.dispose()
     this.interactionPrefix = undefined
+    this.nestedPrefix = undefined; this.nestedPrefixBytes = 0
     this.stationaryBackdrop = undefined
     this.interactionRoots.clear(); this.interactionTextures.clear(); this.interactionBytes = 0
     this.movingBackdrop=undefined

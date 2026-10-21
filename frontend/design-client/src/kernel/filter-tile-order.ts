@@ -11,7 +11,9 @@ export type FilterColumnSupport = { sourceScale: number; sourceRows: number }
  * AABB guess. This does not certify a cache hit: final upload finiteness,
  * memory admission and exact source identity remain renderer decisions. */
 export function compiledFilterColumnSupport(scene: GpuScene, tile: RasterTile): FilterColumnSupport | undefined {
-  if (!scene.floatCompositing || !scene.coherentSamples || !scene.integratedBlur || scene.displayFilters ||
+  const bounded = typeof scene.displayFilterRadiusLimit === 'number' &&
+    Number.isFinite(scene.displayFilterRadiusLimit) && scene.displayFilterRadiusLimit > 0 && scene.displayFilterRadiusLimit <= 32
+  if (!scene.floatCompositing || !scene.coherentSamples || !scene.integratedBlur || scene.displayFilters && !bounded ||
       scene.interactionRetained || scene.softwareRaster || !exactBlendLattice([scene.extent])) return
   const sourceScale = scene.view.zoom / tile.zoom
   if (sourceScale !== 1 && sourceScale !== 2) return

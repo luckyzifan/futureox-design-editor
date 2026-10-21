@@ -39,6 +39,25 @@ Performance work must preserve authored semantics, typography, transforms, clipp
 
 CPU fallback must use the existing exact-frame handoff and handle missing adapters/device loss without reusing a GPU-transferred canvas as a CPU canvas. Cancellation or invalid input is not a rendering failure to hide. SDR presentation must visibly disclose retained HDR/float document data; HDR exports and data preservation do not prove HDR display output.
 
+The desktop screen tier may use the existing four correlated samples at physical
+screen density (`figmaSubpixel`) independently of export supersampling. Keep
+`desktopFullMath` enabled: screen sampling alone does not authorize effect
+omission, single-plane coverage, document float quantization or changed layout.
+Explicit readback/reference, pixel preview, HDR and exports keep their requested
+precision. Display quality is a separate cache identity, not an exact-output
+certificate. Compare screen appearance and temporal stability on device; compare
+same-tier cache/transport changes and exact exports strictly. Native image
+arithmetic, if enabled, is a separately admitted finite-image display operator;
+it must retain private upload-resource/range proofs, preserve the exact fallback,
+and must not replace unrelated blend, coverage or filter arithmetic.
+
+Nested pose reuse must retain the original painter order and all background
+dependencies. A stored prefix owns immutable sample planes and restores writable
+copies. Its storage remains in the working-memory ledger. Cumulative pose windows
+are anchored to the initial capture, including repeated absolute poses on release;
+the last recompiled node is not a stable origin. Input acknowledgements must refer
+to the rendered snapshot and owner, never merely the latest received sequence.
+
 VITE_DESIGN_DYNAMIC_UNIFORMS and VITE_DESIGN_KERNEL_CACHE remain default-off (enabled only by the explicit value 1) pending a separate actual-device gate. Their implementation gates are in frontend/design-client/src/kernel/gpu/webgpu.ts and renderer.ts respectively. Before enabling, verify pixel parity on difficult materials, real memory/resource lifetime, device loss/cancellation, interaction smoothness and supported platforms. CPU mocks or source contracts cannot discharge this gate. Ordinary established GPU rendering is a separate path, not disabled by this requirement.
 
 History/sidebar, layer/property changes and canvas gestures require pending-input/dirty-state guards and real interaction regression coverage. Hook/jsdom tests establish event/state behavior only; actual browser/Electron layout, focus, pointer behavior and visual usability remain on-device acceptance items.

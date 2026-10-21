@@ -73,6 +73,9 @@ export const renderExecutionPolicy = hostRenderPolicy(
   hdrCompositingSetting(),
   imageMipsSetting(),
   imageAtlasSetting(),
+  // Screen sampling is pinned at launch. It does not relax the
+  // desktop effect/coverage contract or enable native display arithmetic.
+  import.meta.env.VITE_DESIGN_DESKTOP_DISPLAY !== '0',
 )
 export function backendPreference(): BackendPreference {
   // One product renderer. Legacy per-browser choices must not silently put a

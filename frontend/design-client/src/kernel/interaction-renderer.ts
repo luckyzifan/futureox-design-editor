@@ -2,6 +2,7 @@ import type { Bounds, DesignDocument, Matrix } from '../model'
 import { translateOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
 import type { CanvasCamera } from '../canvas-camera'
 import { allowsReducedSampling } from './render-quality'
+import { renderFailureFields } from './render-failure-telemetry'
 import { interactionCaptureTiles, recoverableInteractionBudget } from './interaction-capture-tiles'
 import { canvasRasterPlan } from './canvas-raster-plan'
 import { tilePlacementAtView } from './tile-preview'
@@ -33,6 +34,12 @@ type ResidentInteraction = {
   tiledExact?:boolean
   retainedFallback?:boolean
 }
+type IdleWarmContext = {
+  resident: ResidentInteraction; document: DesignDocument; pageId: string; ids: string[]
+  epoch: number; generation: number; viewportRevision: number
+  view: CanvasCamera; width: number; height: number; dpr: number
+  profile: KernelOptions['rasterProfile']; backend: BackendPreference | undefined
+}
 
 /** A bounded, kernel-rendered set of isolated layer intervals. It is reusable
  * outside the original viewport and preserves order across board overlap.
@@ -47,6 +54,7 @@ export class InteractionRenderer {
   private nextGeneration() {
     // A shared worker may serve other interaction owners. Retire only requests
     // issued by this obsolete capture, not the entire interaction channel.
+    this.cancelIdleWarmTimer(); this.idleWarmCapture = undefined
     this.handoff = undefined
     this.captureAbort.abort(); this.captureAbort = new AbortController()
     return ++this.generation
@@ -66,6 +74,12 @@ export class InteractionRenderer {
   private liveDeferred = false
   private viewport?: { view: CanvasCamera; width: number; height: number; dpr: number }
   private viewportRevision = 0
+  private lastSettledDocument?: DesignDocument
+  private idleWarmTimer?: ReturnType<typeof setTimeout>
+  private idleWarmWaiting?: IdleWarmContext
+  private idleWarmCapture?: IdleWarmContext
+  private idleWarmAttempt?: IdleWarmContext
+  private idleWarmFailed?: IdleWarmContext
   private inputs = new WeakMap<DesignDocument,{sequence:number;at:number}>()
   private lastInput = {sequence:0,at:0}
   private lastPresentedInput = {sequence:0,at:0}
@@ -109,7 +123,8 @@ export class InteractionRenderer {
   readonly sampleTrace: { documentForks?:number; total: number; prepare: number; load: number; compile: number; graph: number; finish: number; reused: boolean; active: boolean; backend?:string; reason?:string; scale?:number; pixels?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number }[] = []
   readonly control: GpuMoveControl
 
-  constructor(private readonly changed: () => void, private readonly sharedClient?: KernelClient) {
+  constructor(private readonly changed: () => void, private readonly sharedClient?: KernelClient,
+    private readonly allowIdleWarm = false) {
     this.control = {
       isActive: () => !!this.resident?.active,
       apply: (document, patches) => {
@@ -120,6 +135,9 @@ export class InteractionRenderer {
         const fast=import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'
         const offsets = interactionPatchedOffsets(r.plan, document, patches,fast?this.baseOffsets(r.plan,document):undefined)
         if (!offsets) return null
+        // A useful same-context capture can finish into the first/latest pose
+        // handoff. Only an unstarted idle timer is cancelled by this gesture.
+        this.cancelIdleWarmTimer(); this.idleWarmCapture = undefined
         // A new accepted gesture owns new capture work. The previous complete
         // pixels remain available while an aborted predecessor unwinds.
         this.handoff = undefined
@@ -228,6 +246,55 @@ export class InteractionRenderer {
     return !!this.resident && ids.length === this.resident.plan.ids.length && ids.every(id => this.resident!.plan.ids.includes(id))
   }
 
+  private cancelIdleWarmTimer() {
+    if (this.idleWarmTimer !== undefined) clearTimeout(this.idleWarmTimer)
+    this.idleWarmTimer = undefined; this.idleWarmWaiting = undefined
+  }
+  private sameIdleWarmContext(context: IdleWarmContext, props: InteractionProps | undefined,
+    pageId: string, profile: KernelOptions['rasterProfile'], backend: BackendPreference | undefined) {
+    const viewport = this.viewport
+    return !this.disposed && !!props && !!viewport && this.resident === context.resident &&
+      this.generation === context.generation && this.viewportRevision === context.viewportRevision &&
+      props.document === context.document && props.epoch === context.epoch && pageId === context.pageId &&
+      profile === context.profile && backend === context.backend &&
+      props.selection.length === context.ids.length && props.selection.every((id, i) => id === context.ids[i]) &&
+      viewport.view.x === context.view.x && viewport.view.y === context.view.y && viewport.view.zoom === context.view.zoom &&
+      viewport.width === context.width && viewport.height === context.height && viewport.dpr === context.dpr
+  }
+  private scheduleIdleWarm() {
+    const props = this.props, resident = this.resident, viewport = this.viewport
+    if (!this.allowIdleWarm || import.meta.env.VITE_DESIGN_NESTED_IDLE_WARM !== '1' || !this.sharedClient ||
+        this.profile !== 'figmaSubpixel' || this.backend !== 'webgpu' && this.backend !== 'auto' ||
+        !props || !resident?.live || !viewport || this.disposed ||
+        props.active || resident.active || this.handoff || this.error || this.liveRunning || this.livePending ||
+        this.lastSettledDocument !== props.document || resident.plan.document !== props.document ||
+        this.sessionEpoch !== props.epoch || !this.sameIds(props.selection) ||
+        resident.tiles.length > 0 && !this.inlineDisabled) return
+    const page = props.document.pages.find(page => page.id === resident.plan.pageId)
+    if (!page || !props.selection.length || props.selection.some(id => page.children.includes(id))) return
+    const same = (context: IdleWarmContext | undefined) => !!context &&
+      this.sameIdleWarmContext(context, props, resident.plan.pageId, this.profile, this.backend)
+    if (same(this.idleWarmWaiting) || same(this.idleWarmAttempt)) return
+    this.cancelIdleWarmTimer()
+    const context: IdleWarmContext = { resident, document: props.document, pageId: resident.plan.pageId,
+      ids: [...props.selection], epoch: props.epoch, generation: this.generation, viewportRevision: this.viewportRevision,
+      view: { ...viewport.view }, width: viewport.width, height: viewport.height, dpr: viewport.dpr,
+      profile: this.profile, backend: this.backend }
+    this.idleWarmWaiting = context
+    this.idleWarmTimer = setTimeout(() => {
+      if (this.idleWarmWaiting !== context) return
+      this.idleWarmTimer = undefined; this.idleWarmWaiting = undefined
+      if (!this.sameIdleWarmContext(context, this.props, context.pageId, this.profile, this.backend) ||
+          this.lastSettledDocument !== context.document || this.props!.active || resident.active ||
+          this.liveRunning || this.livePending || this.handoff || this.error ||
+          resident.tiles.length > 0 && !this.inlineDisabled) return
+      // One attempt per stable context, including failures. This moves work to
+      // an idle moment; it neither removes GPU work nor acknowledges an input.
+      this.idleWarmAttempt = context; this.idleWarmCapture = context; this.idleWarmFailed = undefined
+      this.renderLive(context.document)
+    }, 150)
+  }
+
   prepare(props: InteractionProps | undefined, pageId: string, view: CanvasCamera, dpr: number,
     profile: KernelOptions['rasterProfile'], backend: BackendPreference, settledDocument?: DesignDocument,
     size?: { width: number; height: number }) {
@@ -238,6 +305,21 @@ export class InteractionRenderer {
       previousViewport.view.x !== view.x || previousViewport.view.y !== view.y || previousViewport.dpr !== dpr ||
       previousViewport.width !== size.width || previousViewport.height !== size.height)
     if (cameraChanged) this.viewportRevision++
+    this.lastSettledDocument = settledDocument
+    const idleWarm = this.idleWarmCapture || this.idleWarmWaiting
+    if (idleWarm && (!this.sameIdleWarmContext(idleWarm, props, pageId, profile, backend) ||
+        !props?.active && !this.resident?.active && settledDocument !== idleWarm.document)) {
+      const capture = this.idleWarmCapture
+      this.cancelIdleWarmTimer()
+      if (capture) {
+        this.nextGeneration()
+        this.livePending = this.liveRequested = undefined
+        this.pending = undefined; this.pendingDensity = undefined
+        this.liveCancelled = this.liveDeferred = true
+      }
+    } else if (props?.active) {
+      this.cancelIdleWarmTimer(); this.idleWarmCapture = undefined
+    }
     if (cameraChanged && this.resident?.live) {
       if (!props?.active && !this.resident.active && (this.liveRunning || this.livePending)) {
         // Idle selection warm-up must not finish an obsolete camera ahead of
@@ -329,7 +411,7 @@ export class InteractionRenderer {
         this.promoteRetained(candidate || props.document); return
       }
       if (offsets && r.active && settledDocument !== props.document && !needsDensity && !needsViewport) { r.offsets = offsets; return }
-      if (r.plan.document === props.document && !needsDensity && !needsViewport) return
+      if (r.plan.document === props.document && !needsDensity && !needsViewport) { this.scheduleIdleWarm(); return }
       if (offsets && settledDocument === props.document && !needsDensity && !needsViewport && !cameraChanged) {
         // The final pose already owns the right pixels/programs. Publishing the
         // authored translation must not synchronously rebuild scene bounds and
@@ -338,6 +420,7 @@ export class InteractionRenderer {
         // drag; any content/policy/viewport change still revokes this reuse.
         r.offsets = offsets; r.active = false
         this.liveAuthored = props.document
+        this.scheduleIdleWarm()
         return
       }
       if (settledDocument === props.document) r.active = false
@@ -385,7 +468,7 @@ export class InteractionRenderer {
         // resident when it settles. Install its control/scope now, but give the
         // exact canvas the queue until an actual gesture needs live pixels.
         if (props.active) this.renderLive(props.document)
-        else this.liveDeferred = true
+        else { this.liveDeferred = true; this.scheduleIdleWarm() }
       } else { this.releaseClient() }
       props.onReady(); this.changed(); return
     }
@@ -716,10 +799,32 @@ export class InteractionRenderer {
               reused: !!result.compileCacheHit, active: !!this.props?.active, backend:result.backend,reason:result.reason,scale,pixels:width*height })
             if (this.sampleTrace.length > 120) this.sampleTrace.shift()
           }
+          // Pointer tasks can replace this field across the awaited capture.
+          const pending = this.livePending as DesignDocument | undefined
+          const pendingInput = pending && this.inputs.get(pending)
+          if (import.meta.env.VITE_DESIGN_RESIDENT_PENDING_POSE !== '0' && pending && pendingInput &&
+              pendingInput.sequence > input.sequence && current() &&
+              this.viewportRevision === viewportRevision && resident.workerPoses &&
+              !this.inlineDisabled && this.sharedClient && result.gpuTile &&
+              interactionOffsets({ ...resident.plan, document }, pending)) {
+            // Inputs arriving during the first capture already belong to its
+            // warmed worker session. Send their absolute transforms there;
+            // another whole capture would discard the lease and static prefix.
+            // Only this pending snapshot's input may be acknowledged. Camera
+            // or content changes keep the ordinary capture/rebase path.
+            this.livePending = undefined
+            this.sharedClient.moveResidentInteraction(result.gpuTile,
+              Object.fromEntries(resident.plan.ids.map(id => [id, pending.nodes[id].transform])), pendingInput)
+          }
           this.props?.onReady(); this.changed()
         }
       } catch (error) {
         if (current()) {
+          const idleWarm = this.idleWarmCapture
+          const failedIdleWarm = idleWarm?.generation === token && idleWarm.resident === resident &&
+            !resident.active && !this.props?.active
+          const deviceLost = renderFailureFields(error).failureCategory === 4 ||
+            /device lost|GPU device|has been lost|设备已丢失/i.test(String(error))
           if (String(error).includes('PREVIEW_CANCELLED')) {
             // Cancellation is an interrupted preview, not a rendering failure.
             // Clear the request dedup fence so a later prepare or pointer input
@@ -727,6 +832,12 @@ export class InteractionRenderer {
             // and would turn repeated cancellations into a self-retry loop.
             this.liveCancelled = true
             this.liveRequested = undefined
+          } else if (failedIdleWarm && !deviceLost) {
+            // Optional preparation must not disable a selection before its
+            // first gesture. Keep this context's failed attempt (no idle loop),
+            // while a real gesture can retry the ordinary capture/fallback.
+            this.idleWarmFailed = idleWarm
+            this.liveDeferred = true; this.liveRequested = undefined
           } else {
             this.error = String(error)
             this.props?.onReady()
@@ -736,6 +847,8 @@ export class InteractionRenderer {
       }
       finally {
         this.liveRunning = false
+        if (this.idleWarmCapture?.generation === token && this.idleWarmCapture.resident === resident)
+          this.idleWarmCapture = undefined
         // Keep the warmed WASM/font state for the next input sample. The client
         // pool can park this idle GPU without destroying that state when an
         // export or another consumer needs its device slot.
@@ -749,6 +862,8 @@ export class InteractionRenderer {
     this.client = null
   }
   private closeResidents() {
+    this.cancelIdleWarmTimer(); this.idleWarmCapture = undefined
+    this.idleWarmAttempt = this.idleWarmFailed = undefined
     if(this.resident?.tiles[0]?.gpuTile)this.sharedClient?.stopResidentInteraction(this.resident.tiles[0].gpuTile)
     for (const tile of this.resident?.tiles || []) tile.bitmap?.close()
     this.resident = undefined; this.livePending = undefined; this.liveRequested = undefined; this.liveAuthored = undefined

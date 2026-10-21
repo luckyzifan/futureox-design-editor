@@ -12,10 +12,16 @@ import { tileBatchPrepareViewport } from './tile-prepare-viewport'
 
 const worker = vi.hoisted(() => ({ clients: [] as any[], calls: [] as any[], maintenance: [] as any[],
   plannedScales: [] as number[], plannedPhases: [] as { x: number; y: number }[],
+  navigationEnabled: [] as boolean[], dpr: 1, dynamicPlan: false,
+  policy: { cpuOnly: false, hdrCompositing: false, imageMips: false, imageAtlas: false,
+    desktopFullMath: false, desktopDisplay: false },
   plan: undefined as RasterTile[] | undefined,
   zooming: false, cameraMoving: undefined as boolean | undefined, forceLod: false,
   navigation: { active: false, suspended: false, sample: undefined as any } }))
-vi.mock('./use-navigation-zoom', () => ({ useNavigationZoom: () => worker.navigation }))
+vi.mock('./use-navigation-zoom', () => ({ useNavigationZoom: (_view: unknown, _identity: unknown, enabled: boolean) => {
+  worker.navigationEnabled.push(enabled)
+  return enabled ? worker.navigation : { ...worker.navigation, active: false, sample: undefined, panEnabled: false }
+} }))
 vi.mock('./use-zoom-activity', () => ({ useZoomActivity: () => worker.zooming,
   useCameraActivity: () => worker.cameraMoving ?? worker.zooming }))
 // This harness invokes the parent's hooks, never the child GPU compositor.
@@ -30,7 +36,7 @@ vi.mock('./canvas-raster-plan', async original => {
   return { ...actual, canvasLodScale: (...args: any[]) => worker.forceLod ? .125 : actual.canvasLodScale(...args) }
 })
 vi.mock('./client', () => ({
-  renderExecutionPolicy: { hdrCompositing: false },
+  renderExecutionPolicy: worker.policy,
   KernelClient: class {
     onDamage?: (damage: unknown) => void
     recordViewportDiagnostic = vi.fn()
@@ -50,7 +56,8 @@ vi.mock('./client', () => ({
 }))
 vi.mock('./module', () => ({ initializeKernelModule: async () => {} }))
 vi.mock('./tile-plan-aligned', () => {
-  const planTilesAligned = (_bounds?: unknown, scale?: number) => worker.plan ?? (worker.forceLod && scale === .125
+  const planTilesAligned = (bounds?: any, scale?: number, limit?: number, phase?: { x: number; y: number }) =>
+    worker.dynamicPlan ? planTiles(bounds, scale!, limit, phase) : worker.plan ?? (worker.forceLod && scale === .125
     ? Array.from({ length: 8 }, (_, i) => ({ key: `.5:0:0:${i % 4}:${Math.floor(i / 4)}`,
       x: (i % 4) * 512 - 1, y: Math.floor(i / 4) * 512 - 1, width: 514, height: 514, zoom: .5 })) : [
     { key: '4:0:0:0:0', x: -1, y: -1, width: 514, height: 514, zoom: 4 },
@@ -64,14 +71,14 @@ vi.mock('./tile-plan-aligned', () => {
     planTilesWithPrefetchRim: (_bounds: unknown, scale: number, _limit: number, phase: { x: number; y: number }) => {
       worker.plannedScales.push(scale)
       worker.plannedPhases.push(phase)
-      const viewport = planTilesAligned().map(tile => !phase.x && !phase.y ? tile : { ...tile,
+      const viewport = planTilesAligned(_bounds, scale, _limit, phase).map(tile => worker.dynamicPlan || !phase.x && !phase.y ? tile : { ...tile,
         key: `${tile.key}/phase:${phase.x}:${phase.y}`, phaseX: phase.x, phaseY: phase.y })
       return { viewport, rim: [], cacheLimitSkipped: 0 }
     },
   }
 })
 vi.mock('./presentation', async importOriginal => ({
-  ...await importOriginal<any>(), useDevicePixelRatio: () => 1,
+  ...await importOriginal<any>(), useDevicePixelRatio: () => worker.dpr,
   useDisplayCapability: () => undefined,
 }))
 
@@ -150,6 +157,10 @@ afterEach(() => {
   worker.plan = undefined
   worker.navigation = { active: false, suspended: false, sample: undefined }
   worker.forceLod = false; worker.maintenance.length = 0
+  worker.navigationEnabled.length = 0; worker.dpr = 1; worker.dynamicPlan = false
+  Object.assign(worker.policy, { cpuOnly: false, hdrCompositing: false, imageMips: false, imageAtlas: false,
+    desktopFullMath: false, desktopDisplay: false })
+  vi.unstubAllEnvs()
   vi.unstubAllGlobals()
 })
 
@@ -1136,4 +1147,143 @@ test('pending optional preview survives raw pan within its sample and cancels on
   worker.calls[0].resolve(); await settleRejected()
   expect(worker.calls).toHaveLength(2)
   expect(worker.calls[1].signal.aborted).toBe(false)
+})
+
+/** Use the real parent hook graph, mailbox, density helpers and tile geometry.
+ * Raster transport and child presentation remain controlled doubles: these
+ * assertions prove work admission, not actual wheel timing or sharp pixels. */
+function sharpSurfaceHost() {
+  vi.stubEnv('VITE_DESIGN_SHARP_ZOOM', '1')
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  Object.assign(worker.policy, { desktopFullMath: true, desktopDisplay: true })
+  worker.dpr = 2; worker.dynamicPlan = true; worker.zooming = true; worker.cameraMoving = true
+}
+
+test('eligible filtered desktop wheel inputs schedule screen-density tiles instead of the one-megapixel navigation preview', async () => {
+  sharpSurfaceHost(); worker.forceLod = true
+  const h = harness(false), blur = makeNode('rectangle')
+  blur.effects = [makeEffect('blur')]
+  h.doc.nodes[blur.id] = blur; h.doc.pages[0].children.push(blur.id)
+  let sequence = 0
+  for (const zoom of [.025, .51, 4.01, 8.1, 4.01]) {
+    const view = { x: 0, y: 0, zoom }, before = worker.calls.length
+    worker.navigation = { active: true, suspended: false, sample: { active: true, view, sequence: ++sequence } }
+    const output = h.render({ view, width: 256, height: 128, rasterProfile: 'figmaSubpixel',
+      overview: { x: 0, y: 0, width: 20000, height: 10000 } })
+    await flushRasterWork()
+    await vi.waitFor(() => expect(worker.calls.slice(before).some(call => call.options.tileViewport?.length)).toBe(true))
+    const requests = worker.calls.slice(before)
+    expect(requests.every(call => call.options.renderIntent === 'canvas' && Array.isArray(call.options.tileViewport))).toBe(true)
+    for (const call of requests.filter(call => call.options.tileViewport.length)) {
+      expect(call.options.view.zoom).toBeGreaterThanOrEqual(zoom * worker.dpr)
+      expect(call.options.view.zoom / (zoom * worker.dpr)).toBeLessThanOrEqual(2 ** (1 / 8) + 1e-12)
+      expect(call.options.tileViewport.every((tile: RasterTile) => tile.zoom === call.options.view.zoom)).toBe(true)
+      expect(call.options.rasterProfile).toBe('figmaSubpixel')
+    }
+    const { wrapper } = surfaceParts(output)
+    expect(wrapper.props['data-navigation-zoom-active']).toBe('false')
+    expect(wrapper.props['data-motion-preview']).toBe('false')
+    expect(wrapper.props['data-lod-scale']).toBe(0)
+  }
+  expect(worker.navigationEnabled.every(enabled => !enabled)).toBe(true)
+  expect(worker.calls.some(call => call.options.livePreview || call.options.renderIntent === 'preview')).toBe(false)
+  expect(worker.maintenance).toHaveLength(0)
+})
+
+test.each(['display', 'working', 'compile'] as const)('sharp headroom %s pressure retries only at the original DPR and does not loop after native failure', async kind => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+  sharpSurfaceHost()
+  const h = harness(false), view = { x: 0, y: 0, zoom: 1.01 }, onRenderFailure = vi.fn()
+  worker.navigation = { active: true, suspended: false, sample: { active: true, view, sequence: 1 } }
+  const options = { view, width: 256, height: 128, rasterProfile: 'figmaSubpixel', onRenderFailure }
+  // A fresh mount is intentionally quiet. Complete an initial native frame,
+  // then change zoom through the real useSharpZoomActivity hook. Drain only
+  // microtasks so the 100ms quiet timer cannot expire during admission checks.
+  h.render({ ...options, view: { ...view, zoom: 1 } })
+  await flushRasterWork(); await settleRejected()
+  expect(worker.calls[0].options.tileViewport).toEqual([])
+  expect(worker.calls.some(call => call.options.tileViewport?.length)).toBe(true)
+  const baselineCalls = worker.calls.length
+  worker.plannedScales.length = 0
+  h.render(options); await settleRejected()
+  expect(worker.calls).toHaveLength(baselineCalls + 1)
+  const ahead = worker.calls[baselineCalls].options.view.zoom
+  expect(ahead).toBeGreaterThan(view.zoom * worker.dpr)
+  const pressure = () => kind === 'display' ? Error('GPU display resident budget exceeded') :
+    kind === 'compile' ? compileBudget() : markRenderFailure(Error('GPU 表面内存预算超限'),
+      { failureCategory: 3, failureStage: 13, failureCode: 200 })
+  worker.calls[baselineCalls].reject(pressure()); await settleRejected()
+  expect(onRenderFailure).not.toHaveBeenCalled()
+  h.render(options); await settleRejected()
+  expect(worker.calls).toHaveLength(baselineCalls + 2)
+  const native = worker.calls[baselineCalls + 1]
+  expect(native.options.renderIntent).toBe('canvas')
+  expect(native.options.tileViewport.length).toBeGreaterThan(0)
+  expect(native.options.view.zoom).toBe(view.zoom * worker.dpr)
+  expect(native.options.tileViewport.every((tile: RasterTile) => tile.zoom === view.zoom * worker.dpr)).toBe(true)
+  expect(worker.plannedScales).toEqual([ahead, view.zoom * worker.dpr])
+  native.reject(pressure()); await settleRejected()
+  expect(onRenderFailure).toHaveBeenCalledTimes(1)
+  for (let i = 0; i < 16; i++) { h.render(options); await settleRejected() }
+  expect(worker.calls).toHaveLength(baselineCalls + 2)
+  expect(worker.plannedScales).toEqual([ahead, view.zoom * worker.dpr])
+  expect(worker.calls.some(call => call.options.livePreview)).toBe(false)
+  } finally { vi.useRealTimers() }
+})
+
+test.each(['flag-off', 'web-policy', 'nonresident', 'cpu-policy', 'software-profile'] as const)(
+  'sharp zoom leaves the existing optional-navigation path unchanged for %s', async reason => {
+    sharpSurfaceHost()
+    if (reason === 'flag-off') vi.stubEnv('VITE_DESIGN_SHARP_ZOOM', '0')
+    if (reason === 'web-policy') worker.policy.desktopDisplay = false
+    if (reason === 'nonresident') vi.stubGlobal('navigator', {})
+    if (reason === 'cpu-policy') worker.policy.cpuOnly = true
+    const h = harness(false), view = { x: 0, y: 0, zoom: 1.01 }
+    const rasterProfile = reason === 'software-profile' ? 'figmaSoftware' : 'figmaSubpixel'
+    worker.navigation = { active: true, suspended: false, sample: { active: true, view, sequence: 1 } }
+    h.render({ view, width: 256, height: 128, rasterProfile })
+    await vi.waitFor(() => expect(worker.calls).toHaveLength(1))
+    expect(worker.navigationEnabled.at(-1)).toBe(true)
+    expect(worker.calls[0].options.renderIntent).toBe('preview')
+    expect(worker.calls[0].options.livePreview).toBe(true)
+    expect(worker.calls[0].options.tileViewport).toBeUndefined()
+    expect(worker.calls[0].options.rasterProfile).toBe(rasterProfile)
+    expect(worker.plannedScales).toEqual([])
+  },
+)
+
+test.each(['pixel', 'grid', 'checkerboard', 'hdr'] as const)('sharp zoom leaves the existing %s route identical to a flag-off control', async reason => {
+  sharpSurfaceHost()
+  if (reason === 'hdr') worker.policy.hdrCompositing = true
+  const h = harness(false), view = { x: .125, y: -.375, zoom: 1.01 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, view, sequence: 1 } }
+  const options = { view, width: 256, height: 128, rasterProfile: 'figmaSubpixel',
+    ...(reason === 'pixel' ? { pixelPreview: 1 } : reason === 'grid' ? { grid: true } :
+      reason === 'checkerboard' ? { checkerboard: true } : {}) }
+  h.render(options)
+  await flushRasterWork()
+  await vi.waitFor(() => expect(worker.calls.some(call => call.options.tileViewport?.length)).toBe(true))
+  expect(worker.navigationEnabled.at(-1)).toBe(false)
+  expect(worker.calls.some(call => call.options.livePreview)).toBe(false)
+  const admitted = worker.calls.filter(call => call.options.tileViewport?.length)
+  for (const call of admitted) {
+    if (reason !== 'hdr') expect(call.options.view.zoom).toBe(view.zoom * worker.dpr)
+    expect(call.options.rasterProfile).toBe('figmaSubpixel')
+  }
+  // Existing HDR/nonmanaged motion may use its old half-octave ladder. This
+  // feature must preserve that route, not silently impose a new HDR policy.
+  const before = worker.calls.length, reference = harness(false)
+  vi.stubEnv('VITE_DESIGN_SHARP_ZOOM', '0')
+  reference.render(options); await flushRasterWork()
+  await vi.waitFor(() => expect(worker.calls.slice(before).some(call => call.options.tileViewport?.length)).toBe(true))
+  const project = (calls: any[]) => calls.filter(call => call.options.tileViewport?.length).map(call => ({
+    view: call.options.view, tiles: call.options.tileViewport, rasterProfile: call.options.rasterProfile,
+    pixelPreview: call.options.pixelPreview, grid: call.options.grid, checkerboard: call.options.checkerboard,
+    renderIntent: call.options.renderIntent,
+  }))
+  expect(project(worker.calls.slice(before))).toEqual(project(admitted))
 })
