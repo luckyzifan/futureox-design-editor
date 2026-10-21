@@ -1,0 +1,528 @@
+{
+  "updatedAtUtc": "2026-10-21T09:01:49.997186+00:00",
+  "initialAttempt": {
+    "result": "additional-gates/results.json",
+    "resultSha256": "f50d46b77fc4fecc68454179b5ae4e07cf8c3cc095b56229200cfe5f9e27a1b9",
+    "node": "v24.12.0",
+    "status": "failed",
+    "gates": [
+      {
+        "suite": "runner-contracts",
+        "status": "failed",
+        "exitCode": 1,
+        "durationMs": 1869,
+        "counts": {
+          "tests": 28,
+          "suites": 0,
+          "pass": 24,
+          "fail": 4,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "category": "runner-negative-controls",
+        "log": "additional-gates/runner-contracts.log",
+        "testFiles": [
+          {
+            "path": "testing/ci-prerequisites.test.mjs",
+            "sha256": "a0b0876968fb5e6fbe84af39009d9aaf0eb14209a88343a95c1c7b109e4718c2"
+          },
+          {
+            "path": "testing/fixture-policy.test.mjs",
+            "sha256": "66aa405515a43470ac2d6c493035f8b7484eb2be71e851131f0b28dc88c08195"
+          },
+          {
+            "path": "testing/runner.test.mjs",
+            "sha256": "a28b57c5a3b63d4e3fc04c0776c208f90370c0c8b46315de5f4a76a0f0d43e3c"
+          },
+          {
+            "path": "testing/test-entrypoints.test.mjs",
+            "sha256": "31d0b1759d4f414555c35cdd326f0247ae0575d6b7438cfcd0659c50728d5055"
+          }
+        ]
+      },
+      {
+        "suite": "python-tools",
+        "status": "failed",
+        "exitCode": 1,
+        "durationMs": 144,
+        "counts": {
+          "reportedTests": 8,
+          "summary": "FAILED (errors=2)"
+        },
+        "category": "CPU tool unit tests",
+        "log": "additional-gates/python-tools.log",
+        "testFiles": [
+          {
+            "path": "design-studio/scripts/test_build_web.py",
+            "sha256": "6971da2180505a83004cc4f8a68697ec129ad43729c152864898e6f1b6e2c1ba"
+          },
+          {
+            "path": "design-studio/scripts/test_compare_figma_reuse.py",
+            "sha256": "bc30d3185928191029b0169f485938df805d3c565608501279b36f26a86f138f"
+          },
+          {
+            "path": "design-studio/scripts/test_figma_cpu_reference.py",
+            "sha256": "38c8cb3cfba95f933f13df8fa91a01fdc3415368b4e42b5552f098f8f83026ab"
+          }
+        ]
+      },
+      {
+        "suite": "mcp-example",
+        "status": "passed",
+        "exitCode": 0,
+        "durationMs": 10571,
+        "counts": {
+          "total": 1,
+          "passed": 1,
+          "failed": 0,
+          "pending": 0
+        },
+        "category": "real Editor/WASM via in-memory MCP, synthetic HTML/CSS and native-file outputs",
+        "log": "additional-gates/mcp-example.log",
+        "testFiles": [
+          {
+            "path": "frontend/design-mcp/examples/generate-example.test.ts",
+            "sha256": "27f1eeb31b9eb33389f8060825d0afb1ddce277d5b8508712b6571387a4c65cf"
+          }
+        ]
+      },
+      {
+        "suite": "bun-unit",
+        "status": "passed",
+        "exitCode": 0,
+        "durationMs": 116,
+        "counts": {
+          "pass": 31,
+          "fail": 0
+        },
+        "category": "CPU budget/policy logic; no actual GPU",
+        "log": "additional-gates/bun-unit.log",
+        "testFiles": [
+          {
+            "path": "frontend/design-client/scripts/test-adaptive-budget.ts",
+            "sha256": "ee77a8027b8f0042e8faf0b1d728e39ebb3988f619a2c531fa1601d86ec1b8c5"
+          },
+          {
+            "path": "frontend/design-client/scripts/test-advanced-gpu-optimizations.ts",
+            "sha256": "1b289db7b4721b2505607b287c3c431e36965ff9461141297d003fb77d68c6f9"
+          },
+          {
+            "path": "frontend/design-client/scripts/test-high-zoom-mipmap.ts",
+            "sha256": "91f7b0778a9e3c21ba05c183dad19550b3c114bd58009c21328800427d649565"
+          },
+          {
+            "path": "frontend/design-client/scripts/test-integration-gpu-optimizations.ts",
+            "sha256": "974ccf3683ab7d9ec41d572a69d98d1f25fa85ab1691c3f477194f74b8ee9744"
+          }
+        ]
+      },
+      {
+        "suite": "automation-storage",
+        "status": "failed",
+        "exitCode": 1,
+        "durationMs": 1078,
+        "counts": {
+          "tests": 1,
+          "suites": 0,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "category": "real SQLite sidecar + mocked IPC host",
+        "log": "additional-gates/automation-storage.log",
+        "testFiles": [
+          {
+            "path": "frontend/design-desktop/test/automation-storage-bridge.test.mjs",
+            "sha256": "077233c3547d99426da6ee48430da25941c7c31471b0ea4dd5eaab003c58e059"
+          }
+        ]
+      },
+      {
+        "suite": "native-sidecar",
+        "status": "passed",
+        "exitCode": 0,
+        "durationMs": 255,
+        "counts": {
+          "tests": 8,
+          "suites": 0,
+          "pass": 8,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "category": "real owned Rust processes + local SQLite; not OS dialogs",
+        "log": "additional-gates/native-sidecar.log",
+        "testFiles": [
+          {
+            "path": "frontend/design-desktop/test/runtime/sidecar-runtime.test.mjs",
+            "sha256": "6567394e035c203a442a119730df03334551b5455df560fc6ec144a544d03c4a"
+          },
+          {
+            "path": "frontend/design-desktop/test/runtime/workspace-runtime.test.mjs",
+            "sha256": "1b02333a501f312d3fe076f178a46ed60ceae282ded17071fa76aa13aac1a908"
+          }
+        ]
+      }
+    ]
+  },
+  "secondAttempt": {
+    "result": "additional-gates-v2/results.json",
+    "resultSha256": "72415e8decbd8d8b3b7a12264c2caa57b2754ac35c18c3467970dad16d54ce77",
+    "node": "v24.12.0",
+    "status": "failed",
+    "gates": [
+      {
+        "suite": "runner-contracts",
+        "status": "failed",
+        "exitCode": 1,
+        "durationMs": 1609,
+        "counts": {
+          "tests": 30,
+          "suites": 0,
+          "pass": 29,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "category": "runner-negative-controls",
+        "log": "additional-gates-v2/runner-contracts.log",
+        "testFiles": [
+          {
+            "path": "testing/ci-prerequisites.test.mjs",
+            "sha256": "a1415968e0a29b30ced9313fb07b523a8eef6c64e2e267a7d223dfde0d6a1ec1"
+          },
+          {
+            "path": "testing/fixture-policy.test.mjs",
+            "sha256": "66aa405515a43470ac2d6c493035f8b7484eb2be71e851131f0b28dc88c08195"
+          },
+          {
+            "path": "testing/runner.test.mjs",
+            "sha256": "a28b57c5a3b63d4e3fc04c0776c208f90370c0c8b46315de5f4a76a0f0d43e3c"
+          },
+          {
+            "path": "testing/test-entrypoints.test.mjs",
+            "sha256": "6a582a429a6e2b095235a091b167aeea2127770020a80ca7c9e61ed08069b98d"
+          }
+        ]
+      },
+      {
+        "suite": "python-tools",
+        "status": "passed",
+        "exitCode": 0,
+        "durationMs": 6023,
+        "counts": {
+          "reportedTests": 15,
+          "summary": "OK"
+        },
+        "category": "CPU tool unit tests",
+        "log": "additional-gates-v2/python-tools.log",
+        "testFiles": [
+          {
+            "path": "design-studio/scripts/test_build_web.py",
+            "sha256": "6971da2180505a83004cc4f8a68697ec129ad43729c152864898e6f1b6e2c1ba"
+          },
+          {
+            "path": "design-studio/scripts/test_compare_figma_reuse.py",
+            "sha256": "bc30d3185928191029b0169f485938df805d3c565608501279b36f26a86f138f"
+          },
+          {
+            "path": "design-studio/scripts/test_figma_cpu_reference.py",
+            "sha256": "38c8cb3cfba95f933f13df8fa91a01fdc3415368b4e42b5552f098f8f83026ab"
+          }
+        ]
+      },
+      {
+        "suite": "automation-storage",
+        "status": "passed",
+        "exitCode": 0,
+        "durationMs": 630,
+        "counts": {
+          "tests": 1,
+          "suites": 0,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "category": "real SQLite sidecar + mocked IPC host",
+        "log": "additional-gates-v2/automation-storage.log",
+        "testFiles": [
+          {
+            "path": "frontend/design-desktop/test/automation-storage-bridge.test.mjs",
+            "sha256": "349ab4c88b5df6f8dd5631eab584b93db0b056ebb00689fc50fd286949087d17"
+          }
+        ]
+      }
+    ]
+  },
+  "correctedFailedGates": {
+    "result": "additional-gates-v3/results.json",
+    "resultSha256": "81c3122e00b937943b64e23da3097a997f11f3cb63dc716fb5ca60aa817407a8",
+    "node": "v24.12.0",
+    "status": "passed",
+    "gates": [
+      {
+        "suite": "runner-contracts",
+        "status": "passed",
+        "exitCode": 0,
+        "durationMs": 3348,
+        "counts": {
+          "tests": 30,
+          "suites": 0,
+          "pass": 30,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "category": "runner-negative-controls",
+        "log": "additional-gates-v3/runner-contracts.log",
+        "testFiles": [
+          {
+            "path": "testing/ci-prerequisites.test.mjs",
+            "sha256": "a1415968e0a29b30ced9313fb07b523a8eef6c64e2e267a7d223dfde0d6a1ec1"
+          },
+          {
+            "path": "testing/fixture-policy.test.mjs",
+            "sha256": "66aa405515a43470ac2d6c493035f8b7484eb2be71e851131f0b28dc88c08195"
+          },
+          {
+            "path": "testing/runner.test.mjs",
+            "sha256": "548190d88c44bd60552243ec8a752d1dcf663d903e94d122d70c7f59fc70fcea"
+          },
+          {
+            "path": "testing/test-entrypoints.test.mjs",
+            "sha256": "6a582a429a6e2b095235a091b167aeea2127770020a80ca7c9e61ed08069b98d"
+          }
+        ]
+      },
+      {
+        "suite": "python-tools",
+        "status": "passed",
+        "exitCode": 0,
+        "durationMs": 248,
+        "counts": {
+          "reportedTests": 15,
+          "summary": "OK"
+        },
+        "category": "CPU tool unit tests",
+        "log": "additional-gates-v3/python-tools.log",
+        "testFiles": [
+          {
+            "path": "design-studio/scripts/test_build_web.py",
+            "sha256": "6971da2180505a83004cc4f8a68697ec129ad43729c152864898e6f1b6e2c1ba"
+          },
+          {
+            "path": "design-studio/scripts/test_compare_figma_reuse.py",
+            "sha256": "bc30d3185928191029b0169f485938df805d3c565608501279b36f26a86f138f"
+          },
+          {
+            "path": "design-studio/scripts/test_figma_cpu_reference.py",
+            "sha256": "38c8cb3cfba95f933f13df8fa91a01fdc3415368b4e42b5552f098f8f83026ab"
+          }
+        ]
+      },
+      {
+        "suite": "automation-storage",
+        "status": "passed",
+        "exitCode": 0,
+        "durationMs": 161,
+        "counts": {
+          "tests": 1,
+          "suites": 0,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "category": "real SQLite sidecar + mocked IPC host",
+        "log": "additional-gates-v3/automation-storage.log",
+        "testFiles": [
+          {
+            "path": "frontend/design-desktop/test/automation-storage-bridge.test.mjs",
+            "sha256": "349ab4c88b5df6f8dd5631eab584b93db0b056ebb00689fc50fd286949087d17"
+          }
+        ]
+      }
+    ]
+  },
+  "fixes": [
+    {
+      "paths": [
+        "testing/test-entrypoints.test.mjs"
+      ],
+      "cause": "Fixture expected /var spelling while shell process.cwd used canonical /private/var; four exact-cwd assertions failed",
+      "fix": "realpath only the newly created owned fixture directory; retain exact cwd, args, stdout/stderr and exit-status assertions"
+    },
+    {
+      "paths": [
+        "frontend/design-desktop/test/automation-storage-bridge.test.mjs"
+      ],
+      "cause": "Native WorkspaceStore requires canonical parent; the fixture passed the symlink-spelled macOS TMPDIR. Native maps this rejected startup to WORKSPACE_UNAVAILABLE (WORKSPACE_ERROR)",
+      "fix": "realpath the owned fixture before native admission, retain all SQLite persistence/reopen assertions and add positive real workspace health assertion; no production path validation changed"
+    },
+    {
+      "paths": [
+        "testing/python-tools-requirements.txt",
+        ".github/workflows/local-design-cpu.yml",
+        "testing/ci-prerequisites.test.mjs",
+        "testing/README.md"
+      ],
+      "cause": "Pillow was documented by Python tools but absent from the explicit temporary environment and portable CI provisioning; two module imports failed before their tests could run",
+      "fix": "Pin Pillow==12.0.0 in a separate test-tool requirement, provision it before portable CI, and add positive/missing-prerequisite source-contract tests. Install only in the existing isolated virtual environment, not system or production dependencies"
+    },
+    {
+      "paths": [
+        "testing/runner.test.mjs"
+      ],
+      "cause": "On the second run, the SIGTERM negative control timed out at 500ms before cold Node installed its handler/output ready",
+      "fix": "Allow a bounded 2000ms startup window; keep 100ms termination grace and every ready/ignored SIGTERM/timedOut/forceKill/SIGKILL/<5000ms assertion unchanged"
+    }
+  ],
+  "actualPythonValidation": {
+    "python": "3.14.4",
+    "Pillow": "12.0.0",
+    "fonttools": "4.61.1",
+    "importSucceeded": true,
+    "pythonToolUnitTestsPassed": 15,
+    "systemDependenciesChanged": false,
+    "requirements": "testing/python-tools-requirements.txt",
+    "requirementsSha256": "acdf6ad27fb7534ef20b43e0bce92925b9873a1509bfcb0bb8db34f5668eba4b",
+    "installLog": "python-tools-dependency-install.log",
+    "upstreamRelease": "https://pypi.org/project/pillow/12.0.0/"
+  },
+  "correctedRunIdentity": {
+    "sourceBefore": {
+      "scope": "Gate fixture/CI fixes, runner, Python tools and relevant desktop bridge sources; unrelated client renderer excluded",
+      "sha256": "a3451ceadceacf1ab992ef4e81926c42cf7e9a1b7a5377d50222ae7fb95e3e3e",
+      "files": {
+        ".github/workflows/local-design-cpu.yml": "d3220793664956485471c5b205d8bb49f46bf2d6eda276afb4ee501e9ab4aaad",
+        "design-studio/scripts/analyze-figma-materials.py": "39440b4513f68916f86cec8d819932342933e458240132792d69203665627887",
+        "design-studio/scripts/analyze-glass-distance.py": "4423c41a431bd62b5db84ceec7bf1d3b3cf4e62ece8819fe317ad8ad5a561dbd",
+        "design-studio/scripts/analyze-optical-evidence.py": "f16025868f46419917434d43c6f644b5b3923d22ef65502534f09a27335e8739",
+        "design-studio/scripts/build-web.py": "b99b4929424445c89502b8c31ba757dc94050d3e8ace307c2da19fee29691462",
+        "design-studio/scripts/calibrate-corner-model.py": "1c9e27648b48ec0470b3ae1b39b7d44d1be078c3afb2533f2e1f1bd41c78fd23",
+        "design-studio/scripts/calibrate-glass-lighting.py": "1ba737b9fadf562ed237c967c87f8d68e56c51469a764be22e92f3ad7de14818",
+        "design-studio/scripts/check-figma-cpu-reference.py": "26420b914a52512db84fbf6b384fc57930eeefddd2af3c36e3e88a070e980861",
+        "design-studio/scripts/check-local.py": "08f1c0f5323a4b256df409c1e9f78930346f1fd1d4e87641f5f6fed98055a1b1",
+        "design-studio/scripts/check-moxcms-patch.py": "f8f4cabbd607dbb95312eea7d1d9345dc8f4b7fde794bf7ae1114f6002b61dc2",
+        "design-studio/scripts/check-precision.py": "400f2012cc19941f7eac8d8faac2f9c882125e6e45abb806beaa73e94fa70866",
+        "design-studio/scripts/compare-figma.py": "2fdf83af3da0ad4bb3209b01f90667b1cad2382dd2f7bd419fc1d777836c241d",
+        "design-studio/scripts/compare-precision-readbacks.py": "96c03f5c3b42adc46a1dd6de17877a7b1731b4717cf123e94a2b2b1f8f9320e4",
+        "design-studio/scripts/generate-bounded-sampling-glsl.py": "2fc923c0e09f7040ca5a55f88eb429fd65c39352904cfacf131696113466c6b8",
+        "design-studio/scripts/generate-bounded-sampling-vectors.py": "54844fbd055a763eec99056049a96598455507122d099c70a8484c587e5cb4f8",
+        "design-studio/scripts/generate-certified-filter-vectors.py": "ceb95ec91debf85a217a6fdd8c1ddba0f3252cbb189de1032018789434b11b0c",
+        "design-studio/scripts/generate-certified-rational-glsl.py": "0c1fa8f7ce394678efd57fe309c9f95d2731406e08d69429640a8ac5ecec7197",
+        "design-studio/scripts/generate-coverage-vectors.py": "2dd374ba27bd54bd291a06d3da3443d6a48ba8a35fd6c1415187c8c5f258b677",
+        "design-studio/scripts/generate-filter-vectors.py": "ac581b8e34b9bd969ded29c7a3dc57184963f35e57a5537a4a81b5772114c532",
+        "design-studio/scripts/generate-precision-vectors.py": "e577222090e75f2ee73a9d6ab721a22d2b8b6a755d37adb8e20a1f6348ec5c3d",
+        "design-studio/scripts/generate-prefix-vectors.py": "369fabc461c8686e3549b60b05ae4c1c66cfde94234a37e002f7f89df2657929",
+        "design-studio/scripts/generate-rational-glsl.py": "e84beebaf2d33e18e0c50472b9e0d7a47b87fdecb12a025da40c170586808ca9",
+        "design-studio/scripts/generate-sampling-vectors.py": "9a002741524b7cb4e70f94d9d505ea1c1c972489ba1c75e24a7e8c90cc1506df",
+        "design-studio/scripts/generate-texture-copyback-vectors.py": "10c1a386870bf4c99a57a6899653799277ba0cbd346284c8fcf21e0dfb94d312",
+        "design-studio/scripts/test_build_web.py": "6971da2180505a83004cc4f8a68697ec129ad43729c152864898e6f1b6e2c1ba",
+        "design-studio/scripts/test_compare_figma_reuse.py": "bc30d3185928191029b0169f485938df805d3c565608501279b36f26a86f138f",
+        "design-studio/scripts/test_figma_cpu_reference.py": "38c8cb3cfba95f933f13df8fa91a01fdc3415368b4e42b5552f098f8f83026ab",
+        "frontend/design-desktop/src/automation-bridge.mjs": "ee20e691edb43c83868d7752140465597fe97cadefaedfdc4fa8b00a12f49031",
+        "frontend/design-desktop/src/security.mjs": "de5b9194fcbfda46519a00f730a24a74286077983407c898e062392eec84ecc9",
+        "frontend/design-desktop/src/sidecar.mjs": "2f91d65005ff21db64432a3e199c56db10849dfbe63a5617080fd7a9af2e41d0",
+        "frontend/design-desktop/test/automation-storage-bridge.test.mjs": "349ab4c88b5df6f8dd5631eab584b93db0b056ebb00689fc50fd286949087d17",
+        "testing/README.md": "8639c6faa20ae536805413e01969f1c67ed68a5cb98387c38c8ecb075f57a4d5",
+        "testing/ci-prerequisites.test.mjs": "a1415968e0a29b30ced9313fb07b523a8eef6c64e2e267a7d223dfde0d6a1ec1",
+        "testing/lib/runner.mjs": "6073c8ddaa6e67a2439dc38d804af28823571b17c7148273da3127c1ba7f3177",
+        "testing/python-tools-requirements.txt": "acdf6ad27fb7534ef20b43e0bce92925b9873a1509bfcb0bb8db34f5668eba4b",
+        "testing/runner.test.mjs": "548190d88c44bd60552243ec8a752d1dcf663d903e94d122d70c7f59fc70fcea",
+        "testing/test-entrypoints.test.mjs": "6a582a429a6e2b095235a091b167aeea2127770020a80ca7c9e61ed08069b98d",
+        "testing/verify-local.mjs": "397ccbbb2b458430039d5e89d8fe198e8e915469c491deac7d992d55adf79f64"
+      }
+    },
+    "sourceAfter": {
+      "scope": "Gate fixture/CI fixes, runner, Python tools and relevant desktop bridge sources; unrelated client renderer excluded",
+      "sha256": "a3451ceadceacf1ab992ef4e81926c42cf7e9a1b7a5377d50222ae7fb95e3e3e",
+      "files": {
+        ".github/workflows/local-design-cpu.yml": "d3220793664956485471c5b205d8bb49f46bf2d6eda276afb4ee501e9ab4aaad",
+        "design-studio/scripts/analyze-figma-materials.py": "39440b4513f68916f86cec8d819932342933e458240132792d69203665627887",
+        "design-studio/scripts/analyze-glass-distance.py": "4423c41a431bd62b5db84ceec7bf1d3b3cf4e62ece8819fe317ad8ad5a561dbd",
+        "design-studio/scripts/analyze-optical-evidence.py": "f16025868f46419917434d43c6f644b5b3923d22ef65502534f09a27335e8739",
+        "design-studio/scripts/build-web.py": "b99b4929424445c89502b8c31ba757dc94050d3e8ace307c2da19fee29691462",
+        "design-studio/scripts/calibrate-corner-model.py": "1c9e27648b48ec0470b3ae1b39b7d44d1be078c3afb2533f2e1f1bd41c78fd23",
+        "design-studio/scripts/calibrate-glass-lighting.py": "1ba737b9fadf562ed237c967c87f8d68e56c51469a764be22e92f3ad7de14818",
+        "design-studio/scripts/check-figma-cpu-reference.py": "26420b914a52512db84fbf6b384fc57930eeefddd2af3c36e3e88a070e980861",
+        "design-studio/scripts/check-local.py": "08f1c0f5323a4b256df409c1e9f78930346f1fd1d4e87641f5f6fed98055a1b1",
+        "design-studio/scripts/check-moxcms-patch.py": "f8f4cabbd607dbb95312eea7d1d9345dc8f4b7fde794bf7ae1114f6002b61dc2",
+        "design-studio/scripts/check-precision.py": "400f2012cc19941f7eac8d8faac2f9c882125e6e45abb806beaa73e94fa70866",
+        "design-studio/scripts/compare-figma.py": "2fdf83af3da0ad4bb3209b01f90667b1cad2382dd2f7bd419fc1d777836c241d",
+        "design-studio/scripts/compare-precision-readbacks.py": "96c03f5c3b42adc46a1dd6de17877a7b1731b4717cf123e94a2b2b1f8f9320e4",
+        "design-studio/scripts/generate-bounded-sampling-glsl.py": "2fc923c0e09f7040ca5a55f88eb429fd65c39352904cfacf131696113466c6b8",
+        "design-studio/scripts/generate-bounded-sampling-vectors.py": "54844fbd055a763eec99056049a96598455507122d099c70a8484c587e5cb4f8",
+        "design-studio/scripts/generate-certified-filter-vectors.py": "ceb95ec91debf85a217a6fdd8c1ddba0f3252cbb189de1032018789434b11b0c",
+        "design-studio/scripts/generate-certified-rational-glsl.py": "0c1fa8f7ce394678efd57fe309c9f95d2731406e08d69429640a8ac5ecec7197",
+        "design-studio/scripts/generate-coverage-vectors.py": "2dd374ba27bd54bd291a06d3da3443d6a48ba8a35fd6c1415187c8c5f258b677",
+        "design-studio/scripts/generate-filter-vectors.py": "ac581b8e34b9bd969ded29c7a3dc57184963f35e57a5537a4a81b5772114c532",
+        "design-studio/scripts/generate-precision-vectors.py": "e577222090e75f2ee73a9d6ab721a22d2b8b6a755d37adb8e20a1f6348ec5c3d",
+        "design-studio/scripts/generate-prefix-vectors.py": "369fabc461c8686e3549b60b05ae4c1c66cfde94234a37e002f7f89df2657929",
+        "design-studio/scripts/generate-rational-glsl.py": "e84beebaf2d33e18e0c50472b9e0d7a47b87fdecb12a025da40c170586808ca9",
+        "design-studio/scripts/generate-sampling-vectors.py": "9a002741524b7cb4e70f94d9d505ea1c1c972489ba1c75e24a7e8c90cc1506df",
+        "design-studio/scripts/generate-texture-copyback-vectors.py": "10c1a386870bf4c99a57a6899653799277ba0cbd346284c8fcf21e0dfb94d312",
+        "design-studio/scripts/test_build_web.py": "6971da2180505a83004cc4f8a68697ec129ad43729c152864898e6f1b6e2c1ba",
+        "design-studio/scripts/test_compare_figma_reuse.py": "bc30d3185928191029b0169f485938df805d3c565608501279b36f26a86f138f",
+        "design-studio/scripts/test_figma_cpu_reference.py": "38c8cb3cfba95f933f13df8fa91a01fdc3415368b4e42b5552f098f8f83026ab",
+        "frontend/design-desktop/src/automation-bridge.mjs": "ee20e691edb43c83868d7752140465597fe97cadefaedfdc4fa8b00a12f49031",
+        "frontend/design-desktop/src/security.mjs": "de5b9194fcbfda46519a00f730a24a74286077983407c898e062392eec84ecc9",
+        "frontend/design-desktop/src/sidecar.mjs": "2f91d65005ff21db64432a3e199c56db10849dfbe63a5617080fd7a9af2e41d0",
+        "frontend/design-desktop/test/automation-storage-bridge.test.mjs": "349ab4c88b5df6f8dd5631eab584b93db0b056ebb00689fc50fd286949087d17",
+        "testing/README.md": "8639c6faa20ae536805413e01969f1c67ed68a5cb98387c38c8ecb075f57a4d5",
+        "testing/ci-prerequisites.test.mjs": "a1415968e0a29b30ced9313fb07b523a8eef6c64e2e267a7d223dfde0d6a1ec1",
+        "testing/lib/runner.mjs": "6073c8ddaa6e67a2439dc38d804af28823571b17c7148273da3127c1ba7f3177",
+        "testing/python-tools-requirements.txt": "acdf6ad27fb7534ef20b43e0bce92925b9873a1509bfcb0bb8db34f5668eba4b",
+        "testing/runner.test.mjs": "548190d88c44bd60552243ec8a752d1dcf663d903e94d122d70c7f59fc70fcea",
+        "testing/test-entrypoints.test.mjs": "6a582a429a6e2b095235a091b167aeea2127770020a80ca7c9e61ed08069b98d",
+        "testing/verify-local.mjs": "397ccbbb2b458430039d5e89d8fe198e8e915469c491deac7d992d55adf79f64"
+      }
+    },
+    "sourceStable": true,
+    "runtimeBefore": {
+      "design-studio/target/release/futureox-design-desktop-backend": "86dd751e4af33216241a1f0f15f64b2a985346733a78685bb20cc3f67eb67468",
+      "design-studio/target/release/design-prepare": "58c2b190e72f4885c9d7736fd46d91e3da8a0ef156b0fb95e1da9f6eaff71fb7"
+    },
+    "runtimeAfter": {
+      "design-studio/target/release/futureox-design-desktop-backend": "86dd751e4af33216241a1f0f15f64b2a985346733a78685bb20cc3f67eb67468",
+      "design-studio/target/release/design-prepare": "58c2b190e72f4885c9d7736fd46d91e3da8a0ef156b0fb95e1da9f6eaff71fb7"
+    },
+    "runtimeStable": true,
+    "wallSeconds": 3.939,
+    "temporaryPathPolicy": "Inherited macOS TMPDIR spelling retained so realpath fixture fixes are exercised; application admission remains strict"
+  },
+  "additionalMcpClipboardArtifacts": {
+    "cwd": "frontend/design-mcp",
+    "log": "mcp-clipboard-artifacts.log",
+    "logSha256": "5f58e04c035b40fc9f849afa3a0110d5ea9f397bae63e8260ebea9ca5ae25b3d",
+    "counts": {
+      "tests": 12,
+      "suites": 0,
+      "pass": 12,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "boundary": "Production artifact projection and exact resource framing with test backend; separate file not selected by npm test 96-case list",
+    "testFile": "frontend/design-mcp/test/clipboard-artifacts.test.mjs",
+    "launchDetails": "Primary-runner execution log; exact launch argv is not encoded in that log"
+  },
+  "limits": [
+    "Initial passed mcp-example/bun-unit/native-sidecar gates were not unnecessarily rerun when repairing the three failed gates.",
+    "Gate/subset counts are not summed into a repository-wide assertion total; automation-storage also overlaps desktop Node regression.",
+    "Later client renderer prototypes are outside the earlier full-v2 CPU source identity; no blur-free Electron/GPU claim follows.",
+    "CI source contracts do not prove remote GitHub or Windows/Linux execution.",
+    "No client product/GPU file, Rust source or production security validation was changed by these fixes.",
+    "Raw logs/results and generated example/PNG assets remain ignored; this compact evidence contains only useful provenance and counts."
+  ]
+}

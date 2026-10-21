@@ -15,6 +15,7 @@ import type { InteractionProps } from './interaction-layers'
 import { InteractionRenderer } from './interaction-renderer'
 import { PageTranslation } from './page-translation'
 import { settleResidentImport } from './resident-import-ownership'
+import { viewportPreviewDeviceKey, type ViewportPreviewDevice } from './viewport-preview-cache'
 
 export function ResidentCompositeSurface(props: {
   client: KernelClient
@@ -23,6 +24,8 @@ export function ResidentCompositeSurface(props: {
   width: number
   height: number
   dpr: number
+  /** Reusing pixels may still need a fresh submission/input acknowledgement. */
+  reuseSequence?: number
   interaction?: InteractionProps
   pageId: string
   rasterProfile: KernelOptions['rasterProfile']
@@ -38,7 +41,10 @@ export function ResidentCompositeSurface(props: {
   terminalQuality?: ResidentFrame['terminalQuality']
   presentation: PresentedFrame | null
   overlay?: SurfaceProps['overlay']
-  onPresented?: (frame: ResidentAcknowledgement, source?: PresentedFrame) => void
+  onPresented?: (frame: ResidentAcknowledgement, source?: PresentedFrame, device?: ViewportPreviewDevice) => void
+  /** Actual queued page/movement composition, retaining the source objects.
+   * This is not a GPU completion or a rendered-pixel quality certificate. */
+  onCompositeItems?: (items: readonly CompositeItem[]) => void
 }) {
   const canvas = useRef<HTMLCanvasElement>(null),
     latest = useRef(props)
@@ -157,10 +163,12 @@ export function ResidentCompositeSurface(props: {
     }
     // Pointer updates do not change a dependent snapshot until the next
     // sample completes. Do not fill the GPU queue with identical old pixels.
-    const signature = residentFrameSignature(frame)
+    const baseSignature = residentFrameSignature(frame)
+    const signature = p.reuseSequence ? `${baseSignature}/reuse:${p.reuseSequence}` : baseSignature
     if (signature !== lastFrameSignature.current) {
       lastFrameSignature.current = signature
       p.client.present(frame)
+      p.onCompositeItems?.(items)
     }
     p.client.releasePresented([...release])
     if (canvas.current && moving)
@@ -222,7 +230,8 @@ export function ResidentCompositeSurface(props: {
           const sample = stats.residentSample as Parameters<
             InteractionRenderer['acceptResidentSample']
           >[0]
-          if (sample.signature) lastFrameSignature.current = sample.signature
+          if (sample.signature) lastFrameSignature.current = latest.current.reuseSequence
+            ? `${sample.signature}/reuse:${latest.current.reuseSequence}` : sample.signature
           interaction.current?.acceptResidentSample(sample)
         }
         for (const [key, value] of Object.entries(stats))
@@ -245,7 +254,10 @@ export function ResidentCompositeSurface(props: {
             el.dataset.presentedCamera = JSON.stringify((stats.presented as { view: CanvasCamera }).view)
           // This callback runs in a worker message task. Publish the same
           // camera to SVG chrome and picking before the next browser paint.
-          flushSync(() => latest.current.onPresented?.(actual, presentation.current.resolve(actual)))
+          const device = { client: p.client, deviceWorkerScope: stats.deviceWorkerScope as number,
+            deviceIncarnation: stats.deviceIncarnation as number, deviceOwner: stats.deviceOwner as number }
+          flushSync(() => latest.current.onPresented?.(actual, presentation.current.resolve(actual),
+            viewportPreviewDeviceKey(device) ? device : undefined))
         }
       }
       interaction.current = new InteractionRenderer(() => repaint.current(), p.client, renderExecutionPolicy.desktopDisplay)
@@ -328,6 +340,7 @@ export function ResidentCompositeSurface(props: {
     props.width,
     props.height,
     props.dpr,
+    props.reuseSequence,
     props.interaction,
     props.settledDocument,
     props.pageId,

@@ -597,6 +597,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   snapshots.begin(editor, editor.sessionGeneration, state.page, geometryReady)
   const currentScene = snapshots.currentScene(state.doc, state.page)
   const entries = currentScene.entries
+  const sliceEntries = useMemo(() => entries.filter(entry => state.doc.nodes[entry.id].kind === 'slice'),
+    [entries, state.doc])
   const lastOpenedSession = useRef(editor.sessionGeneration)
   useLayoutEffect(() => {
     const session = editor.sessionGeneration
@@ -1871,11 +1873,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
     } else {
       const notice = d.kind === 'move' ? editor.finishCanvasMove(screenToWorld(d.view, release), /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey, /Mac|iPhone|iPad/.test(navigator.platform) && e.ctrlKey, space.current) : undefined
-      editor.commit()
+      const commitResult = editor.commit()
       if(d.kind==='rotate'&&d.rotationCenter)setOrigin(originFromWorld(d.rotationCenter))
       if (notice) editor.notify(notice)
       if (d.kind === 'move' && d.duplicating && d.ids.every(id => editor.state.doc.nodes[id]))
-        editor.rememberDuplication(d.ids, new Map(d.ids.map(id => [id, d.matrices[id]])))
+        editor.rememberDuplication(commitResult, d.ids, new Map(d.ids.map(id => [id, d.matrices[id]])))
     }
     finishDragTrace(d, ['pan','zoom','pivot','marquee'].includes(d.kind) ? ActionOutcome.observed : d.kind === 'crop' ? ActionOutcome.unsupported : undefined, d.kind === 'crop' ? ActionReason.unobserved : ActionReason.none)
     setRubber(null)
@@ -2243,7 +2245,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         )}
         <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}
           visibility={exactOverlayMatches || ownedDrag?.kind === 'width' ? 'visible' : 'hidden'}>
-          {entries.filter(e=>state.doc.nodes[e.id].kind==='slice').map(e=><g key={e.id} pointerEvents="none" transform={matrixString(e.matrix)}>
+          {sliceEntries.map(e=><g key={e.id} pointerEvents="none" transform={matrixString(e.matrix)}>
             <rect x={0} y={0} width={state.doc.nodes[e.id].width} height={state.doc.nodes[e.id].height} fill="none" stroke="#f09625" strokeWidth={1/zoom} strokeDasharray={`${4/zoom} ${4/zoom}`} />
             <text x={0} y={-5/zoom} fontSize={11/zoom} fill="#c56e00">{state.doc.nodes[e.id].name}</text>
           </g>)}

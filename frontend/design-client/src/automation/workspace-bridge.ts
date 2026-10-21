@@ -1,3 +1,4 @@
+import { prepareWorkspaceImportCopy, prepareWorkspaceFigImportCopy } from './workspace-import-copy'
 import type { Editor } from '../engine'
 import { hasPendingEdits } from '../pending-edits'
 import type { DesktopAutomationRequest } from './bridge'
@@ -23,6 +24,7 @@ const plain = (value: unknown): value is Record<string, unknown> => !!value && t
 const allowed: Record<string, string[]> = {
   inspect: [],
   'workspace.open': ['id'],
+  'workspace.importCopy': ['newDocumentId', 'format', 'content', 'base64'],
   'workspace.save': ['expectedStorageRevision', 'mutationId'],
   'workspace.restore': ['id', 'revision', 'expectedStorageRevision', 'mutationId'],
   'settings.get': [],
@@ -43,7 +45,7 @@ export function createWorkspaceAutomationRenderer(editor: Editor, adapter: Works
       const operation = payload.hostOperation
       if (payload.kind !== 'host' || !operation || !Object.hasOwn(allowed, operation.method) || !plain(operation.params) ||
         Object.keys(operation.params).some(key => !allowed[operation.method].includes(key)) ||
-        allowed[operation.method].some(key => !Object.hasOwn(operation.params, key))) throw failure('INVALID_PARAMS', 'Invalid trusted host operation')
+        (operation.method !== 'workspace.importCopy' && allowed[operation.method].some(key => !Object.hasOwn(operation.params, key)))) throw failure('INVALID_PARAMS', 'Invalid trusted host operation')
       const params = operation.params
       const revision = (value: unknown, minimum = 1) => Number.isSafeInteger(value) && (value as number) >= minimum
       if (('mutationId' in params && (typeof params.mutationId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(params.mutationId))) ||
@@ -71,6 +73,13 @@ export function createWorkspaceAutomationRenderer(editor: Editor, adapter: Works
       const mutates = operation.method !== 'inspect' && operation.method !== 'settings.get'
       const state = check(mutates)
       if (operation.method === 'inspect') return state
+      if (operation.method === 'workspace.importCopy') {
+        const result = params.format === 'fig'
+          ? await prepareWorkspaceFigImportCopy(params, signal)
+          : prepareWorkspaceImportCopy(params)
+        check(true)
+        return result
+      }
       const result = await adapter.execute(operation.method as WorkspaceAutomationOperation, operation.params,
         { documentId: state.documentId, session: state.session, expectedRevision: state.revision, grantSessionId: payload.sessionId }, signal)
       // Navigation deliberately invalidates the old document grant. Never label

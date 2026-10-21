@@ -34,11 +34,13 @@ import { fitWindowState, readWindowState, writeWindowState } from './window-stat
 import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legacy-user-data.mjs'
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
+import { parseGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
 
 const renderDiagnosticsEnabled = !app.isPackaged && ['1','detail'].includes(process.env.CORE_RENDER_DIAGNOSTICS)
 const terminalDiagnostics=createRenderDiagnostics({enabled:renderDiagnosticsEnabled,source:'host',session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
 const smoke = process.argv.includes('--desktop-smoke')
 const cpuOnly = process.argv.includes('--core-cpu-only') || smoke
+const gpuWorkingBudgetMiB = parseGpuWorkingBudgetMiB(process.env.CORE_GPU_WORKING_BUDGET_MIB)
 const guiTest = process.argv.includes('--desktop-gui-test')
 // Manual/native UI validation uses its own catalog/recovery without running
 // the scripted GUI test menu or touching a developer's regular profile.
@@ -166,7 +168,7 @@ const automationBridge = registerAutomationBridge({
     event: entry.event === 'edit' ? 'edit' : entry.method === 'bridge.enable' ? 'grant' : entry.method === 'bridge.disable' ? 'revoke' : 'execute',
     source: entry.source ?? 'automation', ...(entry.summary ? { summary: entry.summary } : {}),
     method: entry.method, documentId: entry.documentId, session: entry.session, scope: entry.scope,
-    status: entry.status === 'ok' ? 'succeeded' : entry.code === 'CANCELLED' ? 'cancelled' : ['TIMEOUT', 'DISCONNECTED', 'SESSION_CLOSED'].includes(entry.code) ? 'unknown' : 'failed',
+    status: entry.status === 'ok' ? 'succeeded' : entry.code === 'CANCELLED' ? 'cancelled' : ['TIMEOUT', 'DISCONNECTED', 'SESSION_CLOSED', 'IMPORT_COPY_OUTCOME_UNKNOWN', 'IMPORT_COPY_COMMITTED_UNVERIFIED', 'IMPORT_COPY_COMMITTED_ACCESS_ENDED'].includes(entry.code) ? 'unknown' : 'failed',
     ...(entry.revision !== undefined ? { revision: entry.revision } : {}),
     ...(entry.requestId ? { requestId: entry.requestId } : {}),
     ...(entry.code ? { code: entry.code.toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 64) } : {}),
@@ -997,7 +999,11 @@ async function buildWindow() {
     backgroundColor: '#191919',
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
-      additionalArguments: [...(cpuOnly ? ['--core-cpu-only'] : []),...(renderDiagnosticsEnabled?['--core-render-diagnostics',...(process.env.CORE_RENDER_DIAGNOSTICS==='detail'?['--core-render-diagnostics-detail']:[])]:[])],
+      additionalArguments: [
+        ...(cpuOnly ? ['--core-cpu-only'] : []),
+        ...(gpuWorkingBudgetMiB === undefined ? [] : [`--core-gpu-working-budget-mib=${gpuWorkingBudgetMiB}`]),
+        ...(renderDiagnosticsEnabled?['--core-render-diagnostics',...(process.env.CORE_RENDER_DIAGNOSTICS==='detail'?['--core-render-diagnostics-detail']:[])]:[]),
+      ],
       session: isolated,
       nodeIntegration: false,
       nodeIntegrationInWorker: false,
@@ -1088,6 +1094,8 @@ async function buildWindow() {
         label: 'File',
         submenu: [
           { label: 'New', accelerator: 'CmdOrCtrl+N', click: () => sendCommand('new') },
+          // Profile-specific page chords belong to the renderer, not a global accelerator.
+          { label: 'New Page', click: () => sendCommand('new-page') },
           { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => { void nativeOpenMenu().catch(reportWindowError) } },
           { label: 'Open Pending Finder File', click: () => sendCommand('openPending') },
           ...(process.platform === 'darwin' ? [{ role: 'recentDocuments', submenu: [

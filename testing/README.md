@@ -20,6 +20,10 @@ node testing/verify-local.mjs --suites frontend-contracts,mcp-contracts
 
 可用环境变量：`BUN`、`PYTHON`、`CARGO` 指定工具；`CARGO_TARGET_DIR` 指定同源码构建目录；`DESIGN_PREPARE_BINARY`、`CORE_DESKTOP_SIDECAR`、`FUTUREOX_BACKEND_TEST_BINARY` 指定可核验的实际 CPU 二进制。不能拿旧二进制的通过冒充新代码验证。
 
+`python-tools` 被 contracts/portable 选中，需要 Pillow；真实字体夹具还需要固定的 fonttools。请事先在自己的虚拟环境中显式安装 `testing/python-tools-requirements.txt` 和 `testing/font-fixtures-requirements.txt`，并将该解释器通过 `PYTHON`（及其 `bin` 目录的 `PATH`）提供给运行器。CI 在 portable 前执行同样的两份依赖清单。运行器和测试不会自动安装、改系统 Python、代换参考图或因缺包跳过断言；导入依赖失败仍以非零结果保留。
+
+macOS 的临时目录可能经过 `/var` 符号链接。自建测试夹具应在创建后用 `realpath` 取得实际目录，再交给严格原生路径准入或断言 shell 的实际 cwd；不能为测试关闭应用的符号链接校验。
+
 ## 证据和分类
 
 每次运行生成每套完整 stdout/stderr 日志与 `results.json`（schemaVersion 1），记录操作系统、Node、HEAD/脏工作区、精确命令、当前测试文件 SHA-256、`passed/failed/not-run/not-selected`。Vitest 另存官方 JSON 的测试总数/通过/失败/待执行。不同框架的计数口径不同，不把 suite、文件、包数量相加成断言数，也不把 `not-selected` 算通过。测试文件哈希不是全部产品源码哈希。

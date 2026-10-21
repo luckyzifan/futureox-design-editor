@@ -69,29 +69,8 @@ export function LayoutPanel({
       '修改约束',
     )
   const setLayoutMode = (mode?: AutoLayout['mode']) => {
-    if (mode === undefined && !n.locked) { editor.autoLayout(); return }
-    mode ??= 'horizontal'
-    if (ids.length !== 1 || !container(n)) { editor.autoLayout(mode); return }
-    // Layout properties of an explicitly selected locked container remain editable.
-    // Removing layout also retires fill sizing, just like the shared canvas command.
-    if (mode === 'none') {
-      editor.change('移除自动布局', doc => {
-        const target = doc.nodes[n.id]
-        if (!target) return
-        delete target.layout
-        target.sizing = { ...defaultSizing(), ...target.sizing, width: 'fixed', height: 'fixed' }
-        for (const id of target.children) {
-          const child = doc.nodes[id]
-          if (child.sizing) {
-            if (child.sizing.width === 'fill') child.sizing.width = 'fixed'
-            if (child.sizing.height === 'fill') child.sizing.height = 'fixed'
-          }
-        }
-      })
-    } else editor.updateProperties(ids, target => {
-      target.kind = 'frame'
-      target.layout = { ...defaultLayout(), ...target.layout, mode }
-    }, '设置自动布局')
+    try { editor.autoLayout(mode, ids); setSuggestionError('') }
+    catch (error) { setSuggestionError(error instanceof Error ? error.message : String(error)) }
   }
   const updateGrid = (patch: Partial<LayoutGrid>) =>
     editor.updateProperties(
@@ -137,8 +116,8 @@ export function LayoutPanel({
           {suggestion.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
           <button type="button" onClick={() => { setSuggestion(null); setSuggestionError('') }}>取消</button>
         </div>}
-        {suggestionError && <p role="alert">{suggestionError}</p>}
       </div>}
+      {suggestionError && <p role="alert">{suggestionError}</p>}
       {container(n) && <div className="layout-flow" role="radiogroup" aria-label="布局方向">
         {([['none','自由布局',LayoutDashboard],['vertical','纵向布局',Rows3],['horizontal','横向布局',Columns3],['grid','网格布局',Grid2X2]] as const).map(([mode,label,Icon]) =>
           <button key={mode} type="button" role="radio" aria-label={label} title={label} aria-checked={(active ? layout.mode : 'none') === mode}

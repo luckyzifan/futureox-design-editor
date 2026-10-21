@@ -88,7 +88,10 @@ test('a SIGTERM-ignoring owned child is forcibly terminated after the bounded gr
   skip: process.platform === 'win32' ? 'Windows terminates SIGTERM targets directly; POSIX signal interception is not available' : false,
   timeout: 10000,
 }, async t => {
-  const { result } = await run(t, "process.on('SIGTERM', () => console.log('ignored SIGTERM')); console.log('ready'); setInterval(() => {}, 100)", { timeoutMs: 500, killGraceMs: 100 })
+  // Cold Node startup competes with the parallel shell-contract fixtures. Give
+  // handler installation a bounded window; the force-kill grace stays 100 ms
+  // and the five-second total bound below still rejects an unretired child.
+  const { result } = await run(t, "process.on('SIGTERM', () => console.log('ignored SIGTERM')); console.log('ready'); setInterval(() => {}, 100)", { timeoutMs: 2000, killGraceMs: 100 })
   assert.match(result.output, /ready/)
   assert.match(result.output, /ignored SIGTERM/)
   assert.equal(result.status, 'failed')

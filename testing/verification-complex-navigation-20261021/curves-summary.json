@@ -1,0 +1,113 @@
+{
+  "scope": "Original source identity, point index and edge endpoints; all original shapePath nodes, including hidden/open paths. Numeric aggregate output only.",
+  "sourceFixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+  "freshActualImportedFileSha256": "3f972730422607c27ca270d5cb99fd8cf4a0e1ac18977e464d01ec4b2138254f",
+  "coordinateTolerance": 1e-09,
+  "circleSubsetMeaning": "Source circle/arc labels select the diagnostic subset; all source shapePath geometry is independently audited without label-based reconstruction.",
+  "freshImport": {
+    "passed": true,
+    "counts": {
+      "activeControlCoordinateMismatches": 0,
+      "activeRenderedControlSlots": 1284,
+      "anchorCoordinateMismatches": 0,
+      "circleControlOrTopologyMismatchedPaths": 0,
+      "circleMissingActiveControls": 0,
+      "circlePaths": 114,
+      "circleWorldAffineMismatches": 0,
+      "circleWorldAffinesCompared": 114,
+      "controlOrTopologyMismatchedPaths": 0,
+      "inactiveControlsInvented": 0,
+      "inactiveRenderedControlSlots": 9730,
+      "matchedImportedPaths": 575,
+      "missingActiveControls": 0,
+      "missingImportedPaths": 0,
+      "rawActiveHandleFlags": 1310,
+      "sourceAnchors": 5582,
+      "sourceClosedPaths": 500,
+      "sourceOpenPaths": 75,
+      "sourcePaths": 575,
+      "topologyMismatchedPaths": 0,
+      "worldAffineMismatchedPaths": 0
+    },
+    "maximumAnchorCoordinateError": 0.0,
+    "maximumActiveControlCoordinateError": 0.0,
+    "maximumWorldAffineError": 5.551115123125783e-17,
+    "maximumCircleWorldAffineError": 5.551115123125783e-17,
+    "maximumCircleWorldColumnSquaredDifference": 0.0,
+    "maximumCircleWorldColumnDot": 0.0,
+    "maximumCircleWorldUnitSquaredError": 2.220446049250313e-16
+  },
+  "savedDocumentsAutomaticallyModified": false,
+  "previousStoredSnapshotSha256": "0192563c8266b2ee2f6d69f1da8216adbc987940d207b67e6df9db8cd828d238",
+  "previousStoredImport": {
+    "passed": false,
+    "counts": {
+      "activeControlCoordinateMismatches": 0,
+      "activeRenderedControlSlots": 1284,
+      "anchorCoordinateMismatches": 0,
+      "circleControlOrTopologyMismatchedPaths": 110,
+      "circleMissingActiveControls": 124,
+      "circlePaths": 114,
+      "circleWorldAffineMismatches": 0,
+      "circleWorldAffinesCompared": 114,
+      "controlOrTopologyMismatchedPaths": 134,
+      "inactiveControlsInvented": 0,
+      "inactiveRenderedControlSlots": 9730,
+      "matchedImportedPaths": 575,
+      "missingActiveControls": 170,
+      "missingImportedPaths": 0,
+      "rawActiveHandleFlags": 1310,
+      "sourceAnchors": 5582,
+      "sourceClosedPaths": 500,
+      "sourceOpenPaths": 75,
+      "sourcePaths": 575,
+      "topologyMismatchedPaths": 0,
+      "worldAffineMismatchedPaths": 0
+    },
+    "maximumAnchorCoordinateError": 0.0,
+    "maximumActiveControlCoordinateError": 0.0,
+    "maximumWorldAffineError": 5.551115123125783e-17,
+    "maximumCircleWorldAffineError": 5.551115123125783e-17,
+    "maximumCircleWorldColumnSquaredDifference": 0.0,
+    "maximumCircleWorldColumnDot": 0.0,
+    "maximumCircleWorldUnitSquaredError": 2.220446049250313e-16
+  },
+  "comparison": {
+    "missingActiveControlsRestored": 170,
+    "inactiveInventedControlsRemoved": 0
+  },
+  "actualGpuFixed": {
+    "backend": "webgpu",
+    "width": 1024,
+    "height": 1024,
+    "wasmSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+    "pngSha256": "bb413a4fa767960ea50d6fde6b4a9c4c287968998fc4c386113377f1d274872e",
+    "rawSha256": "0f301cdb626ee81c2686abacc0a25eb82a05d6d6a61e85d95bb6f39aba93578e",
+    "nonfinite": 0,
+    "radialDirections": 720,
+    "radialMaximum": 0.875,
+    "radialPassed": true,
+    "geometry": {
+      "activeHandles": 9,
+      "mismatchedHandles": 0,
+      "inactiveHandlesInvented": 0
+    }
+  },
+  "actualGpuBrokenNetworkNegativeControl": {
+    "backend": "webgpu",
+    "width": 1024,
+    "height": 1024,
+    "wasmSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+    "pngSha256": "0856687d3609f4bdbb0c98bd1830b50bded5007aba82fcc27c33e63dc0fc1580",
+    "rawSha256": "4ce3212c7f8b66b861997cad1a5a15fb522200dcdbb9b9b0eac8f640f941827f",
+    "nonfinite": 0,
+    "radialDirections": 720,
+    "radialMaximum": 68.875,
+    "radialPassed": false,
+    "geometry": {
+      "activeHandles": 9,
+      "mismatchedHandles": 1,
+      "inactiveHandlesInvented": 0
+    }
+  }
+}

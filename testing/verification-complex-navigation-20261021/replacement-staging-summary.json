@@ -1,0 +1,5 @@
+{
+  "targeted": { "suitesPassed": 11, "suitesFailed": 0, "testsPassed": 171, "testsFailed": 0 },
+  "terminalDiagnostics": { "testsPassed": 23, "testsFailed": 0 },
+  "typecheck": { "exitCode": 0, "diagnostics": 0 }
+}

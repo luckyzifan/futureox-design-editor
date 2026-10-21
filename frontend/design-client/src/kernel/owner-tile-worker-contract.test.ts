@@ -11,7 +11,7 @@ test('worker switches partition and preserves lane-local document/resource gener
   expect(source).toMatch(/laneState\.resourceGeneration\+\+/)
 })
 test('worker full load/fonts invalidate owner while driver resets invalidate aggregate cache',()=>{
-  expect(source).toMatch(/documentGeneration\+\+\s+invalidateOwnerTileCache\(\)/)
+  expect(source).toMatch(/laneState\.documentGeneration\+\+\s+laneState\.decodedImageOwner = createDecodedImageOwner\(\)\s+invalidateOwnerTileCache\(\)/)
   expect(source).toMatch(/resourceGeneration\+\+\s+invalidateOwnerTileCache\(\)/)
   expect(source).toMatch(/settingsJson !== colorKey[\s\S]*?invalidateTileCache\(\)\s+gpu\?\.dispose\(\)/)
   expect(source).toMatch(/if \(gpu\?\.driver\.lost\)[\s\S]*?invalidateTileCache\(\)/)

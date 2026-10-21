@@ -1,0 +1,2035 @@
+{
+  "version": 1,
+  "runs": [
+    {
+      "index": 0,
+      "window": {
+        "startAt": 1792600287516.7,
+        "endAt": 1792600332229.9,
+        "lastInputAt": 1792600331130.2,
+        "durationMs": 44713.199951,
+        "inputDurationMs": 43613.5
+      },
+      "gate": {
+        "expectedSharp": false,
+        "maxAckLagMs": 80,
+        "tolerance": 1e-07,
+        "passed": false,
+        "acknowledgementCount": 1697,
+        "motionAcknowledgements": 1625,
+        "settlingAcknowledgements": 72,
+        "measuredQualityCount": 105,
+        "minimumSharpCoverage": 0,
+        "maximumRequestedZoom": 32,
+        "maximumAcknowledgedZoom": 32,
+        "violationCount": 5103,
+        "inputToAckMs": {
+          "p50": 19,
+          "p95": 93.399902,
+          "max": 1409.699951
+        },
+        "requestToAckMs": {
+          "p50": 1.199951,
+          "p95": 22.300049,
+          "max": 669.399902
+        },
+        "actualInputGapsMs": {
+          "p50": 16.699951,
+          "p95": 776.300049,
+          "max": 3120.400146
+        }
+      },
+      "events": {
+        "rawLifetimeCount": 14949,
+        "deduplicatedLifetimeCount": 14949,
+        "measuredCount": 11400,
+        "workerErrorCount": 181
+      },
+      "wholePreview": {
+        "count": 136,
+        "authoredEnvelopeCount": 0,
+        "startedBeforeLastInputCount": 133,
+        "completedBeforeLastInputCount": 18,
+        "successfulCompletionRelativeMs": [
+          710.300049,
+          873.300049,
+          3499.300049,
+          4249.300049,
+          4362.300049,
+          5209.300049,
+          8464.300049,
+          15453.300049,
+          18764.300049,
+          23209.300049,
+          23974.300049,
+          24127.300049,
+          26041.300049,
+          26114.300049,
+          26736.300049,
+          26876.300049,
+          31042.300049,
+          39029.300049
+        ],
+        "successfulRequestIds": [
+          61,
+          63,
+          79,
+          85,
+          87,
+          93,
+          107,
+          126,
+          140,
+          160,
+          164,
+          167,
+          178,
+          180,
+          185,
+          187,
+          208,
+          240
+        ],
+        "previewTilesEqualOneCount": 0,
+        "outcomes": {
+          "workerCancelled": {
+            "count": 100,
+            "compile": {
+              "count": 80,
+              "sumMs": 2259.1,
+              "p50Ms": 27.9,
+              "p95Ms": 60.3,
+              "maxMs": 71.2
+            },
+            "hydrate": {
+              "count": 64,
+              "sumMs": 58.2,
+              "p50Ms": 0.9,
+              "p95Ms": 1.5,
+              "maxMs": 1.6
+            },
+            "queueBody": {
+              "count": 100,
+              "sumMs": 17998.8,
+              "p50Ms": 95.9,
+              "p95Ms": 650.5,
+              "maxMs": 844.9
+            },
+            "cancelStages": {
+              "0": 18,
+              "12": 64,
+              "5": 18
+            },
+            "fences": {
+              "all": {
+                "count": 198,
+                "sumMs": 13387.2,
+                "p50Ms": 5.4,
+                "p95Ms": 416.4,
+                "maxMs": 731.4
+              },
+              "byReason": {
+                "6": {
+                  "count": 137,
+                  "sumMs": 12881.2,
+                  "p50Ms": 9.5,
+                  "p95Ms": 432,
+                  "maxMs": 731.4
+                },
+                "8": {
+                  "count": 60,
+                  "sumMs": 504.9,
+                  "p50Ms": 2.4,
+                  "p95Ms": 32,
+                  "maxMs": 152.9
+                },
+                "9": {
+                  "count": 1,
+                  "sumMs": 1.1,
+                  "p50Ms": 1.1,
+                  "p95Ms": 1.1,
+                  "maxMs": 1.1
+                }
+              },
+              "admissionByRetiredKinds": {
+                "1": {
+                  "count": 10,
+                  "sumMs": 53.6,
+                  "p50Ms": 4.1,
+                  "p95Ms": 11.2,
+                  "maxMs": 11.2
+                },
+                "5": {
+                  "count": 1,
+                  "sumMs": 314.1,
+                  "p50Ms": 314.1,
+                  "p95Ms": 314.1,
+                  "maxMs": 314.1
+                },
+                "9": {
+                  "count": 106,
+                  "sumMs": 6242.5,
+                  "p50Ms": 7,
+                  "p95Ms": 379.7,
+                  "maxMs": 465.7
+                },
+                "17": {
+                  "count": 2,
+                  "sumMs": 1452.6,
+                  "p50Ms": 721.2,
+                  "p95Ms": 731.4,
+                  "maxMs": 731.4
+                },
+                "25": {
+                  "count": 14,
+                  "sumMs": 4180.7,
+                  "p50Ms": 306.7,
+                  "p95Ms": 585.7,
+                  "maxMs": 585.7
+                }
+              },
+              "admissionPressure": {
+                "count": 12,
+                "sumMs": 1506.2,
+                "p50Ms": 4.3,
+                "p95Ms": 731.4,
+                "maxMs": 731.4
+              },
+              "admissionWithCoordinates": {
+                "count": 1,
+                "sumMs": 314.1,
+                "p50Ms": 314.1,
+                "p95Ms": 314.1,
+                "maxMs": 314.1
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          },
+          "success": {
+            "count": 18,
+            "compile": {
+              "count": 18,
+              "sumMs": 340.3,
+              "p50Ms": 13,
+              "p95Ms": 59.5,
+              "maxMs": 59.5
+            },
+            "hydrate": {
+              "count": 18,
+              "sumMs": 7.9,
+              "p50Ms": 0.2,
+              "p95Ms": 1.3,
+              "maxMs": 1.3
+            },
+            "queueBody": {
+              "count": 18,
+              "sumMs": 762.0,
+              "p50Ms": 16.5,
+              "p95Ms": 124.5,
+              "maxMs": 124.5
+            },
+            "cancelStages": {},
+            "fences": {
+              "all": {
+                "count": 9,
+                "sumMs": 183.6,
+                "p50Ms": 2.4,
+                "p95Ms": 53.3,
+                "maxMs": 53.3
+              },
+              "byReason": {
+                "5": {
+                  "count": 4,
+                  "sumMs": 9.3,
+                  "p50Ms": 2.3,
+                  "p95Ms": 2.4,
+                  "maxMs": 2.4
+                },
+                "6": {
+                  "count": 5,
+                  "sumMs": 174.3,
+                  "p50Ms": 34.4,
+                  "p95Ms": 53.3,
+                  "maxMs": 53.3
+                }
+              },
+              "admissionByRetiredKinds": {
+                "9": {
+                  "count": 5,
+                  "sumMs": 174.3,
+                  "p50Ms": 34.4,
+                  "p95Ms": 53.3,
+                  "maxMs": 53.3
+                }
+              },
+              "admissionPressure": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          },
+          "otherWorkerError": {
+            "count": 18,
+            "compile": {
+              "count": 18,
+              "sumMs": 470.6,
+              "p50Ms": 23.1,
+              "p95Ms": 61.9,
+              "maxMs": 61.9
+            },
+            "hydrate": {
+              "count": 18,
+              "sumMs": 14.6,
+              "p50Ms": 0.8,
+              "p95Ms": 1.3,
+              "maxMs": 1.3
+            },
+            "queueBody": {
+              "count": 18,
+              "sumMs": 6704.4,
+              "p50Ms": 80,
+              "p95Ms": 1434.9,
+              "maxMs": 1434.9
+            },
+            "cancelStages": {},
+            "fences": {
+              "all": {
+                "count": 57,
+                "sumMs": 6596.7,
+                "p50Ms": 5,
+                "p95Ms": 1338.6,
+                "maxMs": 1357.2
+              },
+              "byReason": {
+                "6": {
+                  "count": 56,
+                  "sumMs": 5937.9,
+                  "p50Ms": 4.9,
+                  "p95Ms": 1338.6,
+                  "maxMs": 1357.2
+                },
+                "10": {
+                  "count": 1,
+                  "sumMs": 658.8,
+                  "p50Ms": 658.8,
+                  "p95Ms": 658.8,
+                  "maxMs": 658.8
+                }
+              },
+              "admissionByRetiredKinds": {
+                "1": {
+                  "count": 6,
+                  "sumMs": 40.4,
+                  "p50Ms": 6.6,
+                  "p95Ms": 8.8,
+                  "maxMs": 8.8
+                },
+                "9": {
+                  "count": 24,
+                  "sumMs": 540.6,
+                  "p50Ms": 5.2,
+                  "p95Ms": 106.3,
+                  "maxMs": 107
+                },
+                "17": {
+                  "count": 3,
+                  "sumMs": 4035.2,
+                  "p50Ms": 1339.4,
+                  "p95Ms": 1357.2,
+                  "maxMs": 1357.2
+                }
+              },
+              "admissionPressure": {
+                "count": 9,
+                "sumMs": 4075.6,
+                "p50Ms": 8,
+                "p95Ms": 1357.2,
+                "maxMs": 1357.2
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          }
+        },
+        "resultStages": {
+          "milliseconds": {
+            "count": 18,
+            "sumMs": 801.7,
+            "p50Ms": 18,
+            "p95Ms": 124.9,
+            "maxMs": 124.9
+          },
+          "compileMs": {
+            "count": 18,
+            "sumMs": 354.3,
+            "p50Ms": 13.5,
+            "p95Ms": 59.7,
+            "maxMs": 59.7
+          },
+          "graphMs": {
+            "count": 18,
+            "sumMs": 333.7,
+            "p50Ms": 0.1,
+            "p95Ms": 91.3,
+            "maxMs": 91.3
+          },
+          "finishMs": {
+            "count": 18,
+            "sumMs": 53.4,
+            "p50Ms": 2.6,
+            "p95Ms": 13.7,
+            "maxMs": 13.7
+          },
+          "checkpointMs": {
+            "count": 0,
+            "sumMs": 0,
+            "p50Ms": null,
+            "p95Ms": null,
+            "maxMs": null
+          },
+          "pipelineWallMs": {
+            "count": 0,
+            "sumMs": 0,
+            "p50Ms": null,
+            "p95Ms": null,
+            "maxMs": null
+          }
+        },
+        "resultMaterialFields": {
+          "materialFieldBuilds": {
+            "count": 18,
+            "sum": 68,
+            "min": 0,
+            "max": 12
+          },
+          "materialFieldHits": {
+            "count": 18,
+            "sum": 0,
+            "min": 0,
+            "max": 0
+          },
+          "materialFieldUploadBytes": {
+            "count": 18,
+            "sum": 5541568,
+            "min": 0,
+            "max": 1576064
+          },
+          "imageAxisFields": {
+            "count": 0,
+            "sum": 0,
+            "min": null,
+            "max": null
+          },
+          "imageFieldBytes": {
+            "count": 0,
+            "sum": 0,
+            "min": null,
+            "max": null
+          }
+        },
+        "resultMaterialFieldBuildElapsed": {
+          "count": 0,
+          "sumMs": 0,
+          "p50Ms": null,
+          "p95Ms": null,
+          "maxMs": null
+        }
+      },
+      "ordinaryTiles": {
+        "count": 65,
+        "authoredEnvelopeCount": 0,
+        "startedBeforeLastInputCount": 62,
+        "completedBeforeLastInputCount": 0,
+        "successfulCompletionRelativeMs": [
+          44201.300049,
+          44619.300049
+        ],
+        "successfulRequestIds": [
+          258,
+          259
+        ],
+        "previewTilesEqualOneCount": 0,
+        "outcomes": {
+          "workerCancelled": {
+            "count": 63,
+            "compile": {
+              "count": 72,
+              "sumMs": 1958.2,
+              "p50Ms": 23,
+              "p95Ms": 73.9,
+              "maxMs": 102.7
+            },
+            "hydrate": {
+              "count": 55,
+              "sumMs": 24.7,
+              "p50Ms": 0.2,
+              "p95Ms": 1.3,
+              "maxMs": 1.6
+            },
+            "queueBody": {
+              "count": 63,
+              "sumMs": 13703.7,
+              "p50Ms": 44.3,
+              "p95Ms": 1447.8,
+              "maxMs": 1470.8
+            },
+            "cancelStages": {
+              "0": 58,
+              "12": 5
+            },
+            "fences": {
+              "all": {
+                "count": 35,
+                "sumMs": 11004.0,
+                "p50Ms": 4.9,
+                "p95Ms": 1399.8,
+                "maxMs": 1400.3
+              },
+              "byReason": {
+                "3": {
+                  "count": 4,
+                  "sumMs": 95.3,
+                  "p50Ms": 5.2,
+                  "p95Ms": 43.6,
+                  "maxMs": 43.6
+                },
+                "5": {
+                  "count": 8,
+                  "sumMs": 25.5,
+                  "p50Ms": 1.5,
+                  "p95Ms": 10.6,
+                  "maxMs": 10.6
+                },
+                "6": {
+                  "count": 13,
+                  "sumMs": 4826.4,
+                  "p50Ms": 16.2,
+                  "p95Ms": 1383.8,
+                  "maxMs": 1383.8
+                },
+                "8": {
+                  "count": 5,
+                  "sumMs": 6.8,
+                  "p50Ms": 1.3,
+                  "p95Ms": 2.1,
+                  "maxMs": 2.1
+                },
+                "11": {
+                  "count": 5,
+                  "sumMs": 6050.0,
+                  "p50Ms": 1382.6,
+                  "p95Ms": 1400.3,
+                  "maxMs": 1400.3
+                }
+              },
+              "admissionByRetiredKinds": {
+                "9": {
+                  "count": 6,
+                  "sumMs": 11.8,
+                  "p50Ms": 1.1,
+                  "p95Ms": 4.1,
+                  "maxMs": 4.1
+                },
+                "25": {
+                  "count": 7,
+                  "sumMs": 4814.6,
+                  "p50Ms": 452.7,
+                  "p95Ms": 1383.8,
+                  "maxMs": 1383.8
+                }
+              },
+              "admissionPressure": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          },
+          "success": {
+            "count": 2,
+            "compile": {
+              "count": 16,
+              "sumMs": 375.9,
+              "p50Ms": 22,
+              "p95Ms": 44.7,
+              "maxMs": 44.7
+            },
+            "hydrate": {
+              "count": 16,
+              "sumMs": 9.4,
+              "p50Ms": 0.5,
+              "p95Ms": 1.1,
+              "maxMs": 1.1
+            },
+            "queueBody": {
+              "count": 2,
+              "sumMs": 610.5,
+              "p50Ms": 196.5,
+              "p95Ms": 414,
+              "maxMs": 414
+            },
+            "cancelStages": {},
+            "fences": {
+              "all": {
+                "count": 5,
+                "sumMs": 137.0,
+                "p50Ms": 22.5,
+                "p95Ms": 45.2,
+                "maxMs": 45.2
+              },
+              "byReason": {
+                "5": {
+                  "count": 4,
+                  "sumMs": 91.8,
+                  "p50Ms": 16,
+                  "p95Ms": 38.2,
+                  "maxMs": 38.2
+                },
+                "6": {
+                  "count": 1,
+                  "sumMs": 45.2,
+                  "p50Ms": 45.2,
+                  "p95Ms": 45.2,
+                  "maxMs": 45.2
+                }
+              },
+              "admissionByRetiredKinds": {
+                "9": {
+                  "count": 1,
+                  "sumMs": 45.2,
+                  "p50Ms": 45.2,
+                  "p95Ms": 45.2,
+                  "maxMs": 45.2
+                }
+              },
+              "admissionPressure": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          }
+        },
+        "resultStages": {
+          "milliseconds": {
+            "count": 2,
+            "sumMs": 613.6,
+            "p50Ms": 197.7,
+            "p95Ms": 415.9,
+            "maxMs": 415.9
+          },
+          "compileMs": {
+            "count": 2,
+            "sumMs": 402.7,
+            "p50Ms": 151.3,
+            "p95Ms": 251.4,
+            "maxMs": 251.4
+          },
+          "graphMs": {
+            "count": 2,
+            "sumMs": 317.5,
+            "p50Ms": 98.3,
+            "p95Ms": 219.2,
+            "maxMs": 219.2
+          },
+          "finishMs": {
+            "count": 2,
+            "sumMs": 160.1,
+            "p50Ms": 39.3,
+            "p95Ms": 120.8,
+            "maxMs": 120.8
+          },
+          "checkpointMs": {
+            "count": 2,
+            "sumMs": 45.6,
+            "p50Ms": 0,
+            "p95Ms": 45.6,
+            "maxMs": 45.6
+          },
+          "pipelineWallMs": {
+            "count": 2,
+            "sumMs": 609.7,
+            "p50Ms": 196.1,
+            "p95Ms": 413.6,
+            "maxMs": 413.6
+          }
+        },
+        "resultMaterialFields": {
+          "materialFieldBuilds": {
+            "count": 2,
+            "sum": 88,
+            "min": 28,
+            "max": 60
+          },
+          "materialFieldHits": {
+            "count": 0,
+            "sum": 0,
+            "min": null,
+            "max": null
+          },
+          "materialFieldUploadBytes": {
+            "count": 2,
+            "sum": 8680000,
+            "min": 2100416,
+            "max": 6579584
+          },
+          "imageAxisFields": {
+            "count": 0,
+            "sum": 0,
+            "min": null,
+            "max": null
+          },
+          "imageFieldBytes": {
+            "count": 0,
+            "sum": 0,
+            "min": null,
+            "max": null
+          }
+        },
+        "resultMaterialFieldBuildElapsed": {
+          "count": 0,
+          "sumMs": 0,
+          "p50Ms": null,
+          "p95Ms": null,
+          "maxMs": null
+        }
+      },
+      "mainCancellation": {
+        "count": 122,
+        "requestToCancel": {
+          "count": 122,
+          "sumMs": 24010,
+          "p50Ms": 90,
+          "p95Ms": 575,
+          "maxMs": 1462
+        }
+      },
+      "fences": {
+        "all": {
+          "count": 304,
+          "sumMs": 31308.5,
+          "p50Ms": 5.2,
+          "p95Ms": 574.8,
+          "maxMs": 1400.3
+        },
+        "byReason": {
+          "3": {
+            "count": 4,
+            "sumMs": 95.3,
+            "p50Ms": 5.2,
+            "p95Ms": 43.6,
+            "maxMs": 43.6
+          },
+          "5": {
+            "count": 16,
+            "sumMs": 126.6,
+            "p50Ms": 2.3,
+            "p95Ms": 38.2,
+            "maxMs": 38.2
+          },
+          "6": {
+            "count": 212,
+            "sumMs": 23865.0,
+            "p50Ms": 8,
+            "p95Ms": 574.8,
+            "maxMs": 1383.8
+          },
+          "8": {
+            "count": 65,
+            "sumMs": 511.7,
+            "p50Ms": 2.2,
+            "p95Ms": 32,
+            "maxMs": 152.9
+          },
+          "9": {
+            "count": 1,
+            "sumMs": 1.1,
+            "p50Ms": 1.1,
+            "p95Ms": 1.1,
+            "maxMs": 1.1
+          },
+          "10": {
+            "count": 1,
+            "sumMs": 658.8,
+            "p50Ms": 658.8,
+            "p95Ms": 658.8,
+            "maxMs": 658.8
+          },
+          "11": {
+            "count": 5,
+            "sumMs": 6050.0,
+            "p50Ms": 1382.6,
+            "p95Ms": 1400.3,
+            "maxMs": 1400.3
+          }
+        },
+        "admissionByRetiredKinds": {
+          "1": {
+            "count": 16,
+            "sumMs": 94.0,
+            "p50Ms": 4.7,
+            "p95Ms": 11.2,
+            "maxMs": 11.2
+          },
+          "5": {
+            "count": 1,
+            "sumMs": 314.1,
+            "p50Ms": 314.1,
+            "p95Ms": 314.1,
+            "maxMs": 314.1
+          },
+          "9": {
+            "count": 142,
+            "sumMs": 7014.4,
+            "p50Ms": 6.5,
+            "p95Ms": 324.6,
+            "maxMs": 465.7
+          },
+          "17": {
+            "count": 5,
+            "sumMs": 5487.8,
+            "p50Ms": 1338.6,
+            "p95Ms": 1357.2,
+            "maxMs": 1357.2
+          },
+          "25": {
+            "count": 21,
+            "sumMs": 8995.3,
+            "p50Ms": 317.6,
+            "p95Ms": 1377.5,
+            "maxMs": 1383.8
+          }
+        },
+        "admissionPressure": {
+          "count": 21,
+          "sumMs": 5581.8,
+          "p50Ms": 6.6,
+          "p95Ms": 1339.4,
+          "maxMs": 1357.2
+        },
+        "admissionWithCoordinates": {
+          "count": 1,
+          "sumMs": 314.1,
+          "p50Ms": 314.1,
+          "p95Ms": 314.1,
+          "maxMs": 314.1
+        },
+        "admissionWithRetiredUploads": {
+          "count": 0,
+          "sumMs": 0,
+          "p50Ms": null,
+          "p95Ms": null,
+          "maxMs": null
+        },
+        "poolOnlyNoPressureAtMost75Percent": {
+          "count": 0,
+          "sumMs": 0,
+          "p50Ms": null,
+          "p95Ms": null,
+          "maxMs": null
+        },
+        "poolOnlyEligibleMaxWorkingBytes": null,
+        "poolOnlyEligibleMaxPoolBytes": null
+      },
+      "rejections": {},
+      "unsupportedWholeRequestsWithoutDetailedRejection": 0,
+      "rejectionDiagnosticLifetimeLimit": 64,
+      "rendererCounterObservation": {
+        "available": true,
+        "sequentialDisplayFrames": 0,
+        "counterIsDriverLifetime": true,
+        "successfulMeasuredWholeRequests": 18,
+        "successfulWholeRequestsOutsideMeasuredWindow": 2,
+        "counterEqualsSuccessfulMeasuredWholeRequests": false,
+        "counterEqualityDoesNotIndependentlyProvePhaseOrSequentialMode": true,
+        "readbackBytes": 0,
+        "crossDeviceBitmaps": 0,
+        "workingBudgetBytes": 268435456,
+        "deviceLost": false,
+        "memoryObservationErrorCount": 0
+      }
+    },
+    {
+      "index": 1,
+      "window": {
+        "startAt": 1792601135538.5999,
+        "endAt": 1792601155695.8,
+        "lastInputAt": 1792601154811.2,
+        "durationMs": 20157.200195,
+        "inputDurationMs": 19272.600098
+      },
+      "gate": {
+        "expectedSharp": false,
+        "maxAckLagMs": 80,
+        "tolerance": 1e-07,
+        "passed": false,
+        "acknowledgementCount": 2314,
+        "motionAcknowledgements": 2211,
+        "settlingAcknowledgements": 103,
+        "measuredQualityCount": 75,
+        "minimumSharpCoverage": 0,
+        "maximumRequestedZoom": 32,
+        "maximumAcknowledgedZoom": 32,
+        "violationCount": 7077,
+        "inputToAckMs": {
+          "p50": 19.699951,
+          "p95": 215.399902,
+          "max": 324
+        },
+        "requestToAckMs": {
+          "p50": 1.299805,
+          "p95": 259.5,
+          "max": 489.899902
+        },
+        "actualInputGapsMs": {
+          "p50": 16.800049,
+          "p95": 426.600098,
+          "max": 649.300049
+        }
+      },
+      "events": {
+        "rawLifetimeCount": 29371,
+        "deduplicatedLifetimeCount": 29371,
+        "measuredCount": 14552,
+        "workerErrorCount": 93
+      },
+      "wholePreview": {
+        "count": 120,
+        "authoredEnvelopeCount": 0,
+        "startedBeforeLastInputCount": 117,
+        "completedBeforeLastInputCount": 80,
+        "successfulCompletionRelativeMs": [
+          297.400146,
+          427.400146,
+          634.400146,
+          833.400146,
+          986.400146,
+          1159.400146,
+          1485.400146,
+          1553.400146,
+          1680.400146,
+          1816.400146,
+          1969.400146,
+          2126.400146,
+          2385.400146,
+          2493.400146,
+          2593.400146,
+          2807.400146,
+          3090.400146,
+          3124.400146,
+          3234.400146,
+          4315.400146,
+          4469.400146,
+          4709.400146,
+          5073.400146,
+          6499.400146,
+          6831.400146,
+          6991.400146,
+          7118.400146,
+          7329.400146,
+          7525.400146,
+          7654.400146,
+          8338.400146,
+          8504.400146,
+          8625.400146,
+          8907.400146,
+          8972.400146,
+          9070.400146,
+          9277.400146,
+          9545.400146,
+          9605.400146,
+          9733.400146,
+          10255.400146,
+          10427.400146,
+          10629.400146,
+          10822.400146,
+          10942.400146,
+          11237.400146,
+          11323.400146,
+          11425.400146,
+          11570.400146,
+          11741.400146,
+          11882.400146,
+          12152.400146,
+          12243.400146,
+          12358.400146,
+          12544.400146,
+          12817.400146,
+          12857.400146,
+          13000.400146,
+          13984.400146,
+          14157.400146,
+          14379.400146,
+          14520.400146,
+          14719.400146,
+          14858.400146,
+          16109.400146,
+          16274.400146,
+          16629.400146,
+          16794.400146,
+          17177.400146,
+          17438.400146,
+          17508.400146,
+          17741.400146,
+          17969.400146,
+          18123.400146,
+          18299.400146,
+          18459.400146,
+          18733.400146,
+          18798.400146,
+          18893.400146,
+          19142.400146,
+          19395.400146,
+          19458.400146,
+          19599.400146
+        ],
+        "successfulRequestIds": [
+          159,
+          160,
+          162,
+          164,
+          165,
+          166,
+          168,
+          169,
+          171,
+          172,
+          173,
+          175,
+          178,
+          179,
+          181,
+          183,
+          184,
+          185,
+          187,
+          195,
+          196,
+          199,
+          203,
+          218,
+          220,
+          221,
+          223,
+          225,
+          226,
+          227,
+          233,
+          234,
+          236,
+          238,
+          239,
+          242,
+          244,
+          245,
+          246,
+          248,
+          251,
+          253,
+          255,
+          256,
+          257,
+          259,
+          261,
+          263,
+          264,
+          265,
+          267,
+          269,
+          270,
+          273,
+          275,
+          276,
+          277,
+          279,
+          287,
+          288,
+          289,
+          291,
+          293,
+          294,
+          305,
+          308,
+          310,
+          311,
+          314,
+          315,
+          316,
+          318,
+          322,
+          323,
+          324,
+          326,
+          328,
+          329,
+          331,
+          333,
+          334,
+          335,
+          337
+        ],
+        "previewTilesEqualOneCount": 0,
+        "outcomes": {
+          "success": {
+            "count": 83,
+            "compile": {
+              "count": 80,
+              "sumMs": 1336.8,
+              "p50Ms": 15.3,
+              "p95Ms": 29.1,
+              "maxMs": 49
+            },
+            "hydrate": {
+              "count": 83,
+              "sumMs": 18.1,
+              "p50Ms": 0.2,
+              "p95Ms": 0.4,
+              "maxMs": 0.4
+            },
+            "queueBody": {
+              "count": 83,
+              "sumMs": 2348.4,
+              "p50Ms": 21.7,
+              "p95Ms": 82.5,
+              "maxMs": 120.8
+            },
+            "cancelStages": {},
+            "fences": {
+              "all": {
+                "count": 19,
+                "sumMs": 309.3,
+                "p50Ms": 9.4,
+                "p95Ms": 74.9,
+                "maxMs": 74.9
+              },
+              "byReason": {
+                "5": {
+                  "count": 16,
+                  "sumMs": 305.9,
+                  "p50Ms": 9.6,
+                  "p95Ms": 74.9,
+                  "maxMs": 74.9
+                },
+                "9": {
+                  "count": 3,
+                  "sumMs": 3.4,
+                  "p50Ms": 1.1,
+                  "p95Ms": 1.3,
+                  "maxMs": 1.3
+                }
+              },
+              "admissionByRetiredKinds": {},
+              "admissionPressure": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          },
+          "workerCancelled": {
+            "count": 15,
+            "compile": {
+              "count": 14,
+              "sumMs": 293.3,
+              "p50Ms": 14.5,
+              "p95Ms": 54.7,
+              "maxMs": 54.7
+            },
+            "hydrate": {
+              "count": 9,
+              "sumMs": 2.5,
+              "p50Ms": 0.2,
+              "p95Ms": 0.5,
+              "maxMs": 0.5
+            },
+            "queueBody": {
+              "count": 15,
+              "sumMs": 594.2,
+              "p50Ms": 24,
+              "p95Ms": 188.6,
+              "maxMs": 188.6
+            },
+            "cancelStages": {
+              "0": 7,
+              "12": 2,
+              "5": 6
+            },
+            "fences": {
+              "all": {
+                "count": 8,
+                "sumMs": 190.2,
+                "p50Ms": 6.8,
+                "p95Ms": 103.1,
+                "maxMs": 103.1
+              },
+              "byReason": {
+                "5": {
+                  "count": 5,
+                  "sumMs": 184.5,
+                  "p50Ms": 15.3,
+                  "p95Ms": 103.1,
+                  "maxMs": 103.1
+                },
+                "8": {
+                  "count": 2,
+                  "sumMs": 4.9,
+                  "p50Ms": 1.6,
+                  "p95Ms": 3.3,
+                  "maxMs": 3.3
+                },
+                "9": {
+                  "count": 1,
+                  "sumMs": 0.8,
+                  "p50Ms": 0.8,
+                  "p95Ms": 0.8,
+                  "maxMs": 0.8
+                }
+              },
+              "admissionByRetiredKinds": {},
+              "admissionPressure": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          },
+          "otherWorkerError": {
+            "count": 20,
+            "compile": {
+              "count": 20,
+              "sumMs": 229.8,
+              "p50Ms": 11,
+              "p95Ms": 14.7,
+              "maxMs": 19.3
+            },
+            "hydrate": {
+              "count": 8,
+              "sumMs": 1.5,
+              "p50Ms": 0.2,
+              "p95Ms": 0.2,
+              "maxMs": 0.2
+            },
+            "queueBody": {
+              "count": 20,
+              "sumMs": 304.4,
+              "p50Ms": 13.8,
+              "p95Ms": 21.8,
+              "maxMs": 25.9
+            },
+            "cancelStages": {},
+            "fences": {
+              "all": {
+                "count": 16,
+                "sumMs": 10.5,
+                "p50Ms": 0.6,
+                "p95Ms": 2.4,
+                "maxMs": 2.4
+              },
+              "byReason": {
+                "6": {
+                  "count": 12,
+                  "sumMs": 7.2,
+                  "p50Ms": 0.2,
+                  "p95Ms": 2.4,
+                  "maxMs": 2.4
+                },
+                "9": {
+                  "count": 4,
+                  "sumMs": 3.3,
+                  "p50Ms": 0.8,
+                  "p95Ms": 0.9,
+                  "maxMs": 0.9
+                }
+              },
+              "admissionByRetiredKinds": {},
+              "admissionPressure": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          },
+          "clientCancelledWithoutWorkerOutcome": {
+            "count": 2,
+            "compile": {
+              "count": 2,
+              "sumMs": 37.5,
+              "p50Ms": 15.8,
+              "p95Ms": 21.7,
+              "maxMs": 21.7
+            },
+            "hydrate": {
+              "count": 2,
+              "sumMs": 0.7,
+              "p50Ms": 0.3,
+              "p95Ms": 0.4,
+              "maxMs": 0.4
+            },
+            "queueBody": {
+              "count": 2,
+              "sumMs": 77.6,
+              "p50Ms": 28,
+              "p95Ms": 49.6,
+              "maxMs": 49.6
+            },
+            "cancelStages": {},
+            "fences": {
+              "all": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "byReason": {},
+              "admissionByRetiredKinds": {},
+              "admissionPressure": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          }
+        },
+        "resultStages": {
+          "milliseconds": {
+            "count": 83,
+            "sumMs": 2435.0,
+            "p50Ms": 22.5,
+            "p95Ms": 82.9,
+            "maxMs": 122.2
+          },
+          "compileMs": {
+            "count": 83,
+            "sumMs": 1365.8,
+            "p50Ms": 15.6,
+            "p95Ms": 30.5,
+            "maxMs": 50.4
+          },
+          "graphMs": {
+            "count": 83,
+            "sumMs": 319.7,
+            "p50Ms": 2,
+            "p95Ms": 18.6,
+            "maxMs": 30.5
+          },
+          "finishMs": {
+            "count": 83,
+            "sumMs": 578.6,
+            "p50Ms": 1.3,
+            "p95Ms": 43.6,
+            "maxMs": 76.6
+          },
+          "checkpointMs": {
+            "count": 0,
+            "sumMs": 0,
+            "p50Ms": null,
+            "p95Ms": null,
+            "maxMs": null
+          },
+          "pipelineWallMs": {
+            "count": 0,
+            "sumMs": 0,
+            "p50Ms": null,
+            "p95Ms": null,
+            "maxMs": null
+          }
+        },
+        "resultMaterialFields": {
+          "materialFieldBuilds": {
+            "count": 83,
+            "sum": 33,
+            "min": 0,
+            "max": 3
+          },
+          "materialFieldHits": {
+            "count": 83,
+            "sum": 0,
+            "min": 0,
+            "max": 0
+          },
+          "materialFieldUploadBytes": {
+            "count": 83,
+            "sum": 5797712,
+            "min": 0,
+            "max": 653520
+          },
+          "imageAxisFields": {
+            "count": 0,
+            "sum": 0,
+            "min": null,
+            "max": null
+          },
+          "imageFieldBytes": {
+            "count": 0,
+            "sum": 0,
+            "min": null,
+            "max": null
+          }
+        },
+        "resultMaterialFieldBuildElapsed": {
+          "count": 0,
+          "sumMs": 0,
+          "p50Ms": null,
+          "p95Ms": null,
+          "maxMs": null
+        }
+      },
+      "ordinaryTiles": {
+        "count": 61,
+        "authoredEnvelopeCount": 0,
+        "startedBeforeLastInputCount": 58,
+        "completedBeforeLastInputCount": 0,
+        "successfulCompletionRelativeMs": [
+          19815.400146,
+          20105.400146
+        ],
+        "successfulRequestIds": [
+          338,
+          339
+        ],
+        "previewTilesEqualOneCount": 0,
+        "outcomes": {
+          "workerCancelled": {
+            "count": 58,
+            "compile": {
+              "count": 178,
+              "sumMs": 1996.2,
+              "p50Ms": 11.1,
+              "p95Ms": 22.8,
+              "maxMs": 44.9
+            },
+            "hydrate": {
+              "count": 95,
+              "sumMs": 17.1,
+              "p50Ms": 0.2,
+              "p95Ms": 0.3,
+              "maxMs": 0.4
+            },
+            "queueBody": {
+              "count": 58,
+              "sumMs": 2251.4,
+              "p50Ms": 35.7,
+              "p95Ms": 67.7,
+              "maxMs": 92
+            },
+            "cancelStages": {
+              "0": 55,
+              "12": 3
+            },
+            "fences": {
+              "all": {
+                "count": 36,
+                "sumMs": 199.3,
+                "p50Ms": 4.2,
+                "p95Ms": 20.6,
+                "maxMs": 23.8
+              },
+              "byReason": {
+                "5": {
+                  "count": 25,
+                  "sumMs": 178.6,
+                  "p50Ms": 5.3,
+                  "p95Ms": 20.6,
+                  "maxMs": 23.8
+                },
+                "8": {
+                  "count": 3,
+                  "sumMs": 12.6,
+                  "p50Ms": 2.8,
+                  "p95Ms": 7.7,
+                  "maxMs": 7.7
+                },
+                "10": {
+                  "count": 8,
+                  "sumMs": 8.1,
+                  "p50Ms": 0.9,
+                  "p95Ms": 1.4,
+                  "maxMs": 1.4
+                }
+              },
+              "admissionByRetiredKinds": {},
+              "admissionPressure": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          },
+          "clientCancelledWithoutWorkerOutcome": {
+            "count": 1,
+            "compile": {
+              "count": 4,
+              "sumMs": 26.7,
+              "p50Ms": 5.2,
+              "p95Ms": 11.7,
+              "maxMs": 11.7
+            },
+            "hydrate": {
+              "count": 4,
+              "sumMs": 0.9,
+              "p50Ms": 0.2,
+              "p95Ms": 0.3,
+              "maxMs": 0.3
+            },
+            "queueBody": {
+              "count": 1,
+              "sumMs": 34.5,
+              "p50Ms": 34.5,
+              "p95Ms": 34.5,
+              "maxMs": 34.5
+            },
+            "cancelStages": {},
+            "fences": {
+              "all": {
+                "count": 1,
+                "sumMs": 6.7,
+                "p50Ms": 6.7,
+                "p95Ms": 6.7,
+                "maxMs": 6.7
+              },
+              "byReason": {
+                "5": {
+                  "count": 1,
+                  "sumMs": 6.7,
+                  "p50Ms": 6.7,
+                  "p95Ms": 6.7,
+                  "maxMs": 6.7
+                }
+              },
+              "admissionByRetiredKinds": {},
+              "admissionPressure": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          },
+          "success": {
+            "count": 2,
+            "compile": {
+              "count": 25,
+              "sumMs": 148.3,
+              "p50Ms": 4.7,
+              "p95Ms": 14.4,
+              "maxMs": 23.3
+            },
+            "hydrate": {
+              "count": 25,
+              "sumMs": 4.3,
+              "p50Ms": 0.2,
+              "p95Ms": 0.3,
+              "maxMs": 0.3
+            },
+            "queueBody": {
+              "count": 2,
+              "sumMs": 347.9,
+              "p50Ms": 61.8,
+              "p95Ms": 286.1,
+              "maxMs": 286.1
+            },
+            "cancelStages": {},
+            "fences": {
+              "all": {
+                "count": 6,
+                "sumMs": 179.5,
+                "p50Ms": 16.9,
+                "p95Ms": 56.6,
+                "maxMs": 56.6
+              },
+              "byReason": {
+                "5": {
+                  "count": 6,
+                  "sumMs": 179.5,
+                  "p50Ms": 16.9,
+                  "p95Ms": 56.6,
+                  "maxMs": 56.6
+                }
+              },
+              "admissionByRetiredKinds": {},
+              "admissionPressure": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithCoordinates": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "admissionWithRetiredUploads": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyNoPressureAtMost75Percent": {
+                "count": 0,
+                "sumMs": 0,
+                "p50Ms": null,
+                "p95Ms": null,
+                "maxMs": null
+              },
+              "poolOnlyEligibleMaxWorkingBytes": null,
+              "poolOnlyEligibleMaxPoolBytes": null
+            }
+          }
+        },
+        "resultStages": {
+          "milliseconds": {
+            "count": 2,
+            "sumMs": 351.7,
+            "p50Ms": 63.2,
+            "p95Ms": 288.5,
+            "maxMs": 288.5
+          },
+          "compileMs": {
+            "count": 2,
+            "sumMs": 165.4,
+            "p50Ms": 49.0,
+            "p95Ms": 116.4,
+            "maxMs": 116.4
+          },
+          "graphMs": {
+            "count": 2,
+            "sumMs": 22.6,
+            "p50Ms": 4.2,
+            "p95Ms": 18.4,
+            "maxMs": 18.4
+          },
+          "finishMs": {
+            "count": 2,
+            "sumMs": 226.9,
+            "p50Ms": 17.4,
+            "p95Ms": 209.5,
+            "maxMs": 209.5
+          },
+          "checkpointMs": {
+            "count": 2,
+            "sumMs": 0,
+            "p50Ms": 0,
+            "p95Ms": 0,
+            "maxMs": 0
+          },
+          "pipelineWallMs": {
+            "count": 2,
+            "sumMs": 347.1,
+            "p50Ms": 61.4,
+            "p95Ms": 285.7,
+            "maxMs": 285.7
+          }
+        },
+        "resultMaterialFields": {
+          "materialFieldBuilds": {
+            "count": 2,
+            "sum": 0,
+            "min": 0,
+            "max": 0
+          },
+          "materialFieldHits": {
+            "count": 0,
+            "sum": 0,
+            "min": null,
+            "max": null
+          },
+          "materialFieldUploadBytes": {
+            "count": 2,
+            "sum": 0,
+            "min": 0,
+            "max": 0
+          },
+          "imageAxisFields": {
+            "count": 0,
+            "sum": 0,
+            "min": null,
+            "max": null
+          },
+          "imageFieldBytes": {
+            "count": 0,
+            "sum": 0,
+            "min": null,
+            "max": null
+          }
+        },
+        "resultMaterialFieldBuildElapsed": {
+          "count": 0,
+          "sumMs": 0,
+          "p50Ms": null,
+          "p95Ms": null,
+          "maxMs": null
+        }
+      },
+      "mainCancellation": {
+        "count": 29,
+        "requestToCancel": {
+          "count": 29,
+          "sumMs": 1125,
+          "p50Ms": 32,
+          "p95Ms": 80,
+          "maxMs": 181
+        }
+      },
+      "fences": {
+        "all": {
+          "count": 86,
+          "sumMs": 895.499999,
+          "p50Ms": 4.7,
+          "p95Ms": 52.4,
+          "maxMs": 103.1
+        },
+        "byReason": {
+          "5": {
+            "count": 53,
+            "sumMs": 855.2,
+            "p50Ms": 8.7,
+            "p95Ms": 56.6,
+            "maxMs": 103.1
+          },
+          "6": {
+            "count": 12,
+            "sumMs": 7.2,
+            "p50Ms": 0.2,
+            "p95Ms": 2.4,
+            "maxMs": 2.4
+          },
+          "8": {
+            "count": 5,
+            "sumMs": 17.5,
+            "p50Ms": 2.8,
+            "p95Ms": 7.7,
+            "maxMs": 7.7
+          },
+          "9": {
+            "count": 8,
+            "sumMs": 7.5,
+            "p50Ms": 0.9,
+            "p95Ms": 1.3,
+            "maxMs": 1.3
+          },
+          "10": {
+            "count": 8,
+            "sumMs": 8.1,
+            "p50Ms": 0.9,
+            "p95Ms": 1.4,
+            "maxMs": 1.4
+          }
+        },
+        "admissionByRetiredKinds": {},
+        "admissionPressure": {
+          "count": 0,
+          "sumMs": 0,
+          "p50Ms": null,
+          "p95Ms": null,
+          "maxMs": null
+        },
+        "admissionWithCoordinates": {
+          "count": 0,
+          "sumMs": 0,
+          "p50Ms": null,
+          "p95Ms": null,
+          "maxMs": null
+        },
+        "admissionWithRetiredUploads": {
+          "count": 0,
+          "sumMs": 0,
+          "p50Ms": null,
+          "p95Ms": null,
+          "maxMs": null
+        },
+        "poolOnlyNoPressureAtMost75Percent": {
+          "count": 0,
+          "sumMs": 0,
+          "p50Ms": null,
+          "p95Ms": null,
+          "maxMs": null
+        },
+        "poolOnlyEligibleMaxWorkingBytes": null,
+        "poolOnlyEligibleMaxPoolBytes": null
+      },
+      "rejections": {},
+      "unsupportedWholeRequestsWithoutDetailedRejection": 0,
+      "rejectionDiagnosticLifetimeLimit": 64,
+      "rendererCounterObservation": {
+        "available": true,
+        "sequentialDisplayFrames": 0,
+        "counterIsDriverLifetime": true,
+        "successfulMeasuredWholeRequests": 83,
+        "successfulWholeRequestsOutsideMeasuredWindow": 9,
+        "counterEqualsSuccessfulMeasuredWholeRequests": false,
+        "counterEqualityDoesNotIndependentlyProvePhaseOrSequentialMode": true,
+        "readbackBytes": 0,
+        "crossDeviceBitmaps": 0,
+        "workingBudgetBytes": 536870912,
+        "deviceLost": false,
+        "memoryObservationErrorCount": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="144" viewBox="0 0 1600 144" style="font-family:monospace"><title>117 · extended-continuous-wheel · render-worker — timeDeltas weighted active CPU stacks; not a timeline</title><g><title>117 · extended-continuous-wheel · render-worker — 43.923 ms cumulative active samples
+
+</title><rect x="0.000" y="126" width="1599.700" height="17" fill="hsl(49 80% 72%)"/><text x="2.000" y="138" font-size="10">117 · extended-continuous-wheel · render-worker</text></g><g><title>iu.port1.onmessage — 38.999 ms cumulative active samples
+../../src/kernel/render-worker.ts:120:19
+design-app://app/assets/render-worker-DGgpc4Bb.js:4037:16235</title><rect x="0.000" y="108" width="1420.332" height="17" fill="hsl(36 80% 72%)"/><text x="2.000" y="120" font-size="10">iu.port1.onmessage</text></g><g><title>presentFrame — 37.496 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:111:2
+design-app://app/assets/render-worker-DGgpc4Bb.js:3958:1455</title><rect x="0.000" y="90" width="1365.581" height="17" fill="hsl(8 80% 72%)"/><text x="2.000" y="102" font-size="10">presentFrame</text></g><g><title>draw — 35.975 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:331:2
+design-app://app/assets/render-worker-DGgpc4Bb.js:2659:7310</title><rect x="0.000" y="72" width="1310.175" height="17" fill="hsl(38 80% 72%)"/><text x="2.000" y="84" font-size="10">draw</text></g><g><title>uu — 18.702 ms cumulative active samples
+../../src/kernel/render-worker.ts:129:23
+design-app://app/assets/render-worker-DGgpc4Bb.js:4037:16352</title><rect x="0.000" y="54" width="680.965" height="17" fill="hsl(52 80% 72%)"/><text x="2.000" y="66" font-size="10">uu</text></g><g><title>record — 18.702 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/render-worker-DGgpc4Bb.js:1:5821</title><rect x="0.000" y="36" width="680.965" height="17" fill="hsl(57 80% 72%)"/><text x="2.000" y="48" font-size="10">record</text></g><g><title>sanitizeRecord — 8.553 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:76:16
+design-app://app/assets/render-worker-DGgpc4Bb.js:1:4882</title><rect x="0.000" y="18" width="311.263" height="17" fill="hsl(36 80% 72%)"/><text x="2.000" y="30" font-size="10">sanitizeRecord</text></g><g><title>sanitizeFields — 7.292 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/render-worker-DGgpc4Bb.js:1:3163</title><rect x="0.000" y="0" width="265.328" height="17" fill="hsl(38 80% 72%)"/><text x="2.000" y="12" font-size="10">sanitizeFields</text></g><g><title>sanitizeFields — 7.513 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/render-worker-DGgpc4Bb.js:1:3163</title><rect x="311.563" y="18" width="273.379" height="17" fill="hsl(38 80% 72%)"/><text x="313.563" y="30" font-size="10">sanitizeFields</text></g><g><title>compositeDrawPlan — 8.564 ms cumulative active samples
+../../src/kernel/gpu/composite-draw-plan.ts:61:16
+design-app://app/assets/render-worker-DGgpc4Bb.js:1:97552</title><rect x="681.265" y="54" width="311.664" height="17" fill="hsl(50 80% 72%)"/><text x="683.265" y="66" font-size="10">compositeDrawPlan</text></g><g><title>Ai — 4.329 ms cumulative active samples
+../../src/kernel/gpu/composite-draw-plan.ts:39:6
+design-app://app/assets/render-worker-DGgpc4Bb.js:1:98188</title><rect x="681.265" y="36" width="157.394" height="17" fill="hsl(28 80% 72%)"/><text x="683.265" y="48" font-size="10">Ai</text></g><g><title>getCurrentTexture — 3.051 ms cumulative active samples
+
+:0:0</title><rect x="993.229" y="54" width="110.840" height="17" fill="hsl(30 80% 72%)"/><text x="995.229" y="66" font-size="10">getCurrentTexture</text></g><g><title>(anonymous) — 3.033 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:453:9
+design-app://app/assets/render-worker-DGgpc4Bb.js:2659:10168</title><rect x="1104.369" y="54" width="110.184" height="17" fill="hsl(30 80% 72%)"/><text x="1106.369" y="66" font-size="10">(anonymous)</text></g><g><title>presentationQuality — 1.119 ms cumulative active samples
+../../src/kernel/gpu/presentation-quality.ts:8:16
+design-app://app/assets/render-worker-DGgpc4Bb.js:2623:4198</title><rect x="1214.853" y="54" width="40.462" height="17" fill="hsl(11 80% 72%)"/><text x="1216.853" y="66" font-size="10">presen</text></g><g><title>self.onmessage — 3.415 ms cumulative active samples
+../../src/kernel/render-worker.ts:424:18
+design-app://app/assets/render-worker-DGgpc4Bb.js:4037:24748</title><rect x="1420.632" y="108" width="124.100" height="17" fill="hsl(32 80% 72%)"/><text x="1422.632" y="120" font-size="10">self.onmessage</text></g><g><title>(garbage collector) — 1.509 ms cumulative active samples
+
+:0:0</title><rect x="1545.031" y="108" width="54.669" height="17" fill="#be92d0"/><text x="1547.031" y="120" font-size="10">(garbage</text></g></svg>

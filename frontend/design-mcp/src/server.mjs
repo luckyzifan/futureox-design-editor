@@ -1,6 +1,7 @@
 import { JsonLineReader, isRecord, isRequestId } from './framing.mjs'
 import { ArtifactResources, previewImage } from './artifacts.mjs'
 import { DESIGN_PROMPTS, getDesignPrompt } from './prompts.mjs'
+import { MODERN_PROTOCOL_VERSION, hasModernEnvelope, admitModern, modernResult, modernDiscovery } from './modern-protocol.mjs'
 
 // Deliberately support this released, handshake-based revision, not an unversioned draft.
 export const PROTOCOL_VERSION = '2025-11-25'
@@ -48,6 +49,9 @@ export class DesignMcpServer {
     }
     this.artifacts = new ArtifactResources({ maxResponseBytes: this.limits.messageBytes })
     this.phase = 'new'
+    this.era = 'undecided'
+    this.activeWork = new Set()
+    this.modernRequestCount = 0
     this.requests = new Map()
     this.seen = new Set()
     this.queue = Promise.resolve()
@@ -66,6 +70,12 @@ export class DesignMcpServer {
     this.onEnd = () => { this.reader.end(); void this.close() }
     this.onInputError = () => { this.log('Input stream failed'); void this.close() }
     this.onOutputError = () => { this.log('Output stream failed'); void this.close() }
+    // Only trusted construction supplies the backend lifetime. JSON-RPC input
+    // cannot provide a signal, substitute a backend or revive an ended grant.
+    this.backendTerminalSignal = backend.terminalSignal
+    this.onBackendTerminal = () => this.artifacts.clear()
+    if (this.backendTerminalSignal?.aborted) this.onBackendTerminal()
+    else this.backendTerminalSignal?.addEventListener('abort', this.onBackendTerminal, { once: true })
   }
 
   start() {
@@ -81,7 +91,7 @@ export class DesignMcpServer {
 
   log(message) { this.diagnostics?.write?.(`[futureox-design-mcp] ${message}\n`) }
 
-  async write(message) {
+  async write(message, { shouldWrite, beforeWrite, authorizationSignal } = {}) {
     if (this.closed) return
     let line
     try { line = JSON.stringify(message) + '\n' }
@@ -91,6 +101,10 @@ export class DesignMcpServer {
       line = JSON.stringify({ jsonrpc: '2.0', id: message.id, error: { code: -32000, message: 'Response exceeds the byte limit; narrow the query' } }) + '\n'
       size = Buffer.byteLength(line)
     }
+    const revokedLine = authorizationSignal ? JSON.stringify({ jsonrpc: '2.0', id: message.id, error: { code: -32000, message: 'Backend authorization ended before delivery; result withheld. An operation may already have completed; do not blindly retry a mutation.' } }) + '\n' : undefined
+    // Reserve the larger encoding so a final authorization failure cannot
+    // escape the same output budget. Never inspect client metadata for grants.
+    if (revokedLine) size = Math.max(size, Buffer.byteLength(revokedLine))
     if (this.queuedBytes + size > this.limits.queuedOutputBytes) {
       this.log('Output backpressure limit reached; closing session')
       void this.close()
@@ -100,7 +114,9 @@ export class DesignMcpServer {
     let charged = true
     const release = () => { if (charged) { charged = false; this.queuedBytes -= size } }
     this.queue = this.queue.then(() => new Promise(resolve => {
-      if (this.output.destroyed || this.output.writableEnded) return resolve()
+      if (this.output.destroyed || this.output.writableEnded || (shouldWrite && !shouldWrite())) return resolve()
+      if (authorizationSignal?.aborted) line = revokedLine
+      beforeWrite?.()
       this.output.write(line, () => { release(); resolve() })
       // A synchronous consumer can receive the complete frame and issue its next
       // request before Node schedules this write's callback. Charge only bytes
@@ -130,58 +146,88 @@ export class DesignMcpServer {
     }
     if (!('id' in message)) { this.notification(message); return }
     const { id, method } = message
+    const modern = this.era === 'modern' || hasModernEnvelope(message)
+    let requestMetadata
+    try {
+      if (modern) {
+        if (this.era === 'legacy') throw invalid('Modern requests cannot be mixed into a legacy stdio connection')
+        requestMetadata = admitModern(message.params, ProtocolError)
+        this.era = 'modern'
+      }
+    } catch (error) { void this.sendError(id, error.code, error.message, error.data); return }
     const bytes = Buffer.byteLength(line)
     const heavy = bytes > this.limits.standardMessageBytes
     const tool = message.params?.name
     const operations = message.params?.arguments?.params?.operations
-    const allowedHeavy = method === 'tools/call' && (['design_font_import', 'design_document_import', 'design_sketch_import'].includes(tool) || (tool === 'design_batch_apply' && Array.isArray(operations) && operations.some(op => ['font.import', 'document.import', 'sketch.import'].includes(op?.method))))
-    if (heavy && !allowedHeavy) { void this.sendError(id, -32000, 'Ordinary requests are limited to 8 MiB; only font/document/Sketch imports and their atomic batches allow larger payloads'); return }
-    if (this.seen.has(id)) { void this.sendError(id, -32600, 'Request ID has already been used in this session'); return }
-    if (this.seen.size >= this.limits.sessionRequests) {
+    const allowedHeavy = method === 'tools/call' && (['design_workspace_importCopy', 'design_font_import', 'design_document_import', 'design_sketch_import', 'design_clipboard_paste', 'design_clipboard_pasteProperties'].includes(tool) || (tool === 'design_batch_apply' && Array.isArray(operations) && operations.some(op => ['font.import', 'document.import', 'sketch.import', 'clipboard.paste', 'clipboard.pasteProperties'].includes(op?.method))))
+    if (heavy && !allowedHeavy) { void this.sendError(id, -32000, 'Ordinary requests are limited to 8 MiB; only font/document/Sketch imports, explicit clipboard paste operations and their atomic batches allow larger payloads'); return }
+    if (modern && this.requests.has(id)) { void this.sendError(id, -32600, 'Request ID is already outstanding'); return }
+    if (!modern && this.seen.has(id)) { void this.sendError(id, -32600, 'Request ID has already been used in this session'); return }
+    if ((modern ? this.modernRequestCount : this.seen.size) >= this.limits.sessionRequests) {
       void this.sendError(id, -32000, 'Session request limit reached; reconnect')
       return
     }
-    this.seen.add(id)
-    if (this.requests.size >= this.limits.concurrentRequests) {
+    if (modern) this.modernRequestCount++
+    else this.seen.add(id)
+    if (this.activeWork.size >= this.limits.concurrentRequests) {
       void this.sendError(id, -32000, 'Too many concurrent requests'); return
     }
     if (this.pendingBytes + bytes > this.limits.pendingInputBytes || (heavy && this.heavyRequests >= this.limits.concurrentHeavyRequests)) {
       void this.sendError(id, -32000, 'Pending input budget reached; wait for the current operation'); return
     }
-    const state = { controller: new AbortController(), cancelled: false, method, bytes, heavy, timer: undefined }
+    const state = { controller: new AbortController(), cancelled: false, method, bytes, heavy, modern, id, timer: undefined }
     this.pendingBytes += bytes
     if (heavy) this.heavyRequests++
     this.requests.set(id, state)
+    this.activeWork.add(state)
     state.timer = setTimeout(() => {
-      if (!this.requests.has(id) || state.cancelled) return
+      if (this.requests.get(id) !== state || state.cancelled) return
       state.cancelled = true
       state.controller.abort(new Error('Request timed out'))
-      void this.sendError(id, -32000, 'Request timed out; a dispatched mutation may already have committed')
+      if (modern) {
+        state.timedOut = true
+        void this.write({ jsonrpc: '2.0', id, error: { code: -32000, message: 'Request timed out; a dispatched mutation may already have committed' } }, {
+          shouldWrite: () => !this.closed && this.requests.get(id) === state && state.timedOut,
+          beforeWrite: () => { if (this.requests.get(id) === state) this.requests.delete(id) },
+        })
+      } else void this.sendError(id, -32000, 'Request timed out; a dispatched mutation may already have committed')
     }, this.limits.requestTimeoutMs)
     state.timer.unref?.()
     // Execute immediately: initialize and initialized in one input chunk must retain wire ordering.
     let result
-    try { result = this.dispatch(method, message.params ?? {}, { signal: state.controller.signal, requestId: id }) }
+    try { result = this.dispatch(method, message.params ?? {}, { signal: state.controller.signal, requestId: id, ...(modern ? { modern: true, requestMetadata } : {}) }) }
     catch (error) { result = Promise.reject(error) }
+    const respond = envelope => {
+      const authorizationSignal = envelope.result && ['tools/list', 'tools/call', 'resources/list', 'resources/read'].includes(method) ? this.backendTerminalSignal : undefined
+      if (!modern) return this.write(envelope, { authorizationSignal })
+      clearTimeout(state.timer)
+      return this.write(envelope, {
+        authorizationSignal,
+        shouldWrite: () => !this.closed && !state.cancelled && this.requests.get(id) === state,
+        beforeWrite: () => { if (this.requests.get(id) === state) this.requests.delete(id) },
+      })
+    }
     Promise.resolve(result).then(
-      value => { if (!state.cancelled && !this.closed) return this.write({ jsonrpc: '2.0', id, result: value }) },
+      value => { if (!state.cancelled && !this.closed) return respond({ jsonrpc: '2.0', id, result: modern ? modernResult(method, value, SERVER_INFO) : value }) },
       error => {
         if (state.cancelled || this.closed) return
-        if (error instanceof ProtocolError) return this.sendError(id, error.code, error.message, error.data)
+        if (error instanceof ProtocolError) return respond({ jsonrpc: '2.0', id, error: { code: error.code, message: error.message, ...(error.data === undefined ? {} : { data: error.data }) } })
         this.log(`Request failed: ${method}`)
-        return this.sendError(id, -32603, 'Design backend unavailable or failed')
+        return respond({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Design backend unavailable or failed' } })
       },
     ).finally(() => {
       clearTimeout(state.timer)
-      if (this.requests.delete(id)) { this.pendingBytes -= bytes; if (heavy) this.heavyRequests-- }
+      if (this.requests.get(id) === state && !state.timedOut) this.requests.delete(id)
+      if (this.activeWork.delete(state)) { this.pendingBytes -= bytes; if (heavy) this.heavyRequests-- }
     })
   }
 
   notification({ method, params = {} }) {
-    if (method === 'notifications/initialized' && this.phase === 'initializing') this.phase = 'ready'
+    if (this.era !== 'modern' && method === 'notifications/initialized' && this.phase === 'initializing') this.phase = 'ready'
     if (method !== 'notifications/cancelled' || !isRequestId(params.requestId)) return
     const state = this.requests.get(params.requestId)
-    if (!state || state.method === 'initialize') return
+    if (!state || (!state.modern && state.method === 'initialize')) return
+    if (state.modern) { state.timedOut = false; if (this.requests.get(params.requestId) === state) this.requests.delete(params.requestId) }
     state.cancelled = true
     clearTimeout(state.timer)
     state.controller.abort(new Error('Request cancelled by client'))
@@ -189,13 +235,19 @@ export class DesignMcpServer {
   }
 
   dispatch(method, params, context) {
-    if (method === 'ping') return {}
+    if (context.modern && method === 'server/discover') return modernDiscovery(SERVER_INFO)
+    if (context.modern && method === 'initialize') throw new ProtocolError(-32601, 'Modern stdio does not use initialize')
+    if (method === 'ping') {
+      if (context.modern) throw new ProtocolError(-32601, 'ping is not part of the modern protocol')
+      return {}
+    }
     if (method === 'initialize') {
       if (this.phase !== 'new') throw invalid('Session already initialized')
       if (typeof params.protocolVersion !== 'string' || !params.protocolVersion || !isRecord(params.capabilities) ||
         !isRecord(params.clientInfo) || typeof params.clientInfo.name !== 'string' || typeof params.clientInfo.version !== 'string') {
         throw invalid('initialize requires protocolVersion, capabilities and clientInfo')
       }
+      this.era = 'legacy'
       this.phase = 'initializing'
       return {
         protocolVersion: PROTOCOL_VERSION,
@@ -204,21 +256,26 @@ export class DesignMcpServer {
         instructions: 'Live Futureox Design operation API. Read capabilities and document revision before edits. Use documentId, session and expectedRevision to protect writes. Export tool responses contain metadata and expiring resource links, not inline files. Use resources/read for client-side file saving and context.get for AI inspection. If preview.capture is in the live catalog, it returns product CPU design-content export, not an app/GPU screenshot. Preview bytes are delivered as image content when bounded and as exact snapshot resources. No arbitrary JavaScript, shell execution, renderer reconfiguration or network access is exposed. Cancellation does not roll back a mutation already committed.',
       }
     }
-    if (this.phase !== 'ready') throw new ProtocolError(-32000, 'Complete initialize and notifications/initialized first')
+    if (!context.modern && this.phase !== 'ready') throw new ProtocolError(-32000, 'Complete initialize and notifications/initialized first')
     if (method === 'tools/list') return this.listTools(params, context)
     if (method === 'tools/call') return this.callTool(params, context)
     if (method === 'resources/list') {
+      this.assertBackendSession()
       this.noCursor(params)
-      return { resources: [{ uri: CAPABILITIES_URI, name: 'automation-capabilities', title: 'Live design operation capabilities', description: 'Live operation schemas and transport limits. No rendering support is implied.', mimeType: 'application/json' }, ...this.artifacts.list()] }
+      return { resources: [{ uri: CAPABILITIES_URI, name: 'automation-capabilities', title: 'Live design operation capabilities', description: 'Live operation schemas and transport limits. No rendering support is implied.', mimeType: 'application/json' }, ...(context.modern ? [] : this.artifacts.list())] }
     }
     if (method === 'resources/templates/list') { this.noCursor(params); return { resourceTemplates: [] } }
     if (method === 'resources/read') {
+      this.assertBackendSession()
       if (params.uri !== CAPABILITIES_URI) {
         const artifact = typeof params.uri === 'string' ? this.artifacts.read(params.uri) : undefined
         if (artifact) return artifact
-        throw new ProtocolError(-32002, 'Resource not found or expired')
+        throw new ProtocolError(context.modern ? -32602 : -32002, 'Resource not found or expired')
       }
-      return this.listTools({}, context).then(({ tools }) => ({ contents: [{ uri: CAPABILITIES_URI, mimeType: 'application/json', text: JSON.stringify({ protocolVersion: PROTOCOL_VERSION, limits: this.limits, tools }) }] }))
+      return this.listTools({}, context).then(({ tools }) => {
+        this.assertBackendSession()
+        return { contents: [{ uri: CAPABILITIES_URI, mimeType: 'application/json', text: JSON.stringify({ protocolVersion: context.modern ? MODERN_PROTOCOL_VERSION : PROTOCOL_VERSION, limits: this.limits, tools }) }] }
+      })
     }
     if (method === 'prompts/list') { this.noCursor(params); return { prompts: DESIGN_PROMPTS } }
     if (method === 'prompts/get') {
@@ -228,13 +285,19 @@ export class DesignMcpServer {
     throw new ProtocolError(-32601, 'Method not found')
   }
 
+  assertBackendSession() {
+    if (this.backendTerminalSignal?.aborted) throw new ProtocolError(-32000, 'Backend authorization session ended; export resources expired. Start a new authorized session.')
+  }
+
   noCursor(params) {
     if (params.cursor !== undefined) throw invalid('This server returns the complete bounded catalog; no cursor is supported')
   }
 
   async listTools(params, context) {
+    this.assertBackendSession()
     this.noCursor(params)
     const tools = await this.backend.listTools(context)
+    this.assertBackendSession()
     if (!Array.isArray(tools) || tools.length > 512 || tools.some(tool => !validTool(tool)) || new Set(tools.map(tool => tool.name)).size !== tools.length) {
       throw new ProtocolError(-32603, 'Backend returned an invalid tool catalog')
     }
@@ -248,10 +311,12 @@ export class DesignMcpServer {
     if (!tools.some(tool => tool.name === params.name)) throw invalid('Unknown tool name')
     if (context.signal.aborted) throw context.signal.reason
     try {
+      this.assertBackendSession()
       let value = await this.backend.callTool(params.name, params.arguments ?? {}, context)
       // A backend may finish after cancellation or disconnect. Do not repopulate
       // a cleared cache, or evict an earlier resource for an abandoned result.
       if (this.closed || context.signal.aborted) throw context.signal.reason ?? new Error('MCP session closed')
+      if (this.backendTerminalSignal?.aborted) throw Object.assign(new Error('Backend authorization session ended; export resources expired. The operation may already have completed; do not blindly retry a mutation.'), { code: 'backend_session_ended' })
       if (!isRecord(value) || typeof value.ok !== 'boolean' || (value.ok && !('result' in value)) || (!value.ok && (!isRecord(value.error) || typeof value.error.message !== 'string'))) throw new Error('Backend returned an invalid operation response')
       const isError = value.ok === false
       const unprojected = value
@@ -280,12 +345,14 @@ export class DesignMcpServer {
     if (this.closed) return this.done
     this.closed = true
     this.phase = 'closed'
+    this.backendTerminalSignal?.removeEventListener('abort', this.onBackendTerminal)
     this.input.off('data', this.onData)
     this.input.off('end', this.onEnd)
     this.input.off('error', this.onInputError)
     this.input.pause?.()
-    for (const state of this.requests.values()) { state.cancelled = true; clearTimeout(state.timer); state.controller.abort(new Error('MCP session closed')) }
+    for (const state of this.activeWork) { state.cancelled = true; clearTimeout(state.timer); state.controller.abort(new Error('MCP session closed')) }
     this.requests.clear()
+    this.activeWork.clear()
     this.pendingBytes = 0; this.heavyRequests = 0
     this.artifacts.clear()
     try { await this.backend.close?.() } catch { this.log('Backend close failed') }

@@ -9,8 +9,8 @@ export const AUTOMATION_PROTOCOL_VERSION = 1
 export const MAX_AUTOMATION_FRAME_BYTES = 32 * 1024 * 1024
 export const STANDARD_AUTOMATION_FRAME_BYTES = 8 * 1024 * 1024
 const MAX_RETAINED_REQUEST_BYTES = 48 * 1024 * 1024
-const LARGE_INPUT_METHODS = new Set(['font.import', 'document.import', 'sketch.import'])
-const LARGE_OUTPUT_METHODS = new Set(['document.export', 'sketch.export'])
+const LARGE_INPUT_METHODS = new Set(['workspace.importCopy', 'font.import', 'document.import', 'sketch.import', 'clipboard.paste', 'clipboard.pasteProperties'])
+const LARGE_OUTPUT_METHODS = new Set(['document.export', 'sketch.export', 'clipboard.export'])
 const REQUEST_TIMEOUT_MS = 15_000
 const MAX_PENDING = 8
 const MAX_CONNECTIONS = 4
@@ -25,7 +25,7 @@ function allowsLargeInput(request) {
   const operations = request?.params?.operations
   return request?.method === 'batch.apply' && Array.isArray(operations) && operations.length > 0 && operations.length <= 500 &&
     operations.every(operation => ownKeys(operation, ['method', 'params']) && operation.method !== 'batch.apply') &&
-    operations.some(operation => LARGE_INPUT_METHODS.has(operation.method))
+    operations.some(operation => operation.method !== 'workspace.importCopy' && LARGE_INPUT_METHODS.has(operation.method))
 }
 
 function validateEditor(value) {
@@ -191,7 +191,7 @@ export class LocalAutomationBridge {
       const started = Date.now()
       let audited = false
       try {
-        if (frameBytes > standardBytes && (message?.method !== 'execute' || !allowsLargeInput(message.params))) throw fail('FRAME_TOO_LARGE', 'Only native document and bundled font imports may exceed the ordinary request limit')
+        if (frameBytes > standardBytes && (message?.method !== 'execute' || !allowsLargeInput(message.params))) throw fail('FRAME_TOO_LARGE', 'Only native document/bundled font imports and explicit clipboard pastes may exceed the ordinary request limit')
         if (!ownKeys(message, ['id', 'method', 'params'])) throw fail('INVALID_REQUEST', 'Invalid bridge request')
         if (message.method === 'cancel') {
           if (!authenticated || !ownKeys(message.params, ['requestId']) || !validId(message.params.requestId) || id !== undefined) throw fail('INVALID_REQUEST', 'Invalid cancellation')

@@ -1,6 +1,18 @@
 'use strict'
 // Sandboxed preloads can require Electron, but must not expose it or ipcRenderer.
 const { contextBridge, ipcRenderer } = require('electron')
+// Sandboxed preload cannot import local host modules. Accept only the host's
+// canonical numeric argument, with the same launch bounds as the pure parser.
+const gpuBudgetPrefix = '--core-gpu-working-budget-mib='
+const gpuBudgetArguments = process.argv.filter(value => value === '--core-gpu-working-budget-mib' || value.startsWith(gpuBudgetPrefix))
+let gpuWorkingBudgetMiB
+if (gpuBudgetArguments.length) {
+  const raw = gpuBudgetArguments[0].slice(gpuBudgetPrefix.length)
+  const invalid = () => new TypeError('--core-gpu-working-budget-mib must occur once with a decimal integer from 256 to 4096 MiB')
+  if (gpuBudgetArguments.length !== 1 || !/^[1-9][0-9]*$/.test(raw)) throw invalid()
+  gpuWorkingBudgetMiB = Number(raw)
+  if (!Number.isSafeInteger(gpuWorkingBudgetMiB) || String(gpuWorkingBudgetMiB) !== raw || gpuWorkingBudgetMiB < 256 || gpuWorkingBudgetMiB > 4096) throw invalid()
+}
 const diagnosticListeners = new Set()
 const reportDiagnostic = code => { for (const listener of diagnosticListeners) { try { listener({code}) } catch {} } }
 const invoke = (name, value) => ipcRenderer.invoke(`design-desktop:${name}`, value).then(result => {
@@ -75,7 +87,7 @@ contextBridge.exposeInMainWorld(
       read: () => invoke('clipboard-read'),
       write: (value) => invoke('clipboard-write', value),
     }),
-    renderPolicy: Object.freeze({ cpuOnly: process.argv.includes('--core-cpu-only') }),
+    renderPolicy: Object.freeze({ cpuOnly: process.argv.includes('--core-cpu-only'), ...(gpuWorkingBudgetMiB === undefined ? {} : { gpuWorkingBudgetMiB }) }),
     preparation: Object.freeze({
       open: () => ipcRenderer.invoke('native-preparation:open'),
       request: (session, request) => ipcRenderer.invoke('native-preparation:request', session, request),
@@ -145,7 +157,7 @@ contextBridge.exposeInMainWorld(
       ),
     onCommand: (callback) =>
       subscribe('design-desktop:command', callback, (value) =>
-        ['settings', 'new', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
+        ['settings', 'new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
       ),
   }),
 )

@@ -1,3 +1,5 @@
+import type { DuplicationRepeat } from '../commands/duplication-command'
+import type { Duplication } from '../duplicate-graph'
 import type { DesignDocument } from '../model'
 
 /** Serializable public boundary. The document version and session fence are
@@ -11,6 +13,12 @@ export interface AutomationRequest {
   session?: number
 }
 export interface AutomationContext {
+  /** Trusted synchronous stage fact, not part of AutomationRequest or a grant. */
+  selectionGeometryFresh?: boolean
+  /** Trusted stage-local facts. Only the Editor owns persistent repeat state. */
+  duplicationSingleStep?: boolean
+  duplicationRepeat?: DuplicationRepeat | null
+  duplicationResult?: Duplication
   pageId: string
   selection: string[]
   createdIds: string[]

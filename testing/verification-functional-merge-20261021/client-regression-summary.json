@@ -1,0 +1,371 @@
+{
+  "updatedAtUtc": "2026-10-21T08:33:04.912412+00:00",
+  "scope": "Current combined client source regression; earlier attempts preserved, no overlapping totals added. Product tests were executed by the primary runner, not by this evidence summary step.",
+  "vitest": {
+    "initialAttempt": {
+      "report": "client-vitest-v1.json",
+      "reportSha256": "2424047648d964c4b240e0fc33ceefa09c4f44ac9f1d14e6244f0baf82d3d7cb",
+      "counts": {
+        "total": 4571,
+        "passed": 4544,
+        "failed": 15,
+        "skipped": 12
+      },
+      "success": false,
+      "failureGroups": {
+        "missingPinnedFontDependency": 14,
+        "sourcePatternExpectation": 1
+      },
+      "failures": [
+        {
+          "file": "frontend/design-client/src/canvas-scene-snapshots.test.ts",
+          "name": "font generations cover alternating editors, same-identity ABA, default restoration, failed loads and PDF installation",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/font-test-fixtures.test.ts",
+          "name": "minimal checkout generates from baseline font without any historical fixture tree or source writes",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/font-test-fixtures.test.ts",
+          "name": "two isolated generations and a verified cache hit have identical pinned bytes and manifest",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/font-test-fixtures.test.ts",
+          "name": "concurrent processes publish one complete verified cache and remove private staging directories",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/font-test-fixtures.test.ts",
+          "name": "ASCII subprocess output encoding still carries the exact Unicode glyph subset manifest",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/font-test-fixtures.test.ts",
+          "name": "missing, wrong-size and same-size altered source fonts hard-fail before creating cache",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/font-test-fixtures.test.ts",
+          "name": "missing dependency and wrong pinned version fail actionably, including on an existing cache",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/font-test-fixtures.test.ts",
+          "name": "a modified cached font fails verification rather than silently regenerating or passing",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/font-test-fixtures.test.ts",
+          "name": "generated faces are real WASM-parsed fonts with exact Latin/CJK shaping fallback",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/page-residency-editor.test.ts",
+          "name": "real embedded font import and undo/redo publish a new document witness without mutating previous resources",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/automation/multifont-e2e.test.ts",
+          "name": "three original font families survive MCP authoring, multipage mixed runs, real glyphs, pixels, FD reopen and atomic replacement",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-fig-import-copy.test.ts",
+          "name": "FIG NDJSON copy replaces format identity before admission and preserves graph/report across exact retry without editor effects",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-import-copy.test.ts",
+          "name": "preserves embedded resources and leaves the existing active font environment untouched",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-import-copy.test.ts",
+          "name": "Sketch NDJSON copy preserves full decoder graph and bounded warnings through exact retry without editor/font/layout effects",
+          "status": "failed",
+          "classification": "missing explicitly required fonttools==4.61.1 dependency"
+        },
+        {
+          "file": "frontend/design-client/src/kernel/owner-tile-worker-contract.test.ts",
+          "name": "worker full load/fonts invalidate owner while driver resets invalidate aggregate cache",
+          "status": "failed",
+          "classification": "stale source-pattern expectation"
+        }
+      ],
+      "skippedCases": [
+        {
+          "file": "frontend/design-client/src/append-document.test.ts",
+          "name": "real 117 repeated three times: independent nodes, fonts, editable groups and one-step undo",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/canvas-event-batching.test.tsx",
+          "name": "reproduce direct addPage during a live vertex transaction",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/document-history-sqlite.test.ts",
+          "name": "actual SQLite history: diff, stale CAS, restore, reopen, metadata, and independent editing undo",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/workspace-autosave-sqlite.test.ts",
+          "name": "real Editor and SQLite persist full property undo after a held native read rejects autosave as BUSY",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/__tests__/design-file-import.test.ts",
+          "name": "external corpus: DESIGN_TEST_SKETCH",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/__tests__/design-file-import.test.ts",
+          "name": "external corpus: DESIGN_TEST_FIG",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-fig-import-copy.test.ts",
+          "name": "actual user FIG parser reaches NDJSON host and real SQLite with identical prepared graph and exact retry",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-import-copy.test.ts",
+          "name": "actual NDJSON + actual Editor/WASM + native SQLite readback stores one independent native copy",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-import-copy.test.ts",
+          "name": "real117 Sketch actual NDJSON + native SQLite readback matches shared decoder including full containers/resources and warning receipt",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-import-copy.test.ts",
+          "name": "real user FIG mislabeled as Sketch is rejected without storage or activation",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-sqlite.test.ts",
+          "name": "rejects every malformed mutation at host and DesktopSession without poisoning actual SQLite/manual Save",
+          "status": "skipped"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-sqlite.test.ts",
+          "name": "pages all 101 actual durable revisions with no omissions and correct exclusive boundaries",
+          "status": "skipped"
+        }
+      ]
+    },
+    "environmentRepair": {
+      "pythonDependency": "fonttools==4.61.1",
+      "requirements": "testing/font-fixtures-requirements.txt",
+      "requirementsSha256": "4888b53cd53ca3729b315a3860a6a1bd2448b0ca91c230c36d94aac2ca46ab39",
+      "installation": "explicit isolated temporary virtual environment; no system Python dependency changed",
+      "testPatternRepair": "owner-tile-worker-contract source regex now permits createDecodedImageOwner between documentGeneration increment and owner invalidation; no product code changed for this assertion repair"
+    },
+    "currentAttempt": {
+      "status": "passed",
+      "report": "client-vitest-v2.json",
+      "reportSha256": "571314c1ba933590605ae41264040e8c690dd5c7222d2e019cc91da3656bfcd8",
+      "runSummary": "client-v2-run-summary.json",
+      "runSummarySha256": "a897d8d852871424579d5ef1f52ade48863360c244acf0fb67fc4480b3b7321f",
+      "exitCode": 0,
+      "wallSeconds": 82.153,
+      "node": "v24.12.0",
+      "fontDependency": "fonttools==4.61.1",
+      "counts": {
+        "total": 4603,
+        "passed": 4602,
+        "failed": 0,
+        "skipped": 1,
+        "reportedSuites": 616,
+        "reportedSuitesPassed": 616,
+        "reportedSuitesFailed": 0
+      },
+      "sourceBefore": {
+        "files": 1223,
+        "sha256": "dde3e8a3e26c47b22d8f979e24101ebe69ad4d05815a42ac3f0d738e2f3176b1"
+      },
+      "sourceAfter": {
+        "files": 1223,
+        "sha256": "dde3e8a3e26c47b22d8f979e24101ebe69ad4d05815a42ac3f0d738e2f3176b1"
+      },
+      "sourceStable": true,
+      "actualNativeFixtureTestsEnabled": true,
+      "optionalNativeAndCorpusCasesExecuted": [
+        {
+          "file": "frontend/design-client/src/append-document.test.ts",
+          "name": "real 117 repeated three times: independent nodes, fonts, editable groups and one-step undo",
+          "status": "passed"
+        },
+        {
+          "file": "frontend/design-client/src/document-history-sqlite.test.ts",
+          "name": "actual SQLite history: diff, stale CAS, restore, reopen, metadata, and independent editing undo",
+          "status": "passed"
+        },
+        {
+          "file": "frontend/design-client/src/workspace-autosave-sqlite.test.ts",
+          "name": "real Editor and SQLite persist full property undo after a held native read rejects autosave as BUSY",
+          "status": "passed"
+        },
+        {
+          "file": "frontend/design-client/src/__tests__/design-file-import.test.ts",
+          "name": "external corpus: DESIGN_TEST_SKETCH",
+          "status": "passed"
+        },
+        {
+          "file": "frontend/design-client/src/__tests__/design-file-import.test.ts",
+          "name": "external corpus: DESIGN_TEST_FIG",
+          "status": "passed"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-fig-import-copy.test.ts",
+          "name": "actual user FIG parser reaches NDJSON host and real SQLite with identical prepared graph and exact retry",
+          "status": "passed"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-import-copy.test.ts",
+          "name": "actual NDJSON + actual Editor/WASM + native SQLite readback stores one independent native copy",
+          "status": "passed"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-import-copy.test.ts",
+          "name": "real117 Sketch actual NDJSON + native SQLite readback matches shared decoder including full containers/resources and warning receipt",
+          "status": "passed"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-import-copy.test.ts",
+          "name": "real user FIG mislabeled as Sketch is rejected without storage or activation",
+          "status": "passed"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-sqlite.test.ts",
+          "name": "rejects every malformed mutation at host and DesktopSession without poisoning actual SQLite/manual Save",
+          "status": "passed"
+        },
+        {
+          "file": "frontend/design-client/src/automation/workspace-sqlite.test.ts",
+          "name": "pages all 101 actual durable revisions with no omissions and correct exclusive boundaries",
+          "status": "passed"
+        }
+      ],
+      "temporaryPathPolicy": "canonical OS temporary directory",
+      "nativeBackend": "existing release sidecar recorded in desktop-regression-summary.json",
+      "boundary": "Full configured client Vitest: real Editor/WASM and native SQLite/corpus cases, plus pure logic, mocked DOM/GPU/Worker protocol. No actual Electron GPU, native dialogs, external client or actual browser Worker acceptance.",
+      "fullRunGatedCase": {
+        "file": "frontend/design-client/src/canvas-event-batching.test.tsx",
+        "name": "reproduce direct addPage during a live vertex transaction",
+        "optIn": "CANVAS_REPRO_ADD_PAGE",
+        "reason": "Opt-in historical reproducer skipped in the full run, then actually executed and passed in the separate gate below"
+      }
+    },
+    "supplementalGatedCase": {
+      "status": "passed",
+      "report": "client-repro-add-page.json",
+      "reportSha256": "c6a4c825ff372f5e7e5bfce047f21e63d5f33a7e0d87ebc9dc176e1e0b0e9a6c",
+      "environment": "CANVAS_REPRO_ADD_PAGE=1",
+      "selection": "-t reproduce direct addPage during a live vertex transaction",
+      "passed": 1,
+      "failed": 0,
+      "filteredOut": 37,
+      "executedCase": {
+        "file": "frontend/design-client/src/canvas-event-batching.test.tsx",
+        "name": "reproduce direct addPage during a live vertex transaction"
+      },
+      "accounting": "The 37 unselected cases appear as pending/skipped in Vitest JSON because -t filtered them; they are neither extra executions nor 37 outstanding acceptance gaps."
+    },
+    "uniqueCheckpointCoverage": {
+      "executedUniqueCases": 4603,
+      "failed": 0,
+      "fullRunExecuted": 4602,
+      "supplementalPreviouslyGatedCase": 1,
+      "scope": "The stable full-v2 source checkpoint plus its named opt-in case. Repeated/subset test counts are not added.",
+      "laterPrototypeChanges": "Subsequent renderer/narrow-pool changes are outside that full-v2 source identity; their targeted tests and actual GPU/Electron acceptance must be recorded separately."
+    }
+  },
+  "frontendNodeContracts": {
+    "initialAttempts": [
+      {
+        "log": "client-node-v1.log",
+        "logSha256": "b115efdadb05b10b3544958cc3e6c8ec518efece772878f4aadee80cc49bcc81",
+        "status": "failed before test admission",
+        "reason": "Node launch rejected --experimental-transform-types; not product assertion evidence"
+      },
+      {
+        "log": "client-node-v2.log",
+        "logSha256": "31eee3553134263ee0ddcb604fa9996dd1ca365a3613f585fbb690b7601104ea",
+        "node": "v26.0.0",
+        "counts": {
+          "tests": 126,
+          "suites": 0,
+          "pass": 113,
+          "fail": 13,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        "status": "failed",
+        "reason": "Launch/cwd selected Node 26; removed TypeScript transform mode and strip-only parameter-property loader errors. Product/test source unchanged for runtime repair"
+      }
+    ],
+    "finalAttempt": {
+      "status": "passed",
+      "node": "v24.12.0",
+      "harness": "testing/verify-local.mjs --suites frontend-contracts",
+      "result": "client-node-v3/results.json",
+      "resultSha256": "c10325b8fe3ef26bc0fdd830a751d7446a576bba1e56017bf54f1cc99c33ba8c",
+      "log": "client-node-v3/frontend-contracts.log",
+      "counts": {
+        "tests": 320,
+        "suites": 0,
+        "pass": 320,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exitCode": 0,
+      "durationMs": 3282,
+      "testFiles": 31,
+      "testFileIdentitySha256": "0ab1851ab2337c7fc11e80e7d17f64ac68f79d1c66a86ef7a830ee9de48b5450",
+      "boundary": "CPU production logic + sandboxed callbacks/source contracts/mock DOM; not native UI"
+    }
+  },
+  "historicalHydrationFailures": {
+    "originalRecord": "historical-known-failures.md",
+    "recordPreservedUnchanged": true,
+    "currentEvidence": {
+      "file": "frontend/design-client/src/kernel/render-worker-image-hydration.test.ts",
+      "passed": 23,
+      "failed": 0,
+      "status": "passed",
+      "boundary": "Real worker-route/Editor-WASM logic with CPU/mock GPU transport, not actual GPU execution",
+      "confirmedAgainIn": "client-vitest-v2.json"
+    },
+    "repairCommit": "f2b581700cb6903d34efec219eca59686fe9fd8b",
+    "cause": "Old mock GPU transport lacked releaseFilterBatch, causing fallback/disposal secondary failures; that fixture API was added before this functional merge. The package historical five failures are not present in the initial current-source 23-case hydration result."
+  },
+  "limits": [
+    "At the full-v2 CPU checkpoint, 4602 full-run cases plus the separately executed opt-in reproducer cover all 4603 unique cases; the full run itself still records its original one gated skip.",
+    "Frontend Node contracts use CPU production logic plus mocked callbacks/DOM/source contracts; they are not actual Electron, GPU or native-dialog acceptance.",
+    "Native/SQLite/corpus optional tests remain distinct from browser Worker and external client acceptance.",
+    "Raw logs and full reports are ignored; this compact summary retains historical failures and exact report hashes.",
+    "Generated root evidence/phase PNG output is a test artifact; only useful summaries belong to this source increment, not runtime images.",
+    "Later prototype renderer changes are not covered by the earlier full-v2 identity; no-blur or actual runtime presentation acceptance is not established by these CPU results."
+  ]
+}

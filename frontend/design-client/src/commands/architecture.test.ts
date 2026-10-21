@@ -16,14 +16,15 @@ test('planners do not import Editor, renderer, native picking, protocol or model
     expect(source).not.toMatch(/\b(?:Date\.now|Math\.random|crypto\.|window\.|document\.|fetch\(|new Editor\(|uid\()/)
   }
 })
-test('UI, legacy arrange helpers and automation share planner mechanics, not UI-to-MCP dispatch', () => {
-  for (const file of ['../engine.ts', '../align-engine.ts', '../automation/core.ts']) expect(read(file)).toContain('planArrangement(')
-  expect(read('../engine.ts')).toContain('planChildReparent(UI_SELECTION_PROFILE')
-  expect(read('../automation/core.ts')).toContain('planChildReparent(AUTOMATION_PROFILE')
+test('UI, arrange helpers and automation call one selection-command contract, never UI-to-MCP dispatch', () => {
+  for (const file of ['../engine.ts', '../align-engine.ts', '../automation/core.ts']) expect(read(file)).toContain('prepareSelectionArrangement(')
+  for (const file of ['../engine.ts', '../automation/core.ts']) {
+    expect(read(file)).toContain('prepareSelectionWrap('); expect(read(file)).toContain('applySelectionUnwrap(')
+  }
   expect(read('../automation/core.ts')).not.toMatch(/\.group\(|\.ungroup\(|\.align\(/)
   expect(read('../engine.ts')).not.toContain('createDesignAutomation')
+  expect(read('profiles.ts')).not.toMatch(/ui-selection-v1|automation-v1/)
 })
-
 
 test('runtime registry resolves the exact materialized candidate core and Editor', () => {
   const editor = new Editor(blank()), api = createEditorDesignAutomation(editor)

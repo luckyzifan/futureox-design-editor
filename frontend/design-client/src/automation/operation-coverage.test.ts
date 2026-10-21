@@ -45,7 +45,7 @@ it('generates every UI category and actual shared/host descriptor without claimi
   expect(new Set(manifest.operations.map(row=>row.tool)).size).toBe(manifest.operations.length)
   expect(manifest.importSemantics).toMatchObject({uiOpen:'new-copy',mcpImport:'append'})
   expect(manifest.collaboration).toEqual({backend:false,authenticatedActors:false,remoteApply:false,conflictMerge:false,authorityFromLocalProfile:false})
-  expect(manifest.ui.find(row=>row.action==='scale')?.status).toBe('partial')
+  expect(manifest.ui.find(row=>row.action==='scale')?.status).toBe('authored-operation')
   expect(manifest.ui.find(row=>row.action==='import')?.status).toBe('partial')
   const output=process.env.FUTUREOX_COVERAGE_MANIFEST
   if(output){await mkdir(dirname(output),{recursive:true});await writeFile(output,JSON.stringify({...manifest,nodeInputFields:[...NODE_FIELDS].sort()},null,2)+'\n')}

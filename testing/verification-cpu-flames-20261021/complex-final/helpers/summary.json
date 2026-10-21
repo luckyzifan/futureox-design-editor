@@ -1,0 +1,811 @@
+{
+  "method": "Exact same valid raw CDP samples and hash-matched final2 JS/source maps as the gallery. Self is direct weight. Inclusive is each selected function-name or module at most once per stack; selected functions may contain one another and must not be summed.",
+  "limitations": [
+    "No samples in a named helper is not proof of zero runtime cost. Sampling resolution and inlining limit attribution. Module totals also include anonymous callbacks mapped to those files.",
+    "These visual-audit profiles include screenshot PNG encoding, diagnostics and profiler overhead; they are not clean latency runs.",
+    "Actual app policy remains the observed host policy with optional budget field omitted; the separate post-trace reference Worker alone received 1024 MiB. Do not interpret it as app 4 GiB.",
+    "Full epoch motion trace boundaries are retained without guessing a mapping onto the monotonic CDP clock. CPU profiles ended before independent reference work."
+  ],
+  "provenance": [
+    {
+      "fixture": "117",
+      "rawRunStatus": "failed",
+      "rawErrorCount": 2,
+      "allErrorsAreAfterTraceNativeReferenceBudgetFailures": true,
+      "motionTraceBoundary": {
+        "startAt": 1792600287516.7,
+        "endAt": 1792600332229.9,
+        "interrupted": false
+      },
+      "referenceRenderingAfterProfileStop": true,
+      "observedExecutionPolicy": {
+        "cpuOnly": false,
+        "hdrCompositing": false,
+        "imageMips": false,
+        "imageAtlas": false,
+        "desktopFullMath": true,
+        "desktopDisplay": true
+      },
+      "referenceExecutionPolicy": {
+        "cpuOnly": false,
+        "hdrCompositing": false,
+        "imageMips": false,
+        "imageAtlas": false,
+        "desktopFullMath": true,
+        "desktopDisplay": true,
+        "gpuWorkingBudgetMiB": 1024
+      },
+      "requestedReferenceOverrideMiB": 1024,
+      "appWorkingBudgetBytes": 268435456,
+      "actualMainWorkerExecutionPolicy": {
+        "cpuOnly": false,
+        "hdrCompositing": false,
+        "imageMips": false,
+        "imageAtlas": false,
+        "desktopFullMath": true,
+        "desktopDisplay": true
+      },
+      "hostLogSha256": "a21cbb413178ede50e44f597d1a7613ee6805631d7b5cfec8467b5bc0b578cbc",
+      "referenceFailuresDoNotInvalidateEarlierCpuSamples": true,
+      "profileTargetStopEpochMaximum": 1792600333006,
+      "firstRecordedReferenceStartEpoch": 1792600335230.5,
+      "availableReferenceStartsAfterAllProfileStops": true,
+      "failedReferenceStartMetadataMissing": 2
+    },
+    {
+      "fixture": "fig",
+      "rawRunStatus": "failed",
+      "rawErrorCount": 2,
+      "allErrorsAreAfterTraceNativeReferenceBudgetFailures": true,
+      "motionTraceBoundary": {
+        "startAt": 1792601135538.5999,
+        "endAt": 1792601155695.8,
+        "interrupted": false
+      },
+      "referenceRenderingAfterProfileStop": true,
+      "observedExecutionPolicy": {
+        "cpuOnly": false,
+        "hdrCompositing": false,
+        "imageMips": false,
+        "imageAtlas": false,
+        "desktopFullMath": true,
+        "desktopDisplay": true
+      },
+      "referenceExecutionPolicy": {
+        "cpuOnly": false,
+        "hdrCompositing": false,
+        "imageMips": false,
+        "imageAtlas": false,
+        "desktopFullMath": true,
+        "desktopDisplay": true,
+        "gpuWorkingBudgetMiB": 1024
+      },
+      "requestedReferenceOverrideMiB": 1024,
+      "appWorkingBudgetBytes": 536870912,
+      "actualMainWorkerExecutionPolicy": {
+        "cpuOnly": false,
+        "hdrCompositing": false,
+        "imageMips": false,
+        "imageAtlas": false,
+        "desktopFullMath": true,
+        "desktopDisplay": true
+      },
+      "hostLogSha256": "ebb7dc28afd576d2040b73503be2a1771d45228d166fbf3bf97277192f74b020",
+      "referenceFailuresDoNotInvalidateEarlierCpuSamples": true,
+      "profileTargetStopEpochMaximum": 1792601156712,
+      "firstRecordedReferenceStartEpoch": 1792601177388.5,
+      "availableReferenceStartsAfterAllProfileStops": true,
+      "failedReferenceStartMetadataMissing": 2
+    }
+  ],
+  "profiles": [
+    {
+      "fixture": "117",
+      "thread": "renderer",
+      "profileSha256": "2b4a29a78c307afc0a25c152330d662e7556d9ca1b406b9e72df57adeac81e06",
+      "validTimeDeltas": {
+        "samples": 30829,
+        "timeDeltas": 30829,
+        "negative": 0,
+        "nonfinite": 0
+      },
+      "functions": [
+        {
+          "name": "visibleCompositeContributors",
+          "selfMs": 1.506,
+          "inclusiveMs": 27.437,
+          "sampled": true
+        },
+        {
+          "name": "touchCompositeContributors",
+          "selfMs": 1.27,
+          "inclusiveMs": 1.27,
+          "sampled": true
+        },
+        {
+          "name": "planTileAdmission",
+          "selfMs": 3.01,
+          "inclusiveMs": 6.454,
+          "sampled": true
+        },
+        {
+          "name": "replacementTileBudget",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "estimatedTileResidencyBytes",
+          "selfMs": 107.729,
+          "inclusiveMs": 107.729,
+          "sampled": true
+        },
+        {
+          "name": "tilesCoverBounds",
+          "selfMs": 84.524,
+          "inclusiveMs": 106.622,
+          "sampled": true
+        },
+        {
+          "name": "allParents",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "propertyUnits",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "selectionMetric",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "definitionOwner",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "movePreviewPlan",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "interactionOffsets",
+          "selfMs": 4.173,
+          "inclusiveMs": 4.173,
+          "sampled": true
+        },
+        {
+          "name": "ProgressiveSurfaceImpl",
+          "selfMs": 338.147,
+          "inclusiveMs": 847.55,
+          "sampled": true
+        },
+        {
+          "name": "Inspector",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "TextStylePanel",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "ComponentPanel",
+          "selfMs": 3.078,
+          "inclusiveMs": 3.078,
+          "sampled": true
+        },
+        {
+          "name": "CanvasEditPreview",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "Canvas",
+          "selfMs": 76.119,
+          "inclusiveMs": 194.679,
+          "sampled": true
+        }
+      ],
+      "modules": [
+        {
+          "module": "composite-cache-use.ts",
+          "selfMs": 4.262,
+          "inclusiveMs": 28.707,
+          "sampled": true
+        },
+        {
+          "module": "composite-frame-witness.ts",
+          "selfMs": 2.825,
+          "inclusiveMs": 2.825,
+          "sampled": true
+        },
+        {
+          "module": "tile-admission.ts",
+          "selfMs": 3.01,
+          "inclusiveMs": 6.454,
+          "sampled": true
+        },
+        {
+          "module": "page-memory-policy.ts",
+          "selfMs": 109.241,
+          "inclusiveMs": 109.241,
+          "sampled": true
+        },
+        {
+          "module": "tile-cache.ts",
+          "selfMs": 111.154,
+          "inclusiveMs": 111.154,
+          "sampled": true
+        },
+        {
+          "module": "viewport-preview-cache.ts",
+          "selfMs": 8.667,
+          "inclusiveMs": 34.646,
+          "sampled": true
+        },
+        {
+          "module": "coverage-retention.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "lod-snapshot-cache.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "page-residency-cache.ts",
+          "selfMs": 3.007,
+          "inclusiveMs": 3.007,
+          "sampled": true
+        }
+      ]
+    },
+    {
+      "fixture": "117",
+      "thread": "render-worker",
+      "profileSha256": "6bd780438355ddfa11ea8788723742a4bf9291f3bae285e2259df9195fe73d00",
+      "validTimeDeltas": {
+        "samples": 30839,
+        "timeDeltas": 30839,
+        "negative": 0,
+        "nonfinite": 0
+      },
+      "functions": [
+        {
+          "name": "visibleCompositeContributors",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "touchCompositeContributors",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "planTileAdmission",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "replacementTileBudget",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "estimatedTileResidencyBytes",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "tilesCoverBounds",
+          "selfMs": 48.133,
+          "inclusiveMs": 71.918,
+          "sampled": true
+        },
+        {
+          "name": "allParents",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "propertyUnits",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "selectionMetric",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "definitionOwner",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "movePreviewPlan",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "interactionOffsets",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "ProgressiveSurfaceImpl",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "Inspector",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "TextStylePanel",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "ComponentPanel",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "CanvasEditPreview",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "Canvas",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        }
+      ],
+      "modules": [
+        {
+          "module": "composite-cache-use.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "composite-frame-witness.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "tile-admission.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "page-memory-policy.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "tile-cache.ts",
+          "selfMs": 71.918,
+          "inclusiveMs": 71.918,
+          "sampled": true
+        },
+        {
+          "module": "viewport-preview-cache.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "coverage-retention.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "lod-snapshot-cache.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "page-residency-cache.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        }
+      ]
+    },
+    {
+      "fixture": "fig",
+      "thread": "renderer",
+      "profileSha256": "815682f0a7b3ca5149265c90b88ba9718dab5f46a7bcb29fa6c25923ac5a8ec2",
+      "validTimeDeltas": {
+        "samples": 14473,
+        "timeDeltas": 14473,
+        "negative": 0,
+        "nonfinite": 0
+      },
+      "functions": [
+        {
+          "name": "visibleCompositeContributors",
+          "selfMs": 0,
+          "inclusiveMs": 43.53,
+          "sampled": true
+        },
+        {
+          "name": "touchCompositeContributors",
+          "selfMs": 1.516,
+          "inclusiveMs": 1.516,
+          "sampled": true
+        },
+        {
+          "name": "planTileAdmission",
+          "selfMs": 5.976,
+          "inclusiveMs": 13.552,
+          "sampled": true
+        },
+        {
+          "name": "replacementTileBudget",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "estimatedTileResidencyBytes",
+          "selfMs": 89.956,
+          "inclusiveMs": 89.956,
+          "sampled": true
+        },
+        {
+          "name": "tilesCoverBounds",
+          "selfMs": 59.751,
+          "inclusiveMs": 77.487,
+          "sampled": true
+        },
+        {
+          "name": "allParents",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "propertyUnits",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "selectionMetric",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "definitionOwner",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "movePreviewPlan",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "interactionOffsets",
+          "selfMs": 498.737,
+          "inclusiveMs": 498.737,
+          "sampled": true
+        },
+        {
+          "name": "ProgressiveSurfaceImpl",
+          "selfMs": 369.173,
+          "inclusiveMs": 831.301,
+          "sampled": true
+        },
+        {
+          "name": "Inspector",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "TextStylePanel",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "ComponentPanel",
+          "selfMs": 11.803,
+          "inclusiveMs": 11.803,
+          "sampled": true
+        },
+        {
+          "name": "CanvasEditPreview",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "Canvas",
+          "selfMs": 93.342,
+          "inclusiveMs": 208.492,
+          "sampled": true
+        }
+      ],
+      "modules": [
+        {
+          "module": "composite-cache-use.ts",
+          "selfMs": 1.869,
+          "inclusiveMs": 45.046,
+          "sampled": true
+        },
+        {
+          "module": "composite-frame-witness.ts",
+          "selfMs": 6.047,
+          "inclusiveMs": 6.047,
+          "sampled": true
+        },
+        {
+          "module": "tile-admission.ts",
+          "selfMs": 8.985,
+          "inclusiveMs": 13.552,
+          "sampled": true
+        },
+        {
+          "module": "page-memory-policy.ts",
+          "selfMs": 91.123,
+          "inclusiveMs": 91.123,
+          "sampled": true
+        },
+        {
+          "module": "tile-cache.ts",
+          "selfMs": 78.67,
+          "inclusiveMs": 78.67,
+          "sampled": true
+        },
+        {
+          "module": "viewport-preview-cache.ts",
+          "selfMs": 1.505,
+          "inclusiveMs": 45.178,
+          "sampled": true
+        },
+        {
+          "module": "coverage-retention.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "lod-snapshot-cache.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "page-residency-cache.ts",
+          "selfMs": 6.616,
+          "inclusiveMs": 9.638,
+          "sampled": true
+        }
+      ]
+    },
+    {
+      "fixture": "fig",
+      "thread": "render-worker",
+      "profileSha256": "7cb854d581d0cbcf7168b5853fd79194537b83bce2992279518152da6fb91cce",
+      "validTimeDeltas": {
+        "samples": 14723,
+        "timeDeltas": 14723,
+        "negative": 0,
+        "nonfinite": 0
+      },
+      "functions": [
+        {
+          "name": "visibleCompositeContributors",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "touchCompositeContributors",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "planTileAdmission",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "replacementTileBudget",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "estimatedTileResidencyBytes",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "tilesCoverBounds",
+          "selfMs": 27.516,
+          "inclusiveMs": 47.262,
+          "sampled": true
+        },
+        {
+          "name": "allParents",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "propertyUnits",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "selectionMetric",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "definitionOwner",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "movePreviewPlan",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "interactionOffsets",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "ProgressiveSurfaceImpl",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "Inspector",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "TextStylePanel",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "ComponentPanel",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "CanvasEditPreview",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "name": "Canvas",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        }
+      ],
+      "modules": [
+        {
+          "module": "composite-cache-use.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "composite-frame-witness.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "tile-admission.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "page-memory-policy.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "tile-cache.ts",
+          "selfMs": 47.262,
+          "inclusiveMs": 47.262,
+          "sampled": true
+        },
+        {
+          "module": "viewport-preview-cache.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "coverage-retention.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "lod-snapshot-cache.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        },
+        {
+          "module": "page-residency-cache.ts",
+          "selfMs": 0,
+          "inclusiveMs": 0,
+          "sampled": false
+        }
+      ]
+    }
+  ]
+}

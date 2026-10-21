@@ -1,0 +1,44 @@
+{
+  "exitCode": 0,
+  "wallSeconds": 21.715,
+  "sourceBefore": {
+    "frontend/design-client/src/kernel/translation-preview.ts": "bc6308cd1850cd1f1950d8a45fd87bb9cc5ee4463021fada3c6efccebbba249c",
+    "frontend/design-client/src/kernel/translation-preview.test.ts": "263709e2b5b8e5047e2c571caca7f77e02b7c2ffd54b1d8bba924167f404e382",
+    "frontend/design-client/src/kernel/translation-preview-kernel.test.ts": "e2b641955ed8f63984aff202f03d18a57872e20a9782dddac4e6ead08594aaff",
+    "frontend/design-client/src/kernel/picking.ts": "ed435d4881a34e1e471eec9b60dce67194997b7e4c8a40fe907f4038b2cfee14",
+    "frontend/design-client/src/engine.ts": "ba5b5e93dab5581216613d9e62f4b052b18c2f14b52e5de050cfdc760f5c0d1a",
+    "testing/verification-cpu-flames-20261021/constraints-fig-oracle.test.ts": "ab67dfe34ab3b2906d0822bbf7e926ca9e78d4d4db04be7b74a61b90ac019f31",
+    "testing/verification-cpu-flames-20261021/constraints-vitest.config.mjs": "39102fd3485053e66267847a071ce62b027eae850a94e33cf471378a4fdc9ed1"
+  },
+  "sourceAfter": {
+    "frontend/design-client/src/kernel/translation-preview.ts": "bc6308cd1850cd1f1950d8a45fd87bb9cc5ee4463021fada3c6efccebbba249c",
+    "frontend/design-client/src/kernel/translation-preview.test.ts": "263709e2b5b8e5047e2c571caca7f77e02b7c2ffd54b1d8bba924167f404e382",
+    "frontend/design-client/src/kernel/translation-preview-kernel.test.ts": "e2b641955ed8f63984aff202f03d18a57872e20a9782dddac4e6ead08594aaff",
+    "frontend/design-client/src/kernel/picking.ts": "ed435d4881a34e1e471eec9b60dce67194997b7e4c8a40fe907f4038b2cfee14",
+    "frontend/design-client/src/engine.ts": "ba5b5e93dab5581216613d9e62f4b052b18c2f14b52e5de050cfdc760f5c0d1a",
+    "testing/verification-cpu-flames-20261021/constraints-fig-oracle.test.ts": "ab67dfe34ab3b2906d0822bbf7e926ca9e78d4d4db04be7b74a61b90ac019f31",
+    "testing/verification-cpu-flames-20261021/constraints-vitest.config.mjs": "39102fd3485053e66267847a071ce62b027eae850a94e33cf471378a4fdc9ed1"
+  },
+  "sourceStable": true,
+  "wasmSha256": "9cddc0c6b91a48474037a4f64f6ac844f8bbea696596a241b3d31b49cf9678c5",
+  "actualFixtureJsonStringifySha256": "21d6625e5b9936e0aa896f695dcc9c184512ca28cd2d42d7d92e865c52f18693",
+  "nodes": 19959,
+  "counts": {
+    "numTotalTests": 55,
+    "numPassedTests": 55,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "boundary": "Actual Rust/WASM full-resolver differential and CPU pixels; actual complete rehydrated FIG from owned SQLite; no GPU/browser/native process benchmark.",
+  "candidateAggregateSha256": "19f9b0109aa4ec18788342dbc0f244a3015f4c4169b639a895f48dedcb29ad69",
+  "actualFixtureOrigin": "Read-only owned default-current-fig SQLite revision1, rehydrated all seven known resource pointers from two image assets; 19,959-node JSON.stringify digest matches original recorded beforeSha256",
+  "notIncluded": "No Rust/WASM change, actual browser/GPU/render latency run, or native-process benchmark",
+  "fullOracleCoverage": [
+    "five X/Y translations including original requested X=99.86",
+    "repeated absolute placement",
+    "reverse return to baseline with full oracle",
+    "whole-document field differences and JSON.stringify hashes",
+    "unchanged baseline after every variant",
+    "actual Editor change/undo/redo"
+  ]
+}

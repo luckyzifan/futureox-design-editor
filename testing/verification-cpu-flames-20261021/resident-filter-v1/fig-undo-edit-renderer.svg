@@ -1,0 +1,875 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1062" viewBox="0 0 1600 1062" style="font-family:monospace"><title>fig · extended-undo-edit · main renderer — timeDeltas weighted active CPU stacks; not a timeline</title><g><title>fig · extended-undo-edit · main renderer — 819.233 ms cumulative active samples
+
+</title><rect x="0.000" y="1044" width="1599.700" height="17" fill="hsl(39 80% 72%)"/><text x="2.000" y="1056" font-size="10">fig · extended-undo-edit · main renderer</text></g><g><title>(anonymous) — 560.391 ms cumulative active samples
+../../../../design-client/src/desktop-session.ts:913:36
+design-app://app/assets/index-CTU_mVTR.js:59:278311</title><rect x="0.000" y="1026" width="1094.170" height="17" fill="hsl(30 80% 72%)"/><text x="2.000" y="1038" font-size="10">(anonymous)</text></g><g><title>documentStageAsync — 560.391 ms cumulative active samples
+../../../../design-client/src/document-lifecycle-diagnostics.ts:28:22
+design-app://app/assets/geometry-KVgWSL8m.js:2:36390</title><rect x="0.000" y="1008" width="1094.170" height="17" fill="hsl(41 80% 72%)"/><text x="2.000" y="1020" font-size="10">documentStageAsync</text></g><g><title>(anonymous) — 558.907 ms cumulative active samples
+../../../../design-client/src/desktop-session.ts:913:90
+design-app://app/assets/index-CTU_mVTR.js:59:278330</title><rect x="0.000" y="990" width="1091.271" height="17" fill="hsl(30 80% 72%)"/><text x="2.000" y="1002" font-size="10">(anonymous)</text></g><g><title>reconcileBaseline — 558.907 ms cumulative active samples
+../../../../design-client/src/desktop-session.ts:226:16
+design-app://app/assets/index-CTU_mVTR.js:59:258272</title><rect x="0.000" y="972" width="1091.271" height="17" fill="hsl(29 80% 72%)"/><text x="2.000" y="984" font-size="10">reconcileBaseline</text></g><g><title>captureSnapshot — 558.907 ms cumulative active samples
+../../../../design-client/src/desktop-session.ts:216:16
+design-app://app/assets/index-CTU_mVTR.js:59:257756</title><rect x="0.000" y="954" width="1091.271" height="17" fill="hsl(32 80% 72%)"/><text x="2.000" y="966" font-size="10">captureSnapshot</text></g><g><title>encode — 558.907 ms cumulative active samples
+../../../../design-client/src/desktop-session.ts:213:2
+design-app://app/assets/index-CTU_mVTR.js:59:257633</title><rect x="0.000" y="936" width="1091.271" height="17" fill="hsl(50 80% 72%)"/><text x="2.000" y="948" font-size="10">encode</text></g><g><title>documentStageAsync — 558.907 ms cumulative active samples
+../../../../design-client/src/document-lifecycle-diagnostics.ts:28:22
+design-app://app/assets/geometry-KVgWSL8m.js:2:36390</title><rect x="0.000" y="918" width="1091.271" height="17" fill="hsl(41 80% 72%)"/><text x="2.000" y="930" font-size="10">documentStageAsync</text></g><g><title>(anonymous) — 558.907 ms cumulative active samples
+../../../../design-client/src/desktop-session.ts:214:44
+design-app://app/assets/index-CTU_mVTR.js:59:257657</title><rect x="0.000" y="900" width="1091.271" height="17" fill="hsl(30 80% 72%)"/><text x="2.000" y="912" font-size="10">(anonymous)</text></g><g><title>(anonymous) — 292.320 ms cumulative active samples
+
+:0:0</title><rect x="0.000" y="882" width="570.615" height="17" fill="hsl(30 80% 72%)"/><text x="2.000" y="894" font-size="10">(anonymous)</text></g><g><title>encode — 114.117 ms cumulative active samples
+
+repo:frontend/design-desktop/src/preload.cjs:101:15</title><rect x="0.000" y="864" width="222.576" height="17" fill="hsl(50 80% 72%)"/><text x="2.000" y="876" font-size="10">encode</text></g><g><title>invoke — 114.117 ms cumulative active samples
+
+node:electron/js2c/sandbox_bundle:2:89986</title><rect x="0.000" y="846" width="222.576" height="17" fill="hsl(50 80% 72%)"/><text x="2.000" y="858" font-size="10">invoke</text></g><g><title>invoke — 1.609 ms cumulative active samples
+
+:0:0</title><rect x="0.000" y="828" width="2.842" height="17" fill="hsl(50 80% 72%)"/><text x="2.000" y="840" font-size="10"></text></g><g><title>begin — 1.484 ms cumulative active samples
+../../../../design-client/src/document-lifecycle-diagnostics.ts:12:9
+design-app://app/assets/geometry-KVgWSL8m.js:2:35725</title><rect x="1091.571" y="990" width="2.598" height="17" fill="hsl(55 80% 72%)"/><text x="1093.571" y="1002" font-size="10"></text></g><g><title>record — 1.484 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/geometry-KVgWSL8m.js:2:33867</title><rect x="1091.571" y="972" width="2.598" height="17" fill="hsl(57 80% 72%)"/><text x="1093.571" y="984" font-size="10"></text></g><g><title>sanitizeRecord — 1.484 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:76:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:32942</title><rect x="1091.571" y="954" width="2.598" height="17" fill="hsl(36 80% 72%)"/><text x="1093.571" y="966" font-size="10"></text></g><g><title>sanitizeFields — 1.484 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:31204</title><rect x="1091.571" y="936" width="2.598" height="17" fill="hsl(38 80% 72%)"/><text x="1093.571" y="948" font-size="10"></text></g><g><title>(anonymous) — 108.295 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13579:20
+design-app://app/assets/index-CTU_mVTR.js:9:136606</title><rect x="1094.470" y="1026" width="211.205" height="17" fill="hsl(30 80% 72%)"/><text x="1096.470" y="1038" font-size="10">(anonymous)</text></g><g><title>processRootScheduleInMicrotask — 108.295 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13456:9
+design-app://app/assets/index-CTU_mVTR.js:9:135190</title><rect x="1094.470" y="1008" width="211.205" height="17" fill="hsl(32 80% 72%)"/><text x="1096.470" y="1020" font-size="10">processRootScheduleInMicrotask</text></g><g><title>flushSyncWorkAcrossRoots_impl — 108.295 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13408:9
+design-app://app/assets/index-CTU_mVTR.js:9:134775</title><rect x="1094.470" y="990" width="211.205" height="17" fill="hsl(49 80% 72%)"/><text x="1096.470" y="1002" font-size="10">flushSyncWorkAcrossRoots_impl</text></g><g><title>performSyncWorkOnRoot — 108.295 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13574:9
+design-app://app/assets/index-CTU_mVTR.js:9:136544</title><rect x="1094.470" y="972" width="211.205" height="17" fill="hsl(52 80% 72%)"/><text x="1096.470" y="984" font-size="10">performSyncWorkOnRoot</text></g><g><title>performWorkOnRoot — 108.295 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069:9
+design-app://app/assets/index-CTU_mVTR.js:9:123534</title><rect x="1094.470" y="954" width="211.205" height="17" fill="hsl(49 80% 72%)"/><text x="1096.470" y="966" font-size="10">performWorkOnRoot</text></g><g><title>renderRootSync — 68.809 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522:9
+design-app://app/assets/index-CTU_mVTR.js:9:126956</title><rect x="1094.470" y="936" width="134.087" height="17" fill="hsl(31 80% 72%)"/><text x="1096.470" y="948" font-size="10">renderRootSync</text></g><g><title>beginWork — 68.809 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768:9
+design-app://app/assets/index-CTU_mVTR.js:9:82356</title><rect x="1094.470" y="918" width="134.087" height="17" fill="hsl(24 80% 72%)"/><text x="1096.470" y="930" font-size="10">beginWork</text></g><g><title>updateFunctionComponent — 67.304 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791:9
+design-app://app/assets/index-CTU_mVTR.js:9:72025</title><rect x="1094.470" y="900" width="131.148" height="17" fill="hsl(16 80% 72%)"/><text x="1096.470" y="912" font-size="10">updateFunctionCompone</text></g><g><title>renderWithHooks — 67.304 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-CTU_mVTR.js:9:49088</title><rect x="1094.470" y="882" width="131.148" height="17" fill="hsl(36 80% 72%)"/><text x="1096.470" y="894" font-size="10">renderWithHooks</text></g><g><title>Canvas — 34.722 ms cumulative active samples
+../../../../design-client/src/Canvas.tsx:218:16
+design-app://app/assets/index-CTU_mVTR.js:64:7440</title><rect x="1094.470" y="864" width="67.514" height="17" fill="hsl(42 80% 72%)"/><text x="1096.470" y="876" font-size="10">Canvas</text></g><g><title>currentScene — 14.648 ms cumulative active samples
+../../../../design-client/src/canvas-scene-snapshots.ts:74:2
+design-app://app/assets/index-CTU_mVTR.js:59:282070</title><rect x="1094.470" y="846" width="28.308" height="17" fill="hsl(23 80% 72%)"/><text x="1096.470" y="858" font-size="10">curr</text></g><g><title>uD — 14.648 ms cumulative active samples
+../../../../design-client/src/canvas-scene-snapshots.ts:33:2
+design-app://app/assets/index-CTU_mVTR.js:59:281454</title><rect x="1094.470" y="828" width="28.308" height="17" fill="hsl(53 80% 72%)"/><text x="1096.470" y="840" font-size="10">uD</text></g><g><title>scene — 14.648 ms cumulative active samples
+../../../../design-client/src/geometry.ts:276:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:52107</title><rect x="1094.470" y="810" width="28.308" height="17" fill="hsl(54 80% 72%)"/><text x="1096.470" y="822" font-size="10">scen</text></g><g><title>(anonymous) — 14.648 ms cumulative active samples
+../../../../design-client/src/geometry.ts:322:25
+design-app://app/assets/geometry-KVgWSL8m.js:2:52937</title><rect x="1094.470" y="792" width="28.308" height="17" fill="hsl(30 80% 72%)"/><text x="1096.470" y="804" font-size="10">(ano</text></g><g><title>visit — 14.648 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1094.470" y="774" width="28.308" height="17" fill="hsl(27 80% 72%)"/><text x="1096.470" y="786" font-size="10">visi</text></g><g><title>(anonymous) — 14.648 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1094.470" y="756" width="28.308" height="17" fill="hsl(30 80% 72%)"/><text x="1096.470" y="768" font-size="10">(ano</text></g><g><title>visit — 14.648 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1094.470" y="738" width="28.308" height="17" fill="hsl(27 80% 72%)"/><text x="1096.470" y="750" font-size="10">visi</text></g><g><title>(anonymous) — 14.648 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1094.470" y="720" width="28.308" height="17" fill="hsl(30 80% 72%)"/><text x="1096.470" y="732" font-size="10">(ano</text></g><g><title>visit — 14.648 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1094.470" y="702" width="28.308" height="17" fill="hsl(27 80% 72%)"/><text x="1096.470" y="714" font-size="10">visi</text></g><g><title>(anonymous) — 14.648 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1094.470" y="684" width="28.308" height="17" fill="hsl(30 80% 72%)"/><text x="1096.470" y="696" font-size="10">(ano</text></g><g><title>visit — 14.648 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1094.470" y="666" width="28.308" height="17" fill="hsl(27 80% 72%)"/><text x="1096.470" y="678" font-size="10">visi</text></g><g><title>(anonymous) — 8.575 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1094.470" y="648" width="16.447" height="17" fill="hsl(30 80% 72%)"/><text x="1096.470" y="660" font-size="10">(a</text></g><g><title>visit — 7.068 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1094.470" y="630" width="13.504" height="17" fill="hsl(27 80% 72%)"/><text x="1096.470" y="642" font-size="10">v</text></g><g><title>kernelBounds — 1.518 ms cumulative active samples
+../../../../design-client/src/kernel/picking.ts:480:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:46273</title><rect x="1094.470" y="612" width="2.665" height="17" fill="hsl(8 80% 72%)"/><text x="1096.470" y="624" font-size="10"></text></g><g><title>(anonymous) — 1.486 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1097.434" y="612" width="2.602" height="17" fill="hsl(30 80% 72%)"/><text x="1099.434" y="624" font-size="10"></text></g><g><title>(anonymous) — 1.509 ms cumulative active samples
+../../../../design-client/src/geometry.ts:287:38
+design-app://app/assets/geometry-KVgWSL8m.js:2:52312</title><rect x="1111.217" y="648" width="2.647" height="17" fill="hsl(30 80% 72%)"/><text x="1113.217" y="660" font-size="10"></text></g><g><title>multiply — 1.508 ms cumulative active samples
+../../../../design-client/src/commands/affine.ts:4:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:19165</title><rect x="1114.164" y="648" width="2.645" height="17" fill="hsl(34 80% 72%)"/><text x="1116.164" y="660" font-size="10"></text></g><g><title>covers — 12.528 ms cumulative active samples
+../../../../design-client/src/kernel/interaction-renderer.ts:168:6
+design-app://app/assets/index-CTU_mVTR.js:59:12686</title><rect x="1123.078" y="846" width="24.168" height="17" fill="hsl(36 80% 72%)"/><text x="1125.078" y="858" font-size="10">cov</text></g><g><title>baseOffsets — 12.528 ms cumulative active samples
+../../../../design-client/src/kernel/interaction-renderer.ts:90:2
+design-app://app/assets/index-CTU_mVTR.js:59:10528</title><rect x="1123.078" y="828" width="24.168" height="17" fill="hsl(49 80% 72%)"/><text x="1125.078" y="840" font-size="10">bas</text></g><g><title>interactionOffsets — 11.018 ms cumulative active samples
+../../../../design-client/src/kernel/interaction-layers.ts:96:16
+design-app://app/assets/index-CTU_mVTR.js:59:5110</title><rect x="1123.078" y="810" width="21.219" height="17" fill="hsl(32 80% 72%)"/><text x="1125.078" y="822" font-size="10">in</text></g><g><title>e.useMemo — 4.542 ms cumulative active samples
+../../../../design-client/node_modules/react/cjs/react.production.js:536:18
+design-app://app/assets/jsx-runtime-Wy9s6hX0.js:1:8077</title><rect x="1147.546" y="846" width="8.571" height="17" fill="hsl(26 80% 72%)"/><text x="1149.546" y="858" font-size="10"></text></g><g><title>updateMemo — 4.542 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:5454:9
+design-app://app/assets/index-CTU_mVTR.js:9:58033</title><rect x="1147.546" y="828" width="8.571" height="17" fill="hsl(9 80% 72%)"/><text x="1149.546" y="840" font-size="10"></text></g><g><title>useMemo — 1.522 ms cumulative active samples
+../../../../design-client/src/Canvas.tsx:709:22
+design-app://app/assets/index-CTU_mVTR.js:64:20830</title><rect x="1147.546" y="810" width="2.673" height="17" fill="hsl(29 80% 72%)"/><text x="1149.546" y="822" font-size="10"></text></g><g><title>useMemo — 1.514 ms cumulative active samples
+../../../../design-client/src/Canvas.tsx:247:33
+design-app://app/assets/index-CTU_mVTR.js:64:8419</title><rect x="1150.518" y="810" width="2.657" height="17" fill="hsl(29 80% 72%)"/><text x="1152.518" y="822" font-size="10"></text></g><g><title>supportsEditPreview — 1.514 ms cumulative active samples
+../../../../design-client/src/edit-preview.ts:7:16
+design-app://app/assets/index-CTU_mVTR.js:59:289321</title><rect x="1150.518" y="792" width="2.657" height="17" fill="hsl(48 80% 72%)"/><text x="1152.518" y="804" font-size="10"></text></g><g><title>i — 1.514 ms cumulative active samples
+../../../../design-client/src/edit-preview.ts:15:17
+design-app://app/assets/index-CTU_mVTR.js:59:289378</title><rect x="1150.518" y="774" width="2.657" height="17" fill="hsl(13 80% 72%)"/><text x="1152.518" y="786" font-size="10"></text></g><g><title>i — 1.514 ms cumulative active samples
+../../../../design-client/src/edit-preview.ts:15:17
+design-app://app/assets/index-CTU_mVTR.js:59:289378</title><rect x="1150.518" y="756" width="2.657" height="17" fill="hsl(13 80% 72%)"/><text x="1152.518" y="768" font-size="10"></text></g><g><title>i — 1.514 ms cumulative active samples
+../../../../design-client/src/edit-preview.ts:15:17
+design-app://app/assets/index-CTU_mVTR.js:59:289378</title><rect x="1150.518" y="738" width="2.657" height="17" fill="hsl(13 80% 72%)"/><text x="1152.518" y="750" font-size="10"></text></g><g><title>useMemo — 1.506 ms cumulative active samples
+../../../../design-client/src/Canvas.tsx:600:23
+design-app://app/assets/index-CTU_mVTR.js:64:17811</title><rect x="1153.475" y="810" width="2.641" height="17" fill="hsl(29 80% 72%)"/><text x="1155.475" y="822" font-size="10"></text></g><g><title>get index — 3.004 ms cumulative active samples
+../../../../design-client/src/canvas-scene-snapshots.ts:37:6
+design-app://app/assets/index-CTU_mVTR.js:59:281559</title><rect x="1156.416" y="846" width="5.567" height="17" fill="hsl(36 80% 72%)"/><text x="1158.416" y="858" font-size="10"></text></g><g><title>qn — 3.004 ms cumulative active samples
+../../../../design-client/src/geometry.ts:390:2
+design-app://app/assets/geometry-KVgWSL8m.js:2:53742</title><rect x="1156.416" y="828" width="5.567" height="17" fill="hsl(21 80% 72%)"/><text x="1158.416" y="840" font-size="10"></text></g><g><title>(anonymous) — 3.004 ms cumulative active samples
+../../../../design-client/src/geometry.ts:391:12
+design-app://app/assets/geometry-KVgWSL8m.js:2:53771</title><rect x="1156.416" y="810" width="5.567" height="17" fill="hsl(30 80% 72%)"/><text x="1158.416" y="822" font-size="10"></text></g><g><title>boundedCellRange — 1.499 ms cumulative active samples
+../../../../design-client/src/geometry.ts:358:9
+design-app://app/assets/geometry-KVgWSL8m.js:2:53275</title><rect x="1156.416" y="792" width="2.628" height="17" fill="hsl(12 80% 72%)"/><text x="1158.416" y="804" font-size="10"></text></g><g><title>App — 12.953 ms cumulative active samples
+../../../../design-client/src/App.tsx:161:24
+design-app://app/assets/index-CTU_mVTR.js:64:237615</title><rect x="1162.283" y="864" width="24.998" height="17" fill="hsl(57 80% 72%)"/><text x="1164.283" y="876" font-size="10">App</text></g><g><title>alignmentAvailability — 12.953 ms cumulative active samples
+../../../../design-client/src/alignment-availability.ts:6:16
+design-app://app/assets/index-CTU_mVTR.js:10:146504</title><rect x="1162.283" y="846" width="24.998" height="17" fill="hsl(10 80% 72%)"/><text x="1164.283" y="858" font-size="10">ali</text></g><g><title>parentMap — 12.953 ms cumulative active samples
+../../../../design-client/src/engine.ts:203:2
+design-app://app/assets/index-CTU_mVTR.js:59:178567</title><rect x="1162.283" y="828" width="24.998" height="17" fill="hsl(34 80% 72%)"/><text x="1164.283" y="840" font-size="10">par</text></g><g><title>pickContext — 12.953 ms cumulative active samples
+../../../../design-client/src/engine.ts:191:2
+design-app://app/assets/index-CTU_mVTR.js:59:178296</title><rect x="1162.283" y="810" width="24.998" height="17" fill="hsl(12 80% 72%)"/><text x="1164.283" y="822" font-size="10">pic</text></g><g><title>allParents — 12.953 ms cumulative active samples
+../../../../design-client/src/geometry.ts:328:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:52975</title><rect x="1162.283" y="792" width="24.998" height="17" fill="hsl(44 80% 72%)"/><text x="1164.283" y="804" font-size="10">all</text></g><g><title>(anonymous) — 3.008 ms cumulative active samples
+../../../../design-client/src/geometry.ts:331:34
+design-app://app/assets/geometry-KVgWSL8m.js:2:53088</title><rect x="1162.283" y="774" width="5.575" height="17" fill="hsl(30 80% 72%)"/><text x="1164.283" y="786" font-size="10"></text></g><g><title>(anonymous) — 3.008 ms cumulative active samples
+../../../../design-client/src/geometry.ts:331:60
+design-app://app/assets/geometry-KVgWSL8m.js:2:53110</title><rect x="1162.283" y="756" width="5.575" height="17" fill="hsl(30 80% 72%)"/><text x="1164.283" y="768" font-size="10"></text></g><g><title>NodeExportPanel — 12.081 ms cumulative active samples
+../../../../design-client/src/NodeExportPanel.tsx:12:16
+design-app://app/assets/index-CTU_mVTR.js:64:103740</title><rect x="1187.581" y="864" width="23.295" height="17" fill="hsl(36 80% 72%)"/><text x="1189.581" y="876" font-size="10">Nod</text></g><g><title>e.useMemo — 12.081 ms cumulative active samples
+../../../../design-client/node_modules/react/cjs/react.production.js:536:18
+design-app://app/assets/jsx-runtime-Wy9s6hX0.js:1:8077</title><rect x="1187.581" y="846" width="23.295" height="17" fill="hsl(26 80% 72%)"/><text x="1189.581" y="858" font-size="10">e.u</text></g><g><title>updateMemo — 12.081 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:5454:9
+design-app://app/assets/index-CTU_mVTR.js:9:58033</title><rect x="1187.581" y="828" width="23.295" height="17" fill="hsl(9 80% 72%)"/><text x="1189.581" y="840" font-size="10">upd</text></g><g><title>useMemo — 12.081 ms cumulative active samples
+../../../../design-client/src/NodeExportPanel.tsx:17:21
+design-app://app/assets/index-CTU_mVTR.js:64:103915</title><rect x="1187.581" y="810" width="23.295" height="17" fill="hsl(29 80% 72%)"/><text x="1189.581" y="822" font-size="10">use</text></g><g><title>pdfVectorIssues — 12.081 ms cumulative active samples
+../../../../design-client/src/export-metadata.ts:23:16
+design-app://app/assets/export-BqGVPTGb.js:1:888</title><rect x="1187.581" y="792" width="23.295" height="17" fill="hsl(25 80% 72%)"/><text x="1189.581" y="804" font-size="10">pdf</text></g><g><title>scene — 9.075 ms cumulative active samples
+../../../../design-client/src/geometry.ts:276:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:52107</title><rect x="1187.581" y="774" width="17.424" height="17" fill="hsl(54 80% 72%)"/><text x="1189.581" y="786" font-size="10">sc</text></g><g><title>(anonymous) — 9.075 ms cumulative active samples
+../../../../design-client/src/geometry.ts:322:25
+design-app://app/assets/geometry-KVgWSL8m.js:2:52937</title><rect x="1187.581" y="756" width="17.424" height="17" fill="hsl(30 80% 72%)"/><text x="1189.581" y="768" font-size="10">(a</text></g><g><title>visit — 9.075 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1187.581" y="738" width="17.424" height="17" fill="hsl(27 80% 72%)"/><text x="1189.581" y="750" font-size="10">vi</text></g><g><title>(anonymous) — 9.075 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1187.581" y="720" width="17.424" height="17" fill="hsl(30 80% 72%)"/><text x="1189.581" y="732" font-size="10">(a</text></g><g><title>visit — 9.075 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1187.581" y="702" width="17.424" height="17" fill="hsl(27 80% 72%)"/><text x="1189.581" y="714" font-size="10">vi</text></g><g><title>(anonymous) — 9.075 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1187.581" y="684" width="17.424" height="17" fill="hsl(30 80% 72%)"/><text x="1189.581" y="696" font-size="10">(a</text></g><g><title>visit — 9.075 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1187.581" y="666" width="17.424" height="17" fill="hsl(27 80% 72%)"/><text x="1189.581" y="678" font-size="10">vi</text></g><g><title>(anonymous) — 9.075 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1187.581" y="648" width="17.424" height="17" fill="hsl(30 80% 72%)"/><text x="1189.581" y="660" font-size="10">(a</text></g><g><title>visit — 9.075 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1187.581" y="630" width="17.424" height="17" fill="hsl(27 80% 72%)"/><text x="1189.581" y="642" font-size="10">vi</text></g><g><title>(anonymous) — 7.571 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1187.581" y="612" width="14.487" height="17" fill="hsl(30 80% 72%)"/><text x="1189.581" y="624" font-size="10">(</text></g><g><title>visit — 7.571 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1187.581" y="594" width="14.487" height="17" fill="hsl(27 80% 72%)"/><text x="1189.581" y="606" font-size="10">v</text></g><g><title>(anonymous) — 4.526 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1187.581" y="576" width="8.539" height="17" fill="hsl(30 80% 72%)"/><text x="1189.581" y="588" font-size="10"></text></g><g><title>visit — 3.021 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1187.581" y="558" width="5.600" height="17" fill="hsl(27 80% 72%)"/><text x="1189.581" y="570" font-size="10"></text></g><g><title>(anonymous) — 1.495 ms cumulative active samples
+../../../../design-client/src/export-metadata.ts:27:70
+design-app://app/assets/export-BqGVPTGb.js:1:1032</title><rect x="1205.305" y="774" width="2.620" height="17" fill="hsl(30 80% 72%)"/><text x="1207.305" y="786" font-size="10"></text></g><g><title>ComponentPanel — 4.034 ms cumulative active samples
+../../../../design-client/src/ComponentPanel.tsx:52:16
+design-app://app/assets/index-CTU_mVTR.js:64:145406</title><rect x="1211.176" y="864" width="7.579" height="17" fill="hsl(51 80% 72%)"/><text x="1213.176" y="876" font-size="10"></text></g><g><title>PaintEditor — 1.552 ms cumulative active samples
+../../../../design-client/src/Inspector.tsx:78:9
+design-app://app/assets/index-CTU_mVTR.js:64:175292</title><rect x="1219.054" y="864" width="2.731" height="17" fill="hsl(41 80% 72%)"/><text x="1221.054" y="876" font-size="10"></text></g><g><title>ProgressiveSurfaceImpl — 1.494 ms cumulative active samples
+../../../../design-client/src/kernel/ProgressiveSurface.tsx:351:16
+design-app://app/assets/index-CTU_mVTR.js:59:61716</title><rect x="1222.086" y="864" width="2.618" height="17" fill="hsl(40 80% 72%)"/><text x="1224.086" y="876" font-size="10"></text></g><g><title>DesignToolbar — 0.468 ms cumulative active samples
+../../../../design-client/src/EditorChrome.tsx:7:16
+design-app://app/assets/index-CTU_mVTR.js:59:136050</title><rect x="1225.003" y="864" width="0.614" height="17" fill="hsl(13 80% 72%)"/><text x="1227.003" y="876" font-size="10"></text></g><g><title>e.useState — 0.468 ms cumulative active samples
+../../../../design-client/node_modules/react/cjs/react.production.js:548:19
+design-app://app/assets/jsx-runtime-Wy9s6hX0.js:1:8290</title><rect x="1225.003" y="846" width="0.614" height="17" fill="hsl(31 80% 72%)"/><text x="1227.003" y="858" font-size="10"></text></g><g><title>useState — 0.468 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:5996:14
+design-app://app/assets/index-CTU_mVTR.js:9:63717</title><rect x="1225.003" y="828" width="0.614" height="17" fill="hsl(24 80% 72%)"/><text x="1227.003" y="840" font-size="10"></text></g><g><title>updateReducer — 0.468 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4848:9
+design-app://app/assets/index-CTU_mVTR.js:9:51570</title><rect x="1225.003" y="810" width="0.614" height="17" fill="hsl(45 80% 72%)"/><text x="1227.003" y="822" font-size="10"></text></g><g><title>updateReducerImpl — 0.468 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4852:9
+design-app://app/assets/index-CTU_mVTR.js:9:51606</title><rect x="1225.003" y="792" width="0.614" height="17" fill="hsl(57 80% 72%)"/><text x="1227.003" y="804" font-size="10"></text></g><g><title>updateForwardRef — 1.505 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6425:9
+design-app://app/assets/index-CTU_mVTR.js:9:68575</title><rect x="1225.917" y="900" width="2.639" height="17" fill="hsl(31 80% 72%)"/><text x="1227.917" y="912" font-size="10"></text></g><g><title>renderWithHooks — 1.505 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-CTU_mVTR.js:9:49088</title><rect x="1225.917" y="882" width="2.639" height="17" fill="hsl(36 80% 72%)"/><text x="1227.917" y="894" font-size="10"></text></g><g><title>forwardRef — 1.505 ms cumulative active samples
+../../../../design-client/node_modules/lucide-react/dist/esm/createLucideIcon.mjs:15:20
+design-app://app/assets/index-CTU_mVTR.js:10:65735</title><rect x="1225.917" y="864" width="2.639" height="17" fill="hsl(20 80% 72%)"/><text x="1227.917" y="876" font-size="10"></text></g><g><title>e.createElement — 1.505 ms cumulative active samples
+../../../../design-client/node_modules/react/cjs/react.production.js:453:24
+design-app://app/assets/jsx-runtime-Wy9s6hX0.js:1:6668</title><rect x="1225.917" y="846" width="2.639" height="17" fill="hsl(17 80% 72%)"/><text x="1227.917" y="858" font-size="10"></text></g><g><title>completeRootWhenReady — 39.486 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12240:9
+design-app://app/assets/index-CTU_mVTR.js:9:124639</title><rect x="1228.857" y="936" width="76.818" height="17" fill="hsl(8 80% 72%)"/><text x="1230.857" y="948" font-size="10">completeRoot</text></g><g><title>completeRoot — 39.486 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12867:9
+design-app://app/assets/index-CTU_mVTR.js:9:129664</title><rect x="1228.857" y="918" width="76.818" height="17" fill="hsl(15 80% 72%)"/><text x="1230.857" y="930" font-size="10">completeRoot</text></g><g><title>commitRoot — 39.486 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12906:9
+design-app://app/assets/index-CTU_mVTR.js:9:129898</title><rect x="1228.857" y="900" width="76.818" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="912" font-size="10">commitRoot</text></g><g><title>flushLayoutEffects — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13110:9
+design-app://app/assets/index-CTU_mVTR.js:9:131821</title><rect x="1228.857" y="882" width="71.795" height="17" fill="hsl(16 80% 72%)"/><text x="1230.857" y="894" font-size="10">flushLayout</text></g><g><title>commitLayoutEffectOnFiber — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="864" width="71.795" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="876" font-size="10">commitLayou</text></g><g><title>recursivelyTraverseLayoutEffects — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="846" width="71.795" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="858" font-size="10">recursively</text></g><g><title>commitLayoutEffectOnFiber — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="828" width="71.795" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="840" font-size="10">commitLayou</text></g><g><title>recursivelyTraverseLayoutEffects — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="810" width="71.795" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="822" font-size="10">recursively</text></g><g><title>commitLayoutEffectOnFiber — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="792" width="71.795" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="804" font-size="10">commitLayou</text></g><g><title>recursivelyTraverseLayoutEffects — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="774" width="71.795" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="786" font-size="10">recursively</text></g><g><title>commitLayoutEffectOnFiber — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="756" width="71.795" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="768" font-size="10">commitLayou</text></g><g><title>recursivelyTraverseLayoutEffects — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="738" width="71.795" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="750" font-size="10">recursively</text></g><g><title>commitLayoutEffectOnFiber — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="720" width="71.795" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="732" font-size="10">commitLayou</text></g><g><title>recursivelyTraverseLayoutEffects — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="702" width="71.795" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="714" font-size="10">recursively</text></g><g><title>commitLayoutEffectOnFiber — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="684" width="71.795" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="696" font-size="10">commitLayou</text></g><g><title>recursivelyTraverseLayoutEffects — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="666" width="71.795" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="678" font-size="10">recursively</text></g><g><title>commitLayoutEffectOnFiber — 36.914 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="648" width="71.795" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="660" font-size="10">commitLayou</text></g><g><title>recursivelyTraverseLayoutEffects — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="630" width="68.820" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="642" font-size="10">recursivel</text></g><g><title>commitLayoutEffectOnFiber — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="612" width="68.820" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="624" font-size="10">commitLayo</text></g><g><title>recursivelyTraverseLayoutEffects — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="594" width="68.820" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="606" font-size="10">recursivel</text></g><g><title>commitLayoutEffectOnFiber — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="576" width="68.820" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="588" font-size="10">commitLayo</text></g><g><title>recursivelyTraverseLayoutEffects — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="558" width="68.820" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="570" font-size="10">recursivel</text></g><g><title>commitLayoutEffectOnFiber — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="540" width="68.820" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="552" font-size="10">commitLayo</text></g><g><title>recursivelyTraverseLayoutEffects — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="522" width="68.820" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="534" font-size="10">recursivel</text></g><g><title>commitLayoutEffectOnFiber — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="504" width="68.820" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="516" font-size="10">commitLayo</text></g><g><title>recursivelyTraverseLayoutEffects — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="486" width="68.820" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="498" font-size="10">recursivel</text></g><g><title>commitLayoutEffectOnFiber — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="468" width="68.820" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="480" font-size="10">commitLayo</text></g><g><title>recursivelyTraverseLayoutEffects — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="450" width="68.820" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="462" font-size="10">recursivel</text></g><g><title>commitLayoutEffectOnFiber — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="432" width="68.820" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="444" font-size="10">commitLayo</text></g><g><title>recursivelyTraverseLayoutEffects — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="414" width="68.820" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="426" font-size="10">recursivel</text></g><g><title>commitLayoutEffectOnFiber — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="396" width="68.820" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="408" font-size="10">commitLayo</text></g><g><title>recursivelyTraverseLayoutEffects — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1228.857" y="378" width="68.820" height="17" fill="hsl(47 80% 72%)"/><text x="1230.857" y="390" font-size="10">recursivel</text></g><g><title>commitLayoutEffectOnFiber — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1228.857" y="360" width="68.820" height="17" fill="hsl(51 80% 72%)"/><text x="1230.857" y="372" font-size="10">commitLayo</text></g><g><title>commitHookEffectListMount — 35.391 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-CTU_mVTR.js:9:95094</title><rect x="1228.857" y="342" width="68.820" height="17" fill="hsl(30 80% 72%)"/><text x="1230.857" y="354" font-size="10">commitHook</text></g><g><title>(anonymous) — 35.391 ms cumulative active samples
+../../../../design-client/src/kernel/ResidentCompositeSurface.tsx:300:2
+design-app://app/assets/index-CTU_mVTR.js:59:52538</title><rect x="1228.857" y="324" width="68.820" height="17" fill="hsl(30 80% 72%)"/><text x="1230.857" y="336" font-size="10">(anonymous</text></g><g><title>prepare — 35.391 ms cumulative active samples
+../../../../design-client/src/kernel/interaction-renderer.ts:298:2
+design-app://app/assets/index-CTU_mVTR.js:59:16861</title><rect x="1228.857" y="306" width="68.820" height="17" fill="hsl(9 80% 72%)"/><text x="1230.857" y="318" font-size="10">prepare</text></g><g><title>interactionOffsets — 14.661 ms cumulative active samples
+../../../../design-client/src/kernel/interaction-layers.ts:96:16
+design-app://app/assets/index-CTU_mVTR.js:59:5110</title><rect x="1228.857" y="288" width="28.334" height="17" fill="hsl(32 80% 72%)"/><text x="1230.857" y="300" font-size="10">inte</text></g><g><title>buildInteractionDependencyScope — 10.507 ms cumulative active samples
+../../../../design-client/src/kernel/interaction-scene-bounds.ts:90:16
+design-app://app/assets/index-CTU_mVTR.js:59:7955</title><rect x="1257.490" y="288" width="20.221" height="17" fill="hsl(57 80% 72%)"/><text x="1259.490" y="300" font-size="10">bu</text></g><g><title>(anonymous) — 1.515 ms cumulative active samples
+../../../../design-client/src/kernel/interaction-scene-bounds.ts:122:36
+design-app://app/assets/index-CTU_mVTR.js:59:8814</title><rect x="1257.490" y="270" width="2.659" height="17" fill="hsl(30 80% 72%)"/><text x="1259.490" y="282" font-size="10"></text></g><g><title>(anonymous) — 1.499 ms cumulative active samples
+../../../../design-client/src/kernel/interaction-scene-bounds.ts:108:51
+design-app://app/assets/index-CTU_mVTR.js:59:8396</title><rect x="1260.449" y="270" width="2.628" height="17" fill="hsl(30 80% 72%)"/><text x="1262.449" y="282" font-size="10"></text></g><g><title>pageBackdropPadding — 1.498 ms cumulative active samples
+../../../../design-client/src/kernel/interaction-layers.ts:21:16
+design-app://app/assets/index-CTU_mVTR.js:59:3006</title><rect x="1263.377" y="270" width="2.626" height="17" fill="hsl(52 80% 72%)"/><text x="1265.377" y="282" font-size="10"></text></g><g><title>interactionRootBounds — 1.488 ms cumulative active samples
+../../../../design-client/src/kernel/interaction-scene-bounds.ts:25:16
+design-app://app/assets/index-CTU_mVTR.js:59:6622</title><rect x="1266.303" y="270" width="2.606" height="17" fill="hsl(21 80% 72%)"/><text x="1268.303" y="282" font-size="10"></text></g><g><title>scene — 8.730 ms cumulative active samples
+../../../../design-client/src/geometry.ts:276:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:52107</title><rect x="1278.011" y="288" width="16.750" height="17" fill="hsl(54 80% 72%)"/><text x="1280.011" y="300" font-size="10">sc</text></g><g><title>(anonymous) — 8.730 ms cumulative active samples
+../../../../design-client/src/geometry.ts:322:25
+design-app://app/assets/geometry-KVgWSL8m.js:2:52937</title><rect x="1278.011" y="270" width="16.750" height="17" fill="hsl(30 80% 72%)"/><text x="1280.011" y="282" font-size="10">(a</text></g><g><title>visit — 8.730 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1278.011" y="252" width="16.750" height="17" fill="hsl(27 80% 72%)"/><text x="1280.011" y="264" font-size="10">vi</text></g><g><title>(anonymous) — 8.730 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1278.011" y="234" width="16.750" height="17" fill="hsl(30 80% 72%)"/><text x="1280.011" y="246" font-size="10">(a</text></g><g><title>visit — 8.730 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1278.011" y="216" width="16.750" height="17" fill="hsl(27 80% 72%)"/><text x="1280.011" y="228" font-size="10">vi</text></g><g><title>(anonymous) — 8.730 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1278.011" y="198" width="16.750" height="17" fill="hsl(30 80% 72%)"/><text x="1280.011" y="210" font-size="10">(a</text></g><g><title>visit — 8.730 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1278.011" y="180" width="16.750" height="17" fill="hsl(27 80% 72%)"/><text x="1280.011" y="192" font-size="10">vi</text></g><g><title>(anonymous) — 8.730 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1278.011" y="162" width="16.750" height="17" fill="hsl(30 80% 72%)"/><text x="1280.011" y="174" font-size="10">(a</text></g><g><title>visit — 7.199 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1278.011" y="144" width="13.760" height="17" fill="hsl(27 80% 72%)"/><text x="1280.011" y="156" font-size="10">v</text></g><g><title>(anonymous) — 7.199 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1278.011" y="126" width="13.760" height="17" fill="hsl(30 80% 72%)"/><text x="1280.011" y="138" font-size="10">(</text></g><g><title>visit — 7.199 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1278.011" y="108" width="13.760" height="17" fill="hsl(27 80% 72%)"/><text x="1280.011" y="120" font-size="10">v</text></g><g><title>(anonymous) — 7.199 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1278.011" y="90" width="13.760" height="17" fill="hsl(30 80% 72%)"/><text x="1280.011" y="102" font-size="10">(</text></g><g><title>visit — 5.690 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1278.011" y="72" width="10.813" height="17" fill="hsl(27 80% 72%)"/><text x="1280.011" y="84" font-size="10">v</text></g><g><title>(anonymous) — 1.513 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1278.011" y="54" width="2.655" height="17" fill="hsl(30 80% 72%)"/><text x="1280.011" y="66" font-size="10"></text></g><g><title>visit — 1.513 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1278.011" y="36" width="2.655" height="17" fill="hsl(27 80% 72%)"/><text x="1280.011" y="48" font-size="10"></text></g><g><title>(anonymous) — 1.513 ms cumulative active samples
+../../../../design-client/src/geometry.ts:313:24
+design-app://app/assets/geometry-KVgWSL8m.js:2:52763</title><rect x="1278.011" y="18" width="2.655" height="17" fill="hsl(30 80% 72%)"/><text x="1280.011" y="30" font-size="10"></text></g><g><title>visit — 1.513 ms cumulative active samples
+../../../../design-client/src/geometry.ts:280:8
+design-app://app/assets/geometry-KVgWSL8m.js:2:52171</title><rect x="1278.011" y="0" width="2.655" height="17" fill="hsl(27 80% 72%)"/><text x="1280.011" y="12" font-size="10"></text></g><g><title>InteractionRenderer — 1.493 ms cumulative active samples
+../../../../design-client/src/kernel/ResidentCompositeSurface.tsx:259:32
+design-app://app/assets/index-CTU_mVTR.js:59:51689</title><rect x="1295.061" y="288" width="2.616" height="17" fill="hsl(43 80% 72%)"/><text x="1297.061" y="300" font-size="10"></text></g><g><title>c.current — 1.493 ms cumulative active samples
+../../../../design-client/src/kernel/ResidentCompositeSurface.tsx:64:10
+design-app://app/assets/index-CTU_mVTR.js:59:46688</title><rect x="1295.061" y="270" width="2.616" height="17" fill="hsl(14 80% 72%)"/><text x="1297.061" y="282" font-size="10"></text></g><g><title>present — 1.493 ms cumulative active samples
+../../../../design-client/src/kernel/client.ts:404:2
+design-app://app/assets/client-Bz7uwEG4.js:1:32302</title><rect x="1295.061" y="252" width="2.616" height="17" fill="hsl(17 80% 72%)"/><text x="1297.061" y="264" font-size="10"></text></g><g><title>record — 1.493 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/geometry-KVgWSL8m.js:2:33867</title><rect x="1295.061" y="234" width="2.616" height="17" fill="hsl(57 80% 72%)"/><text x="1297.061" y="246" font-size="10"></text></g><g><title>sanitizeRecord — 1.493 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:76:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:32942</title><rect x="1295.061" y="216" width="2.616" height="17" fill="hsl(36 80% 72%)"/><text x="1297.061" y="228" font-size="10"></text></g><g><title>sanitizeFields — 1.493 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:31204</title><rect x="1295.061" y="198" width="2.616" height="17" fill="hsl(38 80% 72%)"/><text x="1297.061" y="210" font-size="10"></text></g><g><title>commitHookEffectListMount — 1.523 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-CTU_mVTR.js:9:95094</title><rect x="1297.977" y="630" width="2.674" height="17" fill="hsl(30 80% 72%)"/><text x="1299.977" y="642" font-size="10"></text></g><g><title>(anonymous) — 1.523 ms cumulative active samples
+../../../../design-client/src/Canvas.tsx:668:2
+design-app://app/assets/index-CTU_mVTR.js:64:19625</title><rect x="1297.977" y="612" width="2.674" height="17" fill="hsl(30 80% 72%)"/><text x="1299.977" y="624" font-size="10"></text></g><g><title>KO.vt.current — 1.523 ms cumulative active samples
+../../../../design-client/src/Canvas.tsx:656:15
+design-app://app/assets/index-CTU_mVTR.js:64:19231</title><rect x="1297.977" y="594" width="2.674" height="17" fill="hsl(9 80% 72%)"/><text x="1299.977" y="606" font-size="10"></text></g><g><title>getBoundingClientRect — 1.523 ms cumulative active samples
+
+:0:0</title><rect x="1297.977" y="576" width="2.674" height="17" fill="hsl(25 80% 72%)"/><text x="1299.977" y="588" font-size="10"></text></g><g><title>flushSpawnedWork — 1.466 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13134:9
+design-app://app/assets/index-CTU_mVTR.js:9:132019</title><rect x="1300.951" y="882" width="2.563" height="17" fill="hsl(25 80% 72%)"/><text x="1302.951" y="894" font-size="10"></text></g><g><title>flushPendingEffects — 1.466 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13221:9
+design-app://app/assets/index-CTU_mVTR.js:9:132897</title><rect x="1300.951" y="864" width="2.563" height="17" fill="hsl(27 80% 72%)"/><text x="1302.951" y="876" font-size="10"></text></g><g><title>flushPassiveEffects — 1.466 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13229:9
+design-app://app/assets/index-CTU_mVTR.js:9:132979</title><rect x="1300.951" y="846" width="2.563" height="17" fill="hsl(9 80% 72%)"/><text x="1302.951" y="858" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.466 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1300.951" y="828" width="2.563" height="17" fill="hsl(36 80% 72%)"/><text x="1302.951" y="840" font-size="10"></text></g><g><title>recursivelyTraversePassiveMountEffects — 1.466 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392:9
+design-app://app/assets/index-CTU_mVTR.js:9:118213</title><rect x="1300.951" y="810" width="2.563" height="17" fill="hsl(11 80% 72%)"/><text x="1302.951" y="822" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.466 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1300.951" y="792" width="2.563" height="17" fill="hsl(36 80% 72%)"/><text x="1302.951" y="804" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.466 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1300.951" y="774" width="2.563" height="17" fill="hsl(36 80% 72%)"/><text x="1302.951" y="786" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.466 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1300.951" y="756" width="2.563" height="17" fill="hsl(36 80% 72%)"/><text x="1302.951" y="768" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.466 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1300.951" y="738" width="2.563" height="17" fill="hsl(36 80% 72%)"/><text x="1302.951" y="750" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.466 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1300.951" y="720" width="2.563" height="17" fill="hsl(36 80% 72%)"/><text x="1302.951" y="732" font-size="10"></text></g><g><title>(anonymous) — 1.466 ms cumulative active samples
+../../../../design-client/src/Layers.tsx:155:2
+design-app://app/assets/index-CTU_mVTR.js:64:87614</title><rect x="1300.951" y="702" width="2.563" height="17" fill="hsl(30 80% 72%)"/><text x="1302.951" y="714" font-size="10"></text></g><g><title>(anonymous) — 1.466 ms cumulative active samples
+../../../../design-client/src/Layers.tsx:158:33
+design-app://app/assets/index-CTU_mVTR.js:64:87678</title><rect x="1300.951" y="684" width="2.563" height="17" fill="hsl(30 80% 72%)"/><text x="1302.951" y="696" font-size="10"></text></g><g><title>flushMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12986:9
+design-app://app/assets/index-CTU_mVTR.js:9:130549</title><rect x="1303.815" y="882" width="1.860" height="17" fill="hsl(37 80% 72%)"/><text x="1305.815" y="894" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="864" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="876" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1303.815" y="846" width="1.860" height="17" fill="hsl(28 80% 72%)"/><text x="1305.815" y="858" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="828" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="840" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1303.815" y="810" width="1.860" height="17" fill="hsl(28 80% 72%)"/><text x="1305.815" y="822" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="792" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="804" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1303.815" y="774" width="1.860" height="17" fill="hsl(28 80% 72%)"/><text x="1305.815" y="786" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="756" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="768" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1303.815" y="738" width="1.860" height="17" fill="hsl(28 80% 72%)"/><text x="1305.815" y="750" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="720" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="732" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1303.815" y="702" width="1.860" height="17" fill="hsl(28 80% 72%)"/><text x="1305.815" y="714" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="684" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="696" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1303.815" y="666" width="1.860" height="17" fill="hsl(28 80% 72%)"/><text x="1305.815" y="678" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="648" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="660" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1303.815" y="630" width="1.860" height="17" fill="hsl(28 80% 72%)"/><text x="1305.815" y="642" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="612" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="624" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1303.815" y="594" width="1.860" height="17" fill="hsl(28 80% 72%)"/><text x="1305.815" y="606" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="576" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="588" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1303.815" y="558" width="1.860" height="17" fill="hsl(28 80% 72%)"/><text x="1305.815" y="570" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="540" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="552" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1303.815" y="522" width="1.860" height="17" fill="hsl(28 80% 72%)"/><text x="1305.815" y="534" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1303.815" y="504" width="1.860" height="17" fill="hsl(57 80% 72%)"/><text x="1305.815" y="516" font-size="10"></text></g><g><title>commitHostUpdate — 1.106 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218:9
+design-app://app/assets/index-CTU_mVTR.js:9:97195</title><rect x="1303.815" y="486" width="1.860" height="17" fill="hsl(52 80% 72%)"/><text x="1305.815" y="498" font-size="10"></text></g><g><title>(garbage collector) — 56.248 ms cumulative active samples
+
+:0:0</title><rect x="1305.975" y="1026" width="109.555" height="17" fill="#be92d0"/><text x="1307.975" y="1038" font-size="10">(garbage collecto</text></g><g><title>dispatchDiscreteEvent — 42.923 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17873:9
+design-app://app/assets/index-CTU_mVTR.js:10:42370</title><rect x="1415.830" y="1026" width="83.531" height="17" fill="hsl(29 80% 72%)"/><text x="1417.830" y="1038" font-size="10">dispatchDiscr</text></g><g><title>dispatchEvent — 42.923 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17907:9
+design-app://app/assets/index-CTU_mVTR.js:10:42568</title><rect x="1415.830" y="1008" width="83.531" height="17" fill="hsl(30 80% 72%)"/><text x="1417.830" y="1020" font-size="10">dispatchEvent</text></g><g><title>dispatchEventForPluginEventSystem — 42.923 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13884:9
+design-app://app/assets/index-CTU_mVTR.js:9:140140</title><rect x="1415.830" y="990" width="83.531" height="17" fill="hsl(37 80% 72%)"/><text x="1417.830" y="1002" font-size="10">dispatchEvent</text></g><g><title>batchedUpdates$1 — 42.923 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1663:9
+design-app://app/assets/index-CTU_mVTR.js:9:15126</title><rect x="1415.830" y="972" width="83.531" height="17" fill="hsl(34 80% 72%)"/><text x="1417.830" y="984" font-size="10">batchedUpdate</text></g><g><title>(anonymous) — 42.923 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13931:19
+design-app://app/assets/index-CTU_mVTR.js:9:140546</title><rect x="1415.830" y="954" width="83.531" height="17" fill="hsl(30 80% 72%)"/><text x="1417.830" y="966" font-size="10">(anonymous)</text></g><g><title>processDispatchQueue — 42.923 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13748:9
+design-app://app/assets/index-CTU_mVTR.js:9:138858</title><rect x="1415.830" y="936" width="83.531" height="17" fill="hsl(38 80% 72%)"/><text x="1417.830" y="948" font-size="10">processDispat</text></g><g><title>onClick — 42.923 ms cumulative active samples
+../../../../design-client/src/App.tsx:698:6
+design-app://app/assets/index-CTU_mVTR.js:64:252196</title><rect x="1415.830" y="918" width="83.531" height="17" fill="hsl(25 80% 72%)"/><text x="1417.830" y="930" font-size="10">onClick</text></g><g><title>Undo2 — 41.568 ms cumulative active samples
+../../../../design-client/src/App.tsx:1143:28
+design-app://app/assets/index-CTU_mVTR.js:64:270146</title><rect x="1415.830" y="900" width="80.884" height="17" fill="hsl(44 80% 72%)"/><text x="1417.830" y="912" font-size="10">Undo2</text></g><g><title>dispatchEditorCommand — 41.568 ms cumulative active samples
+../../../../design-client/src/editor-commands.ts:31:22
+design-app://app/assets/index-CTU_mVTR.js:13:24430</title><rect x="1415.830" y="882" width="80.884" height="17" fill="hsl(54 80% 72%)"/><text x="1417.830" y="894" font-size="10">dispatchEdit</text></g><g><title>undo — 41.568 ms cumulative active samples
+../../../../design-client/src/engine.ts:940:2
+design-app://app/assets/index-CTU_mVTR.js:59:201247</title><rect x="1415.830" y="864" width="80.884" height="17" fill="hsl(26 80% 72%)"/><text x="1417.830" y="876" font-size="10">undo</text></g><g><title>undo — 40.051 ms cumulative active samples
+../../../../design-client/src/kernel/graph-history-state.ts:106:4
+design-app://app/assets/index-CTU_mVTR.js:59:177434</title><rect x="1415.830" y="846" width="77.921" height="17" fill="hsl(26 80% 72%)"/><text x="1417.830" y="858" font-size="10">undo</text></g><g><title>undo — 28.033 ms cumulative active samples
+../../../../design-client/src/kernel/graph.ts:185:2
+design-app://app/assets/index-CTU_mVTR.js:59:169867</title><rect x="1415.830" y="828" width="54.450" height="17" fill="hsl(26 80% 72%)"/><text x="1417.830" y="840" font-size="10">undo</text></g><g><title>undo — 28.033 ms cumulative active samples
+../../../../design-client/src/generated/design-kernel/design_kernel.js:802:4
+design-app://app/assets/design_kernel-CTnOS3u4.js:1:9733</title><rect x="1415.830" y="810" width="54.450" height="17" fill="hsl(26 80% 72%)"/><text x="1417.830" y="822" font-size="10">undo</text></g><g><title>js-to-wasm:: — 28.033 ms cumulative active samples
+
+wasm://wasm/09186a36:1:1</title><rect x="1415.830" y="792" width="54.450" height="17" fill="#e98476"/><text x="1417.830" y="804" font-size="10">js-to-wa</text></g><g><title>wasm-function[5790] — 26.486 ms cumulative active samples
+
+wasm://wasm/09186a36:1:6660503</title><rect x="1415.830" y="774" width="51.428" height="17" fill="#e98476"/><text x="1417.830" y="786" font-size="10">wasm-fu</text></g><g><title>wasm-function[2872] — 26.486 ms cumulative active samples
+
+wasm://wasm/09186a36:1:6092315</title><rect x="1415.830" y="756" width="51.428" height="17" fill="#e98476"/><text x="1417.830" y="768" font-size="10">wasm-fu</text></g><g><title>wasm-function[1086] — 25.190 ms cumulative active samples
+
+wasm://wasm/09186a36:1:4680946</title><rect x="1415.830" y="738" width="48.897" height="17" fill="#e98476"/><text x="1417.830" y="750" font-size="10">wasm-fu</text></g><g><title>wasm-function[3163] — 25.190 ms cumulative active samples
+
+wasm://wasm/09186a36:1:6204889</title><rect x="1415.830" y="720" width="48.897" height="17" fill="#e98476"/><text x="1417.830" y="732" font-size="10">wasm-fu</text></g><g><title>wasm-function[516] — 1.296 ms cumulative active samples
+
+wasm://wasm/09186a36:1:3408301</title><rect x="1465.027" y="738" width="2.231" height="17" fill="#e98476"/><text x="1467.027" y="750" font-size="10"></text></g><g><title>wasm-function[1370] — 1.296 ms cumulative active samples
+
+wasm://wasm/09186a36:1:5054020</title><rect x="1465.027" y="720" width="2.231" height="17" fill="#e98476"/><text x="1467.027" y="732" font-size="10"></text></g><g><title>wasm-function[1370] — 1.296 ms cumulative active samples
+
+wasm://wasm/09186a36:1:5054020</title><rect x="1465.027" y="702" width="2.231" height="17" fill="#e98476"/><text x="1467.027" y="714" font-size="10"></text></g><g><title>wasm-function[1370] — 1.296 ms cumulative active samples
+
+wasm://wasm/09186a36:1:5054020</title><rect x="1465.027" y="684" width="2.231" height="17" fill="#e98476"/><text x="1467.027" y="696" font-size="10"></text></g><g><title>wasm-function[6216] — 1.296 ms cumulative active samples
+
+wasm://wasm/09186a36:1:6670584</title><rect x="1465.027" y="666" width="2.231" height="17" fill="#e98476"/><text x="1467.027" y="678" font-size="10"></text></g><g><title>wasm-function[285] — 1.296 ms cumulative active samples
+
+wasm://wasm/09186a36:1:2531830</title><rect x="1465.027" y="648" width="2.231" height="17" fill="#e98476"/><text x="1467.027" y="660" font-size="10"></text></g><g><title>documentPatch — 12.018 ms cumulative active samples
+../../../../design-client/src/document-patch.ts:82:16
+design-app://app/assets/client-Bz7uwEG4.js:1:16679</title><rect x="1470.579" y="828" width="23.172" height="17" fill="hsl(17 80% 72%)"/><text x="1472.579" y="840" font-size="10">doc</text></g><g><title>publishCommittedState — 1.517 ms cumulative active samples
+../../../../design-client/src/engine.ts:453:2
+design-app://app/assets/index-CTU_mVTR.js:59:185213</title><rect x="1494.051" y="846" width="2.663" height="17" fill="hsl(24 80% 72%)"/><text x="1496.051" y="858" font-size="10"></text></g><g><title>focusCanvas — 1.355 ms cumulative active samples
+../../../../design-client/src/App.tsx:688:8
+design-app://app/assets/index-CTU_mVTR.js:64:251670</title><rect x="1497.014" y="900" width="2.346" height="17" fill="hsl(36 80% 72%)"/><text x="1499.014" y="912" font-size="10"></text></g><g><title>focus — 1.355 ms cumulative active samples
+
+:0:0</title><rect x="1497.014" y="882" width="2.346" height="17" fill="hsl(32 80% 72%)"/><text x="1499.014" y="894" font-size="10"></text></g><g><title>c — 1.355 ms cumulative active samples
+../../../../design-client/src/Canvas.tsx:1057:19
+design-app://app/assets/index-CTU_mVTR.js:64:32311</title><rect x="1497.014" y="864" width="2.346" height="17" fill="hsl(57 80% 72%)"/><text x="1499.014" y="876" font-size="10"></text></g><g><title>shortcutTargetOwnsKeyboard — 1.355 ms cumulative active samples
+../../../../design-client/src/editor-shortcuts.ts:6:16
+design-app://app/assets/index-CTU_mVTR.js:18:4511</title><rect x="1497.014" y="846" width="2.346" height="17" fill="hsl(25 80% 72%)"/><text x="1499.014" y="858" font-size="10"></text></g><g><title>modalOwnsKeyboard — 1.355 ms cumulative active samples
+../../../../design-client/src/modal-keyboard.ts:8:16
+design-app://app/assets/preload-helper-B7eKfMDm.js:1:155</title><rect x="1497.014" y="828" width="2.346" height="17" fill="hsl(43 80% 72%)"/><text x="1499.014" y="840" font-size="10"></text></g><g><title>querySelector — 1.355 ms cumulative active samples
+
+:0:0</title><rect x="1497.014" y="810" width="2.346" height="17" fill="hsl(47 80% 72%)"/><text x="1499.014" y="822" font-size="10"></text></g><g><title>e.onmessage — 15.199 ms cumulative active samples
+../../../../design-client/src/kernel/client.ts:493:24
+design-app://app/assets/client-Bz7uwEG4.js:1:35551</title><rect x="1499.660" y="1026" width="29.384" height="17" fill="hsl(57 80% 72%)"/><text x="1501.660" y="1038" font-size="10">e.on</text></g><g><title>sanitizeBatch — 7.674 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:124:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:34303</title><rect x="1499.660" y="1008" width="14.688" height="17" fill="hsl(51 80% 72%)"/><text x="1501.660" y="1020" font-size="10">s</text></g><g><title>sanitizeRecord — 7.674 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:76:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:32942</title><rect x="1499.660" y="990" width="14.688" height="17" fill="hsl(36 80% 72%)"/><text x="1501.660" y="1002" font-size="10">s</text></g><g><title>sanitizeFields — 6.438 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:31204</title><rect x="1499.660" y="972" width="12.274" height="17" fill="hsl(38 80% 72%)"/><text x="1501.660" y="984" font-size="10">s</text></g><g><title>e.client.onPresentation — 4.484 ms cumulative active samples
+../../../../design-client/src/kernel/ResidentCompositeSurface.tsx:215:33
+design-app://app/assets/index-CTU_mVTR.js:59:50599</title><rect x="1514.648" y="1008" width="8.457" height="17" fill="hsl(47 80% 72%)"/><text x="1516.648" y="1020" font-size="10"></text></g><g><title>t.flushSync — 4.484 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom.production.js:89:20
+design-app://app/assets/client-Bz7uwEG4.js:1:1533</title><rect x="1514.648" y="990" width="8.457" height="17" fill="hsl(29 80% 72%)"/><text x="1516.648" y="1002" font-size="10"></text></g><g><title>flushSyncWork — 4.484 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:16914:9
+design-app://app/assets/index-CTU_mVTR.js:10:30305</title><rect x="1514.648" y="972" width="8.457" height="17" fill="hsl(56 80% 72%)"/><text x="1516.648" y="984" font-size="10"></text></g><g><title>flushSyncWork$1 — 4.484 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12402:9
+design-app://app/assets/index-CTU_mVTR.js:9:125938</title><rect x="1514.648" y="954" width="8.457" height="17" fill="hsl(51 80% 72%)"/><text x="1516.648" y="966" font-size="10"></text></g><g><title>flushSyncWorkAcrossRoots_impl — 4.484 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13408:9
+design-app://app/assets/index-CTU_mVTR.js:9:134775</title><rect x="1514.648" y="936" width="8.457" height="17" fill="hsl(49 80% 72%)"/><text x="1516.648" y="948" font-size="10"></text></g><g><title>performSyncWorkOnRoot — 4.484 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13574:9
+design-app://app/assets/index-CTU_mVTR.js:9:136544</title><rect x="1514.648" y="918" width="8.457" height="17" fill="hsl(52 80% 72%)"/><text x="1516.648" y="930" font-size="10"></text></g><g><title>performWorkOnRoot — 4.484 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069:9
+design-app://app/assets/index-CTU_mVTR.js:9:123534</title><rect x="1514.648" y="900" width="8.457" height="17" fill="hsl(49 80% 72%)"/><text x="1516.648" y="912" font-size="10"></text></g><g><title>completeRootWhenReady — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12240:9
+design-app://app/assets/index-CTU_mVTR.js:9:124639</title><rect x="1514.648" y="882" width="5.637" height="17" fill="hsl(8 80% 72%)"/><text x="1516.648" y="894" font-size="10"></text></g><g><title>completeRoot — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12867:9
+design-app://app/assets/index-CTU_mVTR.js:9:129664</title><rect x="1514.648" y="864" width="5.637" height="17" fill="hsl(15 80% 72%)"/><text x="1516.648" y="876" font-size="10"></text></g><g><title>commitRoot — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12906:9
+design-app://app/assets/index-CTU_mVTR.js:9:129898</title><rect x="1514.648" y="846" width="5.637" height="17" fill="hsl(47 80% 72%)"/><text x="1516.648" y="858" font-size="10"></text></g><g><title>flushMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12986:9
+design-app://app/assets/index-CTU_mVTR.js:9:130549</title><rect x="1514.648" y="828" width="5.637" height="17" fill="hsl(37 80% 72%)"/><text x="1516.648" y="840" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="810" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="822" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="792" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="804" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="774" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="786" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="756" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="768" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="738" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="750" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="720" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="732" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="702" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="714" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="684" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="696" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="666" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="678" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="648" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="660" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="630" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="642" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="612" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="624" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="594" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="606" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="576" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="588" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="558" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="570" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="540" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="552" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="522" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="534" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="504" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="516" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="486" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="498" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="468" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="480" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="450" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="462" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="432" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="444" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="414" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="426" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="396" width="5.637" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="408" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 3.040 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="378" width="5.637" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="390" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.522 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="360" width="2.673" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="372" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.522 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="342" width="2.673" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="354" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.522 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1514.648" y="324" width="2.673" height="17" fill="hsl(28 80% 72%)"/><text x="1516.648" y="336" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.522 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1514.648" y="306" width="2.673" height="17" fill="hsl(57 80% 72%)"/><text x="1516.648" y="318" font-size="10"></text></g><g><title>commitHostUpdate — 1.522 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218:9
+design-app://app/assets/index-CTU_mVTR.js:9:97195</title><rect x="1514.648" y="288" width="2.673" height="17" fill="hsl(52 80% 72%)"/><text x="1516.648" y="300" font-size="10"></text></g><g><title>commitHostUpdate — 1.518 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218:9
+design-app://app/assets/index-CTU_mVTR.js:9:97195</title><rect x="1517.621" y="360" width="2.665" height="17" fill="hsl(52 80% 72%)"/><text x="1519.621" y="372" font-size="10"></text></g><g><title>updateProperties — 1.518 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035:9
+design-app://app/assets/index-CTU_mVTR.js:10:7985</title><rect x="1517.621" y="342" width="2.665" height="17" fill="hsl(40 80% 72%)"/><text x="1519.621" y="354" font-size="10"></text></g><g><title>setProp — 1.518 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406:9
+design-app://app/assets/index-CTU_mVTR.js:10:72</title><rect x="1517.621" y="324" width="2.665" height="17" fill="hsl(47 80% 72%)"/><text x="1519.621" y="336" font-size="10"></text></g><g><title>setValueForAttribute — 1.518 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1125:9
+design-app://app/assets/index-CTU_mVTR.js:9:5588</title><rect x="1517.621" y="306" width="2.665" height="17" fill="hsl(12 80% 72%)"/><text x="1519.621" y="318" font-size="10"></text></g><g><title>setAttribute — 1.518 ms cumulative active samples
+
+:0:0</title><rect x="1517.621" y="288" width="2.665" height="17" fill="hsl(18 80% 72%)"/><text x="1519.621" y="300" font-size="10"></text></g><g><title>renderRootSync — 1.444 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522:9
+design-app://app/assets/index-CTU_mVTR.js:9:126956</title><rect x="1520.585" y="882" width="2.520" height="17" fill="hsl(31 80% 72%)"/><text x="1522.585" y="894" font-size="10"></text></g><g><title>beginWork — 1.444 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768:9
+design-app://app/assets/index-CTU_mVTR.js:9:82356</title><rect x="1520.585" y="864" width="2.520" height="17" fill="hsl(24 80% 72%)"/><text x="1522.585" y="876" font-size="10"></text></g><g><title>updateFunctionComponent — 1.444 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791:9
+design-app://app/assets/index-CTU_mVTR.js:9:72025</title><rect x="1520.585" y="846" width="2.520" height="17" fill="hsl(16 80% 72%)"/><text x="1522.585" y="858" font-size="10"></text></g><g><title>renderWithHooks — 1.444 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-CTU_mVTR.js:9:49088</title><rect x="1520.585" y="828" width="2.520" height="17" fill="hsl(36 80% 72%)"/><text x="1522.585" y="840" font-size="10"></text></g><g><title>CanvasScrollbars — 1.444 ms cumulative active samples
+../../../../design-client/src/CanvasScrollbars.tsx:9:16
+design-app://app/assets/index-CTU_mVTR.js:59:298348</title><rect x="1520.585" y="810" width="2.520" height="17" fill="hsl(49 80% 72%)"/><text x="1522.585" y="822" font-size="10"></text></g><g><title>record — 1.517 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/geometry-KVgWSL8m.js:2:33867</title><rect x="1523.405" y="1008" width="2.663" height="17" fill="hsl(57 80% 72%)"/><text x="1525.405" y="1020" font-size="10"></text></g><g><title>sanitizeRecord — 1.517 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:76:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:32942</title><rect x="1523.405" y="990" width="2.663" height="17" fill="hsl(36 80% 72%)"/><text x="1525.405" y="1002" font-size="10"></text></g><g><title>sanitizeFields — 1.517 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:31204</title><rect x="1523.405" y="972" width="2.663" height="17" fill="hsl(38 80% 72%)"/><text x="1525.405" y="984" font-size="10"></text></g><g><title>performWorkUntilDeadline — 14.750 ms cumulative active samples
+../../../../design-client/node_modules/scheduler/cjs/scheduler.production.js:121:9
+design-app://app/assets/index-CTU_mVTR.js:2:12019</title><rect x="1529.345" y="1026" width="28.507" height="17" fill="hsl(54 80% 72%)"/><text x="1531.345" y="1038" font-size="10">perf</text></g><g><title>performWorkOnRootViaSchedulerTask — 14.750 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13555:9
+design-app://app/assets/index-CTU_mVTR.js:9:136213</title><rect x="1529.345" y="1008" width="28.507" height="17" fill="hsl(17 80% 72%)"/><text x="1531.345" y="1020" font-size="10">perf</text></g><g><title>performWorkOnRoot — 14.750 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069:9
+design-app://app/assets/index-CTU_mVTR.js:9:123534</title><rect x="1529.345" y="990" width="28.507" height="17" fill="hsl(49 80% 72%)"/><text x="1531.345" y="1002" font-size="10">perf</text></g><g><title>completeRootWhenReady — 7.447 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12240:9
+design-app://app/assets/index-CTU_mVTR.js:9:124639</title><rect x="1529.345" y="972" width="14.244" height="17" fill="hsl(8 80% 72%)"/><text x="1531.345" y="984" font-size="10">c</text></g><g><title>completeRoot — 7.447 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12867:9
+design-app://app/assets/index-CTU_mVTR.js:9:129664</title><rect x="1529.345" y="954" width="14.244" height="17" fill="hsl(15 80% 72%)"/><text x="1531.345" y="966" font-size="10">c</text></g><g><title>commitRoot — 7.447 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12906:9
+design-app://app/assets/index-CTU_mVTR.js:9:129898</title><rect x="1529.345" y="936" width="14.244" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="948" font-size="10">c</text></g><g><title>flushLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13110:9
+design-app://app/assets/index-CTU_mVTR.js:9:131821</title><rect x="1529.345" y="918" width="8.332" height="17" fill="hsl(16 80% 72%)"/><text x="1531.345" y="930" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="900" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="912" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="882" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="894" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="864" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="876" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="846" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="858" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="828" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="840" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="810" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="822" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="792" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="804" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="774" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="786" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="756" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="768" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="738" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="750" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="720" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="732" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="702" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="714" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="684" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="696" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="666" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="678" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="648" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="660" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="630" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="642" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="612" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="624" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="594" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="606" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="576" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="588" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="558" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="570" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="540" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="552" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="522" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="534" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="504" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="516" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="486" width="8.332" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="498" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 4.420 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="468" width="8.332" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="480" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 2.920 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="450" width="5.403" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="462" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 2.920 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="432" width="5.403" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="444" font-size="10"></text></g><g><title>recursivelyTraverseLayoutEffects — 2.920 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-CTU_mVTR.js:9:115998</title><rect x="1529.345" y="414" width="5.403" height="17" fill="hsl(47 80% 72%)"/><text x="1531.345" y="426" font-size="10"></text></g><g><title>commitLayoutEffectOnFiber — 2.920 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-CTU_mVTR.js:9:104656</title><rect x="1529.345" y="396" width="5.403" height="17" fill="hsl(51 80% 72%)"/><text x="1531.345" y="408" font-size="10"></text></g><g><title>commitHookEffectListMount — 2.920 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-CTU_mVTR.js:9:95094</title><rect x="1529.345" y="378" width="5.403" height="17" fill="hsl(30 80% 72%)"/><text x="1531.345" y="390" font-size="10"></text></g><g><title>(anonymous) — 2.920 ms cumulative active samples
+../../../../design-client/src/kernel/ResidentCompositeSurface.tsx:300:2
+design-app://app/assets/index-CTU_mVTR.js:59:52538</title><rect x="1529.345" y="360" width="5.403" height="17" fill="hsl(30 80% 72%)"/><text x="1531.345" y="372" font-size="10"></text></g><g><title>c.current — 2.920 ms cumulative active samples
+../../../../design-client/src/kernel/ResidentCompositeSurface.tsx:64:10
+design-app://app/assets/index-CTU_mVTR.js:59:46688</title><rect x="1529.345" y="342" width="5.403" height="17" fill="hsl(14 80% 72%)"/><text x="1531.345" y="354" font-size="10"></text></g><g><title>present — 2.920 ms cumulative active samples
+../../../../design-client/src/kernel/client.ts:404:2
+design-app://app/assets/client-Bz7uwEG4.js:1:32302</title><rect x="1529.345" y="324" width="5.403" height="17" fill="hsl(17 80% 72%)"/><text x="1531.345" y="336" font-size="10"></text></g><g><title>record — 1.510 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/geometry-KVgWSL8m.js:2:33867</title><rect x="1529.345" y="306" width="2.649" height="17" fill="hsl(57 80% 72%)"/><text x="1531.345" y="318" font-size="10"></text></g><g><title>sanitizeFields — 1.510 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:31204</title><rect x="1529.345" y="288" width="2.649" height="17" fill="hsl(38 80% 72%)"/><text x="1531.345" y="300" font-size="10"></text></g><g><title>commitHookEffectListMount — 1.500 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-CTU_mVTR.js:9:95094</title><rect x="1535.048" y="450" width="2.630" height="17" fill="hsl(30 80% 72%)"/><text x="1537.048" y="462" font-size="10"></text></g><g><title>(anonymous) — 1.500 ms cumulative active samples
+../../../../design-client/src/kernel/ProgressiveSurface.tsx:1732:2
+design-app://app/assets/index-CTU_mVTR.js:59:89408</title><rect x="1535.048" y="432" width="2.630" height="17" fill="hsl(30 80% 72%)"/><text x="1537.048" y="444" font-size="10"></text></g><g><title>flushMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12986:9
+design-app://app/assets/index-CTU_mVTR.js:9:130549</title><rect x="1537.977" y="918" width="2.669" height="17" fill="hsl(37 80% 72%)"/><text x="1539.977" y="930" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="900" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="912" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="882" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="894" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="864" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="876" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="846" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="858" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="828" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="840" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="810" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="822" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="792" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="804" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="774" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="786" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="756" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="768" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="738" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="750" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="720" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="732" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="702" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="714" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="684" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="696" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="666" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="678" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="648" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="660" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="630" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="642" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="612" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="624" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="594" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="606" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="576" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="588" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="558" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="570" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="540" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="552" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="522" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="534" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="504" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="516" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="486" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="498" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="468" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="480" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-CTU_mVTR.js:9:109032</title><rect x="1537.977" y="450" width="2.669" height="17" fill="hsl(28 80% 72%)"/><text x="1539.977" y="462" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-CTU_mVTR.js:9:109519</title><rect x="1537.977" y="432" width="2.669" height="17" fill="hsl(57 80% 72%)"/><text x="1539.977" y="444" font-size="10"></text></g><g><title>commitHostUpdate — 1.520 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218:9
+design-app://app/assets/index-CTU_mVTR.js:9:97195</title><rect x="1537.977" y="414" width="2.669" height="17" fill="hsl(52 80% 72%)"/><text x="1539.977" y="426" font-size="10"></text></g><g><title>flushSpawnedWork — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13134:9
+design-app://app/assets/index-CTU_mVTR.js:9:132019</title><rect x="1540.946" y="918" width="2.643" height="17" fill="hsl(25 80% 72%)"/><text x="1542.946" y="930" font-size="10"></text></g><g><title>flushSyncWorkAcrossRoots_impl — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13408:9
+design-app://app/assets/index-CTU_mVTR.js:9:134775</title><rect x="1540.946" y="900" width="2.643" height="17" fill="hsl(49 80% 72%)"/><text x="1542.946" y="912" font-size="10"></text></g><g><title>performSyncWorkOnRoot — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13574:9
+design-app://app/assets/index-CTU_mVTR.js:9:136544</title><rect x="1540.946" y="882" width="2.643" height="17" fill="hsl(52 80% 72%)"/><text x="1542.946" y="894" font-size="10"></text></g><g><title>flushPassiveEffects — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13229:9
+design-app://app/assets/index-CTU_mVTR.js:9:132979</title><rect x="1540.946" y="864" width="2.643" height="17" fill="hsl(9 80% 72%)"/><text x="1542.946" y="876" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="846" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="858" font-size="10"></text></g><g><title>recursivelyTraversePassiveMountEffects — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392:9
+design-app://app/assets/index-CTU_mVTR.js:9:118213</title><rect x="1540.946" y="828" width="2.643" height="17" fill="hsl(11 80% 72%)"/><text x="1542.946" y="840" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="810" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="822" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="792" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="804" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="774" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="786" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="756" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="768" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="738" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="750" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="720" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="732" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="702" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="714" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="684" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="696" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="666" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="678" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="648" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="660" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="630" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="642" font-size="10"></text></g><g><title>commitPassiveMountOnFiber — 1.507 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411:9
+design-app://app/assets/index-CTU_mVTR.js:9:118354</title><rect x="1540.946" y="612" width="2.643" height="17" fill="hsl(36 80% 72%)"/><text x="1542.946" y="624" font-size="10"></text></g><g><title>(anonymous) — 1.507 ms cumulative active samples
+../../../../design-client/src/kernel/ProgressiveSurface.tsx:639:2
+design-app://app/assets/index-CTU_mVTR.js:59:68226</title><rect x="1540.946" y="594" width="2.643" height="17" fill="hsl(30 80% 72%)"/><text x="1542.946" y="606" font-size="10"></text></g><g><title>recordViewportDiagnostic — 1.507 ms cumulative active samples
+../../../../design-client/src/kernel/client.ts:395:2
+design-app://app/assets/client-Bz7uwEG4.js:1:31938</title><rect x="1540.946" y="576" width="2.643" height="17" fill="hsl(10 80% 72%)"/><text x="1542.946" y="588" font-size="10"></text></g><g><title>record — 1.507 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/geometry-KVgWSL8m.js:2:33867</title><rect x="1540.946" y="558" width="2.643" height="17" fill="hsl(57 80% 72%)"/><text x="1542.946" y="570" font-size="10"></text></g><g><title>sanitizeFields — 1.436 ms cumulative active samples
+../../../src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/geometry-KVgWSL8m.js:2:31204</title><rect x="1540.946" y="540" width="2.505" height="17" fill="hsl(38 80% 72%)"/><text x="1542.946" y="552" font-size="10"></text></g><g><title>renderRootSync — 7.303 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522:9
+design-app://app/assets/index-CTU_mVTR.js:9:126956</title><rect x="1543.889" y="972" width="13.963" height="17" fill="hsl(31 80% 72%)"/><text x="1545.889" y="984" font-size="10">r</text></g><g><title>beginWork — 7.303 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768:9
+design-app://app/assets/index-CTU_mVTR.js:9:82356</title><rect x="1543.889" y="954" width="13.963" height="17" fill="hsl(24 80% 72%)"/><text x="1545.889" y="966" font-size="10">b</text></g><g><title>updateFunctionComponent — 4.240 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791:9
+design-app://app/assets/index-CTU_mVTR.js:9:72025</title><rect x="1543.889" y="936" width="7.981" height="17" fill="hsl(16 80% 72%)"/><text x="1545.889" y="948" font-size="10"></text></g><g><title>renderWithHooks — 4.240 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-CTU_mVTR.js:9:49088</title><rect x="1543.889" y="918" width="7.981" height="17" fill="hsl(36 80% 72%)"/><text x="1545.889" y="930" font-size="10"></text></g><g><title>ResidentCompositeSurface — 1.589 ms cumulative active samples
+../../../../design-client/src/kernel/ResidentCompositeSurface.tsx:20:16
+design-app://app/assets/index-CTU_mVTR.js:59:46259</title><rect x="1543.889" y="900" width="2.803" height="17" fill="hsl(28 80% 72%)"/><text x="1545.889" y="912" font-size="10"></text></g><g><title>ProgressiveSurfaceImpl — 1.565 ms cumulative active samples
+../../../../design-client/src/kernel/ProgressiveSurface.tsx:351:16
+design-app://app/assets/index-CTU_mVTR.js:59:61716</title><rect x="1546.992" y="900" width="2.757" height="17" fill="hsl(40 80% 72%)"/><text x="1548.992" y="912" font-size="10"></text></g><g><title>App — 1.086 ms cumulative active samples
+../../../../design-client/src/App.tsx:161:24
+design-app://app/assets/index-CTU_mVTR.js:64:237615</title><rect x="1550.049" y="900" width="1.821" height="17" fill="hsl(57 80% 72%)"/><text x="1552.049" y="912" font-size="10"></text></g><g><title>useShortcutProfile — 1.086 ms cumulative active samples
+../../../../design-client/src/shortcut-preference.ts:30:16
+design-app://app/assets/index-CTU_mVTR.js:10:177678</title><rect x="1550.049" y="882" width="1.821" height="17" fill="hsl(52 80% 72%)"/><text x="1552.049" y="894" font-size="10"></text></g><g><title>e.useSyncExternalStore — 1.086 ms cumulative active samples
+../../../../design-client/node_modules/react/cjs/react.production.js:551:31
+design-app://app/assets/jsx-runtime-Wy9s6hX0.js:1:8349</title><rect x="1550.049" y="864" width="1.821" height="17" fill="hsl(51 80% 72%)"/><text x="1552.049" y="876" font-size="10"></text></g><g><title>updateSyncExternalStore — 1.086 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4980:9
+design-app://app/assets/index-CTU_mVTR.js:9:53216</title><rect x="1550.049" y="846" width="1.821" height="17" fill="hsl(54 80% 72%)"/><text x="1552.049" y="858" font-size="10"></text></g><g><title>updateForwardRef — 1.547 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6425:9
+design-app://app/assets/index-CTU_mVTR.js:9:68575</title><rect x="1552.170" y="936" width="2.721" height="17" fill="hsl(31 80% 72%)"/><text x="1554.170" y="948" font-size="10"></text></g><g><title>renderWithHooks — 1.547 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-CTU_mVTR.js:9:49088</title><rect x="1552.170" y="918" width="2.721" height="17" fill="hsl(36 80% 72%)"/><text x="1554.170" y="930" font-size="10"></text></g><g><title>forwardRef — 1.547 ms cumulative active samples
+../../../../design-client/node_modules/lucide-react/dist/esm/Icon.mjs:16:13
+design-app://app/assets/index-CTU_mVTR.js:10:65057</title><rect x="1552.170" y="900" width="2.721" height="17" fill="hsl(20 80% 72%)"/><text x="1554.170" y="912" font-size="10"></text></g><g><title>buildLucideIconNode — 1.547 ms cumulative active samples
+../../../../design-client/node_modules/lucide-react/dist/esm/shared/src/build/buildLucideIconNode.mjs:14:9
+design-app://app/assets/index-CTU_mVTR.js:10:63564</title><rect x="1552.170" y="882" width="2.721" height="17" fill="hsl(57 80% 72%)"/><text x="1554.170" y="894" font-size="10"></text></g><g><title>markRef — 1.516 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6778:9
+design-app://app/assets/index-CTU_mVTR.js:9:71829</title><rect x="1555.191" y="936" width="2.661" height="17" fill="hsl(50 80% 72%)"/><text x="1557.191" y="948" font-size="10"></text></g><g><title>reconcileChildFibersImpl — 1.516 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4078:11
+design-app://app/assets/index-CTU_mVTR.js:9:43397</title><rect x="1555.191" y="918" width="2.661" height="17" fill="hsl(55 80% 72%)"/><text x="1557.191" y="930" font-size="10"></text></g><g><title>reconcileChildrenArray — 1.516 ms cumulative active samples
+../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3905:11
+design-app://app/assets/index-CTU_mVTR.js:9:42060</title><rect x="1555.191" y="900" width="2.661" height="17" fill="hsl(16 80% 72%)"/><text x="1557.191" y="912" font-size="10"></text></g><g><title>(anonymous) — 13.167 ms cumulative active samples
+
+:1:2</title><rect x="1558.152" y="1026" width="25.416" height="17" fill="hsl(30 80% 72%)"/><text x="1560.152" y="1038" font-size="10">(an</text></g><g><title>evaluate — 13.167 ms cumulative active samples
+
+:305:11</title><rect x="1558.152" y="1008" width="25.416" height="17" fill="hsl(53 80% 72%)"/><text x="1560.152" y="1020" font-size="10">eva</text></g><g><title>(anonymous) — 13.167 ms cumulative active samples
+
+:1:1</title><rect x="1558.152" y="990" width="25.416" height="17" fill="hsl(30 80% 72%)"/><text x="1560.152" y="1002" font-size="10">(an</text></g><g><title>querySelectorAll — 9.275 ms cumulative active samples
+
+:7010:19</title><rect x="1558.152" y="972" width="17.815" height="17" fill="hsl(28 80% 72%)"/><text x="1560.152" y="984" font-size="10">qu</text></g><g><title>_queryEngineAll — 9.275 ms cumulative active samples
+
+:7058:18</title><rect x="1558.152" y="954" width="17.815" height="17" fill="hsl(18 80% 72%)"/><text x="1560.152" y="966" font-size="10">_q</text></g><g><title>queryAll — 9.275 ms cumulative active samples
+
+:5429:15</title><rect x="1558.152" y="936" width="17.815" height="17" fill="hsl(55 80% 72%)"/><text x="1560.152" y="948" font-size="10">qu</text></g><g><title>queryRole — 9.275 ms cumulative active samples
+
+:5371:19</title><rect x="1558.152" y="918" width="17.815" height="17" fill="hsl(46 80% 72%)"/><text x="1560.152" y="930" font-size="10">qu</text></g><g><title>query — 9.275 ms cumulative active samples
+
+:5413:17</title><rect x="1558.152" y="900" width="17.815" height="17" fill="hsl(44 80% 72%)"/><text x="1560.152" y="912" font-size="10">qu</text></g><g><title>match — 5.616 ms cumulative active samples
+
+:5373:17</title><rect x="1558.152" y="882" width="10.668" height="17" fill="hsl(23 80% 72%)"/><text x="1560.152" y="894" font-size="10">m</text></g><g><title>getElementAccessibleNameText — 2.977 ms cumulative active samples
+
+:3711:38</title><rect x="1558.152" y="864" width="5.514" height="17" fill="hsl(54 80% 72%)"/><text x="1560.152" y="876" font-size="10"></text></g><g><title>computeAccessibleNameComposite — 2.977 ms cumulative active samples
+
+:3683:40</title><rect x="1558.152" y="846" width="5.514" height="17" fill="hsl(51 80% 72%)"/><text x="1560.152" y="858" font-size="10"></text></g><g><title>getTextAlternativeInternal — 2.977 ms cumulative active samples
+
+:3807:36</title><rect x="1558.152" y="828" width="5.514" height="17" fill="hsl(39 80% 72%)"/><text x="1560.152" y="840" font-size="10"></text></g><g><title>innerAccumulatedElementText — 2.977 ms cumulative active samples
+
+:4039:37</title><rect x="1558.152" y="810" width="5.514" height="17" fill="hsl(51 80% 72%)"/><text x="1560.152" y="822" font-size="10"></text></g><g><title>getCSSContent — 2.977 ms cumulative active samples
+
+:3618:23</title><rect x="1558.152" y="792" width="5.514" height="17" fill="hsl(52 80% 72%)"/><text x="1560.152" y="804" font-size="10"></text></g><g><title>getElementComputedStyle — 1.435 ms cumulative active samples
+
+:3133:33</title><rect x="1558.152" y="774" width="2.503" height="17" fill="hsl(44 80% 72%)"/><text x="1560.152" y="786" font-size="10"></text></g><g><title>getAriaRole — 1.501 ms cumulative active samples
+
+:3521:21</title><rect x="1563.966" y="864" width="2.632" height="17" fill="hsl(11 80% 72%)"/><text x="1565.966" y="876" font-size="10"></text></g><g><title>computeAriaRole — 1.501 ms cumulative active samples
+
+:3529:25</title><rect x="1563.966" y="846" width="2.632" height="17" fill="hsl(26 80% 72%)"/><text x="1565.966" y="858" font-size="10"></text></g><g><title>getAttribute — 1.501 ms cumulative active samples
+
+:0:0</title><rect x="1563.966" y="828" width="2.632" height="17" fill="hsl(46 80% 72%)"/><text x="1565.966" y="840" font-size="10"></text></g><g><title>isElementHiddenForAria — 1.138 ms cumulative active samples
+
+:3546:32</title><rect x="1566.898" y="864" width="1.923" height="17" fill="hsl(56 80% 72%)"/><text x="1568.898" y="876" font-size="10"></text></g><g><title>querySelectorAll — 1.519 ms cumulative active samples
+
+:0:0</title><rect x="1569.120" y="882" width="2.667" height="17" fill="hsl(28 80% 72%)"/><text x="1571.120" y="894" font-size="10"></text></g><g><title>setupHitTargetInterceptor — 1.509 ms cumulative active samples
+
+:7676:28</title><rect x="1576.267" y="972" width="2.647" height="17" fill="hsl(24 80% 72%)"/><text x="1578.267" y="984" font-size="10"></text></g><g><title>expectHitTarget — 1.509 ms cumulative active samples
+
+:7589:18</title><rect x="1576.267" y="954" width="2.647" height="17" fill="hsl(25 80% 72%)"/><text x="1578.267" y="966" font-size="10"></text></g><g><title>elementsFromPoint — 1.509 ms cumulative active samples
+
+:0:0</title><rect x="1576.267" y="936" width="2.647" height="17" fill="hsl(25 80% 72%)"/><text x="1578.267" y="948" font-size="10"></text></g><g><title>eval — 0.842 ms cumulative active samples
+
+:6938:7</title><rect x="1579.214" y="972" width="1.344" height="17" fill="hsl(12 80% 72%)"/><text x="1581.214" y="984" font-size="10"></text></g><g><title>t — 4.143 ms cumulative active samples
+../../../../design-client/src/kernel/client.ts:362:19
+design-app://app/assets/client-Bz7uwEG4.js:1:30307</title><rect x="1583.868" y="1026" width="7.791" height="17" fill="hsl(24 80% 72%)"/><text x="1585.868" y="1038" font-size="10"></text></g><g><title>requestAnimationFrame — 4.143 ms cumulative active samples
+
+:0:0</title><rect x="1583.868" y="1008" width="7.791" height="17" fill="hsl(24 80% 72%)"/><text x="1585.868" y="1020" font-size="10"></text></g><g><title>next — 3.022 ms cumulative active samples
+
+:25:26</title><rect x="1591.959" y="1026" width="5.602" height="17" fill="hsl(15 80% 72%)"/><text x="1593.959" y="1038" font-size="10"></text></g><g><title>predicate — 3.022 ms cumulative active samples
+
+:3:31</title><rect x="1591.959" y="1008" width="5.602" height="17" fill="hsl(13 80% 72%)"/><text x="1593.959" y="1020" font-size="10"></text></g><g><title>(anonymous) — 3.022 ms cumulative active samples
+
+:1:1</title><rect x="1591.959" y="990" width="5.602" height="17" fill="hsl(30 80% 72%)"/><text x="1593.959" y="1002" font-size="10"></text></g><g><title>querySelector — 1.519 ms cumulative active samples
+
+:0:0</title><rect x="1591.959" y="972" width="2.667" height="17" fill="hsl(47 80% 72%)"/><text x="1593.959" y="984" font-size="10"></text></g><g><title>serialize — 1.095 ms cumulative active samples
+../../../../design-client/src/kernel/native-preparation.ts:51:18
+design-app://app/assets/client-Bz7uwEG4.js:1:27136</title><rect x="1597.861" y="1026" width="1.839" height="17" fill="hsl(26 80% 72%)"/><text x="1599.861" y="1038" font-size="10"></text></g><g><title>(anonymous) — 1.095 ms cumulative active samples
+
+:0:0</title><rect x="1597.861" y="1008" width="1.839" height="17" fill="hsl(30 80% 72%)"/><text x="1599.861" y="1020" font-size="10"></text></g></svg>

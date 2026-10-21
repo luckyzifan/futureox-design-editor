@@ -1,0 +1,16 @@
+*
+!.gitignore
+!*.md
+!*.mjs
+!*.py
+!summary.json
+!curves-summary.json
+!complex-summary.json
+!material-summary.json
+!material-quality-summary.json
+!tile-admission-summary.json
+!translated-cache-summary.json
+!replacement-staging-summary.json
+!sampled-gate-audit-summary.json
+!final-app-summary.json
+!reference-region-preflight-summary.json

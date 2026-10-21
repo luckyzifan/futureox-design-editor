@@ -235,6 +235,24 @@ try {
  await stage('pan-3200',pan);
  await stage('zoom-return-100',()=>setZoom(100));
  await stage('zoom-repeat-3200',()=>setZoom(3200));
+ if(process.env.DESIGN_CACHE_REVISIT==='1'){
+  report.cacheRevisit={scope:'Real UI zoom away and return after a five-second idle; exact camera equality is reported, never inferred. Counter deltas are residency evidence, not GPU-completion or photon timing.',visits:[]};
+  const last=new Map();
+  for(const row of report.stages){const s=row.settled;if(s?.ok)last.set(Number(s.presentation.cameraZoom),s)}
+  for(let round=1;round<=2;round++)for(const percent of [100,3200]){
+   await new Promise(resolve=>setTimeout(resolve,5000));
+   const before=await snapshot(),previous=last.get(percent/100);
+   const row=await stage(`cache-return-${round}-${percent}`,()=>setZoom(percent)),after=row.settled;
+   const numericDelta=(key)=>Number(after.tiles[key])-Number(before.tiles[key]);
+   report.cacheRevisit.visits.push({round,percent,ok:after.ok,totalMs:row.totalMs,
+    sameCameraAsPreviousVisit:!!previous&&['cameraX','cameraY','cameraZoom','pixelRatio'].every(key=>after.presentation[key]===previous.presentation[key]),
+    renderedTiles:numericDelta('tilesRendered'),cacheHits:numericDelta('cacheHits'),
+    residentBytes:Number(after.tiles.residentBytes),residentBudget:Number(after.tiles.residentBudget),
+    coverage:Number(after.compositor.coverage),sharpCoverage:Number(after.compositor.sharpCoverage),
+    missingTextureCount:Number(after.compositor.missingTextureCount)});
+   last.set(percent/100,after);await save();
+  }
+ }
  report.navigationPreservedDocument=hash(JSON.stringify(await stored()))===report.document.sha256;
  if(extended){
   report.extended={status:'running',cpuProfiling:true,persistenceReadsOutsideProfiles:true,

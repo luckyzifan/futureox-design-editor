@@ -1,5 +1,6 @@
+import { prepareSelectionArrangement, SelectionCommandError } from './commands/selection-command'
 import { planArrangement } from './commands/arrangement-plan'
-import { UI_SELECTION_PROFILE } from './commands/profiles'
+import { CORE_SELECTION_PROFILE } from './commands/profiles'
 import type { Bounds, DesignDocument, Matrix, Point } from './model'
 import { identity } from './model'
 import { allParents, inverse, multiply, scene, translate, unionBounds, worldMatrix } from './geometry'
@@ -31,14 +32,14 @@ const EPS = 1e-9
  * The untouched axis always gets a zero delta. */
 export function alignOffsets(rects: Bounds[], command: AlignCommand, container?: Bounds): Point[] | null {
   const { axis, mode } = ALIGN_TARGETS[command]
-  return planArrangement(UI_SELECTION_PROFILE, rects, axis, mode, container)?.offsets ?? null
+  return planArrangement(CORE_SELECTION_PROFILE, rects, axis, mode, container)?.offsets ?? null
 }
 
 /** Equal edge-gap distribution along one axis (Sketch MSDistribute*). The
  * outermost rects stay pinned to the union extent; negative gaps (overlap)
  * distribute the same way. Deltas follow the input order, not the sort order. */
 export function distributeOffsets(rects: Bounds[], axis: 'x' | 'y'): Point[] | null {
-  return planArrangement(UI_SELECTION_PROFILE, rects, axis, 'distribute')?.offsets ?? null
+  return planArrangement(CORE_SELECTION_PROFILE, rects, axis, 'distribute')?.offsets ?? null
 }
 
 /** Grid tidy (Figma-style "tidy up"): rows clustered by vertical overlap are
@@ -212,6 +213,16 @@ export function arrangePatches(
   ids: string[],
   command: ArrangeCommand,
 ): Record<string, { transform: Matrix }> | null {
+  if (command !== 'tidy') {
+    try {
+      const target = command === 'distribute-horizontal' ? { axis: 'x' as const, mode: 'distribute' as const } :
+        command === 'distribute-vertical' ? { axis: 'y' as const, mode: 'distribute' as const } : ALIGN_TARGETS[command]
+      const plan = prepareSelectionArrangement(doc, ids, target.axis, target.mode, { fresh: true })
+      const parents = allParents(doc)
+      if (plan.ids.some(id => { let at: string | undefined = id; while (at && doc.nodes[at]) at = parents.get(at); return at !== page })) return null
+      return plan.patches.length ? Object.fromEntries(plan.patches.map(patch => [patch.id, { transform: patch.transform }])) : null
+    } catch (error) { if (error instanceof SelectionCommandError) return null; throw error }
+  }
   const selected = new Set(ids),
     parents = allParents(doc),
     entries = scene(doc, page)

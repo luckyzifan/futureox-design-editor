@@ -60,6 +60,40 @@ to the rendered snapshot and owner, never merely the latest received sequence.
 
 VITE_DESIGN_DYNAMIC_UNIFORMS and VITE_DESIGN_KERNEL_CACHE remain default-off (enabled only by the explicit value 1) pending a separate actual-device gate. Their implementation gates are in frontend/design-client/src/kernel/gpu/webgpu.ts and renderer.ts respectively. Before enabling, verify pixel parity on difficult materials, real memory/resource lifetime, device loss/cancellation, interaction smoothness and supported platforms. CPU mocks or source contracts cannot discharge this gate. Ordinary established GPU rendering is a separate path, not disabled by this requirement.
 
+An explicit desktop launch may choose `CORE_GPU_WORKING_BUDGET_MIB=256..4096`.
+Missing configuration or `auto` preserves the existing automatic policy. The
+host validates and freezes this optional working-set admission ceiling through
+preload, the client and its worker; documents and per-frame options cannot set
+it. Four GiB uses safe Number arithmetic, does not preallocate memory, and is
+not an application-wide memory cap or a claim about available VRAM. Device
+resource limits and the other cache/residency budgets remain independent.
+Budget comparisons must use the same build and workload; a larger ceiling or
+more completed frames does not establish lower input latency or sharp zoom.
+See the [desktop launch configuration](../frontend/design-desktop/README.md).
+
+Published-snapshot topology can be shared by camera-independent controls; mutable
+edit drafts must still calculate fresh parent relationships. Resident preview
+reuse requires the same document/revision, page/session, render contract, sample
+camera/density and live GPU ownership. A sufficiently dense complete resident can
+avoid a redundant coarse navigation capture, but cannot certify final native
+sampling phase. Report actual revisit hits separately from newly fixed reuse;
+existing exact native tiles already survive idle time within their LRU budget.
+See the [actual CPU flamegraphs](../testing/verification-cpu-flames-20261021/README.md).
+
+Exact prefix scratch and logically retired image tables may remain queue-ordered
+between resident screen submissions. A submission acknowledgement cannot authorize
+their destruction: retain their source ownership and full byte ledger until an
+actual completion boundary covers the retired snapshot. Preserve pressure,
+readback, cancellation, device-loss and periodic backpressure paths. Diagnostic
+counter readbacks may be deferred to existing completion boundaries; their
+sample counts are not complete per-frame totals. The raw-float lifetime proof
+and actual motion checks are separate gates, recorded in the
+[resident rendering evidence](../testing/verification-sharp-sequential-20261021/README.md).
+`VITE_DESIGN_RESIDENT_FILTER_SCRATCH` requires the explicit value `1` and stays
+off by default: its actual GPU parity proof passed, but a later whole-117 run
+moved waits into admission and increased first-zoom latency. Do not promote it
+from the reduction in fence count alone.
+
 History/sidebar, layer/property changes and canvas gestures require pending-input/dirty-state guards and real interaction regression coverage. Hook/jsdom tests establish event/state behavior only; actual browser/Electron layout, focus, pointer behavior and visual usability remain on-device acceptance items.
 
 ## Testing and delivery
@@ -77,3 +111,5 @@ At the 2026-10-20 development checkpoint, reported targeted tests cover FD nativ
 The [2026-10-21 rendering record](../testing/verification-render-low-latency-20261021/README.md) adds actual Metal-device float comparisons and matched isolated Electron checks. Its narrower image/prefix paths preserve the existing arithmetic and memory bounds; experimental tighter coefficient admission remains default-off after mixed whole-app results. These measurements do not establish instant high-zoom clarity, low-latency dragging, cross-platform smoothness or physical 90/120 FPS. Keep that remaining acceptance separate from individual optimization gains.
 
 Each source increment must include the repository-local skill, maintained Markdown contracts, changed implementation/tests and reproducible evidence. Do not ship tokens, local connection details, invented endpoints or private assistant context. See [MCP operation guide](MCP_OPERATION_GUIDE_V1.md) and [release acceptance](LOCAL_RELEASE_ACCEPTANCE.zh-CN.md).
+
+The [2026-10-21 functional integration record](../testing/verification-functional-merge-20261021/README.md) records the cumulative package's exact affected hashes while preserving newer rendering files. Imported historical test results and current combined-source regression are separate evidence. Independent-copy import, actual browser Worker lifecycle, protocol fixtures, native SQLite, real sockets and desktop end-to-end behavior retain their own acceptance boundaries.

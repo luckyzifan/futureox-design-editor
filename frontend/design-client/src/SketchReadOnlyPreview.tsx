@@ -16,12 +16,15 @@ export function SketchReadOnlyPreview({ result, revision = 0, firstPage = true }
     void (async () => {
       if (result.preview.status !== 'ready') return
       try {
-        if (window.coreDesktop?.renderPolicy.cpuOnly !== false) throw new Error('桌面 GPU 策略未启用 WebGPU')
+        const policy = window.coreDesktop?.renderPolicy
+        if (policy?.cpuOnly !== false) throw new Error('桌面 GPU 策略未启用 WebGPU')
+        const gpuWorkingBudgetMiB = policy.gpuWorkingBudgetMiB
         const frame = admitSketchPreview(result.preview.frameJson, result.owner, revision)
         if (frame.page_id !== result.preview.pageId) throw new Error('页面身份不匹配')
         const { createGpu } = await import('./kernel/gpu/factory')
         if (!current) return
-        gpu = await createGpu('webgpu', true, true, frame.scene.colorManagement)
+        gpu = await createGpu('webgpu', true, true, frame.scene.colorManagement, undefined, false,
+          !!frame.scene.colorManagement, false, false, false, gpuWorkingBudgetMiB)
         if (!current) return
         const rendered = await gpu.render(frame.scene)
         try {

@@ -26,6 +26,15 @@ test('static image blur telemetry contains only five bounded numeric counters',(
     assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(sample).map(key=>[key,value]))),{})
   assert.deepEqual(sanitizeFields({staticImageBlurBytes:17825793,staticImageBlurEntries:2}),{})
 })
+test('surface replacement admission exposes bounded numeric ownership counts without identifiers',()=>{
+  const sample={surfaceProposedBytes:135266304,surfaceBudgetBytes:160637328,surfaceSteadyBudgetBytes:134217728,
+    surfaceTotalBudgetBytes:234881024,surfaceReserveBytes:26419600,surfaceHeldCount:25,surfaceUsedCount:92,
+    surfacePinnedCount:45,surfaceIncomingBytes:1056784,surfaceRejected:1,surfaceTotalBytes:149000000,surfaceHighWaterBytes:139000000}
+  assert.deepEqual(sanitizeFields({...sample,surfaceTileIds:['private'],surfaceDocument:'private'}),sample)
+  for(const value of [NaN,Infinity,-1,.5,'1',true,{}])
+    assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(sample).map(key=>[key,value]))),{})
+  assert.deepEqual(sanitizeFields({surfaceReserveBytes:536870913,surfaceUsedCount:4097,surfaceRejected:2}),{})
+})
 test('display image and nested-prefix telemetry never carries document data',()=>{
   const sample={displayImageSourcePasses:2912,nestedPrefixHits:3,nestedPrefixBuilds:1,nestedPrefixBytes:67108864}
   assert.deepEqual(sanitizeFields({...sample,nestedPrefixSource:'private',imageSourceUri:'private'}),sample)
@@ -184,4 +193,16 @@ test('admission enums, bytes and counts reject forged/nonfinite/noninteger value
    assert.deepEqual(sanitizeFields({[key]:16*1024**3+1}),{})
  for (const key of Object.keys(admissionValid).filter(key=>key.endsWith('Count')))
    assert.deepEqual(sanitizeFields({[key]:1000001}),{})
+})
+test('retired image-table admission bits survive the existing fence sanitizer', () => {
+ for (const value of [0,1,2,4,8,15,16,17,31]) {
+   assert.deepEqual(sanitizeFields({admissionRetiredKinds:value, imageTableSource:'private-uri'}),
+     {admissionRetiredKinds:value})
+   assert.equal(sanitizeRecord({v:1,session:1,seq:1,at:1,source:'worker',event:'fence',
+     admissionRetiredKinds:value}).admissionRetiredKinds,value)
+ }
+})
+test('retired-kind diagnostics reject bits above the five-bit mask and invalid scalars', () => {
+ for (const value of [-1,32,255,.5,Infinity,NaN,'16',true,{},null])
+   assert.deepEqual(sanitizeFields({admissionRetiredKinds:value}),{})
 })

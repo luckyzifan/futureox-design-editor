@@ -3,19 +3,20 @@ import { MultiStylePanel } from './MultiStylePanel'
 import {smartSelection,smartSpacing} from './smart-selection'
 import { AlignmentControls } from './AlignmentControls'
 import {NumberField} from './fields'
-import { propertyUnitReader, type PropertyUnitReader } from './property-units'
+import { propertyUnitReader, styleUnitDescription, type PropertyUnitReader } from './property-units'
 import { numericExpression } from './numeric-expression'
 import { SelectionColorsPanel } from './SelectionColorsPanel'
 import type { Editor } from './engine'
 import { type DesignNode, type NodeBlend, type TextStyle, defaultTextStyle, defaultSizing, blendModes } from './model'
 import { applyWholeTextStyle, setWholeTextFontSize } from './text'
-import { commonValue, resizeNodeDimension, selectionMetric, type SelectionMetric } from './selection-properties'
-import { parentBounds, rotateNode } from './canvas-view'
+import { commonValue, resizeNodeDimension, selectionMetric, setNodePosition, type SelectionMetric } from './selection-properties'
+import { rotateNode } from './canvas-view'
 import { MixedNumberField } from './MixedNumberField'
 
 export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nodes: DesignNode[] }) {
   const ids = nodes.map((node) => node.id)
   const readUnits = propertyUnitReader(editor.state.doc)
+  const styleDescription = styleUnitDescription(editor.state.doc, nodes.filter(n => n.kind === 'text' || n.strokes.length || n.effects.length).map(n => n.id), editor.parentMap())
   const update = (label: string, change: (node: DesignNode, units: PropertyUnitReader) => void) => {
     // Read the current published snapshot when an edit commits, rather than
     // closing over the possibly older panel render or an evolving Immer draft.
@@ -25,7 +26,7 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
   const metric = (field: SelectionMetric, input: number | string) => update('修改所选图层属性', (node, units) => {
     const resolved = field === 'rotation' || field === 'opacity' ? undefined : units(node.id)
     const value = typeof input === 'string' ? numericExpression(input, selectionMetric(node, field, editor.state.doc, resolved), field === 'opacity' ? 'percent' : field === 'rotation' ? 'angle' : 'length') : input
-    if (field === 'x' || field === 'y') node.transform[field === 'x' ? 4 : 5] += value / resolved![field === 'x' ? 'parentX' : 'parentY'] - parentBounds(node)[field]
+    if (field === 'x' || field === 'y') setNodePosition(node, field, value, editor.state.doc, resolved)
     else if (field === 'rotation') rotateNode(node, value)
     else if (field === 'opacity') node.opacity = value / 100
     else resizeNodeDimension(node, field, value, editor.state.doc, resolved)
@@ -36,6 +37,7 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
   return <aside className="inspector" aria-label="多选属性">
     <div className="panel-tabs"><b>设计</b><span>{nodes.length} 个图层</span></div>
     <div className="inspector-scroll">
+      {styleDescription && <p role="note" className="property-unit-notice">＊ 最大缩放系数换算。{styleDescription}</p>}
       <section><h3>{nodes.length} 个图层</h3><p className="muted">混合表示数值不同。输入后会同时应用于所选图层。</p>
         <AlignmentControls editor={editor}/>
         <div className="field-grid">
@@ -59,6 +61,7 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
       {nodes.some(n => n.kind === 'text') && <FontManagementPanel editor={editor} ids={ids} />}
       {nodes.every(n => n.kind === 'text') && <section aria-label="多选文字"><h3>文字</h3>
         <MixedNumberField label="字号" min={1} max={4096}
+          unitDescription={styleUnitDescription(editor.state.doc, nodes.map(n => n.id), editor.parentMap())}
           value={commonValue(nodes.map(n => n.fontSize * readUnits(n.id).style))}
           onChange={v => update('批量修改字号', (n, units) => setWholeTextFontSize(n, v / units(n.id).style))}/>
         <MixedNumberField label="字重" min={1} max={1000} value={commonValue(nodes.map(n => n.textStyle?.weight ?? 400))}

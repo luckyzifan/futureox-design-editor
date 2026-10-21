@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import { createHash, randomUUID } from 'node:crypto'
 
 const fail = (code, message) => Object.assign(new Error(message), { code })
@@ -7,6 +8,7 @@ const validMutation = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,12
 const integer = (value, min = 0) => Number.isSafeInteger(value) && value >= min
 const string = { type: 'string', minLength: 1, maxLength: 128 }
 const number = { type: 'integer', minimum: 1 }
+const IMPORT_COPY_BYTES = 32 * 1024 * 1024 - 128 * 1024
 const root = { rootHandle: string }
 const mutation = { mutationId: { ...string, pattern: '^[A-Za-z0-9_-]{1,128}$' } }
 const settingKeys = ['snap', 'snapPixels', 'pixelGrid', 'rulers', 'checkerboard', 'grid', 'scrollWheelZoom']
@@ -19,6 +21,7 @@ export const WORKSPACE_AUTOMATION_METHODS = Object.freeze([
   method('workspace.list', 'List a bounded page of saved designs in the granted local workspace.', 'workspace', false, { ...root, includeDeleted: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: string }, ['rootHandle']),
   method('workspace.revisions', 'List bounded saved revisions for an issued document handle.', 'workspace', false, { ...root, documentHandle: string, beforeRevision: number }, ['rootHandle', 'documentHandle']),
   method('workspace.open', 'Request a native-confirmed saved-document switch. Requires a clean editor. A successful switch revokes this connection; obtain fresh native approval.', 'workspace', true, { ...root, documentHandle: string, ...mutation }),
+  method('workspace.importCopy', 'Save an independent FD/native-json/Sketch/FIG compatibility copy without switching the editor. No file paths, URLs or PDF. Returns a grant-bound document handle. Retry only identical mutationId and arguments; an unknown outcome must be reconciled, never retried with a new ID.', 'workspace', true, { ...root, format: { type: 'string', enum: ['fd', 'native-json', 'sketch', 'fig'] }, content: { type: 'string', minLength: 1, maxLength: IMPORT_COPY_BYTES }, base64: { type: 'string', minLength: 1, maxLength: IMPORT_COPY_BYTES }, ...mutation }, ['rootHandle', 'format', 'mutationId']),
   method('workspace.save', 'Save the current editor snapshot through SQLite CAS. The storage revision is separate from the editor revision. Retry only the same mutationId and arguments.', 'workspace', true, { ...root, expectedStorageRevision: { anyOf: [number, { type: 'null' }] }, ...mutation }),
   method('workspace.restore', 'Request native-confirmed history restoration using an issued revision handle and exact storage CAS. Requires a clean editor; switching revokes the connection.', 'workspace', true, { ...root, revisionHandle: string, expectedStorageRevision: number, ...mutation }),
   method('workspace.root.select', 'Ask the user to choose a workspace using the native picker, or confirm the original default workspace. No filesystem path input is accepted.', 'workspace', true, { ...root, useDefault: { type: 'boolean' }, ...mutation }, ['rootHandle', 'mutationId']),
@@ -81,6 +84,12 @@ export class WorkspaceAutomationHost {
   validate(method, params) {
     const schema = method.inputSchema
     if (!plain(params) || Object.keys(params).some(key => !Object.hasOwn(schema.properties, key)) || schema.required.some(key => !Object.hasOwn(params, key))) throw fail('INVALID_PARAMS', 'Use the advertised workspace/settings schema')
+    if (method.name === 'workspace.importCopy') {
+      const source = params.format !== 'native-json' ? params.base64 : params.content
+      if (!['fd', 'native-json', 'sketch', 'fig'].includes(params.format) || typeof source !== 'string' || !source.length || Buffer.byteLength(source) > IMPORT_COPY_BYTES ||
+          (params.format !== 'native-json' ? Object.hasOwn(params, 'content') : Object.hasOwn(params, 'base64')) ||
+          Buffer.byteLength(JSON.stringify(params)) > IMPORT_COPY_BYTES) throw fail('INVALID_PARAMS', 'Supply bounded native-json content or FD/Sketch/FIG base64, never both')
+    }
     for (const [key, value] of Object.entries(params)) {
       if (['rootHandle', 'documentHandle', 'revisionHandle', 'selectionHandle', 'cursor'].includes(key) && !boundedId(value)) throw fail('INVALID_PARAMS', `Invalid ${key}`)
       if (key === 'mutationId' && !validMutation(value)) throw fail('INVALID_PARAMS', 'mutationId must contain 1–128 ASCII letters, digits, hyphens or underscores')
@@ -94,22 +103,25 @@ export class WorkspaceAutomationHost {
   async execute(payload, signal) {
     const request = payload.request, method = byName.get(request?.method), grant = this.grants.get(payload.sessionId)
     if (!method) throw fail('METHOD_NOT_FOUND', 'Unknown workspace automation method')
-    const checkGrant = async () => {
+    const checkGrantNow = () => {
       if (signal?.aborted) throw signal.reason ?? fail('CANCELLED', 'Request cancelled')
       if (!grant?.active || this.grants.get(payload.sessionId) !== grant) throw fail('SESSION_CLOSED', 'Workspace access was revoked')
       if (this.getRoot() !== grant.root) throw fail('WRONG_ROOT', 'The granted workspace changed; reconnect with fresh approval')
       if (!permitsAutomationMethod(method, undefined, grant.scopes)) throw fail('PERMISSION_DENIED', 'The requested workspace/settings scope was not granted')
       if (!Number.isFinite(payload.deadline) || Date.now() >= payload.deadline) throw fail('TIMEOUT', 'The request expired')
+    }
+    const checkGrant = async () => {
+      checkGrantNow()
       try { await this.verifyRoot(grant.root) } catch { throw fail('WORKSPACE_ROOT_STALE', 'The granted workspace identity or storage changed; reconnect after checking it') }
-      if (!grant.active || this.getRoot() !== grant.root || signal?.aborted) throw fail('SESSION_CLOSED', 'Workspace access changed during verification')
+      checkGrantNow()
     }
     await checkGrant()
-    const params = request.params ?? {}
+    const params = structuredClone(request.params ?? {})
     this.validate(method, params)
     if ('rootHandle' in params && params.rootHandle !== grant.rootHandle) throw fail('WRONG_ROOT', 'This root handle belongs to another workspace grant')
     if (request.documentId !== payload.documentId || request.session !== payload.session) throw fail('STALE_SESSION', 'The selected editor session changed')
     if (method.mutates && !integer(request.expectedRevision)) throw fail('REVISION_REQUIRED', 'The observed editor revision is required')
-    const fingerprint = JSON.stringify({ method: method.name, params, documentId: request.documentId, session: request.session, expectedRevision: request.expectedRevision })
+    const fingerprint = createHash('sha256').update(JSON.stringify({ method: method.name, params, documentId: request.documentId, session: request.session, expectedRevision: request.expectedRevision })).digest('hex')
     if (method.mutates && grant.receipts.has(params.mutationId)) {
       const receipt = grant.receipts.get(params.mutationId)
       if (receipt.fingerprint !== fingerprint) throw fail('MUTATION_CONFLICT', 'mutationId was already used with different arguments')
@@ -129,7 +141,7 @@ export class WorkspaceAutomationHost {
           if (state.interactionActive) throw fail('INTERACTION_ACTIVE', 'Finish or cancel the current editor gesture')
           if (['workspace.open', 'workspace.restore', 'workspace.root.activate'].includes(method.name) && state.dirty) throw fail('DIRTY_DOCUMENT', 'Save the current document before switching or restoring')
         }
-        await checkGrant()
+        checkGrantNow()
         return state
       }
       let state = await inspect()
@@ -176,6 +188,88 @@ export class WorkspaceAutomationHost {
         const opened = await call('workspace.open', { id })
         return envelope({ opened: true, documentHandle: params.documentHandle, ...(integer(opened?.revision, 1) ? { storageRevision: opened.revision } : {}), requiresFreshApproval: true })
       }
+      if (method.name === 'workspace.importCopy') {
+        const receipt = grant.receipts.get(params.mutationId)
+        // Reserve one host-generated identity before preparation. Neither file
+        // contents nor the external caller can choose the storage destination.
+        receipt.newDocumentId = randomUUID()
+        receipt.completion = { status: 'preparing' }
+        if (grant.handles.size >= 4096) throw fail('HANDLE_LIMIT', 'Reconnect before importing another copy')
+        const prepared = await call('workspace.importCopy', { newDocumentId: receipt.newDocumentId, format: params.format,
+          ...(params.format !== 'native-json' ? { base64: params.base64 } : { content: params.content }) })
+        if (!plain(prepared) || prepared.format !== 'native-json' || prepared.id !== receipt.newDocumentId || typeof prepared.documentJson !== 'string' ||
+            Buffer.byteLength(JSON.stringify(prepared)) > IMPORT_COPY_BYTES) throw fail('INVALID_RESPONSE', 'Invalid prepared import copy; nothing was saved')
+        let importReport = {}
+        if (params.format === 'sketch') {
+          const codes = ['SKETCH_COMPATIBILITY', 'SKETCH_CODEC_NOTICE', 'SKETCH_SOURCE_FONTS', 'SKETCH_FONT_RESOURCES']
+          if (prepared.sourceFormat !== 'sketch' || prepared.fidelity !== 'compatibility' || prepared.lossless !== false ||
+              !Array.isArray(prepared.warnings) || !prepared.warnings.length || prepared.warnings.length > 256 ||
+              prepared.warnings.some(warning => !plain(warning) || Object.keys(warning).some(key => !['code', 'message'].includes(key)) ||
+                !codes.includes(warning.code) || typeof warning.message !== 'string' || !warning.message.length || warning.message.length > 16384) ||
+              prepared.warnings[0].code !== 'SKETCH_COMPATIBILITY' || Buffer.byteLength(JSON.stringify(prepared.warnings)) > 65536)
+            throw fail('INVALID_RESPONSE', 'Invalid or oversized Sketch compatibility warnings; nothing was saved')
+          importReport = structuredClone({ sourceFormat: 'sketch', fidelity: 'compatibility', lossless: false, warnings: prepared.warnings })
+        }
+        if (params.format === 'fig') {
+          const truncation = 'FIG compatibility warnings truncated; see droppedOccurrences.'
+          const dropped = prepared.droppedOccurrences
+          if (prepared.sourceFormat !== 'fig' || prepared.fidelity !== 'compatibility' || prepared.lossless !== false ||
+              !Array.isArray(prepared.warnings) || !prepared.warnings.length || prepared.warnings.length > 129 ||
+              prepared.warnings.some((warning, index) => !plain(warning) || Object.keys(warning).some(key => !['code', 'message'].includes(key)) ||
+                warning.code !== (index === 0 ? 'FIG_COMPATIBILITY' : 'FIG_CODEC_NOTICE') ||
+                typeof warning.message !== 'string' || !warning.message.length || Buffer.byteLength(warning.message) > 1024) ||
+              prepared.warnings.slice(1).reduce((total, warning) => total + Buffer.byteLength(warning.message), 0) > 32768 ||
+              Buffer.byteLength(JSON.stringify(prepared.warnings)) > 40960 ||
+              (dropped !== undefined && (!integer(dropped, 1))) ||
+              prepared.warnings.slice(1).filter(warning => warning.message === truncation).length !== (dropped === undefined ? 0 : 1))
+            throw fail('INVALID_RESPONSE', 'Invalid or oversized FIG compatibility warnings; nothing was saved')
+          importReport = structuredClone({ sourceFormat: 'fig', fidelity: 'compatibility', lossless: false, warnings: prepared.warnings,
+            ...(dropped === undefined ? {} : { droppedOccurrences: dropped }) })
+        }
+        receipt.importReport = importReport
+        let document
+        try { document = JSON.parse(prepared.documentJson) } catch { throw fail('INVALID_RESPONSE', 'Invalid prepared import JSON; nothing was saved') }
+        if (!plain(document) || document.id !== receipt.newDocumentId) throw fail('INVALID_RESPONSE', 'Prepared copy identity mismatch; nothing was saved')
+        receipt.contentHash = createHash('sha256').update(prepared.documentJson).digest('hex')
+        // Recheck both live editor and grant/root after preparation. The backend
+        // performs its existing authoritative model admission and create-only CAS.
+        state = await inspect()
+        receipt.completion = { status: 'committing', retry: 'reconcile-before-retry' }
+        let saved
+        try {
+          saved = await this.storage('workspace.commit', { document, expectedRevision: null, mutationId: params.mutationId })
+          if (!plain(saved) || saved.id !== receipt.newDocumentId || saved.revision !== 1 || typeof saved.name !== 'string' ||
+              typeof saved.hash !== 'string' || !/^[a-f0-9]{64}$/.test(saved.hash) || !Number.isFinite(saved.updatedAt) || saved.deleted !== false) throw fail('INVALID_RESPONSE', 'Invalid import-copy acknowledgement')
+        } catch (error) {
+          const rejected = ['INVALID_REQUEST', 'WORKSPACE_CONFLICT', 'WORKSPACE_MUTATION_CONFLICT'].includes(error?.code)
+          receipt.completion = { status: rejected ? 'rejected' : 'unknown', retry: rejected ? 'correct-request' : 'reconcile-before-retry' }
+          if (!rejected) grant.importCopyUncertain = params.mutationId
+          throw fail(rejected ? error.code : 'IMPORT_COPY_OUTCOME_UNKNOWN', rejected ? error.message : 'The copy may already be saved. This mutation is reserved; reconcile the workspace before a new import. Do not retry with a new mutationId.')
+        }
+        receipt.completion = { status: 'committed', retry: 'do-not-retry', storageRevision: saved.revision, hash: saved.hash, verifiedReadback: false }
+        // Keep the grant-local completion receipt while this call settles. Never
+        // issue a handle or bypass terminal transport rejection after revocation.
+        try { await checkGrant() } catch (error) {
+          throw fail('IMPORT_COPY_COMMITTED_ACCESS_ENDED', 'The independent copy was saved, but access ended before its handle could be returned. Do not import it again; reconcile after fresh approval.')
+        }
+        try {
+          const opened = await this.storage('workspace.open', { id: receipt.newDocumentId, revision: 1 })
+          // Native storage checks its canonical snapshot hash. Compare the
+          // returned value tree too: JS byte hashes are not Rust canonical hashes.
+          if (!plain(opened) || opened.id !== receipt.newDocumentId || opened.revision !== 1 || opened.hash !== saved.hash ||
+              opened.name !== saved.name || opened.deleted !== false || !isDeepStrictEqual(opened.document, document)) throw fail('INVALID_RESPONSE', 'Stored copy differs from the submitted snapshot')
+          receipt.completion.verifiedReadback = true
+        } catch {
+          grant.importCopyUncertain = params.mutationId
+          throw fail('IMPORT_COPY_COMMITTED_UNVERIFIED', 'Storage acknowledged the copy, but exact saved readback could not be verified. Do not import it again; reconcile the workspace before another write.')
+        }
+        try { await checkGrant() } catch (error) {
+          throw fail('IMPORT_COPY_COMMITTED_ACCESS_ENDED', 'The independent copy was saved, but access ended before its handle could be returned. Do not import it again; reconcile after fresh approval.')
+        }
+        const handle = this.issue(grant, 'document', saved.id, saved.id)
+        grant.names.set(saved.id, saved.name.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 256))
+        return envelope({ ...metadata(saved, handle), ...importReport, activated: false, completion: { ...receipt.completion } })
+      }
       if (method.name === 'workspace.save') {
         if (state.storageRevision !== params.expectedStorageRevision) throw fail('STORAGE_REVISION_CONFLICT', 'The current saved revision changed')
         const value = await call('workspace.save', { expectedStorageRevision: params.expectedStorageRevision, mutationId: params.mutationId })
@@ -214,6 +308,7 @@ export class WorkspaceAutomationHost {
       return envelope({ rootHandle: grant.rootHandle, ...preferenceMetadata(result) })
     }
     if (!method.mutates) return work()
+    if (grant.importCopyUncertain) throw fail('IMPORT_COPY_OUTCOME_UNKNOWN', 'An earlier import copy has an unresolved durable outcome. Reconcile the workspace before another write; do not retry it with a new mutationId.')
     if (grant.mutationActive) throw fail('BUSY', 'Another workspace/settings action is still awaiting completion')
     if (grant.receipts.size >= 128) throw fail('RECEIPT_LIMIT', 'The bounded mutation receipt store is full; reconnect before new writes')
     // Reserve before the first await. Identical in-flight retries share the same

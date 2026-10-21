@@ -21,7 +21,7 @@ import { svgAbsoluteLength, svgNumberList, svgFraction, svgStrokeDasharray } fro
 import { svgColorParser } from './svg-color'
 import { svgGradientParser } from './svg-gradient'
 export { pathNetwork } from './path-network'
-export type ImportedDesign = { document: DesignDocument; warnings: string[] }
+export type ImportedDesign = { document: DesignDocument; warnings: string[]; droppedOccurrences?: number }
 const transformArities: Record<string, number[]> = { matrix: [6], translate: [1, 2], scale: [1, 2], rotate: [1, 3], skewX: [1], skewY: [1] }
 export function svgTransform(value: string): Matrix {
   let result = identity(),

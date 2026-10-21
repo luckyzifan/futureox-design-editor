@@ -155,7 +155,9 @@ describe('real Editor automation boundary', () => {
     expect([n.id, second, third].map(id => editor.state.doc.nodes[id].transform[5])).toEqual([20, 20, 20])
     success(call('node.distribute', { ids: [n.id, second, third], axis: 'x' }))
     expect([n.id, second, third].map(id => editor.state.doc.nodes[id].transform[4])).toEqual([10, 110, 210])
-    failure(call('node.distribute', { ids: [n.id, second], axis: 'x' }), 'invalid_params')
+    const beforeNoop = editor.state.doc, revision = editor.state.version
+    expect(success(call('node.distribute', { ids: [n.id, second], axis: 'x' })).noChange).toBe(true)
+    expect(editor.state.doc).toBe(beforeNoop); expect(editor.state.version).toBe(revision)
   })
   it('commits actual prototype/animation/review extensions atomically and undoes them', () => {
     const { editor, n } = fixture(), api = createEditorDesignAutomation(editor), before = editor.state.doc

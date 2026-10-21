@@ -1,0 +1,534 @@
+{
+  "format": 1,
+  "scope": "One serial actual Electron/Metal 117 control-versus-material-only candidate comparison; bounded static samples, not generalization or motion acceptance",
+  "defaultEnabled": false,
+  "configuration": {
+    "source": "Coordinated isolated build configuration; same source manifest. Captured compiled worker differs between builds. Build manifest does not itself serialize build environment.",
+    "control": {
+      "VITE_DESIGN_DISPLAY_MATERIAL_SOURCE": "0"
+    },
+    "candidate": {
+      "VITE_DESIGN_DISPLAY_MATERIAL_SOURCE": "1"
+    },
+    "bothDisabled": [
+      "VITE_DESIGN_SEQUENTIAL_DISPLAY",
+      "VITE_DESIGN_ORIGINAL_VIEWPORT_CAPTURE",
+      "VITE_DESIGN_SHARP_ZOOM",
+      "VITE_DESIGN_GESTURE_DENSITY_HEADROOM",
+      "VITE_DESIGN_RESIDENT_FILTER_SCRATCH"
+    ]
+  },
+  "provenance": {
+    "sameFixture": true,
+    "sameHarness": true,
+    "sameBuildSourceEntries": true,
+    "sameImporterAndCompositeSources": true,
+    "sourceAggregation": "SHA256 of UTF-8 json.dumps(sources,sort_keys=True,separators=(comma,colon),ensure_ascii=True)",
+    "sameSettledCameraAndDpr": true,
+    "comparedCameraStages": 16,
+    "cameraSequenceSha256": "12fcf967a340d10063a0d1668face95651ce0ceb6917e2a658952cf5257edf98",
+    "sameViewportEnvironment": true,
+    "viewport": {
+      "width": 1440,
+      "height": 960,
+      "dpr": 2,
+      "visibility": "visible",
+      "focus": true
+    },
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "description": ""
+    },
+    "electron": "44.7.0",
+    "sameWasm": true,
+    "nativeObservedEqualAcrossBuilds": true
+  },
+  "runs": {
+    "material-control-117": {
+      "resultsSha256": "4d170a90da9c931a3b9c9fdcd448624cf88f0b35f05392eb849565d66f22854f",
+      "stdoutSha256": "dde16f7d96dd8ed2d074bc8277a4e42ed24f08023445e05e0dc550c75cf484c2",
+      "runtimeManifestSha256": "f66e937f51e394153d14b9870563e00d0011de89ecf9023ef14b991fa5bb5a76",
+      "buildManifestSha256": "9d00aeb7859292334006680a9c12acb0f55ca2b853e44692736109a60ee788c1",
+      "buildProfile": "release",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "harnessSha256": "725d36aed20e8fb6c0baa4827e8529d3a1dddeae24908efc3b51bcdee0f8b123",
+      "buildSourceFiles": 1851,
+      "buildSourceSha256": "f3696877a7be571505fcfc479502e181e06af7219b3381f0087c4adab8e6f4d8",
+      "status": "completed",
+      "presentationPassed": true,
+      "harnessErrorsCount": 0,
+      "settledStageErrorsCount": 0,
+      "stageCount": 16,
+      "mainStageSampling": false,
+      "extendedCpuProfiling": true,
+      "extendedProfilerErrorsCount": 5,
+      "diagnosticErrorEventReasonCodeCounts": {
+        "3": 1,
+        "5": 28
+      },
+      "navigationPreservedDocument": true,
+      "wheelDocumentPreserved": true,
+      "editChangedDocument": true,
+      "editNodeCountPreserved": true,
+      "completeDocumentUndoRestored": true,
+      "sourceFilePreserved": true,
+      "exportDocumentPreserved": true,
+      "documentHashes": {
+        "beforeEdit": "7937ae126e5e6f3be90823917ae77cbd87db7564b3d15cca16df31b3e827e43c",
+        "afterEdit": "f30001415e3e4619ab9c9166c81962436c2f6c16753eb4dd0134e7a831eeb42d",
+        "afterUndo": "7937ae126e5e6f3be90823917ae77cbd87db7564b3d15cca16df31b3e827e43c"
+      },
+      "exports": [
+        {
+          "scale": 1,
+          "width": 239,
+          "height": 119,
+          "bytes": 20889,
+          "sha256": "c999666d823112b9a6e0b5f82e9a1ca24c2afc493bd2bb19edb58a143c30dc18"
+        },
+        {
+          "scale": 2,
+          "width": 477,
+          "height": 237,
+          "bytes": 42286,
+          "sha256": "a38921b34b71acfd6624e713a6238a21c9a5189db20a013e05454eb4305fade0"
+        },
+        {
+          "scale": 3,
+          "width": 715,
+          "height": 355,
+          "bytes": 65580,
+          "sha256": "78efd838e76afa9aed8be8473884d3d27301b6f4b0d75ec02cb047c51a783447"
+        }
+      ],
+      "timing": {
+        "zoom-3200": {
+          "stageTotalMs": 1858.552,
+          "actionMs": 83.482,
+          "settleAfterActionMs": 1775.07,
+          "loggedCpuQueueCompletionWaitMs": 1292.7,
+          "fences": 26,
+          "fenceReasonCodeCounts": {
+            "3": 20,
+            "6": 5,
+            "8": 1
+          }
+        },
+        "pan-3200": {
+          "stageTotalMs": 2119.429,
+          "actionMs": 2080.282,
+          "settleAfterActionMs": 39.147,
+          "loggedCpuQueueCompletionWaitMs": 914.7,
+          "fences": 7,
+          "fenceReasonCodeCounts": {
+            "6": 5,
+            "8": 2
+          }
+        }
+      },
+      "runtime": {
+        "capturedAssetFiles": 42,
+        "capturedAssetBasenameSha256": "fbb30433cbb9a603148b0b4db09c1435bf279dc2a56249995eafe447a5ba1c1e",
+        "capturedAssetsStillMatch": true,
+        "workerSha256": "cd5883f14215990292ab4a0f53a939ec3bd620e897c3f40ef86fc08706ddb30b",
+        "wasmSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+        "nativeObservationScope": "Read at summary generation, not contained in the run-captured 42-asset manifest",
+        "nativeObserved": [
+          {
+            "artifact": "bin/design-prepare",
+            "sha256": "58c2b190e72f4885c9d7736fd46d91e3da8a0ef156b0fb95e1da9f6eaff71fb7",
+            "releaseSha256": "58c2b190e72f4885c9d7736fd46d91e3da8a0ef156b0fb95e1da9f6eaff71fb7",
+            "matchesRelease": true
+          },
+          {
+            "artifact": "bin/design-render",
+            "sha256": "8c1677e6875e778bb5218e0971c8a14db2535ae49762025ba3f29e4301c8bc2d",
+            "releaseSha256": "8c1677e6875e778bb5218e0971c8a14db2535ae49762025ba3f29e4301c8bc2d",
+            "matchesRelease": true
+          },
+          {
+            "artifact": "sidecar/futureox-design-desktop-backend",
+            "sha256": "86dd751e4af33216241a1f0f15f64b2a985346733a78685bb20cc3f67eb67468",
+            "releaseSha256": "86dd751e4af33216241a1f0f15f64b2a985346733a78685bb20cc3f67eb67468",
+            "matchesRelease": true
+          }
+        ]
+      },
+      "importStageObservation": {
+        "stageTotalMs": 3741.744,
+        "actionMs": 1091.494
+      }
+    },
+    "material-candidate-117": {
+      "resultsSha256": "ec655498d3e6e05f48709b2ad2f2ddec3b6cefb936715fdd88afae8ea7b2f9cc",
+      "stdoutSha256": "5dfe42a6d6f937e73bdf988127b4469258d0e6204c4063452a7cb21595d0f839",
+      "runtimeManifestSha256": "31b9cdf663204f484a702c18e17cc556fa60bfd6dd037c21056a6d526bfc85d6",
+      "buildManifestSha256": "3eccce2fc6a7f93e83e6c3bbc478f4d8dbb651a9cdecd4f926039d252d73d067",
+      "buildProfile": "release",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "harnessSha256": "725d36aed20e8fb6c0baa4827e8529d3a1dddeae24908efc3b51bcdee0f8b123",
+      "buildSourceFiles": 1851,
+      "buildSourceSha256": "f3696877a7be571505fcfc479502e181e06af7219b3381f0087c4adab8e6f4d8",
+      "status": "completed",
+      "presentationPassed": true,
+      "harnessErrorsCount": 0,
+      "settledStageErrorsCount": 0,
+      "stageCount": 16,
+      "mainStageSampling": false,
+      "extendedCpuProfiling": true,
+      "extendedProfilerErrorsCount": 5,
+      "diagnosticErrorEventReasonCodeCounts": {
+        "1": 6,
+        "3": 1,
+        "5": 23
+      },
+      "navigationPreservedDocument": true,
+      "wheelDocumentPreserved": true,
+      "editChangedDocument": true,
+      "editNodeCountPreserved": true,
+      "completeDocumentUndoRestored": true,
+      "sourceFilePreserved": true,
+      "exportDocumentPreserved": true,
+      "documentHashes": {
+        "beforeEdit": "cea2edd991d7858eab85286c836e99f679f2d70bef78f80510fdb1536ac22f4b",
+        "afterEdit": "5e54a48079643725298a494c047ee17a4a6c7cb977e52ef9c570abfa16863463",
+        "afterUndo": "cea2edd991d7858eab85286c836e99f679f2d70bef78f80510fdb1536ac22f4b"
+      },
+      "exports": [
+        {
+          "scale": 1,
+          "width": 239,
+          "height": 119,
+          "bytes": 20889,
+          "sha256": "c999666d823112b9a6e0b5f82e9a1ca24c2afc493bd2bb19edb58a143c30dc18"
+        },
+        {
+          "scale": 2,
+          "width": 477,
+          "height": 237,
+          "bytes": 42286,
+          "sha256": "a38921b34b71acfd6624e713a6238a21c9a5189db20a013e05454eb4305fade0"
+        },
+        {
+          "scale": 3,
+          "width": 715,
+          "height": 355,
+          "bytes": 65580,
+          "sha256": "78efd838e76afa9aed8be8473884d3d27301b6f4b0d75ec02cb047c51a783447"
+        }
+      ],
+      "timing": {
+        "zoom-3200": {
+          "stageTotalMs": 789.136,
+          "actionMs": 78.768,
+          "settleAfterActionMs": 710.368,
+          "loggedCpuQueueCompletionWaitMs": 270.5,
+          "fences": 11,
+          "fenceReasonCodeCounts": {
+            "5": 5,
+            "6": 6
+          }
+        },
+        "pan-3200": {
+          "stageTotalMs": 949.699,
+          "actionMs": 942.412,
+          "settleAfterActionMs": 7.287,
+          "loggedCpuQueueCompletionWaitMs": 199.1,
+          "fences": 13,
+          "fenceReasonCodeCounts": {
+            "6": 10,
+            "8": 3
+          }
+        }
+      },
+      "runtime": {
+        "capturedAssetFiles": 42,
+        "capturedAssetBasenameSha256": "e32e2a876f484197120c714c6dad0fd1efbda837efb612446b2a849b6b024e78",
+        "capturedAssetsStillMatch": true,
+        "workerSha256": "43007f490a44d113328860bf7d12ae56357d110a7939e69d00c99f0806c69d21",
+        "wasmSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+        "nativeObservationScope": "Read at summary generation, not contained in the run-captured 42-asset manifest",
+        "nativeObserved": [
+          {
+            "artifact": "bin/design-prepare",
+            "sha256": "58c2b190e72f4885c9d7736fd46d91e3da8a0ef156b0fb95e1da9f6eaff71fb7",
+            "releaseSha256": "58c2b190e72f4885c9d7736fd46d91e3da8a0ef156b0fb95e1da9f6eaff71fb7",
+            "matchesRelease": true
+          },
+          {
+            "artifact": "bin/design-render",
+            "sha256": "8c1677e6875e778bb5218e0971c8a14db2535ae49762025ba3f29e4301c8bc2d",
+            "releaseSha256": "8c1677e6875e778bb5218e0971c8a14db2535ae49762025ba3f29e4301c8bc2d",
+            "matchesRelease": true
+          },
+          {
+            "artifact": "sidecar/futureox-design-desktop-backend",
+            "sha256": "86dd751e4af33216241a1f0f15f64b2a985346733a78685bb20cc3f67eb67468",
+            "releaseSha256": "86dd751e4af33216241a1f0f15f64b2a985346733a78685bb20cc3f67eb67468",
+            "matchesRelease": true
+          }
+        ]
+      },
+      "importStageObservation": {
+        "stageTotalMs": 4920.218,
+        "actionMs": 967.056
+      }
+    }
+  },
+  "sameUiSelectionExportHashesAt1x2x3x": true,
+  "canvasComparison": {
+    "comparison": "Decoded 8-bit RGBA with Pillow ImageChops and per-channel histograms, no per-pixel Python lists",
+    "staticPngPairs": 16,
+    "maximumAbsoluteRgba8Difference": 5,
+    "totalPixels": 48591360,
+    "totalComponents": 194365440,
+    "changedPixels": 7100961,
+    "changedComponents": 13170095,
+    "absoluteComponentDifferenceHistogram": {
+      "0": 181195345,
+      "1": 12748908,
+      "2": 412004,
+      "3": 7982,
+      "4": 951,
+      "5": 250
+    },
+    "pairs": [
+      {
+        "stage": "import",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "bc84fc3f32af9e75beafb693458d0c3d77134f5591f73a1de3d2430fd58eec3c",
+        "candidatePngSha256": "3993b397091c77351ba218457ab5319d940c7e43cdc64566f5fa5e35db3593fe",
+        "maximumAbsoluteRgba8Difference": 4,
+        "changedPixels": 1420,
+        "changedComponents": 2182,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.000192545
+      },
+      {
+        "stage": "zoom-100",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e0cf02f4026b9d6334e3492f13193b1121fb45b00a9b521274bf3c254f527f9a",
+        "candidatePngSha256": "e78c14971f3eeb68cec01a234b0f1262c0cf194ab11e2f9bf523312a80f07d9a",
+        "maximumAbsoluteRgba8Difference": 5,
+        "changedPixels": 54969,
+        "changedComponents": 83283,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.007388145
+      },
+      {
+        "stage": "pan-100",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e0cf02f4026b9d6334e3492f13193b1121fb45b00a9b521274bf3c254f527f9a",
+        "candidatePngSha256": "e78c14971f3eeb68cec01a234b0f1262c0cf194ab11e2f9bf523312a80f07d9a",
+        "maximumAbsoluteRgba8Difference": 5,
+        "changedPixels": 54969,
+        "changedComponents": 83283,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.007388145
+      },
+      {
+        "stage": "zoom-3200",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e28385b9e3171a1c43b06524edd9e1b95ec1461a6c56fc6d9c7adb79fb3b7024",
+        "candidatePngSha256": "d6b297a38615430b1de91c7841500b1dd62919ad837ef49d88a7ddbff22f670f",
+        "maximumAbsoluteRgba8Difference": 2,
+        "changedPixels": 1309496,
+        "changedComponents": 2465898,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.209026955
+      },
+      {
+        "stage": "pan-3200",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e28385b9e3171a1c43b06524edd9e1b95ec1461a6c56fc6d9c7adb79fb3b7024",
+        "candidatePngSha256": "d6b297a38615430b1de91c7841500b1dd62919ad837ef49d88a7ddbff22f670f",
+        "maximumAbsoluteRgba8Difference": 2,
+        "changedPixels": 1309496,
+        "changedComponents": 2465898,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.209026955
+      },
+      {
+        "stage": "zoom-return-100",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e0cf02f4026b9d6334e3492f13193b1121fb45b00a9b521274bf3c254f527f9a",
+        "candidatePngSha256": "e78c14971f3eeb68cec01a234b0f1262c0cf194ab11e2f9bf523312a80f07d9a",
+        "maximumAbsoluteRgba8Difference": 5,
+        "changedPixels": 54969,
+        "changedComponents": 83283,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.007388145
+      },
+      {
+        "stage": "zoom-repeat-3200",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e28385b9e3171a1c43b06524edd9e1b95ec1461a6c56fc6d9c7adb79fb3b7024",
+        "candidatePngSha256": "d6b297a38615430b1de91c7841500b1dd62919ad837ef49d88a7ddbff22f670f",
+        "maximumAbsoluteRgba8Difference": 2,
+        "changedPixels": 1309496,
+        "changedComponents": 2465898,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.209026955
+      },
+      {
+        "stage": "cache-return-1-100",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e0cf02f4026b9d6334e3492f13193b1121fb45b00a9b521274bf3c254f527f9a",
+        "candidatePngSha256": "e78c14971f3eeb68cec01a234b0f1262c0cf194ab11e2f9bf523312a80f07d9a",
+        "maximumAbsoluteRgba8Difference": 5,
+        "changedPixels": 54969,
+        "changedComponents": 83283,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.007388145
+      },
+      {
+        "stage": "cache-return-1-3200",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e28385b9e3171a1c43b06524edd9e1b95ec1461a6c56fc6d9c7adb79fb3b7024",
+        "candidatePngSha256": "d6b297a38615430b1de91c7841500b1dd62919ad837ef49d88a7ddbff22f670f",
+        "maximumAbsoluteRgba8Difference": 2,
+        "changedPixels": 1309496,
+        "changedComponents": 2465898,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.209026955
+      },
+      {
+        "stage": "cache-return-2-100",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e0cf02f4026b9d6334e3492f13193b1121fb45b00a9b521274bf3c254f527f9a",
+        "candidatePngSha256": "e78c14971f3eeb68cec01a234b0f1262c0cf194ab11e2f9bf523312a80f07d9a",
+        "maximumAbsoluteRgba8Difference": 5,
+        "changedPixels": 54969,
+        "changedComponents": 83283,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.007388145
+      },
+      {
+        "stage": "cache-return-2-3200",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e28385b9e3171a1c43b06524edd9e1b95ec1461a6c56fc6d9c7adb79fb3b7024",
+        "candidatePngSha256": "d6b297a38615430b1de91c7841500b1dd62919ad837ef49d88a7ddbff22f670f",
+        "maximumAbsoluteRgba8Difference": 2,
+        "changedPixels": 1309496,
+        "changedComponents": 2465898,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.209026955
+      },
+      {
+        "stage": "extended-zoom-reset-100",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e0cf02f4026b9d6334e3492f13193b1121fb45b00a9b521274bf3c254f527f9a",
+        "candidatePngSha256": "e78c14971f3eeb68cec01a234b0f1262c0cf194ab11e2f9bf523312a80f07d9a",
+        "maximumAbsoluteRgba8Difference": 5,
+        "changedPixels": 54969,
+        "changedComponents": 83283,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.007388145
+      },
+      {
+        "stage": "extended-continuous-wheel",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e0cf02f4026b9d6334e3492f13193b1121fb45b00a9b521274bf3c254f527f9a",
+        "candidatePngSha256": "e78c14971f3eeb68cec01a234b0f1262c0cf194ab11e2f9bf523312a80f07d9a",
+        "maximumAbsoluteRgba8Difference": 5,
+        "changedPixels": 54969,
+        "changedComponents": 83283,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.007388145
+      },
+      {
+        "stage": "extended-select-edit-target",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e0cf02f4026b9d6334e3492f13193b1121fb45b00a9b521274bf3c254f527f9a",
+        "candidatePngSha256": "e78c14971f3eeb68cec01a234b0f1262c0cf194ab11e2f9bf523312a80f07d9a",
+        "maximumAbsoluteRgba8Difference": 5,
+        "changedPixels": 54969,
+        "changedComponents": 83283,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.007388145
+      },
+      {
+        "stage": "extended-pointer-drag",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "ad7fdffa36d3da42d70d2f5199cc3cc51cd1936a91956bfe3b530fff845103fe",
+        "candidatePngSha256": "1f167f20f986cdd2ce7b3cb9c05c5bbfee0b3f080a40a55fce28cf71ee304f60",
+        "maximumAbsoluteRgba8Difference": 5,
+        "changedPixels": 57340,
+        "changedComponents": 88876,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.007877697
+      },
+      {
+        "stage": "extended-undo-edit",
+        "width": 1710,
+        "height": 1776,
+        "controlPngSha256": "e1099b80b4b4bc77debe5a09dd8bd5a952f565de7c1c467d5b548f83de943319",
+        "candidatePngSha256": "b3306a53db66f10a3e7beceb7bafc6d5261b779f2020bbedb4f712ff10dbccb1",
+        "maximumAbsoluteRgba8Difference": 5,
+        "changedPixels": 54969,
+        "changedComponents": 83283,
+        "totalPixels": 3036960,
+        "totalComponents": 12147840,
+        "meanAbsoluteComponentDifference": 0.007388145
+      }
+    ]
+  },
+  "limitations": [
+    "Stage total includes real action and settling; CPU queue-completion wait is logged host-observed waiting, not hardware shader execution time, input-to-photon, FPS or a repeated-run latency distribution.",
+    "Extended wheel/edit/undo are CPU-profiled; their durations are not clean latency benchmarks.",
+    "Both documents have independently generated import identities; complete-document undo is checked within each run, not by cross-run document SHA equality.",
+    "Sixteen settled canvas pairs and one UI selection export do not cover every authored region, dynamic frame, filter configuration, FIG or multi-cycle mixed zoom/pan pressure.",
+    "Diagnostic error-event reason-code counts are retained separately from harness/settled errors; no unsupported classification is guessed.",
+    "Material admission/hit counters are not present in these captured diagnostic logs, so enabled configuration and reduced prefix waits are not reported as measured material cache hit counts.",
+    "Control ran before candidate without repeated randomized crossover; import stage total was slower in this candidate run, so selected zoom observations are not an overall startup speedup claim."
+  ],
+  "pending": [
+    "Combined multi-cycle fast zoom/pan pressure",
+    "Generalized actual GPU approximation quality and boundary/seam coverage",
+    "Latest-source full CPU/Rust regression acceptance"
+  ],
+  "decision": "Candidate remains default off pending independent quality and stress gates",
+  "observedStageReductions": {
+    "zoom-3200": {
+      "stageTotalMsReduction": 1069.416,
+      "stageTotalReductionPercent": 57.54,
+      "cpuQueueWaitMsReduction": 1022.2
+    },
+    "pan-3200": {
+      "stageTotalMsReduction": 1169.73,
+      "stageTotalReductionPercent": 55.191,
+      "cpuQueueWaitMsReduction": 715.6
+    }
+  }
+}

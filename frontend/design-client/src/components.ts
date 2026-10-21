@@ -21,6 +21,7 @@ import {
   bounds,
   boxPoints,
   apply,
+  type ParentMap,
 } from './geometry'
 export const overrideFields = [
   'bindings',
@@ -62,8 +63,7 @@ export function instanceOwner(d: DesignDocument, id: string): string | undefined
   const n = d.nodes[id]
   return n?.instanceOrigin?.owner || (n?.instance ? id : undefined)
 }
-export function definitionOwner(d: DesignDocument, id: string): string | undefined {
-  const parents = allParents(d)
+export function definitionOwner(d: DesignDocument, id: string, parents: ParentMap = allParents(d)): string | undefined {
   let at: string | undefined = id
   while (at && d.nodes[at]) {
     if (d.nodes[at].component) return at
@@ -403,17 +403,20 @@ export function detachMissing(before: DesignDocument, d: DesignDocument) {
   for (const n of Object.values(d.nodes))
     if (n.component) {
       const keys = templateMap(d, n.id)
-      const component = cloneValue(n.component)
-      for (const [id, p] of Object.entries(component.properties)) {
+      let component: typeof n.component | undefined
+      for (const [id, p] of Object.entries(n.component.properties)) {
         const target = d.nodes[keys.get(p.targetKey) || '']
         if (
           !target ||
           (p.kind === 'text' && target.kind !== 'text') ||
           (p.kind === 'instance-swap' && (!target.instance || !d.nodes[String(p.defaultValue)]))
         )
-          delete component.properties[id]
+          delete (component ??= cloneValue(n.component)).properties[id]
       }
-      d.nodes[n.id] = { ...n, component }
+      // Preserve immutable identity when there is no dependency to prune.
+      // Unrelated translations must not look like component-definition edits
+      // to the layout admission guard merely because cleanup was inspected.
+      if (component) d.nodes[n.id] = { ...n, component }
     }
   void before
   return detached

@@ -1,9 +1,25 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { buildInputs, buildProfile, BUILD_DIRECTORIES, BUILD_FILES } from '../scripts/build-inputs.mjs'
+import { buildInputs, buildOutput, buildProfile, BUILD_DIRECTORIES, BUILD_FILES } from '../scripts/build-inputs.mjs'
+
+test('isolated desktop output is explicit and cannot erase an existing directory or symlink', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'forma-build-output-'))
+  try {
+    assert.equal(await buildOutput(root, []), path.join(root, 'dist'))
+    const output = path.join(root, 'owned'), sentinel = path.join(output, 'renderer', 'keep.txt')
+    assert.equal(await buildOutput(root, ['--out-dir=' + output]), output)
+    await mkdir(path.dirname(sentinel)); await writeFile(sentinel, 'untouched')
+    await assert.rejects(buildOutput(root, ['--out-dir=' + output]), { code: 'EEXIST' })
+    const link = path.join(root, 'link'); await symlink(output, link, 'dir')
+    await assert.rejects(buildOutput(root, ['--out-dir=' + link]), { code: 'EEXIST' })
+    await assert.rejects(buildOutput(root, ['--out-dir=']), /nonempty/)
+    await assert.rejects(buildOutput(root, ['--out-dir=a', '--out-dir=b']), /one/)
+    assert.equal(await readFile(sentinel, 'utf8'), 'untouched')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
 
 test('local desktop defaults to optimized native products and records GPU sources', () => {
   assert.equal(buildProfile([]), 'release')

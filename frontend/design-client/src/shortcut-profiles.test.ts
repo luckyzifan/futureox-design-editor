@@ -90,6 +90,24 @@ describe('bounded keyboard presets', () => {
     expect(editor.state.view.zoom).toBeLessThan(zoomed)
     expect(screenToWorld(editor.state.view, editor.pointerScreen)).toEqual(before)
   })
+  test('Mac Option symbols resolve US/Generic chords without forcing unmodified letters to physical positions', () => {
+    const context: ShortcutContext = { profile: 'figma-like', platform: 'mac' }
+    expect(resolveShortcut(key('©', { code: 'KeyG', metaKey: true, altKey: true }), context)?.command).toBe('frame-selection')
+    expect(resolveShortcut(key('Å', { code: 'KeyA', altKey: true, shiftKey: true }), context)?.command).toBe('remove-auto-layout')
+    expect(resolveShortcut(key('π', { code: 'KeyP', altKey: true }), context)?.command).toBe('set-tool-pencil')
+    expect(resolveShortcut(key('“', { code: 'BracketLeft', metaKey: true, altKey: true }), context)?.command).toBe('send-to-back')
+    expect(resolveShortcut(key('‘', { code: 'BracketRight', metaKey: true, altKey: true }), context)?.command).toBe('bring-to-front')
+    expect(resolveShortcut(key('q', { code: 'KeyA' }), context)).toBeNull()
+    expect(resolveShortcut(key('q', { code: 'KeyG', metaKey: true, altKey: true }), context)).toBeNull()
+    expect(resolveShortcut(key('©', { code: 'KeyA', metaKey: true, altKey: true }), context)).toBeNull()
+    expect(resolveShortcut(key('Ω', { code: 'KeyG', metaKey: true, altKey: true }), context)).toBeNull()
+    expect(resolveShortcut(key('p', { code: 'KeyQ' }), context)?.command).toBe('set-tool-pen')
+    for (const extra of [{ ctrlKey: true }, { shiftKey: true }, { isComposing: true }, { keyCode: 229 }, { defaultPrevented: true }, { getModifierState: (value: string) => value === 'AltGraph' }]) {
+      expect(resolveShortcut(key('©', { code: 'KeyG', metaKey: true, altKey: true, ...extra }), context)).toBeNull()
+    }
+    expect(resolveShortcut(key('Dead', { code: 'KeyG', metaKey: true, altKey: true }), context)).toBeNull()
+    expect(resolveShortcut(key('©', { code: 'KeyG', ctrlKey: true, altKey: true }), { ...context, platform: 'windows' })).toBeNull()
+  })
   test('ignores extra modifiers, wrong platform modifiers, IME, AltGraph and prevented events', async () => {
     const { editor } = fixture(), before = editor.state.doc, context: ShortcutContext = { profile: 'figma-like', platform: 'mac' }
     for (const event of [key('d', { ctrlKey: true }), key('d', { metaKey: true, ctrlKey: true }), key('d', { metaKey: true, altKey: true }), key('d', { metaKey: true, shiftKey: true }), key('d', { metaKey: true, isComposing: true }), key('d', { metaKey: true, keyCode: 229 }), key('d', { metaKey: true, defaultPrevented: true }), key('d', { metaKey: true, getModifierState: value => value === 'AltGraph' })]) {
@@ -126,6 +144,60 @@ describe('bounded keyboard presets', () => {
     values.set(SHORTCUT_PROFILE_KEY, 'unknown'); expect(store.getSnapshot()).toBe('figma-like'); unsubscribe()
     const denied = createShortcutPreference(() => ({ getItem: () => { throw Error('denied') }, setItem: () => { throw Error('denied') } }))
     expect(denied.getSnapshot()).toBe('figma-like'); expect(denied.set('sketch-like')).toBe(false); expect(denied.getSnapshot()).toBe('sketch-like')
+  })
+  test.each(contexts)('new-page is Sketch desktop only, keeps document identity and undoes: $profile $platform desktop=$desktop', async context => {
+    const { editor } = fixture(), before = editor.state.doc
+    const event = key('N', { ...mod(context), shiftKey: true })
+    const enabled = context.profile === 'sketch-like' && context.desktop === true
+    expect(await dispatchEditorShortcut(editor, event, context)).toBe(enabled)
+    if (enabled) {
+      expect(editor.state.doc.id).toBe(before.id)
+      expect(editor.state.doc.pages).toHaveLength(before.pages.length + 1)
+      expect(editor.state.page).toBe(editor.state.doc.pages.at(-1)?.id)
+      const added = editor.state.doc
+      await dispatchEditorShortcut(editor, key('N', { ...mod(context), shiftKey: true, repeat: true }), context)
+      expect(editor.state.doc).toBe(added)
+      editor.undo(); expect(editor.state.doc).toEqual(before)
+      editor.redo(); expect(editor.state.doc).toEqual(added)
+    } else { expect(editor.state.doc).toBe(before); expect(event.preventDefault).not.toHaveBeenCalled() }
+  })
+  test('new-page respects focused text, modal, composition and busy admission', async () => {
+    const { editor } = fixture(), before = editor.state.doc
+    const context: ShortcutContext = { profile: 'sketch-like', platform: 'mac', desktop: true }
+    for (const selector of ['input', 'textarea', 'contenteditable', 'dialog', 'menu']) {
+      const target = { closest: (query: string) => query.includes(selector) ? {} : null } as unknown as EventTarget
+      expect(await dispatchEditorShortcut(editor, key('N', { metaKey: true, shiftKey: true, target }), context)).toBe(false)
+    }
+    for (const extra of [{ isComposing: true }, { keyCode: 229 }, { ctrlKey: true }, { altKey: true }]) {
+      expect(await dispatchEditorShortcut(editor, key('N', { metaKey: true, shiftKey: true, ...extra }), context)).toBe(false)
+    }
+    editor.set({ busy: true }); await dispatchEditorShortcut(editor, key('N', { metaKey: true, shiftKey: true }), context)
+    expect(editor.state.doc).toBe(before)
+  })
+  test('remaining explicit Option pairs resolve; Process and unrecognized variants do not', () => {
+    const context: ShortcutContext = { profile: 'figma-like', platform: 'mac' }
+    for (const [value, code, command] of [['å', 'KeyA', 'select-matching'], ['ç', 'KeyC', 'copy-properties'], ['√', 'KeyV', 'paste-properties']]) {
+      expect(resolveShortcut(key(value, { code, metaKey: true, altKey: true }), context)?.command).toBe(command)
+    }
+    expect(resolveShortcut(key('c', { code: 'KeyG', metaKey: true, altKey: true }), context)?.command).toBe('copy-properties')
+    expect(resolveShortcut(key('Process', { code: 'KeyG', metaKey: true, altKey: true }), context)).toBeNull()
+    expect(resolveShortcut(key('©', { code: 'KeyG', metaKey: true, altKey: true }), { ...context, platform: 'linux' })).toBeNull()
+  })
+  test('Option-symbol commands change real frame/layout state and undo; interaction blocks new-page', async () => {
+    const { editor, a, b } = fixture(), context: ShortcutContext = { profile: 'figma-like', platform: 'mac', desktop: true }
+    editor.select([a.id, b.id]); const before = editor.state.doc
+    await dispatchEditorShortcut(editor, key('©', { code: 'KeyG', metaKey: true, altKey: true }), context)
+    const frameId = editor.state.selection[0]
+    expect(editor.state.doc.nodes[frameId].kind).toBe('frame')
+    editor.autoLayout(); expect(editor.state.doc.nodes[frameId].layout?.mode).not.toBe('none')
+    const layout = editor.state.doc
+    await dispatchEditorShortcut(editor, key('Å', { code: 'KeyA', shiftKey: true, altKey: true }), context)
+    expect(editor.state.doc.nodes[frameId].layout).toBeUndefined()
+    editor.undo(); expect(editor.state.doc).toEqual(layout)
+    editor.undo(); editor.undo(); expect(editor.state.doc).toEqual(before)
+    editor.begin('test pointer gesture')
+    await dispatchEditorShortcut(editor, key('N', { code: 'KeyN', metaKey: true, shiftKey: true }), { ...context, profile: 'sketch-like' })
+    expect(editor.state.doc).toEqual(before); editor.cancel()
   })
   test('platform identification uses the OS, not a Mac-only assumption', () => {
     expect(shortcutPlatform('MacIntel')).toBe('mac'); expect(shortcutPlatform('Win32')).toBe('windows'); expect(shortcutPlatform('Linux x86_64')).toBe('linux')

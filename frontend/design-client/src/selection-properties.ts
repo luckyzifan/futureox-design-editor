@@ -1,5 +1,5 @@
 import { defaultSizing, defaultTextStyle, type DesignDocument, type DesignNode, type Matrix } from './model'
-import { localBounds, parentBounds, rotationDegrees } from './canvas-view'
+import { localBounds, parentBounds, rotationDegrees, selectionLocalBounds, selectionParentBounds } from './canvas-view'
 import { propertyUnits, type PropertyUnits } from './property-units'
 import { multiply } from './geometry'
 
@@ -11,11 +11,17 @@ export function selectionMetric(node: DesignNode, field: SelectionMetric, doc?: 
   if (field === 'rotation') return rotationDegrees(node)
   if (field === 'opacity') return node.opacity * 100
   const units = resolvedUnits ?? (doc ? propertyUnits(doc, node.id) : { parentX: 1, parentY: 1, width: 1, height: 1 })
-  if (field === 'x' || field === 'y') return parentBounds(node)[field] * (field === 'x' ? units.parentX : units.parentY)
-  const bounds = localBounds(node)
+  if (field === 'x' || field === 'y') return (doc ? selectionParentBounds(doc, node.id, node.transform) : parentBounds(node))[field] * (field === 'x' ? units.parentX : units.parentY)
+  const bounds = doc ? selectionLocalBounds(doc, node.id) : localBounds(node)
   return field === 'width'
     ? bounds.width * Math.hypot(node.transform[0], node.transform[1]) * units.width
     : bounds.height * Math.hypot(node.transform[2], node.transform[3]) * units.height
+}
+/** Shared single/multi Inspector position edit, preserving local geometry. */
+export function setNodePosition(node: DesignNode, axis: 'x' | 'y', value: number, doc: DesignDocument, resolvedUnits?: PropertyUnits) {
+  const units = resolvedUnits ?? propertyUnits(doc, node.id), scale = axis === 'x' ? units.parentX : units.parentY
+  if (!Number.isFinite(value) || !Number.isFinite(scale) || scale <= 0) throw new Error('图层位置必须为有限数值')
+  node.transform[axis === 'x' ? 4 : 5] += value / scale - selectionParentBounds(doc, node.id, node.transform)[axis]
 }
 export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', value: number, doc?: DesignDocument, resolvedUnits?: PropertyUnits) {
   const nodeUnits = resolvedUnits ?? (doc ? propertyUnits(doc, node.id) : undefined)
@@ -24,7 +30,7 @@ export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', 
   if (!Number.isFinite(ratio) || ratio <= 0) throw new Error('图层尺寸必须为正数')
   const sx = axis === 'width' || node.constrainProportions ? ratio : 1
   const sy = axis === 'height' || node.constrainProportions ? ratio : 1
-  const box = localBounds(node)
+  const box = doc ? selectionLocalBounds(doc, node.id) : localBounds(node)
   const next = multiply(node.transform, [sx, 0, 0, sy, box.x * (1 - sx), box.y * (1 - sy)])
   Object.assign(node, resizedNode(node, next, node.constrainProportions ? ['width', 'height'] : [axis]))
   // Explicit values must not acquire oldSize*(newSize/oldSize) rounding;

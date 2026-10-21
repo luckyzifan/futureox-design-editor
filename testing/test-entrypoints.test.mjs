@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, readdir } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm, readdir, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,7 +11,9 @@ const scripts = ['test-high-zoom.sh', 'test-new-features.sh']
 // Each test uses an isolated copied runner with a fake local Vitest. These test
 // the shell contract only; they do not claim to execute the selected unit suites.
 async function fixture(t, script, { ready = true, exit = 0 } = {}) {
-  const directory = await mkdtemp(join(tmpdir(), 'futureox-runner-contract-'))
+  // Shell cwd is physical on macOS (/var is a link to /private/var). Keep the
+  // exact cwd assertion without mistaking two spellings of our owned fixture.
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'futureox-runner-contract-')))
   t.after(() => rm(directory, { recursive: true, force: true }))
   const root = join(directory, 'project with spaces')
   const client = join(root, 'frontend/design-client')

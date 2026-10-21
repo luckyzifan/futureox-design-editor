@@ -59,3 +59,12 @@ for (const platform of ['darwin', 'win32', 'linux']) {
     assert.equal(commands.at(-1), 'paste', 'Ordinary paste retains its own route')
   })
 }
+
+for (const platform of ['darwin', 'win32', 'linux']) {
+  test(`${platform}: Shift+Mod+N remains renderer-owned, never a native new-document alias`, () => {
+    const mod = platform === 'darwin' ? { meta: true } : { control: true }
+    const route = nativeShortcutRoute(input('N', { ...mod, shift: true }), platform)
+    assert.equal(route.command, undefined)
+    assert.equal(route.consume, false)
+  })
+}

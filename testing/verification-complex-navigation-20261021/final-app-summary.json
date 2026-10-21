@@ -1,0 +1,557 @@
+{
+  "format": 1,
+  "latestDefaultBuild": true,
+  "materialSourceEnabled": false,
+  "allRunCapturedRuntimeAssetsEqualAcrossRuns": true,
+  "allBuildSourceEntriesEqualAcrossRuns": true,
+  "sameHarnessAcrossRuns": true,
+  "runs": {
+    "final2-regression-117": {
+      "completed": true,
+      "presentationPassed": true,
+      "harnessErrorsCount": 0,
+      "settledStageErrorsCount": 0,
+      "resultsSha256": "2e8abc16bc5d0e3cbb9ea6275a5beb86b9406db959dc38fed4130aa1cfa419f4",
+      "stdoutSha256": "f928d9609e4fd6a30b434c2343d462c0bf9fe829f1d8047ecd96d55b4394e8fa",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "harnessSha256": "725d36aed20e8fb6c0baa4827e8529d3a1dddeae24908efc3b51bcdee0f8b123",
+      "buildManifestSha256": "c9e87921d07fa2ef1c0823b354bb362c30d889d9857dccdeb813c914be7be0cf",
+      "releaseBuild": true,
+      "buildSourceFiles": 1856,
+      "buildSourceSha256": "adda46d185551edb752b2ac7085f6adc1a14ae38ee7247bb435fbfecb0dda29f",
+      "capturedRuntimeManifestSha256": "8649b3c2316abe9e2359e0677175d7953b71005ad9508ede0948df07cdb66066",
+      "runCapturedAssetFiles": 42,
+      "runCapturedAssetBasenameSha256": "94e8b9929891b6e9fc47de75bdf8e01a5cb1a854c33b7570e189eb6145433b37",
+      "runCapturedAssetFilesMatchAtSummary": true,
+      "runCapturedWasmSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+      "selectedDistObservedBuildManifestMatchesRunCopy": true,
+      "nativeHashChecksObservedAtSummaryNotRunCaptured": true,
+      "nativeObserved": {
+        "bin/design-prepare": {
+          "observedSha256": "58c2b190e72f4885c9d7736fd46d91e3da8a0ef156b0fb95e1da9f6eaff71fb7",
+          "releaseSha256": "58c2b190e72f4885c9d7736fd46d91e3da8a0ef156b0fb95e1da9f6eaff71fb7",
+          "observedMatchesRelease": true
+        },
+        "bin/design-render": {
+          "observedSha256": "8c1677e6875e778bb5218e0971c8a14db2535ae49762025ba3f29e4301c8bc2d",
+          "releaseSha256": "8c1677e6875e778bb5218e0971c8a14db2535ae49762025ba3f29e4301c8bc2d",
+          "observedMatchesRelease": true
+        },
+        "sidecar/futureox-design-desktop-backend": {
+          "observedSha256": "86dd751e4af33216241a1f0f15f64b2a985346733a78685bb20cc3f67eb67468",
+          "releaseSha256": "86dd751e4af33216241a1f0f15f64b2a985346733a78685bb20cc3f67eb67468",
+          "observedMatchesRelease": true
+        }
+      },
+      "installedWasmObservedSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+      "publicWasmObservedSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+      "generatedWasmObservedSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+      "observedInstalledPublicGeneratedCapturedWasmEqual": true,
+      "navigationPreservedDocument": true,
+      "extendedCompleted": true,
+      "extendedCpuProfiling": true,
+      "wheelPreservedDocument": true,
+      "editChangedDocument": true,
+      "editNodeCountPreserved": true,
+      "undoRestoredCompleteDocument": true,
+      "beforeEditSha256": "30c7fdb6a8851f647c4ea91b8460aa98e8dce10511708ece61f32970931b6e8b",
+      "afterEditSha256": "01f39a60f26716446141bebaeff6cbd5d6f6b699cad849e7a14fd33fa14b9463",
+      "afterUndoSha256": "30c7fdb6a8851f647c4ea91b8460aa98e8dce10511708ece61f32970931b6e8b",
+      "undoHashMatchesBefore": true,
+      "sourceFilePreservedAfterExtended": true,
+      "exportCompleted": true,
+      "exportDocumentPreserved": true,
+      "exportSourceFilePreserved": true,
+      "beforeExportDocumentSha256": "30c7fdb6a8851f647c4ea91b8460aa98e8dce10511708ece61f32970931b6e8b",
+      "afterExportDocumentSha256": "30c7fdb6a8851f647c4ea91b8460aa98e8dce10511708ece61f32970931b6e8b",
+      "exportDocumentHashesEqual": true,
+      "exportPngs": {
+        "1": {
+          "sha256": "c999666d823112b9a6e0b5f82e9a1ca24c2afc493bd2bb19edb58a143c30dc18",
+          "width": 239,
+          "height": 119,
+          "bytes": 20889,
+          "downloadCompleted": true
+        },
+        "2": {
+          "sha256": "a38921b34b71acfd6624e713a6238a21c9a5189db20a013e05454eb4305fade0",
+          "width": 477,
+          "height": 237,
+          "bytes": 42286,
+          "downloadCompleted": true
+        },
+        "3": {
+          "sha256": "78efd838e76afa9aed8be8473884d3d27301b6f4b0d75ec02cb047c51a783447",
+          "width": 715,
+          "height": 355,
+          "bytes": 65580,
+          "downloadCompleted": true
+        }
+      },
+      "cacheRevisits": [
+        {
+          "round": 1,
+          "percent": 100,
+          "ok": true,
+          "totalMs": 219.912,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 128,
+          "residentBytes": 130907824,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 1,
+          "percent": 3200,
+          "ok": true,
+          "totalMs": 220.03,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 60,
+          "residentBytes": 130907824,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 100,
+          "ok": true,
+          "totalMs": 222.84,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 128,
+          "residentBytes": 130907824,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 3200,
+          "ok": true,
+          "totalMs": 231.12,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 60,
+          "residentBytes": 130907824,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        }
+      ],
+      "stageObservations": {
+        "pan-100": {
+          "actionMs": 892.542,
+          "stageTotalMs": 907.805,
+          "settledAfterActionMs": 15.263,
+          "loggedCpuQueueCompletionWaitMs": 303.6,
+          "fences": 12,
+          "settled": true,
+          "missingTextureCount": 0
+        },
+        "zoom-3200": {
+          "actionMs": 51.265,
+          "stageTotalMs": 1169.472,
+          "settledAfterActionMs": 1118.207,
+          "loggedCpuQueueCompletionWaitMs": 724.8,
+          "fences": 23,
+          "settled": true,
+          "missingTextureCount": 0
+        },
+        "pan-3200": {
+          "actionMs": 1049.785,
+          "stageTotalMs": 1067.739,
+          "settledAfterActionMs": 17.954,
+          "loggedCpuQueueCompletionWaitMs": 473.9,
+          "fences": 13,
+          "settled": true,
+          "missingTextureCount": 0
+        }
+      },
+      "mainStageCpuProfiling": false
+    },
+    "final2-regression-fig": {
+      "completed": true,
+      "presentationPassed": true,
+      "harnessErrorsCount": 0,
+      "settledStageErrorsCount": 0,
+      "resultsSha256": "3f4f4a4e40954804e074ae1354124b5f04140a0247200a5989a8f60cc3ab5c1d",
+      "stdoutSha256": "1d562e24433a79d3e311d232623bbd0312654cfbb0d25de009523f1e41208c35",
+      "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+      "harnessSha256": "725d36aed20e8fb6c0baa4827e8529d3a1dddeae24908efc3b51bcdee0f8b123",
+      "buildManifestSha256": "c9e87921d07fa2ef1c0823b354bb362c30d889d9857dccdeb813c914be7be0cf",
+      "releaseBuild": true,
+      "buildSourceFiles": 1856,
+      "buildSourceSha256": "adda46d185551edb752b2ac7085f6adc1a14ae38ee7247bb435fbfecb0dda29f",
+      "capturedRuntimeManifestSha256": "8649b3c2316abe9e2359e0677175d7953b71005ad9508ede0948df07cdb66066",
+      "runCapturedAssetFiles": 42,
+      "runCapturedAssetBasenameSha256": "94e8b9929891b6e9fc47de75bdf8e01a5cb1a854c33b7570e189eb6145433b37",
+      "runCapturedAssetFilesMatchAtSummary": true,
+      "runCapturedWasmSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+      "selectedDistObservedBuildManifestMatchesRunCopy": true,
+      "nativeHashChecksObservedAtSummaryNotRunCaptured": true,
+      "nativeObserved": {
+        "bin/design-prepare": {
+          "observedSha256": "58c2b190e72f4885c9d7736fd46d91e3da8a0ef156b0fb95e1da9f6eaff71fb7",
+          "releaseSha256": "58c2b190e72f4885c9d7736fd46d91e3da8a0ef156b0fb95e1da9f6eaff71fb7",
+          "observedMatchesRelease": true
+        },
+        "bin/design-render": {
+          "observedSha256": "8c1677e6875e778bb5218e0971c8a14db2535ae49762025ba3f29e4301c8bc2d",
+          "releaseSha256": "8c1677e6875e778bb5218e0971c8a14db2535ae49762025ba3f29e4301c8bc2d",
+          "observedMatchesRelease": true
+        },
+        "sidecar/futureox-design-desktop-backend": {
+          "observedSha256": "86dd751e4af33216241a1f0f15f64b2a985346733a78685bb20cc3f67eb67468",
+          "releaseSha256": "86dd751e4af33216241a1f0f15f64b2a985346733a78685bb20cc3f67eb67468",
+          "observedMatchesRelease": true
+        }
+      },
+      "installedWasmObservedSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+      "publicWasmObservedSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+      "generatedWasmObservedSha256": "d2a6069e5da8abf3c1f7f86bc7bd1cd22de7396527c5f9e877f7138c65f97071",
+      "observedInstalledPublicGeneratedCapturedWasmEqual": true,
+      "navigationPreservedDocument": true,
+      "extendedCompleted": true,
+      "extendedCpuProfiling": true,
+      "wheelPreservedDocument": true,
+      "editChangedDocument": true,
+      "editNodeCountPreserved": true,
+      "undoRestoredCompleteDocument": true,
+      "beforeEditSha256": "c1f99f0274f84cae0d8fd121150bf08b5e6b49854d793d9ffc4a8be26c5c56c1",
+      "afterEditSha256": "80685a662db3d94a2330c83fcbab3833aff574f0cc9a153a54b22812e290d073",
+      "afterUndoSha256": "c1f99f0274f84cae0d8fd121150bf08b5e6b49854d793d9ffc4a8be26c5c56c1",
+      "undoHashMatchesBefore": true,
+      "sourceFilePreservedAfterExtended": true,
+      "exportCompleted": true,
+      "exportDocumentPreserved": true,
+      "exportSourceFilePreserved": true,
+      "beforeExportDocumentSha256": "c1f99f0274f84cae0d8fd121150bf08b5e6b49854d793d9ffc4a8be26c5c56c1",
+      "afterExportDocumentSha256": "c1f99f0274f84cae0d8fd121150bf08b5e6b49854d793d9ffc4a8be26c5c56c1",
+      "exportDocumentHashesEqual": true,
+      "exportPngs": {
+        "1": {
+          "sha256": "9d966a3d6ed0011443ad207bd4c6d96b0a70105aa5bf10c19ccf89822208d988",
+          "width": 456,
+          "height": 49,
+          "bytes": 7274,
+          "downloadCompleted": true
+        },
+        "2": {
+          "sha256": "51c1fc63b067f95c97b4b233e701feb71ac6b09256fe968a8e0c53588f6cfe1d",
+          "width": 912,
+          "height": 98,
+          "bytes": 14477,
+          "downloadCompleted": true
+        },
+        "3": {
+          "sha256": "9b35705e9355d469e871c4edb05e48ea97fd76345d47a2ea00ba838270bee1f8",
+          "width": 1368,
+          "height": 147,
+          "bytes": 22833,
+          "downloadCompleted": true
+        }
+      },
+      "cacheRevisits": [
+        {
+          "round": 1,
+          "percent": 100,
+          "ok": true,
+          "totalMs": 281.532,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 22,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 1,
+          "percent": 3200,
+          "ok": true,
+          "totalMs": 252.141,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 27,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 100,
+          "ok": true,
+          "totalMs": 260.928,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 22,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 3200,
+          "ok": true,
+          "totalMs": 250.533,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 27,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        }
+      ],
+      "stageObservations": {
+        "pan-100": {
+          "actionMs": 888.303,
+          "stageTotalMs": 902.291,
+          "settledAfterActionMs": 13.989,
+          "loggedCpuQueueCompletionWaitMs": 34.6,
+          "fences": 3,
+          "settled": true,
+          "missingTextureCount": 0
+        },
+        "zoom-3200": {
+          "actionMs": 62.828,
+          "stageTotalMs": 445.181,
+          "settledAfterActionMs": 382.352,
+          "loggedCpuQueueCompletionWaitMs": 20.4,
+          "fences": 6,
+          "settled": true,
+          "missingTextureCount": 0
+        },
+        "pan-3200": {
+          "actionMs": 860.042,
+          "stageTotalMs": 872.969,
+          "settledAfterActionMs": 12.927,
+          "loggedCpuQueueCompletionWaitMs": 13.9,
+          "fences": 1,
+          "settled": true,
+          "missingTextureCount": 0
+        }
+      },
+      "mainStageCpuProfiling": false
+    }
+  },
+  "current117ExportsVersusCorrectImporterControl": {
+    "1": {
+      "currentSha256": "c999666d823112b9a6e0b5f82e9a1ca24c2afc493bd2bb19edb58a143c30dc18",
+      "correctImporterControlSha256": "c999666d823112b9a6e0b5f82e9a1ca24c2afc493bd2bb19edb58a143c30dc18",
+      "equal": true
+    },
+    "2": {
+      "currentSha256": "a38921b34b71acfd6624e713a6238a21c9a5189db20a013e05454eb4305fade0",
+      "correctImporterControlSha256": "a38921b34b71acfd6624e713a6238a21c9a5189db20a013e05454eb4305fade0",
+      "equal": true
+    },
+    "3": {
+      "currentSha256": "78efd838e76afa9aed8be8473884d3d27301b6f4b0d75ec02cb047c51a783447",
+      "correctImporterControlSha256": "78efd838e76afa9aed8be8473884d3d27301b6f4b0d75ec02cb047c51a783447",
+      "equal": true
+    }
+  },
+  "current117AllThreeExportHashesEqualCorrectImporterControl": true,
+  "figComparedAgainstOldImporterCanvasPng": false,
+  "cacheIdleMsBeforeEachRound": 5000,
+  "cacheVisitsPerFixture": 4,
+  "allEightRevisitsSameCamera": true,
+  "allEightRevisitsRenderedTilesZero": true,
+  "allEightRevisitsMissingTextureZero": true,
+  "complexMixedStressAcceptancePending": true,
+  "latestFullCpuRegressionPending": false,
+  "materialGeneralizedGpuQualityAcceptancePending": true,
+  "allIntermediateMotionFramesVerified": false,
+  "latencyDistributionMeasured": false,
+  "hardwareShaderTimeMeasured": false,
+  "physicalFpsMeasured": false,
+  "initialSummaryVerificationState": {
+    "latestFullCpuRegressionPending": true
+  },
+  "fullCpuVerification": {
+    "summary": "../verification-functional-merge-20261021/final-cpu-summary.json",
+    "summarySha256": "b53c5d196cf5d28dbb1feba6dcc65e5219f1fe703e035629f7da335f323bd32f",
+    "available": true,
+    "completed": true,
+    "passed": true,
+    "sourceStable": true,
+    "runtimeStable": true,
+    "selectedDesktopDistStable": true,
+    "sourceFiles": 1402,
+    "sourceSha256": "bfbab905166edfa8540efdc1d345129369ccfbd234b9d7c1b9d0d72d3bdb36b4",
+    "selectedManifestSha256": "c9e87921d07fa2ef1c0823b354bb362c30d889d9857dccdeb813c914be7be0cf",
+    "selectedReleaseProfile": true,
+    "selectedManifestValidBefore": true,
+    "selectedManifestValidAfter": true,
+    "changedSourcePathCount": 0,
+    "optionalNativeCorpusEnabled": true,
+    "canvasReproducerEnabled": true,
+    "fixtureSha256": {
+      "117.sketch": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "FIG": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c"
+    },
+    "phases": [
+      {
+        "name": "client-vitest",
+        "exitCode": 0,
+        "passed": true,
+        "counts": {
+          "total": 4776,
+          "passed": 4776,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0,
+          "suitesPassed": 623,
+          "suitesFailed": 0,
+          "tests": null,
+          "pass": null,
+          "fail": null,
+          "cancelled": null
+        }
+      },
+      {
+        "name": "desktop-node",
+        "exitCode": 0,
+        "passed": true,
+        "counts": {
+          "total": null,
+          "passed": null,
+          "failed": null,
+          "skipped": 0,
+          "todo": 0,
+          "suitesPassed": null,
+          "suitesFailed": null,
+          "tests": 319,
+          "pass": 319,
+          "fail": 0,
+          "cancelled": 0
+        }
+      },
+      {
+        "name": "desktop-preparation",
+        "exitCode": 0,
+        "passed": true,
+        "counts": {
+          "total": null,
+          "passed": null,
+          "failed": null,
+          "skipped": 0,
+          "todo": 0,
+          "suitesPassed": null,
+          "suitesFailed": null,
+          "tests": 3,
+          "pass": 3,
+          "fail": 0,
+          "cancelled": 0
+        }
+      },
+      {
+        "name": "frontend-node",
+        "exitCode": 0,
+        "passed": true,
+        "counts": {
+          "total": null,
+          "passed": null,
+          "failed": null,
+          "skipped": 0,
+          "todo": 0,
+          "suitesPassed": null,
+          "suitesFailed": null,
+          "tests": 324,
+          "pass": 324,
+          "fail": 0,
+          "cancelled": 0
+        }
+      },
+      {
+        "name": "mcp-check",
+        "exitCode": 0,
+        "passed": true,
+        "counts": {
+          "total": null,
+          "passed": null,
+          "failed": null,
+          "skipped": null,
+          "todo": null,
+          "suitesPassed": null,
+          "suitesFailed": null,
+          "tests": null,
+          "pass": null,
+          "fail": null,
+          "cancelled": null
+        }
+      },
+      {
+        "name": "mcp-unit",
+        "exitCode": 0,
+        "passed": true,
+        "counts": {
+          "total": null,
+          "passed": null,
+          "failed": null,
+          "skipped": 0,
+          "todo": 0,
+          "suitesPassed": null,
+          "suitesFailed": null,
+          "tests": 96,
+          "pass": 96,
+          "fail": 0,
+          "cancelled": 0
+        }
+      },
+      {
+        "name": "mcp-clipboard",
+        "exitCode": 0,
+        "passed": true,
+        "counts": {
+          "total": null,
+          "passed": null,
+          "failed": null,
+          "skipped": 0,
+          "todo": 0,
+          "suitesPassed": null,
+          "suitesFailed": null,
+          "tests": 12,
+          "pass": 12,
+          "fail": 0,
+          "cancelled": 0
+        }
+      },
+      {
+        "name": "mcp-socket",
+        "exitCode": 0,
+        "passed": true,
+        "counts": {
+          "total": null,
+          "passed": null,
+          "failed": null,
+          "skipped": 0,
+          "todo": 0,
+          "suitesPassed": null,
+          "suitesFailed": null,
+          "tests": 5,
+          "pass": 5,
+          "fail": 0,
+          "cancelled": 0
+        }
+      }
+    ],
+    "scope": "Read-only correlation with the completed CPU result. Historical motion observations, raw failures and GPU acceptance gates are unchanged."
+  },
+  "fullCpuCorrelationScope": "Current CPU verification is a read-only correlation. Existing app run observations and their summary-generation native hash checks remain original snapshots; no GUI/GPU rerun is implied."
+}

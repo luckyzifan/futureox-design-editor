@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="144" viewBox="0 0 1600 144" style="font-family:monospace"><title>fig · extended-continuous-wheel · render-worker — timeDeltas weighted active CPU stacks; not a timeline</title><g><title>fig · extended-continuous-wheel · render-worker — 117.504 ms cumulative active samples
+
+</title><rect x="0.000" y="126" width="1599.700" height="17" fill="hsl(56 80% 72%)"/><text x="2.000" y="138" font-size="10">fig · extended-continuous-wheel · render-worker</text></g><g><title>iu.port1.onmessage — 75.165 ms cumulative active samples
+../../src/kernel/render-worker.ts:120:19
+design-app://app/assets/render-worker-u3XvX_B2.js:4037:16234</title><rect x="0.000" y="108" width="1023.189" height="17" fill="hsl(36 80% 72%)"/><text x="2.000" y="120" font-size="10">iu.port1.onmessage</text></g><g><title>presentFrame — 75.165 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:111:2
+design-app://app/assets/render-worker-u3XvX_B2.js:3958:1455</title><rect x="0.000" y="90" width="1023.189" height="17" fill="hsl(8 80% 72%)"/><text x="2.000" y="102" font-size="10">presentFrame</text></g><g><title>draw — 69.472 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:331:2
+design-app://app/assets/render-worker-u3XvX_B2.js:2659:7310</title><rect x="0.000" y="72" width="945.669" height="17" fill="hsl(38 80% 72%)"/><text x="2.000" y="84" font-size="10">draw</text></g><g><title>compositeDrawPlan — 21.074 ms cumulative active samples
+../../src/kernel/gpu/composite-draw-plan.ts:61:16
+design-app://app/assets/render-worker-u3XvX_B2.js:1:97548</title><rect x="0.000" y="54" width="286.655" height="17" fill="hsl(50 80% 72%)"/><text x="2.000" y="66" font-size="10">compositeDrawPlan</text></g><g><title>Ai — 18.055 ms cumulative active samples
+../../src/kernel/gpu/composite-draw-plan.ts:39:6
+design-app://app/assets/render-worker-u3XvX_B2.js:1:98184</title><rect x="0.000" y="36" width="245.547" height="17" fill="hsl(28 80% 72%)"/><text x="2.000" y="48" font-size="10">Ai</text></g><g><title>(anonymous) — 1.509 ms cumulative active samples
+../../src/kernel/gpu/composite-draw-plan.ts:71:5
+design-app://app/assets/render-worker-u3XvX_B2.js:1:97601</title><rect x="245.847" y="36" width="20.247" height="17" fill="hsl(30 80% 72%)"/><text x="247.847" y="48" font-size="10">(a</text></g><g><title>uu — 13.219 ms cumulative active samples
+../../src/kernel/render-worker.ts:129:23
+design-app://app/assets/render-worker-u3XvX_B2.js:4037:16351</title><rect x="286.955" y="54" width="179.697" height="17" fill="hsl(52 80% 72%)"/><text x="288.955" y="66" font-size="10">uu</text></g><g><title>record — 10.196 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:100:4
+design-app://app/assets/render-worker-u3XvX_B2.js:1:5821</title><rect x="286.955" y="36" width="138.534" height="17" fill="hsl(57 80% 72%)"/><text x="288.955" y="48" font-size="10">record</text></g><g><title>sanitizeRecord — 6.078 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:77:16
+design-app://app/assets/render-worker-u3XvX_B2.js:1:4882</title><rect x="286.955" y="18" width="82.461" height="17" fill="hsl(36 80% 72%)"/><text x="288.955" y="30" font-size="10">sanitizeRecor</text></g><g><title>sanitizeFields — 4.536 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:20:16
+design-app://app/assets/render-worker-u3XvX_B2.js:1:3163</title><rect x="286.955" y="0" width="61.465" height="17" fill="hsl(38 80% 72%)"/><text x="288.955" y="12" font-size="10">sanitizeF</text></g><g><title>sanitizeFields — 2.539 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:20:16
+design-app://app/assets/render-worker-u3XvX_B2.js:1:3163</title><rect x="369.717" y="18" width="34.272" height="17" fill="hsl(38 80% 72%)"/><text x="371.717" y="30" font-size="10">sanit</text></g><g><title>draw — 7.178 ms cumulative active samples
+../../src/kernel/gpu/canvas-overlay.ts:85:2
+design-app://app/assets/render-worker-u3XvX_B2.js:2642:820</title><rect x="466.953" y="54" width="97.440" height="17" fill="hsl(38 80% 72%)"/><text x="468.953" y="66" font-size="10">draw</text></g><g><title>overlayVertices — 2.995 ms cumulative active samples
+../../src/kernel/gpu/canvas-overlay.ts:18:16
+design-app://app/assets/render-worker-u3XvX_B2.js:2633:3025</title><rect x="466.953" y="36" width="40.482" height="17" fill="hsl(45 80% 72%)"/><text x="468.953" y="48" font-size="10">overla</text></g><g><title>line — 1.489 ms cumulative active samples
+../../src/kernel/gpu/canvas-overlay.ts:24:8
+design-app://app/assets/render-worker-u3XvX_B2.js:2633:3160</title><rect x="466.953" y="18" width="19.975" height="17" fill="hsl(52 80% 72%)"/><text x="468.953" y="30" font-size="10">li</text></g><g><title>quad — 1.489 ms cumulative active samples
+../../src/kernel/gpu/canvas-overlay.ts:20:8
+design-app://app/assets/render-worker-u3XvX_B2.js:2633:3046</title><rect x="466.953" y="0" width="19.975" height="17" fill="hsl(35 80% 72%)"/><text x="468.953" y="12" font-size="10">qu</text></g><g><title>draw — 2.679 ms cumulative active samples
+../../src/kernel/gpu/canvas-labels.ts:87:2
+design-app://app/assets/render-worker-u3XvX_B2.js:2633:1583</title><rect x="507.734" y="36" width="36.179" height="17" fill="hsl(38 80% 72%)"/><text x="509.734" y="48" font-size="10">draw</text></g><g><title>writeBuffer — 1.504 ms cumulative active samples
+
+:0:0</title><rect x="544.213" y="36" width="20.179" height="17" fill="hsl(55 80% 72%)"/><text x="546.213" y="48" font-size="10">wr</text></g><g><title>physicalCoverage — 3.167 ms cumulative active samples
+../../src/kernel/gpu/physical-coverage.ts:4:16
+design-app://app/assets/render-worker-u3XvX_B2.js:2642:2174</title><rect x="564.692" y="54" width="42.824" height="17" fill="hsl(51 80% 72%)"/><text x="566.692" y="66" font-size="10">physic</text></g><g><title>tilesCoverBounds — 3.167 ms cumulative active samples
+../../src/kernel/tile-cache.ts:218:16
+design-app://app/assets/render-worker-u3XvX_B2.js:1:66145</title><rect x="564.692" y="36" width="42.824" height="17" fill="hsl(33 80% 72%)"/><text x="566.692" y="48" font-size="10">tilesC</text></g><g><title>(anonymous) — 1.490 ms cumulative active samples
+../../src/kernel/tile-cache.ts:244:32
+design-app://app/assets/render-worker-u3XvX_B2.js:1:66624</title><rect x="564.692" y="18" width="19.989" height="17" fill="hsl(30 80% 72%)"/><text x="566.692" y="30" font-size="10">(a</text></g><g><title>getCurrentTexture — 1.528 ms cumulative active samples
+
+:0:0</title><rect x="607.816" y="54" width="20.506" height="17" fill="hsl(30 80% 72%)"/><text x="609.816" y="66" font-size="10">ge</text></g><g><title>writeBuffer — 1.506 ms cumulative active samples
+
+:0:0</title><rect x="628.622" y="54" width="20.207" height="17" fill="hsl(55 80% 72%)"/><text x="630.622" y="66" font-size="10">wr</text></g><g><title>beginRenderPass — 1.398 ms cumulative active samples
+
+:0:0</title><rect x="649.129" y="54" width="18.736" height="17" fill="hsl(50 80% 72%)"/><text x="651.129" y="66" font-size="10">be</text></g><g><title>(garbage collector) — 24.153 ms cumulative active samples
+
+:0:0</title><rect x="1023.489" y="108" width="328.581" height="17" fill="#be92d0"/><text x="1025.489" y="120" font-size="10">(garbage collector)</text></g><g><title>self.onmessage — 16.646 ms cumulative active samples
+../../src/kernel/render-worker.ts:424:18
+design-app://app/assets/render-worker-u3XvX_B2.js:4037:24747</title><rect x="1352.369" y="108" width="226.361" height="17" fill="hsl(32 80% 72%)"/><text x="1354.369" y="120" font-size="10">self.onmessage</text></g><g><title>record — 1.512 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:100:4
+design-app://app/assets/render-worker-u3XvX_B2.js:1:5821</title><rect x="1352.369" y="90" width="20.288" height="17" fill="hsl(57 80% 72%)"/><text x="1354.369" y="102" font-size="10">re</text></g><g><title>sanitizeFields — 1.512 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:20:16
+design-app://app/assets/render-worker-u3XvX_B2.js:1:3163</title><rect x="1352.369" y="72" width="20.288" height="17" fill="hsl(38 80% 72%)"/><text x="1354.369" y="84" font-size="10">sa</text></g><g><title>postMessage — 1.503 ms cumulative active samples
+
+:0:0</title><rect x="1372.958" y="90" width="20.166" height="17" fill="hsl(21 80% 72%)"/><text x="1374.958" y="102" font-size="10">po</text></g><g><title>(anonymous) — 1.540 ms cumulative active samples
+../../src/kernel/grid-measurements.ts:27:41
+design-app://app/assets/render-worker-u3XvX_B2.js:1:17688</title><rect x="1579.031" y="108" width="20.669" height="17" fill="hsl(30 80% 72%)"/><text x="1581.031" y="120" font-size="10">(a</text></g><g><title>flush — 1.540 ms cumulative active samples
+../../src/kernel/grid-measurements.ts:29:2
+design-app://app/assets/render-worker-u3XvX_B2.js:1:17716</title><rect x="1579.031" y="90" width="20.669" height="17" fill="hsl(34 80% 72%)"/><text x="1581.031" y="102" font-size="10">fl</text></g><g><title>GridMeasurements — 1.540 ms cumulative active samples
+../../src/kernel/render-worker.ts:103:29
+design-app://app/assets/render-worker-u3XvX_B2.js:4037:16003</title><rect x="1579.031" y="72" width="20.669" height="17" fill="hsl(41 80% 72%)"/><text x="1581.031" y="84" font-size="10">Gr</text></g><g><title>record — 1.540 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:100:4
+design-app://app/assets/render-worker-u3XvX_B2.js:1:5821</title><rect x="1579.031" y="54" width="20.669" height="17" fill="hsl(57 80% 72%)"/><text x="1581.031" y="66" font-size="10">re</text></g></svg>

@@ -1,7 +1,7 @@
 // Capture build provenance without claiming byte-reproducibility. Generated bindings,
 // WASM and renderer output are artifact hashes, not compiler source inputs.
 import { createHash } from 'node:crypto'
-import { readdir, readFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 export const BUILD_DIRECTORIES = [
@@ -43,6 +43,16 @@ export function buildProfile(args) {
   if (chosen[0] === '--debug') return 'debug'
   if (chosen[0] === '--fast') return 'desktop-dev'
   return 'release'
+}
+
+/** Explicit isolated build output must be fresh: Vite empties renderer/. */
+export async function buildOutput(desktop, args) {
+  const selected = args.filter(arg => arg.startsWith('--out-dir='))
+  if (selected.length > 1 || selected[0] === '--out-dir=') throw Error('Choose one nonempty --out-dir=PATH')
+  if (!selected.length) return path.join(desktop, 'dist')
+  const output = path.resolve(selected[0].slice('--out-dir='.length))
+  await mkdir(output) // Existing directories, including symlinks, reject.
+  return output
 }
 
 export async function buildInputs(core) {

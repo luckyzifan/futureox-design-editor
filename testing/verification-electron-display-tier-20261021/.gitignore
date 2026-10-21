@@ -10,3 +10,4 @@
 !*.patch
 
 !complete-filter-cache-parked.manifest.json
+!visual-omission.cjs

@@ -21,6 +21,11 @@ function assertFontPrerequisite(text) {
   const run = text.indexOf('run: node testing/verify-local.mjs --profile portable')
   assert.ok(install >= 0 && run > install, 'real-font generator must be installed before portable tests')
 }
+function assertPythonToolsPrerequisite(text) {
+  const install = text.indexOf('run: python -m pip install --requirement testing/python-tools-requirements.txt')
+  const run = text.indexOf('run: node testing/verify-local.mjs --profile portable')
+  assert.ok(install >= 0 && run > install, 'Pillow must be provisioned before the portable profile selects python-tools')
+}
 test('CI names each actual native CPU binary explicitly', () => assertNativeTargets(workflow))
 test('old package-only backend command is rejected', () => {
   const broken = workflow.replace(/run: \|\n\s+cargo build[^\n]+\n\s+cargo build[^\n]+/, 'run: cargo build --locked --manifest-path design-studio/Cargo.toml -p futureox-design-kernel --bin design-prepare -p futureox-design-desktop-backend')
@@ -41,4 +46,14 @@ test('font prerequisite removal is rejected instead of allowing fixture skips', 
   const broken = workflow.replace('run: python -m pip install --requirement testing/font-fixtures-requirements.txt', 'run: echo font fixtures ready')
   assert.notEqual(broken, workflow)
   assert.throws(() => assertFontPrerequisite(broken))
+})
+test('CI explicitly provisions the pinned CPU image tool dependency', () => {
+  assertPythonToolsPrerequisite(workflow)
+  const requirements = readFileSync(new URL('./python-tools-requirements.txt', import.meta.url), 'utf8')
+  assert.deepEqual(requirements.split('\n').map(s => s.trim()).filter(s => s && !s.startsWith('#')), ['Pillow==12.0.0'])
+})
+test('missing Python image prerequisite cannot be reported as portable readiness', () => {
+  const broken = workflow.replace('run: python -m pip install --requirement testing/python-tools-requirements.txt', 'run: echo Python image tools ready')
+  assert.notEqual(broken, workflow)
+  assert.throws(() => assertPythonToolsPrerequisite(broken))
 })

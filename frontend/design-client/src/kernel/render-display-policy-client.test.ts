@@ -17,3 +17,15 @@ for (const host of ['web', 'electron']) for (const flag of [undefined, '0', 'tru
     vi.stubEnv('VITE_DESIGN_DESKTOP_DISPLAY', flag === '1' ? '0' : '1')
     expect(renderExecutionPolicy.desktopDisplay).toBe(host === 'electron' && flag !== '0')
   })
+
+test('Electron launch GPU budget is copied once without consulting document or preferences', async () => {
+  const host = { version: 1, renderPolicy: { cpuOnly: false, gpuWorkingBudgetMiB: 4096 } }
+  vi.stubGlobal('window', { coreDesktop: host })
+  vi.stubGlobal('navigator', {})
+  vi.stubGlobal('localStorage', { getItem: () => null })
+  const { renderExecutionPolicy } = await import('./client')
+  expect(renderExecutionPolicy.gpuWorkingBudgetMiB).toBe(4096)
+  host.renderPolicy.gpuWorkingBudgetMiB = 256
+  expect(renderExecutionPolicy.gpuWorkingBudgetMiB).toBe(4096)
+  expect(Object.isFrozen(renderExecutionPolicy)).toBe(true)
+})

@@ -1,0 +1,393 @@
+{
+  "scope": "Exact-camera five-second-idle revisit and time-windowed queue-completion observations. Existing native cache hits are not a new-fix benefit. Single paired observations do not establish a general speedup or eliminate motion blur. No photon/FPS claim.",
+  "runs": [
+    {
+      "label": "final-default-117",
+      "reportSha256": "bdd3cc5ae7537ac04320d3b8d891250551bcdb15edeb965f18c9e688f37aac0e",
+      "buildManifestSha256": "cdadeddd2fac0c452d52f70f02dc51bef49493d0ba0db7787df3a7a48ba463e3",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "status": "completed",
+      "navigationPreservedDocument": true,
+      "sampling": false,
+      "stages": [
+        {
+          "name": "zoom-100",
+          "ok": true,
+          "allFences": 8,
+          "allQueueWaitMs": 244.1,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "pan-100",
+          "ok": true,
+          "allFences": 13,
+          "allQueueWaitMs": 311.0,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "zoom-3200",
+          "ok": true,
+          "allFences": 10,
+          "allQueueWaitMs": 1389.6,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "pan-3200",
+          "ok": true,
+          "allFences": 8,
+          "allQueueWaitMs": 548.9,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        }
+      ],
+      "visits": [
+        {
+          "round": 1,
+          "percent": 100,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 128,
+          "residentBytes": 131964608,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 1,
+          "percent": 3200,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 60,
+          "residentBytes": 131964608,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 100,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 128,
+          "residentBytes": 131964608,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 3200,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 60,
+          "residentBytes": 131964608,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        }
+      ]
+    },
+    {
+      "label": "final-default-fig",
+      "reportSha256": "ed7d9b567222ee6c2930a7806a17f3da67275dc28fc7e8e9830a0e2d76c0070c",
+      "buildManifestSha256": "cdadeddd2fac0c452d52f70f02dc51bef49493d0ba0db7787df3a7a48ba463e3",
+      "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+      "status": "completed",
+      "navigationPreservedDocument": true,
+      "sampling": false,
+      "stages": [
+        {
+          "name": "zoom-100",
+          "ok": true,
+          "allFences": 5,
+          "allQueueWaitMs": 88.5,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "pan-100",
+          "ok": true,
+          "allFences": 1,
+          "allQueueWaitMs": 33.8,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "zoom-3200",
+          "ok": true,
+          "allFences": 7,
+          "allQueueWaitMs": 25.9,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "pan-3200",
+          "ok": true,
+          "allFences": 1,
+          "allQueueWaitMs": 10.9,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        }
+      ],
+      "visits": [
+        {
+          "round": 1,
+          "percent": 100,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 22,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 1,
+          "percent": 3200,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 27,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 100,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 22,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 3200,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 27,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        }
+      ]
+    },
+    {
+      "label": "final-safe-default-117",
+      "reportSha256": "897ecea89c1ecec80edd0f3de0ff65861b9f9c9ad8d57ad0171c2304cf26f9a0",
+      "buildManifestSha256": "5dde311add4b7109c67451b8d94d2f0900bdae4d5e8de941640810e05a3e4c7b",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "status": "completed",
+      "navigationPreservedDocument": true,
+      "sampling": false,
+      "stages": [
+        {
+          "name": "zoom-100",
+          "ok": true,
+          "allFences": 9,
+          "allQueueWaitMs": 250.6,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "pan-100",
+          "ok": true,
+          "allFences": 12,
+          "allQueueWaitMs": 289.6,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "zoom-3200",
+          "ok": true,
+          "allFences": 26,
+          "allQueueWaitMs": 761.9,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "pan-3200",
+          "ok": true,
+          "allFences": 14,
+          "allQueueWaitMs": 551.8,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        }
+      ],
+      "visits": [
+        {
+          "round": 1,
+          "percent": 100,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 128,
+          "residentBytes": 131964608,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 1,
+          "percent": 3200,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 60,
+          "residentBytes": 131964608,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 100,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 128,
+          "residentBytes": 131964608,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 3200,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 60,
+          "residentBytes": 131964608,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        }
+      ]
+    },
+    {
+      "label": "final-safe-default-fig",
+      "reportSha256": "eaf1a147b7adbb18a0027d1b937d44b28ff3c69a003fe7409e2458d73326bf12",
+      "buildManifestSha256": "5dde311add4b7109c67451b8d94d2f0900bdae4d5e8de941640810e05a3e4c7b",
+      "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+      "status": "completed",
+      "navigationPreservedDocument": true,
+      "sampling": false,
+      "stages": [
+        {
+          "name": "zoom-100",
+          "ok": true,
+          "allFences": 5,
+          "allQueueWaitMs": 100.4,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "pan-100",
+          "ok": true,
+          "allFences": 1,
+          "allQueueWaitMs": 43.8,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "zoom-3200",
+          "ok": true,
+          "allFences": 6,
+          "allQueueWaitMs": 22.2,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        },
+        {
+          "name": "pan-3200",
+          "ok": true,
+          "allFences": 1,
+          "allQueueWaitMs": 6.7,
+          "poolOnlyFences": 0,
+          "poolOnlyQueueWaitMs": 0
+        }
+      ],
+      "visits": [
+        {
+          "round": 1,
+          "percent": 100,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 22,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 1,
+          "percent": 3200,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 27,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 100,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 22,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        },
+        {
+          "round": 2,
+          "percent": 3200,
+          "ok": true,
+          "sameCameraAsPreviousVisit": true,
+          "renderedTiles": 0,
+          "cacheHits": 27,
+          "residentBytes": 133411216,
+          "residentBudget": 234881024,
+          "coverage": 1,
+          "sharpCoverage": 1,
+          "missingTextureCount": 0
+        }
+      ]
+    }
+  ]
+}

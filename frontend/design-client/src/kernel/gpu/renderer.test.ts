@@ -924,9 +924,9 @@ test('unsafe surface products, non-finite origins, and invalid byte admissions c
 })
 
 
-test('admission diagnostics classify proactive and required pressure without early destruction', async () => {
+test('admission diagnostics classify real allocation pressure without early destruction', async () => {
   const MiB = 1024 * 1024
-  for (const required of [0, 64 * MiB]) {
+  for (const required of [64 * MiB, 128 * MiB]) {
     let finish!: () => void, metadata: any, completed = false
     const destroyed: Texture[] = []
     const driver = { name: 'webgpu', managed: true, scratchBytes: 0,
@@ -940,7 +940,7 @@ test('admission diagnostics classify proactive and required pressure without ear
     setGpuDiagnosticSink(() => {})
     try {
       const pending = renderer.reclaimScratch(required)
-      expect(metadata).toEqual({ admissionKind: required ? 1 : 0, admissionPressure: required ? 1 : 0,
+      expect(metadata).toEqual({ admissionKind: 1, admissionPressure: 1,
         admissionRequiredBytes: required, admissionWorkingBytes: 220 * MiB, admissionBudgetBytes: 256 * MiB,
         admissionReclaimableBytes: 48 * MiB, admissionPoolBytes: 48 * MiB, admissionPoolCount: 1,
         admissionUploadCount: 0, admissionImageCount: 0, admissionRetiredKinds: 1, admissionRetiredUploadCount: 0, admissionCoordinateCount: 0 })
@@ -958,7 +958,7 @@ test('disabled admission diagnostics preserve the same fence with no metadata pa
   const texture = { width: 1536, height: 2048, bytes: 48 * 1024 * 1024, resource: {} } as Texture
   renderer.free.set('1536:2048', [texture])
   setGpuDiagnosticSink(undefined)
-  await renderer.reclaimScratch()
+  await renderer.reclaimScratch(64 * 1024 * 1024)
   expect(driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission', undefined)
 })
 
@@ -972,13 +972,15 @@ function completedPoolFixture() {
   driver.resourceEpoch=2
   return {driver,renderer,texture,MiB}
 }
-test('old pool-only maintenance carries a completed prior-frame proof',async()=>{
+test('old pool-only storage stays resident without a maintenance fence or destruction',async()=>{
   const {driver,renderer,texture}=completedPoolFixture()
   await renderer.reclaimScratch()
-  expect(driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission',undefined,1)
-  expect(driver.destroy).toHaveBeenCalledWith(texture)
+  expect(driver.checkpoint).not.toHaveBeenCalled()
+  expect(driver.destroy).not.toHaveBeenCalled()
+  expect(renderer.free.get('1536:2048')).toEqual([texture])
+  expect(renderer.poolReleaseEpoch.get(texture)).toBe(1)
 })
-test('unknown, current, incomplete, upload and image-pressure batches preserve the fence',async()=>{
+test('real allocation pressure fences regardless of unknown, current or incomplete pool epochs',async()=>{
   for(const change of ['unknown','zero','current','incomplete','coordinates','retired','pressure','required']){
     const {driver,renderer,texture,MiB}=completedPoolFixture()
     if(change==='unknown')renderer.poolReleaseEpoch.delete(texture)
@@ -988,18 +990,19 @@ test('unknown, current, incomplete, upload and image-pressure batches preserve t
     if(change==='coordinates')renderer.coordinateMaps.add({width:1,height:1,bytes:16,resource:{}})
     if(change==='retired')renderer.retiredUploads.push({width:1,height:1,bytes:16,resource:{}})
     if(change==='pressure')renderer.bytes=200*MiB
-    await renderer.reclaimScratch(change==='required'?1:0)
+    await renderer.reclaimScratch(renderer.frameBudget-renderer.bytes+1)
     expect((driver.checkpoint as any).mock.calls[0]).toHaveLength(2)
+    expect(driver.destroy).toHaveBeenCalledWith(texture)
   }
 })
 test('reacquiring and returning an old texture replaces its pool completion proof',async()=>{
   const {driver,renderer,texture}=completedPoolFixture()
   const surface=renderer.acquire({x:0,y:0,w:1536,h:2048})
   expect(surface.texture).toBe(texture);expect(renderer.poolReleaseEpoch.has(texture)).toBe(false);renderer.release(surface)
-  await renderer.reclaimScratch()
+  await renderer.reclaimScratch(renderer.frameBudget-renderer.bytes+1)
   expect((driver.checkpoint as any).mock.calls[0]).toHaveLength(2)
 })
-test('pool proof covers exactly the64-resource batch, not younger survivors',async()=>{
+test('real upload retirement respects the64-resource completed batch, preserving younger survivors',async()=>{
   const {driver,renderer,MiB}=completedPoolFixture();renderer.free.clear();renderer.bytes=120*MiB
   driver.resourceEpoch=1
   const old:Texture[]=[]
@@ -1007,9 +1010,14 @@ test('pool proof covers exactly the64-resource batch, not younger survivors',asy
   driver.resourceEpoch=2
   const current={width:1536,height:1536,bytes:36*MiB,resource:{}} as Texture
   renderer.busy.add(current);renderer.release({texture:current,rect:{x:0,y:0,w:1536,h:1536}})
+  const upload={width:1,height:1,bytes:16,resource:{}} as Texture
+  renderer.retiredUploads.push(upload)
   await renderer.reclaimScratch()
-  expect(driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission',undefined,1)
+  expect(driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission',undefined)
   expect(driver.destroy).toHaveBeenCalledTimes(64)
+  expect(driver.destroy).toHaveBeenCalledWith(upload)
+  expect(driver.destroy.mock.calls.every(([texture])=>texture!==old[63])).toBe(true)
+  expect(renderer.free.get('128:256')).toEqual([old[63]])
   expect(driver.destroy).not.toHaveBeenCalledWith(current)
 })
 
@@ -1022,13 +1030,14 @@ test('alias decrement cannot stamp a still-owned texture as a free-pool member',
   renderer.release(alias)
   expect(renderer.poolReleaseEpoch.get(alias.texture)).toBe(3)
 })
-test('a current-frame texture crossing the batch byte limit invalidates the entire proof',async()=>{
+test('real upload retirement waits when a current-frame texture crosses the batch byte limit',async()=>{
   const {renderer,driver,MiB}=completedPoolFixture();renderer.free.clear();renderer.bytes=120*MiB
   for(const [epoch,bytes] of [[1,47*MiB],[2,2*MiB]]){
     driver.resourceEpoch=epoch
     const texture={width:1,height:1,bytes,resource:{}} as Texture
     renderer.busy.add(texture);renderer.release({texture,rect:{x:0,y:0,w:1,h:1}})
   }
+  renderer.retiredUploads.push({width:1,height:1,bytes:16,resource:{}} as Texture)
   await renderer.reclaimScratch()
   expect((driver.checkpoint as any).mock.calls[0]).toHaveLength(2)
 })

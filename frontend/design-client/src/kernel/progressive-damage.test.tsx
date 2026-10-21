@@ -144,7 +144,10 @@ function surfaceHarness(seedResidents: boolean | RasterTile[] = true, sourceDoc 
     return output
   }
   const dispose = () => [...effectSlots, ...layoutSlots].forEach(slot => slot?.cleanup?.())
-  return { doc, keys, render, dispose }
+  return { doc, keys, render, dispose,
+    // Read-only planning inspection; active plan ids are nested in an object,
+    // so a future capture key in a top-level Set is its residency protection.
+    residentSets: () => refs.map(ref => ref.current).filter(value => value instanceof Set) as Set<string>[] }
 }
 
 const harnesses: ReturnType<typeof surfaceHarness>[] = []
@@ -602,6 +605,141 @@ test('integer-pixel pan keeps canonical resident hits without a settle reraster'
   h.render(options); await flushRasterWork()
   expect(worker.plannedPhases.every(phase => phase.x === 0 && phase.y === 0)).toBe(true)
   expect(worker.calls).toHaveLength(1)
+})
+
+async function acknowledgedNavigationCapture(h: ReturnType<typeof harness>, options: any, index: number,
+  gpuTile: number, deviceOwner = 1) {
+  await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(index))
+  worker.calls[index].resolve({ gpuTile }); await settleRejected()
+  let compositor = surfaceParts(h.render(options)).compositor
+  const tile = compositor.props.items.find((item: any) => item.tile.gpuTile === gpuTile).tile
+  compositor.props.onReady(tile.key, tile.serial, false)
+  compositor = surfaceParts(h.render(options)).compositor
+  compositor.props.onPresented({ view: options.view, width: options.width, height: options.height,
+    dpr: worker.dpr, interaction: false, ids: [gpuTile] }, undefined,
+    { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner })
+  h.render(options)
+  return tile
+}
+
+async function navigationReturnFixture() {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
+  const h = harness(false), first = { backend: 'webgpu', width: 512, height: 256,
+    view: { x: -12.125, y: 7.375, zoom: 2 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: first.view } }
+  h.render(first)
+  const a = await acknowledgedNavigationCapture(h, first, 0, 801)
+  const second = { ...first, view: { ...first.view, x: first.view.x - 20 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 2, view: second.view } }
+  h.render(second)
+  const b = await acknowledgedNavigationCapture(h, second, 1, 802)
+  return { h, first, second, a, b }
+}
+
+test('default whole-navigation revisits retain the actual acknowledged texture after idle without a worker render', async () => {
+  const { h, first, a } = await navigationReturnFixture(), before = worker.calls.length
+  const now = performance.now(), clock = vi.spyOn(performance, 'now').mockReturnValue(now + 60_000)
+  try {
+    worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 3, view: first.view } }
+    h.render(first); await settleRejected()
+    const compositor = surfaceParts(h.render(first)).compositor
+    expect(worker.calls).toHaveLength(before)
+    expect(compositor.props.items.find((item: any) => item.tile === a)?.active).toBe(true)
+    expect(a.gpuTile).toBe(801)
+    expect(compositor.props.reuseSequence).toBeGreaterThan(0) // Force a real presentation/input ACK of reused pixels.
+    expect(compositor.props.view).toEqual(first.view)
+  } finally { clock.mockRestore() }
+})
+
+test.each(['document', 'dpr', 'device-owner'] as const)('whole-navigation revisit cannot cross %s ownership', async kind => {
+  const { h, first, second, a } = await navigationReturnFixture(), before = worker.calls.length
+  let returning: any = first
+  if (kind === 'document') returning = { ...first, document: { ...h.doc, nodes: { ...h.doc.nodes } } }
+  if (kind === 'dpr') worker.dpr = 2
+  if (kind === 'device-owner') {
+    const compositor = surfaceParts(h.render(second)).compositor
+    compositor.props.onPresented({ view: second.view, width: second.width, height: second.height,
+      dpr: 1, interaction: false, ids: [802] }, undefined,
+      { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 2 })
+    expect(surfaceParts(h.render(second)).compositor.props.items.some((item: any) => item.tile === a)).toBe(false)
+  }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 3, view: first.view } }
+  h.render(returning); await settleRejected()
+  expect(worker.calls).toHaveLength(before + 1)
+  expect(worker.calls.at(-1).options.livePreview).toBe(true)
+})
+
+test.each(['text', 'plain-image'] as const)('default %s navigation reuses covering physical-density tiles before a redundant coarse capture', async kind => {
+  vi.stubGlobal('WebGL2RenderingContext', class {}); vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
+  const h = harness(), source = makeNode(kind === 'text' ? 'text' : 'rectangle')
+  if (kind === 'plain-image') source.fills[0] = { ...source.fills[0], kind: 'image', image: 'data:image/png;base64,unchanged-source' }
+  h.doc.nodes[source.id] = source; h.doc.pages[0].children.push(source.id)
+  const options = { backend: 'webgpu', width: 512, height: 256, view: { x: 0, y: 0, zoom: 4 } }
+  h.render(options); await flushRasterWork(); h.render(options)
+  const before = worker.calls.length
+  const tree = surfaceParts(h.render(options)).compositor
+  // Transport-double handles stand in only for the parent's existing ready
+  // residents. This does not exercise the child GPU compositor or pixels.
+  tree.props.items.forEach((item: any, index: number) => { item.tile.gpuTile = 900 + index })
+  tree.props.onPresented({ view: options.view, width: options.width, height: options.height,
+    dpr: worker.dpr, interaction: false, ids: tree.props.items.map((item: any) => item.tile.gpuTile) }, undefined,
+    { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 1 })
+  h.render(options)
+  const next = { ...options, view: { x: -20, y: -10, zoom: 4 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: next.view } }
+  h.render(next); await settleRejected()
+  const compositor = surfaceParts(h.render(next)).compositor
+  expect(worker.calls).toHaveLength(before)
+  expect(compositor.props.reuseSequence).toBeGreaterThan(0)
+  expect(compositor.props.items.some((item: any) => item.active)).toBe(true)
+})
+
+test.each(['under-density', 'partial-coverage'] as const)('navigation still captures when cached tiles have %s', async kind => {
+  vi.stubGlobal('WebGL2RenderingContext', class {}); vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
+  const h = harness(), options = { backend: 'webgpu', width: 512, height: 256, view: { x: 0, y: 0, zoom: 4 } }
+  h.render(options); await flushRasterWork(); h.render(options)
+  const ready = surfaceParts(h.render(options)).compositor
+  ready.props.items.forEach((item: any, index: number) => { item.tile.gpuTile = 950 + index })
+  ready.props.onPresented({ view: options.view, width: options.width, height: options.height,
+    dpr: worker.dpr, interaction: false, ids: ready.props.items.map((item: any) => item.tile.gpuTile) }, undefined,
+    { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 1 })
+  h.render(options)
+  const before = worker.calls.length, next = { ...options, view: kind === 'under-density'
+    ? { x: 0, y: 0, zoom: 8 } : { x: -1500, y: 0, zoom: 4 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: next.view } }
+  h.render(next); await settleRejected()
+  expect(worker.calls).toHaveLength(before + 1)
+  expect(worker.calls.at(-1).options.livePreview).toBe(true)
+})
+
+test('navigation cannot reuse old-device native tiles after a new owner acknowledges its frame', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {}); vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
+  const h = harness(), options = { backend: 'webgpu', width: 512, height: 256, view: { x: 0, y: 0, zoom: 4 } }
+  h.render(options); await flushRasterWork(); h.render(options)
+  const first = surfaceParts(h.render(options)).compositor
+  first.props.items.forEach((item: any, index: number) => { item.tile.gpuTile = 980 + index })
+  const owner = { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 1 }
+  first.props.onPresented({ view: options.view, width: options.width, height: options.height, dpr: 1,
+    interaction: false, ids: [980, 981] }, undefined, owner)
+  let current = surfaceParts(h.render(options)).compositor
+  expect(current.props.items).toHaveLength(2) // First known owner preserves the just-ACKed native frame.
+  current.props.onPresented({ view: options.view, width: options.width, height: options.height, dpr: 1,
+    interaction: false, ids: [] }, undefined, { ...owner, deviceIncarnation: 2, deviceOwner: 2 })
+  const changed = surfaceParts(h.render(options))
+  current = changed.compositor
+  // The previous displayed-frame handoff may remain mounted until repair.
+  // It is no longer active cache residency or a certificate for this owner.
+  expect(changed.wrapper.props['data-tile-count']).toBe(0)
+  const before = worker.calls.length, next = { ...options, view: { x: -20, y: -10, zoom: 4 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: next.view } }
+  h.render(next); await settleRejected()
+  expect(worker.calls).toHaveLength(before + 1)
+  expect(worker.calls.at(-1).options.livePreview).toBe(true)
 })
 
 test('many resizes of a blocked navigation sample retain only the latest waiting extent', async () => {
@@ -1162,6 +1300,115 @@ function sharpSurfaceHost() {
   worker.dpr = 2; worker.dynamicPlan = true; worker.zooming = true; worker.cameraMoving = true
 }
 
+test('gesture headroom routes adjacent filtered zooms to the same canonical tile density and repairs exact phase at quiet', async () => {
+  sharpSurfaceHost()
+  vi.stubEnv('VITE_DESIGN_SHARP_ZOOM', '0')
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+  worker.forceLod = true
+  const h = harness(false), blur = makeNode('rectangle')
+  blur.effects = [makeEffect('blur')]
+  h.doc.nodes[blur.id] = blur; h.doc.pages[0].children.push(blur.id)
+  const options = { width: 256, height: 128, rasterProfile: 'figmaSubpixel' }
+  const views = [{ x: -.125, y: .375, zoom: .51 }, { x: -.125, y: .375, zoom: .55 }]
+  // A cold document's separate one-time startup preview is outside this
+  // navigation routing contract. Finish it before the first moving input.
+  worker.zooming = false; worker.cameraMoving = false
+  h.render({ ...options, view: { ...views[0], zoom: .5 } })
+  await flushRasterWork(); await settleRejected()
+  worker.zooming = true; worker.cameraMoving = true
+  const densities: number[] = [], cameras: any[] = [], tileKeys: string[][] = []
+  for (let i = 0; i < views.length; i++) {
+    const view = views[i], before = worker.calls.length
+    worker.navigation = { active: true, suspended: false, sample: { active: true, view, sequence: i + 1 } }
+    const output = h.render({ ...options, view })
+    await flushRasterWork(); await settleRejected()
+    const calls = worker.calls.slice(before).filter(call => call.options.tileViewport?.length)
+    expect(calls.length).toBeGreaterThan(0)
+    expect(worker.calls.slice(before).every(call => call.options.renderIntent === 'canvas')).toBe(true)
+    for (const call of calls) {
+      expect(call.options.view).toEqual({ x: 0, y: 0,
+        zoom: 2 ** ((Math.ceil(Math.log2(view.zoom * worker.dpr) * 4) + 1) / 4) })
+      expect(call.options.tileViewport.every((tile: RasterTile) => tile.zoom >= view.zoom * worker.dpr)).toBe(true)
+    }
+    densities.push(calls[0].options.view.zoom); cameras.push(calls[0].options.view)
+    tileKeys.push(calls.flatMap(call => call.options.tileViewport.map((tile: RasterTile) => tile.key)))
+    const { wrapper } = surfaceParts(output)
+    expect(wrapper.props['data-navigation-zoom-active']).toBe('false')
+    expect(wrapper.props['data-motion-preview']).toBe('false')
+    expect(wrapper.props['data-lod-scale']).toBe(0)
+    expect(wrapper.props['data-raster-phase-exact']).toBe('false')
+    expect(wrapper.props['data-detail-ready']).toBe('false')
+  }
+  expect(densities[1]).toBe(densities[0]); expect(cameras[1]).toEqual(cameras[0])
+  expect(tileKeys[1].every(key => tileKeys[0].includes(key))).toBe(true)
+  expect(worker.navigationEnabled.every(enabled => !enabled)).toBe(true)
+  const beforeQuiet = worker.calls.length
+  worker.zooming = false; worker.cameraMoving = false
+  const quiet = h.render({ ...options, view: views[1] })
+  await flushRasterWork(); await settleRejected()
+  const repair = worker.calls.slice(beforeQuiet).find(call => call.options.tileViewport?.length)
+  expect(repair).toBeDefined()
+  expect(repair.options.view).toEqual({ x: -.25, y: .75, zoom: 1.1 })
+  expect(repair.options.tileViewport.every((tile: RasterTile) => tile.zoom === 1.1 && tile.phaseX === .75 && tile.phaseY === .75)).toBe(true)
+  expect(surfaceParts(quiet).wrapper.props['data-raster-phase-exact']).toBe('true')
+  // Planning is exact now; controlled transport has not produced/presented pixels.
+  expect(surfaceParts(quiet).wrapper.props['data-detail-ready']).toBe('false')
+})
+
+test('fixed world gesture capture shares adjacent inputs and still queues native repair after real sharp quiet', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+    const { h, first, request } = await sequentialSurface(), before = worker.calls.length
+    const expectedScale = 2 ** ((Math.ceil(Math.log2(first.view.zoom * worker.dpr) * 4) + 1) / 4)
+    expect(request.options.view).toEqual({ x: 0, y: 0, zoom: expectedScale })
+    expect(request.options.width).toBe(896); expect(request.options.height).toBe(512)
+    const adjacent = { ...first, view: { x: 0, y: 0, zoom: 1.02 } }
+    h.render(adjacent); await settleRejected()
+    expect(worker.calls).toHaveLength(before); expect(request.signal.aborted).toBe(false)
+    // The next ceil-rung boundary remains within the same capture's headroom.
+    // Quiet must release that speculative density and return to native tiles.
+    const boundary = { ...first, view: { x: 0, y: 0, zoom: 2 ** .25 } }
+    h.render(boundary); await settleRejected()
+    expect(worker.calls).toHaveLength(before)
+    worker.cameraMoving = false
+    await vi.advanceTimersByTimeAsync(101)
+    h.render(boundary); await settleRejected()
+    request.resolve({ gpuTile: 1702 }); await settleRejected()
+    h.render(boundary); await settleRejected()
+    const final = worker.calls.slice(before).find(call => call.options.tileViewport?.length)
+    expect(final).toBeDefined()
+    expect(final.options.renderIntent).toBe('canvas')
+    expect(final.options.sequentialViewport).toBeUndefined()
+    expect(final.options.view.zoom).toBe(boundary.view.zoom * worker.dpr)
+    expect(final.options.tileViewport.every((tile: RasterTile) => tile.zoom === boundary.view.zoom * worker.dpr)).toBe(true)
+  } finally { vi.useRealTimers() }
+})
+
+test.each(['pixel', 'grid', 'checkerboard', 'hdr'] as const)('gesture headroom leaves the mounted %s route identical to its flag-off control', async reason => {
+  sharpSurfaceHost()
+  vi.stubEnv('VITE_DESIGN_SHARP_ZOOM', '0')
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+  if (reason === 'hdr') worker.policy.hdrCompositing = true
+  const h = harness(false), view = { x: .125, y: -.375, zoom: 1.01 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, view, sequence: 1 } }
+  const options = { view, width: 256, height: 128, rasterProfile: 'figmaSubpixel',
+    ...(reason === 'pixel' ? { pixelPreview: 1 } : reason === 'grid' ? { grid: true } :
+      reason === 'checkerboard' ? { checkerboard: true } : {}) }
+  h.render(options); await flushRasterWork(); await settleRejected()
+  const first = worker.calls.slice(), before = worker.calls.length
+  expect(first.some(call => call.options.tileViewport?.length)).toBe(true)
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '0')
+  const reference = harness(false)
+  reference.render(options); await flushRasterWork(); await settleRejected()
+  const project = (calls: any[]) => calls.filter(call => call.options.tileViewport?.length).map(call => ({
+    view: call.options.view, tiles: call.options.tileViewport, rasterProfile: call.options.rasterProfile,
+    pixelPreview: call.options.pixelPreview, grid: call.options.grid, checkerboard: call.options.checkerboard,
+    renderIntent: call.options.renderIntent, livePreview: call.options.livePreview,
+  }))
+  expect(project(worker.calls.slice(before))).toEqual(project(first))
+})
+
 test('eligible filtered desktop wheel inputs schedule screen-density tiles instead of the one-megapixel navigation preview', async () => {
   sharpSurfaceHost(); worker.forceLod = true
   const h = harness(false), blur = makeNode('rectangle')
@@ -1286,4 +1533,306 @@ test.each(['pixel', 'grid', 'checkerboard', 'hdr'] as const)('sharp zoom leaves 
     renderIntent: call.options.renderIntent,
   }))
   expect(project(worker.calls.slice(before))).toEqual(project(admitted))
+})
+
+/** Parent hooks and ownership only. Deferred worker outputs are controlled;
+ * these do not establish GPU memory, quality, clarity or timing acceptance. */
+async function sequentialSurface() {
+  sharpSurfaceHost(); vi.stubEnv('VITE_DESIGN_SEQUENTIAL_DISPLAY', '1')
+  const h = harness(false), initial = { x: 0, y: 0, zoom: 1 }
+  const options = { view: initial, width: 256, height: 128, rasterProfile: 'figmaSubpixel' }
+  h.render(options); await flushRasterWork(); await settleRejected()
+  const first = { ...options, view: { ...initial, zoom: 1.01 } }
+  h.render(first); await settleRejected()
+  const request = worker.calls.at(-1)
+  expect(request.options.sequentialViewport).toBe(true)
+  return { h, first, request }
+}
+
+test('sequential whole-viewport capture stays native and same-bucket input retains valid work with a live presentation plan', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first, request } = await sequentialSurface(), before = worker.calls.length
+    expect(request.options.renderIntent).toBe('preview'); expect(request.options.livePreview).toBe(true)
+    expect(request.options.tileViewport).toBeUndefined()
+    expect(request.options.width).toBeGreaterThanOrEqual(first.width * worker.dpr)
+    expect(request.options.height).toBeGreaterThanOrEqual(first.height * worker.dpr)
+    const latest = { ...first, view: { x: 0, y: 0, zoom: 1.02 } }
+    h.render(latest); await settleRejected()
+    expect(worker.calls).toHaveLength(before); expect(request.signal.aborted).toBe(false)
+    request.resolve({ gpuTile: 701 }); await settleRejected()
+    const { compositor } = surfaceParts(h.render(latest))
+    const tile = compositor.props.items.find((item: any) => item.tile.gpuTile === 701).tile
+    compositor.props.onReady(tile.key, tile.serial, false)
+    const ready = surfaceParts(h.render(latest)).compositor
+    expect(ready.props.view).toEqual(latest.view)
+    expect(ready.props.items.some((item: any) => item.tile.gpuTile === 701 && item.active)).toBe(true)
+    await settleRejected()
+    expect(worker.calls.length).toBeGreaterThan(before) // Completion wakes the latest camera once.
+    worker.calls.at(-1).resolve({ gpuTile: 705 }); await settleRejected()
+    const successor = surfaceParts(h.render(latest)).compositor
+    const latestTile = successor.props.items.find((item: any) => item.tile.gpuTile === 705).tile
+    successor.props.onReady(latestTile.key, latestTile.serial, false)
+    const settled = surfaceParts(h.render(latest)).compositor
+    expect(settled.props.settledDocument).toBe(h.doc)
+    settled.props.onPresented({ view: latest.view, width: first.width, height: first.height, dpr: worker.dpr,
+      interaction: false, ids: [705] })
+    expect(surfaceParts(h.render(latest)).wrapper.props['data-frame-publication']).toBe('complete')
+  } finally { vi.useRealTimers() }
+})
+
+test('quiet final input schedules exact native repair while a previous sequential capture is still in flight', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first, request } = await sequentialSurface(), before = worker.calls.length
+    // Exact bucket boundary: quiet changes neither density nor raster phase.
+    // The explicit zooming dependency must still start the final native plan.
+    const latest = { ...first, view: { x: 0, y: 0, zoom: 2 ** (1 / 8) } }
+    h.render(latest); await settleRejected()
+    expect(worker.calls).toHaveLength(before)
+    await vi.advanceTimersByTimeAsync(101)
+    h.render(latest); await settleRejected()
+    // The mailbox remains serialized until old work settles, but the quiet
+    // effect has queued the final native plan without needing another input.
+    request.resolve({ gpuTile: 702 }); await settleRejected()
+    h.render(latest); await settleRejected()
+    const final = worker.calls.slice(before).find(call => call.options.tileViewport?.length)
+    expect(final).toBeDefined()
+    expect(final.options.view.zoom).toBe(latest.view.zoom * worker.dpr)
+    expect(final.options.sequentialViewport).toBeUndefined()
+    expect(final.options.tileViewport.every((tile: RasterTile) => tile.zoom === latest.view.zoom * worker.dpr)).toBe(true)
+  } finally { vi.useRealTimers() }
+})
+
+test('crossing several density buckets keeps one running capture and replaces only the latest queued goal', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first, request } = await sequentialSurface(), before = worker.calls.length
+    let latest = first
+    for (const zoom of [1.02, 1.2, 2.1, 1.3, 1.6]) {
+      latest = { ...first, view: { x: 0, y: 0, zoom } }
+      h.render(latest); await settleRejected()
+      expect(request.signal.aborted).toBe(false)
+      expect(worker.calls).toHaveLength(before)
+    }
+    request.resolve({ gpuTile: 706 }); await settleRejected()
+    let compositor = surfaceParts(h.render(latest)).compositor
+    const oldTile = compositor.props.items.find((item: any) => item.tile.gpuTile === 706).tile
+    compositor.props.onReady(oldTile.key, oldTile.serial, false)
+    ;({ compositor } = surfaceParts(h.render(latest)))
+    // Same-content old pixels remain available as coverage, but their actual
+    // density is below this camera and cannot certify a clear completed frame.
+    expect(compositor.props.items.some((item: any) => item.tile.gpuTile === 706 && item.active)).toBe(true)
+    expect(compositor.props.settledDocument).toBeUndefined()
+    expect(surfaceParts(h.render(latest)).wrapper.props['data-detail-ready']).toBe('false')
+    await settleRejected()
+    expect(worker.calls).toHaveLength(before + 1)
+    const successor = worker.calls.at(-1)
+    expect(successor.options.sequentialViewport).toBe(true)
+    expect(successor.options.view.zoom).toBeGreaterThanOrEqual(latest.view.zoom * worker.dpr)
+    expect(successor.options.view.zoom).toBeLessThanOrEqual(latest.view.zoom * worker.dpr * 2 ** (1 / 8) + 1e-12)
+    expect(worker.clients[0].releasePresented).not.toHaveBeenCalledWith([706])
+  } finally { vi.useRealTimers() }
+})
+
+test('a density-crossing capture may finish after quiet and retain pixels while the final native plan starts', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first, request } = await sequentialSurface(), before = worker.calls.length
+    const latest = { ...first, view: { x: 0, y: 0, zoom: 1.2 } }
+    h.render(latest); await settleRejected()
+    expect(request.signal.aborted).toBe(false); expect(worker.calls).toHaveLength(before)
+    await vi.advanceTimersByTimeAsync(101)
+    h.render(latest); await settleRejected()
+    expect(request.signal.aborted).toBe(false)
+    request.resolve({ gpuTile: 707 }); await settleRejected()
+    const compositor = surfaceParts(h.render(latest)).compositor
+    expect(compositor.props.items.some((item: any) => item.tile.gpuTile === 707)).toBe(true)
+    expect(compositor.props.settledDocument).toBeUndefined()
+    await settleRejected()
+    const final = worker.calls.slice(before).find(call => call.options.tileViewport?.length)
+    expect(final).toBeDefined(); expect(final.options.sequentialViewport).toBeUndefined()
+    expect(final.options.view.zoom).toBe(latest.view.zoom * worker.dpr)
+    expect(worker.calls.slice(before).every(call => !call.options.sequentialViewport)).toBe(true)
+    expect(worker.clients[0].releasePresented).not.toHaveBeenCalledWith([707])
+  } finally { vi.useRealTimers() }
+})
+
+test('an exact rejected sequential capture stays on native tiles while a new same-density camera may retry', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first, request } = await sequentialSurface()
+    const onRenderFailure = vi.fn(), before = worker.calls.length
+    request.reject(Error('SEQUENTIAL_DISPLAY_UNSUPPORTED')); await settleRejected()
+    expect(worker.calls.slice(before).some(call => call.options.tileViewport?.length)).toBe(true)
+    await flushRasterWork(); await settleRejected()
+    worker.cameraMoving = false // Rerun the same capture without changing its camera or density.
+    h.render({ ...first, onRenderFailure }); await settleRejected()
+    expect(worker.calls.filter(call => call.options.sequentialViewport)).toHaveLength(1)
+    expect(onRenderFailure).not.toHaveBeenCalled()
+    await flushRasterWork(); await settleRejected()
+    h.render({ ...first, onRenderFailure, view: { ...first.view, x: -1 } }); await settleRejected()
+    expect(worker.calls.filter(call => call.options.sequentialViewport)).toHaveLength(2)
+    const moved = worker.calls.at(-1)
+    expect(moved.options.sequentialViewport).toBe(true)
+    expect(moved.options.view.zoom).toBe(request.options.view.zoom)
+    expect(moved.options.view.x).not.toBe(request.options.view.x)
+    moved.reject(Error('SEQUENTIAL_DISPLAY_UNSUPPORTED')); await settleRejected()
+    await flushRasterWork(); await settleRejected()
+    h.render({ ...first, onRenderFailure }); await settleRejected()
+    expect(worker.calls.filter(call => call.options.sequentialViewport)).toHaveLength(2)
+    expect(onRenderFailure).not.toHaveBeenCalled()
+  } finally { vi.useRealTimers() }
+})
+
+test('sequential capability rejection history is bounded to the latest 64 exact captures', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first, request } = await sequentialSurface()
+    let current = request
+    for (let i = 0; i < 65; i++) {
+      current.reject(Error('SEQUENTIAL_DISPLAY_UNSUPPORTED')); await settleRejected()
+      await flushRasterWork(); await settleRejected()
+      if (i < 64) {
+        h.render({ ...first, view: { ...first.view, x: -i - 1 } }); await settleRejected()
+        current = worker.calls.at(-1)
+        expect(current.options.sequentialViewport).toBe(true)
+      }
+    }
+    expect(worker.calls.filter(call => call.options.sequentialViewport)).toHaveLength(65)
+    h.render(first); await settleRejected()
+    expect(worker.calls.filter(call => call.options.sequentialViewport)).toHaveLength(66)
+    expect(worker.calls.at(-1).options.view).toEqual(request.options.view)
+  } finally { vi.useRealTimers() }
+})
+
+test('a real sequential device failure stays in the existing failure path', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first, request } = await sequentialSurface(), onRenderFailure = vi.fn()
+    h.render({ ...first, onRenderFailure })
+    const before = worker.calls.length
+    request.reject(Error('GPU device lost: SEQUENTIAL_DISPLAY_UNSUPPORTED')); await settleRejected()
+    expect(onRenderFailure).toHaveBeenCalledTimes(1)
+    expect(worker.calls).toHaveLength(before)
+  } finally { vi.useRealTimers() }
+})
+
+test('same-camera coalescing cannot strand native fallback after sequential capability rejection', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first, request } = await sequentialSurface(), before = worker.calls.length
+    worker.cameraMoving = false // Effect changes while the sharp quiet interval is still active.
+    h.render(first); await settleRejected()
+    expect(worker.calls).toHaveLength(before)
+    request.reject(Error('SEQUENTIAL_DISPLAY_UNSUPPORTED')); await settleRejected()
+    h.render(first); await settleRejected()
+    expect(worker.calls.filter(call => call.options.sequentialViewport)).toHaveLength(1)
+    expect(worker.calls.slice(before).some(call => call.options.tileViewport?.length)).toBe(true)
+  } finally { vi.useRealTimers() }
+})
+
+test('a moving-camera capability rejection gives a real native batch a turn before another optional capture', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first, request } = await sequentialSurface(), before = worker.calls.length
+    const latest = { ...first, view: { x: -2, y: 0, zoom: 1.2 } }
+    h.render(latest); await settleRejected()
+    request.reject(Error('SEQUENTIAL_DISPLAY_UNSUPPORTED')); await settleRejected()
+    h.render(latest); await settleRejected()
+    // Synchronization, if still needed, is not itself the owed raster batch.
+    for (const call of worker.calls.slice(before).filter(call => call.options.tileViewport?.length === 0)) call.resolve()
+    await settleRejected()
+    const repair = worker.calls.slice(before).find(call => call.options.tileViewport?.length)
+    expect(repair).toBeDefined(); expect(repair.options.sequentialViewport).toBeUndefined()
+    expect(repair.options.renderIntent).toBe('canvas')
+    const cancellations = worker.clients[0].cancelTileFill.mock.calls.length
+    for (const zoom of [1.3, 1.6, 2.1]) {
+      h.render({ ...latest, view: { ...latest.view, zoom } }); await settleRejected()
+      expect(worker.calls.filter(call => call.options.sequentialViewport)).toHaveLength(1)
+      expect(worker.clients[0].cancelTileFill).toHaveBeenCalledTimes(cancellations)
+    }
+    repair.resolve(); await settleRejected()
+    h.render({ ...latest, view: { ...latest.view, zoom: 2.1 } }); await settleRejected()
+    expect(worker.calls.length).toBeGreaterThan(before)
+  } finally { vi.useRealTimers() }
+})
+
+test('a pending whole capture replaces obsolete native-plan protection even before it owns visible pixels', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first } = await sequentialSurface()
+    const protection = h.residentSets().find(set => [...set].some(key => key.startsWith('sequential-viewport:')))
+    expect(protection).toBeDefined(); expect(protection!.size).toBe(1)
+    expect(h.keys.some(key => protection!.has(key))).toBe(false)
+    h.render({ ...first, view: { ...first.view, x: -1000, zoom: 2 } }); await settleRejected()
+    // The one immutable pending result stays protected as useful history;
+    // the previous native plan's keys do not accumulate alongside it.
+    const pending = h.residentSets().find(set => [...set].some(key => key.startsWith('sequential-viewport:')))
+    expect(pending).toEqual(protection)
+    expect(surfaceParts(h.render({ ...first, view: { ...first.view, x: -1000, zoom: 2 } })).wrapper.props['data-detail-ready']).toBe('false')
+  } finally { vi.useRealTimers() }
+})
+
+test('the original whole-viewport candidate does not submit while the surface is hidden', async () => {
+  sharpSurfaceHost(); vi.stubEnv('VITE_DESIGN_ORIGINAL_VIEWPORT_CAPTURE', '1'); vi.stubEnv('VITE_DESIGN_SEQUENTIAL_DISPLAY', '0')
+  const h = harness(false), options = { view: { x: 0, y: 0, zoom: 1.01 }, width: 256, height: 128,
+    rasterProfile: 'figmaSubpixel', visible: false }
+  h.render(options); await settleRejected()
+  expect(worker.calls).toHaveLength(0)
+  h.render({ ...options, visible: true }); await settleRejected()
+  expect(worker.calls.length).toBeGreaterThan(0)
+})
+
+test.each(['width', 'height', 'dpr', 'pause', 'visibility', 'suspend'] as const)(
+  'sequential %s cancellation cannot leave a dead pending owner blocking a replacement', async change => {
+    vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+    try {
+      const { h, first, request } = await sequentialSurface(), before = worker.calls.length
+      const override = change === 'width' ? { width: first.width + 64 } : change === 'height' ? { height: first.height + 32 } :
+        change === 'pause' ? { paused: true } : change === 'visibility' ? { visible: false } : {}
+      if (change === 'dpr') worker.dpr = 3
+      if (change === 'suspend') worker.navigation.suspended = true
+      h.render({ ...first, ...override }); await settleRejected()
+      expect(request.signal.aborted).toBe(true)
+      request.resolve({ gpuTile: 703 }); await settleRejected()
+      if (change === 'pause' || change === 'visibility' || change === 'suspend') {
+        expect(worker.calls).toHaveLength(before)
+        worker.navigation.suspended = false
+        h.render({ ...first, visible: true, paused: false }); await settleRejected()
+      }
+      const replacement = worker.calls.slice(before).find(call => call.options.sequentialViewport)
+      expect(replacement).toBeDefined(); expect(replacement.signal.aborted).toBe(false)
+      expect(worker.clients[0].releasePresented).toHaveBeenCalledWith([703])
+      expect(replacement.options.width).toBeGreaterThanOrEqual((override.width || first.width) * worker.dpr)
+      expect(replacement.options.height).toBeGreaterThanOrEqual((override.height || first.height) * worker.dpr)
+    } finally { vi.useRealTimers() }
+  },
+)
+
+test('a sequential capture from an older authored document can never become current display coverage', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, first, request } = await sequentialSurface()
+    const changed = { ...h.doc, nodes: { ...h.doc.nodes }, name: 'edited while capture pending' }
+    const options = { ...first, document: changed }
+    h.render(options); await settleRejected()
+    expect(request.signal.aborted).toBe(true)
+    request.resolve({ gpuTile: 708 }); await settleRejected()
+    const compositor = surfaceParts(h.render(options)).compositor
+    expect(worker.clients[0].releasePresented).toHaveBeenCalledWith([708])
+    expect(compositor.props.items.some((item: any) => item.tile.gpuTile === 708)).toBe(false)
+    expect(compositor.props.settledDocument).toBeUndefined()
+  } finally { vi.useRealTimers() }
+})
+
+test('unmount cancels a pending sequential capture and never publishes its late payload', async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] })
+  try {
+    const { h, request } = await sequentialSurface(), before = worker.calls.length
+    h.dispose(); expect(request.signal.aborted).toBe(true)
+    request.resolve({ gpuTile: 704 }); await settleRejected()
+    expect(worker.calls).toHaveLength(before)
+    expect(worker.clients[0].releasePresented).toHaveBeenCalledWith([704])
+  } finally { vi.useRealTimers() }
 })

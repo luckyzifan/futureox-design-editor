@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="162" viewBox="0 0 1600 162" style="font-family:monospace"><title>fig · extended-undo-edit · render-worker — timeDeltas weighted active CPU stacks; not a timeline</title><g><title>fig · extended-undo-edit · render-worker — 56.281 ms cumulative active samples
+
+</title><rect x="0.000" y="144" width="1599.700" height="17" fill="hsl(52 80% 72%)"/><text x="2.000" y="156" font-size="10">fig · extended-undo-edit · render-worker</text></g><g><title>(anonymous) — 16.348 ms cumulative active samples
+../../src/kernel/render-worker.ts:553:17
+design-app://app/assets/render-worker-hEm-Dt3g.js:4037:28763</title><rect x="0.000" y="126" width="464.454" height="17" fill="hsl(30 80% 72%)"/><text x="2.000" y="138" font-size="10">(anonymous)</text></g><g><title>failureAttempt — 6.242 ms cumulative active samples
+../../src/kernel/render-worker.ts:75:9
+design-app://app/assets/render-worker-hEm-Dt3g.js:4037:15456</title><rect x="0.000" y="108" width="177.152" height="17" fill="hsl(57 80% 72%)"/><text x="2.000" y="120" font-size="10">failureAttempt</text></g><g><title>run — 6.242 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:75:1
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:21048</title><rect x="0.000" y="90" width="177.152" height="17" fill="hsl(49 80% 72%)"/><text x="2.000" y="102" font-size="10">run</text></g><g><title>withRenderFailureStage — 6.242 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:61:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:19010</title><rect x="0.000" y="72" width="177.152" height="17" fill="hsl(22 80% 72%)"/><text x="2.000" y="84" font-size="10">withRenderFailureStage</text></g><g><title>(anonymous) — 6.242 ms cumulative active samples
+../../src/kernel/render-worker.ts:782:38
+design-app://app/assets/render-worker-hEm-Dt3g.js:4037:35508</title><rect x="0.000" y="54" width="177.152" height="17" fill="hsl(30 80% 72%)"/><text x="2.000" y="66" font-size="10">(anonymous)</text></g><g><title>applyDocumentPatch — 6.242 ms cumulative active samples
+../../src/document-patch.ts:145:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:23561</title><rect x="0.000" y="36" width="177.152" height="17" fill="hsl(45 80% 72%)"/><text x="2.000" y="48" font-size="10">applyDocumentPatch</text></g><g><title>record — 2.508 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:5821</title><rect x="177.452" y="108" width="70.999" height="17" fill="hsl(57 80% 72%)"/><text x="179.452" y="120" font-size="10">record</text></g><g><title>sanitizeFields — 1.257 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:3163</title><rect x="177.452" y="90" width="35.435" height="17" fill="hsl(38 80% 72%)"/><text x="179.452" y="102" font-size="10">sanit</text></g><g><title>certified — 1.259 ms cumulative active samples
+../../src/kernel/owner-tile-cache.ts:25:18
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:78069</title><rect x="248.752" y="108" width="35.492" height="17" fill="hsl(51 80% 72%)"/><text x="250.752" y="120" font-size="10">certi</text></g><g><title>certified — 1.259 ms cumulative active samples
+../../src/kernel/exact-tile-cache.ts:53:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:76559</title><rect x="248.752" y="90" width="35.492" height="17" fill="hsl(51 80% 72%)"/><text x="250.752" y="102" font-size="10">certi</text></g><g><title>report — 1.259 ms cumulative active samples
+../../src/kernel/exact-tile-cache.ts:35:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:76312</title><rect x="248.752" y="72" width="35.492" height="17" fill="hsl(56 80% 72%)"/><text x="250.752" y="84" font-size="10">repor</text></g><g><title>record — 1.259 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:5821</title><rect x="248.752" y="54" width="35.492" height="17" fill="hsl(57 80% 72%)"/><text x="250.752" y="66" font-size="10">recor</text></g><g><title>get — 1.255 ms cumulative active samples
+../../src/kernel/owner-tile-cache.ts:24:6
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:78029</title><rect x="284.544" y="108" width="35.378" height="17" fill="hsl(38 80% 72%)"/><text x="286.544" y="120" font-size="10">get</text></g><g><title>get — 1.255 ms cumulative active samples
+../../src/kernel/exact-tile-cache.ts:36:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:76363</title><rect x="284.544" y="90" width="35.378" height="17" fill="hsl(38 80% 72%)"/><text x="286.544" y="102" font-size="10">get</text></g><g><title>report — 1.255 ms cumulative active samples
+../../src/kernel/exact-tile-cache.ts:35:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:76312</title><rect x="284.544" y="72" width="35.378" height="17" fill="hsl(56 80% 72%)"/><text x="286.544" y="84" font-size="10">repor</text></g><g><title>record — 1.255 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:5821</title><rect x="284.544" y="54" width="35.378" height="17" fill="hsl(57 80% 72%)"/><text x="286.544" y="66" font-size="10">recor</text></g><g><title>sanitizeFields — 1.255 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:3163</title><rect x="284.544" y="36" width="35.378" height="17" fill="hsl(38 80% 72%)"/><text x="286.544" y="48" font-size="10">sanit</text></g><g><title>drawList — 11.029 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1703:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:41973</title><rect x="464.754" y="126" width="313.241" height="17" fill="hsl(40 80% 72%)"/><text x="466.754" y="138" font-size="10">drawList</text></g><g><title>drawNode — 11.029 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1743:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:42771</title><rect x="464.754" y="108" width="313.241" height="17" fill="hsl(8 80% 72%)"/><text x="466.754" y="120" font-size="10">drawNode</text></g><g><title>nodeMask — 7.330 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:999:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:25916</title><rect x="464.754" y="90" width="208.083" height="17" fill="hsl(26 80% 72%)"/><text x="466.754" y="102" font-size="10">nodeMask</text></g><g><title>mask — 7.330 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:925:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:23829</title><rect x="464.754" y="72" width="208.083" height="17" fill="hsl(16 80% 72%)"/><text x="466.754" y="84" font-size="10">mask</text></g><g><title>get — 6.054 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:26:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:130:5098</title><rect x="464.754" y="54" width="171.808" height="17" fill="hsl(38 80% 72%)"/><text x="466.754" y="66" font-size="10">get</text></g><g><title>put — 1.276 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:36:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:130:5282</title><rect x="636.861" y="54" width="35.975" height="17" fill="hsl(33 80% 72%)"/><text x="638.861" y="66" font-size="10">put</text></g><g><title>nodeSource — 3.699 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1815:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:44776</title><rect x="673.137" y="90" width="104.858" height="17" fill="hsl(35 80% 72%)"/><text x="675.137" y="102" font-size="10">nodeSource</text></g><g><title>node — 2.461 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:3877:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:95477</title><rect x="673.137" y="72" width="69.663" height="17" fill="hsl(40 80% 72%)"/><text x="675.137" y="84" font-size="10">node</text></g><g><title>empty — 1.235 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:803:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:20356</title><rect x="673.137" y="54" width="34.810" height="17" fill="hsl(47 80% 72%)"/><text x="675.137" y="66" font-size="10">empty</text></g><g><title>clear — 1.235 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1270:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:4026:7801</title><rect x="673.137" y="36" width="34.810" height="17" fill="hsl(47 80% 72%)"/><text x="675.137" y="48" font-size="10">clear</text></g><g><title>beginRenderPass — 1.235 ms cumulative active samples
+
+:0:0</title><rect x="673.137" y="18" width="34.810" height="17" fill="hsl(50 80% 72%)"/><text x="675.137" y="30" font-size="10">begin</text></g><g><title>mask — 1.226 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:925:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:23829</title><rect x="708.246" y="54" width="34.554" height="17" fill="hsl(16 80% 72%)"/><text x="710.246" y="66" font-size="10">mask</text></g><g><title>get — 1.226 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:26:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:130:5098</title><rect x="708.246" y="36" width="34.554" height="17" fill="hsl(38 80% 72%)"/><text x="710.246" y="48" font-size="10">get</text></g><g><title>renderAttempt — 7.377 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4056:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:99566</title><rect x="778.295" y="126" width="209.419" height="17" fill="hsl(43 80% 72%)"/><text x="780.295" y="138" font-size="10">renderAttempt</text></g><g><title>finish — 4.866 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1798:8
+design-app://app/assets/render-worker-hEm-Dt3g.js:4026:21453</title><rect x="778.295" y="108" width="138.034" height="17" fill="hsl(49 80% 72%)"/><text x="780.295" y="120" font-size="10">finish</text></g><g><title>popErrorScope — 3.752 ms cumulative active samples
+
+:0:0</title><rect x="778.295" y="90" width="106.365" height="17" fill="hsl(21 80% 72%)"/><text x="780.295" y="102" font-size="10">popErrorScope</text></g><g><title>submit — 1.114 ms cumulative active samples
+../../src/kernel/gpu/queue-wait-stats.ts:16:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:111461</title><rect x="884.959" y="90" width="31.370" height="17" fill="hsl(18 80% 72%)"/><text x="886.959" y="102" font-size="10">subm</text></g><g><title>(anonymous) — 1.114 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1890:24
+design-app://app/assets/render-worker-hEm-Dt3g.js:4026:23354</title><rect x="884.959" y="72" width="31.370" height="17" fill="hsl(30 80% 72%)"/><text x="886.959" y="84" font-size="10">(ano</text></g><g><title>submit — 1.114 ms cumulative active samples
+
+:0:0</title><rect x="884.959" y="54" width="31.370" height="17" fill="hsl(18 80% 72%)"/><text x="886.959" y="66" font-size="10">subm</text></g><g><title>begin — 2.511 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:937:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:4026:327</title><rect x="916.629" y="108" width="71.085" height="17" fill="hsl(55 80% 72%)"/><text x="918.629" y="120" font-size="10">begin</text></g><g><title>plan — 2.511 ms cumulative active samples
+../../src/kernel/gpu/resident-programs.ts:17:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:3955:2124</title><rect x="916.629" y="90" width="71.085" height="17" fill="hsl(55 80% 72%)"/><text x="918.629" y="102" font-size="10">plan</text></g><g><title>(anonymous) — 1.265 ms cumulative active samples
+../../src/kernel/gpu/resident-programs.ts:37:29
+design-app://app/assets/render-worker-hEm-Dt3g.js:3955:2871</title><rect x="916.629" y="72" width="35.662" height="17" fill="hsl(30 80% 72%)"/><text x="918.629" y="84" font-size="10">(anon</text></g><g><title>(anonymous) — 1.265 ms cumulative active samples
+../../src/kernel/gpu/resident-programs.ts:37:63
+design-app://app/assets/render-worker-hEm-Dt3g.js:3955:2903</title><rect x="916.629" y="54" width="35.662" height="17" fill="hsl(30 80% 72%)"/><text x="918.629" y="66" font-size="10">(anon</text></g><g><title>equal — 1.265 ms cumulative active samples
+../../src/kernel/gpu/resident-programs.ts:32:10
+design-app://app/assets/render-worker-hEm-Dt3g.js:3955:2758</title><rect x="916.629" y="36" width="35.662" height="17" fill="hsl(14 80% 72%)"/><text x="918.629" y="48" font-size="10">equal</text></g><g><title>(garbage collector) — 3.845 ms cumulative active samples
+
+:0:0</title><rect x="988.014" y="126" width="109.009" height="17" fill="#be92d0"/><text x="990.014" y="138" font-size="10">(garbage collecto</text></g><g><title>self.onmessage — 3.842 ms cumulative active samples
+../../src/kernel/render-worker.ts:424:18
+design-app://app/assets/render-worker-hEm-Dt3g.js:4037:24748</title><rect x="1097.322" y="126" width="108.923" height="17" fill="hsl(32 80% 72%)"/><text x="1099.322" y="138" font-size="10">self.onmessage</text></g><g><title>AbortController — 1.316 ms cumulative active samples
+
+:0:0</title><rect x="1097.322" y="108" width="37.112" height="17" fill="hsl(32 80% 72%)"/><text x="1099.322" y="120" font-size="10">Abort</text></g><g><title>record — 1.264 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:5821</title><rect x="1134.735" y="108" width="35.634" height="17" fill="hsl(57 80% 72%)"/><text x="1136.735" y="120" font-size="10">recor</text></g><g><title>sanitizeRecord — 1.264 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:76:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:4882</title><rect x="1134.735" y="90" width="35.634" height="17" fill="hsl(36 80% 72%)"/><text x="1136.735" y="102" font-size="10">sanit</text></g><g><title>sanitizeFields — 1.264 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:3163</title><rect x="1134.735" y="72" width="35.634" height="17" fill="hsl(38 80% 72%)"/><text x="1136.735" y="84" font-size="10">sanit</text></g><g><title>t.onmessage — 2.537 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:49:21
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:101049</title><rect x="1206.546" y="126" width="71.824" height="17" fill="hsl(22 80% 72%)"/><text x="1208.546" y="138" font-size="10">t.onmessage</text></g><g><title>trace — 2.537 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:103256</title><rect x="1206.546" y="108" width="71.824" height="17" fill="hsl(55 80% 72%)"/><text x="1208.546" y="120" font-size="10">trace</text></g><g><title>record — 2.537 ms cumulative active samples
+../../src/kernel/render-worker.ts:458:220
+design-app://app/assets/render-worker-hEm-Dt3g.js:4037:25908</title><rect x="1206.546" y="90" width="71.824" height="17" fill="hsl(57 80% 72%)"/><text x="1208.546" y="102" font-size="10">record</text></g><g><title>record — 2.537 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:5821</title><rect x="1206.546" y="72" width="71.824" height="17" fill="hsl(57 80% 72%)"/><text x="1208.546" y="84" font-size="10">record</text></g><g><title>sanitizeFields — 2.537 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:3163</title><rect x="1206.546" y="54" width="71.824" height="17" fill="hsl(38 80% 72%)"/><text x="1208.546" y="66" font-size="10">sanitizeFie</text></g><g><title>(anonymous) — 2.531 ms cumulative active samples
+../../src/kernel/scene-image-hydration.ts:71:30
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:74504</title><rect x="1278.670" y="126" width="71.653" height="17" fill="hsl(30 80% 72%)"/><text x="1280.670" y="138" font-size="10">(anonymous)</text></g><g><title>run — 2.531 ms cumulative active samples
+../../src/kernel/scene-image-hydration.ts:75:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:74570</title><rect x="1278.670" y="108" width="71.653" height="17" fill="hsl(49 80% 72%)"/><text x="1280.670" y="120" font-size="10">run</text></g><g><title>sceneIndex — 2.531 ms cumulative active samples
+../../src/kernel/gpu/scene-index.ts:17:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:72104</title><rect x="1278.670" y="90" width="71.653" height="17" fill="hsl(48 80% 72%)"/><text x="1280.670" y="102" font-size="10">sceneIndex</text></g><g><title>iu.port1.onmessage — 2.511 ms cumulative active samples
+../../src/kernel/render-worker.ts:120:19
+design-app://app/assets/render-worker-hEm-Dt3g.js:4037:16235</title><rect x="1350.623" y="126" width="71.085" height="17" fill="hsl(36 80% 72%)"/><text x="1352.623" y="138" font-size="10">iu.port1.on</text></g><g><title>presentFrame — 2.511 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:111:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:3958:1455</title><rect x="1350.623" y="108" width="71.085" height="17" fill="hsl(8 80% 72%)"/><text x="1352.623" y="120" font-size="10">presentFram</text></g><g><title>draw — 2.511 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:331:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:2659:7310</title><rect x="1350.623" y="90" width="71.085" height="17" fill="hsl(38 80% 72%)"/><text x="1352.623" y="102" font-size="10">draw</text></g><g><title>uu — 1.269 ms cumulative active samples
+../../src/kernel/render-worker.ts:129:23
+design-app://app/assets/render-worker-hEm-Dt3g.js:4037:16352</title><rect x="1350.623" y="72" width="35.776" height="17" fill="hsl(52 80% 72%)"/><text x="1352.623" y="84" font-size="10">uu</text></g><g><title>record — 1.269 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:5821</title><rect x="1350.623" y="54" width="35.776" height="17" fill="hsl(57 80% 72%)"/><text x="1352.623" y="66" font-size="10">recor</text></g><g><title>sanitizeRecord — 1.269 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:76:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:4882</title><rect x="1350.623" y="36" width="35.776" height="17" fill="hsl(36 80% 72%)"/><text x="1352.623" y="48" font-size="10">sanit</text></g><g><title>sanitizeFields — 1.269 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:3163</title><rect x="1350.623" y="18" width="35.776" height="17" fill="hsl(38 80% 72%)"/><text x="1352.623" y="30" font-size="10">sanit</text></g><g><title>presentationQuality — 1.242 ms cumulative active samples
+../../src/kernel/gpu/presentation-quality.ts:8:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:2623:4198</title><rect x="1386.699" y="72" width="35.009" height="17" fill="hsl(11 80% 72%)"/><text x="1388.699" y="84" font-size="10">prese</text></g><g><title>node — 2.453 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:3877:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:95477</title><rect x="1422.007" y="126" width="69.436" height="17" fill="hsl(40 80% 72%)"/><text x="1424.007" y="138" font-size="10">node</text></g><g><title>blur — 2.453 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:3353:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:83804</title><rect x="1422.007" y="108" width="69.436" height="17" fill="hsl(55 80% 72%)"/><text x="1424.007" y="120" font-size="10">blur</text></g><g><title>run — 1.265 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:848:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:21398</title><rect x="1422.007" y="90" width="35.662" height="17" fill="hsl(49 80% 72%)"/><text x="1424.007" y="102" font-size="10">run</text></g><g><title>pass — 1.265 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1618:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:4026:16020</title><rect x="1422.007" y="72" width="35.662" height="17" fill="hsl(47 80% 72%)"/><text x="1424.007" y="84" font-size="10">pass</text></g><g><title>encodePass — 1.265 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1647:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:4026:16124</title><rect x="1422.007" y="54" width="35.662" height="17" fill="hsl(17 80% 72%)"/><text x="1424.007" y="66" font-size="10">encod</text></g><g><title>bind — 1.265 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1554:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:4026:14327</title><rect x="1422.007" y="36" width="35.662" height="17" fill="hsl(41 80% 72%)"/><text x="1424.007" y="48" font-size="10">bind</text></g><g><title>group — 1.265 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:3955:758</title><rect x="1422.007" y="18" width="35.662" height="17" fill="hsl(55 80% 72%)"/><text x="1424.007" y="30" font-size="10">group</text></g><g><title>certifiedKernel — 1.188 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:3337:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:83172</title><rect x="1457.970" y="90" width="33.473" height="17" fill="hsl(10 80% 72%)"/><text x="1459.970" y="102" font-size="10">cert</text></g><g><title>filterKernel — 1.188 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:3295:2
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:81836</title><rect x="1457.970" y="72" width="33.473" height="17" fill="hsl(13 80% 72%)"/><text x="1459.970" y="84" font-size="10">filt</text></g><g><title>radius — 1.188 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:3339:71
+design-app://app/assets/render-worker-hEm-Dt3g.js:187:83274</title><rect x="1457.970" y="54" width="33.473" height="17" fill="hsl(56 80% 72%)"/><text x="1459.970" y="66" font-size="10">radi</text></g><g><title>certified_box_kernel_rgba — 1.188 ms cumulative active samples
+../../src/generated/design-kernel/design_kernel.js:1809:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:31115</title><rect x="1457.970" y="36" width="33.473" height="17" fill="hsl(48 80% 72%)"/><text x="1459.970" y="48" font-size="10">cert</text></g><g><title>js-to-wasm:: — 1.188 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:1</title><rect x="1457.970" y="18" width="33.473" height="17" fill="hsl(52 80% 72%)"/><text x="1459.970" y="30" font-size="10">js-t</text></g><g><title>wasm-function[5729] — 1.188 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:6657770</title><rect x="1457.970" y="0" width="33.473" height="17" fill="#e98476"/><text x="1459.970" y="12" font-size="10">wasm</text></g><g><title>(anonymous) — 1.284 ms cumulative active samples
+../../src/kernel/render-worker.ts:272:9
+design-app://app/assets/render-worker-hEm-Dt3g.js:4037:19627</title><rect x="1491.743" y="126" width="36.203" height="17" fill="hsl(30 80% 72%)"/><text x="1493.743" y="138" font-size="10">(anon</text></g><g><title>record — 1.284 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:5821</title><rect x="1491.743" y="108" width="36.203" height="17" fill="hsl(57 80% 72%)"/><text x="1493.743" y="120" font-size="10">recor</text></g><g><title>sanitizeFields — 1.284 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:3163</title><rect x="1491.743" y="90" width="36.203" height="17" fill="hsl(38 80% 72%)"/><text x="1493.743" y="102" font-size="10">sanit</text></g><g><title>(anonymous) — 1.271 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:78:19
+design-app://app/assets/render-worker-hEm-Dt3g.js:3958:458</title><rect x="1528.246" y="126" width="35.833" height="17" fill="hsl(30 80% 72%)"/><text x="1530.246" y="138" font-size="10">(anon</text></g><g><title>recordDeviceDiagnostic — 1.271 ms cumulative active samples
+../../src/kernel/gpu/device-lifecycle-diagnostics.ts:43:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:16070</title><rect x="1528.246" y="108" width="35.833" height="17" fill="hsl(8 80% 72%)"/><text x="1530.246" y="120" font-size="10">recor</text></g><g><title>recordGpuDiagnostic — 1.271 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:118:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:6198</title><rect x="1528.246" y="90" width="35.833" height="17" fill="hsl(16 80% 72%)"/><text x="1530.246" y="102" font-size="10">recor</text></g><g><title>setGpuDiagnosticSink — 1.271 ms cumulative active samples
+../../src/kernel/render-worker.ts:440:6
+design-app://app/assets/render-worker-hEm-Dt3g.js:4037:25289</title><rect x="1528.246" y="72" width="35.833" height="17" fill="hsl(44 80% 72%)"/><text x="1530.246" y="84" font-size="10">setGp</text></g><g><title>record — 1.271 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:99:4
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:5821</title><rect x="1528.246" y="54" width="35.833" height="17" fill="hsl(57 80% 72%)"/><text x="1530.246" y="66" font-size="10">recor</text></g><g><title>sanitizeFields — 1.271 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:19:16
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:3163</title><rect x="1528.246" y="36" width="35.833" height="17" fill="hsl(38 80% 72%)"/><text x="1530.246" y="48" font-size="10">sanit</text></g><g><title>flush — 1.253 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:11
+design-app://app/assets/render-worker-hEm-Dt3g.js:1:5468</title><rect x="1564.379" y="126" width="35.321" height="17" fill="hsl(34 80% 72%)"/><text x="1566.379" y="138" font-size="10">flush</text></g><g><title>batchSink — 1.253 ms cumulative active samples
+../../src/kernel/render-worker.ts:438:103
+design-app://app/assets/render-worker-hEm-Dt3g.js:4037:25144</title><rect x="1564.379" y="108" width="35.321" height="17" fill="hsl(47 80% 72%)"/><text x="1566.379" y="120" font-size="10">batch</text></g></svg>

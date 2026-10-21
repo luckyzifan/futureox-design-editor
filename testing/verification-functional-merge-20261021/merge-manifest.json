@@ -1,0 +1,646 @@
+{
+  "mergedAtUtc": "2026-10-21T07:10:58.099550+00:00",
+  "sourceHeadBeforeMerge": "2e5db09e10011dbe2603046341b72a14b0b43d27",
+  "packageBaseCommit": "d2d04650f7850317abd2a780335809c0b0787fca",
+  "patchSha256": "df5fae86980f15225c07f363c69c659ec002a8dda5c18523e4780b734286e5b0",
+  "affectedPathCount": 123,
+  "allBeforeHashesMatched": true,
+  "allAfterHashesMatched": true,
+  "allAffectedModesNonExecutable": true,
+  "protectedPathCount": 70,
+  "protectedPathsChangedByMerge": [],
+  "protectedPathsAlreadyNewerThanPackageBase": [
+    "frontend/design-client/src/kernel/ProgressiveSurface.tsx",
+    "frontend/design-client/src/kernel/client.ts",
+    "frontend/design-client/src/kernel/filter-tile-order.ts",
+    "frontend/design-client/src/kernel/gpu/prefix-band.ts",
+    "frontend/design-client/src/kernel/gpu/renderer.ts",
+    "frontend/design-client/src/kernel/gpu/texture-prefix.ts",
+    "frontend/design-client/src/kernel/gpu/types.ts",
+    "frontend/design-client/src/kernel/gpu/webgpu.ts",
+    "frontend/design-client/src/kernel/interaction-renderer.test.ts",
+    "frontend/design-client/src/kernel/interaction-renderer.ts",
+    "frontend/design-client/src/kernel/progressive-damage.test.tsx",
+    "frontend/design-client/src/kernel/render-worker.ts",
+    "frontend/design-desktop/src/render-terminal-diagnostics.mjs",
+    "frontend/design-desktop/test/render-terminal-diagnostics.test.mjs",
+    "testing/verification-render-deep-20261020/.gitignore"
+  ],
+  "affectedPaths": [
+    {
+      "path": "docs/IMPORT_AND_LOCAL_OPERATION_CONTRACT_V1.md",
+      "before": "b580288e3fa75fd131c5db614910b558f28dda86bfeb907610263a2e4424a94b",
+      "after": "dd32c743020d03f3bc6f510e0ace0213553b047750b720cea90a6419d36a0570"
+    },
+    {
+      "path": "docs/MCP_OPERATION_GUIDE_V1.md",
+      "before": "54b4469f7a0978c67e5d445a1a2d9e85e6471d620a45214d883a8810277d8a9a",
+      "after": "c6dc0cba3e512db0e37ffa19e3474a3d030fb4e62aa608e554f7360879fbb0dc"
+    },
+    {
+      "path": "docs/MCP_RESOURCE_LIFECYCLE_V1.md",
+      "before": null,
+      "after": "1027194027ad99eea47399657b773947b441cc3768ec9b17a82cfd6ab18e1b81"
+    },
+    {
+      "path": "docs/OPERATION_COVERAGE_V1.json",
+      "before": "ebb20a3ac3ff3c43e3a4127f4a57c3f7a559e40cbbd88912049211ba7bfafa15",
+      "after": "6be40c1ae9bf569e464121f9f086983b4ca1d37155003480f28b5f9ecb1e220e"
+    },
+    {
+      "path": "docs/SHARED_AUTO_LAYOUT_COMMANDS_V1.md",
+      "before": null,
+      "after": "addb60a5138849015a581c11da577d7d55f9b3622347ae50831f0042d098b3e1"
+    },
+    {
+      "path": "docs/SHARED_DUPLICATION_COMMAND_V1.md",
+      "before": null,
+      "after": "d1c2a9ccbd3d704bcbaa46340ee75f4b3a598c30b4a97c5a07e239fc4734a907"
+    },
+    {
+      "path": "docs/SHARED_SELECTION_COMMANDS_V1.md",
+      "before": "83da61b0a15188aa0af88dceabf4ddddaaf2f2056c9e0cc83251b54421b73793",
+      "after": "3b4b800f633f6351a7d347a685f8999d4fbaad1535b720c604a06beeee28c8f2"
+    },
+    {
+      "path": "docs/STYLE_UNIT_PRESENTATION.md",
+      "before": null,
+      "after": "99940b62f08cc64b0ebd5cfe6649ccf5eb32347cd2995ae24b1d6538ac2bd6e0"
+    },
+    {
+      "path": "frontend/design-client/clipboard.vitest.config.ts",
+      "before": null,
+      "after": "d1e4fcfb9153a779302f88cbdbc7b90c11659882840f73507db3f787a51991a0"
+    },
+    {
+      "path": "frontend/design-client/src/App.tsx",
+      "before": "d3c2afead6f2ffa57a509769d84811bece6dfe7aec6625329ee8e233fe533c15",
+      "after": "b1f71b02010b35c50b0b0fafd9189cf1c3b301a4f5a1f4babef8a62daa84a2ee"
+    },
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "before": "6b01b86a65ea51688c0a2fd48fcc084dd3c41b54fa0b0c3a4c43672efbf76aec",
+      "after": "ede232e2cd855013b968edf00cebacb686b6276ac4a4d15f93738d0946e05bac"
+    },
+    {
+      "path": "frontend/design-client/src/Inspector.tsx",
+      "before": "1c9097095e30d4a43a9f86fa660b752170eec5abb0e2d31dfac52c1c8101307b",
+      "after": "9d95e930c20aa2a23c28f293f9ab11465be62f588d323e286b9ca6718c0e258b"
+    },
+    {
+      "path": "frontend/design-client/src/LayoutPanel.tsx",
+      "before": "09d9e316ecceb6dbac428f3e272f71b1a6f80ea5c75a20c54a88b8d0f9383661",
+      "after": "9cffcce6a8bab634429de7e891778e61363a62715b3bcfd47b32dcafdf296f29"
+    },
+    {
+      "path": "frontend/design-client/src/MixedNumberField.tsx",
+      "before": "9ce4deb1c289212a741e59c64e27c3664014b351472b9199e524113ffc78346e",
+      "after": "a74271b81062304a2e630f1b202eb3db4c36c773f20aa48215cdd2553f138c32"
+    },
+    {
+      "path": "frontend/design-client/src/MultiSelectionInspector.tsx",
+      "before": "c7bdddcc8cbf997cf11eda5c1c72b160dac8260aa86895c75e380d156c577038",
+      "after": "03836d6648b1d38455a33cdaa16843650cb04c8118d94330c07098d28668a8b6"
+    },
+    {
+      "path": "frontend/design-client/src/MultiStylePanel.tsx",
+      "before": "272f0c260054f98792345395f8e54d239b282ca179de751c62619494ea49dcfd",
+      "after": "bf1face7125882a749474b1301d4d31b1468c7b81c9d9d696290416fc8dbdb9a"
+    },
+    {
+      "path": "frontend/design-client/src/TextStylePanel.tsx",
+      "before": "36d488c7516d47eb840cfff79f3c1c87f29d198a6fa396185e9fb7c37f4baebf",
+      "after": "573d0a5d67c15a155c9c2e76f4ccfc6cfa6f62aff5e333ffeb901c9ecdbd71dc"
+    },
+    {
+      "path": "frontend/design-client/src/align-engine.test.ts",
+      "before": "c3e3ad3b269afcaed985bc1160d672246f007e47f801da7a2f8787514169c456",
+      "after": "9cc7a68fea9e3d1d563662ae8df4538a2c6020c5cdea7652aa3e0c769bf24bef"
+    },
+    {
+      "path": "frontend/design-client/src/align-engine.ts",
+      "before": "8df775abba76db5ece24f36801e18efdd0c444e66a91827429f14ff76daa3ab7",
+      "after": "81178a3f3fcaf7ae873563e75bb4e396e43f70aca0fd5cbc352e1100574d6c32"
+    },
+    {
+      "path": "frontend/design-client/src/alignment-availability.ts",
+      "before": "9a314f494cba4f7421a6ac43b11884c810ea5296b0a766bcee3933defc1263fc",
+      "after": "9339d9750cff274dcbf9b40dd8450591e176e2352d009f6f27d641736c5cae2b"
+    },
+    {
+      "path": "frontend/design-client/src/app-operation-flows.test.tsx",
+      "before": "6cb1f3c6f0ef76dd2a8818510a17c8350998d5961782e3e725f55dc969288a52",
+      "after": "4a84acbb0dc5ca33b08a8e1b5331fce7fbbdd7d545172614390714907c8f50b2"
+    },
+    {
+      "path": "frontend/design-client/src/automation/boolean-command-mcp.test.ts",
+      "before": null,
+      "after": "c5f6f520bf90bbe6b954c8faeee2076fbac4acbfd0422f905dd8570550a732a0"
+    },
+    {
+      "path": "frontend/design-client/src/automation/bridge.ts",
+      "before": "4b2c7a511d8167adc72c0e8eb008127af36f4874ebdd3d4613973fc03512dbd2",
+      "after": "7b279bab939cf56e440a227a746fc3f68e411e5f9b43d2a0217c2edb14160a2f"
+    },
+    {
+      "path": "frontend/design-client/src/automation/clipboard-mcp.test.ts",
+      "before": null,
+      "after": "d7183106da3863f742acee83180dc375da2aa0ab38aa9fc7c85445b9cfd7615e"
+    },
+    {
+      "path": "frontend/design-client/src/automation/clipboard.test.ts",
+      "before": null,
+      "after": "b6c289f6133eb3beb1a57f94aa1ea08d4526f4c7ddd8977a5538bbbf95ba02f9"
+    },
+    {
+      "path": "frontend/design-client/src/automation/clipboard.ts",
+      "before": null,
+      "after": "1a9412eab5d9b4549a3cab291ef7254505b1ecc2bd61773001edaa01a80f6f11"
+    },
+    {
+      "path": "frontend/design-client/src/automation/core.test.ts",
+      "before": "457e85edb8a57d3cb5c6844c2aad5326a14e985b37a0de1663014f33431705f7",
+      "after": "65bc9225f90e662a0463ac3ac554a66d13cdc18f2c53d3b22929be9c4da62a0d"
+    },
+    {
+      "path": "frontend/design-client/src/automation/core.ts",
+      "before": "bcfb616714ef672eef450f58652e4436a9a5fadc7374b4493e64d8421885df71",
+      "after": "d6734ec86ddca917ae67db110addd1f6f872d7f8cb6ec4cea1651927be340505"
+    },
+    {
+      "path": "frontend/design-client/src/automation/display-properties.ts",
+      "before": null,
+      "after": "df91d89a46fc8c63227edc5c89c0825045754c9031383ea9ac97f187986bb312"
+    },
+    {
+      "path": "frontend/design-client/src/automation/duplicate-ndjson.test.ts",
+      "before": null,
+      "after": "14ed4e0a5a71a7a586a70af2f3c9f7a85fb3c09d84242b04da590a8733777c89"
+    },
+    {
+      "path": "frontend/design-client/src/automation/export.ts",
+      "before": "9c4b5bdeff21cd1617b73d4f21dd6428857eaac4ce3edcc6a8cbd5e1092ae011",
+      "after": "9d9476bf731fde1d421bb5ab63fa73bf3517cde3e1f01e1ca26f206df89bf79f"
+    },
+    {
+      "path": "frontend/design-client/src/automation/index.ts",
+      "before": "55bc8c90cedaafc529c9b3b3bff5029094c6b37ab9927d6cce1aecdd9dcbf0a8",
+      "after": "8fc817b7b5ab946c2394de9d8cbe18906502180d436618e4f11d7857c07ed051"
+    },
+    {
+      "path": "frontend/design-client/src/automation/layout-command-mcp.test.ts",
+      "before": null,
+      "after": "eb3493d6bf4e1cccaadc9eea492699602d234494894f3dc92615c27bd12fefcf"
+    },
+    {
+      "path": "frontend/design-client/src/automation/mcp-e2e.test.ts",
+      "before": "63c079cb4edea45d8bf63886b672591489d43abc97d8f1cfc01e3acb13f43d3c",
+      "after": "41f0696aedea997b0e9b6fa542d777ce28847395827559c053abcc22d6e908d2"
+    },
+    {
+      "path": "frontend/design-client/src/automation/modern-editor-ndjson.test.ts",
+      "before": null,
+      "after": "838651821ad7a86ecce3078ef5ec001549bd4074e580e6c763b8e7853a599016"
+    },
+    {
+      "path": "frontend/design-client/src/automation/operation-coverage.test.ts",
+      "before": "42c766816cf4a49837c9c84690562c628a58af34b9d3fc955b3e9451fbe1b9b3",
+      "after": "c75d119c9b339ecee5239bfcb9d0d5eec04c9665c80440b61da8111bc948d6cc"
+    },
+    {
+      "path": "frontend/design-client/src/automation/operation-coverage.ts",
+      "before": "abb5b5ff9416c5524866adc9b342f561dc2a73d2d5bd338e9aad8c82c0288bc6",
+      "after": "b0a1e330d7929f1e0b518f48227480451b9c4b4d039c3f9b3112bad0e2093007"
+    },
+    {
+      "path": "frontend/design-client/src/automation/postcommit-ndjson-negative.test.ts",
+      "before": null,
+      "after": "25c0dacf5321c5d1966f4ba396ea3518ef015c21905520f300e05d1a665522f8"
+    },
+    {
+      "path": "frontend/design-client/src/automation/schema-contract-ndjson.test.ts",
+      "before": null,
+      "after": "85738406a71349ff6b295bf3c065c050f1e9e26a1d07e3816d821a81ac7a1ffe"
+    },
+    {
+      "path": "frontend/design-client/src/automation/selection-scale.ndjson.test.ts",
+      "before": null,
+      "after": "19cb52f904f63c0fd7b01a52091062f6afc4e6216d00af93df41ae5aa2c1c01b"
+    },
+    {
+      "path": "frontend/design-client/src/automation/selection-scale.test.tsx",
+      "before": null,
+      "after": "b7c7f36d2205d5edfa90300d7272e84d7b0b65cb34b99598cc0b457eda8a1770"
+    },
+    {
+      "path": "frontend/design-client/src/automation/sketch.ts",
+      "before": "39b559446d5828462a9204154663826d7883617a4152e78593e2734783d8fa0f",
+      "after": "445a58016a109332adca9b0f86abcd5418a2d24285d3c2f186ae5fe2947b8b9e"
+    },
+    {
+      "path": "frontend/design-client/src/automation/types.ts",
+      "before": "327670745f1983628e1801ce5a590f98c52765131c78ceadf0f3086422340300",
+      "after": "6e27a8e8b4f5b56595a11543f9aaa49c4d6c049f3809398194de43c25bc6b32a"
+    },
+    {
+      "path": "frontend/design-client/src/automation/workspace-bridge.ts",
+      "before": "5b38fff95ea26fd5c5fcd7150b57b9ef484d1a58113332d3b1b07b58e525e496",
+      "after": "0339b247b79a1d162b9b540aab8eeaf7ce57c7c04c1e48abaa9483fa0e9df4d8"
+    },
+    {
+      "path": "frontend/design-client/src/automation/workspace-fig-import-copy.test.ts",
+      "before": null,
+      "after": "6c7657b5097eb70905e8591c5a25ba0152b7c5d657b78e0d14dd2dee127afdc3"
+    },
+    {
+      "path": "frontend/design-client/src/automation/workspace-import-copy.test.ts",
+      "before": null,
+      "after": "ab51b1c9aa3e4c64d1ebe70fa146372cec4a1bba4a2e969ccf438bc68b99e513"
+    },
+    {
+      "path": "frontend/design-client/src/automation/workspace-import-copy.ts",
+      "before": null,
+      "after": "4e56928d9ba2e15447e23eb1d7aacbd63ae1380364b3d4e1182ae56979f8610d"
+    },
+    {
+      "path": "frontend/design-client/src/canvas-view.ts",
+      "before": "40e5fe146da368e15ef7c768fe31093d459153f63ea86301d37f0298ada64ff3",
+      "after": "b60191a0e1bd34f9a7b35ba40b330789f6d86671c757b7c6d6d280f034851b41"
+    },
+    {
+      "path": "frontend/design-client/src/clipboard-core.test.ts",
+      "before": null,
+      "after": "c9af19925ff1143893a8ad1f43f4363bc8bf410365d2c3e8b89dbf7a82ae5f1f"
+    },
+    {
+      "path": "frontend/design-client/src/clipboard-core.ts",
+      "before": null,
+      "after": "b55099c191776d344f183add62ace60bcad2a7dea7acf0b1e2ddef6de8f2e332"
+    },
+    {
+      "path": "frontend/design-client/src/clipboard-invariants.ts",
+      "before": null,
+      "after": "3bc0aedef33448c5075eab5c6c203c2eebaa38840f67e32218ab9d4fe7583821"
+    },
+    {
+      "path": "frontend/design-client/src/clipboard-roundtrip.test.ts",
+      "before": null,
+      "after": "b7fac36f531f00c3aa5da95f2b86015653b2de4c5a531645482479e03c17be1d"
+    },
+    {
+      "path": "frontend/design-client/src/color-postcommit-notification.test.ts",
+      "before": null,
+      "after": "8d2e7f055278cce497cb2f7c6a459f04321ab00ca96028f9b5311dbc701e2962"
+    },
+    {
+      "path": "frontend/design-client/src/commands/affine.ts",
+      "before": "25192cc5e9580a1afd9acd61256c9483adb592c90fd3037c53f8538f459323cc",
+      "after": "d84c1a7c6fd0fdb8a77d6f5a38744616ab8befddc5859249d9fc1169938d62ea"
+    },
+    {
+      "path": "frontend/design-client/src/commands/architecture.test.ts",
+      "before": "f191be2665c0bf1a6914b1f5996dd130ccebab6559e208bb652b67f5d7b36f97",
+      "after": "61ecb47c0a7e6dda257223ce79d9a5f13b4dbedab6b40b7567daefd736d6c628"
+    },
+    {
+      "path": "frontend/design-client/src/commands/arrangement-plan.ts",
+      "before": "1ef92e8d7f6a5fc01d5e1159fb979e175abda5fe874918c84d0547f1f0aef1ab",
+      "after": "e2baf7e7b51c7361db877d87c1d499193b7df929aeb68f091328472a36869ee5"
+    },
+    {
+      "path": "frontend/design-client/src/commands/boolean-command.test.ts",
+      "before": null,
+      "after": "0946805a9dd29a934b58636a6c5cb332f1ee85b99c9a010d13d8f2c77d98fad3"
+    },
+    {
+      "path": "frontend/design-client/src/commands/boolean-command.ts",
+      "before": null,
+      "after": "53b9075b798e163078c58bd8658cc93faed368a077fa4a7154bac9329feed863"
+    },
+    {
+      "path": "frontend/design-client/src/commands/derived-unwrap-negative.test.ts",
+      "before": null,
+      "after": "c3ae43bc4d23c4240a60a4743362efc6c119d4ab2ec9f3833a5eca08aea3eb99"
+    },
+    {
+      "path": "frontend/design-client/src/commands/duplicate-parity-negative.test.ts",
+      "before": null,
+      "after": "a2d92a8127904aaec307e80b58232edd5e0bf5022f9c8521ed9cbdeead16172f"
+    },
+    {
+      "path": "frontend/design-client/src/commands/duplicate-reparent-negative.test.ts",
+      "before": null,
+      "after": "80f50b11fbd1e4a3e12411a58536117d6f53f844f6a32f1c0608f61f22069f1a"
+    },
+    {
+      "path": "frontend/design-client/src/commands/duplication-command.test.ts",
+      "before": null,
+      "after": "4170eb3e50b0da1b2e5a32cb18ef2d88840ef307db5bad8e779d7e6248e72fbf"
+    },
+    {
+      "path": "frontend/design-client/src/commands/duplication-command.ts",
+      "before": null,
+      "after": "3e9fb108e4d704898c338dd807b2b60b45c1c60fa20c151027d3ee7bdcc58dfa"
+    },
+    {
+      "path": "frontend/design-client/src/commands/editor-adapters.test.ts",
+      "before": "ba1da5e9286f88a0d97354efc3b024a5e53b2793f1bf08045bb6ee2b44c198a3",
+      "after": "2559a348ec4ea92cf1fbb6c65479b8fd62296b8875964cb5ea19d3e0c2798163"
+    },
+    {
+      "path": "frontend/design-client/src/commands/layout-command.test.ts",
+      "before": null,
+      "after": "cf19d8760c21624832ac78f93d042f03003cd8e30290bba48459b0d507ba46fd"
+    },
+    {
+      "path": "frontend/design-client/src/commands/layout-command.ts",
+      "before": null,
+      "after": "13d0b98a1250766c7bed6a8e5fe45e87832f7c8b8a41e682c002ec2e5b031124"
+    },
+    {
+      "path": "frontend/design-client/src/commands/plans.test.ts",
+      "before": "cb10335d37dd50da9a18e08ef0fb491375f7ae8e21d4b3b6f1abd4f78d8212df",
+      "after": "897d61d62692ca2d645154223c41d0ebe78eea92c5b6f8e1104e83702b95babc"
+    },
+    {
+      "path": "frontend/design-client/src/commands/profiles.ts",
+      "before": "0fc001effd6d22b560d09820cb83cfbf07a1c9199ad0e45263da53e3b7bb7298",
+      "after": "67d1d53f5b265046a948aefb252548554a3b206f7d2a314a25e025179041bad2"
+    },
+    {
+      "path": "frontend/design-client/src/commands/selection-command.ts",
+      "before": null,
+      "after": "111d47d556ba7bee0ae26b0aa58233296a47499b344bdaabe021a9e237c8e70d"
+    },
+    {
+      "path": "frontend/design-client/src/commands/selection-geometry.test.ts",
+      "before": null,
+      "after": "487769e5c60ec37528ef63574a1da43b3dad388ea02352737a667a3f5b16b4b8"
+    },
+    {
+      "path": "frontend/design-client/src/commands/selection-parity-negative.test.ts",
+      "before": null,
+      "after": "403a0682dba418a3b622c39ba3135ee7df2e94445e5779c0d7120eed5efdc9dc"
+    },
+    {
+      "path": "frontend/design-client/src/commands/structure-plan.ts",
+      "before": "a5e301ceeac415e889ba48b789069df52beb22fac5cace341af1b5cadc3ad631",
+      "after": "a53133570ce2ab910fd44e26779661509c2ef32e01d9fcc7eebd02e508a41e40"
+    },
+    {
+      "path": "frontend/design-client/src/desktop.ts",
+      "before": "f40707b8cf20618d80720154a8a04d87012afc240e47f1035d2e6509e1de7dbb",
+      "after": "0d142163762f101edadb7e3a7089b9379d0f3da5c5f9ce6679e4e0914a71f4ce"
+    },
+    {
+      "path": "frontend/design-client/src/editor-commands.ts",
+      "before": "448908e301f3d11ec79a5b21fe8108369ac3165796d9033af5d77a6d1779d16f",
+      "after": "2aed6a2951fce4ca338c3160a7becefdfba095e7f1b5aa8a9d0b84c31aab8725"
+    },
+    {
+      "path": "frontend/design-client/src/engine.ts",
+      "before": "fb247dace2c0fbe43d72d51ddaf44673be880122d162056804733e6615dfa94e",
+      "after": "ba5b5e93dab5581216613d9e62f4b052b18c2f14b52e5de050cfdc760f5c0d1a"
+    },
+    {
+      "path": "frontend/design-client/src/fields.tsx",
+      "before": "ca8f9747295e365b61791c39dd0a8e2ebc77f129dd402d20d57e1d79c7f78b0e",
+      "after": "3f2e9192ff4923105e495e87e73226b4cd93ebf3c15e2647b3814693a2a31774"
+    },
+    {
+      "path": "frontend/design-client/src/import-fig-archive.test.ts",
+      "before": null,
+      "after": "eda206e967c5ff3218cc66f4ad8e9089642f38d72a76b21f7cdd202bd8b5c128"
+    },
+    {
+      "path": "frontend/design-client/src/import-fig-archive.ts",
+      "before": null,
+      "after": "47a33b6e65e9aac2befbdfe2048d3a5166777741914529457d6e79e3144779fc"
+    },
+    {
+      "path": "frontend/design-client/src/import-fig-envelope.test.ts",
+      "before": null,
+      "after": "bed92c28b9c2c22e4ef8b0bc9d88c0e07828d9bd582fc76e7959be4bfbdc7c75"
+    },
+    {
+      "path": "frontend/design-client/src/import-fig-text.ts",
+      "before": "60472b970ea02ac4261eba4f7f959129ae013c2cfbf48c2b6b4ca514271b799b",
+      "after": "2c284870d17440e1cff8c8466ba13f864630cd805cb5d2948b110b756d74655b"
+    },
+    {
+      "path": "frontend/design-client/src/import-fig-zstd.test.ts",
+      "before": null,
+      "after": "2568d4300780407437fc24f56bdfa6375d06c3cdbe84cea896413e5de67bf07a"
+    },
+    {
+      "path": "frontend/design-client/src/import-fig-zstd.ts",
+      "before": null,
+      "after": "4ba3797bbb27cf7607408641f2da14d6a1e876fad891654c61e7b7559460c0eb"
+    },
+    {
+      "path": "frontend/design-client/src/import-fig.ts",
+      "before": "a460375d995aee25a39a043060545d4bea91451adb2075fe3af0a824abc89051",
+      "after": "a3c2033853b302e0850412ac246eac08b59729c57e84577c1bf866b973b03504"
+    },
+    {
+      "path": "frontend/design-client/src/import-file-worker.test.ts",
+      "before": "f84649797b046b430c3db77b17ffbadd5aae5de41adb7368bf3bf217cac709c4",
+      "after": "c6b209e7a2b181c240ec2c51ec126c16f7fa14dbcb29cb61f1c69696fce2c688"
+    },
+    {
+      "path": "frontend/design-client/src/import-file-worker.ts",
+      "before": "fee4e5b0949b4f25bb7d03c98e12017df649570298480b8c01afa2e691ff82dd",
+      "after": "dcf4702712abab4381aeaef39dd57626258c73ec3504be8eb66f35c320b448e2"
+    },
+    {
+      "path": "frontend/design-client/src/import-svg.ts",
+      "before": "b46cda8e7ef568545935813b8f26d55ea56593d8880e22a1a194348712af96d3",
+      "after": "fe127736ce14ede8c0a2900948030fa06105ab46f2b44553670fdf7d35fdf6ff"
+    },
+    {
+      "path": "frontend/design-client/src/import-warnings.test.ts",
+      "before": null,
+      "after": "cad0fb6838661bc14a55ff33175048dead269adb5a3b9a1e0820a8145fb52609"
+    },
+    {
+      "path": "frontend/design-client/src/import-warnings.ts",
+      "before": null,
+      "after": "021c2854d5223cf30d41c3ec36a03da082edba3d97d10fff8e6940b5952b3924"
+    },
+    {
+      "path": "frontend/design-client/src/layout-command-ui.test.tsx",
+      "before": null,
+      "after": "193821a0ef5ca5956f36e28f8886a3406dd494f29089988460517072ab9e5184"
+    },
+    {
+      "path": "frontend/design-client/src/postcommit-notification-failure.test.ts",
+      "before": null,
+      "after": "74f2d67cdec15b453f8adc68158b0c9539fc9d9db0d947f67c073416bcdad109"
+    },
+    {
+      "path": "frontend/design-client/src/postcommit-subscriber-error.test.ts",
+      "before": null,
+      "after": "9f495caa2045ec6c05a3c629c7e8d0bd2e0f5ccc815c8311b616cd8ac8d16996"
+    },
+    {
+      "path": "frontend/design-client/src/postcommit-subscriber-error.ts",
+      "before": null,
+      "after": "6f6b2441061f44f5b9bb53dcb1679061fc1414394043f2bd9304fa3e510ef7f6"
+    },
+    {
+      "path": "frontend/design-client/src/property-units.ts",
+      "before": "abcbe16c5d7447569dcd79b7bd2664ba90cd119269fb08f4876f22a6aa75eb8b",
+      "after": "2e22dcd0c2a8c830625260ad2382f40bfed3dd5841b65eb90d9b4620cc640746"
+    },
+    {
+      "path": "frontend/design-client/src/selection-properties.ts",
+      "before": "454a2a6323a967e53cf48928e00d26a7f6830e2e8061a3b6e2156a08b684d8de",
+      "after": "b9c9ba4b587b1c5d00615164fca180fa6f052d0a6a27155cc5d869f2e0e127a0"
+    },
+    {
+      "path": "frontend/design-client/src/selection-scale.ts",
+      "before": "88744b76ce8366f27f0ed64c084a12c0f3e91d2a1f49318c24d52dca608a3cb0",
+      "after": "eb690f0831a3eaea4293980874f341d656fc85b4f139cb694ae67b121d216a76"
+    },
+    {
+      "path": "frontend/design-client/src/shortcut-profiles.test.ts",
+      "before": "34a4692596695dbfe4ebf756195178a6bd4feb3648be1098a50e14c95e459c5d",
+      "after": "4e48e9ccf75942436c721297f26d8e91d594726a1e8317e0a8b42174390d7d2a"
+    },
+    {
+      "path": "frontend/design-client/src/shortcut-profiles.ts",
+      "before": "d7440a68db4244951ddd83ad7ad4f57a0532b1df8c7108d4ba113befca2cecf9",
+      "after": "fbc67d50c95a5ce7d76cb0b201c5c37ccde0f0b9aaf53a483d1d8204ce092de7"
+    },
+    {
+      "path": "frontend/design-client/src/style-unit-notice.test.tsx",
+      "before": null,
+      "after": "b4278d648a5b7db395fe412d11ba51751e68a75eff74f250c30f81ca5d9dbcf3"
+    },
+    {
+      "path": "frontend/design-desktop/src/automation-bridge.mjs",
+      "before": "3cfdaf54898855dc7db3e395abca74bf0cbf692ef3e92cc7f8f56643ca22147c",
+      "after": "ee20e691edb43c83868d7752140465597fe97cadefaedfdc4fa8b00a12f49031"
+    },
+    {
+      "path": "frontend/design-desktop/src/main.mjs",
+      "before": "9e58631fc6fa7a403b551443160bb49b15042dca4720a5c476a639adc2d82fe8",
+      "after": "1309141330df2f4c11d737197b8370fa842fe911a4098fa2297c1a9227c2f733"
+    },
+    {
+      "path": "frontend/design-desktop/src/preload.cjs",
+      "before": "5a77d825cf61f931fc3ef200649ce98a70093a33ee2b785c880958a1902703db",
+      "after": "419c496dbcd9802ad5dcb0980280f2e722e64c23094e9307b19f2e93b93ed305"
+    },
+    {
+      "path": "frontend/design-desktop/src/workspace-automation.mjs",
+      "before": "f6138706dee95dc0090774d90e8d7d178ac12cf68f7cfe8bef2372f89dd3f5e6",
+      "after": "ca00db3b580b67b53289974d4208752b7e6e6356bcf3af878fa059f43737e51a"
+    },
+    {
+      "path": "frontend/design-desktop/test/automation-bridge.test.mjs",
+      "before": "f3a84c8b964d4235989a693774c998885cd009b0ea3e96966ab0036c7f86cd34",
+      "after": "a346e78d5e88ce020b331ce20125213acad61c6c79f1c4d891ee5d25328743dc"
+    },
+    {
+      "path": "frontend/design-desktop/test/keyboard-shortcuts.test.mjs",
+      "before": "b073d24f51fd627da0ce4491afd480dcad70c2eefe39599708a9cb805e7d3959",
+      "after": "22e0be7d833bae975bd743f914c04ebc9c9e4bc14983595aa10002e93a87cc39"
+    },
+    {
+      "path": "frontend/design-desktop/test/main.test.mjs",
+      "before": "c0f480818c7e53079a4758d9c997f62d570bcf8fe3696b0434c9fb872f7580dd",
+      "after": "bfb4f070a9cab6018dfe86b81b7d0868d094d8a389821e8c1b09d8bf6c63fc96"
+    },
+    {
+      "path": "frontend/design-desktop/test/preload.test.mjs",
+      "before": "1af84e8542a33527aa88646e1b4e0b9c47f40f395ca4c7023579d05f5f69bce0",
+      "after": "e44b8bc7eca75f51dc60edd6f0c1eaf7aec04c27f950a5f1be431616a90962b4"
+    },
+    {
+      "path": "frontend/design-desktop/test/workspace-mcp-sqlite.test.mjs",
+      "before": "12f5541e9193a90067cf8e69ad04949b15cea50ab483fd0a2939b5c235f4820d",
+      "after": "66975f4f49b51eebb3380d04ed4bcec7c32ac5374306ae5b79b7dca1414e5066"
+    },
+    {
+      "path": "frontend/design-mcp/README.md",
+      "before": "b261f57d86f0fe4d51ebd8715c4e9427d6a1b326adb6bf883898298ec3247eae",
+      "after": "69a1ed0bcb6bd63976a9b61fe6a3c4b07b9ee92f68cac46b10b4f5439928f102"
+    },
+    {
+      "path": "frontend/design-mcp/package.json",
+      "before": "b202848f128e609ba61277a4a058cc544c52265812104a102eba107e4e419840",
+      "after": "4c3646a87e0b928419bf2946f9c9f8fe4f69ff074f006192b6cfbeee2db06980"
+    },
+    {
+      "path": "frontend/design-mcp/src/artifacts.mjs",
+      "before": "c18fb6ab6493e72104af46c7b3fb0137295b4c01cdd1b527e2672cd8cdcbf144",
+      "after": "a6ca9d9e7dfa921512ba8fad254923630fb5670e755cdd47f1e4d642427bbf94"
+    },
+    {
+      "path": "frontend/design-mcp/src/modern-protocol.mjs",
+      "before": null,
+      "after": "fbcc636944a2bd6ca2221adab22a4d397a32d5a638a9c8946e46df263232c1e8"
+    },
+    {
+      "path": "frontend/design-mcp/src/operation-backend.mjs",
+      "before": "282a7537433539534c699b47b1bf26b3038f200bb9b18ee2381d86a3a585a86a",
+      "after": "ce61dee256634f8f6981c22b363c6dbf4a93dc48e91be1621c4669e955d6e14d"
+    },
+    {
+      "path": "frontend/design-mcp/src/server.d.mts",
+      "before": "535f9eeb1e35984ec408bde1000c5ec0926a7d1e468aa1836109f9971b7e358b",
+      "after": "ba08bcb071f9b7313bb1ba2272b900bc15445cad856cb82dfa420b3c8fb06f36"
+    },
+    {
+      "path": "frontend/design-mcp/src/server.mjs",
+      "before": "d4b44d79d77db20f127d74ed3463d5d3ff845d63b2f2ed640adb2da9c3cfd4c7",
+      "after": "16b084022a7f9786c70d8956058ef2003ee8d0929ca81ed99e3f9741fae6dbbb"
+    },
+    {
+      "path": "frontend/design-mcp/src/socket-backend.mjs",
+      "before": "9b5d86c4ec42e2a0ae6b5c80060b760e8f384553da430e8f068d257c4b1b1418",
+      "after": "6da2b4b6d0669a98e0bda0684acdfbd1dfda7192e823235c64a2bc5e4d790bc0"
+    },
+    {
+      "path": "frontend/design-mcp/test/clipboard-artifacts.test.mjs",
+      "before": null,
+      "after": "a216c54acf8003b598e8e6acd1363d290d0a8da413e67bb9058f71bf10118020"
+    },
+    {
+      "path": "frontend/design-mcp/test/modern-official-sdk.test.mjs",
+      "before": null,
+      "after": "3e4bbcb0819838130e62421e536fa70bfde1283dc2ac08faecdf2c2f1ee4650f"
+    },
+    {
+      "path": "frontend/design-mcp/test/modern-official-stdio.test.mjs",
+      "before": null,
+      "after": "761a48d2d0dae82cd9ea0c62e8ab5f8ae6e9238b70753d37a0aa20f0bcbe40f1"
+    },
+    {
+      "path": "frontend/design-mcp/test/modern-protocol.test.mjs",
+      "before": null,
+      "after": "737cfbf4d14b5fb0e9e31915098fe2951c77866c70e95d600ef9e289f532c814"
+    },
+    {
+      "path": "frontend/design-mcp/test/modern-sdk-fixture.mjs",
+      "before": null,
+      "after": "60e5eec459937194303201ffa7103e919ff6ef8b9584ec1c141a06692378e368"
+    },
+    {
+      "path": "frontend/design-mcp/test/operation-backend.test.mjs",
+      "before": "57aa4282d2d52d457ac97ea5d41e69b2d9bced0ff270eae7b6feeb1ef344a2bc",
+      "after": "791b1d2d97c38359e507b698a6eff936c100814cead8498dd6f45207cd54f8b2"
+    },
+    {
+      "path": "frontend/design-mcp/test/resource-lifecycle.test.mjs",
+      "before": null,
+      "after": "ebbd005306de360f09f2c0b4f1d9cab0288d44a358edd7675c90fbe7b669b6ce"
+    },
+    {
+      "path": "testing/verification-visual-feedback/README.md",
+      "before": "bba5a2bda552b9c42b70ebb00e508126e4d0d09b8c78bb0449c0a09675b39915",
+      "after": "ec46e461955d628e1cb50bb8a80d4d5b40bb8624750396d2394f8265d2410fca"
+    }
+  ]
+}

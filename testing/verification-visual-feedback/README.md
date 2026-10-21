@@ -125,8 +125,11 @@ turning on its local bridge:
    unchanged. A scripted response is not a substitute for actually viewing pixels.
 5. Exercise cancellation, timeout, rapid page switch, document switch, bridge
    revocation and re-enable. No late result should become a preview of the new
-   document/page. Old MCP resources must retain their original revision and expire
-   when their MCP session closes.
+   document/page. While the grant remains live, old MCP resources must retain their original
+   revision. They expire when the MCP session closes or its associated backend
+   observes terminal disconnect/revocation. Subsequent resource reads/listing must
+   fail explicitly; re-enable must not restore the old cache. Already delivered
+   or accepted output bytes and external client copies cannot be recalled.
 6. Separately record the actual Electron window/GPU canvas at the same authored
    document state. Compare text, effects, masks, fonts, color management, crop and
    scale. CPU preview success alone does not establish displayed-GPU parity.

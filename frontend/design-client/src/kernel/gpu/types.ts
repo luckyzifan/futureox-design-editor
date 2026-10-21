@@ -145,6 +145,8 @@ export type GpuScene = {
   displayFilterRadiusLimit?: number
   /** Worker-selected SDR display-only image sampler. Exact outputs overwrite it. */
   displayMaterialSource?: boolean
+  /** Screen-only request for sequential sample accumulation, never exact output. */
+  sequentialDisplay?: boolean
   displayImageSource?: boolean
   softwareRaster?: boolean
   output?: Rect
@@ -268,6 +270,8 @@ export interface Driver {
   readonly scalarAlphaFilter?: boolean
   readonly exactShadowOver?: boolean
   readonly scratchBytes?: number
+  /** Logically retired table storage still owned until a real completion. */
+  readonly retiredImageTableBytes?: number
   readonly frameScratchBytes?: number
   /** Monotonic driver-lifetime frame epochs. A completed epoch proves every
    * submitted read completed and every unsubmitted read was abandoned. A
