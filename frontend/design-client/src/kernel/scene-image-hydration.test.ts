@@ -2,7 +2,7 @@ import { expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { stripTypeScriptTypes } from 'node:module'
-import { DecodedImageCache, type DecodedImage } from './decoded-image-cache'
+import { DecodedImageCache, createDecodedImageOwner, decodedImageScope, type DecodedImage } from './decoded-image-cache'
 import { managedSceneImageLoader, SceneImageHydration, type ImageContext, type ImagePersistence } from './scene-image-hydration'
 import { sceneIndex } from './gpu/scene-index'
 import type { GpuScene } from './gpu/types'
@@ -187,6 +187,60 @@ function recordingRenderer(load: ReturnType<typeof managedSceneImageLoader>, com
   renderer.scene = compiled
   return { renderer, uploaded }
 }
+
+test('same-owner canvas and interaction decoders share immutable exact floats without disk or second WASM decode', async () => {
+  const f = fixture(4, true), canvas = new VectorEngine(), interaction = new VectorEngine()
+  try {
+    canvas.load_document(JSON.stringify(f.doc)); interaction.load_document(JSON.stringify(f.doc))
+    const owner = createDecodedImageOwner(), settings = canvas.color_settings(), scope = decodedImageScope(owner, settings)
+    const cache = new DecodedImageCache(), persistence = { key: vi.fn(async () => undefined), read: vi.fn(async () => undefined), write: vi.fn() }
+    let context: ImageContext = { kernel: canvas, scope, settings }
+    const load = managedSceneImageLoader(cache, () => context, persistence), image = f.uris[1]
+    const expected = canvas.image_linear(image), initial = load(image).pixels
+    const before = new Uint32Array(initial.buffer, initial.byteOffset, initial.length).slice()
+    const info = vi.spyOn(interaction, 'image_info'), pixels = vi.spyOn(interaction, 'image_linear')
+    context = { kernel: interaction, scope: decodedImageScope(owner, interaction.color_settings()), settings }
+    await new SceneImageHydration(cache, context, persistence, () => true).hydrate(scene([image], true))
+    expect(load(image).pixels).toBe(initial)
+    expect(info).not.toHaveBeenCalled(); expect(pixels).not.toHaveBeenCalled(); expect(persistence.read).not.toHaveBeenCalled()
+    context = { kernel: canvas, scope, settings }
+    expect(load(image).pixels).toBe(initial)
+    expect(before).toEqual(new Uint32Array(expected.buffer, expected.byteOffset, expected.length))
+    expect(new Uint32Array(initial.buffer, initial.byteOffset, initial.length)).toEqual(before)
+  } finally { canvas.free(); interaction.free() }
+})
+
+test('a pending old lane read cannot fill shared residency after lane ownership changes', async () => {
+  const cache = new DecodedImageCache(), owner = createDecodedImageOwner(), scope = decodedImageScope(owner, 'null')
+  let lane = 'canvas'
+  const pending = deferred<DecodedImage | undefined>(), context = { kernel: decoder(), scope, settings: 'null' }
+  const hydration = new SceneImageHydration(cache, context, { key: async () => 'old', read: () => pending.promise, write() {} }, () => lane === 'canvas')
+  const task = hydration.hydrate(scene([uri(1)])), rejection = expect(task).rejects.toThrow('PREVIEW_CANCELLED')
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+  lane = 'interaction'; cache.begin(scope)
+  const fresh = record(); fresh.data[0] = 99; cache.set(scope, `b:${uri(1)}`, fresh)
+  pending.resolve(record()); await rejection
+  expect(cache.get(scope, `b:${uri(1)}`)).toBe(fresh)
+  expect(fresh.data[0]).toBe(99)
+})
+
+test('delayed persistence write retains captured URI/settings/pixels and never fills a new owner', async () => {
+  const cache = new DecodedImageCache(), firstOwner = createDecodedImageOwner(), nextOwner = createDecodedImageOwner()
+  const oldSettings = '{"referenceWhiteNits":100}', newSettings = '{"referenceWhiteNits":203}'
+  const firstScope = decodedImageScope(firstOwner, oldSettings), nextScope = decodedImageScope(nextOwner, newSettings)
+  const gate = deferred<string | undefined>(), kernel = decoder()
+  let context = { kernel, scope: firstScope, settings: oldSettings }
+  const persistence = { key: vi.fn(() => gate.promise), read: vi.fn(async () => undefined), write: vi.fn() }
+  const load = managedSceneImageLoader(cache, () => context, persistence)
+  const pixels = load(uri(1)).pixels
+  context = { kernel, scope: nextScope, settings: newSettings }; cache.begin(nextScope)
+  const fresh = record(true); fresh.data[0] = 4; cache.set(nextScope, `f:${uri(1)}`, fresh)
+  gate.resolve('captured-old-key'); await Promise.resolve(); await Promise.resolve()
+  expect(persistence.key).toHaveBeenCalledWith(uri(1), 'linear', oldSettings)
+  expect(persistence.write).toHaveBeenCalledWith('captured-old-key', { width: 2, height: 2, data: pixels })
+  expect(cache.get(nextScope, `f:${uri(1)}`)).toBe(fresh)
+  expect(cache.get(firstScope, `f:${uri(1)}`)).toBeUndefined()
+})
 
 for (const managed of [false, true]) test(`real kernel packets and upload bytes equal baseline while 1000-image warm reads drop 2000 → 4 (managed=${managed})`, async () => {
   const { doc, uris, options } = fixture(1000, managed), source = JSON.stringify(doc)

@@ -1,0 +1,207 @@
+{
+  "status": "passed",
+  "runtime": {
+    "node": "v24.12.0",
+    "v8": "13.6.233.17-node.37",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "fixture": {
+    "nodeId": "1AB99304-455A-4A9E-9473-8923A1330FA4",
+    "dimensions": [
+      736,
+      414
+    ],
+    "components": 1218816,
+    "pixelsSha256": "3f2aa1e9b7921407cdf332f738d105afd994166e209623c5440df40344634c36",
+    "uriSha256": "a255b8a7ffdca8a7afefd4fcd1fc2af93b3f3c0421559e1075ed98e53e1376a9",
+    "sceneSha256": "60ae6e70d275e1d9a697382330c2aee5be33e7beb67c7219c45d4183bdc1d205",
+    "documentSha256": "14a159771cc749d24ac1e51ecf05ee5e1d5d604b9f0e2f7e5d166e9547149dab",
+    "wasmSha256": "9cddc0c6b91a48474037a4f64f6ac844f8bbea696596a241b3d31b49cf9678c5"
+  },
+  "source": {
+    "baselineSha256": "2dad06fa0c0ae380211cbc4b74b08d6d32189da43009d2b088a818c7cfebeb09",
+    "candidateSha256": "659f35dec7bba1442e7f48b60d966bedbeb76a9e7c2e861a7e64afd41cdfc381"
+  },
+  "rounds": 5,
+  "iterations": 20,
+  "warmupsPerVariant": 12,
+  "order": "ABBA",
+  "expected": {
+    "pixels": 304704,
+    "opaqueAlpha": true,
+    "nonnegativeRgb": true,
+    "minimum": [
+      115,
+      115,
+      115,
+      127
+    ],
+    "maximum": [
+      126,
+      127,
+      127,
+      127
+    ]
+  },
+  "samples": [
+    {
+      "round": 0,
+      "position": 0,
+      "variant": "A",
+      "batchMs": 160.53804100000008,
+      "perCallMs": 8.026902050000004
+    },
+    {
+      "round": 0,
+      "position": 1,
+      "variant": "B",
+      "batchMs": 53.16433399999994,
+      "perCallMs": 2.658216699999997
+    },
+    {
+      "round": 0,
+      "position": 2,
+      "variant": "B",
+      "batchMs": 52.87662499999999,
+      "perCallMs": 2.6438312499999994
+    },
+    {
+      "round": 0,
+      "position": 3,
+      "variant": "A",
+      "batchMs": 158.69525,
+      "perCallMs": 7.9347625
+    },
+    {
+      "round": 1,
+      "position": 0,
+      "variant": "A",
+      "batchMs": 159.30833300000006,
+      "perCallMs": 7.965416650000003
+    },
+    {
+      "round": 1,
+      "position": 1,
+      "variant": "B",
+      "batchMs": 53.328207999999904,
+      "perCallMs": 2.6664103999999953
+    },
+    {
+      "round": 1,
+      "position": 2,
+      "variant": "B",
+      "batchMs": 53.30229099999997,
+      "perCallMs": 2.6651145499999984
+    },
+    {
+      "round": 1,
+      "position": 3,
+      "variant": "A",
+      "batchMs": 160.60520799999995,
+      "perCallMs": 8.030260399999998
+    },
+    {
+      "round": 2,
+      "position": 0,
+      "variant": "A",
+      "batchMs": 158.85441600000013,
+      "perCallMs": 7.942720800000006
+    },
+    {
+      "round": 2,
+      "position": 1,
+      "variant": "B",
+      "batchMs": 52.89154099999996,
+      "perCallMs": 2.644577049999998
+    },
+    {
+      "round": 2,
+      "position": 2,
+      "variant": "B",
+      "batchMs": 52.98608300000001,
+      "perCallMs": 2.6493041500000003
+    },
+    {
+      "round": 2,
+      "position": 3,
+      "variant": "A",
+      "batchMs": 159.45058299999982,
+      "perCallMs": 7.972529149999991
+    },
+    {
+      "round": 3,
+      "position": 0,
+      "variant": "A",
+      "batchMs": 159.30616599999985,
+      "perCallMs": 7.965308299999992
+    },
+    {
+      "round": 3,
+      "position": 1,
+      "variant": "B",
+      "batchMs": 53.168499999999995,
+      "perCallMs": 2.658425
+    },
+    {
+      "round": 3,
+      "position": 2,
+      "variant": "B",
+      "batchMs": 53.26091700000006,
+      "perCallMs": 2.663045850000003
+    },
+    {
+      "round": 3,
+      "position": 3,
+      "variant": "A",
+      "batchMs": 160.795834,
+      "perCallMs": 8.0397917
+    },
+    {
+      "round": 4,
+      "position": 0,
+      "variant": "A",
+      "batchMs": 160.18504200000007,
+      "perCallMs": 8.009252100000003
+    },
+    {
+      "round": 4,
+      "position": 1,
+      "variant": "B",
+      "batchMs": 53.683874999999716,
+      "perCallMs": 2.6841937499999857
+    },
+    {
+      "round": 4,
+      "position": 2,
+      "variant": "B",
+      "batchMs": 53.52712500000007,
+      "perCallMs": 2.6763562500000035
+    },
+    {
+      "round": 4,
+      "position": 3,
+      "variant": "A",
+      "batchMs": 160.4571249999999,
+      "perCallMs": 8.022856249999995
+    }
+  ],
+  "summary": {
+    "A": {
+      "variant": "A",
+      "batches": 10,
+      "medianMs": 7.990890624999997,
+      "minMs": 7.9347625,
+      "maxMs": 8.0397917
+    },
+    "B": {
+      "variant": "B",
+      "batches": 10,
+      "medianMs": 2.6607354250000013,
+      "minMs": 2.6438312499999994,
+      "maxMs": 2.6841937499999857
+    },
+    "ratio": 0.3329710729209239
+  },
+  "limitations": "One actual 117 image, repeated CPU-only Node/V8 calls. JIT warmup, certificate allocation and WeakSet insertion are retained; decode/hash/compare and GPU/application work are excluded. No whole-editor latency claim."
+}

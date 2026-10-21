@@ -1,0 +1,236 @@
+--- a/frontend/design-client/src/kernel/gpu/exact-image-x-table.ts
++++ b/frontend/design-client/src/kernel/gpu/exact-image-x-table.ts
+@@ -50,7 +50,7 @@
+   /** X: qx,U,ku,0. Y: qy-rowMin,V,kv,0. Four sample-major arrays. */
+   x: Uint32Array; y: Uint32Array
+   /** shape=(w,h,rowMin,rowCount), image=(iw,ih,storedChannels,opaqueAlpha), minimum exponents,
+-   * output=(stripOffsetX,stripOffsetY,outputWidth,outputHeight). */
++   * output=(stripOffsetX,stripOffsetY,packedChannelBits,reserved). */
+   uniform: Uint32Array
+   rowMin: number; rowCount: number; tableBytes: number
+   maxKx: number; maxKy: number
+@@ -111,8 +111,10 @@
+   const budget = input.maxTableBytes ?? 16 * 1024 * 1024
+   if (!Number.isSafeInteger(budget) || budget < 0 || !Number.isSafeInteger(tableBytes) || tableBytes > budget) return
+   for (let at = 0; at < y.length; at += 4) y[at] -= rowMin
++  const packedChannelBits = range.minimum.reduce((packed, minimum, channel) =>
++    packed | ((24 + range.maximum[channel] - minimum) << (channel * 7)), 0)
+   const plan = { x, y, rowMin, rowCount, tableBytes, maxKx, maxKy,
+-    uniform: new Uint32Array([width, height, rowMin, rowCount, imageWidth, imageHeight, channels, Number(range.opaqueAlpha), ...range.minimum, 0, 0, width, height]) }
++    uniform: new Uint32Array([width, height, rowMin, rowCount, imageWidth, imageHeight, channels, Number(range.opaqueAlpha), ...range.minimum, 0, 0, packedChannelBits, 0]) }
+   // A WeakMap identity alone does not certify mutable TypedArray contents.
+   // Keep an exact private witness; admission rejects later edits before it
+   // snapshots GPU inputs. No digest or caller-provided bound grants authority.
+@@ -161,6 +163,33 @@
+ }
+ fn xiSigned96(words:vec4<u32>)->vec4<u32>{
+  return vec4<u32>(words.xyz,select(0u,0xffffffffu,(words.z&0x80000000u)!=0u));
++}
++// The per-channel gate proves every interpreted Y intermediate fits signed96.
++// Arithmetic stays modulo 2^96; only the final result is sign-extended for the
++// unchanged signed128 RNE helper. No bits are truncated from admitted values.
++fn xiAdd96(a:vec3<u32>,b:vec3<u32>)->vec3<u32>{
++ let low=a.x+b.x;let middle=a.y+b.y;
++ let carried=middle+select(0u,1u,low<a.x);
++ return vec3<u32>(low,carried,a.z+b.z+select(0u,1u,middle<a.y||carried<middle));
++}
++fn xiNeg96(a:vec3<u32>)->vec3<u32>{return xiAdd96(vec3<u32>(~a.x,~a.y,~a.z),vec3<u32>(1u,0u,0u));}
++fn xiSub96(a:vec3<u32>,b:vec3<u32>)->vec3<u32>{return xiAdd96(a,xiNeg96(b));}
++fn xiShift96(a:vec3<u32>,shift:u32)->vec3<u32>{
++ if(shift>=96u){return vec3<u32>(0u);}
++ var low=a.x;var middle=a.y;var high=a.z;
++ if(shift>=64u){low=0u;middle=0u;high=a.x;}
++ else if(shift>=32u){low=0u;middle=a.x;high=a.y;}
++ let offset=shift&31u;if(offset==0u){return vec3<u32>(low,middle,high);}
++ return vec3<u32>(low<<offset,(middle<<offset)|(low>>(32u-offset)),(high<<offset)|(middle>>(32u-offset)));
++}
++fn xiTimesWord96(a:vec3<u32>,factor:u32)->vec3<u32>{
++ let p0=xiMulWord(a.x,factor);let p1=xiMulWord(a.y,factor);
++ let middle=p1.x+p0.y;
++ return vec3<u32>(p0.x,middle,a.z*factor+p1.y+select(0u,1u,middle<p1.x));
++}
++fn xiY96(a:vec3<u32>,b:vec3<u32>,numerator:u32,denominator:u32)->vec4<u32>{
++ let value=xiAdd96(xiShift96(a,denominator),xiTimesWord96(xiSub96(b,a),numerator));
++ return xiSigned96(vec4<u32>(value,0u));
+ }
+ fn xiRound(value:vec4<u32>,quantum:i32)->u32{
+  let negative=(value.w&0x80000000u)!=0u;var a=value;if(negative){a=xiNeg(a);}
+@@ -220,6 +249,7 @@
+ fn xiTableSigned96(at:u32)->vec4<u32>{
+  return xiSigned96(vec4<u32>(xiTable[at],xiTable[at+1u],xiTable[at+2u],0u));
+ }
++fn xiUseY96(p:u32,kx:u32,ky:u32)->bool{return IMAGE_TABLE_Y96&&p+kx+ky+2u<=94u;}
+ fn exactImageXTableSample(localPixel:vec2<u32>,sample:u32)->vec4<f32>{
+  let pixel=localPixel+xiConfig.output.xy;
+  let width=xiConfig.shape.x;let rows=xiConfig.shape.w;
+@@ -228,7 +258,9 @@
+  let at=((sample*rows+y.x)*width+pixel.x)*channels*3u;var result=vec4<u32>(0u,0u,0u,0x3f800000u);
+  for(var c=0u;c<channels;c=c+1u){
+   let a=xiTableSigned96(at+c*3u);let b=xiTableSigned96(at+rowStride+c*3u);
+-  let value=xiAdd(xiShift(a,y.z),xiTimesWord(xiSub(b,a),y.y));
++  let p=(xiConfig.output.z>>(c*7u))&127u;var value:vec4<u32>;
++  if(xiUseY96(p,x.z,y.z)){value=xiY96(a.xyz,b.xyz,y.y,y.z);}
++  else{value=xiAdd(xiShift(a,y.z),xiTimesWord(xiSub(b,a),y.y));}
+   result[c]=xiRound(value,i32(xiConfig.minimum[c])-150-i32(x.z)-i32(y.z));
+  }
+  return bitcast<vec4<f32>>(result);
+--- a/frontend/design-client/src/kernel/gpu/image-x-table-gpu.ts
++++ b/frontend/design-client/src/kernel/gpu/image-x-table-gpu.ts
+@@ -7,7 +7,8 @@
+ // multiplications nor the general 19-limb sampling fallback.
+ const arithmeticEnd = vectorShader.indexOf('fn sqrtRN(')
+ if (arithmeticEnd < 0) throw Error('Missing exact image arithmetic')
+-const resolveShader = exactImageXTableSampleWgsl + vectorShader.slice(0, arithmeticEnd) +
++const y96 = import.meta.env.VITE_DESIGN_IMAGE_TABLE_Y96 === '1'
++const resolveShader = `const IMAGE_TABLE_Y96:bool=${y96};\n` + exactImageXTableSampleWgsl + vectorShader.slice(0, arithmeticEnd) +
+   imageTableQuarterWgsl + [
+     '@vertex fn imageTableQuad(@builtin(vertex_index) i:u32)->@builtin(position) vec4<f32>{',
+     'let p=array<vec2<f32>,3>(vec2<f32>(-1.,-1.),vec2<f32>(3.,-1.),vec2<f32>(-1.,3.));return vec4<f32>(p[i],0.,1.);}',
+--- a/frontend/design-client/src/kernel/gpu/webgpu.ts
++++ b/frontend/design-client/src/kernel/gpu/webgpu.ts
+@@ -192,7 +192,7 @@
+     delete target.finitePixels;delete target.opaqueAlpha;delete target.uniformColor;delete target.transparentZero
+     this.closeOver()
+     const words=new Uint32Array(256);words.set(entry.storage.config)
+-    words.set([offsetX,offsetY,target.width,target.height],12)
++    words.set([offsetX,offsetY],12)
+     const binding=this.uniformWords(words)
+     entry.pipeline.encodeResolve(this.encoder,target.resource as GPUTexture,entry.storage,binding)
+     this.drawCalls++
+--- a/frontend/design-client/src/kernel/gpu/exact-image-x-table.test.ts
++++ b/frontend/design-client/src/kernel/gpu/exact-image-x-table.test.ts
+@@ -18,7 +18,7 @@
+   const f = fixture(), plan = planExactImageXTable(f)!
+   expect(plan.rowMin).toBe(2); expect(plan.rowCount).toBe(4)
+   expect(plan.tableBytes).toBe(4 * 4 * 4 * 3 * 12)
+-  expect([...plan.uniform]).toEqual([4, 3, 2, 4, 8, 8, 3, 1, 127, 127, 127, 127, 0, 0, 4, 3])
++  expect([...plan.uniform]).toEqual([4, 3, 2, 4, 8, 8, 3, 1, 127, 127, 127, 127, 0, 0, 24 | (24 << 7) | (24 << 14) | (24 << 21), 0])
+   expect([...plan.x.slice(0, 4)]).toEqual([1, 1, 3, 0])
+   expect([...plan.x.slice(4 * 4, 4 * 4 + 4)]).toEqual([1, 1, 2, 0])
+   expect([...plan.y.slice(0, 4)]).toEqual([0, 1, 3, 0])
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/exact-image-y96.test.ts
+@@ -0,0 +1,123 @@
++import { expect, test } from 'vitest'
++import { certifyExactImageRange, imageXTablePlanRange, planExactImageXTable,
++  exactImageXTableMathWgsl, exactImageXTableSampleWgsl } from './exact-image-x-table'
++
++type Vec = number[]
++const mask96 = (1n << 96n) - 1n, sign96 = 1n << 95n
++const mask128 = (1n << 128n) - 1n
++function packed(n: bigint, length = 3): Vec {
++  return Array.from({ length }, (_, i) => Number(n >> BigInt(i * 32) & 0xffffffffn))
++}
++function unsigned(v: Vec): bigint { return v.reduce((n, w, i) => n | BigInt(w >>> 0) << BigInt(i * 32), 0n) }
++function signed(v: Vec): bigint {
++  const n = unsigned(v), sign = 1n << BigInt(v.length * 32 - 1)
++  return n & sign ? n - (sign << 1n) : n
++}
++function sourceFunction(name: string, source = exactImageXTableMathWgsl) {
++  const start = source.indexOf(`fn ${name}(`), open = source.indexOf('{', start)
++  if (start < 0 || open < 0) throw Error(`Missing production function ${name}`)
++  let end = open + 1, depth = 1
++  for (; depth && end < source.length; end++) {
++    if (source[end] === '{') depth++
++    if (source[end] === '}') depth--
++  }
++  if (depth) throw Error('Unclosed production function')
++  const signature = source.slice(start, open)
++  const args = signature.slice(signature.indexOf('(') + 1, signature.indexOf(')')).split(',').map(a => a.split(':')[0].trim()).join(',')
++  const body = source.slice(open + 1, end - 1)
++    .replace(/\bvar\b/g, 'let').replace(/\b(0x[0-9a-f]+|\d+)u\b/gi, '$1')
++    .replace(/vec([34])<u32>/g, 'vec$1u')
++    .replace(/\b(\w+)\.([xyzw])\b/g, (_m, name, axis) => `${name}[${'xyzw'.indexOf(axis)}]`)
++    .replace(/>>/g, '>>>').replace('a[2]*factor', 'Math.imul(a[2],factor)')
++    // Model inferred-u32 scalar declarations with their actual wrap semantics.
++    .replace(/let (low|middle|carried|high|offset)=([^;]+);/g, 'let $1=u32($2);')
++  return `function ${name}(${args}){${body}}`
++}
++type Helpers = {
++  xiAdd96(a: Vec, b: Vec): Vec; xiNeg96(a: Vec): Vec; xiSub96(a: Vec, b: Vec): Vec
++  xiShift96(a: Vec, amount: number): Vec; xiTimesWord96(a: Vec, b: number): Vec
++  xiY96(a: Vec, b: Vec, numerator: number, denominator: number): Vec
++  xiUseY96(p: number, kx: number, ky: number): boolean
++}
++function helpers(enabled: boolean): Helpers {
++  const names = ['xiAdd96', 'xiNeg96', 'xiSub96', 'xiShift96', 'xiTimesWord96', 'xiY96']
++  const vector = (count: number, args: (number | Vec)[]) => {
++    const parts = args.flat(); return (parts.length === 1 ? Array(count).fill(parts[0]) : parts).map(v => v >>> 0)
++  }
++  const bindings = {
++    u32: (v: number) => v >>> 0, select: (a: number, b: number, yes: boolean) => yes ? b : a,
++    vec3u: (...args: (number | Vec)[]) => vector(3, args), vec4u: (...args: (number | Vec)[]) => vector(4, args),
++    xiMulWord: (a: number, b: number) => packed(BigInt(a) * BigInt(b), 2),
++    xiSigned96: (v: Vec) => [v[0], v[1], v[2], v[2] & 0x80000000 ? 0xffffffff : 0],
++    IMAGE_TABLE_Y96: enabled,
++  }
++  return new Function(...Object.keys(bindings), `${names.map(n => sourceFunction(n)).join('\n')}\n${sourceFunction('xiUseY96', exactImageXTableSampleWgsl)}\nreturn {${[...names, 'xiUseY96'].join(',')}};`)(...Object.values(bindings))
++}
++const on = helpers(true), off = helpers(false)
++
++test('production vec3 carry, borrow, low multiply and shifts preserve every modular limb', () => {
++  let seed = 0x714ac3d5
++  const next = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return seed >>> 0 }
++  for (let i = 0; i < 512; i++) {
++    const a = [next(), next(), next()], b = [next(), next(), next()], factor = next()
++    expect(unsigned(on.xiAdd96(a, b))).toBe((unsigned(a) + unsigned(b)) & mask96)
++    expect(unsigned(on.xiNeg96(a))).toBe(-unsigned(a) & mask96)
++    expect(unsigned(on.xiSub96(a, b))).toBe((unsigned(a) - unsigned(b)) & mask96)
++    expect(unsigned(on.xiTimesWord96(a, factor))).toBe(unsigned(a) * BigInt(factor) & mask96)
++    for (const shift of [0, 1, 31, 32, 33, 63, 64, 65, 95, 96, 127])
++      expect(unsigned(on.xiShift96(a, shift))).toBe(shift >= 96 ? 0n : unsigned(a) << BigInt(shift) & mask96)
++  }
++})
++
++test('production per-channel gate is exact at 94 bits and opt-in remains mandatory', () => {
++  for (const [p, kx, ky] of [[24, 0, 0], [24, 0, 32], [24, 0, 64], [24, 64, 0],
++    [24, 36, 32], [24, 36, 33], [35, 31, 26], [36, 32, 25], [92, 0, 0]]) {
++    expect(on.xiUseY96(p, kx, ky)).toBe(p + kx + ky + 2 <= 94)
++    expect(off.xiUseY96(p, kx, ky)).toBe(false)
++  }
++})
++
++test('signed Y intermediates at every admitted boundary equal the original 128-bit result', () => {
++  let seed = 0x3f791c25, accepted = 0, fallback = 0
++  const next = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return seed >>> 0 }
++  const cases = [[24, 0, 0], [24, 0, 32], [24, 0, 64], [24, 64, 0], [24, 36, 32], [24, 36, 33],
++    [35, 31, 26], [36, 32, 25], [92, 0, 0], ...Array.from({ length: 512 }, () => [24 + next() % 50, next() % 65, next() % 65])]
++  for (const [p, kx, ky] of cases) {
++    if (p + kx > 95 || p + kx + ky + 2 > 126) continue // Prior signed128 plan admission.
++    const magnitude = (1n << BigInt(p + kx)) - 1n
++    const numerators = ky === 0 ? [0, 1] : [0, 1, 2 ** Math.min(24, ky) - 1]
++    for (const [a, b] of [[0n, 0n], [magnitude, magnitude], [-magnitude, -magnitude],
++      [magnitude, -magnitude], [-magnitude, magnitude], [1n, -1n]]) for (const v of numerators) {
++      const expected = (a << BigInt(ky)) + (b - a) * BigInt(v)
++      if (!on.xiUseY96(p, kx, ky)) { fallback++; continue }
++      accepted++
++      for (const value of [a, b, b - a, a << BigInt(ky), (b - a) * BigInt(v), expected])
++        expect(value < 0n ? -value : value).toBeLessThan(sign96)
++      const actual = on.xiY96(packed(a), packed(b), v, ky)
++      expect(unsigned(actual)).toBe(expected & mask128)
++      expect(signed(actual)).toBe(expected)
++    }
++  }
++  expect(accepted).toBeGreaterThan(1000); expect(fallback).toBeGreaterThan(100)
++  // The exact same signed128 value and quantum enter the unchanged xiRound.
++  expect(exactImageXTableSampleWgsl).toContain('else{value=xiAdd(xiShift(a,y.z),xiTimesWord(xiSub(b,a),y.y));}')
++  expect(exactImageXTableSampleWgsl).toContain('result[c]=xiRound(value,i32(xiConfig.minimum[c])-150-i32(x.z)-i32(y.z));')
++})
++
++test('per-channel source P is packed losslessly and remains inside the private plan witness', () => {
++  const width = 4, height = 3, imageWidth = 8, imageHeight = 8
++  const pixels = new Float32Array(imageWidth * imageHeight * 4).fill(1), bits = new Uint32Array(pixels.buffer)
++  bits[0] = 115 << 23; bits[1] = 116 << 23; bits[2] = 117 << 23
++  const range = certifyExactImageRange(pixels)!
++  const axes = Array.from({ length: 4 }, () => {
++    const field = new Float32Array(width * 8)
++    for (let x = 0; x < width; x++) field.set([1 + x, .25, 1, -1], x * 4)
++    for (let y = 0; y < height; y++) field.set([2 + y, .5, 1, -1], (width + y) * 4)
++    return field
++  })
++  const plan = planExactImageXTable({ axes, width, height, imageWidth, imageHeight, range })!
++  for (let c = 0; c < 4; c++) expect(plan.uniform[14] >>> (c * 7) & 127).toBe(24 + range.maximum[c] - range.minimum[c])
++  expect(plan.uniform[15]).toBe(0); expect(imageXTablePlanRange(plan)).toBe(range)
++  plan.uniform[14] ^= 1
++  expect(imageXTablePlanRange(plan)).toBeUndefined()
++})

@@ -28,7 +28,9 @@ fn prefix_mul_i32(a:PrefixInt,k:i32)->PrefixInt {
 }
 fn prefix_mul(a:PrefixInt,b:PrefixInt)->PrefixInt {
  var result=PrefixInt(0u);
- for(var i=0u;i<4u;i=i+1u){result=prefix_add(result,prefix_shl(prefix_mul_u32(a,b[i]),i*32u));}
+ // Exact zero words contribute nothing modulo 2^128. Rational coefficient
+ // words are shared by the pass, so this also avoids uniform zero work.
+ for(var i=0u;i<4u;i=i+1u){if(b[i]==0u){continue;}result=prefix_add(result,prefix_shl(prefix_mul_u32(a,b[i]),i*32u));}
  return result;
 }
 fn prefix_shl(a:PrefixInt,shift:u32)->PrefixInt {

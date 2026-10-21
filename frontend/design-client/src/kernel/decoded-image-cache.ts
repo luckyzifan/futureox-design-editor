@@ -3,6 +3,25 @@
 export type DecodedImage = { width: number; height: number; data: Uint8Array | Float32Array }
 export const DECODED_IMAGE_CACHE_BYTES = 64 * 1024 * 1024
 
+declare const decodedImageOwner: unique symbol
+export type DecodedImageOwner = { readonly [decodedImageOwner]: true }
+const ownerIds = new WeakMap<DecodedImageOwner, number>()
+let nextOwnerId = 0
+/** Private worker residency identity, never a document ID supplied by a file.
+ * A synchronized interaction fork may borrow its canvas owner's exact pixels. */
+export function createDecodedImageOwner(): DecodedImageOwner {
+  const owner = Object.freeze({}) as DecodedImageOwner
+  ownerIds.set(owner, ++nextOwnerId)
+  return owner
+}
+export function decodedImageScope(owner: DecodedImageOwner, settings: string): string {
+  const id = ownerIds.get(owner)
+  if (id === undefined) throw Error('Unknown decoded image owner')
+  // Full settings, not a hash or selected color fields. URI (including embedded
+  // ICC/orientation bytes) and byte/linear variant are the per-entry key.
+  return JSON.stringify([id, settings])
+}
+
 export function validDecodedImage(value: unknown): value is DecodedImage {
   if (!value || typeof value !== 'object') return false
   const { width, height, data } = value as DecodedImage

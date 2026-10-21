@@ -16,7 +16,7 @@ const source=shader.slice(begin,end)
   .replace(/stride=stride\/2\b/g,'stride=Math.floor(stride/2)')
   .replace(/workgroupBarrier\(\);/g,'yield;')
 type Invocation=Generator<void,void,unknown>
-const makeInvocation=new Function('scanSums','scanMoments','prefix_add','prefix_mul_u32','PrefixInt',
+const makeInvocation=new Function('scanSums','scanMoments','prefix_scan_add','prefix_mul_u32','PrefixInt',
   `return function* (lane,value,j){${source}}`) as (
     sums:bigint[],moments:bigint[],add:(a:bigint,b:bigint)=>bigint,
     mul:(a:bigint,b:number)=>bigint,integer:(value:number)=>bigint,

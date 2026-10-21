@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   keys: [] as { uri: string; variant: string; settings: string }[], reads: [] as string[],
   scenes: [] as any[], loads: [] as { uri: string; render: number; bytes?: Uint8Array; pixels: Float32Array }[],
   readGate: undefined as undefined | Promise<unknown>, keyGate: undefined as undefined | Promise<void>,
+  font: undefined as Uint8Array | undefined,
   disposed: [] as number[], createCount: 0, onPost: undefined as undefined | ((value: any) => void),
 }))
 vi.mock('./image-mip-cache', () => ({
@@ -20,7 +21,7 @@ vi.mock('./image-mip-cache', () => ({
   readCachedImage: async (key: string) => { state.reads.push(key); return state.readGate ? await state.readGate : undefined },
   writeCachedImage() {},
 }))
-vi.mock('./kernel-resources', () => ({ loadKernelResources: async () => undefined }))
+vi.mock('./kernel-resources', () => ({ loadKernelResources: async () => state.font }))
 vi.mock('./gpu/factory', async () => {
   const { sceneIndex } = await import('./gpu/scene-index')
   const { GpuRenderer } = await import('./gpu/renderer')
@@ -36,6 +37,7 @@ vi.mock('./gpu/factory', async () => {
       return { driver: { name: backend, managed: floating, displayMath, lost: false, description: 'CPU test driver', attachPresenter: vi.fn(() => { if (state.failAttach) throw Error('Presenter attachment failed') }), abortFrameAndReleaseFilterScratch: async () => {} },
         dispose() { expect(state.disposed).not.toContain(identity); state.disposed.push(identity); resources.dispose() },
         abortFrameAndReleaseFilterScratch: async () => {},
+        releaseFilterBatch() {},
         async render(scene: any, readback = false, present = true) {
           state.renders.push({ readback, present, scene })
           if (state.failBudgetOnce) { state.failBudgetOnce = false; throw Error('GPU surface budget exceeded') }
@@ -76,25 +78,103 @@ function fixture(count = 1000) {
   const options = { pageId: 'visible', width: 48, height: 16, view: { x: 0, y: 0, zoom: 1 }, rasterProfile: 'analytic', renderIntent: 'canvas' }
   return { doc, images, options }
 }
-async function worker(desktopFullMath = false) {
+async function worker(desktopFullMath = false, withPreparation = false) {
   vi.resetModules()
   Object.assign(state, { failAttach: false, failBudgetOnce: false, renders: [], transfers: [], keys: [], reads: [], scenes: [], loads: [], keyGate: undefined, readGate: undefined, disposed: [], createCount: 0, onPost: undefined })
+  state.font = withPreparation ? new Uint8Array(readFileSync(new URL('../../public/fonts/NotoSansSC.ttf', import.meta.url))) : undefined
   const kernel = await import('../generated/design-kernel/design_kernel')
   await kernel.default({ module_or_path: wasm })
+  let preparationPort: MessagePort | undefined
+  if (withPreparation) {
+    const preparationScope: any = {}
+    vi.stubGlobal('self', preparationScope)
+    await import('./preparation-worker')
+    const pair = new NativeMessageChannel(); channels.push(pair)
+    preparationScope.onmessage({ data: { port: pair.port2 } }); preparationPort = pair.port1
+  }
   const messages: any[] = [], scope: any = { postMessage(value: unknown, transfer: unknown) { messages.push(value); state.transfers.push(transfer); state.onPost?.(value) } }
   vi.stubGlobal('self', scope)
   vi.stubGlobal('MessageChannel', class {
     constructor() { const channel = new NativeMessageChannel(); channels.push(channel); return channel }
   })
   await import('./render-worker')
+  if (preparationPort) scope.onmessage({ data: { command: 'prepare-port', port: preparationPort } })
   const executionPolicy = createRenderPolicy(false, false, false, false, desktopFullMath)
   const send = (request: any) => scope.onmessage({ data: { executionPolicy, backend: 'auto', ...request } })
   const finish = async (id: number) => {
     await vi.waitFor(() => expect(messages.some(value => value.id === id && (value.backend || value.error))).toBe(true))
     return messages.find(value => value.id === id && (value.backend || value.error))
   }
-  return { send, finish, messages }
+  return { send, finish, messages, kernel }
 }
+
+for (const managed of [false, true]) test(`same exact canvas snapshot reuses decoded assets across interaction and pose patches (managed=${managed})`, async () => {
+  const f = fixture(4), w = await worker(true)
+  if (managed) {
+    f.doc.schemaVersion = 3; f.doc.rasterProfile = 'figma'; f.options.rasterProfile = 'figmaSubpixel'
+    f.doc.colorManagement = { documentSpace: 'srgb', referenceWhiteNits: 203, peakLuminanceNits: 1000 }
+  }
+  const info = vi.spyOn(w.kernel.VectorEngine.prototype, 'image_info')
+  try {
+    const source = JSON.stringify(f.doc)
+    w.send({ id: 901, backend: 'webgpu', document: source, documentRevision: 1, options: f.options, readback: true })
+    expect((await w.finish(901)).error).toBeUndefined()
+    expect(info).toHaveBeenCalledTimes(4); expect(state.reads).toHaveLength(4)
+    const initial = state.loads.map(value => new Uint8Array((value.bytes ?? value.pixels).buffer).slice())
+    // Force a fresh upload path as well as lane hydration; a retained GPU image
+    // alone must not conceal a second synchronous WASM decode.
+    w.send({ id: 902, backend: 'webgl2', channel: 'interaction', document: source, documentRevision: 1, options: f.options, readback: true })
+    expect((await w.finish(902)).error).toBeUndefined()
+    expect(info).toHaveBeenCalledTimes(4); expect(state.reads).toHaveLength(4)
+    expect(state.createCount).toBe(2)
+    expect(state.loads.slice(4).map(value => new Uint8Array((value.bytes ?? value.pixels).buffer))).toEqual(initial)
+    const moved = structuredClone(f.doc); moved.nodes['image-0'].transform[4] += 1
+    w.send({ id: 903, backend: 'webgpu', channel: 'interaction', documentPatch: JSON.stringify(documentPatch(f.doc, moved)),
+      baseDocumentRevision: 1, documentRevision: 2, options: f.options, readback: true })
+    expect((await w.finish(903)).error).toBeUndefined()
+    expect(info).toHaveBeenCalledTimes(4); expect(state.reads).toHaveLength(4)
+    w.send({ id: 904, backend: 'webgl2', documentRevision: 1, options: f.options, readback: true })
+    expect((await w.finish(904)).error).toBeUndefined()
+    expect(info).toHaveBeenCalledTimes(4); expect(state.reads).toHaveLength(4)
+    expect(state.loads.slice(-4).map(value => new Uint8Array((value.bytes ?? value.pixels).buffer))).toEqual(initial)
+    // A full reopen gets a new owner even if the entire JSON and document ID
+    // repeat. It must not inherit the retired session's in-memory residency.
+    w.send({ id: 905, backend: 'webgpu', document: source, documentRevision: 2, options: f.options, readback: true })
+    expect((await w.finish(905)).error).toBeUndefined()
+    expect(info).toHaveBeenCalledTimes(8); expect(state.reads).toHaveLength(8)
+  } finally { info.mockRestore() }
+})
+
+test('same-ID interaction with different complete authored bytes cannot borrow the canvas image owner', async () => {
+  const f = fixture(4), w = await worker()
+  w.send({ id: 911, document: JSON.stringify(f.doc), documentRevision: 1, options: f.options, readback: true })
+  expect((await w.finish(911)).error).toBeUndefined(); expect(state.reads).toHaveLength(4)
+  const other = structuredClone(f.doc); other.name = 'A different same-ID authored snapshot'
+  w.send({ id: 912, channel: 'interaction', document: JSON.stringify(other), documentRevision: 1, options: f.options, readback: true })
+  expect((await w.finish(912)).error).toBeUndefined(); expect(state.reads).toHaveLength(8)
+  other.id = 'different-document'
+  w.send({ id: 913, channel: 'interaction', document: JSON.stringify(other), documentRevision: 2, options: f.options, readback: true })
+  expect((await w.finish(913)).error).toBeUndefined(); expect(state.reads).toHaveLength(12)
+})
+
+test('acknowledged native derivation shares exact image pixels without exporting or decoding them again', async () => {
+  const f = fixture(4), w = await worker(true, true)
+  f.doc.schemaVersion = 3; f.doc.rasterProfile = 'figma'; f.options.rasterProfile = 'figmaSubpixel'
+  f.doc.colorManagement = { documentSpace: 'srgb', referenceWhiteNits: 203, peakLuminanceNits: 1000 }
+  const info = vi.spyOn(w.kernel.VectorEngine.prototype, 'image_info')
+  try {
+    w.send({ id: 921, backend: 'webgpu', document: JSON.stringify(f.doc), documentRevision: 1, options: f.options, readback: true })
+    expect((await w.finish(921)).error).toBeUndefined()
+    const receipt = w.messages.find(value => value.id === 921 && value.documentSynchronized)?.stateReceipt
+    expect(receipt?.lane).toBe('canvas'); expect(info).toHaveBeenCalledTimes(4)
+    const initial = state.loads.map(value => new Uint32Array(value.pixels.buffer).slice())
+    w.send({ id: 922, backend: 'webgl2', channel: 'interaction', deriveFrom: receipt, documentRevision: 1, options: f.options, readback: true })
+    expect((await w.finish(922)).error).toBeUndefined()
+    expect(w.messages.some(value => value.id === 922 && value.documentFallback)).toBe(false)
+    expect(state.createCount).toBe(2); expect(state.reads).toHaveLength(4); expect(info).toHaveBeenCalledTimes(4)
+    expect(state.loads.slice(4).map(value => new Uint32Array(value.pixels.buffer))).toEqual(initial)
+  } finally { info.mockRestore() }
+})
 
 for (const desktopFullMath of [false, true]) test(`default ${desktopFullMath ? 'Electron' : 'Web'} auto route reads only four compiled sources, preserving decoded payloads`, async () => {
   const f = fixture(), w = await worker(desktopFullMath)

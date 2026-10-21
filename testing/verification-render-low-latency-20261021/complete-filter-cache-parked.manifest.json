@@ -1,0 +1,43 @@
+{
+  "direction": "cleaned source -> parked complete-filter-cache candidate",
+  "headAtCapture": "d2d04650f7850317abd2a780335809c0b0787fca",
+  "patchSha256": "e6360b48f8082fab87a104ac3abbfbcde9bc34f39feacfcaf526f10f81cbd994",
+  "replayChecked": true,
+  "files": [
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "cleanedSha256": "644d34806483e822dbe5e6edb5895663557297629f8754433d7072f2a849d7ed",
+      "restoredSha256": "196bfadf3ec2f4366a0964c12700996be60f4ca564b8175dfcc1e93762eeda46"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/complete-filter-cache.ts",
+      "cleanedSha256": null,
+      "restoredSha256": "b06ca932c99a12e6206ec1da155af1e67b933756afbac60a9c51ffc90d2dc9bf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/complete-filter-cache.test.ts",
+      "cleanedSha256": null,
+      "restoredSha256": "1b4f2b0da62b9fa7de9f387e9bbc070155efd0900a035ae1d62f6d48c8aadd44"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/whole-image-filter.test.ts",
+      "cleanedSha256": "c5ee7331103518c95a4d77117b1961a67c35245bba16fdc7d27172edc5bca6e3",
+      "restoredSha256": "f38b07967d53605231117aa749ecc2e4f41921949b84d4b39901f792bcb8a0a4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/opaque-filter.test.ts",
+      "cleanedSha256": "827ab356ee9ddef8a8c308f00c12428cc4c3ccf635af8cfeec66c044d85e695b",
+      "restoredSha256": "0fd559215b9479059c68af06d4081b527d4925b56bd0bb4b0ed2c5471ca7ed34"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-worker.ts",
+      "cleanedSha256": "02ef5a0a842d612ffee16349832b5ebda95356887fbe9a1e61d9c3a3b1962239",
+      "restoredSha256": "60756bff03c90733bacd802f29dbbfd89913858486a785bcf757aee895da3367"
+    },
+    {
+      "path": "frontend/design-desktop/src/render-terminal-diagnostics.mjs",
+      "cleanedSha256": "61a400cb899280e04e1a2db645032477ed549abc1bfb59a612c22106836fb63d",
+      "restoredSha256": "bd0bcc404ab6249ef0a72c842fc03d7d979b3039116683afc5c0bc203f8aaffd"
+    }
+  ]
+}

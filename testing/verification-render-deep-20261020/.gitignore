@@ -9,3 +9,9 @@
 !shared-weights-candidate.patch
 !resolve-split-candidate.patch
 !strip-pool-candidate.patch
+!image-range-scan/
+image-range-scan/*
+!image-range-scan/README.md
+!image-range-scan/baseline-range.ts.txt
+!image-range-scan/run1.json
+!image-range-scan/run2.json

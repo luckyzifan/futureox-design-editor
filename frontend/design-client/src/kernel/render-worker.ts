@@ -38,7 +38,7 @@ import type { BackendPreference, GpuScene } from './gpu/types'
 import type { KernelOptions } from './client'
 import { TILE_SIDE, type RasterTile } from './tile-cache'
 import { imageCacheKey, readCachedImage, writeCachedImage } from './image-mip-cache'
-import { DecodedImageCache } from './decoded-image-cache'
+import { DecodedImageCache, createDecodedImageOwner, decodedImageScope } from './decoded-image-cache'
 import { managedSceneImageLoader, SceneImageHydration, type ImageContext } from './scene-image-hydration'
 import { coordinateSlot } from './exact-tile-cache'
 import { OwnerTileCache, ownsExactTileBytes } from './owner-tile-cache'
@@ -256,14 +256,16 @@ const managedImageLoader = managedSceneImageLoader(diskImageCache, () => {
   if (!renderingImages) throw Error('Image decoder has no render owner')
   return renderingImages
 }, imagePersistence)
-/** Capture after ordered document synchronization. Same-id reopen, resources,
- * lanes and color settings each own separate optional decode residency. */
+/** Capture after ordered synchronization. Only a proven same-document fork
+ * shares residency; request/lane ownership and async cancellation stay separate. */
 function sceneImageHydration(kernel: RenderKernel, current: () => boolean) {
   const lane = activeLane, generation = laneState.documentGeneration, resources = laneState.resourceGeneration, promise = laneState.enginePromise
+  const owner = laneState.decodedImageOwner
   const context = { kernel, settings: kernel.color_settings(),
-    scope: JSON.stringify([lane, generation, resources, laneState.loadedDocumentId, kernel.color_settings()]) }
+    scope: decodedImageScope(owner, kernel.color_settings()) }
   const ownerCurrent = () => activeLane === lane && laneState.documentGeneration === generation &&
-    laneState.resourceGeneration === resources && laneState.enginePromise === promise && kernel.color_settings() === context.settings
+    laneState.resourceGeneration === resources && laneState.enginePromise === promise && laneState.decodedImageOwner === owner &&
+    kernel.color_settings() === context.settings
   const hydration = new SceneImageHydration(diskImageCache, context, imagePersistence, ownerCurrent, current)
   return async (scene: GpuScene, isCurrent = current) => {
     const hydrationStarted=terminalDiagnostics.enabled?performance.now():0
@@ -694,6 +696,7 @@ self.onmessage = (e) => {
         // A full resynchronization is a new owner even if its authored id repeats.
         laneState.deferredInteractionDocument = undefined
         laneState.documentGeneration++
+        laneState.decodedImageOwner = createDecodedImageOwner()
         invalidateOwnerTileCache()
         laneState.authoredSnapshot = undefined
         const snapshotAt = performance.now()
@@ -714,6 +717,16 @@ self.onmessage = (e) => {
           paintDamage = undefined
         }
         laneState.loadedRevision = request.documentRevision
+        const canvasSource = channel === 'interaction' ? lanes.get('canvas') : undefined
+        // Identity comes only from complete JSON equality in readAuthoredSnapshot
+        // or the acknowledged native derivation above. IDs/revisions alone never
+        // authorize this reuse, including a same-ID reopen. Pure pose patches
+        // keep the token: changed assets have different full URI entry keys and
+        // changed working settings have a different residency scope.
+        if (canvasSource && !canvasSource.deferredInteractionDocument &&
+            canvasSource.interactionDocument === laneState.interactionDocument &&
+            canvasSource.synchronizedInteractionDocument === laneState.interactionDocument)
+          laneState.decodedImageOwner = canvasSource.decodedImageOwner
         // Publish only after successful kernel synchronization. A failed load
         // or any later patch must never leave a reusable source certificate.
         const sourceJson = derivedSource?.json ?? request.document
@@ -1165,6 +1178,7 @@ self.onmessage = (e) => {
                     materialFieldBuilds: result.materialFieldBuilds,
                     materialFieldBuildMs: result.materialFieldBuildMs,
                     materialFieldUploadBytes: result.materialFieldUploadBytes,
+                    ...('imageXTableBuilds' in result ? {wholeFilterAxes:result.wholeFilterAxes,opaqueTentPasses:result.opaqueTentPasses,imageXTableBuilds:result.imageXTableBuilds,imageXTablePixels:result.imageXTablePixels,imageXTableBytes:result.imageXTableBytes} : {}),
                     ...('horizontalFilterHits' in result ? {
                       horizontalFilterHits: result.horizontalFilterHits,
                       horizontalFilterPixels: result.horizontalFilterPixels,
@@ -1665,6 +1679,7 @@ async function renderTiledPreview(
   const { createGpu, straightAlpha } = await import('./gpu/factory')
   const { renderPreviewTiles, renderBitmapPreviewTiles } = await import('./preview-tiles')
   let hybridEffects = 0, materialFieldHits = 0, materialFieldBuilds = 0, materialFieldBuildMs = 0, materialFieldUploadBytes = 0
+  let wholeFilterAxes = 0, opaqueTentPasses = 0, imageXTableBuilds = 0, imageXTablePixels = 0, imageXTableBytes = 0
   let horizontalFilterHits = 0, horizontalFilterPixels = 0, horizontalFilterRows = 0
   const managedOutput = !!(executionPolicy?.hdrCompositing && color)
   const admissionKey=JSON.stringify(activeLane) + "/" + JSON.stringify([laneState.documentGeneration,laneState.resourceGeneration,options.pageId,options.view.zoom,
@@ -1758,6 +1773,11 @@ async function renderTiledPreview(
         horizontalFilterHits += result.horizontalFilterHits
         horizontalFilterPixels += result.horizontalFilterPixels
         horizontalFilterRows += result.horizontalFilterRows
+        wholeFilterAxes += result.wholeFilterAxes
+        opaqueTentPasses += result.opaqueTentPasses
+        imageXTableBuilds += result.imageXTableBuilds
+        imageXTablePixels += result.imageXTablePixels
+        imageXTableBytes = Math.max(imageXTableBytes, result.imageXTableBytes)
         drawCalls += result.drawCalls
         triangles += result.triangles
         graphMs += result.graphMs
@@ -1871,6 +1891,11 @@ async function renderTiledPreview(
         horizontalFilterHits += result.horizontalFilterHits
         horizontalFilterPixels += result.horizontalFilterPixels
         horizontalFilterRows += result.horizontalFilterRows
+        wholeFilterAxes += result.wholeFilterAxes
+        opaqueTentPasses += result.opaqueTentPasses
+        imageXTableBuilds += result.imageXTableBuilds
+        imageXTablePixels += result.imageXTablePixels
+        imageXTableBytes = Math.max(imageXTableBytes, result.imageXTableBytes)
         drawCalls += result.drawCalls
         triangles += result.triangles
         graphMs += result.graphMs
@@ -1944,6 +1969,7 @@ async function renderTiledPreview(
       backend,
       description,
       hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
+      wholeFilterAxes, opaqueTentPasses, imageXTableBuilds, imageXTablePixels, imageXTableBytes,
       horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
       compileMs,
       renderMs: performance.now() - start - compileMs,
@@ -1985,6 +2011,7 @@ async function renderTiledPreview(
     backend,
     description,
     hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
+    wholeFilterAxes, opaqueTentPasses, imageXTableBuilds, imageXTablePixels, imageXTableBytes,
     horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
     compileMs,
     renderMs: performance.now() - start - compileMs,

@@ -2,12 +2,14 @@ import type { AuthoredSnapshot } from './authored-snapshot'
 import type { DesignDocument } from '../model'
 import type { GpuScene } from './gpu/types'
 import type { RenderKernel } from './render-kernel'
+import { createDecodedImageOwner } from './decoded-image-cache'
 
 export type RenderLaneName = 'canvas' | 'interaction'
 /** CPU/authored state has one stable object per lane. No save/restore copies:
  * an asynchronous continuation can retain its lane even when another is active.
  * GPU caches, encoders and device policy deliberately do not belong here. */
 export class RenderLaneState {
+  decodedImageOwner = createDecodedImageOwner()
   enginePromise?: Promise<RenderKernel>
   loadedDocument = ''
   authoredSnapshot?: AuthoredSnapshot
