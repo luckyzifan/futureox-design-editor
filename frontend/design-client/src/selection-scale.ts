@@ -45,3 +45,64 @@ export function scaleSelectionTransforms(doc: DesignDocument, ids: string[], fac
   }
   return result
 }
+
+export class SelectionScaleError extends Error {
+  constructor(readonly code: string, message: string) { super(message); this.name = 'SelectionScaleError' }
+}
+const rejectScale = (code: string, message: string): never => { throw new SelectionScaleError(code, message) }
+/** Shared UI/automation command planning. The caller owns the isolated draft,
+ * publication, permissions and history; this function performs no mutation. */
+export function prepareSelectionScale(doc: DesignDocument, pageId: string, selected: readonly string[], factor: number, anchor = 4,
+  state: { fresh: boolean } = { fresh: true }): { ids: string[]; transforms: Record<string, Matrix> } {
+  if (!selected.length || selected.length !== new Set(selected).size) rejectScale('invalid_params', 'Select distinct node identifiers')
+  if (!Number.isFinite(factor) || factor < .01 || factor > 1e4 || !Number.isInteger(anchor) || anchor < 0 || anchor > 8)
+    rejectScale('invalid_params', 'Scale factor must be 0.01–10000 and anchor must be an integer 0–8')
+  const parents = allParents(doc), chosen = new Set(selected), ids: string[] = []
+  const derived = (id: string) => {
+    const n = doc.nodes[id]
+    return !!(n.booleanOperation || n.instance || n.instanceOrigin || n.component || n.componentSet ||
+      n.kind === 'text' || n.textPath || n.connector || n.board || (n.layout && n.layout.mode !== 'none') ||
+      n.bindings || n.styleRefs || n.variableModes || n.constraints ||
+      (n.sizing && (n.sizing.width !== 'fixed' || n.sizing.height !== 'fixed')))
+  }
+  for (const id of selected) {
+    if (!Object.hasOwn(doc.nodes, id)) rejectScale('not_found', 'A selected node no longer exists')
+    let at: string | undefined = id, nested = false
+    while (at && doc.nodes[at]) {
+      const n = doc.nodes[at]
+      if (!n.visible) rejectScale('invalid_selection', 'Hidden scale targets or hidden ancestors are not supported; show the full selection first')
+      if (n.locked) rejectScale('locked_node', 'Selection or an ancestor is locked')
+      if (n.instanceOrigin || (at !== id && n.instance)) rejectScale('instance_structure', 'Layers nested inside component instances cannot be scaled')
+      if (!state.fresh && derived(at)) rejectScale('unsupported_derived_batch_geometry', 'Commit preceding edits before scaling derived geometry')
+      if (at !== id && chosen.has(at)) nested = true
+      at = parents.get(at)
+    }
+    if (at !== pageId) rejectScale('different_pages', 'Scale targets must belong to the active page')
+    if (!nested) ids.push(id)
+  }
+  const visited = new Set<string>(), stack = [...ids]
+  while (!state.fresh && stack.length) {
+    const id = stack.pop()!
+    if (visited.has(id)) continue
+    visited.add(id)
+    if (derived(id)) rejectScale('unsupported_derived_batch_geometry', 'Commit preceding edits before scaling derived geometry')
+    for (const child of doc.nodes[id].children) stack.push(child)
+  }
+  for (const id of ids) {
+    const n = doc.nodes[id], parent = doc.nodes[parents.get(id)!]
+    if (parent?.layout && parent.layout.mode !== 'none' && !n.sizing?.absolute)
+      rejectScale('auto_layout_position', 'Scale of auto-layout flow children requires a layout-aware command')
+  }
+  try {
+    const frame = selectionScaleFrame(doc, pageId, ids)
+    if (![frame.box.x, frame.box.y, frame.width, frame.height].every(Number.isFinite))
+      rejectScale('geometry_unavailable', 'Scale bounds must be finite')
+    const transforms = scaleSelectionTransforms(doc, ids, factor, scaleAnchor(frame, anchor))
+    if (Object.values(transforms).some(matrix => !matrix.every(Number.isFinite)))
+      rejectScale('unsupported_transform', 'Scale transform must be finite')
+    return { ids, transforms: factor === 1 ? {} : transforms }
+  } catch (error) {
+    if (error instanceof SelectionScaleError) throw error
+    return rejectScale('unsupported_transform', error instanceof Error ? error.message : String(error))
+  }
+}

@@ -177,3 +177,24 @@ test('definite guarded CAS rejection keeps intended edits available for exact fu
     expect((intended as any).unknownRoot).toEqual({ keep: null })
   } finally { f.client.dispose() }
 })
+test('optional sequential display rejection keeps an acknowledged canvas but not an unacknowledged mutation', async () => {
+  const f = await fixture()
+  try {
+    const first = f.render(), one = await f.next(1); f.ack(one); f.finish(one); await first
+    const optional = f.render(f.document, { sequentialViewport: true, livePreview: true, renderIntent: 'preview' })
+    const rejected = expect(optional).rejects.toThrow('SEQUENTIAL_DISPLAY_UNSUPPORTED'), two = await f.next(2)
+    f.worker.reply({ id: two.id, error: 'SEQUENTIAL_DISPLAY_UNSUPPORTED' }); await rejected
+    expect((f.client as any).documentSnapshot).toBe(f.document)
+    const fallback = f.render(), three = await f.next(3)
+    expect(three.document).toBeUndefined(); expect(three.documentPatch).toBeUndefined()
+    f.finish(three); await fallback
+    const changed = { ...f.document, name: 'unacknowledged change' }
+    const mutation = f.render(changed, { sequentialViewport: true, livePreview: true, renderIntent: 'preview' })
+    const failed = expect(mutation).rejects.toThrow('SEQUENTIAL_DISPLAY_UNSUPPORTED'), four = await f.next(4)
+    f.worker.reply({ id: four.id, error: 'SEQUENTIAL_DISPLAY_UNSUPPORTED' }); await failed
+    expect((f.client as any).documentSnapshot).toBeUndefined()
+    const recovery = f.render(changed), five = await f.next(5)
+    expect(five.document).toBe(JSON.stringify(changed)); expect(five.documentPatch).toBeUndefined()
+    f.ack(five, receipt('recovered')); f.finish(five); await recovery
+  } finally { f.client.dispose() }
+})

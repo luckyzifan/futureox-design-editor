@@ -633,7 +633,7 @@ self.onmessage = (e) => {
       const retainInteraction = request.options?.retainInteractionGraph === true && request.options?.renderIntent === 'preview' && request.options?.livePreview === true &&
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
-      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
+      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
         tilePrepareViewport: requestedPrepareViewport, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       if(terminalDiagnostics.enabled && renderIntent==='canvas')gridMeasurements.record({gridKind:1,gridVisible:Number(!!renderOptions.grid&&!renderOptions.transparent&&renderOptions.view.zoom>0.13),gridSpacingClass:3,gridRedrawReason:2})
       const previewCurrent = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
@@ -673,6 +673,22 @@ self.onmessage = (e) => {
         usesDesktopDisplay(executionPolicy, { renderIntent, rasterProfile: renderOptions.rasterProfile,
           png: request.png, readback: request.readback, exportFormat, exportRegion: renderOptions.exportRegion,
           pixelPreview: renderOptions.pixelPreview })
+      const canvasViewportCapture = sequentialViewport === true &&
+        (import.meta.env.VITE_DESIGN_SEQUENTIAL_DISPLAY === '1' || import.meta.env.VITE_DESIGN_ORIGINAL_VIEWPORT_CAPTURE === '1') &&
+        backend !== 'cpu' && !tileViewport && !retainInteraction &&
+        usesDesktopDisplay(executionPolicy, { renderIntent, rasterProfile: renderOptions.rasterProfile,
+          png: request.png, readback: request.readback, exportFormat, exportRegion: renderOptions.exportRegion,
+          pixelPreview: renderOptions.pixelPreview })
+      // The original graph supports analytic sampling and every admitted
+      // effect. This separate experiment keeps that graph instead of repeatedly
+      // compiling captures which the narrower sequential graph cannot render.
+      const canvasSequentialDisplay = canvasViewportCapture && import.meta.env.VITE_DESIGN_ORIGINAL_VIEWPORT_CAPTURE !== '1'
+      if (sequentialViewport) {
+        if (!canvasViewportCapture) throw Error('SEQUENTIAL_DISPLAY_UNSUPPORTED')
+        // Reuse the existing bounded capture compiler. A whole nonregional
+        // compile admits irrelevant offscreen effect halos at high zoom.
+        renderOptions.captureViewport = { x: 0, y: 0, w: renderOptions.width, h: renderOptions.height }
+      }
       // Canvas chrome is never authored/exported content.
       if (request.png || exportFormat || renderOptions.exportRegion) renderOptions.checkerboard = false
       const disableExactCache = request.debug?.disableExactTileCache === true
@@ -1290,7 +1306,7 @@ self.onmessage = (e) => {
             return
           }
           if (
-            livePreview &&
+            livePreview && !canvasViewportCapture &&
             (tiledPreviewMode || (import.meta.env.DEV && request.debug?.forcePreviewTiles))
           ) {
             await synchronizeDeferred()
@@ -1356,6 +1372,8 @@ self.onmessage = (e) => {
           scene!.displayFilterRadiusLimit = boundedDisplayLimit
           scene!.displayImageSource = canvasImageSource
           scene!.displayMaterialSource = canvasMaterialSource
+          scene!.sequentialDisplay = canvasSequentialDisplay && backend === 'webgpu'
+          if (canvasViewportCapture && backend !== 'webgpu') throw Error('SEQUENTIAL_DISPLAY_UNSUPPORTED')
           const floating = scene!.floatCompositing
           const displayMath = canvasMath && backend === 'webgpu' && floating && !scene!.softwareRaster
           const arithmeticKey = JSON.stringify([floating, displayMath])
@@ -1388,6 +1406,7 @@ self.onmessage = (e) => {
                 !!executionPolicy?.imageMips,
                 !!executionPolicy?.imageAtlas,
                 displayMath,
+                executionPolicy.gpuWorkingBudgetMiB,
               )
               observation.end(deviceLifecyclePhase.recoveryReady, gpu.driver)
             previousDeviceDiagnostic = {}
@@ -1525,6 +1544,14 @@ self.onmessage = (e) => {
           return
         } catch (error) {
           if (String(error).includes('PREVIEW_CANCELLED')) throw error
+          if (canvasSequentialDisplay) {
+            if (error instanceof Error && error.message === 'SEQUENTIAL_DISPLAY_UNSUPPORTED') throw error
+            if (isRecoverablePreviewBudget(error, gpu?.driver.lost)) {
+              if (gpu) await recoverPreviewBudget(error, gpu, invalidateTileCache)
+              throw Error('SEQUENTIAL_DISPLAY_UNSUPPORTED', { cause: error })
+            }
+            throw error
+          }
           if (import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile')
             console.debug('DESIGN_RENDER_FAILURE ' + JSON.stringify({backend,error:String(error),tile:tileViewport}))
           // Display-cache pressure belongs to the surface owner. Destroying
@@ -1787,6 +1814,7 @@ async function renderTiledPreview(
               !!executionPolicy?.imageMips,
               !!executionPolicy?.imageAtlas,
               displayMath,
+              executionPolicy?.gpuWorkingBudgetMiB,
             )
             observation.end(deviceLifecyclePhase.recoveryReady, gpu.driver)
             previousDeviceDiagnostic = {}
@@ -1915,6 +1943,7 @@ async function renderTiledPreview(
               !!executionPolicy?.imageMips,
               !!executionPolicy?.imageAtlas,
               displayMath,
+              executionPolicy?.gpuWorkingBudgetMiB,
             )
             observation.end(deviceLifecyclePhase.recoveryReady, gpu.driver)
             previousDeviceDiagnostic = {}

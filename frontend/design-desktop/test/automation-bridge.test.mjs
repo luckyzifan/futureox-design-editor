@@ -209,3 +209,18 @@ test('renderer IPC replies require exactly one result or typed error', async t =
   assert.deepEqual(reply({ requestId: 'five', result: null }), { accepted: false })
   assert.deepEqual(reply({ requestId: 'six', error: { code: 'X', message: 'x' } }), { accepted: false })
 })
+
+test('large importCopy is standalone workspace-granted input only; it does not expand batch or output budgets', async t => {
+  let imports = 0
+  const descriptor = { name: 'workspace.importCopy', description: 'Import copy', grant: 'workspace', mutates: true, inputSchema: {} }
+  const host = { methods: () => [descriptor], revoke() {}, execute: async () => { imports++; return { ok: true, result: { activated: false } } } }
+  const f = fixture(t, { workspaceHost: host }); f.state.grants = { workspace: 'write' }
+  await f.auth()
+  const content = 'x'.repeat(9 * 1024 * 1024)
+  const result = await f.send('execute', { ...request(), method: 'workspace.importCopy', expectedRevision: 7, params: { rootHandle: 'root', mutationId: 'copy', format: 'native-json', content } })
+  assert.equal(result.result.ok, true); assert.equal(imports, 1)
+  const batch = await f.send('execute', { ...request(), method: 'batch.apply', expectedRevision: 7, params: { operations: [{ method: 'workspace.importCopy', params: { content } }] } })
+  assert.equal(batch.error.code, 'FRAME_TOO_LARGE'); assert.equal(imports, 1)
+  f.state.grants = { workspace: 'read' }
+  assert.equal((await f.send('execute', { ...request(), method: 'workspace.importCopy', expectedRevision: 7, params: {} })).error.code, 'PERMISSION_DENIED')
+})

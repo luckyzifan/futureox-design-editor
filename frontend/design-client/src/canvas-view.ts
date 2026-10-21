@@ -17,6 +17,11 @@ export function selectionLocalBounds(doc: DesignDocument, id: string): Bounds {
   })
   return points.length?bounds(points):localBounds(n)
 }
+/** Inspector/scale bounds only. An empty group falls back to its authored box.
+ * Optional transform lets an edit use its draft transform with snapshot children. */
+export function selectionParentBounds(doc: DesignDocument, id: string, transform: Matrix = doc.nodes[id].transform): Bounds {
+  return bounds(boxPoints(selectionLocalBounds(doc, id)).map(point => apply(transform, point)))
+}
 export function parentBounds(n: DesignNode): Bounds {
   return bounds(boxPoints(localBounds(n)).map((p) => apply(n.transform, p)))
 }

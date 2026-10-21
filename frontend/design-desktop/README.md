@@ -66,6 +66,28 @@ add `--no-sandbox`, disable the setuid sandbox, or weaken OS isolation to make C
 A container that denies Chromium's required IPC/display facilities is a blocked GUI
 check, not a successful desktop launch. Host unit tests do not substitute for GUI QA.
 
+### Optional GPU working-set ceiling
+
+For an existing build, launch from the repository's `frontend/design-desktop` directory:
+
+```sh
+CORE_GPU_WORKING_BUDGET_MIB=4096 npm start
+```
+
+This explicit host-only setting accepts a decimal integer from 256 through 4096 MiB.
+Omitting it, or setting it to `auto`, preserves the existing defaults: the ordinary
+WebGPU working-set policy keeps its 256 MiB default and the separate native path
+retains its existing automatic policy. Invalid explicit values fail with a clear
+launch error; documents, renderer settings and MCP cannot set this option. The
+CPU-only launch policy is unchanged.
+
+4096 MiB is an optional **4 GiB admission ceiling**, not a preallocation or a cap on
+the application's total GPU/process memory. It changes no single-texture/buffer
+device limit or separate cache budget. Actual allocation, memory-pressure handling
+and device failure still follow the existing renderer rules. The main process
+validates the value and forwards a frozen optional preload policy field; there is
+no additional settings UI.
+
 ## Native render loop (design-render serve mode)
 
 `bun run build` also compiles `futureox-design-gpu`'s `design-render` binary, stages it

@@ -63,7 +63,7 @@ test('MCP tools/list/call reaches root-bound workspace CAS and history in real t
   assert.equal((await rpc('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'workspace-sqlite-test', version: '1' } })).result.protocolVersion, '2025-11-25')
   input.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n')
   const catalog = (await rpc('tools/list')).result.tools
-  assert.equal(catalog.length, 10)
+  assert.equal(catalog.length, 11)
   assert(catalog.every(tool => !JSON.stringify(tool).includes('filePath')))
   const call = async (method, params = {}, fences = {}) => {
     const response = await rpc('tools/call', { name: `design_${method.replaceAll('.', '_')}`, arguments: { params, ...(method.match(/\.(save|open|restore|update|select|activate)$/) ? { documentId: state.documentId, session: 0, expectedRevision: state.revision } : {}), ...fences } })

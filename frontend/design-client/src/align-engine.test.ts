@@ -234,11 +234,11 @@ test('arrangePatches: a single child aligns to its parent frame, in parent space
   expect(patches[child.id].transform).toEqual([1, 0, 0, 1, 175, 20])
 })
 
-test('arrangePatches: locked and auto-layout children are excluded', () => {
+test('arrangePatches: locked and auto-layout targets reject the whole plan', () => {
   const { doc, page, a, b, c } = arrangeFixture()
   b.locked = true
   const patches = arrangePatches(doc, page, [a.id, b.id, c.id], 'distribute-horizontal')!
-  // b excluded → a and c alone cannot distribute
+  // A locked explicit target rejects the whole selection; no partial patches.
   expect(patches).toBeNull()
   b.locked = false
   const parent = node('frame', 0, 0, 400, 100)

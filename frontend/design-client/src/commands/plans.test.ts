@@ -3,10 +3,10 @@ import { planArrangement, translatedLocalTransform } from './arrangement-plan'
 import { planChildReparent, planContainerPlacement, reparentedTransform } from './structure-plan'
 import { applyChildListPlan, applyTransformPlan } from './apply-plan'
 import { apply, inverse, multiply, rotate, translate } from './affine'
-import { AUTOMATION_PROFILE, UI_SELECTION_PROFILE } from './profiles'
+import { CORE_SELECTION_PROFILE } from './profiles'
 import { blank, node, type Bounds, type Matrix } from '../model'
 const rect = (x: number, y: number, width: number, height: number): Bounds => ({ x, y, width, height })
-for (const profile of [UI_SELECTION_PROFILE, AUTOMATION_PROFILE]) {
+for (const profile of [CORE_SELECTION_PROFILE]) {
   for (const axis of ['x', 'y'] as const) for (const mode of ['start', 'center', 'end'] as const) test(`${profile}: ${axis}/${mode} planning is pure`, () => {
     const boxes = [rect(10, 10, 20, 20), rect(70, 70, 30, 30)], before = structuredClone(boxes)
     const result = planArrangement(profile, boxes, axis, mode)!
@@ -14,7 +14,7 @@ for (const profile of [UI_SELECTION_PROFILE, AUTOMATION_PROFILE]) {
     const aligned = boxes.map((box, index) => box[axis] + result.offsets[index][axis] + (mode === 'center' ? box.width / 2 : mode === 'end' ? box.width : 0))
     expect(aligned[0]).toBe(aligned[1]); expect(result.offsets.every(p => p[axis === 'x' ? 'y' : 'x'] === 0)).toBe(true)
   })
-  test(`${profile}: parent, equal gaps, legacy minimum, overlap and stable ties`, () => {
+  test(`${profile}: parent, equal gaps, primitive minimum, overlap arithmetic and stable ties`, () => {
     expect(planArrangement(profile, [], 'x', 'start')).toBeNull()
     expect(planArrangement(profile, [rect(1, 2, 10, 20)], 'x', 'start')).toBeNull()
     expect(planArrangement(profile, [rect(20, 5, 30, 10)], 'x', 'center', rect(0, 0, 100, 80))!.offsets).toEqual([{ x: 15, y: 0 }])
@@ -51,31 +51,29 @@ test('world moves remain correct through rotated, reflected, skewed parents; sin
   }
   expect(() => inverse([0, 0, 0, 0, 0, 0])).toThrow('不可逆变换')
 })
-test('wrapper profiles retain explicit basis and degenerate dimension differences', () => {
+test('one Core wrapper contract uses parent-local bounds and admitted minimum dimensions', () => {
   const parent = multiply(translate(10, 20), rotate(30)), box = rect(8, 8, 100, 75)
-  expect(planContainerPlacement(UI_SELECTION_PROFILE, box, parent).transform).toEqual(multiply(inverse(parent), translate(8, 8)))
-  expect(planContainerPlacement(AUTOMATION_PROFILE, box, parent).transform).toEqual(translate(8, 8))
-  expect(planContainerPlacement(UI_SELECTION_PROFILE, rect(0, 0, 0, 0), parent).width).toBe(0)
-  expect(planContainerPlacement(AUTOMATION_PROFILE, rect(0, 0, 0, 0), parent).width).toBe(.01)
+  expect(planContainerPlacement(CORE_SELECTION_PROFILE, box, parent).transform).toEqual(translate(8, 8))
+  expect(planContainerPlacement(CORE_SELECTION_PROFILE, rect(0, 0, 0, 0), parent)).toMatchObject({ width: .01, height: .01 })
 })
 test('invalid structural plans fail before touching caller-owned lists', () => {
   const lists = [{ parent: 'p', children: ['a'] }, { parent: 'g', children: [] as string[] }], before = structuredClone(lists)
-  expect(() => planChildReparent(UI_SELECTION_PROFILE, [{ id: 'missing', parent: 'p' }], lists, 'g')).toThrow('Missing reparent child')
-  expect(() => planChildReparent(UI_SELECTION_PROFILE, [{ id: 'a', parent: 'p' }, { id: 'a', parent: 'p' }], lists, 'g')).toThrow('Duplicate reparent child')
-  expect(() => planChildReparent(UI_SELECTION_PROFILE, [{ id: 'a', parent: 'p' }], lists, 'g', 2)).toThrow('Invalid reparent index')
+  expect(() => planChildReparent(CORE_SELECTION_PROFILE, [{ id: 'missing', parent: 'p' }], lists, 'g')).toThrow('Missing reparent child')
+  expect(() => planChildReparent(CORE_SELECTION_PROFILE, [{ id: 'a', parent: 'p' }, { id: 'a', parent: 'p' }], lists, 'g')).toThrow('Duplicate reparent child')
+  expect(() => planChildReparent(CORE_SELECTION_PROFILE, [{ id: 'a', parent: 'p' }], lists, 'g', 2)).toThrow('Invalid reparent index')
   expect(lists).toEqual(before)
 })
 
 test('large sibling plans avoid function argument limits without changing order', () => {
   const doc = blank(), page = doc.pages[0], count = 150000
   page.children = Array.from({ length: count }, (_, index) => `id-${index}`)
-  const plan = planChildReparent(AUTOMATION_PROFILE, [{ id: page.children[0], parent: page.id }], [{ parent: page.id, children: page.children }], page.id)
+  const plan = planChildReparent(CORE_SELECTION_PROFILE, [{ id: page.children[0], parent: page.id }], [{ parent: page.id, children: page.children }], page.id)
   applyChildListPlan(doc, plan)
   expect(page.children.length).toBe(count); expect(page.children[0]).toBe('id-1'); expect(page.children.at(-1)).toBe('id-0')
 })
 
 
-test.each([UI_SELECTION_PROFILE, AUTOMATION_PROFILE])('%s: 150k moving and 150k siblings are scanned once without spread limits', profile => {
+test.each([CORE_SELECTION_PROFILE])('%s: 150k moving and 150k siblings are scanned once without spread limits', profile => {
   const count = 150000, movingIds = Array.from({ length: count }, (_, i) => `move-${i}`)
   const siblings = Array.from({ length: count }, (_, i) => `stay-${i}`)
   let reads = 0
@@ -96,8 +94,15 @@ test.each([UI_SELECTION_PROFILE, AUTOMATION_PROFILE])('%s: 150k moving and 150k 
 })
 
 test('multi-parent moving order and duplicate-source legacy first-removal semantics are retained', () => {
-  const plan = planChildReparent(UI_SELECTION_PROFILE, [{ id: 'b', parent: 'p' }, { id: 'd', parent: 'q' }, { id: 'a', parent: 'p' }], [
+  const plan = planChildReparent(CORE_SELECTION_PROFILE, [{ id: 'b', parent: 'p' }, { id: 'd', parent: 'q' }, { id: 'a', parent: 'p' }], [
     { parent: 'p', children: ['a', 'b', 'a', 'c'] }, { parent: 'q', children: ['d', 'e'] },
   ], 'p', 1)
   expect(plan.lists).toEqual([{ parent: 'p', children: ['a', 'b', 'd', 'a', 'c'] }, { parent: 'q', children: ['e'] }])
+})
+
+
+test('fractional distribution pins both endpoints exactly rather than accumulating roundoff', () => {
+  const rects = [{ x: .1, y: 0, width: .2, height: 1 }, { x: .5, y: 0, width: .1, height: 1 }, { x: 1.3, y: 0, width: .2, height: 1 }]
+  const plan = planArrangement(CORE_SELECTION_PROFILE, rects, 'x', 'distribute')!
+  expect(plan.offsets[0]).toEqual({ x: 0, y: 0 }); expect(plan.offsets[2]).toEqual({ x: 0, y: 0 })
 })

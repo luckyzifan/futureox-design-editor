@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildInputs, buildProfile } from './build-inputs.mjs'
+import { buildInputs, buildOutput, buildProfile } from './build-inputs.mjs'
 import { installSidecar } from './install-sidecar.mjs'
 import { spawnSync } from 'node:child_process'
 import { mkdir, writeFile, copyFile } from 'node:fs/promises'
@@ -9,7 +9,7 @@ import path from 'node:path'
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const core = path.resolve(desktop, '../..')
 const design = path.join(core, 'design-studio')
-const output = path.join(desktop, 'dist')
+const output = await buildOutput(desktop, process.argv.slice(2))
 const profile = buildProfile(process.argv.slice(2))
 const bun = process.env.BUN_EXECUTABLE || 'bun'
 const inputs = await buildInputs(core)
@@ -30,7 +30,7 @@ run(
     '--base',
     './',
     '--outDir',
-    '../design-desktop/dist/renderer',
+    path.join(output, 'renderer'),
     '--emptyOutDir',
   ],
   path.join(core, 'frontend/design-client'),

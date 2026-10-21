@@ -5,6 +5,8 @@ export declare const SERVER_INFO: Readonly<{ name: string; version: string; titl
 export declare const DEFAULT_LIMITS: Readonly<Record<string, number>>
 export declare class ProtocolError extends Error { constructor(code: number, message: string, data?: unknown); code: number; data?: unknown }
 export interface DesignBackend {
+  /** Optional host-owned, one-way authorization/connection terminal signal. */
+  readonly terminalSignal?: AbortSignal
   listTools(context?: BackendContext): ToolDefinition[] | Promise<ToolDefinition[]>
   callTool(name: string, args: Record<string, unknown>, context?: BackendContext): unknown | Promise<unknown>
   close?(): void | Promise<void>

@@ -80,6 +80,21 @@ function sourceFontWarnings(document: DesignDocument): DesignAutomationWarning[]
   return names.size || omitted ? [{ code: 'SKETCH_SOURCE_FONTS', message: `Source font names before app-default substitution: ${[...names].sort().map(name => JSON.stringify(name)).join(', ')}.${omitted ? ' Additional names exceed the notice budget; inspect the original archive.' : ''}` }] : []
 }
 
+/** Pure whole-document decode for independent workspace copies. Unlike append,
+ * preserve all admitted source containers and document-scoped graph identities.
+ * No font activation, layout, editor mutation, filesystem or network access. */
+export function decodeSketchImportCopy(base64: unknown) {
+  const report = readArchive(decodeArchive(base64))
+  if (!Array.isArray(report.warnings) || report.warnings.length > 253 ||
+      report.warnings.some(message => typeof message !== 'string' || !message.length || message.length > 16384))
+    throw new AutomationError('invalid_document', 'Invalid or oversized Sketch codec warnings')
+  const warnings: DesignAutomationWarning[] = [{ ...compatibility }, ...codecWarnings(report.warnings), ...sourceFontWarnings(report.document)]
+  if (hasUnembeddedTextFonts(report.document)) warnings.push({ ...fonts })
+  if (encoder.encode(JSON.stringify(warnings)).byteLength > 65536)
+    throw new AutomationError('response_limit', 'Sketch warnings exceed the 64 KiB notice budget')
+  return { document: report.document, sourceFormat: 'sketch' as const, fidelity: 'compatibility' as const, lossless: false as const, warnings }
+}
+
 /** Binary import uses the same codec as the editor's file worker, then the
  * existing native append transaction. It never interprets SVG as Sketch or
  * fetches URLs, remote libraries or fonts. All mutation is staged so errors

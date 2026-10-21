@@ -40,3 +40,17 @@ export function dashInUnits(text: string, factor: number): string {
   if (tokens.some(token => !/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(token) || Number(token) < 0 || !Number.isFinite(Number(token) * factor))) throw Error('虚线参数无效')
   return factor === 1 ? text : tokens.map(token => String(Number(token) * factor)).join(' ')
 }
+
+/** Presentation classification only. Keep the existing materialScale formula and
+ * numerical editor units unchanged; MCP omits ambiguous scalar projections. */
+export function hasProportionalStyleUnits([a, b, c, d]: Matrix): boolean {
+  const xx = a * a + b * b, yy = c * c + d * d, xy = a * c + b * d
+  const tolerance = 1e-10 * Math.max(xx, yy, Number.MIN_VALUE)
+  return Number.isFinite(xx + yy) && xx > 0 && yy > 0 && Math.abs(xx - yy) <= tolerance && Math.abs(xy) <= tolerance
+}
+export const STYLE_UNIT_DESCRIPTION = '非等比或斜切变换：此数值按最大缩放系数换算，不代表各方向的实际尺寸。编辑仍按同一系数换回局部作者值。'
+export function styleUnitDescription(doc: DesignDocument, ids: readonly string[], parents: ParentMap = allParents(doc)): string | undefined {
+  const affected = ids.filter(id => !hasProportionalStyleUnits(worldMatrix(doc, id, parents))).length
+  if (!affected) return undefined
+  return ids.length === 1 ? STYLE_UNIT_DESCRIPTION : `所选图层中 ${affected}/${ids.length} 层：${STYLE_UNIT_DESCRIPTION}`
+}

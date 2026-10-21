@@ -154,6 +154,12 @@ export class WebGpuDriver implements Driver {
   triangles = 0
   commandSubmissions = 0
   private presentationSubmissions = 0
+  // Queue-ordered resident display can reuse its bounded exact-filter scratch.
+  // Explicit readback, timing, nonresident output and the negative control
+  // retain their original per-frame completion boundary.
+  private residentFilterScratch = import.meta.env.VITE_DESIGN_RESIDENT_FILTER_SCRATCH === '1'
+  private prefixCounterSamples = 0
+  private prefixCounterDeferredFrames = 0
   private interactionPresentation = false
   private nativeInteractionPresentation = false
   private prefix?: TexturePrefix
@@ -168,7 +174,7 @@ export class WebGpuDriver implements Driver {
   private displayImageUploads = new WeakMap<Texture, { resource: GPUTexture; width: number; height: number; range: ExactImageRange }>()
   private imageAxisPrograms = new WeakMap<Texture, Float32Array>()
   private imageTablePipeline?: Promise<ImageXTablePipeline>
-  private imageTables = new Map<ExactImageTable, {storage: ImageXTableStorage; pipeline: ImageXTablePipeline; image: Texture; opaqueAlpha: boolean}>()
+  private imageTables = new Map<ExactImageTable, {storage: ImageXTableStorage; pipeline: ImageXTablePipeline; image: Texture; opaqueAlpha: boolean; retired: boolean}>()
   private preparingImageTables = new Map<Texture, number>()
   usesDisplayFilter(radius: number, channels = 15): boolean {
     if (!this.managed || this.hdr || this.disposed || this.lost || !this.displayFilters || !this.displayFilterPipeline) return false
@@ -186,6 +192,11 @@ export class WebGpuDriver implements Driver {
       range.opaqueAlpha && range.maximum.every(value => value <= 127)
   }
   get scratchBytes(){ return (this.prefix?.scratchBytes || 0) + [...(this.imageTables?.keys() || [])].reduce((sum,table)=>sum+table.bytes,0) }
+  get retiredImageTableBytes() {
+    let bytes = 0
+    for (const [table, entry] of this.imageTables) if (entry.retired) bytes += table.bytes
+    return bytes
+  }
   imageTableRange(image: Texture) { return image.finitePixels === true && this.textures.has(image) ? this.imageRanges.get(image) : undefined }
   imageTableAxes(field: Texture) { return field.finitePixels === true && this.textures.has(field) ? this.imageAxisPrograms.get(field)?.slice() : undefined }
   hasActiveImageTableSource(image: Texture) {
@@ -194,6 +205,26 @@ export class WebGpuDriver implements Driver {
   private releaseImageTables() {
     for(const entry of this.imageTables?.values() || [])entry.storage.destroy()
     this.imageTables?.clear()
+  }
+  /** Freeze only the logical retirements covered by the caller's next real
+   * completion boundary. Finish may close every remaining table first. */
+  private retiredImageTableSnapshot(includeActive = false): ExactImageTable[] {
+    const snapshot: ExactImageTable[] = []
+    for (const [table, entry] of this.imageTables) {
+      if (includeActive) entry.retired = true
+      if (entry.retired) snapshot.push(table)
+    }
+    return snapshot
+  }
+  /** Call only after submitted references in this snapshot actually completed.
+   * A later retirement is not covered by an earlier queue-completion promise. */
+  private collectRetiredImageTables(snapshot: readonly ExactImageTable[]): void {
+    for (const table of snapshot) {
+      const entry = this.imageTables.get(table)
+      if (!entry?.retired) continue
+      entry.storage.destroy()
+      this.imageTables.delete(table)
+    }
   }
   async prepareImageTable(image: Texture, plan: ExactImageXTablePlan, availableBytes: number): Promise<ExactImageTable | undefined> {
     const range=this.imageTableRange(image)
@@ -215,7 +246,7 @@ export class WebGpuDriver implements Driver {
     const handle:ExactImageTable=Object.freeze({resource:Object.freeze({}),width:storage.width,height:storage.height,bytes:storage.bytes,
       ...(range.opaqueAlpha?{opaqueAlpha:true as const}:{}),
       ...(range.nonnegativeRgb?{nonnegativeResolved:true as const}:{})})
-    this.imageTables.set(handle,{storage,pipeline,image,opaqueAlpha:range.opaqueAlpha})
+    this.imageTables.set(handle,{storage,pipeline,image,opaqueAlpha:range.opaqueAlpha,retired:false})
     this.frameScratchBytes=Math.max(this.frameScratchBytes,this.scratchBytes)
     this.closeOver()
     pipeline.encodeBuild(this.encoder,image.resource as GPUTexture,storage)
@@ -228,7 +259,7 @@ export class WebGpuDriver implements Driver {
   }
   resolveImageTable(target: Texture, table: ExactImageTable, offsetX: number, offsetY: number) {
     const entry=this.imageTables.get(table)
-    if(!entry || !this.imageTableRange(entry.image) || !this.textures.has(target) || target.resource===entry.image.resource ||
+    if(!entry || entry.retired || !this.imageTableRange(entry.image) || !this.textures.has(target) || target.resource===entry.image.resource ||
         (target.resource as GPUTexture).format!=='rgba32float' ||
         ![offsetX,offsetY].every(Number.isSafeInteger) || offsetX<0 || offsetY<0 ||
         offsetX+target.width>table.width || offsetY+target.height>table.height)
@@ -244,10 +275,9 @@ export class WebGpuDriver implements Driver {
   }
   async retireImageTable(table: ExactImageTable) {
     const entry=this.imageTables.get(table);if(!entry)return
-    // This table's final source read has been encoded. A real completion
-    // boundary, not a submission ACK, permits reclaim before parent blending.
-    await this.checkpoint('image-table-scratch')
-    entry.storage.destroy();this.imageTables.delete(table)
+    // End sampling immediately, but keep the buffers, source pin and ledger
+    // until a later real completion boundary covers their queued reads.
+    entry.retired = true
   }
   private device!: GPUDevice
   private context!: GPUCanvasContext
@@ -946,7 +976,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.displayImageSourcePasses = 0
     this.mergedExactFilterPasses = 0
     this.finishTransientBytes = 0
-    this.frameScratchBytes = 0
+    this.frameScratchBytes = this.scratchBytes
     this.timingRows = []
     this.timingSkipped = 0
     this.triangles = 0
@@ -1349,6 +1379,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     )
   }
   async checkpoint(reason: QueueWaitReason = 'checkpoint', admission?: GpuAdmissionDiagnostic, completedPoolEpoch?: number) {
+    const retiredTables = this.retiredImageTableSnapshot()
     this.submitCommands()
     // Do not advance completion here: the newly submitted commands may still
     // be running. This certificate covers only old, no-longer-used pool entries.
@@ -1360,6 +1391,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // The current frame may encode more reads after this checkpoint. Only
     // earlier frames are eligible for immutable-resource eviction.
     this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch - 1)
+    this.collectRetiredImageTables(retiredTables)
   }
   submitPending() {
     // Reuse exactly the uniform-arena overflow submission contract. No
@@ -1877,7 +1909,6 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // target and the MAP_READ staging buffer coexist at this peak. Pure
     // bookkeeping — no allocation or command changes.
     this.finishTransientBytes = Math.max(this.finishTransientBytes, finishTransient)
-    if (this.prefix?.scratchBytes) this.prefix.encodeCountersReadback(this.encoder)
     let timingRead: GPUBuffer | undefined, timingResolve: GPUBuffer | undefined
     if (this.timingQueries && this.timingRows.length) {
       const size = this.timingRows.length * 16
@@ -1886,37 +1917,49 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       this.encoder.resolveQuerySet(this.timingQueries, 0, this.timingRows.length * 2, timingResolve, 0)
       this.encoder.copyBufferToBuffer(timingResolve, 0, timingRead, 0, size)
     }
+    const retainFilterScratch = this.residentFilterScratch && !!captured && !readback && !timingRead
+    const retiredTables = this.retiredImageTableSnapshot(true)
+    // Keep the existing interaction/periodic backpressure. Only per-tile waits
+    // whose purpose was scratch destruction or diagnostic counters disappear.
+    const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' :
+      !retainFilterScratch && this.prefix?.scratchBytes ? 'prefix-scratch' :
+      !retainFilterScratch && this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation &&
+        (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') ? 'interaction' :
+        ++this.presentationSubmissions >= 4 ? 'periodic' : undefined
+    // Counters do not authorize pixels: each GPU line already selects its
+    // certified result or exact fallback. Read statistics only at an existing
+    // completion boundary; never map the same staging buffer while in flight.
+    const readPrefixCounters = !!this.prefix?.scratchBytes && !!waitReason
+    if (readPrefixCounters) this.prefix!.encodeCountersReadback(this.encoder)
     this.uploadUniforms()
     this.queueWaitStats.submit(() => this.device.queue.submit([this.encoder.finish()]))
     this.commandSubmissions++
     // Presentation-only tiles stay on the GPU timeline. Submitted commands
     // retain their resources; subsequent uploads are ordered by the queue.
     // Readbacks/probes still fence before reading or reusing mapped storage.
-    // Primary trigger uses the original short-circuit order, including the
-    // periodic counter increment only when no earlier trigger applies.
-    const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' :
-      this.prefix?.scratchBytes ? 'prefix-scratch' : this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation &&
-        (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') ? 'interaction' :
-        ++this.presentationSubmissions >= 4 ? 'periodic' : undefined
     if (waitReason) {
       const epoch = this.resourceEpoch
       await this.waitForQueue(waitReason)
       if (!this.lost) this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
+      if (this.lost) throw new Error('GPU 设备已丢失')
+      this.collectRetiredImageTables(retiredTables)
       this.presentationSubmissions = 0
     }
     const error = await this.device.popErrorScope()
     this.frameScopeOpen = false
     if (error || this.errors.length)
       throw markRenderFailure(new Error([error?.message, ...this.errors].filter(Boolean).join('\n')), { failureStage: 7, failureCategory: error ? renderFailureFields(error).failureCategory : this.lost ? 4 : 0, failureCode: 201 })
-    // All frame commands have completed (the fence above): safe to reclaim
-    // overprovisioned geometry buffers for the next frame.
+    // Keep the existing submitted-geometry shrink policy. Filter storage above
+    // is reclaimed only by the actual completed snapshot, never by this ACK.
     this.shrinkCapacities()
-    this.releaseImageTables()
-    if (this.prefix?.scratchBytes) {
-      const counters=await this.prefix.readCounters()
+    if (readPrefixCounters) {
+      const counters=await this.prefix!.readCounters()
+      this.prefixCounterSamples++
       recordGpuDiagnostic('prefix',counters)
       if(!gpuDiagnosticsEnabled())console.debug('DESIGN_GPU_PREFIX ' + JSON.stringify(counters))
-      this.prefix.releaseScratch()
+      if (!retainFilterScratch) this.prefix!.releaseScratch()
+    } else if (this.prefix?.scratchBytes) {
+      this.prefixCounterDeferredFrames++
     }
     if (timingRead) {
       await timingRead.mapAsync(GPUMapMode.READ)
@@ -1984,6 +2027,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       transientBytes: this.transientBytes,
       finishTransientBytes: this.finishTransientBytes,
       frameScratchBytes: this.frameScratchBytes,
+      prefixCounterSamples: this.prefixCounterSamples,
+      prefixCounterDeferredFrames: this.prefixCounterDeferredFrames,
       scratchBytes: this.scratchBytes,
       vertexBufferBytes: this.vertexCapacity,
       curveBufferBytes: this.curveCapacity,

@@ -1,6 +1,77 @@
 import type { CanvasCamera } from '../canvas-camera'
-import { calculateDynamicDensity, displayTileBudget } from './tile-cache'
+import { calculateDynamicDensity, displayTileBudget, tileLevel } from './tile-cache'
 import { allowsReducedSampling } from './render-quality'
+import { usesDesktopDisplay, type DisplayRenderRequest, type RenderPolicy } from './render-policy'
+
+export type GestureDensityRequest = Readonly<{
+  /** Immutable trusted host policy, never document metadata. */
+  policy: RenderPolicy
+  active: boolean
+  request: DisplayRenderRequest
+  grid?: boolean
+  checkerboard?: boolean
+}>
+
+/** Experimental display-only headroom. One rung ahead of the next
+ * quarter-octave world lattice can
+ * finish useful pixels for adjacent zoom inputs without sampling below the
+ * current physical screen density. Undefined keeps the caller's ordinary
+ * route, including settled native-phase repair and all exact outputs.
+ * This chooses density only; it never certifies a reprojected native phase. */
+export function gestureRasterScale(view: CanvasCamera, dpr: number, width: number, height: number,
+  options: GestureDensityRequest): number | undefined {
+  if (import.meta.env.VITE_DESIGN_GESTURE_DENSITY_HEADROOM !== '1' || options.active !== true ||
+      options.grid || options.checkerboard || !usesDesktopDisplay(options.policy, options.request)) return
+  if (![view.x, view.y, view.zoom, dpr, width, height].every(Number.isFinite) ||
+      view.zoom <= 0 || dpr <= 0 || width < 0 || height < 0) return
+  const requested = view.zoom * dpr
+  const nextRung = Math.round(Math.log2(tileLevel(requested)) * 4) + 1
+  const scale = 2 ** (nextRung / 4)
+  const ceiling = options.request.rasterProfile === 'figma' ? 64 : 128
+  // tileLevel clamps its supported range. Neither end of that clamp may turn
+  // headroom into undersampling or many speculative levels at tiny zoom.
+  if (!Number.isFinite(requested) || requested <= 0 || scale > ceiling ||
+      scale / requested < 2 ** .25 - Number.EPSILON * 8 ||
+      scale / requested > Math.SQRT2 + Number.EPSILON * 8) return
+  // Keep the original world sample lattice. A captured window may translate
+  // it by an integer pixel origin; far views retain their existing camera route.
+  if ([-view.x, width - view.x, -view.y, height - view.y]
+    .some(value => Math.abs(value * scale / view.zoom) >= 4_000_000)) return
+  try { displayTileBudget(width, height, scale / view.zoom, false) }
+  catch { return }
+  return scale
+}
+
+export type GestureViewportCapture = Readonly<{
+  camera: CanvasCamera
+  tile: Readonly<{ x: number; y: number; w: number; h: number; zoom: number }>
+}>
+
+/** Pure geometry for an explicitly selected gesture density. A fixed target
+ * size and 128-pixel world lattice avoid allocating a new color-target shape
+ * for every fractional zoom. The local camera translates that same world
+ * lattice; presentation still uses the actual scale and global tile origin.
+ * This is a transient capture, never a native-phase or exact-output proof. */
+export function gestureViewportCapture(view: CanvasCamera, dpr: number, width: number, height: number,
+  scale: number): GestureViewportCapture | undefined {
+  if (![view.x, view.y, view.zoom, dpr, width, height, scale].every(Number.isFinite) ||
+      view.zoom <= 0 || dpr <= 0 || width <= 0 || height <= 0 || scale <= 0 || scale > 128) return
+  const requested = view.zoom * dpr
+  if (!Number.isFinite(requested) || requested <= 0 || scale < requested ||
+      scale / requested > Math.SQRT2 + Number.EPSILON * 8) return
+  const w = Math.ceil((width * dpr * Math.SQRT2 + 128) / 128) * 128
+  const h = Math.ceil((height * dpr * Math.SQRT2 + 128) / 128) * 128
+  if (![w, h].every(Number.isSafeInteger) || w > 8192 || h > 8192 || w * h > 8_388_608) return
+  const left = -view.x / view.zoom * scale, top = -view.y / view.zoom * scale
+  const right = (width - view.x) / view.zoom * scale, bottom = (height - view.y) / view.zoom * scale
+  const x = Math.floor(left / 128) * 128, y = Math.floor(top / 128) * 128
+  // Include the padded target in the same exact-coordinate guard as ordinary
+  // world rasterization; a visible ROI alone is insufficient near the limit.
+  if (![left, top, right, bottom, x, y, x + w, y + h].every(value =>
+    Number.isFinite(value) && Math.abs(value) < 4_000_000) ||
+      left < x || top < y || right > x + w || bottom > y + h) return
+  return { camera: { x: -x, y: -y, zoom: scale }, tile: { x, y, w, h, zoom: scale } }
+}
 
 /** Live zoom admits useful sharp pixels immediately at the next half-octave
  * density. Nearby inputs reuse that work instead of cancelling it every frame.

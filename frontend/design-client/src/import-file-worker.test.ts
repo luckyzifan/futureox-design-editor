@@ -99,3 +99,39 @@ test('Sketch compatibility export reclaims the worker and returns owned archive 
   expect(await result).toEqual(new Uint8Array([80, 75, 3, 4]))
   expect(worker.terminate).toHaveBeenCalledOnce()
 })
+
+test.each(['cancel', 'timeout'] as const)('late FIG response after %s is not decoded', async reason => {
+  installWorker(); vi.useFakeTimers()
+  const controller = new AbortController()
+  const result = importFileInWorker(new ArrayBuffer(1), 'late', 'fig', controller.signal)
+  const rejected = expect(result).rejects.toThrow()
+  if (reason === 'cancel') controller.abort()
+  else await vi.advanceTimersByTimeAsync(30_000)
+  await rejected
+  const read = vi.fn(() => { throw new Error('Late payload must never be inspected') })
+  ImportWorker.instances[0].reply(Object.defineProperty({}, 'error', { get: read }))
+  expect(read).not.toHaveBeenCalled()
+  expect(ImportWorker.instances[0].terminate).toHaveBeenCalledOnce()
+})
+
+test('FIG worker response preserves explicit dropped warning metadata', async () => {
+  installWorker()
+  const result = importFileInWorker(new ArrayBuffer(1), 'warnings', 'fig')
+  ImportWorker.instances[0].reply({ result: { document: blank(),
+    warnings: ['FIG compatibility warnings truncated; see droppedOccurrences.'], droppedOccurrences: 42 } })
+  expect((await result).droppedOccurrences).toBe(42)
+})
+
+test.each([
+  { warnings: Array.from({ length: 129 }, () => 'x') },
+  { warnings: ['字'.repeat(400)] },
+  { warnings: ['x'], droppedOccurrences: 1 },
+  { warnings: ['FIG compatibility warnings truncated; see droppedOccurrences.'] },
+  { warnings: ['FIG compatibility warnings truncated; see droppedOccurrences.'], droppedOccurrences: -1 },
+])('FIG worker rejects malformed warning bounds/metadata', async report => {
+  installWorker()
+  const result = importFileInWorker(new ArrayBuffer(1), 'warnings', 'fig')
+  const rejected = expect(result).rejects.toThrow()
+  ImportWorker.instances[0].reply({ result: { document: blank(), ...report } })
+  await rejected
+})

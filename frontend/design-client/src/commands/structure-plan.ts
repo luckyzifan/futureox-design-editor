@@ -4,12 +4,9 @@ import type { CommandProfile } from './profiles'
 
 export interface TransformPatch { id: string; transform: Matrix }
 export interface ChildListPlan { profile: CommandProfile; lists: { parent: string; children: string[] }[] }
-/** Wrapper bounds are world-space for current UI selection and parent-local for
- * current automation. Empty-frame defaults remain the adapter's explicit concern. */
-export function planContainerPlacement(profile: CommandProfile, box: Bounds, parentWorld: Matrix) {
-  return profile === 'ui-selection-v1'
-    ? { transform: multiply(inverse(parentWorld), translate(box.x, box.y)), width: box.width, height: box.height }
-    : { transform: translate(box.x, box.y), width: Math.max(.01, box.width), height: Math.max(.01, box.height) }
+/** Wrapping uses the shared parent-local geometry basis and admitted minimum dimensions. */
+export function planContainerPlacement(profile: CommandProfile, box: Bounds, _parentWorld: Matrix) {
+  return { transform: translate(box.x, box.y), width: Math.max(.01, box.width), height: Math.max(.01, box.height) }
 }
 export function reparentedTransform(parentWorld: Matrix, childWorld: Matrix): Matrix {
   return multiply(inverse(parentWorld), childWorld)

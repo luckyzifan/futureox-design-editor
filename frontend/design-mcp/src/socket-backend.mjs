@@ -26,6 +26,11 @@ export async function validateEndpoint(endpoint, platform = process.platform) {
 
 /** Authenticated, per-session client for the desktop bridge. Tokens are never logged or persisted. */
 export class SocketDesignBackend {
+  #terminal = new AbortController()
+
+  /** Host-owned lifetime fact, not an input credential or a reconnect capability. */
+  get terminalSignal() { return this.#terminal.signal }
+
   constructor({ endpoint, sessionId, token, maxBytes = DEFAULT_MAX_BYTES, timeoutMs = 60000, connectTimeoutMs = 10000, transport = { validateEndpoint, createConnection: options => net.createConnection(options) } }) {
     if (typeof sessionId !== 'string' || !sessionId || sessionId.length > 256) throw new TypeError('A bridge session ID is required')
     if (typeof token !== 'string' || token.length < 16 || token.length > 4096) throw new TypeError('An ephemeral bridge token is required')
@@ -153,6 +158,9 @@ export class SocketDesignBackend {
     if (this.closed) return
     this.closed = true
     this.token = undefined
+    // Terminal means permanently closed in this backend. Notify its owning MCP
+    // server synchronously before promise continuations can project late exports.
+    this.#terminal.abort()
     for (const id of this.pending.keys()) this.finish(id)?.reject(error)
     this.socket?.destroy()
   }

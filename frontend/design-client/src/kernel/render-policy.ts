@@ -11,7 +11,12 @@
  * reference and GPU paths derive the level from the same kernel geometry.
  */
 export type RenderPolicy = Readonly<{ cpuOnly: boolean; hdrCompositing: boolean; imageMips: boolean; imageAtlas: boolean;
-  desktopFullMath: boolean; desktopDisplay: boolean }>
+  desktopFullMath: boolean; desktopDisplay: boolean; gpuWorkingBudgetMiB?: number }>
+/** Explicit host admission budget, not preallocation or an adapter-memory
+ * query. Never derive it from documents or individual render requests. */
+export function validGpuWorkingBudgetMiB(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 256 && value <= 4096
+}
 export type RenderBackend = 'auto' | 'webgpu' | 'webgl2' | 'cpu'
 export type DisplayRenderRequest = {
   renderIntent?: string; png?: boolean; readback?: boolean; exportFormat?: unknown;
@@ -80,8 +85,11 @@ export function prefersNativeBackend(preference: unknown): preference is NativeB
 }
 
 export function createRenderPolicy(cpuOnly: boolean, hdrCompositing = false, imageMips = false, imageAtlas = false,
-  desktopFullMath = false, desktopDisplay = false): RenderPolicy {
-  return Object.freeze({ cpuOnly, hdrCompositing, imageMips, imageAtlas, desktopFullMath, desktopDisplay })
+  desktopFullMath = false, desktopDisplay = false, gpuWorkingBudgetMiB?: number): RenderPolicy {
+  if (gpuWorkingBudgetMiB !== undefined && !validGpuWorkingBudgetMiB(gpuWorkingBudgetMiB))
+    throw Error('Invalid GPU working budget; expected an integer from 256 to 4096 MiB')
+  return Object.freeze({ cpuOnly, hdrCompositing, imageMips, imageAtlas, desktopFullMath, desktopDisplay,
+    ...(gpuWorkingBudgetMiB === undefined ? {} : { gpuWorkingBudgetMiB }) })
 }
 
 // Older/malformed desktop bridges fail safely; ordinary web use still defaults
@@ -93,12 +101,13 @@ export function hostRenderPolicy(
   imageMips = false,
   imageAtlas = false,
   desktopDisplay = false,
+  gpuWorkingBudgetMiB?: number,
 ): RenderPolicy {
   // Desktop continues to require complete effects/correlated coverage. Its
   // optional screen-density/arithmetic capability is a separate launch bit;
   // it must not inherit the browser's effect-skipping policy.
   return createRenderPolicy(desktopPresent && cpuOnly !== false, hdrCompositing, imageMips, imageAtlas, desktopPresent,
-    desktopPresent && desktopDisplay)
+    desktopPresent && desktopDisplay, desktopPresent ? gpuWorkingBudgetMiB : undefined)
 }
 
 export function effectiveBackend(
@@ -161,9 +170,13 @@ export function pinRenderPolicy(current: RenderPolicy | undefined, incoming: unk
   const imageAtlas = atlasRaw === true
   const desktopFullMath = (incoming as { desktopFullMath?: unknown }).desktopFullMath === true
   const desktopDisplay = (incoming as { desktopDisplay?: unknown }).desktopDisplay === true
+  const budgetRaw = (incoming as { gpuWorkingBudgetMiB?: unknown }).gpuWorkingBudgetMiB
+  if (budgetRaw !== undefined && !validGpuWorkingBudgetMiB(budgetRaw))
+    throw Error('Invalid GPU working budget in render execution policy')
+  const gpuWorkingBudgetMiB = budgetRaw as number | undefined
   if (current && (current.cpuOnly !== cpuOnly || current.hdrCompositing !== hdrCompositing ||
       current.imageMips !== imageMips || current.imageAtlas !== imageAtlas || current.desktopFullMath !== desktopFullMath ||
-      current.desktopDisplay !== desktopDisplay))
+      current.desktopDisplay !== desktopDisplay || current.gpuWorkingBudgetMiB !== gpuWorkingBudgetMiB))
     throw new Error('Render execution policy cannot change within a worker')
-  return current ?? createRenderPolicy(cpuOnly, hdrCompositing, imageMips, imageAtlas, desktopFullMath, desktopDisplay)
+  return current ?? createRenderPolicy(cpuOnly, hdrCompositing, imageMips, imageAtlas, desktopFullMath, desktopDisplay, gpuWorkingBudgetMiB)
 }

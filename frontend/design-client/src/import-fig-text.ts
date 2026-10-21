@@ -1,3 +1,4 @@
+import type { ImportWarningSink } from './import-warnings'
 import type { DesignNode, TextRun } from './model'
 
 const weight = (style: string | undefined) => {
@@ -17,7 +18,7 @@ const casing = (value: unknown): TextRun['textCase'] => value === 'UPPER' ? 'upp
 
 /** Embedded-schema UTF-16 style IDs, indexed once rather than searching the
  * style table per character. Original text stays editable and unmodified. */
-export function importFigTextRuns(node: DesignNode, record: any, warnings: Set<string>) {
+export function importFigTextRuns(node: DesignNode, record: any, warnings: ImportWarningSink) {
   const styles = new Map<number, any>((record.textData?.styleOverrideTable || []).map((s: any)=>[s.styleID,s]))
   const ids = record.textData?.characterStyleIDs || []
   const runs: TextRun[] = [], fonts: Record<string,string> = {}

@@ -67,10 +67,9 @@ function assertSafeImportTree(value: unknown) {
     }
   }
 }
-/** Append through the editor's existing importer, preserving the destination
- * identity and remapping every imported node. Validation completes before the
- * caller's staged document is changed, so standalone use is atomic too. */
-export function importNativeDocument(document: DesignDocument, params: Record<string, unknown>, context: AutomationContext) {
+/** Shared bounded native decoding only. Callers choose native storage admission
+ * or editing preparation; decoding never switches fonts, appends or activates. */
+export function decodeNativeImportDocument(params: Record<string, unknown>): unknown {
   if (!['native-json', 'fd'].includes(String(params.format))) throw new AutomationError('unsupported_format', 'document.import supports fd and native-json append only; HTML cannot be losslessly imported')
   let value: unknown
   if (params.format === 'fd') {
@@ -88,6 +87,11 @@ export function importNativeDocument(document: DesignDocument, params: Record<st
   }
   assertSafeImportTree(value)
   if (new TextEncoder().encode(JSON.stringify(value)).byteLength > EXPORT_LIMITS.nativeBytes) throw new AutomationError('invalid_params', 'Expanded native document exceeds the 32 MiB budget')
+  return value
+}
+/** Append through the existing importer; preserve identity and remap the graph. */
+export function importNativeDocument(document: DesignDocument, params: Record<string, unknown>, context: AutomationContext) {
+  const value = decodeNativeImportDocument(params)
   const options = contextOptions({ pageId: params.pageId }, context.pageId)
   const source = prepareDocumentForEditing(value)
   let draft = structuredClone(document)

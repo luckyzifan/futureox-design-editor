@@ -60,7 +60,7 @@ export function ComponentPanel({
 }) {
   const d = editor.state.doc,
     masters = Object.values(d.nodes).filter((n) => n.component),
-    definition = definitionOwner(d, n.id),
+    definition = definitionOwner(d, n.id, editor.parentMap(d)),
     owner = instanceOwner(d, n.id),
     target = n.instance ? n : d.nodes[owner || ''],
     source = d.nodes[target?.instance?.componentId || ''],

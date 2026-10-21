@@ -9,12 +9,13 @@ import { fileURLToPath } from 'node:url'
 
 // Exercise the real main module's registered handlers. Only OS/Electron/stdio boundaries
 // are replaced; no production test hooks or renderer privilege exceptions are shipped.
-async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}) {
+async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWorkingBudget } = {}) {
   // macOS tmpdir is a /var -> /private/var symlink; resolved grant paths use it.
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'forma-host-')))
   const key = `__formaHost_${randomUUID()}`
   const state = {
     root,
+    gpuWorkingBudget,
     handlers: new Map(),
     open: [],
     save: [],
@@ -237,6 +238,8 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
   source = source.replace("from './pet/host.mjs'", `from ${JSON.stringify(new URL('../src/pet/host.mjs', import.meta.url).href)}`)
   source = source.replace("from './diagnostic-file.mjs'", `from ${JSON.stringify(new URL('../src/diagnostic-file.mjs', import.meta.url).href)}`)
   source = source.replace("from './workspace-roots.mjs'", `from ${JSON.stringify(new URL('../src/workspace-roots.mjs', import.meta.url).href)}`)
+  source = source.replace("from './gpu-working-budget.mjs'", `from ${JSON.stringify(new URL('../src/gpu-working-budget.mjs', import.meta.url).href)}`)
+  source = source.replace('process.env.CORE_GPU_WORKING_BUDGET_MIB', `globalThis[${JSON.stringify(key)}].gpuWorkingBudget`)
   source = source.replace("from './keyboard-shortcuts.mjs'", `from ${JSON.stringify(new URL('../src/keyboard-shortcuts.mjs', import.meta.url).href)}`)
   source = source.replace("import { registerAutomationBridge } from './automation-bridge.mjs'",
     `import { registerAutomationBridge as registerRealAutomationBridge } from ${JSON.stringify(new URL('../src/automation-bridge.mjs', import.meta.url).href)}; const registerAutomationBridge = options => { globalThis[${JSON.stringify(key)}].automationOptions = options; return registerRealAutomationBridge(options) }`)
@@ -269,7 +272,13 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
     JSON.stringify(key) +
     '].timers.push(callback); return 0 }; const clearTimeout = () => {};\n' +
     source
-  await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
+  try {
+    await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
+  } catch (error) {
+    delete globalThis[key]
+    await rm(root, { recursive: true, force: true })
+    throw error
+  }
   await loaded
   state.invoke = (name, value, event) =>
     state.handlers.get(`design-desktop:${name}`)(
@@ -304,6 +313,22 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [] } = {}
   }
   return state
 }
+
+test('host forwards only an explicit validated GPU working budget and keeps auto launch unchanged', async () => {
+  for (const value of [undefined, 'auto', '256', '4096']) {
+    const state = await host({ gpuWorkingBudget: value })
+    try {
+      const arguments_ = state.window.options.webPreferences.additionalArguments
+      assert.deepEqual(arguments_.filter(value => value.startsWith('--core-gpu-working-budget-mib')), value === undefined || value === 'auto' ? [] : [`--core-gpu-working-budget-mib=${value}`])
+      assert.equal(arguments_.includes('--core-cpu-only'), false)
+    } finally { await state.dispose() }
+  }
+})
+
+test('invalid explicit GPU launch configuration rejects instead of creating a silently clamped window', async () => {
+  for (const value of ['', '255', '4097', '4096.0', ' auto'])
+    await assert.rejects(host({ gpuWorkingBudget: value }), /CORE_GPU_WORKING_BUDGET_MIB.*256.*4096/)
+})
 
 test('desktop zoom shortcuts dispatch canvas commands and keep page zoom at one', async () => {
   const state = await host()
@@ -1260,3 +1285,24 @@ test('diagnostics fixed-path IPC persists sanitized local records and rejects un
   await assert.rejects(h.invoke('diagnostics-read', undefined, {sender:h.window.webContents,senderFrame:{url:'design-app://app/index.html'}}))
  } finally { await h.dispose() }
 })
+
+for (const platform of ['darwin', 'win32', 'linux']) {
+  test(`${platform}: New Page menu has no profile-blind accelerator and Shift+Mod+N reaches renderer`, async () => {
+    const state = await host({ platform })
+    try {
+      const file = state.menu.find(item => item.label === 'File').submenu
+      const page = file.find(item => item.label === 'New Page')
+      assert.ok(page)
+      assert.equal(page.accelerator, undefined)
+      assert.equal(file.find(item => item.label === 'New').accelerator, 'CmdOrCtrl+N')
+      state.sent = []; page.click()
+      assert.deepEqual(state.sent, [['design-desktop:command', 'new-page']])
+      state.sent = []; let prevented = false
+      const mod = platform === 'darwin' ? { meta: true, control: false } : { meta: false, control: true }
+      state.window.webContents.emit('before-input-event', { preventDefault() { prevented = true } }, {
+        type: 'keyDown', key: 'N', code: 'KeyN', alt: false, shift: true, ...mod,
+      })
+      assert.deepEqual(state.sent, []); assert.equal(prevented, false)
+    } finally { await state.dispose() }
+  })
+}

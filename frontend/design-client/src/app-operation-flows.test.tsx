@@ -7,6 +7,7 @@ import React, { act } from 'react'
 import type { Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from './App'
+import { DesktopSession } from './desktop-session'
 import { Editor } from './engine'
 import { blank, node } from './model'
 import { nudgePreference } from './nudge-preference'
@@ -165,4 +166,47 @@ test('mounted App workspace rail preserves section on pending-input veto, busy s
     expect(commit).toHaveBeenCalledTimes(2); expect(assets().getAttribute('aria-pressed')).toBe('true')
     expect(dirty).toBe(false); expect(editor!.canUndo).toBe(false)
   } finally { unregister() }
+})
+
+test.each([false, true])('Shift+Mod+N never becomes new-document; Sketch page shortcut is desktop-only (%s)', async desktop => {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  let nativeCommand: ((name: any) => void) | undefined
+  if (desktop) Object.defineProperty(window, 'coreDesktop', { configurable: true, value: {
+    version: 1, renderPolicy: { cpuOnly: true },
+    onCommand: (callback: (name: any) => void) => { nativeCommand = callback; return () => {} },
+    onCloseRequested: () => () => {}, setDirty: async () => {},
+    readRecovery: async () => ({ status: 'cancelled' }), writeRecovery: async () => ({ status: 'ok' }),
+  } as unknown as DesktopBridge })
+  await render(); await act(async () => canvas().focus())
+  const replace = vi.spyOn(DesktopSession.prototype, 'replace').mockResolvedValue(false)
+  const open = vi.spyOn(DesktopSession.prototype, 'open').mockResolvedValue(false)
+  const before = editor!.state.doc
+  await act(async () => shortcutPreference.set('figma-like'))
+  await key('N', { code: 'KeyN', metaKey: true, shiftKey: true })
+  expect(editor!.state.doc).toBe(before)
+  await key('N', { code: 'KeyN', metaKey: true, altKey: true })
+  expect(editor!.state.doc).toBe(before)
+  await key('O', { code: 'KeyO', metaKey: true, shiftKey: true })
+  expect(open).not.toHaveBeenCalled(); expect(replace).not.toHaveBeenCalled()
+  await act(async () => shortcutPreference.set('sketch-like'))
+  const pageEvent = new KeyboardEvent('keydown', { key: 'N', code: 'KeyN', metaKey: true, shiftKey: true, bubbles: true, cancelable: true })
+  await act(async () => canvas().dispatchEvent(pageEvent))
+  expect(pageEvent.defaultPrevented).toBe(desktop)
+  expect(replace).not.toHaveBeenCalled()
+  expect(editor!.state.doc.id).toBe(before.id)
+  expect(editor!.state.doc.pages).toHaveLength(before.pages.length + (desktop ? 1 : 0))
+  if (!desktop) { expect(editor!.state.doc).toBe(before); return }
+  const added = editor!.state.doc
+  await key('N', { code: 'KeyN', metaKey: true, shiftKey: true, repeat: true })
+  expect(editor!.state.doc).toBe(added)
+  await act(async () => editor!.undo()); expect(editor!.state.doc).toEqual(before)
+  // The accelerator-free native menu enters the same guarded editor command.
+  await act(async () => nativeCommand?.('new-page'))
+  expect(editor!.state.doc.id).toBe(before.id); expect(editor!.state.doc.pages).toHaveLength(2)
+  const input = document.createElement('input'); document.body.append(input); await act(async () => input.focus())
+  const afterMenu = editor!.state.doc
+  await act(async () => nativeCommand?.('new-page'))
+  expect(editor!.state.doc).toBe(afterMenu)
+  await act(async () => { input.remove(); canvas().focus() })
+  await key('n', { code: 'KeyN', metaKey: true }); expect(replace).toHaveBeenCalledOnce()
 })

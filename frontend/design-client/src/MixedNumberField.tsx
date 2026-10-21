@@ -4,7 +4,8 @@ import { DraftInput } from './DraftInput'
 import { NumberField } from './fields'
 
 /** Mixed values are intentionally blank. A new value is an explicit batch edit. */
-export function MixedNumberField({ label, value, onChange, min = -1e6, max = 1e6, bases, onExpression }: {
+export function MixedNumberField({ label, value, onChange, min = -1e6, max = 1e6, bases, onExpression, unitDescription }: {
+  unitDescription?: string
   label: string
   value: number | undefined
   onChange: (value: number) => void
@@ -13,14 +14,14 @@ export function MixedNumberField({ label, value, onChange, min = -1e6, max = 1e6
   bases?: number[]
   onExpression?: (expression: string) => void
 }) {
-  if (value !== undefined) return <NumberField label={label} value={value} min={min} max={max} onChange={onChange} />
+  if (value !== undefined) return <NumberField unitDescription={unitDescription} label={label} value={value} min={min} max={max} onChange={onChange} />
   const parsed = (text: string, base = 0) => { try { return numericExpression(text, base, propertyUnit(label)) } catch { return NaN } }
   const valid = (text: string) => {
     if (!onExpression && (/^[+*/-]=/.test(text) || text.includes('%')) && propertyUnit(label) !== 'percent') return false
     return (bases || [0]).every(base => { const value = parsed(text, base); return Number.isFinite(value) && value >= min && value <= max })
   }
-  return <label className="number-field mixed-field"><span>{label}</span><DraftInput diagnosticFamily={InputFamily.mixed}
-    aria-label={label} aria-description="所选图层的数值不同；输入数值可同时修改" value="" placeholder="混合"
+  return <label className="number-field mixed-field"><span>{label}{unitDescription && <small title={unitDescription}>＊</small>}</span><DraftInput diagnosticFamily={InputFamily.mixed}
+    aria-label={label} aria-description={["所选图层的数值不同；输入数值可同时修改", unitDescription].filter(Boolean).join("；")} title={unitDescription} value="" placeholder="混合"
     inputMode="decimal" normalize={(text) => text.trim()} validate={(text) => text === '' || valid(text)}
     onCommit={(text) => { if (text.trim()) { if (onExpression) onExpression(text); else onChange(parsed(text)) } }}
   /></label>

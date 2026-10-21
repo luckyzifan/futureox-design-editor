@@ -53,7 +53,7 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
       bindings.push({ command: `resize-${dimension}-${direction}`, combo: `Mod+${key}`, repeat: true },
         { command: `resize-${dimension}-${direction}-large`, combo: `Mod+Shift+${key}`, repeat: true })
     }
-    if (desktop) bindings.unshift({ command: 'zoom-100', combo: 'Mod+0' }, { command: 'zoom-fit', combo: 'Mod+1' }, { command: 'zoom-selection', combo: 'Mod+2' }, { command: 'center-selection', combo: 'Mod+3' }, { command: 'frame-selection', combo: 'Mod+F' })
+    if (desktop) bindings.unshift({ command: 'new-page', combo: 'Mod+Shift+N' }, { command: 'zoom-100', combo: 'Mod+0' }, { command: 'zoom-fit', combo: 'Mod+1' }, { command: 'zoom-selection', combo: 'Mod+2' }, { command: 'center-selection', combo: 'Mod+3' }, { command: 'frame-selection', combo: 'Mod+F' })
   } else {
     bindings.push({ command: 'auto-layout', combo: 'Shift+A' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+A' })
     // Figma documents Shift, rather than Alt, for the Windows front/back chord.
@@ -87,7 +87,20 @@ function matches(event: ShortcutKey, combo: string, platform: ShortcutPlatform) 
   if (shift && ((key === '[' && event.code === 'BracketLeft') || (key === ']' && event.code === 'BracketRight'))) return true
   if (key === '-' && shift && event.code === 'Minus') return true
   if (/^\d$/.test(key) && shift && event.code === `Digit${key}`) return true
-  return event.key.toLowerCase() === key.toLowerCase()
+  if (event.key.toLowerCase() === key.toLowerCase()) return true
+  // Explicit US/Generic Option outputs only. Preserve logical ASCII keys on
+  // other layouts; never guess a base key for unknown symbols or dead keys.
+  if (platform === 'mac' && alt && !/^[\x00-\x7f]+$/.test(event.key)) {
+    const optionOutputs: Record<string, readonly [string, string, boolean]> = {
+      '©': ['G', 'KeyG', false], 'Å': ['A', 'KeyA', true],
+      'å': ['A', 'KeyA', false], 'π': ['P', 'KeyP', false],
+      'ç': ['C', 'KeyC', false], '√': ['V', 'KeyV', false],
+      '“': ['[', 'BracketLeft', false], '‘': [']', 'BracketRight', false],
+    }
+    const known = optionOutputs[event.key]
+    return !!known && key.toUpperCase() === known[0] && event.code === known[1] && event.shiftKey === known[2]
+  }
+  return false
 }
 export function resolveShortcut(event: ShortcutKey, context: ShortcutContext): ShortcutBinding | null {
   if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.key === 'Dead' || event.key === 'Process' || event.getModifierState?.('AltGraph')) return null

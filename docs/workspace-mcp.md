@@ -10,6 +10,7 @@ An independently granted workspace writer may save while the document grant rema
 | workspace.list | workspace read | rootHandle; optional limit 1–100, cursor, includeDeleted |
 | workspace.revisions | workspace read | rootHandle, documentHandle; optional beforeRevision |
 | workspace.open | workspace write | rootHandle, documentHandle, mutationId |
+| workspace.importCopy | workspace write | rootHandle, format (`native-json`, `fd`, `sketch`, `fig`), mutationId; exactly one of content or base64 |
 | workspace.save | workspace write | rootHandle, expectedStorageRevision (positive integer or null for a new design), mutationId |
 | workspace.restore | workspace write | rootHandle, revisionHandle, expectedStorageRevision, mutationId |
 | workspace.root.select | workspace write | rootHandle, mutationId; optional useDefault |
@@ -31,8 +32,20 @@ Saves use immutable snapshots, the caller's exact SQLite expected revision and m
 
 The native host reserves a bounded mutation receipt before asynchronous work. Identical in-flight and completed retries share that receipt; reusing a mutation ID with different arguments fails. Uncertain failures are retained rather than blindly retried. SQLite additionally owns durable commit/restore idempotence. This is not an exactly-once transaction spanning Editor, native transport and SQLite. Receipt stores are limited to 128 mutations per grant; reconnect/reapprove before further writes when full.
 
+## Independent-copy import
+
+`workspace.importCopy` saves a new document in the granted workspace. Use `content` for native JSON or canonical `base64` for FD/Sketch/FIG; paths, URLs and PDF are unsupported. The source and serialized parameters are bounded by 32 MiB minus 128 KiB of framing reserve, and expanded prepared output has the same bound. The host reserves the new document UUID; the caller cannot choose a destination ID or overwrite an existing design. The existing backend admits the document and commits it with create-only storage CAS (`expectedRevision: null`), then verifies revision 1 by reading back its complete value tree and canonical storage hash.
+
+The result contains bounded metadata, a grant-bound document handle, `activated: false` and a completion record. It does not load the copy, save/discard the active draft, change selection/page or add an editor undo entry. Unsaved authored edits may remain; busy operations, pending field/text input, active gestures, changed editor revisions, root changes and revocation reject admission. Opening the returned handle is a separate `workspace.open` operation with its existing clean-editor guards and native confirmation. Ordinary `document.import` still appends to the active document.
+
+Sketch and FIG results explicitly report `fidelity: "compatibility"`, `lossless: false` and bounded warnings. FIG decoding uses the existing import worker; parser/worker-protocol substitutes do not establish actual browser Worker startup, timeout, cancellation or termination behavior. Native JSON/FD retention and external-format fidelity remain separate contracts.
+
+Keep the same `mutationId`, arguments and original outer fences for an exact retry within the same live grant. It returns the reserved operation's original result or error; it does not attempt a second import. `IMPORT_COPY_OUTCOME_UNKNOWN` means storage may already have committed. `IMPORT_COPY_COMMITTED_UNVERIFIED` means storage acknowledged the copy but exact readback was not verified. `IMPORT_COPY_COMMITTED_ACCESS_ENDED` means it committed before access ended. These errors never authorize importing again with a new ID. An unresolved storage outcome/readback failure blocks new mutating workspace/settings operations in that grant; exact receipt replay and reads remain available. Ordinary editor editing is unaffected. Reconcile saved state, obtaining fresh native approval when needed; cancellation or disconnection cannot roll back a committed copy.
+
 Preferences remain application-profile preferences; binding the grant to a root controls access lifetime and does not create separate preference storage for each workspace. Preference patches allow only six canvas booleans (snap, snapPixels, pixelGrid, rulers, checkerboard, grid), scrollWheelZoom and shortcutProfile (figma-like/sketch-like). The revision tracks live menu/store/keyboard changes. Entire patches are validated before application, and existing preference stores remain authoritative. Persistence is reported by group and as available/session-only; the result explicitly reports atomicDurability=false because separate localStorage keys are not a transaction.
 
 ## Verification boundary
 
 Production native parsing/grant isolation is tested with in-memory byte streams. Real MCP JSON-RPC tools/list and tools/call go through the production workspace host and production stdio Sidecar into a temporary SQLite database; database reopening checks durability. Actual Editor/WASM + DesktopSession and preference-store tests cover dirty input, stale callbacks, CAS, uncertainty and metadata-only output. GUI dialogs, real socket binding and GPU execution are not part of these non-GUI tests.
+
+The [2026-10-21 functional merge record](../testing/verification-functional-merge-20261021/README.md) distinguishes imported historical results from current combined-source runs. A fixture-backed socket or official-SDK stdio test validates its transport boundary; it does not establish a real Electron grant/dialog → Editor → SQLite end-to-end interaction.

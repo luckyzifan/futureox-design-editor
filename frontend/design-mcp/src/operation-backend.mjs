@@ -2,8 +2,26 @@ import { isRecord } from './framing.mjs'
 
 const GUARDS = {
   documentId: { type: 'string', minLength: 1, description: 'Document ID returned by the preceding read operation.' },
-  session: { type: 'integer', minimum: 0, description: 'Editor session generation returned by the preceding read operation.' },
-  expectedRevision: { type: 'integer', minimum: 0, description: 'Document revision returned by the preceding read operation.' },
+  session: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER, description: 'Editor session generation returned by the preceding read operation.' },
+  expectedRevision: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER, description: 'Document revision returned by the preceding read operation.' },
+}
+
+/** Decide only whether {} satisfies the current trusted input-schema subset.
+ * Unknown assertions fail closed: requiring params is safer than silently
+ * claiming an unknown schema accepts omitted arguments. Not a general validator. */
+const EMPTY_OBJECT_KEYWORDS = new Set(['type', 'properties', 'required', 'additionalProperties',
+  'minProperties', 'maxProperties', 'enum', 'anyOf', 'description', 'title', '$comment', 'default', 'examples'])
+function schemaAcceptsEmptyObject(spec, depth = 0) {
+  if (depth > 32 || !isRecord(spec) || Object.keys(spec).some(key => !EMPTY_OBJECT_KEYWORDS.has(key))) return false
+  if (spec.properties !== undefined && !isRecord(spec.properties)) return false
+  if (spec.additionalProperties !== undefined && typeof spec.additionalProperties !== 'boolean' && !isRecord(spec.additionalProperties)) return false
+  if (spec.type !== undefined && spec.type !== 'object') return false
+  if (spec.required !== undefined && (!Array.isArray(spec.required) || spec.required.length !== 0)) return false
+  if (spec.minProperties !== undefined && (!Number.isSafeInteger(spec.minProperties) || spec.minProperties !== 0)) return false
+  if (spec.maxProperties !== undefined && (!Number.isSafeInteger(spec.maxProperties) || spec.maxProperties < 0)) return false
+  if (spec.enum !== undefined && (!Array.isArray(spec.enum) || !spec.enum.some(value => isRecord(value) && Object.keys(value).length === 0))) return false
+  if (spec.anyOf !== undefined && (!Array.isArray(spec.anyOf) || !spec.anyOf.some(branch => schemaAcceptsEmptyObject(branch, depth + 1)))) return false
+  return true
 }
 
 /** Converts the real shared API capabilities to MCP tools; never implements design operations. */
@@ -32,11 +50,12 @@ export class OperationBackend {
       this.methods.set(name, method)
       this.tools.push({
         name,
-        description: `${method.description}${method.mutates ? ' Requires current documentId, session and expectedRevision. Read state first. Cancellation cannot undo a committed operation.' : ''}`,
+        description: `${method.description}${(method.mutates || method.name === 'clipboard.export') ? ' Requires current documentId, session and expectedRevision. Read state first. Cancellation cannot undo a committed operation.' : ''}`,
         inputSchema: {
           type: 'object',
           properties: { params: method.inputSchema, ...GUARDS },
-          required: method.mutates ? ['documentId', 'session', 'expectedRevision'] : [],
+          required: [...((method.mutates || method.name === 'clipboard.export') ? ['documentId', 'session', 'expectedRevision'] : []),
+            ...(schemaAcceptsEmptyObject(method.inputSchema) ? [] : ['params'])],
           additionalProperties: false,
         },
         annotations: { readOnlyHint: !method.mutates, destructiveHint: method.mutates, idempotentHint: !method.mutates, openWorldHint: false },
@@ -51,13 +70,14 @@ export class OperationBackend {
     if (!method) throw Object.assign(new Error('Unknown design tool'), { code: 'unsupported_method' })
     const invalid = message => ({ ok: false, method: method.name, error: { code: 'invalid_params', message } })
     if (!isRecord(args) || Object.keys(args).some(key => !['params', 'documentId', 'session', 'expectedRevision'].includes(key))) return invalid('Use params and optional documentId/session/expectedRevision guards only')
+    if (args.params === undefined && !schemaAcceptsEmptyObject(method.inputSchema)) return invalid('This tool requires params')
     if (args.params !== undefined && !isRecord(args.params)) return invalid('params must be an object')
     if (args.documentId !== undefined && (typeof args.documentId !== 'string' || !args.documentId)) return invalid('documentId must be a nonempty string')
     for (const key of ['session', 'expectedRevision']) {
       if (args[key] !== undefined && (!Number.isSafeInteger(args[key]) || args[key] < 0)) return invalid(`${key} must be a nonnegative safe integer`)
     }
-    if (method.mutates && ['documentId', 'session', 'expectedRevision'].some(key => args[key] === undefined)) {
-      return invalid('Mutating tools require documentId, session and expectedRevision from a current read')
+    if ((method.mutates || method.name === 'clipboard.export') && ['documentId', 'session', 'expectedRevision'].some(key => args[key] === undefined)) {
+      return invalid('Mutating tools and clipboard.export require documentId, session and expectedRevision from a current read')
     }
     if (context.signal?.aborted) throw context.signal.reason
     return this.execute({

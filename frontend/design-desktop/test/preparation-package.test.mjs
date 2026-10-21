@@ -12,6 +12,7 @@ test('desktop package staging includes the preparation worker and its frame deco
   for(const directory of ['scripts','src','assets/branding','dist/renderer','node_modules/@electron/packager'])
    await mkdir(path.join(root,directory),{recursive:true})
   await cp(new URL('../scripts/package.mjs',import.meta.url),path.join(root,'scripts/package.mjs'))
+  await cp(new URL('../scripts/package-source.mjs',import.meta.url),path.join(root,'scripts/package-source.mjs'))
   await cp(new URL('../package.json',import.meta.url),path.join(root,'package.json'))
   for(const name of ['preparation-worker.mjs','preparation-frame.mjs'])
    await cp(new URL('../src/'+name,import.meta.url),path.join(root,'src',name))

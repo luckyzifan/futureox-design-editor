@@ -143,7 +143,9 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
         if (!dependencies.host || !payload.hostOperation) throw bridgeError('HOST_UNAVAILABLE', 'The editor host operation adapter is unavailable')
         const result = await runAsync(() => dependencies.host!.execute(payload, controller.signal))
         check()
-        await respond(payload.requestId, result)
+        // Only the private preparation response contains whole native bytes.
+        // The external import-copy response remains bounded metadata.
+        await respond(payload.requestId, result, payload.hostOperation.method === 'workspace.importCopy')
         return
       }
       if (payload.kind === 'capabilities') {
@@ -251,7 +253,7 @@ export function attachDesktopAutomation(editor: Editor, transport: DesktopAutoma
         // The shared API owns validation, fenced atomic writes and history.
         // This path is synchronous: no partially-applied asynchronous edits.
         check()
-        await respond(payload.requestId, api.execute(request), ['document.export', 'sketch.export'].includes(request.method))
+        await respond(payload.requestId, api.execute(request), ['document.export', 'sketch.export', 'clipboard.export'].includes(request.method))
         return
       }
       if (request.expectedRevision !== undefined && (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision !== revision)) throw bridgeError('REVISION_CONFLICT', 'The design revision changed')

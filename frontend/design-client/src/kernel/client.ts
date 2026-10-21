@@ -1,4 +1,5 @@
 import { markRenderFailure } from './render-failure-telemetry'
+import { HandledTileDeliveryError } from './tile-admission'
 import { FrameMeasurements } from './frame-measurements'
 import { bindCanvasGrid, GridMeasurements } from './grid-measurements'
 import { documentPatch } from '../document-patch'
@@ -76,6 +77,7 @@ export const renderExecutionPolicy = hostRenderPolicy(
   // Screen sampling is pinned at launch. It does not relax the
   // desktop effect/coverage contract or enable native display arithmetic.
   import.meta.env.VITE_DESIGN_DESKTOP_DISPLAY !== '0',
+  desktopHost?.renderPolicy?.gpuWorkingBudgetMiB,
 )
 export function backendPreference(): BackendPreference {
   // One product renderer. Legacy per-browser choices must not silently put a
@@ -182,6 +184,8 @@ export type KernelOptions = {
   exportFormat?: 'jpeg' | 'webp' | 'pdf'
   /** Exact interactive presentation may tile an oversized target without reducing density. */
   livePreview?: boolean
+  /** Optional bounded four-sample viewport; unsupported scenes retain tiles. */
+  sequentialViewport?: boolean
   /** Transient Web interaction graph reuse; never an exact/export option. */
   retainInteractionGraph?: boolean
   /** Recompile changed coverage at the real sample phase; retain exact sources only. */
@@ -592,8 +596,10 @@ export class KernelClient {
             linear: e.data.linearBuffer ? new Float32Array(e.data.linearBuffer) : undefined,
           })
         } catch (error) {
-          e.data.tileBitmap?.close()
-          if(e.data.tile?.gpuTile)this.releasePresented([e.data.tile.gpuTile])
+          if (!(error instanceof HandledTileDeliveryError)) {
+            e.data.tileBitmap?.close()
+            if(e.data.tile?.gpuTile)this.releasePresented([e.data.tile.gpuTile])
+          }
           clearTimeout(p.timer)
           this.pending.delete(e.data.id)
           p.reject(error instanceof Error ? error : new Error(String(error)))
@@ -902,7 +908,15 @@ export class KernelClient {
         )
           .then((result) => ({ ...result, serializeMs }))
           .catch((error) => {
+            // A declined optional screen operator happens after document
+            // synchronization. Preserve only a real canvas receipt for this
+            // exact authored object on the same worker; an unacknowledged
+            // mutation must still force full synchronization on retry.
+            const optionalDisplayDeclined = options.sequentialViewport === true && !interaction &&
+              error instanceof Error && error.message === 'SEQUENTIAL_DISPLAY_UNSUPPORTED' &&
+              this.worker === worker && !!this.authoredPreparation.receiptFor(document)
             if (
+              !optionalDisplayDeclined &&
               !/PREVIEW_CANCELLED|PREVIEW_BUDGET|GPU.*(?:budget|预算)/i.test(String(error)) &&
               (interaction ? this.interactionSnapshot : this.documentSnapshot) === document &&
               (interaction ? this.interactionRevision : this.documentRevision) === revision

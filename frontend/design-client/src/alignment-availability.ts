@@ -1,15 +1,14 @@
 import type { Editor } from './engine'
-import { interactivePath } from './selection-hierarchy'
+import { selectionCommandAdmission } from './commands/selection-command'
 import { commitPendingEdits } from './pending-edits'
 
 /** The toolbar and Inspector expose the same existing parent/selection alignment contract. */
 export function alignmentAvailability(editor: Editor) {
-  const { doc, page, busy } = editor.state, parents = editor.parentMap()
-  const ids = editor.topSelection().filter(id => interactivePath(doc, page, id, false, parents).length)
+  const { doc, busy, selection } = editor.state, parents = editor.parentMap()
   const available = !busy && !editor.interactionActive
   return {
-    align: available && (ids.length > 1 || (ids.length === 1 && !!doc.nodes[parents.get(ids[0]) || ''])),
-    distribute: available && ids.length >= 3,
+    align: available && selectionCommandAdmission(doc, selection, 'align', parents).ok,
+    distribute: available && selectionCommandAdmission(doc, selection, 'distribute', parents).ok,
   }
 }
 export function alignSelection(editor: Editor, axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {

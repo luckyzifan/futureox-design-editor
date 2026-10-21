@@ -1,8 +1,16 @@
+import { validGpuWorkingBudgetMiB } from '../render-policy'
+
 const MiB = 1024 * 1024
 /** Admission policy, not a claim about free VRAM. WebGPU exposes per-resource
  * limits but no reliable remaining-memory query. Grow for the actual physical
  * render target; never lower sampling density to meet this policy. */
-export function workingSetBudget(width: number, height: number, nativeDisplay: boolean, effectPixels=0) {
+export function workingSetBudget(width: number, height: number, nativeDisplay: boolean, effectPixels=0,
+  configuredMiB?: number) {
+  if (configuredMiB !== undefined) {
+    if (!validGpuWorkingBudgetMiB(configuredMiB)) throw Error('Invalid GPU working budget')
+    // Keep Number arithmetic: 4096 MiB is 2^32 bytes and must not wrap to zero.
+    return configuredMiB * MiB
+  }
   const minimum = (nativeDisplay ? 512 : 256) * MiB
   if (!nativeDisplay || !Number.isFinite(width * height) || width <= 0 || height <= 0) return minimum
   // Four RGBA32F-sized working planes cover destination/source + a separable

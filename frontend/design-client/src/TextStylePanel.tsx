@@ -1,5 +1,5 @@
 import { UnitNumberField } from './UnitNumberField'
-import { propertyUnits } from './property-units'
+import { propertyUnits, styleUnitDescription } from './property-units'
 import { SystemFontPicker } from './SystemFontPicker'
 import { FontManagementPanel } from './FontManagementPanel'
 import { applySelectionFont } from './font-management'
@@ -58,7 +58,8 @@ export function TextStylePanel({
   // Match the Inspector's camera-independent, bounded preview cadence. A
   // direct full-state subscription would rebuild these controls on every pan.
   const { doc } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
-  const units = propertyUnits(doc, node.id)
+  const units = propertyUnits(doc, node.id, editor.parentMap(doc))
+  const styleDescription = styleUnitDescription(doc, [node.id], editor.parentMap(doc))
   const unmatchedFonts = unmatchedSketchFonts(doc, node)
   const [imports] = useState(() => new ImportOwner())
   useEffect(() => { imports.activate(); return () => imports.dispose() }, [imports])
@@ -212,7 +213,7 @@ export function TextStylePanel({
         max={10}
         onChange={(lineHeight) => update({ lineHeight })}
       />
-      <UnitNumberField unitScale={units.style}
+      <UnitNumberField unitDescription={styleDescription} unitScale={units.style}
         label="字间距"
         value={style.letterSpacing}
         min={-1000}
@@ -239,7 +240,7 @@ export function TextStylePanel({
           <option value="end">末尾</option><option value="justify">两端对齐</option>
         </select>
       </label>
-      <UnitNumberField unitScale={units.style} label="段落间距" value={style.paragraphSpacing||0} min={0} max={10000} onChange={paragraphSpacing=>update({paragraphSpacing})}/><UnitNumberField unitScale={units.style} label="首行缩进" value={style.paragraphIndent||0} min={-10000} max={10000} onChange={paragraphIndent=>update({paragraphIndent})}/>
+      <UnitNumberField unitDescription={styleDescription} unitScale={units.style} label="段落间距" value={style.paragraphSpacing||0} min={0} max={10000} onChange={paragraphSpacing=>update({paragraphSpacing})}/><UnitNumberField unitDescription={styleDescription} unitScale={units.style} label="首行缩进" value={style.paragraphIndent||0} min={-10000} max={10000} onChange={paragraphIndent=>update({paragraphIndent})}/>
       <label>
         方向
         <select

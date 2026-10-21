@@ -2,7 +2,7 @@ import { RepeatPanel } from './RepeatPanel'
 import {BoardPanel} from './BoardPanel'
 import { AlignmentControls } from './AlignmentControls'
 import { CanvasContextMenu } from './CanvasContextMenu'
-import { propertyUnits, dashInUnits } from './property-units'
+import { propertyUnits, dashInUnits, styleUnitDescription } from './property-units'
 import { UnitNumberField } from './UnitNumberField'
 import { ScaleInspector } from './ScaleInspector'
 import { NodeExportPanel } from './NodeExportPanel'
@@ -17,13 +17,13 @@ import { StrokeProfilePanel } from './StrokeProfilePanel'
 import { TextInput } from './TextEditor'
 import { TextStylePanel } from './TextStylePanel'
 import { clearWholeTextRunColor, setWholeTextFontSize } from './text'
-import { parentBounds, rotationDegrees, rotateNode, selectionLocalBounds } from './canvas-view'
+import { selectionParentBounds, rotationDegrees, rotateNode, selectionLocalBounds } from './canvas-view'
 import { ComponentPanel } from './ComponentPanel'
 import { NumberField } from './fields'
 import { LayoutPanel } from './LayoutPanel'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
-import { resizeNodeDimension, selectionMetric } from './selection-properties'
-import React, { useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
+import { resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
+import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, ImagePlus } from 'lucide-react'
 import type { Editor } from './engine'
 import { VectorBrushPanel } from './VectorBrushPanel'
@@ -366,7 +366,9 @@ function PaintEditor({
     </div>
   )
 }
-export function Inspector({ editor }: { editor: Editor }) {
+// Camera presentation updates re-render the parent shell. The controls consume
+// the editor's independent panel snapshot and must not rebuild for those frames.
+export const Inspector = memo(function Inspector({ editor }: { editor: Editor }) {
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     ids = s.selection,
@@ -435,8 +437,9 @@ export function Inspector({ editor }: { editor: Editor }) {
       </aside>
     )
   const units = propertyUnits(s.doc, n.id, editor.parentMap(s.doc))
+  const styleDescription = styleUnitDescription(s.doc, [n.id], editor.parentMap(s.doc))
   const angle = rotationDegrees(n),
-    position = parentBounds(n)
+    position = selectionParentBounds(s.doc, n.id)
   const listControls = (field: 'fills' | 'strokes' | 'effects', i: number) => (
     <div className="mini-actions">
       <button
@@ -504,6 +507,7 @@ export function Inspector({ editor }: { editor: Editor }) {
         <button type="button" aria-label="更多图层操作" onClick={event => setContext({ x: event.clientX, y: event.clientY })}>⋯</button>
       </div>
       <div className="inspector-scroll">
+        {styleDescription && <p role="note" className="property-unit-notice">＊ 最大缩放系数换算。{styleDescription}</p>}
         <section>
 
           <h3>位置</h3>
@@ -514,7 +518,7 @@ export function Inspector({ editor }: { editor: Editor }) {
               value={position.x * units.parentX}
               onChange={(v) =>
                 update((n) => {
-                  n.transform[4] += v / units.parentX - parentBounds(n).x
+                  setNodePosition(n, 'x', v, editor.state.doc)
                 })
               }
             />
@@ -523,7 +527,7 @@ export function Inspector({ editor }: { editor: Editor }) {
               value={position.y * units.parentY}
               onChange={(v) =>
                 update((n) => {
-                  n.transform[5] += v / units.parentY - parentBounds(n).y
+                  setNodePosition(n, 'y', v, editor.state.doc)
                 })
               }
             />
@@ -544,7 +548,7 @@ export function Inspector({ editor }: { editor: Editor }) {
           <div className="field-grid">
             <NumberField
               label="W"
-              value={selectionMetric(n, 'width', s.doc)}
+              value={selectionMetric(n, 'width', s.doc, units)}
               min={0.01}
               onChange={(v) =>
                 update((n) => resizeNodeDimension(n, 'width', v, s.doc))
@@ -552,7 +556,7 @@ export function Inspector({ editor }: { editor: Editor }) {
             />
             <NumberField
               label="H"
-              value={selectionMetric(n, 'height', s.doc)}
+              value={selectionMetric(n, 'height', s.doc, units)}
               min={0.01}
               onChange={(v) =>
                 update((n) => resizeNodeDimension(n, 'height', v, s.doc))
@@ -574,7 +578,7 @@ export function Inspector({ editor }: { editor: Editor }) {
                 onChange={v => update(n => { n.arc = { startAngle: 0, sweepAngle: Math.PI * 2, ...n.arc, innerRadius: v / 100 } })} />
             </div>
           )}
-          {['polygon', 'star'].includes(n.kind) && !n.network && <UnitNumberField unitScale={units.style} label="顶点圆角" min={0} value={n.cornerRadius ?? 0}
+          {['polygon', 'star'].includes(n.kind) && !n.network && <UnitNumberField unitDescription={styleDescription} unitScale={units.style} label="顶点圆角" min={0} value={n.cornerRadius ?? 0}
             onChange={v => update(n => { n.cornerRadius = v })} />}
           {container(n) && (
             <label className="check-row">
@@ -629,7 +633,7 @@ export function Inspector({ editor }: { editor: Editor }) {
               <h4>圆角</h4>
               <div className="field-grid">
                 {n.radii.map((r, i) => (
-                  <UnitNumberField unitScale={units.style}
+                  <UnitNumberField unitDescription={styleDescription} unitScale={units.style}
                     key={i}
                     label={['左上', '右上', '右下', '左下'][i]}
                     value={r}
@@ -686,7 +690,7 @@ export function Inspector({ editor }: { editor: Editor }) {
               <TextInput key={`${editor.sessionGeneration}:${n.id}`} node={n} editor={editor} />
               {n.textPath&&<><NumberField label="沿路径偏移" value={n.textPath.offset} onChange={v=>update(n=>{n.textPath!.offset=v})}/><NumberField label="路径基线偏移" value={n.textPath.normal} onChange={v=>update(n=>{n.textPath!.normal=v})}/><label><input type="checkbox" checked={n.textPath.reverse} onChange={e=>update(n=>{n.textPath!.reverse=e.target.checked})}/>反向路径</label></>}
               <TextStylePanel editor={editor} node={n} ids={ids} />
-              <UnitNumberField unitScale={units.style}
+              <UnitNumberField unitDescription={styleDescription} unitScale={units.style}
                 label="字号"
                 value={n.fontSize}
                 min={1}
@@ -813,7 +817,7 @@ export function Inspector({ editor }: { editor: Editor }) {
                 }
               />
               <div className="field-grid">
-                <UnitNumberField unitScale={units.style}
+                <UnitNumberField unitDescription={styleDescription} unitScale={units.style}
                   label="粗细"
                   value={st.width}
                   min={0}
@@ -873,11 +877,12 @@ export function Inspector({ editor }: { editor: Editor }) {
                   </select>
                 </label>)}
               </div>}
-              <DraftInput aria-label="虚线" placeholder="虚线，如 8 4" value={dashInUnits(st.dash, units.style)}
+              {styleDescription && <small title={styleDescription}>虚线：最大缩放系数换算</small>}
+              <DraftInput aria-description={styleDescription} title={styleDescription} aria-label="虚线" placeholder="虚线，如 8 4" value={dashInUnits(st.dash, units.style)}
                 validate={value => { try { dashInUnits(value, 1 / units.style); return true } catch { return false } }}
                 onCommit={(value) => update((n) => { if (n.strokes[i]) n.strokes[i].dash = dashInUnits(value, 1 / units.style) })} />
               <StrokeProfilePanel n={n} index={i} editor={editor} update={update} />
-              <UnitNumberField unitScale={units.style}
+              <UnitNumberField unitDescription={styleDescription} unitScale={units.style}
                 label="虚线偏移"
                 value={st.dashOffset || 0}
                 min={-1e7}
@@ -933,7 +938,7 @@ export function Inspector({ editor }: { editor: Editor }) {
                             : ['radius', 'amount', 'opacity'].includes(k),
                   )
                   .map((key) => (
-                    <UnitNumberField unitScale={['radius', 'x', 'y', 'spread'].includes(key) || (key === 'amount' && fx.kind !== 'noise') ? units.style : 1}
+                    <UnitNumberField unitDescription={['radius', 'x', 'y', 'spread'].includes(key) || (key === 'amount' && fx.kind !== 'noise') ? styleDescription : undefined} unitScale={['radius', 'x', 'y', 'spread'].includes(key) || (key === 'amount' && fx.kind !== 'noise') ? units.style : 1}
                       key={key}
                       label={
                         {
@@ -980,7 +985,7 @@ export function Inspector({ editor }: { editor: Editor }) {
                     const percentage =
                       key === 'refraction' || key === 'dispersion' || key === 'lightIntensity'
                     return (
-                      <UnitNumberField unitScale={key === 'depth' || key === 'bevelSize' ? units.style : 1}
+                      <UnitNumberField unitDescription={key === 'depth' || key === 'bevelSize' ? styleDescription : undefined} unitScale={key === 'depth' || key === 'bevelSize' ? units.style : 1}
                         key={key}
                         label={
                           {
@@ -1075,4 +1080,4 @@ export function Inspector({ editor }: { editor: Editor }) {
       {context && <CanvasContextMenu editor={editor} x={context.x} y={context.y} worldPoint={editor.selectionBounds()} candidates={[{ id: n.id, name: n.name, locked: n.locked }]} onClose={() => setContext(null)} />}
     </aside>
   )
-}
+})

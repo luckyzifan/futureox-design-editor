@@ -1,7 +1,13 @@
-import { planArrangement, translatedLocalTransform } from '../commands/arrangement-plan'
-import { planChildReparent, planContainerPlacement, reparentedTransform } from '../commands/structure-plan'
+import { prepareBooleanCreate, applyBooleanCreate, type BooleanCreateOptions } from '../commands/boolean-command'
+import { applyDuplication, prepareDuplication, duplicationIntent } from '../commands/duplication-command'
+import { prepareLayoutAdd, applyLayoutAdd, prepareLayoutRemove, applyLayoutRemove, type LayoutAddOptions } from '../commands/layout-command'
+import { displayProperties } from './display-properties'
+import { prepareSelectionScale, SelectionScaleError } from '../selection-scale'
+import { SelectionCommandError, prepareSelectionArrangement, prepareSelectionWrap, configureSelectionWrapper,
+  applySelectionWrap, prepareSelectionUnwrap, applySelectionUnwrap } from '../commands/selection-command'
+import { planChildReparent, reparentedTransform } from '../commands/structure-plan'
 import { applyChildListPlan, applyTransformPlan } from '../commands/apply-plan'
-import { AUTOMATION_PROFILE } from '../commands/profiles'
+import { CORE_SELECTION_PROFILE } from '../commands/profiles'
 import { releaseSlotRoot } from '../component-slots'
 import { layoutSuggestionExtensions } from './layout-suggestions'
 import { NODE_FIELDS, OPTIONAL_NODE_FIELDS, nodePatchSchema as patchSchema } from './node-input-descriptors'
@@ -86,12 +92,18 @@ function jsonAdmission(value: unknown, depth = 0, budget = { entries: 0 }): void
     jsonAdmission(descriptor.value, depth + 1, budget)
   }
 }
+/** JSON Schema length counts Unicode code points, not UTF-16 code units.
+ * Native authored limits (for example document names) remain separate. */
+function codePointLength(value: string): number {
+  let length = 0
+  for (let index = 0; index < value.length; length++) index += value.codePointAt(index)! > 0xffff ? 2 : 1
+  return length
+}
 /** Check the common schema vocabulary published by the operation registry.
  * Model validators remain authoritative for authored nested values. */
 function checkSchema(value: unknown, spec: Record<string, unknown>, path = 'params'): void {
   if (Array.isArray(spec.anyOf)) {
     if (!spec.anyOf.some(s => { try { checkSchema(value, record(s, 'schema'), path); return true } catch { return false } })) fail('invalid_params', `${path} has an invalid value`)
-    return
   }
   if (Array.isArray(spec.enum) && !spec.enum.some(v => equalValue(v, value))) fail('invalid_params', `${path} is not an allowed value`)
   const type = spec.type
@@ -112,8 +124,8 @@ function checkSchema(value: unknown, spec: Record<string, unknown>, path = 'para
     if (spec.items) values.forEach(v => checkSchema(v, spec.items as Record<string, unknown>, `${path}[]`))
   } else if (type === 'string') {
     if (typeof value !== 'string') fail('invalid_params', `${path} must be a string`)
-    const s = value as string
-    if (typeof spec.minLength === 'number' && s.length < spec.minLength || typeof spec.maxLength === 'number' && s.length > spec.maxLength) fail('invalid_params', `${path} has an invalid length`)
+    const length = codePointLength(value as string)
+    if (typeof spec.minLength === 'number' && length < spec.minLength || typeof spec.maxLength === 'number' && length > spec.maxLength) fail('invalid_params', `${path} has an invalid length`)
   } else if (type === 'number' || type === 'integer') {
     if (typeof value !== 'number' || !Number.isFinite(value) || type === 'integer' && !Number.isSafeInteger(value)) fail('invalid_params', `${path} must be a finite ${type}`)
     const n = value as number
@@ -208,7 +220,7 @@ function moveNodes(doc: DesignDocument, selected: string[], parent: string, inde
   const lists = [...new Set([...top.map(id => parents.get(id)!), parent])].map(parent => ({ parent, children: childList(doc, parent) }))
   const remaining = childList(doc, parent).length - top.filter(id => parents.get(id) === parent).length
   const at = insertionIndex(index, remaining)
-  applyChildListPlan(doc, planChildReparent(AUTOMATION_PROFILE, top.map(id => ({ id, parent: parents.get(id)! })), lists, parent, at))
+  applyChildListPlan(doc, planChildReparent(CORE_SELECTION_PROFILE, top.map(id => ({ id, parent: parents.get(id)! })), lists, parent, at))
   applyTransformPlan(doc, [...transforms].map(([id, transform]) => ({ id, transform })))
   return top
 }
@@ -236,12 +248,12 @@ const coreExtensions: AutomationExtension[] = [
     return { ...metadata, nodeCount: Object.keys(nodes).length, ...(p.includeNodes ? { nodes } : {}),
       fonts: p.includeFonts ? fonts || {} : Object.fromEntries(Object.entries(fonts || {}).map(([id, f]) => [id, { family: f.family, index: f.index, postscript: f.postscript }])) }
   }),
-  operation('document.rename', 'Rename the current authored document.', schema({ name: { type: 'string', minLength: 1, maxLength: 200 } }, ['name']), true,
+  operation('document.rename', 'Rename the current authored document.', schema({ name: { type: 'string', minLength: 1, maxLength: 200, description: 'Native document names additionally require non-whitespace, well-formed text of at most 200 UTF-16 code units. This authored limit is independent of JSON Schema code-point length.' } }, ['name']), true,
     (doc, p) => { doc.name = text(p.name, 'name', 200); return { name: doc.name } }),
   operation('page.list', 'List the document pages in authored order.', schema(), false, doc => ({ pages: doc.pages })),
   operation('page.get', 'Read one page and its ordered root node identifiers.', schema({ id: stringSchema }, ['id']), false, (doc, p) => getPage(doc, p.id)),
-  operation('node.get', 'Read a full authored node, parent, page and world bounds.', schema({ id: stringSchema }, ['id']), false,
-    (doc, p) => ({ node: getNode(doc, p.id), ...summary(doc, text(p.id, 'id')) })),
+  operation('node.get', 'Read a full authored node, parent, page and world bounds. Optionally include read-only effective Inspector properties; authored fields remain local units.', schema({ id: stringSchema, includeDisplayProperties: { type: 'boolean' } }, ['id']), false,
+    (doc, p) => ({ node: getNode(doc, p.id), ...summary(doc, text(p.id, 'id')), ...(p.includeDisplayProperties === true ? { displayProperties: displayProperties(doc, text(p.id, 'id')) } : {}) })),
   operation('node.find', 'Find nodes with bounded, revision-bound pagination. Matches are sorted by identifier.', querySchema, false, (doc, p, ctx) => {
     let eligible: Set<string> | undefined
     if (p.rootId !== undefined) eligible = new Set(subtree(doc, [text(p.rootId, 'rootId')]))
@@ -311,17 +323,41 @@ const coreExtensions: AutomationExtension[] = [
     (doc, p) => ({ removedIds: removeNodes(doc, ids(p.ids)) })),
   operation('node.move', 'Reparent nodes in one atomic operation. index is the final insertion position after removal; world transforms are preserved by default.', schema({ ids: idsSchema, parentId: stringSchema, index: indexSchema, preserveWorld: { type: 'boolean' } }, ['ids', 'parentId']), true,
     (doc, p) => ({ ids: moveNodes(doc, ids(p.ids), text(p.parentId, 'parentId'), p.index, p.preserveWorld !== false) })),
-  operation('node.duplicate', 'Duplicate native subtrees with remapped references. Ordinary main components duplicate as linked instances, matching the editor.', schema({ ids: idsSchema, parentId: stringSchema, index: indexSchema, offsetX: numberSchema, offsetY: numberSchema }, ['ids']), true, (doc, p, ctx) => {
-    const selected = roots(doc, ids(p.ids)), parents = allParents(doc)
-    selected.forEach(id => { assertUnlocked(doc, id); childList(doc, parents.get(id)!); })
-    const before = new Set(Object.keys(doc.nodes)), content = copyGraph(doc, selected)
-    const dx = number(p.offsetX, 24, 'offsetX'), dy = number(p.offsetY, 24, 'offsetY')
-    const transforms = new Map(selected.map(id => [id, [1, 0, 0, 1, dx, dy] as Matrix]))
-    const result = duplicateGraph(doc, content, { transforms })
-    if (p.parentId !== undefined) moveNodes(doc, result.roots, text(p.parentId, 'parentId'), p.index)
-    else if (p.index !== undefined) fail('invalid_params', 'index requires parentId')
-    ctx.createdIds.push(...Object.keys(doc.nodes).filter(id => !before.has(id)))
+  operation('node.duplicate', 'Duplicate with shared editor placement: ordinary nodes in place, top-level frames to the right (Core gap 24), and trusted single-step translation/rotation repeat. Explicit offsetX or offsetY selects world-offset placement; an omitted other axis remains 24. Selects the new roots. Main components retain native linked-instance behavior.', schema({ ids: idsSchema, parentId: stringSchema, index: indexSchema, offsetX: numberSchema, offsetY: numberSchema }, ['ids']), true, (doc, p, ctx) => {
+    if (p.index !== undefined && p.parentId === undefined) fail('invalid_params', 'index requires parentId')
+    if (p.parentId !== undefined) childList(doc, text(p.parentId, 'parentId'))
+    const intent = duplicationIntent(p.offsetX as number | undefined, p.offsetY as number | undefined)
+    const plan = prepareDuplication(doc, ids(p.ids), intent, { fresh: ctx.selectionGeometryFresh === true,
+      singleStep: ctx.duplicationSingleStep === true, mutable: true, repeat: ctx.duplicationRepeat, destination: p.parentId as string | undefined })
+    const before = new Set(Object.keys(doc.nodes)), result = applyDuplication(doc, plan)
+    if (p.parentId !== undefined) {
+      moveNodes(doc, result.roots, text(p.parentId, 'parentId'), p.index)
+      // Only these new copies change coordinate owners. Match native reparent
+      // semantics without altering node.move or the original authored roots.
+      for (const id of result.roots) if (doc.nodes[id].constraints)
+        doc.nodes[id].constraints = { ...doc.nodes[id].constraints!, referenceWidth: null, referenceHeight: null }
+    }
+    for (const id of Object.keys(doc.nodes)) if (!before.has(id)) ctx.createdIds.push(id)
+    ctx.pageId = (() => { const parents = allParents(doc); let at = result.roots[0]; while (parents.has(at)) at = parents.get(at)!; return at })()
+    ctx.selection = [...result.roots]
+    if (ctx.duplicationSingleStep) ctx.duplicationResult = result
     return { ids: result.roots, idMap: Object.fromEntries(result.ids) }
+  }),
+  operation('layout.add', 'Add horizontal/vertical auto layout with Core defaults (gap 12, padding 16). Ordinary selections wrap and reflow; one frame/group updates in place. Wrapper order defaults to axis; existing containers default to scene. Hidden/absolute slots remain fixed. UI inference is a separate strategy.', schema({ ids: idsSchema,
+    mode: { enum: ['horizontal', 'vertical'] }, gap: { type: 'number', minimum: 0, maximum: 1e5 },
+    padding: schema({ top: { type: 'number', minimum: 0, maximum: 1e5 }, right: { type: 'number', minimum: 0, maximum: 1e5 }, bottom: { type: 'number', minimum: 0, maximum: 1e5 }, left: { type: 'number', minimum: 0, maximum: 1e5 } }, ['top', 'right', 'bottom', 'left']),
+    order: { enum: ['scene', 'axis'] }, id: stringSchema, name: { type: 'string', minLength: 1, maxLength: 200 },
+  }, ['ids', 'mode']), true, (doc, p, ctx) => {
+    const plan = prepareLayoutAdd(doc, ids(p.ids), p as unknown as LayoutAddOptions, { fresh: ctx.selectionGeometryFresh === true })
+    applyLayoutAdd(doc, plan)
+    if (plan.wrapper) ctx.createdIds.push(plan.target)
+    ctx.pageId = plan.pageId; ctx.selection = [plan.target]
+    return { ids: [plan.target], childOrder: plan.childOrder, reflow: plan.changed, created: !!plan.wrapper }
+  }),
+  operation('layout.remove', 'Remove layout from explicit ordinary frames, preserving current normalized geometry and child order. Retire fill sizing and reset direct-child constraint references. Does not remove nested layout recursively. Later batch operations requiring derived geometry reject.', schema({ ids: idsSchema }, ['ids']), true, (doc, p, ctx) => {
+    const plan = prepareLayoutRemove(doc, ids(p.ids), { fresh: ctx.selectionGeometryFresh === true })
+    applyLayoutRemove(doc, plan); ctx.pageId = plan.pageId; ctx.selection = plan.ids
+    return { ids: plan.ids, changedIds: plan.changedIds, childOrders: Object.fromEntries(plan.ids.map(id => [id, [...doc.nodes[id].children]])) }
   }),
   operation('layout.set', 'Set auto layout, child sizing, constraints and layout grids using the native layout model. Null removes an optional layout facet.', schema({ ids: idsSchema,
     layout: {}, sizing: {}, constraints: {}, layoutGrid: {} }, ['ids']), true, (doc, p) => {
@@ -359,6 +395,11 @@ const coreExtensions: AutomationExtension[] = [
     (doc, p) => { const selected = ids(p.ids); selected.forEach(id => patchNode(doc, getNode(doc, id), { effects: p.effects })); return { ids: selected } }),
 ]
 coreExtensions.push(
+  operation('selection.scale', 'Proportionally scale explicit active-page roots using the UI scale command, not resize. Factor 0.01–10000; anchor 0–8 is row-major, default center (4).', schema({ ids: idsSchema, factor: { type: 'number', minimum: .01, maximum: 1e4 }, anchor: { type: 'integer', minimum: 0, maximum: 8 } }, ['ids', 'factor']), true, (doc, p, ctx) => {
+    const plan = prepareSelectionScale(doc, ctx.pageId, ids(p.ids), p.factor as number, p.anchor === undefined ? 4 : p.anchor as number, { fresh: ctx.selectionGeometryFresh === true })
+    for (const [id, transform] of Object.entries(plan.transforms)) doc.nodes[id].transform = transform
+    return { ids: plan.ids }
+  }),
   operation('selection.set', 'Select explicit nodes on one page. An empty array clears selection.', schema({ ids: { type: 'array', items: stringSchema, maxItems: MAX_RESULTS, uniqueItems: true }, pageId: stringSchema }, ['ids']), true, (doc, p, ctx) => {
     const page = getPage(doc, p.pageId ?? ctx.pageId), allowed = new Set(subtree(doc, page.children))
     const selected = (p.ids as unknown[]).map(id => text(id, 'id'))
@@ -372,72 +413,38 @@ coreExtensions.push(
 )
 
 coreExtensions.push(
-  operation('node.group', 'Group nodes sharing a parent, preserving world transforms and paint order. Bounds enclose authored node rectangles.', schema({
+  operation('vector.boolean.create', 'Create a non-destructive live boolean with editable operands. verified-fill: 2–64 same-parent closed fill shapes/vectors/nested booleans; scene bottom-to-top order, bottom minus upper for subtract. Other operations inherit topmost paint/effects; subtract inherits bottommost. Text, frames, Symbols, visible strokes and dependent geometry reject. Not full Figma/Sketch parity; geometry is resolved by native Core.', schema({
+    ids: { ...idsSchema, minItems: 2, maxItems: 64 }, operation: { enum: ['union', 'subtract', 'intersect', 'exclude'] }, id: stringSchema,
+    name: { type: 'string', minLength: 1, maxLength: 200, description: 'Native boolean names additionally require non-whitespace text of at most 200 UTF-16 code units. This authored limit is independent of JSON Schema code-point length.' },
+  }, ['ids', 'operation']), true, (doc, p, ctx) => {
+    const plan = prepareBooleanCreate(doc, ids(p.ids), p as unknown as BooleanCreateOptions, { fresh: ctx.selectionGeometryFresh === true }, 'verified-fill')
+    applyBooleanCreate(doc, plan)
+    ctx.createdIds.push(plan.wrapper.id); ctx.selection = [plan.wrapper.id]
+    return { id: plan.wrapper.id, childIds: plan.wrap.ids, operation: plan.wrapper.booleanOperation, styleSourceId: plan.styleSourceId }
+  }),
+  operation('node.group', 'Wrap same-parent selection using shared exact geometry; group and selection-frame are transparent and unclipped. Auto-layout topology is unsupported.', schema({
     ids: idsSchema, id: stringSchema, kind: { enum: ['group', 'frame'] }, name: { type: 'string', minLength: 1, maxLength: 200 },
   }, ['ids']), true, (doc, p, ctx) => {
-    const selected = roots(doc, ids(p.ids)), parents = allParents(doc), parent = parents.get(selected[0])!
-    if (selected.some(id => parents.get(id) !== parent)) fail('different_parents', 'Grouping requires nodes with the same parent; reparent them explicitly first')
-    const list = childList(doc, parent)
-    selected.forEach(id => assertUnlocked(doc, id))
-    selected.sort((a, b) => list.indexOf(a) - list.indexOf(b))
-    const box = bounds(selected.flatMap(id => {
-      const n = doc.nodes[id]
-      return boxPoints({ x: 0, y: 0, width: n.width, height: n.height }).map(point => apply(n.transform, point))
-    }))
-    const placement = planContainerPlacement(AUTOMATION_PROFILE, box, worldMatrix(doc, parent))
-    const group = node((p.kind ?? 'group') as 'group' | 'frame', placement.transform[4], placement.transform[5], placement.width, placement.height)
-    group.id = uniqueId(doc, p.id)
+    const plan = prepareSelectionWrap(doc, ids(p.ids), { fresh: ctx.selectionGeometryFresh === true })
+    const group = node((p.kind ?? 'group') as 'group' | 'frame', 0, 0, plan.width, plan.height)
+    group.id = uniqueId(doc, p.id); configureSelectionWrapper(group, plan)
     if (p.name !== undefined) group.name = text(p.name, 'name', 200)
-    if (group.kind === 'group') { group.fills = []; group.strokes = []; group.effects = []; group.blend = 'pass-through' }
-    const index = Math.min(...selected.map(id => list.indexOf(id)))
-    doc.nodes[group.id] = group; list.splice(index, 0, group.id)
-    moveNodes(doc, selected, group.id)
+    applySelectionWrap(doc, plan, group)
     ctx.createdIds.push(group.id); ctx.selection = [group.id]
-    return { id: group.id, childIds: selected }
+    return { id: group.id, childIds: plan.ids }
   }),
-  operation('node.ungroup', 'Ungroup ordinary groups/frames while preserving child world transforms. Components, instances and boolean groups require their dedicated operations.', schema({ ids: idsSchema }, ['ids']), true, (doc, p, ctx) => {
-    const selected = roots(doc, ids(p.ids)), revealed: string[] = []
-    for (const id of selected) {
-      const n = getNode(doc, id)
-      if (!['group', 'frame'].includes(n.kind) || n.component || n.componentSet || n.instance || n.instanceOrigin || n.booleanOperation)
-        fail('invalid_kind', 'Only ordinary groups and frames can be ungrouped')
-      assertUnlocked(doc, id)
-      const parents = allParents(doc), parent = parents.get(id)!, list = childList(doc, parent), index = list.indexOf(id), children = [...n.children]
-      if (children.length) moveNodes(doc, children, parent, index)
-      removeNodes(doc, [id]); revealed.push(...children)
-    }
-    ctx.selection = revealed; return { removedIds: selected, ids: revealed }
+  operation('node.ungroup', 'Unwrap ordinary group/frame/section/boolean containers one level, retaining child world transforms/styles and releasing direct mask scope. Instances/components, auto-layout topology and unproven derived batch geometry reject.', schema({ ids: idsSchema }, ['ids']), true, (doc, p, ctx) => {
+    const plan = prepareSelectionUnwrap(doc, ids(p.ids), { fresh: ctx.selectionGeometryFresh === true }), revealed = applySelectionUnwrap(doc, plan)
+    ctx.selection = revealed; return { removedIds: plan.ids, ids: revealed }
   }),
-  operation('node.align', 'Align nodes by authored world-space bounding boxes, or align one node within its parent. Auto-layout flow children must be positioned through layout controls.', schema({ ids: idsSchema, axis: { enum: ['x', 'y'] }, mode: { enum: ['start', 'center', 'end'] } }, ['ids', 'axis', 'mode']), true,
-    (doc, p) => alignNodes(doc, ids(p.ids), p.axis as 'x' | 'y', p.mode as 'start' | 'center' | 'end')),
-  operation('node.distribute', 'Equalize world-space edge gaps across at least three nodes while keeping the outer bounds.', schema({ ids: idsSchema, axis: { enum: ['x', 'y'] } }, ['ids', 'axis']), true,
-    (doc, p) => alignNodes(doc, ids(p.ids), p.axis as 'x' | 'y', 'distribute')),
+  operation('node.align', 'Align shared exact selection geometry in world coordinates, or one node in parent-local coordinates. Auto-layout flow children and unproven derived batch geometry reject.', schema({ ids: idsSchema, axis: { enum: ['x', 'y'] }, mode: { enum: ['start', 'center', 'end'] } }, ['ids', 'axis', 'mode']), true,
+    (doc, p, ctx) => alignNodes(doc, ids(p.ids), p.axis as 'x' | 'y', p.mode as 'start' | 'center' | 'end', ctx)),
+  operation('node.distribute', 'Equalize non-overlapping world-space geometry edge gaps with outer objects fixed; two nodes are unchanged. Overlap/containment and unproven derived batch geometry reject.', schema({ ids: idsSchema, axis: { enum: ['x', 'y'] } }, ['ids', 'axis']), true,
+    (doc, p, ctx) => alignNodes(doc, ids(p.ids), p.axis as 'x' | 'y', 'distribute', ctx)),
 )
-function alignNodes(doc: DesignDocument, selected: string[], axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
-  const top = roots(doc, selected), parents = allParents(doc)
-  const entries = top.map(id => {
-    const n = getNode(doc, id), parent = parents.get(id)!, parentNode = doc.nodes[parent]
-    assertUnlocked(doc, id)
-    if (parentNode?.layout && parentNode.layout.mode !== 'none' && !n.sizing?.absolute)
-      fail('auto_layout_position', 'Auto-layout flow children must be positioned through layout controls')
-    const info = summary(doc, id)
-    return { id, n, parent, pageId: info.pageId, matrix: worldMatrix(doc, id), box: info.worldBounds }
-  })
-  if (new Set(entries.map(e => e.pageId)).size > 1) fail('different_pages', 'Alignment requires nodes on the same page')
-  if (mode === 'distribute' && entries.length < 3) fail('invalid_params', 'Distribution requires at least three top-level nodes')
-  if (entries.length === 1) {
-    const e = entries[0], parent = doc.nodes[e.parent]
-    if (!parent) fail('invalid_parent', 'A single node must have a node parent to align within')
-    const box = bounds(boxPoints({ x: 0, y: 0, width: e.n.width, height: e.n.height }).map(point => apply(e.n.transform, point)))
-    const delta = planArrangement(AUTOMATION_PROFILE, [box], axis, mode, { x: 0, y: 0, width: parent.width, height: parent.height })!.offsets[0][axis]
-    e.n.transform[axis === 'x' ? 4 : 5] += delta
-  } else {
-    const plan = planArrangement(AUTOMATION_PROFILE, entries.map(e => e.box), axis, mode)!
-    applyTransformPlan(doc, entries.map((e, index) => ({ id: e.id,
-      transform: translatedLocalTransform(worldMatrix(doc, e.parent), e.matrix, plan.offsets[index]),
-    })))
-  }
-  return { ids: top }
+function alignNodes(doc: DesignDocument, selected: string[], axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute', ctx: AutomationContext) {
+  const plan = prepareSelectionArrangement(doc, selected, axis, mode, { fresh: ctx.selectionGeometryFresh === true })
+  applyTransformPlan(doc, plan.patches); return { ids: plan.ids }
 }
 
 const operationsSchema = { type: 'array', minItems: 1, maxItems: MAX_BATCH,
@@ -534,7 +541,9 @@ export class DesignAutomationApi {
       editing: { bulk: bulkExtensions.filter(entry => this.registry.get(entry.name) === entry && this.allowed(entry)).map(entry => entry.name), maxExpandedOperations: 500, granular: granularExtensions.filter(method => this.allowed(method)).map(method => method.name), preflight: { validation: 'authored-only', derivedResolution: 'deferred', authoritativeCommitValidationRequired: true, methods: this.preflightMethods() }, changeSummary: CHANGE_SUMMARY_LIMITS, idempotency: { method: 'batch.apply', scope: 'document-session', maxReceipts: 128, maxSerializedBytes: RECEIPT_BYTES } },
       unsupported: ['Arbitrary JavaScript/eval or plugin execution', 'Remote Figma file/account/publishing APIs',
         'Host filesystem or network access from operation arguments', 'Renderer or GPU reconfiguration',
-        'Font downloading or operating-system font installation', 'Cross-document atomic transactions'] }
+        'Font downloading or operating-system font installation', 'Cross-document atomic transactions',
+        'Selection wrap/unwrap of auto-layout topology or component/instance structure',
+        'Distribution of overlapping/contained intervals', 'Selection geometry with unproven freshness after derived batch edits'] }
   }
   private context(): AutomationContext {
     return { pageId: this.editor.state.page, selection: [...this.editor.state.selection], createdIds: [],
@@ -609,10 +618,14 @@ export class DesignAutomationApi {
   }
   private stage(operations: { method: string; params?: Record<string, unknown> }[], preflight = false) {
     const before = this.editor.authoredDocument, candidate = structuredClone(before), ctx = this.context()
+    ctx.duplicationSingleStep = operations.length === 1
+    ctx.duplicationRepeat = this.editor.duplicationRepeat()
     const results: { method: string; result: unknown }[] = []
     let resultBytes = 0
     for (let index = 0; index < operations.length; index++) {
       const item = operations[index]
+      // Internal staging fact, never an accepted request field or authority.
+      ctx.selectionGeometryFresh = index === 0
       try {
         if (preflight && !PREFLIGHT_METHODS.has(item.method)) fail('unsupported_preflight_operation', `Authored-only preflight does not support ${item.method}`)
         const entry = this.entry(item.method)
@@ -630,6 +643,8 @@ export class DesignAutomationApi {
         }
         results.push({ method: item.method, result: result ?? null })
       } catch (error) {
+        if (error instanceof SelectionScaleError) throw new AutomationError(error.code, error.message, { operationIndex: index, method: item.method })
+        if (error instanceof SelectionCommandError) throw new AutomationError(error.code, error.message, { operationIndex: index, method: item.method })
         if (error instanceof AutomationError) throw new AutomationError(error.code, error.message, { operationIndex: index, method: item.method, cause: error.details })
         throw new AutomationError('invalid_operation', error instanceof Error ? error.message : String(error), { operationIndex: index, method: item.method })
       }
@@ -666,7 +681,7 @@ export class DesignAutomationApi {
     let owner: CommittedEditReceipt = { document: before, documentId: before.id, session: this.editor.sessionGeneration,
       revision: version, pageId: this.editor.state.page, selection: [...this.editor.state.selection],
       canUndo: this.editor.canUndo, canRedo: this.editor.canRedo }
-    let committed = false
+    let committed = false, committedResult: unknown
     if (!equalValue(before, candidate)) {
       const changeResult = this.editor.change(label, draft => {
         if (draft.id !== candidate.id) fail('document_mismatch', 'Cannot replace the document identity')
@@ -678,10 +693,12 @@ export class DesignAutomationApi {
         const receipt = this.editor.committedEditReceipt(changeResult)
         if (!receipt) fail('commit_receipt_unavailable', 'The edit committed but its trusted result receipt is unavailable; read state before another operation',
           { committed: true, retry: 'do-not-retry', ...receiptIdentity({ ...owner, revision: changeResult.revision }) })
-        owner = receipt; committed = true; observeCommit(receipt)
+        owner = receipt; committed = true; committedResult = changeResult; observeCommit(receipt)
       } else if (changeResult?.status !== 'unchanged') fail('commit_failed', 'The editor did not commit the automation edit')
     }
     const publication = this.publishContext(ctx, owner), after = owner.document
+    if (publication.applied && committed && ctx.duplicationResult)
+      this.editor.rememberDuplication(committedResult, ctx.duplicationResult.roots, ctx.duplicationResult.reference, publication.pageId)
     const changedIds = [...new Set([...Object.keys(before.nodes), ...Object.keys(after.nodes)])].filter(id => !equalValue(before.nodes[id], after.nodes[id]))
     const previousIds = knownIds(before), currentIds = knownIds(after)
     const createdIds = [...currentIds].filter(id => !previousIds.has(id))
@@ -711,9 +728,9 @@ export class DesignAutomationApi {
       request = { ...raw, method: text(raw.method, 'method') } as unknown as AutomationRequest
       if (raw.documentId !== undefined) text(raw.documentId, 'documentId')
       const params = raw.params === undefined ? {} : record(raw.params, 'params')
-      const largeImport = (method: unknown) => method === 'font.import' || method === 'document.import' || method === 'sketch.import'
+      const largeImport = (method: unknown) => method === 'font.import' || method === 'document.import' || method === 'sketch.import' || method === 'clipboard.paste' || method === 'clipboard.pasteProperties'
       const largeRequest = largeImport(request.method) || request.method === 'batch.apply' && Array.isArray(params.operations) && params.operations.some(item => item && typeof item === 'object' && largeImport((item as { method?: unknown }).method))
-      if (!largeRequest && requestBytes > DEFAULT_MAX_BYTES) fail('request_budget', 'Request exceeds the default 8 MiB budget; only font.import/document.import/sketch.import and batches containing them allow up to 32 MiB')
+      if (!largeRequest && requestBytes > DEFAULT_MAX_BYTES) fail('request_budget', 'Request exceeds the default 8 MiB budget; only font.import/document.import/sketch.import/clipboard.paste/clipboard.pasteProperties and batches containing them allow up to 32 MiB')
       const descriptor = this.descriptors.get(request.method)
       if (!descriptor) fail('unsupported_method', `Unsupported automation method: ${request.method}`)
       checkSchema(params, descriptor.inputSchema)
@@ -748,7 +765,7 @@ export class DesignAutomationApi {
         if (this.receipts.size >= RECEIPT_LIMIT || this.receiptBytes + new TextEncoder().encode(fingerprint).byteLength > RECEIPT_BYTES)
           fail('receipt_limit', 'The document-session receipt budget is full; read state and start a new document session before submitting another receipted mutation')
       }
-      this.requireFence(request, descriptor.mutates)
+      this.requireFence(request, descriptor.mutates || request.method === 'clipboard.export')
       let result: unknown
       if (request.method === 'api.capabilities') result = this.capabilities()
       else if (request.method === 'history.undo' || request.method === 'history.redo') {

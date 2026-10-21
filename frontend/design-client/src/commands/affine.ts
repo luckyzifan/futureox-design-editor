@@ -43,12 +43,16 @@ export const boxPoints = (b: Bounds) => [
 ]
 export function bounds(points: Point[]): Bounds {
   if (!points.length) return { x: 0, y: 0, width: 0, height: 0 }
-  const xs = points.map((p) => p.x),
-    ys = points.map((p) => p.y)
-  const x = Math.min(...xs),
-    y = Math.min(...ys)
-  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y }
+  let x = Infinity, y = Infinity, right = -Infinity, bottom = -Infinity
+  for (const p of points) { x = Math.min(x, p.x); y = Math.min(y, p.y); right = Math.max(right, p.x); bottom = Math.max(bottom, p.y) }
+  return { x, y, width: right - x, height: bottom - y }
 }
 export function unionBounds(bs: Bounds[]): Bounds {
-  return bounds(bs.flatMap(boxPoints))
+  if (!bs.length) return { x: 0, y: 0, width: 0, height: 0 }
+  let x = Infinity, y = Infinity, right = -Infinity, bottom = -Infinity
+  for (const b of bs) {
+    x = Math.min(x, b.x, b.x + b.width); y = Math.min(y, b.y, b.y + b.height)
+    right = Math.max(right, b.x, b.x + b.width); bottom = Math.max(bottom, b.y, b.y + b.height)
+  }
+  return { x, y, width: right - x, height: bottom - y }
 }
