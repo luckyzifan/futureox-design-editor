@@ -3,13 +3,14 @@ import { numericExpression, propertyUnit, type NumericUnit } from './numeric-exp
 import { useContext, useEffect, useMemo, useRef } from 'react'
 import { PendingEditContext } from './pending-edit-context'
 import { pendingEditsChanged, registerPendingEdit } from './pending-edits'
-export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, step = 1, unit = propertyUnit(label) }: {
+export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, step = 1, unit = propertyUnit(label), unitDescription }: {
   label: string
   value: number
   onChange: (v: number) => void
   min?: number
   max?: number
   step?: number
+  unitDescription?: string
   unit?: NumericUnit
 }) {
   const editor = useContext(PendingEditContext)
@@ -77,7 +78,7 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     }
   }, [value])
   return <label className="number-field">
-    <span className="number-scrub" title="拖动调整数值；Shift 加速，Option 精细调整" tabIndex={0} role="button" aria-label={`拖动调整 ${label}`}
+    <span className="number-scrub" title="拖动调整数值；Shift 加速，Option 精细调整" tabIndex={0} role="button" aria-label={`拖动调整 ${label}`} aria-description={unitDescription ? `拖动调整数值；Shift 加速，Option 精细调整；${unitDescription}` : undefined}
       onPointerDown={event => {
         if (event.button !== 0 || !event.isPrimary || composing.current || !finish() || editor?.interactionActive) return
         event.preventDefault(); event.stopPropagation(); event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId)
@@ -93,8 +94,8 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
       }} onPointerCancel={() => stopScrub(true)} onLostPointerCapture={() => stopScrub(true)}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); stopScrub(true) } }}
-    >{label}</span>
-    <input ref={input} aria-label={label} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={String(value)} defaultValue={Number(value.toFixed(2))}
+    >{label}{unitDescription && <small title={unitDescription}>＊</small>}</span>
+    <input ref={input} aria-label={label} aria-description={unitDescription} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={unitDescription ? `${value}；${unitDescription}` : String(value)} defaultValue={Number(value.toFixed(2))}
       onFocus={(e) => { diagnostic.event(InputPhase.focus); if (!dirty.current) e.currentTarget.select() }}
       onChange={(e) => { diagnostic.start(); draft.current = e.currentTarget.value; dirty.current = true; e.currentTarget.setCustomValidity(''); changed() }}
       onCompositionStart={() => { diagnostic.start(); diagnostic.event(InputPhase.compositionStart); composing.current = true; changed() }}

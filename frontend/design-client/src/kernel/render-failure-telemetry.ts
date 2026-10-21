@@ -13,6 +13,7 @@ const known: readonly [string, number, number][] = [
  ['DERIVE_SCHEMA',5,8], ['DERIVE_RETRY_REJECTED',6,9], ['DERIVATION_INVALID_ENVELOPE',5,10],
  ['DERIVATION_STALE_SOURCE',6,11], ['DERIVATION_FALLBACK_BUDGET',3,12], ['DERIVATION_FALLBACK_TIMEOUT',6,13],
  ['GPU surface budget exceeded',3,64], // Native compiler extent-area guard; not renderer byte admission.
+ ['SEQUENTIAL_DISPLAY_UNSUPPORTED',2,65],
  ['GPU 表面内存预算超限',3,20], ['GPU 浮点图片内存预算超限',3,21], ['GPU 图片总内存预算超限',3,22],
  ['GPU 图集页内存预算超限',3,23], ['GPU 图片像素预算超限',3,24], ['GPU display resident budget exceeded',3,25],
  ['GPU linear display budget exceeded',3,26], ['GPU frame command work budget exceeded',3,27], ['GPU solid instance budget exceeded',3,28],

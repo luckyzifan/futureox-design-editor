@@ -30,8 +30,10 @@ export class ArtifactResources {
   }
 
   project(response, { metadataBytes = 128 * 1024 } = {}) {
+    if (response?.ok === true && response.method === 'clipboard.export' && !isRecord(response.result)) throw unavailable('The clipboard exporter returned invalid result data')
     if (response.ok !== true || !isRecord(response.result)) return { value: response, links: [] }
     const result = response.result, metadata = { ...result }, candidates = []
+    if (response.method === 'clipboard.export' && result.format !== 'futureox.design-clipboard.v1') throw unavailable('The clipboard exporter returned an unsupported format')
     const text = (field, name, mimeType, encoding = 'text') => {
       if (typeof result[field] !== 'string') return
       candidates.push({ field, name, mimeType, encoding, text: result[field] }); delete metadata[field]
@@ -40,7 +42,22 @@ export class ArtifactResources {
       if (!validBase64(result[field])) throw unavailable('The backend returned invalid binary export data')
       candidates.push({ field, name, mimeType, encoding: 'base64', blob: result[field] }); delete metadata[field]
     }
-    if (result.format === 'futureox.design-app.v1') {
+    if (result.format === 'futureox.design-clipboard.v1') {
+      const fields = new Set(['format', 'mimeType', 'encoding', 'kind', 'propertyKind', 'byteLength', 'rootCount', 'nodeCount', 'sourceDocumentId', 'session', 'revision', 'content'])
+      const count = (value, max) => Number.isSafeInteger(value) && value >= 1 && value <= max
+      if (response.method !== 'clipboard.export' || Object.keys(result).some(key => !fields.has(key)) ||
+          result.mimeType !== 'application/vnd.futureox.clipboard' || result.encoding !== 'text' ||
+          !['nodes', 'properties'].includes(result.kind) || typeof result.content !== 'string' || !result.content ||
+          !count(result.rootCount, 64) || !count(result.nodeCount, 20000) || result.nodeCount < result.rootCount ||
+          !count(result.byteLength, 32 * 1024 * 1024) || Buffer.byteLength(result.content) !== result.byteLength ||
+          typeof result.sourceDocumentId !== 'string' || !result.sourceDocumentId || result.sourceDocumentId !== response.documentId ||
+          !Number.isSafeInteger(result.session) || result.session < 0 || result.session !== response.session ||
+          !Number.isSafeInteger(result.revision) || result.revision < 0 || result.revision !== response.revision ||
+          (result.kind === 'nodes' ? Object.hasOwn(result, 'propertyKind') :
+            !['all', 'fills', 'strokes', 'effects'].includes(result.propertyKind) || result.rootCount !== 1 || result.nodeCount !== 1))
+        throw unavailable('The backend returned invalid clipboard export metadata')
+      text('content', 'clipboard.txt', result.mimeType)
+    } else if (result.format === 'futureox.design-app.v1') {
       // Trusted exporter output is offered as inert downloadable resources.
       // The MCP server never evaluates the exported JavaScript.
       text('html', 'index.html', 'text/html'); text('css', 'styles.css', 'text/css')
@@ -85,7 +102,7 @@ export class ArtifactResources {
       const uri = `futureox-design://artifacts/${randomUUID()}/${candidate.name}`
       const content = { uri, mimeType: candidate.mimeType, ...(candidate.blob === undefined ? { text: candidate.text } : { blob: candidate.blob }) }
       if (jsonBytes({ contents: [content] }) > this.maxResponseBytes - 2048) throw unavailable('An export artifact exceeds the resource response limit')
-      const resource = { uri, name: candidate.name, mimeType: candidate.mimeType, size, description: `Actual ${response.method ?? 'design'} export, revision ${response.revision ?? 'unknown'}. Immutable export snapshot; never represents a later revision. MCP-session-local; expires on eviction or MCP disconnect. ${result.format === 'futureox.design-preview.v1' ? 'Display through client image rendering or save with resources/read; do not paste base64 as model text.' : 'Save through resources/read; inspect the design with context.get instead of reading binary into model context.'}` }
+      const resource = { uri, name: candidate.name, mimeType: candidate.mimeType, size, description: `Actual ${response.method ?? 'design'} export, revision ${response.revision ?? 'unknown'}. Immutable export snapshot; never represents a later revision. MCP-session-local and bound to the associated backend authorization lifetime; expires on eviction, MCP disconnect or backend terminal disconnect/revocation. Previously delivered bytes cannot be recalled. ${result.format === 'futureox.design-preview.v1' ? 'Display through client image rendering or save with resources/read; do not paste base64 as model text.' : 'Save through resources/read; inspect the design with context.get instead of reading binary into model context.'}` }
       return { resource, content, storageBytes, field: candidate.field, encoding: candidate.encoding }
     })
     const bytes = prepared.reduce((sum, item) => sum + item.storageBytes, 0)

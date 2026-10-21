@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Sidecar } from '../src/sidecar.mjs'
@@ -8,7 +8,9 @@ import { registerAutomationBridge } from '../src/automation-bridge.mjs'
 import { APP_URL, assertSender } from '../src/security.mjs'
 
 test('trusted automation IPC persists only allowlisted preferences and metadata in actual SQLite', { skip: !process.env.FUTUREOX_BACKEND_TEST_BINARY }, async t => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'design-automation-storage-test-'))
+  // Native workspace admission deliberately rejects symlink ancestors. Resolve
+  // only this owned fixture; do not weaken production path validation.
+  const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'design-automation-storage-test-')))
   const options = { workspaceDb: path.join(directory, 'workspace.sqlite3'), catalogDb: path.join(directory, 'catalog.sqlite3') }
   let backend = new Sidecar(process.env.FUTUREOX_BACKEND_TEST_BINARY, path.join(directory, 'recovery'), options)
   const handlers = new Map(), frame = { url: APP_URL }, window = { isDestroyed: () => false, webContents: { mainFrame: frame, send() {} } }
@@ -16,6 +18,7 @@ test('trusted automation IPC persists only allowlisted preferences and metadata 
   t.after(async () => { await bridge.close(); await backend.stop(); await rm(directory, { recursive: true, force: true }) })
   const event = { sender: window.webContents, senderFrame: frame }
   const call = (method, value) => handlers.get(`design-desktop:automation-${method}`)(event, value)
+  assert.equal((await backend.request('health')).workspaceAvailable, true, 'the actual native workspace must be admitted before storage assertions')
   assert.equal((await call('config')).preferredScope, 'read')
   assert.equal((await call('configure', { retentionDays: 7, preferredScope: 'write' })).retentionDays, 7)
   assert.equal((await call('storage-status')).authorizationPersisted, false)

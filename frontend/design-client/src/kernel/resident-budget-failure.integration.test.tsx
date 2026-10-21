@@ -42,8 +42,9 @@ test('required-frame budget rejection reaches explicit surface failure and exist
   const surface=readFileSync(new URL('./ProgressiveSurface.tsx',import.meta.url),'utf8')
   const body=surface.match(/onFailure=\{message => \{([\s\S]*?)\}\}/)![1]
     .replaceAll('import.meta.env.DEV','false').replaceAll('import.meta.env.VITE_DESIGN_TRACE_PASSES','undefined')
-  const forward=new Function('message','renderDiagnosticError','recordRenderDiagnostic','requestedView','dpr','setFailure','props','residentDisplay','backend',body)
-  h.props.onFailure=vi.fn((message:string)=>forward(message,()=>1,()=>{}, {zoom:1},1,(value:string)=>failures.push(value),{onRenderFailure,onFallback},true,'webgpu'))
+  const previewDevice={current:{client:h.client,key:'old-device'}},client={current:h.client}
+  const forward=new Function('message','renderDiagnosticError','recordRenderDiagnostic','requestedView','dpr','setFailure','props','residentDisplay','backend','previewDevice','client',body)
+  h.props.onFailure=vi.fn((message:string)=>forward(message,()=>1,()=>{}, {zoom:1},1,(value:string)=>failures.push(value),{onRenderFailure,onFallback},true,'webgpu',previewDevice,client))
   await h.render([item(1,77)])
   const worker=readFileSync(new URL('./render-worker.ts',import.meta.url),'utf8')
   const handler=worker.slice(worker.indexOf('displayTasks.port1.onmessage=()=>{'),worker.indexOf('\nconst navigationJournal'))
@@ -53,6 +54,7 @@ test('required-frame budget rejection reaches explicit surface failure and exist
   await act(async()=>run())
   expect(present).toHaveBeenCalledOnce();expect(failures).toEqual([String(error)])
   expect(onRenderFailure).toHaveBeenCalledOnce();expect(onFallback).toHaveBeenCalledExactlyOnceWith(`PREVIEW_CPU_FALLBACK: ${error}`)
+  expect(previewDevice.current).toEqual({client:h.client})
   // The existing status renders this same failure string when fallback is not selected.
   expect(surface).toContain("className={`kernel-status ${failure ? 'error' : ''}`}")
   expect(surface).toContain("title={failure || '画布高清显示'}")

@@ -393,10 +393,14 @@ test('one successful field commit followed by a veto stays dirty and never write
 
 test('inspector image decode does not apply to a reloaded same-ID document', async () => {
   const f = fixture(), inspector = harness(f.editor), paint = harness(f.editor)
-  cleanups.push(() => f.session.dispose(), paint.unmount)
+  cleanups.push(() => f.session.dispose(), inspector.unmount, paint.unmount)
   f.editor.update([f.text.id], (node) => { node.fills[0].kind = 'image' })
   f.editor.select([f.text.id])
-  const tree = inspector.render(() => Inspector({ editor: f.editor }))
+  // This handler harness invokes the real implementation behind React.memo;
+  // production keeps the memo wrapper and ordinary React rendering semantics.
+  const InspectorView = (Inspector as unknown as { type: (props: { editor: Editor }) => React.ReactNode }).type
+  expect(typeof InspectorView).toBe('function')
+  const tree = inspector.render(() => InspectorView({ editor: f.editor }))
   const element = find(tree, (el) => el.type?.name === 'PaintEditor')
   expect(element).toBeDefined()
   const paintTree = paint.render(() => element.type(element.props)); paint.effects()

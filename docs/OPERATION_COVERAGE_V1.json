@@ -2,11 +2,11 @@
   "format": "futureox.local-operation-coverage.v1",
   "claim": "Complete classification of current CanvasAction categories and actual supplied descriptors; not proof of every UI subcommand, gesture parity, rendering fidelity, or real-client acceptance.",
   "counts": {
-    "shared": 121,
-    "mounted": 129,
-    "nativeHost": 10,
-    "registered": 139,
-    "advertised": 139,
+    "shared": 128,
+    "mounted": 136,
+    "nativeHost": 11,
+    "registered": 147,
+    "advertised": 147,
     "uiCategories": 54
   },
   "collaboration": {
@@ -19,7 +19,8 @@
   "importSemantics": {
     "uiOpen": "new-copy",
     "mcpImport": "append",
-    "retryDeduplication": "exact batch.apply mutationId within document-session only"
+    "mcpImportCopy": "saved-independent-copy-without-activation",
+    "retryDeduplication": "exact batch.apply within document-session; exact workspace.importCopy within current grant. Reconcile after grant loss; never regenerate an unknown copy."
   },
   "operations": [
     {
@@ -871,6 +872,202 @@
         },
         "required": [
           "operations"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "method": "clipboard.export",
+      "tool": "design_clipboard_export",
+      "mutates": false,
+      "advertised": true,
+      "boundary": "shared-editor",
+      "grant": "document",
+      "inputSchema": {
+        "type": "object",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "nodeIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "minItems": 1,
+                "maxItems": 64,
+                "uniqueItems": true
+              },
+              "kind": {
+                "enum": [
+                  "nodes"
+                ]
+              }
+            },
+            "required": [
+              "nodeIds",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "nodeIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "minItems": 1,
+                "maxItems": 1,
+                "uniqueItems": true
+              },
+              "kind": {
+                "enum": [
+                  "properties"
+                ]
+              },
+              "propertyKind": {
+                "enum": [
+                  "all",
+                  "fills",
+                  "strokes",
+                  "effects"
+                ]
+              }
+            },
+            "required": [
+              "nodeIds",
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    {
+      "method": "clipboard.paste",
+      "tool": "design_clipboard_paste",
+      "mutates": true,
+      "advertised": true,
+      "boundary": "shared-editor",
+      "grant": "document",
+      "inputSchema": {
+        "type": "object",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "packet": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 33554432,
+                "description": "Explicit portable clipboard text. No URI, URL, handle or OS clipboard. The complete escaped request must fit the transport envelope."
+              },
+              "pageId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "mode": {
+                "enum": [
+                  "inPlace"
+                ]
+              }
+            },
+            "required": [
+              "packet",
+              "pageId",
+              "mode"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "packet": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 33554432,
+                "description": "Explicit portable clipboard text. No URI, URL, handle or OS clipboard. The complete escaped request must fit the transport envelope."
+              },
+              "pageId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "mode": {
+                "enum": [
+                  "here"
+                ]
+              },
+              "position": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": -10000000,
+                    "maximum": 10000000
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": -10000000,
+                    "maximum": 10000000
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "packet",
+              "pageId",
+              "mode",
+              "position"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    {
+      "method": "clipboard.pasteProperties",
+      "tool": "design_clipboard_pasteProperties",
+      "mutates": true,
+      "advertised": true,
+      "boundary": "shared-editor",
+      "grant": "document",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "packet": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 33554432,
+            "description": "Explicit portable clipboard text. No URI, URL, handle or OS clipboard. The complete escaped request must fit the transport envelope."
+          },
+          "targetIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 64,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "packet",
+          "targetIds"
         ],
         "additionalProperties": false
       }
@@ -1890,7 +2087,8 @@
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Native document names additionally require non-whitespace, well-formed text of at most 200 UTF-16 code units. This authored limit is independent of JSON Schema code-point length."
           }
         },
         "required": [
@@ -2084,6 +2282,94 @@
         "type": "object",
         "properties": {},
         "required": [],
+        "additionalProperties": false
+      }
+    },
+    {
+      "method": "layout.add",
+      "tool": "design_layout_add",
+      "mutates": true,
+      "advertised": true,
+      "boundary": "shared-editor",
+      "grant": "document",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 1000,
+            "uniqueItems": true
+          },
+          "mode": {
+            "enum": [
+              "horizontal",
+              "vertical"
+            ]
+          },
+          "gap": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "padding": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              "right": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              "bottom": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              "left": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              }
+            },
+            "required": [
+              "top",
+              "right",
+              "bottom",
+              "left"
+            ],
+            "additionalProperties": false
+          },
+          "order": {
+            "enum": [
+              "scene",
+              "axis"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "ids",
+          "mode"
+        ],
         "additionalProperties": false
       }
     },
@@ -3035,6 +3321,34 @@
             }
           }
         }
+      }
+    },
+    {
+      "method": "layout.remove",
+      "tool": "design_layout_remove",
+      "mutates": true,
+      "advertised": true,
+      "boundary": "shared-editor",
+      "grant": "document",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 1000,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "additionalProperties": false
       }
     },
     {
@@ -5790,6 +6104,9 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 128
+          },
+          "includeDisplayProperties": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -11232,6 +11549,45 @@
       }
     },
     {
+      "method": "selection.scale",
+      "tool": "design_selection_scale",
+      "mutates": true,
+      "advertised": true,
+      "boundary": "shared-editor",
+      "grant": "document",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 1,
+            "maxItems": 1000,
+            "uniqueItems": true
+          },
+          "factor": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 10000
+          },
+          "anchor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 8
+          }
+        },
+        "required": [
+          "ids",
+          "factor"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "method": "selection.set",
       "tool": "design_selection_set",
       "mutates": true,
@@ -12290,6 +12646,54 @@
       }
     },
     {
+      "method": "vector.boolean.create",
+      "tool": "design_vector_boolean_create",
+      "mutates": true,
+      "advertised": true,
+      "boundary": "shared-editor",
+      "grant": "document",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "minItems": 2,
+            "maxItems": 64,
+            "uniqueItems": true
+          },
+          "operation": {
+            "enum": [
+              "union",
+              "subtract",
+              "intersect",
+              "exclude"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Native boolean names additionally require non-whitespace text of at most 200 UTF-16 code units. This authored limit is independent of JSON Schema code-point length."
+          }
+        },
+        "required": [
+          "ids",
+          "operation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "method": "vector.export",
       "tool": "design_vector_export",
       "mutates": false,
@@ -12563,6 +12967,55 @@
           "ids"
         ],
         "additionalProperties": false
+      }
+    },
+    {
+      "method": "workspace.importCopy",
+      "tool": "design_workspace_importCopy",
+      "mutates": true,
+      "advertised": true,
+      "boundary": "native-host",
+      "grant": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "rootHandle": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "fd",
+              "native-json",
+              "sketch",
+              "fig"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 33423360
+          },
+          "base64": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 33423360
+          },
+          "mutationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          }
+        },
+        "required": [
+          "rootHandle",
+          "format",
+          "mutationId"
+        ]
       }
     },
     {
@@ -12923,16 +13376,16 @@
     {
       "action": "scale",
       "actionCode": 12,
-      "status": "partial",
+      "status": "authored-operation",
       "domain": "selection scale",
       "methods": [
         {
-          "method": "node.update",
+          "method": "selection.scale",
           "registered": true,
           "advertised": true
         }
       ],
-      "limitation": "Whole-property edits do not implement Editor.scaleSelection and its dependent-value scaling."
+      "limitation": "Shared UI proportional transform and effective Inspector units; active-page explicit roots, no instance internals or auto-layout flow-child scaling. Pointer gestures and renderer parity are not claimed."
     },
     {
       "action": "rotate",
@@ -13115,10 +13568,16 @@
     {
       "action": "copy",
       "actionCode": 40,
-      "status": "ui-only",
-      "domain": "system clipboard",
-      "methods": [],
-      "limitation": "No OS clipboard access from MCP operation arguments."
+      "status": "partial",
+      "domain": "portable clipboard",
+      "methods": [
+        {
+          "method": "clipboard.export",
+          "registered": true,
+          "advertised": true
+        }
+      ],
+      "limitation": "Explicit selected closure or whole-layer properties only, resource-only export; no OS clipboard access."
     },
     {
       "action": "cut",
@@ -13132,8 +13591,18 @@
       "action": "paste",
       "actionCode": 42,
       "status": "partial",
-      "domain": "document append",
+      "domain": "portable clipboard",
       "methods": [
+        {
+          "method": "clipboard.paste",
+          "registered": true,
+          "advertised": true
+        },
+        {
+          "method": "clipboard.pasteProperties",
+          "registered": true,
+          "advertised": true
+        },
         {
           "method": "document.import",
           "registered": true,
@@ -13150,7 +13619,7 @@
           "advertised": true
         }
       ],
-      "limitation": "Explicit supplied content only; not OS clipboard or paste-placement parity."
+      "limitation": "Explicit portable packet only; page-root inPlace or proven-leaf here, whole-layer properties. No OS clipboard, smart-container/multi-paste or text-range parity."
     },
     {
       "action": "undo",
@@ -13206,7 +13675,7 @@
           "advertised": true
         }
       ],
-      "limitation": "Authored operation only; pointer gestures, focus, and visual parity are not claimed."
+      "limitation": "Shared default placement and Editor-owned translation/rotation repeat; explicit offsets remain world-space (missing axis 24). Complete instance/native remapping supported. Instance-internal structure, unproven derived batch geometry and implicit multi-operation repeat reject; OS clipboard and pointer synthesis are not provided."
     },
     {
       "action": "group",
@@ -13218,9 +13687,14 @@
           "method": "node.group",
           "registered": true,
           "advertised": true
+        },
+        {
+          "method": "vector.boolean.create",
+          "registered": true,
+          "advertised": true
         }
       ],
-      "limitation": "Authored operation only; pointer gestures, focus, and visual parity are not claimed."
+      "limitation": "Shared wrap geometry and live boolean structure. MCP verified-fill admits closed fill shapes/vectors/nested booleans, not text, frames, Symbols, strokes or derived geometry. Existing UI fill-only admission/styles remain unchanged; MCP uses operation-specific Figma paint/effect source, so full UI/style or Figma/Sketch parity is not claimed. Mask creation remains UI-only."
     },
     {
       "action": "ungroup",
@@ -13234,7 +13708,7 @@
           "advertised": true
         }
       ],
-      "limitation": "Ordinary groups/frames only; component and boolean cases retain dedicated restrictions."
+      "limitation": "Shared one-level group/frame/section/boolean unwrap; direct masks release, nested masks remain. Components/instances and auto-layout topology reject."
     },
     {
       "action": "selectAll",
@@ -13266,10 +13740,21 @@
     {
       "action": "newDocument",
       "actionCode": 51,
-      "status": "ui-only",
+      "status": "partial",
       "domain": "document lifecycle",
-      "methods": [],
-      "limitation": "No MCP new-copy/open-local-file command; native lifecycle confirmation is separate from append."
+      "methods": [
+        {
+          "method": "workspace.importCopy",
+          "registered": true,
+          "advertised": true
+        },
+        {
+          "method": "workspace.open",
+          "registered": true,
+          "advertised": true
+        }
+      ],
+      "limitation": "FD/native-json and Sketch/FIG compatibility copies are saved independently without activation; opening the returned handle is separately native-confirmed. No arbitrary local paths."
     },
     {
       "action": "tool",
@@ -13354,6 +13839,11 @@
           "advertised": true
         },
         {
+          "method": "workspace.importCopy",
+          "registered": true,
+          "advertised": true
+        },
+        {
           "method": "sketch.import",
           "registered": true,
           "advertised": true
@@ -13369,7 +13859,7 @@
           "advertised": true
         }
       ],
-      "limitation": "MCP appends; UI opens a new copy. FIG/PDF UI import has no MCP equivalent. Exact mutationId retry is not a second import."
+      "limitation": "document.import stays append-only. workspace.importCopy saves an independent FD/native-json or Sketch/FIG compatibility copy, without activation, under a separate workspace write grant. PDF remains unsupported; FIG compatibility is source-only and unvalidated. Exact mutationId retry is not a second import."
     },
     {
       "action": "export",
@@ -13557,6 +14047,16 @@
       "domain": "layout properties",
       "methods": [
         {
+          "method": "layout.add",
+          "registered": true,
+          "advertised": true
+        },
+        {
+          "method": "layout.remove",
+          "registered": true,
+          "advertised": true
+        },
+        {
           "method": "layout.patch",
           "registered": true,
           "advertised": true
@@ -13567,7 +14067,7 @@
           "advertised": true
         }
       ],
-      "limitation": "Authored spacing/sizing, not pointer-handle inference."
+      "limitation": "Shared explicit horizontal/vertical add/remove for ordinary nodes; UI inference, grid intent and pointer-handle inference remain separate. Instances, responsive ancestors and derived batch layout edits reject."
     },
     {
       "action": "smartSelection",
@@ -13586,7 +14086,7 @@
           "advertised": true
         }
       ],
-      "limitation": "Explicit IDs; smart-selection drag/reorder gestures are not implied."
+      "limitation": "Shared exact-geometry alignment and non-overlapping equal edge gaps; two-node distribution is unchanged. Overlap, unproven derived batch geometry and smart-selection drag/reorder remain unsupported."
     },
     {
       "action": "scrollbar",
@@ -13727,7 +14227,6 @@
     "auth.login",
     "role.set",
     "vector.patchVertex",
-    "selection.scale",
     "command.execute"
   ],
   "nodeInputFields": [

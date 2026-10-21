@@ -4,7 +4,7 @@
 
 use futureox_design_kernel::{
     facet::sample_node,
-    interop::{export_sketch, import_sketch, read_zip_public},
+    interop::{export_sketch, import_sketch, import_sketch_report, read_zip_public},
     math::{Point, Transform},
     scene::{Document, Edge, Network, Page, Vertex},
 };
@@ -87,13 +87,19 @@ fn kernel_doc(net: Network) -> Document {
 /// document.json + one page holding a single shapePath with the given
 /// curvePoint dicts (22 号字典 §1 string coordinates).
 fn native_sketch(points: Value) -> Vec<u8> {
+    native_sketch_path(points, [0., 0., 100., 100.], true, 0., [false, false])
+}
+
+fn native_sketch_path(points: Value, frame: [f64; 4], closed: bool, rotation: f64, flip: [bool; 2]) -> Vec<u8> {
     let page_ref = "AAAAAAAA-0000-0000-0000-000000000001";
     let page = json!({
         "_class": "page", "name": "Page 1",
         "layers": [{
             "_class": "shapePath", "name": "Path",
             "do_objectID": "BBBBBBBB-0000-0000-0000-000000000002",
-            "frame": {"_class": "rect", "x": 0., "y": 0., "width": 100., "height": 100.},
+            "frame": {"_class": "rect", "x": frame[0], "y": frame[1], "width": frame[2], "height": frame[3]},
+            "isClosed": closed, "rotation": rotation,
+            "isFlippedHorizontal": flip[0], "isFlippedVertical": flip[1],
             "points": points
         }]
     });
@@ -183,15 +189,14 @@ fn exported_shape_points(doc: &Document) -> Vec<Value> {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn import_none_and_straight_ignore_stored_handles() {
-    // Modes 0 (None) and 1 (Straight, also the default when the key is
-    // absent) mean c1/c2 = None even when the file still archives handle
-    // values for the point.
+fn import_explicit_active_handles_survive_none_straight_or_missing_edit_mode() {
+    // Rendering follows the explicit flags. The editing point type must not
+    // discard an active curve, including real split-circle endpoints.
     let node = import_network(json!([
         {"_class":"curvePoint","point":"{0, 0}","curveFrom":"{0.3, 0.3}",
          "curveTo":"{-0.3, -0.3}","hasCurveFrom":true,"hasCurveTo":true,
          "curveMode":0,"cornerRadius":0.0},
-        // curveMode key absent → defaults to 1 (Straight)
+        // A missing editing type still cannot disable explicit geometry.
         {"_class":"curvePoint","point":"{1, 0}","curveFrom":"{1.3, 0.3}",
          "curveTo":"{0.7, -0.3}","hasCurveFrom":true,"hasCurveTo":true,
          "cornerRadius":0.0},
@@ -207,33 +212,27 @@ fn import_none_and_straight_ignore_stored_handles() {
     assert_eq!(net.vertices.len(), 4);
     assert_eq!(net.edges.len(), 4);
     // edge i takes c1 from point[i].curveFrom and c2 from point[i+1].curveTo
-    for (i, e) in net.edges.iter().enumerate() {
-        if i == 3 {
-            continue;
-        }
-        assert!(e.c1.is_none(), "edge {i} c1 must be dropped");
+    for (i, (x, y)) in [(0.3, 0.3), (1.3, 0.3), (1.3, 1.3), (0.2, 1.1)].into_iter().enumerate() {
+        assert_pt(net.edges[i].c1, x, y, "explicit outgoing");
     }
-    // incoming handles of points 0..=2 are dropped; edge 3 ends at point 0
-    for e in [&net.edges[0], &net.edges[1], &net.edges[3]] {
-        assert!(e.c2.is_none(), "edge c2 into a straight point must be dropped");
-    }
+    assert_pt(net.edges[0].c2, 0.7, -0.3, "missing-mode incoming");
+    assert_pt(net.edges[1].c2, 0.7, 0.7, "straight incoming");
+    assert_pt(net.edges[3].c2, -0.3, -0.3, "none-mode incoming");
     assert_pt(net.edges[3].c1, 0.2, 1.1, "control outgoing");
     assert_pt(net.edges[2].c2, -0.2, 0.9, "control incoming");
 }
 
 #[test]
-fn import_mirrored_derives_missing_side() {
-    // Mode 2 (Mirrored): c2 = vertex + (vertex − c1). With only one side
-    // stored, the other derives from the mirror formula.
+fn import_mirrored_preserves_flags_without_inventing_an_inactive_side() {
     let node = import_network(json!([
         {"_class":"curvePoint","point":"{0, 0}","curveFrom":"{0, 0}",
          "curveTo":"{0, 0}","hasCurveFrom":false,"hasCurveTo":false,
          "curveMode":1,"cornerRadius":0.0},
-        // only curveTo stored → curveFrom derives as 2*v − curveTo
+        // Only curveTo is active; curveFrom is explicitly inactive.
         {"_class":"curvePoint","point":"{1, 0}","curveFrom":"{1, 0}",
          "curveTo":"{0.8, 0.2}","hasCurveFrom":false,"hasCurveTo":true,
          "curveMode":2,"cornerRadius":0.0},
-        // only curveFrom stored → curveTo derives as 2*v − curveFrom
+        // Only curveFrom is active; curveTo is explicitly inactive.
         {"_class":"curvePoint","point":"{1, 1}","curveFrom":"{1.2, 1.2}",
          "curveTo":"{1, 1}","hasCurveFrom":true,"hasCurveTo":false,
          "curveMode":2,"cornerRadius":0.0},
@@ -242,12 +241,94 @@ fn import_mirrored_derives_missing_side() {
          "curveMode":1,"cornerRadius":0.0}
     ]));
     let net = node.network.as_ref().expect("network");
-    // vertex 1: stored incoming handle, derived outgoing mirror
+    // Point type is an editing constraint, not authority to synthesize geometry.
     assert_pt(net.edges[0].c2, 0.8, 0.2, "v1 stored curveTo");
-    assert_pt(net.edges[1].c1, 1.2, -0.2, "v1 derived curveFrom");
-    // vertex 2: stored outgoing handle, derived incoming mirror
+    assert!(net.edges[1].c1.is_none());
     assert_pt(net.edges[2].c1, 1.2, 1.2, "v2 stored curveFrom");
-    assert_pt(net.edges[1].c2, 0.8, 0.8, "v2 derived curveTo");
+    assert!(net.edges[1].c2.is_none());
+}
+
+#[test]
+fn inactive_flags_ignore_stale_coordinates_for_every_editing_mode() {
+    for mode in 0..=4 {
+        let node = import_network(json!([
+            {"_class":"curvePoint","point":"{0, 0}","curveFrom":"{30, -90}",
+             "curveTo":"{-20, 80}","hasCurveFrom":false,"hasCurveTo":false,"curveMode":mode},
+            {"_class":"curvePoint","point":"{1, 0}","curveFrom":"{50, 60}",
+             "curveTo":"{-70, 80}","hasCurveFrom":false,"hasCurveTo":false,"curveMode":mode},
+            {"_class":"curvePoint","point":"{1, 1}","curveFrom":"{90, 50}",
+             "curveTo":"{-60, -80}","hasCurveFrom":false,"hasCurveTo":false,"curveMode":mode}
+        ]));
+        assert!(node.network.unwrap().edges.iter().all(|edge| edge.c1.is_none() && edge.c2.is_none()));
+    }
+}
+
+fn split_circle_points() -> Value {
+    // The real 117 archive repeats its first anchor at the end. The starting
+    // point has Straight editing mode but an explicitly active outgoing handle.
+    // These canonical cubic-circle coordinates contain no document identity.
+    json!([
+        {"_class":"curvePoint","point":"{0.5, 0}","curveFrom":"{0.776142, 0}",
+         "curveTo":"{0, 0}","curveMode":1,"hasCurveFrom":true,"hasCurveTo":false},
+        {"_class":"curvePoint","point":"{1, 0.5}","curveFrom":"{1, 0.776142}",
+         "curveTo":"{1, 0.223858}","curveMode":2,"hasCurveFrom":true,"hasCurveTo":true},
+        {"_class":"curvePoint","point":"{0.5, 1}","curveFrom":"{0.223858, 1}",
+         "curveTo":"{0.776142, 1}","curveMode":2,"hasCurveFrom":true,"hasCurveTo":true},
+        {"_class":"curvePoint","point":"{0, 0.5}","curveFrom":"{0, 0.223858}",
+         "curveTo":"{0, 0.776142}","curveMode":2,"hasCurveFrom":true,"hasCurveTo":true},
+        {"_class":"curvePoint","point":"{0.5, 0}","curveFrom":"{0.5, 0}",
+         "curveTo":"{0.223858, 0}","curveMode":2,"hasCurveFrom":true,"hasCurveTo":true}
+    ])
+}
+
+#[test]
+fn real_117_split_circle_keeps_its_first_quadrant_round_under_nested_affine_placement() {
+    for flip in [[false, false], [true, false], [false, true]] {
+        let doc = import_sketch_report(&native_sketch_path(split_circle_points(), [3.25, -4.5, 38., 38.], true, -37., flip)).unwrap().document;
+        let node = doc.nodes.values().find(|node| node.kind == "vector").unwrap();
+        let net = node.network.as_ref().unwrap();
+        assert_eq!(net.vertices.len(), 5); assert_eq!(net.edges.len(), 5);
+        assert_pt(net.edges[0].c1, 0.776142 * 38., 0., "active first circle tangent");
+        assert!(net.edges[4].c2.is_none());
+        let (_, stroke) = net.paths().unwrap();
+        for parent in [Transform::default(), Transform([1.6, 0.5, -0.25, 0.8, 23., -17.]),
+            Transform([-0.7, 0.2, 0.6, 1.9, -41., 16.])] {
+            let matrix = parent.concat(node.transform);
+            let inverse = matrix.inverse().unwrap();
+            let contours = stroke.flatten(matrix, 0.0001).unwrap();
+            assert!(contours.iter().any(|contour| contour.closed));
+            let maximum = contours.iter().flat_map(|contour| &contour.points).map(|&point| {
+                let local = inverse.point(point);
+                ((local - Point::new(19., 19.)).length() - 19.).abs()
+            }).fold(0., f64::max);
+            // The archived rounded cubic has <=0.006 px radial error at 38px.
+            // Dropping its first c1 produces a measured 2.547 px inward defect.
+            assert!(maximum < 0.006, "circle radial deviation {maximum}");
+        }
+    }
+}
+
+#[test]
+fn real_117_open_arc_keeps_active_endpoint_handles_and_open_topology() {
+    let points = json!([
+        {"_class":"curvePoint","point":"{0.154324, 0.138924}","curveFrom":"{0.244154, 0.052894}",
+         "curveTo":"{0, 0}","curveMode":1,"hasCurveFrom":true,"hasCurveTo":false},
+        {"_class":"curvePoint","point":"{0.5, 0}","curveFrom":"{0.775892, 0}",
+         "curveTo":"{0.365966, 0}","curveMode":2,"hasCurveFrom":true,"hasCurveTo":true},
+        {"_class":"curvePoint","point":"{1, 0.5}","curveFrom":"{1, 0.775892}",
+         "curveTo":"{1, 0.224108}","curveMode":2,"hasCurveFrom":true,"hasCurveTo":true}
+    ]);
+    let doc = import_sketch_report(&native_sketch_path(points, [0., 0., 68., 68.], false, -60., [true, false])).unwrap().document;
+    let node = doc.nodes.values().find(|node| node.kind == "vector").unwrap();
+    let net = node.network.as_ref().unwrap();
+    assert_eq!(net.vertices.len(), 3); assert_eq!(net.edges.len(), 2);
+    assert_pt(net.edges[0].c1, 0.244154 * 68., 0.052894 * 68., "open arc outgoing tangent");
+    assert_pt(net.edges[0].c2, 0.365966 * 68., 0., "open arc incoming tangent");
+    let (_, stroke) = net.paths().unwrap();
+    let contours = stroke.flatten(node.transform, 0.0001).unwrap();
+    assert_eq!(contours.len(), 1); assert!(!contours[0].closed);
+    let expected = node.transform.point(Point::new(0.154324 * 68., 0.138924 * 68.));
+    assert!((contours[0].points[0] - expected).length() < 1e-10);
 }
 
 #[test]
@@ -400,9 +481,9 @@ fn export_derives_curve_mode_from_handle_geometry() {
 #[test]
 fn native_document_round_trips_modes_handles_and_radii() {
     let node = import_network(json!([
-        // Straight with a corner radius: handles ignored, radius kept
+        // Inactive stored handles remain ignored; the radius is kept.
         {"_class":"curvePoint","point":"{0, 0}","curveFrom":"{0.3, 0.3}",
-         "curveTo":"{-0.3, -0.3}","hasCurveFrom":true,"hasCurveTo":true,
+         "curveTo":"{-0.3, -0.3}","hasCurveFrom":false,"hasCurveTo":false,
          "curveMode":1,"cornerRadius":2.0},
         // Mirrored with both halves stored
         {"_class":"curvePoint","point":"{1, 0}","curveFrom":"{1.2, 0}",

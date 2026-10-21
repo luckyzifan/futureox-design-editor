@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { Editor } from '../engine'
 import { blank, node, paint } from '../model'
+import { figmaFixture } from '../figma-fixtures'
 import { createEditorDesignAutomation } from './index'
 import type { AutomationResponse } from './types'
 import { OperationBackend } from '../../../design-mcp/src/operation-backend.mjs'
@@ -539,3 +540,31 @@ it('shared arrangement tools remain absent and fail under MCP read-only scope', 
   }
   expect(f.editor.state.doc).toBe(before); expect(f.editor.state.version).toBe(0); expect(f.editor.canUndo).toBe(false)
 }, 30000)
+
+
+it.each(['align', 'group', 'frame', 'section'] as const)('unified selection %s matches complete UI state and history through real NDJSON', async operation => {
+  const doc = figmaFixture('curve'), parent = doc.nodes[doc.pages[0].children[0]], child = parent.children[0]
+  if (operation === 'section') parent.kind = 'section'
+  const selected = operation === 'section' ? [parent.id] : [child], ui = new Editor(structuredClone(doc)), f = await fixture(structuredClone(doc))
+  try {
+    ui.select(selected); f.editor.select(selected); const before = f.editor.state.doc
+    let method: string, params: Json
+    if (operation === 'align') { ui.align('x', 'start'); method = 'node.align'; params = { ids: selected, axis: 'x', mode: 'start' } }
+    else if (operation === 'section') { ui.ungroup(); method = 'node.ungroup'; params = { ids: selected } }
+    else { ui.group(false, undefined, operation === 'frame' ? 'frame' : 'group'); method = 'node.group'; params = { ids: selected, id: ui.state.selection[0], kind: operation === 'frame' ? 'frame' : 'group' } }
+    const response = await f.mutate(method, params)
+    expect(response.isError, JSON.stringify(response.structuredContent.error)).toBe(false)
+    expect(f.editor.state.doc).toEqual(ui.state.doc); expect(f.editor.state.selection).toEqual(ui.state.selection); expect(f.editor.state.version).toBe(1)
+    const after = f.editor.state.doc
+    expect((await f.mutate('history.undo')).isError).toBe(false); expect(f.editor.state.doc).toEqual(before)
+    expect((await f.mutate('history.redo')).isError).toBe(false); expect(f.editor.state.doc).toEqual(after)
+  } finally { ui.dispose() }
+})
+it('unified selection unsupported overlap is an explicit NDJSON error with no commit', async () => {
+  const doc = blank(), nodes = [node('rectangle', 0, 0, 100, 20), node('rectangle', 10, 0, 20, 20), node('rectangle', 150, 0, 20, 20)]
+  doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = nodes.map(n => n.id)
+  const f = await fixture(doc), before = f.editor.state.doc
+  const response = await f.mutate('node.distribute', { ids: doc.pages[0].children, axis: 'x' })
+  expect(response.isError).toBe(true); expect(response.structuredContent).toMatchObject({ ok: false, error: { code: 'unsupported_distribution_geometry' } })
+  expect(f.editor.state.doc).toBe(before); expect(f.editor.state.version).toBe(0); expect(f.editor.canUndo).toBe(false)
+})

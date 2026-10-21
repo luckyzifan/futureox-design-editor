@@ -459,6 +459,82 @@ test('interaction fence reason retains periodic short-circuit cadence and native
   driver.dispose()
 })
 
+test.each([undefined, '0', 'true', '01', '1'])('resident filter scratch requires explicit opt-in %s', async value => {
+  vi.stubEnv('VITE_DESIGN_RESIDENT_FILTER_SCRATCH', value)
+  const { driver } = await createDriver(false)
+  try { expect((driver as any).residentFilterScratch).toBe(value === '1') }
+  finally { driver.dispose() }
+})
+
+async function residentPrefixBoundary(enabled = true) {
+  vi.stubEnv('VITE_DESIGN_RESIDENT_FILTER_SCRATCH', enabled ? '1' : '0')
+  const { boundary, driver } = await createDriver(false)
+  const captures: any[] = [], target = driver.create(8, 8)
+  const prefix = { scratchBytes: 4 * 1024 * 1024,
+    resetCounters: vi.fn(), encodeCountersReadback: vi.fn(),
+    readCounters: vi.fn(async () => ({ acceptedLines: 1, declinedLines: 0, acceptedPixels: 8, narrowLines: 0 })),
+    releaseScratch: vi.fn(() => { prefix.scratchBytes = 0 }), destroy: vi.fn() }
+  Object.assign(driver, { captureDisplay: true, prefix, presenter: {
+    capture(width: number, height: number) {
+      const texture = boundary.device.createTexture({ size: [width, height], format: 'bgra8unorm' })
+      captures.push(texture); return { id: captures.length, texture }
+    },
+    release() {}, diagnosticFields: () => ({}),
+    dispose() { for (const texture of captures) texture.destroy() },
+  } })
+  const finish = async (present = true) => {
+    driver.begin(new Float32Array(0)); driver.clear(target)
+    return driver.finish(target, empty.extent, 8, 8, false, undefined, present)
+  }
+  const close = async () => { await driver.abortFrameAndReleaseFilterScratch('cancel'); driver.dispose() }
+  return { boundary, driver, prefix, finish, close }
+}
+
+test('resident prefix scratch stays owned across submitted frames and samples counters only at periodic completion', async () => {
+  const f = await residentPrefixBoundary()
+  try {
+    for (let i = 1; i <= 3; i++) {
+      await f.finish()
+      expect(f.driver.resourceEpoch).toBe(i); expect(f.driver.completedResourceEpoch).toBe(0)
+      expect(f.prefix.releaseScratch).not.toHaveBeenCalled()
+      expect(f.prefix.encodeCountersReadback).not.toHaveBeenCalled(); expect(f.prefix.readCounters).not.toHaveBeenCalled()
+      expect(f.driver.scratchBytes).toBe(4 * 1024 * 1024)
+    }
+    expect(f.driver.stats().prefixCounterDeferredFrames).toBe(3)
+    f.boundary.holdWait(); const fourth = f.finish(); await Promise.resolve()
+    expect(f.driver.completedResourceEpoch).toBe(0); expect(f.prefix.readCounters).not.toHaveBeenCalled()
+    f.boundary.releaseWait(); await fourth
+    expect(f.driver.completedResourceEpoch).toBe(4)
+    expect(f.prefix.encodeCountersReadback).toHaveBeenCalledOnce(); expect(f.prefix.readCounters).toHaveBeenCalledOnce()
+    expect(f.prefix.releaseScratch).not.toHaveBeenCalled(); expect(f.driver.stats().prefixCounterSamples).toBe(1)
+    expect(f.driver.stats().queueWaits.reasons.periodic.completed).toBe(1)
+    expect(f.driver.stats().queueWaits.reasons['prefix-scratch'].started).toBe(0)
+  } finally { await f.close() }
+})
+
+test.each(['negative-control', 'nonresident'] as const)('%s preserves the original prefix completion and release', async mode => {
+  const f = await residentPrefixBoundary(mode !== 'negative-control')
+  try {
+    f.boundary.holdWait(); const finished = f.finish(mode !== 'nonresident'); await Promise.resolve()
+    expect(f.driver.completedResourceEpoch).toBe(0); expect(f.prefix.releaseScratch).not.toHaveBeenCalled()
+    f.boundary.releaseWait(); await finished
+    expect(f.driver.stats().queueWaits.reasons['prefix-scratch'].completed).toBe(1)
+    expect(f.prefix.readCounters).toHaveBeenCalledOnce(); expect(f.prefix.releaseScratch).toHaveBeenCalledOnce()
+    expect(f.driver.scratchBytes).toBe(0)
+  } finally { await f.close() }
+})
+
+test('failed periodic completion preserves prefix ownership and never maps uncompleted counter storage', async () => {
+  const f = await residentPrefixBoundary()
+  try {
+    for (let i = 0; i < 3; i++) await f.finish()
+    f.boundary.rejectWait(true)
+    await expect(f.finish()).rejects.toThrow('completion rejection')
+    expect(f.driver.completedResourceEpoch).toBe(0); expect(f.prefix.readCounters).not.toHaveBeenCalled()
+    expect(f.prefix.releaseScratch).not.toHaveBeenCalled(); expect(f.driver.scratchBytes).toBe(4 * 1024 * 1024)
+  } finally { f.boundary.rejectWait(false); await f.close() }
+})
+
 
 test('admission context rides the existing fence event without advancing completion early', async () => {
   const { boundary, driver } = await createDriver(true)

@@ -5,7 +5,8 @@ import { initializePicking, kernelLayout } from './kernel/picking'
 import { componentFixture, originNode } from './component-fixtures'
 import { Editor } from './engine'
 import { blank, node, paint, validateDocument } from './model'
-import { family } from './components'
+import { detachMissing, family } from './components'
+import { produceDraft } from './draft'
 beforeAll(async () => {
   await initializePicking({
     wasm: new Uint8Array(
@@ -20,6 +21,54 @@ function setup() {
   const { doc, ids } = componentFixture()
   return { e: new Editor(doc), ids }
 }
+test('dependency cleanup preserves resolved component identity when nothing is missing', () => {
+  const { e } = setup()
+  try {
+    const before = e.state.doc
+    const after = produceDraft(before, draft => { expect(detachMissing(before, draft)).toBe(false) })
+    expect(after).toBe(before)
+    for (const n of Object.values(before.nodes).filter(n => n.component)) {
+      expect(after.nodes[n.id]).toBe(n)
+      expect(after.nodes[n.id].component).toBe(n.component)
+    }
+  } finally { e.dispose() }
+})
+test.each(['missing-target', 'wrong-text-kind', 'missing-swap-definition'] as const)(
+  'dependency cleanup still removes the actual %s property without touching other definitions', variant => {
+    const { e, ids } = setup()
+    try {
+      const before = e.state.doc
+      const property = variant === 'missing-swap-definition' ? ids.icon : ids.title
+      const authored = produceDraft(before, draft => {
+        const p = draft.nodes[ids.button].component!.properties[property]
+        if (variant === 'missing-target') p.targetKey = 'missing-target'
+        else if (variant === 'wrong-text-kind') draft.nodes[ids.label].kind = 'rectangle'
+        else p.defaultValue = 'missing-component'
+      })
+      const after = produceDraft(authored, draft => { detachMissing(authored, draft) })
+      expect(after.nodes[ids.button].component!.properties[property]).toBeUndefined()
+      expect(authored.nodes[ids.button].component!.properties[property]).toBeDefined()
+      expect(before.nodes[ids.button].component!.properties[property]).toBeDefined()
+      expect(after.nodes[ids.iconB]).toBe(before.nodes[ids.iconB])
+      expect(after.nodes[ids.iconB].component).toBe(before.nodes[ids.iconB].component)
+      for (const key of Object.keys(authored.nodes[ids.button].component!.properties))
+        if (key !== property) expect(after.nodes[ids.button].component!.properties[key]).toEqual(authored.nodes[ids.button].component!.properties[key])
+    } finally { e.dispose() }
+  },
+)
+test('real main-layer removal prunes its native property and one undo restores the complete document', () => {
+  const { e, ids } = setup()
+  try {
+    const before = e.state.doc
+    e.select([ids.label]); e.remove()
+    const after = e.state.doc
+    expect(after.nodes[ids.button].component!.properties[ids.title]).toBeUndefined()
+    expect(after).toEqual(kernelLayout(after))
+    expect(before.nodes[ids.button].component!.properties[ids.title]).toBeDefined()
+    e.undo(); expect(e.state.doc).toEqual(before)
+    e.redo(); expect(e.state.doc).toEqual(after)
+  } finally { e.dispose() }
+})
 test('master edits propagate while text overrides remain local', () => {
   const { e, ids } = setup()
   e.setComponentProperty(ids.a, ids.title, '提交')

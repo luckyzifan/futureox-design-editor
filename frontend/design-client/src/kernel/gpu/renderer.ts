@@ -5,6 +5,8 @@ import { exactFilterKey, fullSampleCoverage, HorizontalFilterCache } from './hor
 import { StaticImageBlurCache, largeStaticImageBlurWindow, type StaticImageBlurSource } from './static-image-blur-cache'
 import { planNestedPrefix, type NestedPrefixPlan } from './nested-prefix-plan'
 import { planDisplayMaterialSource } from './display-material-source'
+import { planSequentialDisplay, type SequentialDisplayPlan } from './sequential-display-plan'
+import { isRecoverablePreviewBudget } from '../preview-budget-recovery'
 import { planExactImageXTable } from './exact-image-x-table'
 import type { ExactImageTable } from './types'
 import { completeFilterAxisSupport } from './opaque-filter'
@@ -169,6 +171,19 @@ export class GpuRenderer {
   private displayMaterialBorrowed = false
   private displayMaterialBuilds = 0
   private displayMaterialHits = 0
+  private sequentialDisplayFrames = 0
+  // Later bands still read these immutable images. Their ownership is
+  // independent of shorter nested table/cache borrows.
+  private sequentialImagePins = new Set<Texture>()
+  private sequentialRejectionDiagnostics = 0
+  /** Bounded numeric opt-in diagnostics. Codes 601..613 identify admission
+   * exits without logging node names, source URIs or authored pixel content. */
+  private sequentialRejected(reasonCode: number, region?: Rect, fields: Record<string, number> = {}) {
+    if (!this.scene?.sequentialDisplay || !gpuDiagnosticsEnabled() || this.sequentialRejectionDiagnostics >= 64) return
+    this.sequentialRejectionDiagnostics++
+    recordGpuDiagnostic('skip', { mode: 48, reasonCode, zoom: this.scene.view.zoom,
+      ...(region ? { x: region.x, y: region.y, width: region.w, height: region.h } : {}), ...fields })
+  }
   private retireDisplayMaterial() {
     if (this.displayMaterialBorrowed) return
     const retained = this.displayMaterial
@@ -195,6 +210,7 @@ export class GpuRenderer {
     staticImageBlurEntries:this.staticImageBlurs.count,
     displayMaterialBuilds:this.displayMaterialBuilds,displayMaterialHits:this.displayMaterialHits,
     displayMaterialBytes:this.displayMaterial?.surface.texture.bytes || 0,
+    sequentialDisplayFrames:this.sequentialDisplayFrames,
     backdropReuseFrames:this.backdropReuseFrames,backdropReusePixels:this.backdropReusePixels,
     backdropEligibleFrames:this.backdropEligibleFrames,backdropAdmittedFrames:this.backdropAdmittedFrames } }
   /** Retained subtree pixels have their own cap; they are not scratch. */
@@ -591,7 +607,9 @@ export class GpuRenderer {
     private managedImageLoader?: ManagedImageLoader,
     private imageMips = false,
     private imageAtlas = false,
+    private readonly gpuWorkingBudgetMiB?: number,
   ) {
+    this.frameBudget = workingSetBudget(0, 0, false, 0, gpuWorkingBudgetMiB)
     this.bytes = driver.scratchBytes || 0
     this.peak = this.bytes
 
@@ -672,6 +690,7 @@ export class GpuRenderer {
     const candidates = [...this.images]
       .filter(([, surface]) => !pageTextures.has(surface.texture))
       .filter(([, surface]) => !this.pendingImageTableSources.has(surface.texture) && !this.driver.hasActiveImageTableSource?.(surface.texture))
+      .filter(([, surface]) => !this.sequentialImagePins.has(surface.texture))
       .filter(([, surface]) => !this.staticImageBlurs.pinsSource(surface.texture))
       .filter(([, surface]) => forced || !this.used.has(surface.texture))
       .sort((a, b) => (this.lastUsed.get(a[1].texture) || 0) - (this.lastUsed.get(b[1].texture) || 0))
@@ -689,6 +708,7 @@ export class GpuRenderer {
     for (const page of [...this.atlasPages]) {
       if (required <= 0) break
       if (this.pendingImageTableSources.has(page.texture) || this.driver.hasActiveImageTableSource?.(page.texture)) continue
+      if (this.sequentialImagePins.has(page.texture)) continue
       if (this.staticImageBlurs.pinsSource(page.texture)) continue
       if (!forced && this.used.has(page.texture)) continue
       this.destroyAtlasPage(page)
@@ -1889,6 +1909,7 @@ export class GpuRenderer {
    * slots share that ownership with their entire page, including empty pages. */
   private hasEvictableImage() {
     const eligible = (texture: Texture) => !this.pendingImageTableSources.has(texture) &&
+      !this.sequentialImagePins.has(texture) &&
       !this.driver.hasActiveImageTableSource?.(texture) && !this.staticImageBlurs.pinsSource(texture)
     for (const surface of this.images.values()) if (eligible(surface.texture)) return true
     for (const page of this.atlasPages) if (eligible(page.texture)) return true
@@ -1908,7 +1929,9 @@ export class GpuRenderer {
     // active interaction working set warm below its bounded pressure line.
     if (!pressure && this.driver.captureDisplay && this.scene.interactionRetained &&
       (this.interactionWarm || this.workingBytes < this.frameBudget * .875)) return
-    if (this.bytes < this.frameBudget * .25 || !this.driver.checkpoint) return
+    const retiredImageTableBytes = this.driver.retiredImageTableBytes || 0
+    const imageTablePressure = pressure && retiredImageTableBytes > 0
+    if ((!imageTablePressure && this.bytes < this.frameBudget * .25) || !this.driver.checkpoint) return
     for (const [key, surface] of this.constantTargets) if ((this.aliases.get(surface.texture) || 1) === 1) {
       this.constantTargets.delete(key)
       this.release(surface)
@@ -1921,7 +1944,15 @@ export class GpuRenderer {
     // each GPU wait short and lets younger reusable entries survive.
     const imagesUnderPressure = this.workingBytes > this.frameBudget * .75 && this.hasEvictableImage()
     const staticCachePressure = pressure && this.staticImageBlurs.bytes > 0
-    if (!this.retiredUploads.length && !pooled.length && !coordinates.length && !imagesUnderPressure && !staticCachePressure)
+    // A free surface can be reused in this command queue before completion.
+    // Keep pooled storage when the requested allocation still fits, instead of
+    // fencing to destroy surfaces the next node may reuse. Logically retired
+    // tables stay charged and pinned until periodic finish or real pressure.
+    // Allocation/image pressure and upload/coordinate retirement retain their
+    // real completion fences; this return grants no completion proof.
+    if (this.workingBytes <= this.frameBudget && !pressure && !imagesUnderPressure &&
+        !this.retiredUploads.length && !coordinates.length) return
+    if (!this.retiredUploads.length && !pooled.length && !coordinates.length && !imagesUnderPressure && !staticCachePressure && !imageTablePressure)
       return
     // A large managed source image or ancestor surface can keep the ledger
     // above 64 MiB throughout a frame. Waiting on the GPU for every tiny dead
@@ -1929,7 +1960,7 @@ export class GpuRenderer {
     // Reclaim one meaningful batch, or synchronize immediately at the pressure
     // line; the unchanged allocation gate still enforces the 256 MiB ceiling.
     const reclaimableBytes = [...pooled, ...this.retiredUploads, ...coordinates]
-      .reduce((sum, texture) => sum + texture.bytes, 0)
+      .reduce((sum, texture) => sum + texture.bytes, retiredImageTableBytes)
     if (!pressure && !imagesUnderPressure && reclaimableBytes < RECLAIM_BATCH_BYTES) return
     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
     const resourceLimit = pressure ? 4096 : RECLAIM_BATCH_RESOURCES
@@ -1962,15 +1993,22 @@ export class GpuRenderer {
       admissionPoolBytes: pooled.reduce((bytes, texture) => bytes + texture.bytes, 0),
       admissionPoolCount: pooled.length,
       admissionUploadCount: this.retiredUploads.length + coordinates.length,
-      admissionRetiredKinds: (pooled.length ? 1 : 0) | (this.retiredUploads.length ? 2 : 0) | (coordinates.length ? 4 : 0) | (imagesUnderPressure ? 8 : 0),
+      admissionRetiredKinds: (pooled.length ? 1 : 0) | (this.retiredUploads.length ? 2 : 0) | (coordinates.length ? 4 : 0) | (imagesUnderPressure ? 8 : 0) | (retiredImageTableBytes ? 16 : 0),
       admissionRetiredUploadCount: this.retiredUploads.length,
       admissionCoordinateCount: coordinates.length,
       admissionImageCount: this.images.size,
     } : undefined
     // Submission is still mandatory. Only the completion wait may be omitted,
     // and the driver independently validates the already-completed epoch.
-    if (completedPoolEpoch === undefined) await this.driver.checkpoint('admission', diagnostic)
-    else await this.driver.checkpoint('admission', diagnostic, completedPoolEpoch)
+    const checkpointScratch = this.driver.scratchBytes || 0
+    try {
+      if (completedPoolEpoch === undefined) await this.driver.checkpoint('admission', diagnostic)
+      else await this.driver.checkpoint('admission', diagnostic, completedPoolEpoch)
+    } finally {
+      // A real checkpoint can now collect logically retired image tables.
+      // Preserve actual scratch accounting even when a later step rejects.
+      this.bytes += (this.driver.scratchBytes || 0) - checkpointScratch
+    }
     this.checkpointMs += performance.now() - checkpointStart
     this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     // Every surface still needed by an ancestor is in busy. Completion is
@@ -2879,27 +2917,44 @@ export class GpuRenderer {
    * single blur is evaluated once in its source lattice, independently of
    * camera zoom. No exact/finite certificate is attached to the cached result.
    */
-  private async streamDisplayMaterial(n: GpuNode, targets: Surface[], input: Rect, output: Rect, clip?: Surface[]) {
+  private async resolveDisplayMaterial(n: GpuNode, input: Rect, output: Rect) {
     if (!this.scene.displayMaterialSource || import.meta.env.VITE_DESIGN_DISPLAY_MATERIAL_SOURCE !== '1' ||
         !this.driver.imageTableRange || this.imageMips || this.imageAtlas || this.scene.displayFilters ||
-        this.driver.name !== 'webgpu' || this.driver.hdr || this.driver.displayMath) return
+        this.driver.name !== 'webgpu' || this.driver.hdr || this.driver.displayMath) {
+      this.sequentialRejected(603, input, { state: Number(!this.scene.displayMaterialSource) |
+        Number(import.meta.env.VITE_DESIGN_DISPLAY_MATERIAL_SOURCE !== '1') << 1 |
+        Number(!this.driver.imageTableRange) << 2 | Number(this.imageMips) << 3 | Number(this.imageAtlas) << 4 |
+        Number(!!this.scene.displayFilters) << 5 | Number(this.driver.name !== 'webgpu') << 6 |
+        Number(!!this.driver.hdr) << 7 | Number(!!this.driver.displayMath) << 8 })
+      return
+    }
     const paint = n.fills.filter(p => p.visible)[0]
-    if (!paint?.image || !fullSampleCoverage(n.fill, this.scene.curves, input)) return
+    if (!paint?.image) { this.sequentialRejected(611, input); return }
+    if (!fullSampleCoverage(n.fill, this.scene.curves, input)) { this.sequentialRejected(604, input); return }
     const image = this.imageFor(paint.image, 0, false, paint.adjust)
-    const plan = planDisplayMaterialSource(this.scene, n, input, image.rect.w, image.rect.h,
-      this.driver.imageTableRange(image.texture))
-    if (!plan) return
+    const range = this.driver.imageTableRange(image.texture)
+    const plan = planDisplayMaterialSource(this.scene, n, input, image.rect.w, image.rect.h, range)
+    if (!plan) {
+      this.sequentialRejected(605, input, { state: Number(!!range) | Number(range?.opaqueAlpha === true) << 1 |
+        Number(range?.nonnegativeRgb === true) << 2 |
+        Number(!!range?.maximum.every(value => Number.isInteger(value) && value >= 1 && value <= 127)) << 3,
+        expectedWidthComparison: image.rect.w, expectedHeightComparison: image.rect.h,
+        radius: (n.effects.find(effect => effect.visible)?.radius ?? 0) * (image.rect.w / n.size[0]) })
+      return
+    }
     // Keep the complete screen-space halo away from image-edge clamping.
     // The original full affine transform remains in the sampling program.
     const ratio = image.rect.w / n.size[0], m = n.inverse, margin = plan.radius + 2
     for (const x of [input.x - 1, input.x + input.w + 1]) for (const y of [input.y - 1, input.y + input.h + 1]) {
       const sx = (m[0] * x + m[2] * y + m[4]) * ratio
       const sy = (m[1] * x + m[3] * y + m[5]) * ratio
-      if (sx < margin || sy < margin || sx > image.rect.w - margin || sy > image.rect.h - margin) return
+      if (sx < margin || sy < margin || sx > image.rect.w - margin || sy > image.rect.h - margin) {
+        this.sequentialRejected(606, input, { radius: plan.radius }); return
+      }
     }
     const key = exactFilterKey([plan.radius, image.rect, this.scene.colorManagement,
       this.driver.linearLight, this.driver.hdr, this.driver.certifiedFilter])
-    if (!key) return
+    if (!key) { this.sequentialRejected(612, input); return }
     let cached = this.displayMaterial
     if (!cached || cached.source !== image.texture || cached.key !== key) {
       this.retireDisplayMaterial()
@@ -2908,21 +2963,24 @@ export class GpuRenderer {
       try {
         await this.reclaimScratch(required)
         this.checkFrameCurrent()
-        if (this.workingBytes + required > this.frameBudget) return
+        if (this.workingBytes + required > this.frameBudget) {
+          this.sequentialRejected(607, input, { admissionRequiredBytes: required, admissionWorkingBytes: this.workingBytes,
+            admissionBudgetBytes: this.frameBudget }); return
+        }
         // The cache lives in source pixels, outside the current pose window.
         // Never apply a screen-space interaction scissor to its H/V passes.
         const capturing = this.interactionCapturing
         let surface: Surface
         try { this.interactionCapturing = true; surface = this.blur(image, plan.radius / 2, true) }
         finally { this.interactionCapturing = capturing }
-        if (surface === image) return
+        if (surface === image) { this.sequentialRejected(613, input); return }
         cached = this.displayMaterial = { source: image.texture, key, surface, published: false }
         this.displayMaterialBuilds++
       } finally { this.pendingImageTableSources.delete(image.texture) }
     } else this.displayMaterialHits++
     this.used.add(cached.surface.texture); this.touch(cached.surface.texture)
     this.displayMaterialBorrowed = true
-    let resolved: Surface | undefined
+    let resolved: Surface | undefined, retained = false
     try {
       const node = { ...n, rect: output }, samplePaint = { ...paint }
       for (let sample = 0; sample < 4; sample++) {
@@ -2939,17 +2997,166 @@ export class GpuRenderer {
         } finally { this.release(mask, layer); this.imageGrids.delete(samplePaint) }
       }
       this.sampleIndex = undefined
+      retained = true
+      return resolved
+    } finally {
+      this.sampleIndex = undefined
+      if (!retained) this.release(resolved)
+      this.displayMaterialBorrowed = false
+    }
+  }
+  private async streamDisplayMaterial(n: GpuNode, targets: Surface[], input: Rect, output: Rect, clip?: Surface[]) {
+    const resolved = await this.resolveDisplayMaterial(n, input, output)
+    if (!resolved) return
+    try {
       for (let sample = 0; sample < 4; sample++) {
         await this.reclaimScratch()
-        targets[sample] = this.merge(resolved!, targets[sample], n.blend, n.opacity, clip?.[sample])
+        targets[sample] = this.merge(resolved, targets[sample], n.blend, n.opacity, clip?.[sample])
       }
       this.orderedEffectLayers++
       return targets
     } finally {
-      this.sampleIndex = undefined
       this.release(resolved)
-      this.displayMaterialBorrowed = false
     }
+  }
+  private sequentialMask(path: PathMesh, region: Rect) {
+    if (this.sampleIndex === undefined) { this.sequentialRejected(608, region); throw Error('SEQUENTIAL_DISPLAY_UNSUPPORTED') }
+    const mask = this.acquire(region, true)
+    if (path.count) this.driver.maskRegion!(path, mask.texture, this.sampleIndex, region)
+    else this.driver.clear(mask.texture)
+    return { ...mask, opaqueInterior: path.opaqueRect }
+  }
+  private async drawSequentialNodes(ids: readonly string[], target: Surface, plan: SequentialDisplayPlan,
+    materials: ReadonlyMap<string, Surface>): Promise<Surface> {
+    for (const id of ids) {
+      const n = this.scene.nodes[id], admitted = plan.regions.get(id)
+      if (!n || !admitted) continue // Compiler-owned culling sentinels paint nothing.
+      const region = intersect(admitted, target.rect)
+      if (!region.w || !region.h) continue
+      const pause = this.yieldEncoding(); if (pause) await pause
+      await this.reclaimScratch()
+      const material = materials.get(id)
+      if (material) { target = this.merge(material, target, n.blend, n.opacity); continue }
+      // Preserve every isolation and painter-order boundary. Only color
+      // scratch is cropped; original coverage-program bounds stay intact.
+      const node = { ...n, rect: region }
+      let layer = this.empty(region), mask: Surface | undefined
+      try {
+        if (n.fills.some(p => p.visible)) {
+          mask = this.sequentialMask(n.fill, region)
+          for (const paint of n.fills) if (paint.visible) {
+            // Address fields are scoped to this immutable band and phase.
+            // Sharing a paint object's field cache across different cropped
+            // color bounds would reuse the first band's image coordinates.
+            const samplePaint = paint.kind === 'image' ? { ...paint } : paint
+            try { layer = this.paintOver(node, samplePaint, mask, layer) }
+            finally { if (samplePaint !== paint) this.imageGrids.delete(samplePaint) }
+          }
+        }
+        layer = await this.drawSequentialNodes(n.children, layer, plan, materials)
+        target = this.merge(layer, target, n.blend, n.opacity)
+      } finally { this.release(mask, layer) }
+    }
+    return target
+  }
+  private async sequentialViewport(scene: GpuScene, output: Rect, readback: boolean, present: boolean): Promise<Surface> {
+    if (!this.driver.maskRegion || !this.driver.copyRegion || !this.driver.createBinaryCoverage ||
+        !this.driver.abortFrameAndReleaseFilterScratch) {
+      this.sequentialRejected(601, output); throw Error('SEQUENTIAL_DISPLAY_UNSUPPORTED')
+    }
+    let frame: Surface | undefined
+    try {
+    const candidates = new Set(Object.values(scene.nodes).filter(n => intersect(n.rect, output).w &&
+      intersect(n.rect, output).h && n.effects.some(effect => effect.visible)).map(n => n.id))
+    const preparedImages = new Set<string>()
+    // A node ID is not a range proof. Bind admission to this driver's actual
+    // immutable level-zero uploads, just as the material source path does.
+    // Mip/atlas policies keep their original sampling-dependent fallback.
+    if (!this.imageMips && !this.imageAtlas && this.driver.imageTableRange) {
+      for (const n of Object.values(scene.nodes)) {
+        const paints = n.fills.filter(paint => paint.visible && paint.kind === 'image')
+        const region = intersect(n.rect, output)
+        if (!paints.length || n.effects.length || !region.w || !region.h) continue
+        const admitted = paints.every(paint => {
+          if (!paint.image) return false
+          const image = this.imageFor(paint.image, 0, false, paint.adjust)
+          const range = this.driver.imageTableRange!(image.texture)
+          const proven = !!range && range.pixels === image.rect.w * image.rect.h && range.opaqueAlpha === true &&
+            range.nonnegativeRgb === true && range.maximum.length === 4 &&
+            range.maximum.every(value => Number.isInteger(value) && value >= 1 && value <= 127)
+          // Preserve that exact upload while later nodes are admitted. A
+          // second large source must not evict an already-proved first one.
+          if (proven) this.sequentialImagePins.add(image.texture)
+          return proven
+        })
+        if (admitted) preparedImages.add(n.id)
+      }
+    }
+    let planRejection = 0
+    const plan = planSequentialDisplay(scene, output, { managed: !!this.driver.managed, hdr: !!this.driver.hdr,
+      present, readback, preparedMaterialIds: candidates, preparedImageIds: preparedImages, allowCulledNodes: true,
+      onReject: code => { planRejection = code } })
+    if (!plan) { this.sequentialRejected(602, output, { count: candidates.size, state: planRejection }); throw Error('SEQUENTIAL_DISPLAY_UNSUPPORTED') }
+      for (const id of candidates)
+        for (const paint of scene.nodes[id].fills) if (paint.visible && paint.kind === 'image' && paint.image)
+          this.sequentialImagePins.add(this.imageFor(paint.image, 0, false, paint.adjust).texture)
+      frame = this.acquire(output)
+      this.driver.clear(frame.texture)
+      // The frame stays resident. Bounded bands avoid four full-frame planes
+      // plus arbitrary nested isolation stacks exceeding the shared ledger.
+      const rows = Math.max(1, Math.min(512, Math.floor(524_288 / output.w)))
+      for (let y = output.y; y < output.y + output.h; y += rows) {
+        const band = { x: output.x, y, w: output.w, h: Math.min(rows, output.y + output.h - y) }
+        const materials = new Map<string, Surface>()
+        let accumulated: Surface | undefined
+        try {
+          // A shorter last band needs different scratch dimensions. Admit
+          // that real allocation demand before encoding, preserving source
+          // pins and the unchanged shared working-memory ceiling.
+          await this.reclaimForSurface(band, plan.maxDepth + 4)
+          for (const id of candidates) {
+            const node = scene.nodes[id], region = intersect(plan.regions.get(id)!, band)
+            if (!region.w || !region.h) continue
+            const radius = node.effects.find(effect => effect.visible)!.radius * scale(node.matrix), reach = Math.ceil(radius) + 1
+            const input = intersect(node.rect, { x: region.x - reach, y: region.y - reach,
+              w: region.w + reach * 2, h: region.h + reach * 2 })
+            const resolved = await this.resolveDisplayMaterial(node, input, region)
+            if (!resolved) { this.sequentialRejected(609, input); throw Error('SEQUENTIAL_DISPLAY_UNSUPPORTED') }
+            materials.set(id, resolved)
+          }
+          for (let sample = 0; sample < 4; sample++) {
+            this.sampleIndex = sample
+            let plane: Surface | undefined
+            try {
+              const uniform = !!this.driver.constantTextureSampling
+              plane = this.run(12, uniform ? rect(0, 0, 1, 1) : band, [], u => {
+                u.set([...this.color(scene.background), scene.transparent ? 0 : this.alpha(scene.background)], 48)
+                u.set([scene.view.x, scene.view.y, scene.view.zoom, 0], 44)
+              })
+              if (uniform) { plane.texture.uniformColor = true; plane = { ...plane, rect: band } }
+              plane = await this.drawSequentialNodes(plan.roots, plane, plan, materials)
+              const next = this.run(48, band, accumulated ? [plane, accumulated] : [plane], u => { u[17] = sample })
+              this.release(accumulated); accumulated = next
+            } finally { this.release(plane) }
+          }
+          this.driver.copyRegion(frame.texture, accumulated!.texture, { x: 0, y: 0, w: band.w, h: band.h },
+            [0, band.y - output.y])
+        } finally {
+          this.sampleIndex = undefined
+          this.release(accumulated, ...materials.values())
+          // Constants are sample/band scratch here, not whole-frame cache pins.
+          for (const surface of this.constantTargets.values()) this.release(surface)
+          this.constantTargets.clear()
+        }
+      }
+      return frame
+    } catch (error) {
+      if (!(error instanceof Error && error.message === 'SEQUENTIAL_DISPLAY_UNSUPPORTED'))
+        this.sequentialRejected(610, output, { state: Number(isRecoverablePreviewBudget(error, this.driver.lost)),
+          admissionWorkingBytes: this.workingBytes, admissionBudgetBytes: this.frameBudget })
+      this.release(frame); throw error
+    }
+    finally { this.sequentialImagePins.clear() }
   }
   private async applySampleEffects(
     n: GpuNode,
@@ -3863,11 +4070,13 @@ export class GpuRenderer {
       scene = { ...scene, displayImageSource: false }
     if (scene.displayMaterialSource && (readback || !present || this.driver.hdr))
       scene = { ...scene, displayMaterialSource: false }
+    if (scene.sequentialDisplay && (readback || !present || this.driver.hdr))
+      scene = { ...scene, sequentialDisplay: false }
     if (!scene.displayMaterialSource) this.retireDisplayMaterial()
     if (scene.displayFilterRadiusLimit !== undefined && (readback || !present || this.driver.hdr))
       scene = { ...scene, displayFilters: false, displayFilterRadiusLimit: undefined }
     const arithmetic = JSON.stringify([!!scene.displayFilters, scene.displayFilterRadiusLimit ?? null,
-      !!scene.displayImageSource, !!scene.displayMaterialSource])
+      !!scene.displayImageSource, !!scene.displayMaterialSource, !!scene.sequentialDisplay])
     if (this.interactionArithmetic && this.interactionArithmetic !== arithmetic) this.interactionInvalid = true
     this.interactionArithmetic = arithmetic
     this.horizontalFilters.begin(scene.filterBatchLease)
@@ -3895,7 +4104,7 @@ export class GpuRenderer {
     const opticalPixels = nativeDisplay && scene.nativeInteraction && import.meta.env.VITE_DESIGN_OPTICAL_HEADROOM==='1'
       ?Object.values(scene.nodes).reduce((largest,n)=>n.effects.some(e=>e.visible&&(e.kind==='glass'||e.kind==='background-blur'))
         ?Math.max(largest,intersect(n.rect,scene.extent).w*intersect(n.rect,scene.extent).h):largest,0):0
-    this.frameBudget = workingSetBudget(workingTarget.w, workingTarget.h, nativeDisplay,opticalPixels)
+    this.frameBudget = workingSetBudget(workingTarget.w, workingTarget.h, nativeDisplay, opticalPixels, this.gpuWorkingBudgetMiB)
 
     if (!!(scene.floatCompositing || scene.colorManagement) !== !!this.driver.managed)
       throw new Error('GPU 纹理精度与文档色彩空间不一致')
@@ -3987,6 +4196,9 @@ export class GpuRenderer {
     let target: Surface | undefined
     let completed = false
     try {
+      if (scene.sequentialDisplay) {
+        target = await this.sequentialViewport(scene, scene.output || rect(0, 0, scene.width, scene.height), readback, present)
+      } else {
       let planes: Surface[] = []
       // Managed composition always writes a fresh target (hardware blending is
       // disabled). The initial grid/background has no sample-dependent inputs,
@@ -4062,6 +4274,7 @@ export class GpuRenderer {
           target = clipped
         }
       }
+      }
       const pause = this.yieldEncoding()
       if (pause) await pause
       const graphMs = performance.now() - started,
@@ -4082,6 +4295,7 @@ export class GpuRenderer {
         this.bytes += (this.driver.scratchBytes || 0) - finishingScratch
       }
       completed = true
+      if (scene.sequentialDisplay) this.sequentialDisplayFrames++
       if (this.displayMaterial) this.displayMaterial.published = true
       this.horizontalFilters.finish(!this.frameCurrent || this.frameCurrent())
       this.staticImageBlurs.finish(!this.frameCurrent || this.frameCurrent(), this.driver.completedResourceEpoch)
@@ -4141,11 +4355,13 @@ export class GpuRenderer {
       }
     } catch (error) {
       markRenderFailure(error, { failureStage: 12 })
-      if (error instanceof Error && error.message === 'PREVIEW_CANCELLED') {
+      if (scene.sequentialDisplay || error instanceof Error && error.message === 'PREVIEW_CANCELLED') {
         // Never pool/destroy frame resources while submitted commands still
         // reference them. This leaves the separately owned presented frame alive.
         await this.abortFrameAndReleaseFilterScratch('cancel')
       }
+      if (scene.sequentialDisplay && isRecoverablePreviewBudget(error, this.driver.lost))
+        throw Error('SEQUENTIAL_DISPLAY_UNSUPPORTED', { cause: error })
       throw error
     } finally {
       for (const surface of this.constantTargets.values()) this.release(surface)
@@ -4189,6 +4405,7 @@ export class GpuRenderer {
   }
   dispose() {
     this.displayMaterial = undefined
+    this.sequentialImagePins.clear()
     this.horizontalFilters.clear()
     this.staticImageBlurs.dispose()
     this.coefficientBytes.clear()

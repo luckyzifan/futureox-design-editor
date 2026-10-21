@@ -623,9 +623,9 @@ export default function App() {
         e.preventDefault()
         if (desktopSession) command(e.shiftKey ? 'saveAs' : 'save')
         else if (editor.settleOwnedPropertyPreview('save') && !editor.interactionActive && commitPendingEdits(editor)) exportDocument(editor.authoredDocument)
-      } else if (desktopSession && key === 'o') {
+      } else if (desktopSession && key === 'o' && !e.shiftKey) {
         e.preventDefault(); command('open')
-      } else if (desktopSession && key === 'n') {
+      } else if (desktopSession && key === 'n' && !e.shiftKey) {
         e.preventDefault(); command('new')
       }
     }

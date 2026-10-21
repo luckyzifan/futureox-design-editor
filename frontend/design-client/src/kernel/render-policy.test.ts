@@ -234,6 +234,64 @@ test('worker source pins policy before commands and only loads drivers in the ca
   assert.match(source, /linearBuffer: displayLinear\?\.buffer/)
 })
 
+function viewportCaptureFlags(env: Record<string, string | undefined>, request: Record<string, unknown> = {},
+  policy = hostRenderPolicy(true, false, false, false, false, true)) {
+  // Execute the actual worker's pure admission expressions with the real
+  // policy helper. No worker bootstrap, WASM, graphics driver or adapter mock.
+  const source = readFileSync(new URL('./render-worker.ts', import.meta.url), 'utf8')
+  const start = source.indexOf('const canvasViewportCapture ='), end = source.indexOf('if (sequentialViewport)', start)
+  assert.ok(start >= 0 && end > start, 'actual worker viewport admission must remain inspectable')
+  const flags = new Function('sequentialViewport', 'env', 'backend', 'tileViewport', 'retainInteraction',
+    'executionPolicy', 'usesDesktopDisplay', 'renderIntent', 'renderOptions', 'request', 'exportFormat',
+    source.slice(start, end).replaceAll('import.meta.env', 'env') +
+      '\nreturn { capture: canvasViewportCapture, sequential: canvasSequentialDisplay };')
+  return flags(Object.hasOwn(request, 'sequentialViewport') ? request.sequentialViewport : true, env, request.backend ?? 'webgpu', request.tileViewport,
+    request.retainInteraction ?? false, policy, usesDesktopDisplay, request.renderIntent ?? 'preview',
+    { rasterProfile: request.rasterProfile ?? 'analytic', exportRegion: request.exportRegion, pixelPreview: request.pixelPreview },
+    request, request.exportFormat) as { capture: boolean; sequential: boolean }
+}
+
+test('original viewport capture is strictly opt-in and selects the original graph independently of the narrow flag', () => {
+  for (const original of [undefined, '0', 'true', '1']) for (const sequential of [undefined, '0', 'true', '1']) {
+    const flags = viewportCaptureFlags({ VITE_DESIGN_ORIGINAL_VIEWPORT_CAPTURE: original, VITE_DESIGN_SEQUENTIAL_DISPLAY: sequential })
+    assert.equal(flags.capture, original === '1' || sequential === '1', `capture original=${original} sequential=${sequential}`)
+    assert.equal(flags.sequential, original !== '1' && sequential === '1', `graph original=${original} sequential=${sequential}`)
+  }
+})
+
+test('original viewport capture retains the real desktop/export/HDR/CPU/software exclusion policy', () => {
+  const env = { VITE_DESIGN_ORIGINAL_VIEWPORT_CAPTURE: '1' }
+  const desktop = hostRenderPolicy(true, false, false, false, false, true)
+  for (const request of [{ sequentialViewport: false }, { sequentialViewport: undefined }, { sequentialViewport: null },
+    { sequentialViewport: 1 }, { sequentialViewport: 'true' }, { backend: 'cpu' }, { tileViewport: [] }, { retainInteraction: true },
+    { renderIntent: 'settled' }, { renderIntent: 'export' }, { png: true }, { readback: true },
+    { exportFormat: 'pdf' }, { exportRegion: {} }, { pixelPreview: 1 }, { rasterProfile: 'figmaSoftware' }]) {
+    assert.deepEqual(viewportCaptureFlags(env, request, desktop), { capture: false, sequential: false }, JSON.stringify(request))
+  }
+  for (const policy of [hostRenderPolicy(false, false, false, false, false, true),
+    hostRenderPolicy(true, true, false, false, false, true), hostRenderPolicy(true, false, true, false, false, true),
+    hostRenderPolicy(true, false)])
+    assert.deepEqual(viewportCaptureFlags(env, {}, policy), { capture: false, sequential: false })
+})
+
+test('the actual original viewport scene selector preserves analytic sampling and multiple effect records', () => {
+  const source = readFileSync(new URL('./render-worker.ts', import.meta.url), 'utf8')
+  const start = source.indexOf('scene!.sequentialDisplay ='), end = source.indexOf('const floating =', start)
+  assert.ok(start >= 0 && end > start)
+  const select = new Function('scene', 'canvasSequentialDisplay', 'canvasViewportCapture', 'backend',
+    source.slice(start, end).replaceAll('scene!', 'scene') + '\nreturn scene;')
+  for (const coherentSamples of [false, true]) {
+    const nodes = { first: { effects: [{ kind: 'blur', radius: 38.25 }] }, second: { effects: [{ kind: 'shadow', radius: 19.125 }] } }
+    const scene = { coherentSamples, nodes, floatCompositing: true }
+    const flags = viewportCaptureFlags({ VITE_DESIGN_ORIGINAL_VIEWPORT_CAPTURE: '1' })
+    assert.equal(select(scene, flags.sequential, flags.capture, 'webgpu'), scene)
+    assert.equal(scene.coherentSamples, coherentSamples)
+    assert.equal(scene.nodes, nodes)
+    assert.equal((scene as typeof scene & { sequentialDisplay: boolean }).sequentialDisplay, false)
+  }
+  assert.throws(() => select({}, false, true, 'webgl2'), /SEQUENTIAL_DISPLAY_UNSUPPORTED/)
+})
+
 test('absent web host stays normal; a present malformed desktop host fails safely to CPU', () => {
   assert.equal(hostRenderPolicy(false, undefined).cpuOnly, false)
   assert.equal(hostRenderPolicy(true, false).cpuOnly, false)
@@ -250,4 +308,21 @@ test('managed document computation stays linear independently of the HDR display
   assert.equal(requiresFloatCompositing(normal, { floatCompositing: true }), true)
   assert.equal(requiresFloatCompositing(createRenderPolicy(false, true), { floatCompositing: true }), true)
   assert.equal(requiresFloatCompositing(normal, { floatCompositing: false }), false)
+})
+test('only an explicit host budget changes GPU working admission and the worker pins it', () => {
+  const ordinary = createRenderPolicy(false)
+  assert.equal(Object.hasOwn(ordinary, 'gpuWorkingBudgetMiB'), false)
+  const configured = hostRenderPolicy(true, false, false, false, false, true, 4096)
+  assert.equal(configured.gpuWorkingBudgetMiB, 4096)
+  assert.equal(Object.isFrozen(configured), true)
+  assert.equal(hostRenderPolicy(false, false, false, false, false, false, 4096).gpuWorkingBudgetMiB, undefined)
+  const copied = pinRenderPolicy(undefined, { ...configured })
+  assert.equal(copied.gpuWorkingBudgetMiB, 4096)
+  assert.equal(Object.isFrozen(copied), true)
+  assert.equal(pinRenderPolicy(copied, { ...configured }), copied)
+  for (const budget of [undefined, 256, 1024, 4097, 0, -1, null, '4096', true, 4096.5, Infinity, NaN])
+    assert.throws(() => pinRenderPolicy(copied, { ...configured, gpuWorkingBudgetMiB: budget }))
+  for (const budget of [255, 4097, null, '4096', true, Infinity, NaN])
+    assert.throws(() => pinRenderPolicy(undefined, { ...configured, gpuWorkingBudgetMiB: budget }))
+  assert.throws(() => pinRenderPolicy(ordinary, configured), /cannot change/)
 })

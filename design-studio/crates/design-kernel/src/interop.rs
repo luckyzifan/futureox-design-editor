@@ -1082,12 +1082,11 @@ impl<'a> Importer<'a> {
                         edges: Vec::new(),
                         fill_rule: "nonzero".into(),
                     };
-                    // Per-point handles honoring curveMode (22 号字典 §1):
-                    // 0/1 (None/Straight) ignore the archived handle values;
-                    // 2 (Mirrored) derives a missing side as 2*v − h;
-                    // 3 (Disconnected) and 4 (Asymmetric) keep both sides as
-                    // read — the kernel stores no collinearity constraint, so
-                    // Asymmetric materializes into two independent handles.
+                    // Explicit handle flags own the rendered geometry, just
+                    // as in sketch::CurveContour. curveMode is an editing
+                    // constraint: real Sketch paths can retain an active
+                    // one-sided curve on a Straight point (e.g. a split circle).
+                    // Do not drop active controls or invent an inactive side.
                     let mut outgoing: Vec<Option<crate::math::Point>> =
                         Vec::with_capacity(points.len());
                     let mut incoming: Vec<Option<crate::math::Point>> =
@@ -1104,41 +1103,18 @@ impl<'a> Importer<'a> {
                             x: vx,
                             y: vy,
                         });
-                        let mode = pt.get("curveMode").and_then(Value::as_i64).unwrap_or(1);
                         let has_from = bool_at(pt, "hasCurveFrom");
                         let has_to = bool_at(pt, "hasCurveTo");
-                        let (mut to, mut from) = match mode {
-                            0 | 1 => (None, None),
-                            _ => (
-                                if has_to {
-                                    pt.get("curveTo").map(point_to_point)
-                                } else {
-                                    None
-                                },
-                                if has_from {
-                                    pt.get("curveFrom").map(point_to_point)
-                                } else {
-                                    None
-                                },
-                            ),
+                        let to = if has_to {
+                            pt.get("curveTo").map(point_to_point)
+                        } else {
+                            None
                         };
-                        if mode == 2 {
-                            match (to, from) {
-                                (Some(t), None) => {
-                                    from = Some(crate::math::Point::new(
-                                        2. * vx - t.x,
-                                        2. * vy - t.y,
-                                    ));
-                                }
-                                (None, Some(f)) => {
-                                    to = Some(crate::math::Point::new(
-                                        2. * vx - f.x,
-                                        2. * vy - f.y,
-                                    ));
-                                }
-                                _ => {}
-                            }
-                        }
+                        let from = if has_from {
+                            pt.get("curveFrom").map(point_to_point)
+                        } else {
+                            None
+                        };
                         incoming.push(to);
                         outgoing.push(from);
                         let radius = f64_at(pt, "cornerRadius");
@@ -5196,8 +5172,8 @@ mod tests {
 
     #[test]
     fn curve_modes_map_all_values_and_corner_radii_round_trip() {
-        // 22 号字典 §1: every curveMode value maps onto kernel handles, and
-        // the exported mode is derived back from the handle geometry.
+        // Explicit handle flags own imported geometry independently of the
+        // editing mode; re-export must preserve those controls and radii.
         let mut doc = sample_document();
         let mut path = crate::facet::sample_node("n3", "path");
         path.name = "Modes".into();
@@ -5235,12 +5211,11 @@ mod tests {
             .clone();
         let mut page: Value = serde_json::from_slice(&files[&name]).unwrap();
         page["layers"][2]["points"] = json!([
-            // 1 Straight: archived handles must be ignored
+            // Straight editing type with explicitly active stored handles.
             {"_class":"curvePoint","point":"{0, 0}","curveFrom":"{0.3, 0.3}",
              "curveTo":"{-0.3, -0.3}","hasCurveFrom":true,"hasCurveTo":true,
              "curveMode":1,"cornerRadius":2.0},
-            // 2 Mirrored with only the incoming side stored: the outgoing
-            // handle derives as 2*v − curveTo = {1.2, -0.2}
+            // Mirrored editing type cannot activate an explicitly false side.
             {"_class":"curvePoint","point":"{1, 0}","curveFrom":"{1, 0}",
              "curveTo":"{0.8, 0.2}","hasCurveFrom":false,"hasCurveTo":true,
              "curveMode":2,"cornerRadius":0.0},
@@ -5259,13 +5234,15 @@ mod tests {
         let back = import_sketch(&encoded).unwrap();
         let node = back.nodes.get("n3").unwrap();
         let net = node.network.as_ref().expect("network");
-        // Straight point: no handles despite archived values
-        assert!(net.edges[0].c1.is_none() && net.edges[3].c2.is_none());
-        // Mirrored point: stored incoming handle used, outgoing derived
+        // The active controls are retained even on a Straight editing point.
+        let c1 = net.edges[0].c1.expect("active outgoing handle of v0");
+        assert!((c1.x - 0.3).abs() < 1e-9 && (c1.y - 0.3).abs() < 1e-9);
+        let c2 = net.edges[3].c2.expect("active incoming handle of v0");
+        assert!((c2.x + 0.3).abs() < 1e-9 && (c2.y + 0.3).abs() < 1e-9);
+        // Only the explicitly active incoming handle is used at v1.
         let c2 = net.edges[0].c2.expect("incoming handle of v1");
         assert!((c2.x - 0.8).abs() < 1e-9 && (c2.y - 0.2).abs() < 1e-9);
-        let c1 = net.edges[1].c1.expect("derived mirror handle of v1");
-        assert!((c1.x - 1.2).abs() < 1e-9 && (c1.y + 0.2).abs() < 1e-9);
+        assert!(net.edges[1].c1.is_none());
         // Disconnected point: both sides as read
         let c1 = net.edges[2].c1.expect("outgoing handle of v2");
         assert!((c1.x - 1.2).abs() < 1e-9 && (c1.y - 1.1).abs() < 1e-9);
@@ -5288,8 +5265,8 @@ mod tests {
             "per-point corner radius degradation must be reported"
         );
 
-        // Re-export: modes derive back from the handle geometry (1/2/3/4) and
-        // the archived corner radii return verbatim.
+        // Editing modes may re-derive from the retained geometry; they cannot
+        // erase active controls or invent inactive ones during the round trip.
         let re = export_sketch(&back).unwrap();
         let re_files = read_zip(&re).unwrap();
         let re_page: Value = serde_json::from_slice(&re_files[&name]).unwrap();
@@ -5298,10 +5275,16 @@ mod tests {
             .iter()
             .map(|p| p["curveMode"].as_i64().unwrap())
             .collect();
-        assert_eq!(modes, vec![1, 2, 3, 4]);
+        assert_eq!(modes, vec![2, 3, 3, 4]);
         assert_eq!(points[0]["cornerRadius"], 2.0);
-        assert_eq!(points[1]["hasCurveFrom"], true);
+        assert_eq!(points[0]["hasCurveFrom"], true);
+        assert_eq!(points[0]["hasCurveTo"], true);
+        assert_eq!(points[1]["hasCurveFrom"], false);
         assert_eq!(points[1]["hasCurveTo"], true);
+        let reopened = import_sketch(&re).unwrap();
+        assert_eq!(reopened.nodes["n3"].network, node.network);
+        assert_eq!(reopened.nodes["n3"].bindings.get("sketchPointCornerRadii"),
+            node.bindings.get("sketchPointCornerRadii"));
     }
 
     #[test]

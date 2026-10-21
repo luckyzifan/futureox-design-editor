@@ -58,7 +58,7 @@ test.each(['pages', 'fonts', 'designSystem', 'prototype', 'schemaVersion', 'id']
   })
 
 test.each(['component', 'componentSet', 'componentKey', 'instance', 'instanceOrigin', 'bindings', 'styleRefs',
-  'variableModes', 'booleanOperation', 'constraints', 'layout', 'sizing'])(
+  'variableModes', 'booleanOperation', 'layout', 'sizing'])(
   'moving nodes or ancestors with dependencies fall back: %s', field => {
     for (const target of ['moving', 'parent'] as const) {
       const data = fixture()
@@ -83,4 +83,32 @@ test('reparent, node-set changes, parent resize, connectors and animations fall 
     if (variant === 'insert') { const added = node('rectangle', 0, 0, 5, 5); after.nodes[added.id] = added }
     expect(translationOnlyChanges(document, after)).toBeNull()
   }
+})
+
+test.each(['start', 'center', 'end', 'stretch', 'scale'] as const)('constraints admit only exact per-axis fixed points: %s', mode => {
+  const f = fixture()
+  f.moving.constraints = { horizontal: mode, vertical: mode, referenceWidth: 300, referenceHeight: 200 }
+  expect(translationOnlyChanges(f.document, f.translated())).toEqual([f.moving.id])
+})
+
+test('missing/mismatched references, rounding and signed zero keep full resolution', () => {
+  for (const variant of ['missing', 'mismatch', 'end-rounding', 'negative-zero']) {
+    const f = fixture()
+    f.moving.constraints = { horizontal: 'end', vertical: 'center', referenceWidth: 300, referenceHeight: 200 }
+    if (variant === 'missing') delete f.moving.constraints.referenceWidth
+    if (variant === 'mismatch') f.moving.constraints.referenceWidth = 299
+    if (variant === 'end-rounding') { f.parent.width = 1e7; f.moving.constraints.referenceWidth = 1e7 }
+    const after = f.translated()
+    if (variant === 'end-rounding') after.nodes[f.moving.id].transform[4] = 0.1
+    if (variant === 'negative-zero') after.nodes[f.moving.id].transform[4] = -0
+    expect(translationOnlyChanges(f.document, after)).toBeNull()
+  }
+})
+
+test('constraints on an actual page root are inert while orphans remain inadmissible', () => {
+  const f = fixture()
+  f.parent.constraints = { horizontal: 'scale', vertical: 'scale' }
+  expect(translationOnlyChanges(f.document, f.translated())).toEqual([f.moving.id])
+  f.document.pages[0].children = []
+  expect(translationOnlyChanges(f.document, f.translated())).toBeNull()
 })

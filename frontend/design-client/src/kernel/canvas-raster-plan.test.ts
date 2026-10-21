@@ -1,6 +1,161 @@
-import { expect, test } from 'vitest'
-import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale } from './canvas-raster-plan'
-import { planTiles, tilesCoverBounds } from './tile-cache'
+import { afterEach, expect, test, vi } from 'vitest'
+import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, gestureRasterScale, gestureViewportCapture, motionRasterScale } from './canvas-raster-plan'
+import { displayTileBudget, MAX_DISPLAY_TILE_BYTES, planTiles, tilesCoverBounds } from './tile-cache'
+import { createRenderPolicy } from './render-policy'
+
+afterEach(() => vi.unstubAllEnvs())
+
+const gesturePolicy = createRenderPolicy(false, false, false, false, true, true)
+const gestureRequest = { policy: gesturePolicy, active: true,
+  request: { renderIntent: 'preview', rasterProfile: 'figma' } }
+const aheadRung = (scale: number) => 2 ** ((Math.ceil(Math.log2(scale) * 4) + 1) / 4)
+
+test('quarter-octave gesture density requires the explicit default-off flag', () => {
+  const view = { x: .125, y: -.375, zoom: .55 }
+  for (const flag of [undefined, '', '0', 'true', '01']) {
+    vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', flag)
+    expect(gestureRasterScale(view, 2, 800, 600, gestureRequest)).toBeUndefined()
+  }
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+  expect(gestureRasterScale(view, 2, 800, 600, gestureRequest)).toBe(aheadRung(1.1))
+})
+
+test('gesture headroom pre-generates one quarter-octave rung beyond the next tile level without reducing density', () => {
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+  for (const dpr of [1, 1.25, 2, 3]) for (const zoom of [.025, .26, .51, .55, 1.01, 2.1, 10, 16]) {
+    const requested = zoom * dpr
+    const scale = gestureRasterScale({ x: .125, y: -.375, zoom }, dpr, 800, 600, gestureRequest)!
+    expect(scale).toBe(aheadRung(requested))
+    expect(scale).toBeGreaterThanOrEqual(requested)
+    expect(scale / requested).toBeGreaterThanOrEqual(2 ** .25 - Number.EPSILON * 8)
+    expect(scale / requested).toBeLessThanOrEqual(Math.SQRT2 + Number.EPSILON * 8)
+    expect(displayTileBudget(800, 600, scale / zoom, false)).toBeLessThanOrEqual(MAX_DISPLAY_TILE_BYTES)
+  }
+  for (const scale of [1 / 512, .25, 1, 2, 32])
+    expect(gestureRasterScale({ x: 0, y: 0, zoom: scale / 2 }, 2, 800, 600, gestureRequest)).toBe(aheadRung(scale))
+  expect(gestureRasterScale({ x: 0, y: 0, zoom: 32 }, 2, 800, 600, gestureRequest)).toBeUndefined()
+})
+
+test('adjacent gesture zooms share canonical world tiles without a native-phase certificate', () => {
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+  const views = [{ x: -10.125, y: -20.375, zoom: .51 }, { x: -10.125, y: -20.375, zoom: .55 }]
+  const plans = views.map(view => {
+    const scale = gestureRasterScale(view, 2, 800, 600, gestureRequest)!
+    return canvasRasterPlan(view, scale / view.zoom, 800, 600, { rasterProfile: 'figma', samplingScale: scale })
+  })
+  expect(plans[1].scale).toBe(plans[0].scale)
+  expect(plans[1].camera).toEqual(plans[0].camera)
+  expect(plans[0].camera).toEqual({ x: 0, y: 0, zoom: aheadRung(1.02) })
+  const [first, next] = views.map(view => ({ x: -view.x / view.zoom, y: -view.y / view.zoom,
+    width: 800 / view.zoom, height: 600 / view.zoom }))
+  const tiles = planTiles(first, plans[0].scale)
+  expect(tilesCoverBounds(tiles, next, plans[1].scale)).toBe(true)
+  expect(planTiles(next, plans[1].scale).every(tile => tiles.some(previous => previous.key === tile.key))).toBe(true)
+  for (let i = 0; i < views.length; i++)
+    expect(canvasRasterPhaseMatches(views[i], 2, plans[i].scale, plans[i].phase)).toBe(false)
+})
+
+test('settle preserves ordinary exact density and phase while all non-display requests reject headroom', () => {
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+  const view = { x: .125, y: -.375, zoom: .55 }
+  expect(gestureRasterScale(view, 2, 800, 600, { ...gestureRequest, active: false })).toBeUndefined()
+  const settled = canvasRasterPlan(view, 2, 800, 600, { rasterProfile: 'figma', exactPhase: true })
+  expect(settled.scale).toBe(1.1)
+  expect(canvasRasterPhaseMatches(view, 2, settled.scale, settled.phase)).toBe(true)
+  for (const request of [{ renderIntent: 'settle' }, { renderIntent: 'export' },
+    { renderIntent: 'preview', readback: true }, { renderIntent: 'preview', png: true },
+    { renderIntent: 'preview', exportFormat: 'png' }, { renderIntent: 'preview', exportRegion: {} },
+    { renderIntent: 'preview', pixelPreview: 1 }, { renderIntent: 'preview', rasterProfile: 'figmaSoftware' }])
+    expect(gestureRasterScale(view, 2, 800, 600, { ...gestureRequest, request })).toBeUndefined()
+  for (const policy of [createRenderPolicy(false), createRenderPolicy(true, false, false, false, true, true),
+    createRenderPolicy(false, true, false, false, true, true), createRenderPolicy(false, false, false, false, false, true)])
+    expect(gestureRasterScale(view, 2, 800, 600, { ...gestureRequest, policy })).toBeUndefined()
+  for (const chrome of [{ grid: true }, { checkerboard: true }])
+    expect(gestureRasterScale(view, 2, 800, 600, { ...gestureRequest, ...chrome })).toBeUndefined()
+})
+
+test('gesture headroom falls back instead of raising limits, undersampling or shifting far-world coordinates', () => {
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+  expect(gestureRasterScale({ x: 0, y: 0, zoom: .51 }, 2, 3200, 2000, gestureRequest)).toBeUndefined()
+  expect(gestureRasterScale({ x: -5e7, y: 0, zoom: 1 }, 2, 800, 600, gestureRequest)).toBeUndefined()
+  for (const zoom of [0, -1, NaN, Infinity, 1e-12, 33, 65, Number.MAX_VALUE])
+    expect(gestureRasterScale({ x: 0, y: 0, zoom }, 2, 800, 600, gestureRequest)).toBeUndefined()
+  for (const [dpr, width, height] of [[0, 800, 600], [Infinity, 800, 600], [2, -1, 600], [2, 800, NaN]])
+    expect(gestureRasterScale({ x: 0, y: 0, zoom: 1 }, dpr, width, height, gestureRequest)).toBeUndefined()
+})
+
+test('gesture captures use fixed 128-pixel world cells and cover every current viewport at the admitted density', () => {
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+  for (const dpr of [1, 1.25, 2, 3]) for (const zoom of [.025, .51, 1.01, 8, 16]) {
+    const view = { x: -120.125, y: 87.375, zoom }, width = 640, height = 480
+    const scale = gestureRasterScale(view, dpr, width, height, gestureRequest)!
+    const capture = gestureViewportCapture(view, dpr, width, height, scale)!
+    expect(capture).toBeDefined()
+    const { tile, camera } = capture
+    expect(Math.abs(tile.x % 128)).toBe(0); expect(Math.abs(tile.y % 128)).toBe(0)
+    expect(tile.w).toBe(Math.ceil((width * dpr * Math.SQRT2 + 128) / 128) * 128)
+    expect(tile.h).toBe(Math.ceil((height * dpr * Math.SQRT2 + 128) / 128) * 128)
+    expect(tile.w * tile.h).toBeLessThanOrEqual(8_388_608)
+    expect(camera).toEqual({ x: -tile.x, y: -tile.y, zoom: scale })
+    const left = -view.x / zoom * scale, top = -view.y / zoom * scale
+    const right = (width - view.x) / zoom * scale, bottom = (height - view.y) / zoom * scale
+    expect(left).toBeGreaterThanOrEqual(tile.x); expect(top).toBeGreaterThanOrEqual(tile.y)
+    expect(right).toBeLessThanOrEqual(tile.x + tile.w); expect(bottom).toBeLessThanOrEqual(tile.y + tile.h)
+  }
+})
+
+test('small inputs within a gesture rung and world cell reuse the exact capture camera and shape', () => {
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+  const a = { x: -12, y: -20, zoom: .51 }, b = { x: -13, y: -21, zoom: .55 }
+  const scale = gestureRasterScale(a, 2, 855, 888, gestureRequest)!
+  expect(gestureRasterScale(b, 2, 855, 888, gestureRequest)).toBe(scale)
+  const first = gestureViewportCapture(a, 2, 855, 888, scale)!
+  const next = gestureViewportCapture(b, 2, 855, 888, scale)!
+  expect(next).toEqual(first)
+  expect(first.tile.w).toBe(2560); expect(first.tile.h).toBe(2688)
+  expect(canvasRasterPhaseMatches(a, 2, scale, { x: 0, y: 0 })).toBe(false)
+  expect(canvasRasterPhaseMatches(b, 2, scale, { x: 0, y: 0 })).toBe(false)
+})
+
+test('different density rungs retain the same physical target dimensions and preserve the world anchor', () => {
+  vi.stubEnv('VITE_DESIGN_GESTURE_DENSITY_HEADROOM', '1')
+  let dimensions: number[] | undefined
+  for (const zoom of [.1, 1.01, 2.8, 8.1, 26.7]) {
+    const view = { x: -128.375, y: 96.125, zoom }, dpr = 2
+    const scale = gestureRasterScale(view, dpr, 855, 888, gestureRequest)!
+    const capture = gestureViewportCapture(view, dpr, 855, 888, scale)!
+    const size = [capture.tile.w, capture.tile.h]
+    expect(dimensions ?? size).toEqual(size); dimensions = size
+    // A world point uses the same scale before and after the local capture
+    // translation; only the target origin changes. No PathMesh is modified.
+    const point = { x: 17.25, y: -9.375 }
+    expect(point.x * scale + capture.camera.x + capture.tile.x).toBeCloseTo(point.x * scale, 12)
+    expect(point.y * scale + capture.camera.y + capture.tile.y).toBeCloseTo(point.y * scale, 12)
+  }
+})
+
+test('capture origin crosses positive and negative world-cell boundaries without dropping visible edges', () => {
+  for (const [x, expected] of [[-127.75, 0], [-128, 128], [-128.25, 128], [.25, -128], [128.25, -256]]) {
+    const capture = gestureViewportCapture({ x, y: -.25, zoom: 1 }, 1, 256, 128, 1)!
+    expect(capture.tile.x).toBe(expected)
+    expect(capture.tile.x).toBeLessThanOrEqual(-x)
+    expect(capture.tile.x + capture.tile.w).toBeGreaterThanOrEqual(256 - x)
+  }
+})
+
+test('capture rejects oversized targets and unsafe coordinates without reducing density or expanding limits', () => {
+  const view = { x: 0, y: 0, zoom: 1 }
+  expect(gestureViewportCapture(view, 2, 855, 888, 2.5)).toBeDefined()
+  expect(gestureViewportCapture(view, 2, 2000, 2000, 2.5)).toBeUndefined() // >8 Mi pixels
+  expect(gestureViewportCapture(view, 1, 6000, 1, 1)).toBeUndefined() // >8192 per side
+  expect(gestureViewportCapture({ ...view, x: -3_999_900 }, 1, 256, 128, 1)).toBeUndefined() // padded target crosses limit
+  for (const scale of [0, -1, NaN, Infinity, .999, 1.5, 129])
+    expect(gestureViewportCapture(view, 1, 256, 128, scale)).toBeUndefined()
+  for (const invalid of [{ ...view, zoom: 0 }, { ...view, zoom: 1e-308 }, { ...view, x: NaN }, { ...view, y: -5e7 }])
+    expect(gestureViewportCapture(invalid, 1, 256, 128, 1)).toBeUndefined()
+  for (const [dpr, width, height] of [[0, 256, 128], [Infinity, 256, 128], [1, 0, 128], [1, 256, -1], [1, Number.MAX_VALUE, 128]])
+    expect(gestureViewportCapture(view, dpr, width, height, 1)).toBeUndefined()
+})
 
 test('pans share canonical samples; fractional zoom uses the actual Figma density', () => {
   const a = canvasRasterPlan({x:12.125,y:-13.375,zoom:2.72},2,800,600,{})

@@ -2,13 +2,15 @@
 
 ## Discover the exact available API
 
-Use the existing [local stdio adapter](../frontend/design-mcp/README.md). It connects to the explicitly enabled desktop document bridge on the same machine/user. The adapter does not host an AI, create cloud accounts, invent a REST endpoint or provide arbitrary code execution. Connection details are ephemeral; never commit bridge tokens. The MCP handshake is pinned to 2025-11-25; it is not a claim of compatibility with every newer protocol.
+Use the existing [local stdio adapter](../frontend/design-mcp/README.md). It connects to the explicitly enabled desktop document bridge on the same machine/user. The adapter does not host an AI, create cloud accounts, invent a REST endpoint or provide arbitrary code execution. Connection details are ephemeral; never commit bridge tokens. Legacy mode retains its 2025-11-25 handshake. Modern mode separately implements the 2026-07-28 identifier with per-request metadata; neither implies compatibility with every client.
 
 After initialize and notifications/initialized, send:
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
 ```
+
+That example is the legacy wire shape. On a modern connection, omit the handshake and include `params._meta` on every request: `io.modelcontextprotocol/protocolVersion` is `"2026-07-28"` and `io.modelcontextprotocol/clientCapabilities` is an object. `server/discover` can inspect protocol capabilities without calling the backend. Client metadata is request-local data, never an authorization grant. A connection cannot mix modern and legacy eras. Modern results include `resultType: "complete"` and server metadata; catalog/resource results have zero private TTL. Follow the implementation and tested boundary in the adapter README rather than inferring support from a protocol version alone.
 
 The exact names, input schemas and current count come from result.tools. Count that array after applying the actual host grants, not a static marketing total. This catalog is bounded and returned whole; invented tools/list cursors reject. The shared API provides api.capabilities and the MCP resource futureox-design://automation/capabilities. Inspect methods, limits, editing and unsupported. The registry is composed in frontend/design-client/src/automation/index.ts and core.ts; host-only preview/workspace/preferences can change the exposed list. Missing methods are unavailable in that session, even if mentioned in documentation.
 
@@ -34,6 +36,12 @@ MCP tools/call wraps the shared operation parameters in arguments.params. Write 
 - Whole-property radii is [topLeft,topRight,bottomRight,bottomLeft], layout.padding is [top,right,bottom,left]. Granular node.patch instead uses named partial objects, e.g. radii: {topLeft: 12}; granular transform uses {a,b,c,d,x,y}, not tx/ty or an array. Granular layout padding uses {top,right,bottom,left}.
 - node.update replaces each supplied property, not arbitrary deep merge. Top-level optional null removes an optional property. The granular patch methods preserve omitted leaves and require existing layout/sizing/constraints/textStyle facets. Input schemas cannot express every kind/reference/determinant/grapheme constraint: final native model admission remains authoritative even after schema validation succeeds.
 - text.styleRange and text.replaceRange use half-open UTF-16 offsets on complete grapheme boundaries, not UTF-8 bytes or Unicode code-point counts. replaceRange requires expectedText equal to the selected old substring. Insertion uses start=end and expectedText=""; deletion uses text="". Limits include 100,000 UTF-16 units and 4,096 runs.
+
+## Shared selection commands
+
+The existing node.align, node.distribute, node.group and node.ungroup methods use the same Core selection contract as the corresponding UI commands; UI is not rendered through MCP. Read [shared selection commands](SHARED_SELECTION_COMMANDS_V1.md) for exact geometry/defaults and candidate verification status. No new endpoint or compatibility selector is required.
+
+Selection-frame wrapping is transparent/unclipped and preserves child world geometry; empty node.create frame keeps its existing factory defaults. Ungroup supports ordinary group/frame/section/boolean containers without baking parent styles. Component/instance structure and active auto-layout topology reject. Two-node distribution is unchanged; overlapping/contained distribution and unproven derived geometry after earlier batch edits return explicit errors without a commit. These limits must not be interpreted as fake successful editing or full Figma algorithm equivalence.
 
 ## Granular and bulk edits
 
@@ -100,7 +108,7 @@ Successful authored mutation summaries use bounded RFC 6901 changedPaths/changes
 
 Query/context cursors bind to revisions; refresh and re-query after mutations rather than using stale cursors. Normal tool output is capped at 256 KiB, ordinary input at 8 MiB; only advertised import paths and containing batches allow the larger 32 MiB frame budget. Narrow or paginate queries instead of dumping a whole document into model context.
 
-Exports are resource-first: structuredContent.result contains metadata, resourceOnly=true and resource descriptors. resources/read returns exact text/blob bytes for explicit file saving. Do not treat generated HTML/SVG as executable instructions or paste base64 into reasoning. Save exports before another large export can evict them. Session cache: 16 artifacts / 32 MiB stored text or base64; 32 MiB transfer frames include envelope reserve. A whole export that cannot fit returns artifact_unavailable, not truncated file bytes. Disconnect clears resources; expired URI returns -32002.
+Exports are resource-first: structuredContent.result contains metadata, resourceOnly=true and resource descriptors. resources/read returns exact text/blob bytes for explicit file saving. Do not treat generated HTML/SVG as executable instructions or paste base64 into reasoning. Save exports before another large export can evict them. Session cache: 16 artifacts / 32 MiB stored text or base64; 32 MiB transfer frames include envelope reserve. A whole export that cannot fit returns artifact_unavailable, not truncated file bytes. MCP disconnect clears resources. For the socket backend, terminal bridge disconnect/revocation also clears the associated cache and makes resources/list and resources/read fail with -32000 (authorization session ended). Unknown/evicted URIs in a live session return -32002. New authorization does not restore old URIs. Bytes already returned or handed to stdout cannot be recalled; this expires server-side access, not external copies.
 
 Native JSON/FD preserves the authored design model within its supported contract; HTML/CSS and external formats have documented approximation/unsupported-feature warnings. document.import appends and remaps IDs; it does not replace the live document, and optional opaque FD metadata currently prevents safe append.
 
@@ -122,6 +130,8 @@ The exact schema source is the live registry, including node-input-descriptors.t
 
 In-memory streams validate protocol behavior without opening an OS socket. Fresh WASM and real SQLite process tests establish their own boundaries; they do not establish desktop opt-in dialogs, real external clients, browser/Electron presentation, GPU fidelity or cross-platform socket behavior. Report those acceptance gates as unverified unless separately executed with retained evidence.
 
+The [functional merge record](../testing/verification-functional-merge-20261021/README.md) separates historical package validation from new combined-source regression. The socket integration suite uses real local sockets and stdio with a deterministic bridge fixture. Official-SDK stdio tests require a separately supplied SDK root and use a fixture backend; absent-SDK skips and those transport checks do not prove a real desktop Editor/SQLite end-to-end path. Both protocol modes withhold a still-queued successful `tools/list`, `tools/call`, `resources/list` or `resources/read` frame if the backend's terminal authorization ended before the write. Bytes already handed to stdout cannot be recalled, and cancellation cannot undo committed edits.
+
 ### Editable SVG text
 
 `vector.export` and the SVG export panel accept `textMode: "outlines" | "editable"`. The default remains outlines. Editable mode writes real SVG `<text>` and nested `<tspan>` elements, preserving Unicode source text, native line breaks/wrapping positions, run size/weight/family/color/decoration, letter spacing and the existing scene transforms, opacity and clipping. It references font family names and fallback lists; it does not embed font data. Browser shaping and missing fonts can change rendering, so this is not a pixel-identical or full native-format roundtrip promise.
@@ -131,3 +141,76 @@ Editable mode currently requires one visible fill, hexadecimal run colors and no
 The bounded importer accepts this application's generated text tree and validates the attached text model and matching text content before restoring an editable text node. Standalone SVG import uses the built-in font for missing font IDs and reports the substitution. MCP append reuses a destination font only when both its ID and family match; embedded font bytes are neither emitted nor accepted by this mode. Generic third-party tspan layout remains unsupported. Keep FD for exact editable native persistence. SVG precision and gzip options also work with editable mode.
 
 Reference: [W3C SVG 2 Text](https://www.w3.org/TR/SVG2/text.html), particularly text/tspan positioning, whitespace, font selection and shaping.
+
+## Proportional selection scale and Inspector readback
+
+`selection.scale` (`design_selection_scale`) accepts `{ids, factor, anchor?}`.
+IDs must be 1–1000 distinct existing nodes on the active page. The unitless factor
+is 0.01–10000 inclusive, matching the UI Scale field; it is not a percentage or a
+width/height resize. Anchor defaults to 4 (center): integers 0–8 form the row-major
+3×3 grid, top-left 0, top-center 1, top-right 2, left-center 3, right-center 5,
+bottom-left 6, bottom-center 7, bottom-right 8.
+
+UI and MCP use one plan: top selected roots receive a uniform world-space
+similarity about the anchor, expressed back in each parent space. Nested selected
+roots are not scaled twice. Single-root bounds use that root's local axes (groups
+use visible child bounds); multi-root bounds use the scene's world-axis union.
+Rotation/reflection are retained. Local text/stroke/effect values are not baked;
+the inherited transform and existing property-unit conversion supply effective
+Inspector values. This is not ordinary resize and does not infer pointer gestures.
+
+Hidden targets/ancestors, locked targets/ancestors, cross-page targets, instance-internal layers and
+non-absolute auto-layout flow children reject atomically. Instance roots may scale
+without changing internal authored fields; this is not permission to edit their
+internal structure. After any earlier batch operation, selection/ancestor/subtree
+derived geometry (text, auto-layout, components/instances, constraints, etc.)
+rejects until that edit is committed and reread. No change to selection is implied.
+The ordinary write fences, exact operation permissions, request/result limits,
+pending-input guards and native validation still apply. One success is one undo
+entry; factor 1 is a validated no-op. Native admission can reject extreme output
+transforms even when the input factor is within range.
+
+`node.get` optionally accepts `includeDisplayProperties: true` (default false).
+The existing `node`, width/height and other summary fields are unchanged local
+authored values. The additional `displayProperties` is read-only and uses
+`units: "effective-document"`: transformed local-axis width/height from the same
+Inspector measurement, and for world similarities, effective base fontSize,
+stroke widths and common effect distances (radius/x/y/spread and glass depth/bevel).
+It is not a new document model or a write-patch format. Rotations and reflections
+have a valid proportional distance scale. Under non-uniform/skewed world matrices,
+only axis dimensions are returned; scalar style distances are omitted with a
+reason rather than inventing an average. Unsupported controls are listed explicitly.
+The projection requires only the existing `node.get` read permission, not write
+permission, and does not widen document/page authority.
+
+Example expectation: a 100×80 frame at (10,20), scaled 2× about top-left, keeps
+that anchor and reports effective 200×160. A child with local width 40, text size
+12, stroke width 2 and shadow radius 3 reports effective 80, 24, 4 and 6. Its raw
+node values stay 40, 12, 2 and 3. A later Inspector font-size edit to 30 writes
+local 15, once. HTML/CSS exports may retain local font size with the transform;
+this does not promise baked Figma property storage or universal export fidelity.
+
+Reference: [Figma Scale tool](https://help.figma.com/hc/en-us/articles/360040451453-Scale-layers-while-maintaining-proportions).
+The Figma contract scales strokes/blurs, ignores nested constraints, and excludes
+locked layers and instance internals. The limited auto-layout/derived-batch
+restrictions above are explicit local support boundaries, not claimed Figma parity.
+
+Group Inspector X/Y and W/H share the Scale visible-child bounds, including rotated/reflected groups and child-union offsets. Empty groups fall back to their authored box. Hidden explicit targets or targets under hidden ancestors reject the whole scale request, including factor 1; they are never silently omitted from the anchor. Hidden unselected descendants retain the existing group visible-child-bound policy and inherit the root transform. The optional display projection currently exposes W/H, not X/Y.
+
+Lock scope: this operation preserves Core's existing ScaleInspector/Editor scale
+policy, which disables selected locked nodes or locked ancestors. It does not
+claim that every Figma property-panel edit on a locked layer is forbidden. The
+existing UI still uses its largest-singular-value style-unit convention under
+non-uniform/skewed world transforms; that is not a unique Figma-equivalent scalar,
+so the new MCP projection deliberately omits those style distances. A future
+explicit local-unit Inspector mode is outside this increment.
+
+## Shared duplicate command
+
+See [the local duplicate contract](SHARED_DUPLICATION_COMMAND_V1.md). The existing `node.duplicate` operation now uses the same default placement and trusted Editor-owned repeat state as the UI. This is an intentional local v1 behavior change: omitted offsets no longer imply `(24, 24)`, and successful copies select the new roots. Either explicit axis keeps the existing world-offset interpretation, including a missing other axis of `24`. No new endpoint, legacy selector, external actor authority, or clipboard access is introduced.
+
+## Existing import choices and remaining MCP gaps
+
+The UI default open flow creates a new copy and also supports an explicit append flow. These are existing UI capabilities, not newly added by this functionality batch. MCP `document.import` remains append-only. When independently granted, `workspace.importCopy` saves an independent FD/native-json or Sketch/FIG compatibility document without activating it; the returned opaque handle is opened separately through native-confirmed `workspace.open`. PDF import remains unimplemented. FIG compatibility is an isolated candidate with targeted parser/NDJSON/SQLite validation; actual browser Worker and external-client acceptance remain pending. See [the import contract](IMPORT_AND_LOCAL_OPERATION_CONTRACT_V1.md).
+
+Use the advertised `workspace.importCopy` schema with `rootHandle`, `format`, `mutationId` and exactly one native-JSON `content` or archive `base64`; keep the outer document/session/revision fences. The host generates the new UUID and commits create-only revision 1, then verifies saved readback. The active document, page, selection and editor undo remain unchanged. Dirty authored content may remain, while pending input, active gestures and busy/stale state reject. An unknown storage outcome or unverified readback blocks new workspace/settings mutations in that grant; exact receipt replay and reads remain available. Do not switch IDs after uncertainty or treat cancellation as rollback. See [the workspace contract](workspace-mcp.md) for completion codes and reconciliation boundaries.

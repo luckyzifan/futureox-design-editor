@@ -18,7 +18,7 @@ test('tool catalog derives actual operation schemas and conservative annotations
   assert.equal(read.name, 'design_document_inspect')
   assert.equal(read.annotations.readOnlyHint, true)
   assert.equal(write.inputSchema.properties.params, capabilities.methods[1].inputSchema)
-  assert.deepEqual(write.inputSchema.required, ['documentId', 'session', 'expectedRevision'])
+  assert.deepEqual(write.inputSchema.required, ['documentId', 'session', 'expectedRevision', 'params'])
   assert.equal(write.annotations.destructiveHint, true)
 })
 test('read-only bridge never advertises or invokes writes', async () => {
@@ -61,4 +61,39 @@ test('cancellation before execution cannot mutate', async () => {
   const controller = new AbortController(); controller.abort(new Error('cancelled'))
   await assert.rejects(backend.callTool('design_document_inspect', {}, { signal: controller.signal }), /cancelled/)
   assert.equal(calls.length, 0)
+})
+
+// Helper tests only: real registry branches are exercised in schema-contract-ndjson.test.ts.
+test('omitted params follow the empty-object subset and unknown assertions fail closed', async () => {
+  const schemas = [
+    [{ type: 'object', properties: {}, additionalProperties: false }, false],
+    [{ type: 'object', required: ['id'] }, true],
+    [{ type: 'object', anyOf: [{ type: 'object', required: ['a'] }, { type: 'object', required: ['b'] }] }, true],
+    [{ type: 'object', anyOf: [{ type: 'object', required: ['a'] }, { type: 'object' }] }, false],
+    [{ type: 'object', required: ['a'], anyOf: [{ type: 'object' }] }, true],
+    [{ type: 'object', minProperties: 1 }, true],
+    [{ type: 'object', allOf: [{ required: ['id'] }] }, true],
+  ]
+  for (const [inputSchema, required] of schemas) {
+    let calls = 0
+    const backend = new OperationBackend({ capabilities: { version: 1, methods: [{ name: 'inspect', description: 'Inspect', mutates: false, inputSchema }] }, execute: () => { calls++; return { ok: true } } })
+    assert.equal(backend.listTools()[0].inputSchema.required.includes('params'), required)
+    assert.equal((await backend.callTool('design_inspect', {})).ok, !required)
+    assert.equal(calls, required ? 0 : 1)
+  }
+})
+test('published fence bounds match safe-integer wrapper validation', async () => {
+  const { backend, calls } = fixture()
+  for (const key of ['session', 'expectedRevision']) {
+    assert.equal(backend.listTools()[0].inputSchema.properties[key].maximum, Number.MAX_SAFE_INTEGER)
+    assert.equal((await backend.callTool('design_document_inspect', { [key]: Number.MAX_SAFE_INTEGER + 1 })).error.code, 'invalid_params')
+  }
+  assert.equal(calls.length, 0)
+})
+
+test('safe integer maximum is forwarded rather than rejected as a wrapper type error', async () => {
+  const { backend, calls } = fixture()
+  assert.equal((await backend.callTool('design_document_inspect', { session: Number.MAX_SAFE_INTEGER, expectedRevision: Number.MAX_SAFE_INTEGER })).ok, true)
+  assert.equal(calls[0].request.session, Number.MAX_SAFE_INTEGER)
+  assert.equal(calls[0].request.expectedRevision, Number.MAX_SAFE_INTEGER)
 })

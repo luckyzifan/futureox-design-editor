@@ -4,6 +4,7 @@ import { GpuRenderer } from './renderer'
 import { WebGpuDriver } from './webgpu'
 import { WebGlDriver } from './webgl'
 import { figma_unpremultiply_rgba8 } from '../../generated/design-kernel/design_kernel'
+import { validGpuWorkingBudgetMiB } from '../render-policy'
 export async function createGpu(
   backend: 'webgpu' | 'webgl2',
   optimized = true,
@@ -15,7 +16,10 @@ export async function createGpu(
   imageMips = false,
   imageAtlas = false,
   displayMath = false,
+  gpuWorkingBudgetMiB?: number,
 ) {
+  if (gpuWorkingBudgetMiB !== undefined && !validGpuWorkingBudgetMiB(gpuWorkingBudgetMiB))
+    throw Error('Invalid GPU working budget')
   return new GpuRenderer(
     backend === 'webgpu'
       ? await WebGpuDriver.create(floating, hdr, !!color, optimized, displayMath)
@@ -25,6 +29,7 @@ export async function createGpu(
     imageLoader,
     imageMips,
     imageAtlas,
+    gpuWorkingBudgetMiB,
   )
 }
 export function straightAlpha(bytes: Uint8Array, software = false) {

@@ -1,3 +1,4 @@
+import { FIG_WARNING_LIMITS, FIG_WARNINGS_TRUNCATED } from './import-warnings'
 import type { ImportedDesign } from './import-svg'
 import { validateDocument, type DesignDocument } from './model'
 
@@ -15,6 +16,18 @@ export function importFileInWorker(
     validateDocument(result.document)
     if (!Array.isArray(result.warnings) || result.warnings.some((warning) => typeof warning !== 'string'))
       throw new Error('文件导入兼容报告无效')
+    if (format === 'fig') {
+      if (result.warnings.length > FIG_WARNING_LIMITS.count ||
+          result.warnings.some(warning => warning.length > FIG_WARNING_LIMITS.messageBytes))
+        throw new Error('FIG 兼容报告超限')
+      const encoder = new TextEncoder()
+      const sizes = result.warnings.map(warning => encoder.encode(warning).length)
+      if (sizes.length > FIG_WARNING_LIMITS.count || sizes.some(size => size > FIG_WARNING_LIMITS.messageBytes) ||
+          sizes.reduce((sum, size) => sum + size, 0) > FIG_WARNING_LIMITS.totalBytes ||
+          (result.droppedOccurrences !== undefined && (!Number.isSafeInteger(result.droppedOccurrences) || result.droppedOccurrences < 1)) ||
+          (result.droppedOccurrences !== undefined) !== result.warnings.includes(FIG_WARNINGS_TRUNCATED))
+        throw new Error('FIG 兼容报告超限或截断元数据无效')
+    }
     return result
   }, signal)
 }
@@ -54,6 +67,7 @@ function runFileWorker<T>(
     worker.onerror = (event) => finish(new Error(event.message || '文件导入进程失败'))
     worker.onmessageerror = () => finish(new Error('文件导入响应无法读取'))
     worker.onmessage = (event) => {
+      if (settled) return
       try {
         if (event.data.error) throw new Error(event.data.error)
         finish(undefined, decode(event.data))

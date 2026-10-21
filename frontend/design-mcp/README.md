@@ -31,9 +31,11 @@ Start Codex with the current session variables already present. This example for
 
 ## Explicit protocol compatibility
 
-Pinned to the released **MCP 2025-11-25** handshake-based revision. This does not claim current-protocol parity: the official versioning page listed 2026-07-28 as current when prepared. Initialize negotiates `2025-11-25`; clients unable to support it should disconnect.
+The adapter implements two explicit stdio modes. Legacy mode keeps the **2025-11-25** handshake: `initialize`, then `notifications/initialized`, followed by ordinary requests. Its negotiated version remains `2025-11-25`; clients unable to support it should disconnect.
 
-Implemented: `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, empty `resources/templates/list`, `prompts/list`, `prompts/get`, `notifications/cancelled`, EOF and signal shutdown. Tools/results use JSON Schema 2020-12-compatible schema metadata from the real registry; the shared API validates the actual published schema vocabulary and native model.
+The added modern mode uses the **2026-07-28** identifier from `src/modern-protocol.mjs`. Each request carries `params._meta["io.modelcontextprotocol/protocolVersion"]: "2026-07-28"` and an object at `params._meta["io.modelcontextprotocol/clientCapabilities"]`; metadata is validated per request and never grants access. `server/discover` is a backend-free discovery route. Modern mode does not use `initialize` or `ping`, and a stdio connection cannot mix the two eras. Modern results add `resultType: "complete"` and server metadata; catalog/resource responses use `ttlMs: 0` and `cacheScope: "private"`. The implementation and its tests are not a claim of universal current-client compatibility or official certification.
+
+Both modes implement `tools/list`, `tools/call`, `resources/list`, `resources/read`, empty `resources/templates/list`, `prompts/list`, `prompts/get`, `notifications/cancelled`, EOF and signal shutdown. Tools/results use JSON Schema 2020-12-compatible schema metadata from the real registry; the shared API validates the actual published schema vocabulary and native model. Modern export links are explicit resource handles and are omitted from `resources/list`; legacy mode retains its export listing. Both retain the same bounded process-local cache and terminal revocation boundary.
 
 Not advertised: HTTP, remote access, resource subscriptions, list-change notifications, sampling, elicitation, tasks, arbitrary code execution or a server-side AI model. Catalogs are bounded and returned whole; invented catalog cursors are rejected. Actual node/context query pagination belongs to the shared API with its revision-bound cursors.
 
@@ -124,9 +126,9 @@ Export tools are **resource-first**: `structuredContent.result` contains metadat
 
 `futureox-design://automation/capabilities` exposes real schemas and limits. Resources are actual generated HTML, CSS, SVG, native JSON, native `.fd` or `.sketch` files, plus asset/metadata manifests. Files remain inert; the adapter does not execute HTML/SVG. Small actual PNG/JPEG/WebP previews may be MCP images; larger previews use exact blob resources. There is no re-rendering, resizing or placeholder screenshot.
 
-The session-only export cache holds 16 artifacts / 32 MiB stored text or base64. Each resource must fit the cache and 32 MiB response frame with envelope reserve. All files for one export are admitted atomically. If they cannot fit, the tool returns `artifact_unavailable` with a narrow/split instruction; it never silently drops bytes or falls back to inline file payloads. Oldest entries are evicted, disconnect clears everything, and reading an expired URI returns `-32002`. This cache is an export snapshot, never a design source of truth.
+The session-only export cache holds 16 artifacts / 32 MiB stored text or base64. Each resource must fit the cache and 32 MiB response frame with envelope reserve. All files for one export are admitted atomically. If they cannot fit, the tool returns `artifact_unavailable` with a narrow/split instruction; it never silently drops bytes or falls back to inline file payloads. Oldest entries are evicted, and MCP disconnect clears everything. For a backend with a host-owned terminal signal, terminal disconnect or grant revocation also synchronously clears its associated server cache; `resources/list` and `resources/read` then return `-32000` (authorization session ended), not an empty success. An unknown or evicted URI in a live session returns `-32002`. A new authorized backend/server never restores an old cache. This cache is an export snapshot, never a design source of truth.
 
-Limits: 256 KiB default tool output; 32 MiB explicit file-transfer frames; 8 MiB ordinary requests; larger input only for advertised font/native-document/Sketch imports or direct atomic batches containing them. 8 active requests, 1 heavyweight input, 48 MiB pending input, 40 MiB stdout queue, 256-character IDs, 65,536 request IDs/session and 512 tools. Shared operation limits still apply to queries, previews and exports.
+Limits: 256 KiB default tool output; 32 MiB explicit file-transfer frames; 8 MiB ordinary requests. Larger input is admitted only for advertised font/native-document/Sketch imports, explicit clipboard paste operations, their supported direct atomic batches, or the standalone `workspace.importCopy` host operation. Host import-copy accepts native JSON/FD and compatibility Sketch/FIG with its own framing reserve; it is not a batch operation. There are 8 active requests, 1 heavyweight input, 48 MiB pending input, 40 MiB stdout queue, 256-character IDs, a 65,536-request session budget and 512 tools. Legacy request IDs cannot be reused; modern IDs cannot overlap an outstanding request. Shared operation limits still apply to queries, previews and exports.
 
 Adapter timeout is 60 seconds; the desktop may impose a shorter deadline. Cancellation propagates and suppresses the MCP reply, but cannot undo a committed mutation. Inspect revision/history before retrying after timeout/disconnect. Work that ignores cancellation occupies its bounded slot until settlement/session close. Backpressure can close a session rather than grow memory indefinitely.
 
@@ -137,11 +139,15 @@ cd frontend/design-mcp
 npm run check
 npm test                 # protocol/client/subprocess tests; no listener
 npm run test:integration # real temporary Unix sockets + spawned stdio CLI
+npm run test:modern      # production modern-protocol dispatch with test backends
+npm run test:modern:official # requires MCP_OFFICIAL_SDK_ROOT; actual SDK/stdio, fixture backend
 cd ../design-client
 node_modules/.bin/vitest run src/automation/mcp-e2e.test.ts
 ```
 
 Real-Editor tests use existing WASM/font setup: native node creation, layout/text fine-editing, checks, HTML/CSS/SVG/resources, JSON, true `.fd` and Sketch resource roundtrips, full 17.77 MB font export isolation, stale-write/rollback/undo boundaries and 3,000-node paginated queries. No GPU renderer is launched. Some sandboxes reject Unix `listen` with `EPERM`; injected streams are not a substitute for OS-level socket verification. Live desktop opt-in/clipboard, Windows/macOS sockets, real preview capture and actual Codex acceptance require on-device verification.
+
+The ordinary integration suite creates real temporary Unix sockets and a stdio CLI subprocess against a deterministic bridge fixture; it does not launch Electron or a real Editor/SQLite backend. Official-SDK stdio tests are separate and skip when `MCP_OFFICIAL_SDK_ROOT` is absent; a skip is not acceptance. See the [functional merge record](../../testing/verification-functional-merge-20261021/README.md) for current local runs and the imported historical results.
 
 ### Reproduce the original example
 
@@ -173,7 +179,7 @@ native MCP image content; large previews remain full resolution in `resources/re
 Clients should display that image to the model for visual feedback, not paste raw
 base64 into text. If a client cannot display images/resources, report that visual
 inspection is blocked. Context or geometry checks alone are not a visual review.
-Old resources retain the original revision until eviction or MCP disconnect.
+While the authorization session remains live, old resources retain the original revision until eviction. They also expire on MCP disconnect or the associated backend's terminal disconnect/revocation.
 
 The permitted CPU regression, actual agent-selected visual refinement and native
 acceptance checklist are documented in
@@ -182,3 +188,10 @@ and GPU presentation were not exercised by that CPU-only harness. The manual
 read-only native helper is `examples/capture-native-preview.mjs`; its default help
 path does not access credentials or start native work. Run its explicit `--run`
 mode only in an authorized desktop environment with an already-enabled bridge.
+
+
+### Export snapshot lifetime and revocation
+
+A successful export authorizes the returned immutable snapshot; resource reads never fetch a later document revision. The server-side cache is bounded by both the MCP session and, when supplied by the trusted backend, its authorization/connection lifetime. The current socket backend is terminal after any `fail()` path and never automatically reconnects or chooses a new editor. Bridge disable, document/session replacement and desktop closure destroy that socket and therefore expire its cached exports once that terminal event is observed. No new authentication system, per-URI credentials, network service or reconnect authority is introduced. Backends without this optional lifetime signal retain their existing MCP-session-only lifecycle.
+
+Revocation prevents subsequent cache reads and late results from repopulating it. Both modes recheck the backend's terminal authorization signal immediately before writing successful `tools/list`, `tools/call`, `resources/list` and `resources/read` frames; a still-queued success becomes an ended-session error. Modern mode also checks the request owner and cancellation at final write. Bytes already handed to stdout, delivered to the caller or independently saved cannot be recalled. The stdio MCP session remains available to return an explicit ended-session error. Re-enable requires a new authorized backend/server; old resource URIs do not carry over. Cancellation or lost responses still cannot undo an accepted mutation, so inspect/reconcile state rather than retry blindly.

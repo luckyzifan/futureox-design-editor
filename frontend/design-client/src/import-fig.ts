@@ -1,4 +1,7 @@
-import { Inflate, Unzip, UnzipInflate } from 'fflate'
+import { figArchive, inflateFigDeflate } from './import-fig-archive'
+export { figArchive } from './import-fig-archive'
+import { preflightFigZstd } from './import-fig-zstd'
+import { boundedImportWarnings } from './import-warnings'
 import { Decompress } from 'fzstd'
 import { ByteBuffer, decodeBinarySchema, type Definition, type Schema } from 'kiwi-schema'
 import {
@@ -22,13 +25,15 @@ import { importFigTextRuns } from './import-fig-text'
 import { figImageAdjust } from './import-fig-image'
 
 const MAX = 64 * 1024 * 1024
-function collector(limit = MAX) {
+function collector(limit = MAX, compressedLength?: number) {
   const chunks: Uint8Array[] = []
   let size = 0
   return {
     push: (x: Uint8Array) => {
       size += x.length
       if (size > limit) throw new Error('导入解压数据超限')
+      if (compressedLength !== undefined && size > 4096 && size > compressedLength * 200)
+        throw new Error('FIG 分段展开比例超过 200')
       chunks.push(x)
     },
     bytes: () => {
@@ -43,66 +48,27 @@ function collector(limit = MAX) {
   }
 }
 function inflate(bytes: Uint8Array, limit = MAX) {
-  const c = collector(limit),
+  const c = collector(limit, bytes.length),
     zstd = bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd
+  if (bytes[0] >= 0x50 && bytes[0] <= 0x5f && bytes[1] === 0x2a && bytes[2] === 0x4d && bytes[3] === 0x18)
+    throw new Error('FIG Zstd 不支持跳过帧')
+  const declared = zstd ? preflightFigZstd(bytes, limit) : undefined
+  if (declared !== undefined && declared > 4096 && declared > bytes.length * 200)
+    throw new Error('FIG 分段声明展开比例超过 200')
   if (zstd) {
-    if (bytes.length < 6) throw new Error('Zstd 帧头不完整')
-    const flags = bytes[4],
-      single = !!(flags & 32),
-      sizeFlag = flags >>> 6
-    let at = 5
-    if (!single) {
-      const descriptor = bytes[at++],
-        base = 2 ** (10 + (descriptor >>> 3))
-      if (base + (base / 8) * (descriptor & 7) > limit) throw new Error('Zstd 历史窗口超限')
-    }
-    at += [0, 1, 2, 4][flags & 3]
-    const length = sizeFlag ? [0, 2, 4, 8][sizeFlag] : single ? 1 : 0
-    if (at + length > bytes.length) throw new Error('Zstd 内容长度缺失')
-    let size = 0n
-    for (let i = 0; i < length; i++) size |= BigInt(bytes[at + i]) << BigInt(i * 8)
-    if (length === 2) size += 256n
-    if (size > BigInt(limit)) throw new Error('Zstd 内容长度超限')
-  }
-  const stream = zstd ? new Decompress(c.push) : new Inflate(c.push)
-  for (let i = 0; i < bytes.length; i += 1024)
-    stream.push(bytes.subarray(i, i + 1024), i + 1024 >= bytes.length)
-  return c.bytes()
-}
-export function figArchive(bytes: Uint8Array) {
-  const files: Record<string, Uint8Array> = Object.create(null)
-  if (new TextDecoder().decode(bytes.subarray(0, 8)) === 'fig-kiwi') {
-    files['canvas.fig'] = bytes
-    return files
-  }
-  let total = 0,
-    count = 0
-  const unzip = new Unzip((file) => {
-    if (++count > 2048 || file.name.split('/').includes('..') || file.name.startsWith('/'))
-      throw new Error('无效 FIG 归档路径或文件数量')
-    if (file.originalSize !== undefined && file.originalSize > MAX)
-      throw new Error('FIG 归档项过大')
-    if (file.name !== 'canvas.fig' && !file.name.startsWith('images/')) return
-    const c = collector()
-    file.ondata = (error, data, final) => {
-      if (error) throw error
-      total += data.length
-      if (total > MAX) throw new Error('FIG 归档展开超过 64 MB')
-      c.push(data)
-      if (final) files[file.name] = c.bytes()
-    }
-    file.start()
-  })
-  unzip.register(UnzipInflate)
-  for (let i = 0; i < bytes.length; i += 4096)
-    unzip.push(bytes.subarray(i, i + 4096), i + 4096 >= bytes.length)
-  if (!files['canvas.fig']) throw new Error('FIG 归档缺少 canvas.fig')
-  return files
+    const stream = new Decompress(c.push)
+    for (let i = 0; i < bytes.length; i += 1024)
+      stream.push(bytes.subarray(i, i + 1024), i + 1024 >= bytes.length)
+  } else inflateFigDeflate(bytes, limit, c.push)
+  const output = c.bytes()
+  if (declared !== undefined && output.length !== declared) throw new Error('Zstd 内容长度不符')
+  return output
 }
 /** Interpret the embedded schema. Imported names are data, never generated JS. */
 export function decodeKiwi(schema: Schema, bytes: Uint8Array): Record<string, any> {
+  if (schema.definitions.length > 4096) throw new Error('FIG schema 过大')
   const defs = new Map(schema.definitions.map((d) => [d.name, d]))
-  if (defs.size > 4096) throw new Error('FIG schema 过大')
+  if (defs.size !== schema.definitions.length) throw new Error('FIG schema 类型名称重复')
   const bb = new ByteBuffer(bytes)
   let work = 0
   const read = (type: string, depth: number): any => {
@@ -171,10 +137,13 @@ export function decodeFig(bytes: Uint8Array) {
     const length = view.getUint32(offset, true)
     offset += 4
     if (!length || offset + length > canvas.length) throw new Error('FIG 分段长度无效')
-    parts.push(inflate(canvas.subarray(offset, offset + length), i === 0 ? 4 * 1024 * 1024 : MAX))
+    parts.push(canvas.subarray(offset, offset + length))
     offset += length
   }
-  return { data: decodeKiwi(decodeBinarySchema(parts[0]), parts[1]), files }
+  if (offset !== canvas.length) throw new Error('FIG 分段存在尾随数据')
+  const schema = inflate(parts[0], 4 * 1024 * 1024)
+  const data = inflate(parts[1], MAX)
+  return { data: decodeKiwi(decodeBinarySchema(schema), data), files }
 }
 const guid = (g: any) => (typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : '')
 const rgb = (c: any) =>
@@ -405,7 +374,7 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent?: FigLayoutRecor
 export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesign {
   const { data, files } = decodeFig(bytes),
     doc = blank(name),
-    warnings = new Set<string>(),
+    warnings = boundedImportWarnings(),
     source: any[] = data.nodeChanges || []
   if (source.length > 20000) throw new Error('FIG 图层超过 20000 个')
   const records = new Map<string, any>()
@@ -732,5 +701,5 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     : 4
   if (Object.values(doc.nodes).some(n=>[...n.fills,...n.strokes.map(s=>s.paint)].some(p=>p.adjust))) doc.schemaVersion = 13
   if (Object.values(doc.nodes).some(n=>(n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) doc.schemaVersion = 15
-  return { document: doc, warnings: [...warnings] }
+  return { document: doc, ...warnings.result() }
 }

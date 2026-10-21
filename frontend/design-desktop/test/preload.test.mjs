@@ -135,12 +135,12 @@ test('command subscription strips IPC event, rejects invalid payloads and remove
   const observed = []
   const event = { sender: { dangerous: 'never expose' } }
   const unsubscribe = api.onCommand((...args) => observed.push(args))
-  const commands = ['copy-properties','paste-properties','select-matching','select-inverse','new', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection']
+  const commands = ['copy-properties','paste-properties','select-matching','select-inverse','new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection']
   for (const command of commands) {
     events.emit('design-desktop:command', event, command)
   }
   assert.deepEqual(observed, commands.map((command) => [command]))
-  for (const value of ['quit', 'exec', '', 'paste-over-selection ', 'Paste-over-selection', 'design-desktop:paste-over-selection', null, undefined, {}, { command: 'paste-over-selection' }, { toString: () => 'paste-over-selection' }, ['paste-over-selection'], ['open'], 1]) {
+  for (const value of ['quit', 'exec', 'new-page ', 'New-page', { command: 'new-page' }, '', 'paste-over-selection ', 'Paste-over-selection', 'design-desktop:paste-over-selection', null, undefined, {}, { command: 'paste-over-selection' }, { toString: () => 'paste-over-selection' }, ['paste-over-selection'], ['open'], 1]) {
     events.emit('design-desktop:command', event, value)
   }
   assert.equal(observed.length, commands.length)
@@ -192,6 +192,30 @@ test('render policy is captured from trusted preload argv and deeply frozen', ()
   assert.equal(api.renderPolicy.cpuOnly, true)
   assert.throws(() => { api.renderPolicy.cpuOnly = false }, TypeError)
   assert.equal(load(['?cpuOnly=true']).api.renderPolicy.cpuOnly, false)
+})
+
+test('GPU working budget is an optional immutable launch argument, separate from CPU policy', () => {
+  assert.deepEqual(Object.keys(load().api.renderPolicy), ['cpuOnly'])
+  assert.equal(Object.hasOwn(load().api.renderPolicy, 'gpuWorkingBudgetMiB'), false)
+  for (const value of [256, 1024, 4096]) {
+    const argv = [`--core-gpu-working-budget-mib=${value}`]
+    const { api } = load(argv)
+    assert.equal(api.renderPolicy.gpuWorkingBudgetMiB, value)
+    assert.equal(api.renderPolicy.cpuOnly, false)
+    assert.equal(Object.isFrozen(api.renderPolicy), true)
+    argv[0] = '--core-gpu-working-budget-mib=512'
+    assert.equal(api.renderPolicy.gpuWorkingBudgetMiB, value)
+    assert.throws(() => { api.renderPolicy.gpuWorkingBudgetMiB = 512 }, TypeError)
+  }
+  assert.equal(load(['--core-cpu-only', '--core-gpu-working-budget-mib=4096']).api.renderPolicy.cpuOnly, true)
+  assert.equal(Object.hasOwn(load(['?gpuWorkingBudgetMiB=4096']).api.renderPolicy, 'gpuWorkingBudgetMiB'), false)
+})
+
+test('malformed or duplicate host GPU budget arguments reject before exposing a bridge', () => {
+  for (const value of ['', 'auto', '256 ', '256\n', '4096\r\n', '0256', '+256', '-256', '256.0', '1e3', '0x100', '255', '4097', 'Infinity'])
+    assert.throws(() => load([`--core-gpu-working-budget-mib=${value}`]), /core-gpu-working-budget-mib.*256.*4096/)
+  assert.throws(() => load(['--core-gpu-working-budget-mib']), /core-gpu-working-budget-mib.*256.*4096/)
+  assert.throws(() => load(['--core-gpu-working-budget-mib=256', '--core-gpu-working-budget-mib=4096']), /must occur once/)
 })
 
 

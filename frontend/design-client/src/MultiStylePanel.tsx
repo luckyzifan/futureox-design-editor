@@ -1,6 +1,6 @@
 import type { Editor } from './engine'
 import { blendModes, paint, stroke, effect, type DesignNode, type Effect } from './model'
-import { propertyUnitReader, type PropertyUnitReader } from './property-units'
+import { propertyUnitReader, styleUnitDescription, type PropertyUnitReader } from './property-units'
 import { commonValue } from './selection-properties'
 import { MixedNumberField } from './MixedNumberField'
 import { DraftInput } from './DraftInput'
@@ -39,7 +39,7 @@ export function MultiStylePanel({ editor, nodes, field, readUnits = propertyUnit
         return typeof v === 'number' ? v * (scaled ? readUnits(selected[i].id).style : 1) * (percent ? 100 : 1) : undefined
       })
       if (values.every(v => v === undefined)) return null
-      return <MixedNumberField key={path} label={label} value={commonValue(values)} min={min} max={max}
+      return <MixedNumberField key={path} unitDescription={scaled ? styleUnitDescription(editor.state.doc, selected.map(n => n.id), editor.parentMap()) : undefined} label={label} value={commonValue(values)} min={min} max={max}
         onChange={v => update(path, percent ? v / 100 : v, scaled)}/>
     }
     const choice = (path: string, label: string, options: readonly (readonly [string, string])[]) => {

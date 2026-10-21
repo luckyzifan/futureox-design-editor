@@ -1,10 +1,11 @@
 import { afterEach, expect, test, vi } from 'vitest'
+import { setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { WebGpuDriver } from './webgpu'
 import { GpuRenderer } from './renderer'
 import { certifyExactImageRange, imageXTablePlanRange, planExactImageXTable, type ExactImageXTablePlan } from './exact-image-x-table'
 import type { Driver, Texture } from './types'
 
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals() })
+afterEach(() => { setGpuDiagnosticSink(undefined); vi.unstubAllEnvs(); vi.unstubAllGlobals() })
 function fixture(width = 4, height = 3, imageWidth = 8, imageHeight = 8, rgba = [1, 1, 1, 1]) {
   vi.stubEnv('VITE_DESIGN_EXACT_IMAGE_X_TABLE', '1')
   vi.stubGlobal('GPUBufferUsage', { UNIFORM: 1, COPY_DST: 2, STORAGE: 4 })
@@ -25,7 +26,7 @@ function fixture(width = 4, height = 3, imageWidth = 8, imageHeight = 8, rgba = 
   const buffers: any[] = [], writes: Uint32Array[] = []
   const pipeline = { encodeBuild: vi.fn(), encodeResolve: vi.fn() }
   const driver = Object.assign(Object.create(WebGpuDriver.prototype), {
-    managed: true, displayMath: false, disposed: false, lost: false, resourceEpoch: 7, frameScratchBytes: 0,
+    managed: true, displayMath: false, disposed: false, lost: false, resourceEpoch: 7, completedResourceEpoch: 0, frameScratchBytes: 0,
     imageTables: new Map(), preparingImageTables: new Map(), imageTablePipeline: compiling,
     imageRanges: new WeakMap([[image, range]]), imageAxisPrograms: new WeakMap(),
     textures: new Set([image]), replayParameterTextures: new Set(), encoder: {}, closeOver() {},
@@ -39,7 +40,11 @@ function fixture(width = 4, height = 3, imageWidth = 8, imageHeight = 8, rgba = 
   return { driver, renderer, image, resource, range, plan, axes, buffers, writes, pipeline, width, height,
     ready() { resolvePipeline(pipeline) }, fail(error = Error('pipeline failed')) { rejectPipeline(error) } }
 }
-test('forced eviction cannot remove a source during async preparation, active use or retirement fence', async () => {
+function checkpoint(f: ReturnType<typeof fixture>, wait: () => Promise<void> = async () => {}, completedPoolEpoch?: number) {
+  Object.assign(f.driver, { submitCommands: vi.fn(), waitForQueue: vi.fn(wait) })
+  return WebGpuDriver.prototype.checkpoint.call(f.driver, 'admission', undefined, completedPoolEpoch)
+}
+test('logical retirement adds no fence and retains source, buffers and scratch bytes until a real completion boundary', async () => {
   const f = fixture(), preparing = f.driver.prepareImageTable(f.image, f.plan, 256 * 1024 * 1024)
   expect(f.driver.hasActiveImageTableSource(f.image)).toBe(true)
   f.renderer.evictImages(f.image.bytes, true)
@@ -48,17 +53,137 @@ test('forced eviction cannot remove a source during async preparation, active us
   expect(table).toBeDefined(); expect(f.pipeline.encodeBuild).toHaveBeenCalledOnce()
   f.renderer.evictImages(f.image.bytes, true)
   expect(f.resource.destroy).not.toHaveBeenCalled()
+  const bytes = f.driver.scratchBytes
+  await f.driver.retireImageTable(table)
+  expect(f.driver.checkpoint).not.toHaveBeenCalled()
+  expect(f.driver.scratchBytes).toBe(bytes)
+  expect(f.driver.retiredImageTableBytes).toBe(table.bytes)
+  expect(f.driver.hasActiveImageTableSource(f.image)).toBe(true)
+  expect(() => f.driver.resolveImageTable({} as Texture, table, 0, 0)).toThrow('Invalid exact image table window')
   let complete!: () => void
-  ;(f.driver as any).checkpoint = vi.fn(() => new Promise<void>(resolve => { complete = resolve }))
-  const retiring = f.driver.retireImageTable(table)
+  const retiring = checkpoint(f, () => new Promise<void>(resolve => { complete = resolve }))
   f.renderer.evictImages(f.image.bytes, true)
   expect(f.resource.destroy).not.toHaveBeenCalled(); expect(f.buffers.every(buffer => !buffer.destroy.mock.calls.length)).toBe(true)
   complete(); await retiring
   expect(f.driver.hasActiveImageTableSource(f.image)).toBe(false)
+  expect(f.driver.scratchBytes).toBe(0)
+  expect(f.driver.retiredImageTableBytes).toBe(0)
   expect(f.buffers.every(buffer => buffer.destroy.mock.calls.length === 1)).toBe(true)
   f.renderer.evictImages(f.image.bytes, true)
   expect(f.resource.destroy).toHaveBeenCalledOnce(); expect(f.renderer.images.has('image')).toBe(false)
   expect(f.renderer.bytes).toBe(0)
+})
+test.each(['rejection', 'device-loss'] as const)('a %s at the completion boundary preserves all retired table owners', async failure => {
+  const f = fixture(), preparing = f.driver.prepareImageTable(f.image, f.plan, 256 * 1024 * 1024)
+  f.ready(); const table = (await preparing)!
+  await f.driver.retireImageTable(table)
+  const bytes = f.driver.scratchBytes
+  const wait = async () => {
+    if (failure === 'rejection') throw Error('failed queue fence')
+    f.driver.lost = true
+  }
+  await expect(checkpoint(f, wait)).rejects.toThrow(failure === 'rejection' ? 'failed queue fence' : 'GPU 设备已丢失')
+  expect(f.driver.scratchBytes).toBe(bytes)
+  expect(f.driver.hasActiveImageTableSource(f.image)).toBe(true)
+  expect(f.buffers.every(buffer => !buffer.destroy.mock.calls.length)).toBe(true)
+  expect((f.driver as any).imageTables.has(table)).toBe(true)
+})
+test('a completed prior-frame pool proof submits but cannot collect current retired table reads', async () => {
+  const f = fixture(), preparing = f.driver.prepareImageTable(f.image, f.plan, 256 * 1024 * 1024)
+  f.ready(); const table = (await preparing)!
+  await f.driver.retireImageTable(table); f.driver.completedResourceEpoch = 6
+  await checkpoint(f, async () => { throw Error('Completion wait was not expected') }, 6)
+  expect((f.driver as any).submitCommands).toHaveBeenCalledOnce()
+  expect((f.driver as any).waitForQueue).not.toHaveBeenCalled()
+  expect(f.driver.scratchBytes).toBe(table.bytes)
+  expect(f.driver.hasActiveImageTableSource(f.image)).toBe(true)
+  expect(f.buffers.every(buffer => !buffer.destroy.mock.calls.length)).toBe(true)
+})
+test('a completion snapshot collects only tables retired before submission and collection is idempotent', async () => {
+  const f = fixture(), firstPreparation = f.driver.prepareImageTable(f.image, f.plan, 256 * 1024 * 1024)
+  f.ready(); const first = (await firstPreparation)!, second = (await f.driver.prepareImageTable(f.image, f.plan, 256 * 1024 * 1024))!
+  await f.driver.retireImageTable(first)
+  let complete!: () => void
+  const waiting = checkpoint(f, () => new Promise<void>(resolve => { complete = resolve }))
+  await f.driver.retireImageTable(second)
+  complete(); await waiting
+  expect(f.driver.scratchBytes).toBe(second.bytes)
+  expect((f.driver as any).imageTables.has(first)).toBe(false)
+  expect((f.driver as any).imageTables.has(second)).toBe(true)
+  expect(f.buffers.slice(0, 4).every(buffer => buffer.destroy.mock.calls.length === 1)).toBe(true)
+  expect(f.buffers.slice(4).every(buffer => !buffer.destroy.mock.calls.length)).toBe(true)
+  ;(f.driver as any).collectRetiredImageTables([first])
+  expect(f.buffers.slice(0, 4).every(buffer => buffer.destroy.mock.calls.length === 1)).toBe(true)
+  await checkpoint(f)
+  expect(f.driver.scratchBytes).toBe(0)
+  expect(f.driver.hasActiveImageTableSource(f.image)).toBe(false)
+})
+test('finish snapshot closes active handles without reclaiming storage or source ownership before completion', async () => {
+  const f = fixture(), preparing = f.driver.prepareImageTable(f.image, f.plan, 256 * 1024 * 1024)
+  f.ready(); const table = (await preparing)!
+  expect((f.driver as any).retiredImageTableSnapshot()).toEqual([])
+  const finishing = (f.driver as any).retiredImageTableSnapshot(true)
+  expect(finishing).toEqual([table])
+  expect(() => f.driver.resolveImageTable({} as Texture, table, 0, 0)).toThrow('Invalid exact image table window')
+  expect(f.driver.scratchBytes).toBe(table.bytes)
+  expect(f.driver.hasActiveImageTableSource(f.image)).toBe(true)
+  expect(f.buffers.every(buffer => !buffer.destroy.mock.calls.length)).toBe(true)
+  await checkpoint(f)
+  expect(f.driver.scratchBytes).toBe(0)
+})
+test('real allocation pressure drains retired tables even below the maintenance threshold with no pool or uploads', async () => {
+  const f = fixture(), preparing = f.driver.prepareImageTable(f.image, f.plan, 256 * 1024 * 1024)
+  f.ready(); const table = (await preparing)!
+  await f.driver.retireImageTable(table)
+  f.renderer.scene = {}; f.renderer.bytes = f.image.bytes + table.bytes
+  const before = f.renderer.bytes, required = f.renderer.frameBudget - f.image.bytes
+  let complete!: () => void
+  ;(f.driver as any).checkpoint = vi.fn(() => checkpoint(f, () => new Promise<void>(resolve => { complete = resolve })))
+  setGpuDiagnosticSink(() => {})
+  const pressure = f.renderer.reclaimScratch(required)
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+  expect((f.driver.checkpoint as any).mock.calls[0][1]).toMatchObject({
+    admissionPressure: 1, admissionRetiredKinds: 16, admissionReclaimableBytes: table.bytes,
+    admissionPoolCount: 0, admissionUploadCount: 0,
+  })
+  expect(f.renderer.bytes).toBe(before)
+  expect(f.driver.scratchBytes).toBe(table.bytes)
+  expect(f.buffers.every(buffer => !buffer.destroy.mock.calls.length)).toBe(true)
+  complete(); await pressure
+  expect(f.renderer.bytes).toBe(f.image.bytes)
+  expect(f.driver.scratchBytes).toBe(0)
+  expect(f.renderer.overBudget(required)).toBe(false)
+  expect(f.resource.destroy).not.toHaveBeenCalled()
+})
+test.each(['rejection', 'device-loss'] as const)('failed %s during pressure preserves retired scratch accounting and all source owners', async failure => {
+  const f = fixture(), preparing = f.driver.prepareImageTable(f.image, f.plan, 256 * 1024 * 1024)
+  f.ready(); const table = (await preparing)!
+  await f.driver.retireImageTable(table)
+  f.renderer.scene = {}; f.renderer.bytes = f.image.bytes + table.bytes
+  const before = f.renderer.bytes, required = f.renderer.frameBudget - f.image.bytes
+  ;(f.driver as any).checkpoint = vi.fn(() => checkpoint(f, async () => {
+    if (failure === 'rejection') throw Error('failed queue fence')
+    f.driver.lost = true
+  }))
+  await expect(f.renderer.reclaimScratch(required)).rejects.toThrow(failure === 'rejection' ? 'failed queue fence' : 'GPU 设备已丢失')
+  expect(f.renderer.bytes).toBe(before)
+  expect(f.driver.scratchBytes).toBe(table.bytes)
+  expect(f.driver.hasActiveImageTableSource(f.image)).toBe(true)
+  expect(f.resource.destroy).not.toHaveBeenCalled()
+  expect(f.buffers.every(buffer => !buffer.destroy.mock.calls.length)).toBe(true)
+})
+test('an active table is not a retired pressure candidate and cannot be discarded to admit another allocation', async () => {
+  const f = fixture(), preparing = f.driver.prepareImageTable(f.image, f.plan, 256 * 1024 * 1024)
+  f.ready(); const table = (await preparing)!
+  f.renderer.scene = {}; f.renderer.bytes = f.image.bytes + table.bytes
+  const required = f.renderer.frameBudget - f.image.bytes
+  expect(f.driver.retiredImageTableBytes).toBe(0)
+  await f.renderer.reclaimScratch(required)
+  expect(f.driver.checkpoint).not.toHaveBeenCalled()
+  expect(f.renderer.overBudget(required)).toBe(true)
+  expect(f.driver.scratchBytes).toBe(table.bytes)
+  expect(f.driver.hasActiveImageTableSource(f.image)).toBe(true)
+  expect(f.resource.destroy).not.toHaveBeenCalled()
 })
 test('failed asynchronous preparation releases its source pin and allocates no GPU storage', async () => {
   const f = fixture(), preparing = f.driver.prepareImageTable(f.image, f.plan, 256 * 1024 * 1024)
@@ -155,6 +280,7 @@ test('renderer pins before forced pre-admission reclaim and transfers ownership 
   expect(f.renderer.pendingImageTableSources.size).toBe(0)
   expect(f.driver.hasActiveImageTableSource(f.image)).toBe(true)
   await f.driver.retireImageTable(table)
+  await checkpoint(f)
   f.renderer.evictImages(f.image.bytes, true); expect(f.resource.destroy).toHaveBeenCalledOnce()
 })
 test('pre-admission cancellation always releases the renderer pin', async () => {

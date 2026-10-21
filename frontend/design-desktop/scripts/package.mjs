@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { packageSourceFilter } from './package-source.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
@@ -20,7 +21,7 @@ const staging = path.join(root, 'dist/package-app')
 await rm(staging, { recursive: true, force: true })
 await mkdir(staging, { recursive: true })
 await cp(path.join(root, 'assets'), path.join(staging, 'assets'), { recursive: true })
-await cp(path.join(root, 'src'), path.join(staging, 'src'), { recursive: true })
+await cp(path.join(root, 'src'), path.join(staging, 'src'), { recursive: true, filter: packageSourceFilter(path.join(root, 'src')) })
 if (existsSync(path.join(root, 'dist/renderer/fidelity'))) throw new Error('Reference fixtures found in renderer output; rebuild before packaging')
 if (existsSync(path.join(root, 'dist/renderer/figma-blur-verify.html'))) throw new Error('Experimental verification page found in renderer output; rebuild before packaging')
 await cp(path.join(root, 'dist/renderer'), path.join(staging, 'renderer'), { recursive: true })

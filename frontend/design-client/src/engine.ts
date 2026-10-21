@@ -1,7 +1,10 @@
-import { planArrangement, translatedLocalTransform } from './commands/arrangement-plan'
-import { planChildReparent, planContainerPlacement, reparentedTransform } from './commands/structure-plan'
-import { applyChildListPlan, applyTransformPlan } from './commands/apply-plan'
-import { UI_SELECTION_PROFILE } from './commands/profiles'
+import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
+import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
+import { prepareLayoutAdd, applyLayoutAdd, prepareLayoutRemove, applyLayoutRemove, layoutCommandAdmission } from './commands/layout-command'
+import { reportPostcommitSubscriberError } from './postcommit-subscriber-error'
+import { SelectionCommandError, prepareSelectionArrangement, prepareSelectionWrap, configureSelectionWrapper,
+  applySelectionWrap, prepareSelectionUnwrap, applySelectionUnwrap } from './commands/selection-command'
+import { applyTransformPlan } from './commands/apply-plan'
 import { canvasActions } from './canvas-action-diagnostics'
 import { validColor } from './color'
 import { clearWholeTextRunColor } from './text'
@@ -18,7 +21,7 @@ import { interfacePreference } from './interface-preference'
 import { CameraState } from './camera-state'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasLayoutGrids,hasImageAdjusts,hasPatternTiles } from './model'
 import { inferred_layout_json } from './generated/design-kernel/design_kernel'
-import { selectionScaleFrame, scaleAnchor, scaleSelectionTransforms } from './selection-scale'
+import { prepareSelectionScale } from './selection-scale'
 import { canvasDropFrame, containingFrame, createCanvasDropIndex, type CanvasDropIndex } from './canvas-drop'
 import { duplicateGraph, type GraphCopy } from './duplicate-graph'
 import { appendDocument } from './append-document'
@@ -235,7 +238,7 @@ export class Editor {
       this.sessionGeneration === owner.session && this.state.version === owner.revision ? owner.history.doc : this.state.doc
   }
   get propertyPreviewActive() { return this.propertyPreview !== null }
-  private repeatedDuplicate: { roots: string[]; reference: Map<string, Matrix> } | null = null
+  private repeatedDuplicate: (DuplicationRepeat & { document: DesignDocument; session: number; revision: number; pageId: string }) | null = null
   private clipboard: {
     nodes: Record<string, DesignNode>
     roots: string[]
@@ -361,7 +364,10 @@ export class Editor {
       .some(key => next[key] !== this.panelState![key])) { this.panelState = next; this.panelPublishedAt = performance.now() }
     return this.panelState
   }
-  set(patch: Partial<EditorState>) {
+  set(patch: Partial<EditorState>) { this.setState(patch) }
+  /** Only accepted commit publications opt into this notification-error channel.
+   * Public set and all failures before the listener loop retain throwing behavior. */
+  private setState(patch: Partial<EditorState>, onSubscriberError?: (error: unknown) => void) {
     let propertyNavigationCurrent: (() => boolean) | undefined
     if (this.propertyPreview && !this.propertyPreviewWrite) {
       if (patch.doc && patch.doc !== this.state.doc) {
@@ -440,7 +446,14 @@ export class Editor {
     // Notification callbacks do not inherit the internal preview capability.
     const propertyWrite = this.propertyPreviewWrite
     this.propertyPreviewWrite = 0
-    try { for (const fn of this.listeners) fn() } finally { this.propertyPreviewWrite = propertyWrite }
+    try { for (const fn of this.listeners) fn() }
+    catch (error) { if (onSubscriberError) onSubscriberError(error); else throw error }
+    finally { this.propertyPreviewWrite = propertyWrite }
+  }
+  private publishCommittedState(patch: Partial<EditorState>) {
+    let failure: { error: unknown } | undefined
+    this.setState(patch, error => { failure = { error } })
+    return failure
   }
   notify(message: string) {
     this.set({ message })
@@ -530,6 +543,10 @@ export class Editor {
     this.undoStack.push({ page: h.page, selection: h.selection, label: h.label })
     this.undoStack = this.undoStack.slice(-result.undoDepth)
     this.redoStack = []
+    const repeat = this.repeatedDuplicate
+    this.repeatedDuplicate = repeat && repeat.document === h.doc && repeat.session === this.sessionGeneration &&
+      repeat.revision === this.state.version && canContinueDuplication(h.doc, result.document, repeat)
+      ? { ...repeat, document: result.document, revision: this.state.version + 1 } : null
     return result
   }
   change(
@@ -639,7 +656,7 @@ export class Editor {
       const committedSelection = selection ?? this.state.selection.filter((id) => !!committed.document.nodes[id])
       this.committedEditReceipts.set(result, Object.freeze({ ...editIdentity, document: committed.document, pageId: committedPage,
         selection: Object.freeze([...committedSelection]), canUndo: this.canUndo, canRedo: this.canRedo }))
-      this.set({
+      const notificationFailure = this.publishCommittedState({
         doc: committed.document,
         selection: committedSelection,
         version: editIdentity.revision,
@@ -647,6 +664,7 @@ export class Editor {
       })
       this.operationDiagnostics.finish(operation, 'committed', editIdentity.session, editIdentity.revision, committed.document, committedPage)
       this.publishEdit('edit', label, source, editIdentity)
+      if (notificationFailure) reportPostcommitSubscriberError(notificationFailure.error)
       return result
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -784,7 +802,7 @@ export class Editor {
     // State subscribers may synchronously load another session. Preserve the
     // committed edit's identity without changing notification/audit ordering.
     const editIdentity = { documentId: finalDocument.id, session: owner.session, revision: finalRevision }
-    this.set({ doc: finalDocument, version: finalRevision, message: owner.history.label })
+    const notificationFailure = this.publishCommittedState({ doc: finalDocument, version: finalRevision, message: owner.history.label })
     if (operation !== null) this.operationDiagnostics.finish(operation, changed ? 'committed' : 'unchanged',
       owner.session, owner.revision + Number(changed), finalDocument, owner.history.page)
     if (changed) this.publishEdit('edit', owner.history.label, 'user', editIdentity)
@@ -793,6 +811,7 @@ export class Editor {
       { fieldFamily: 9, inputPhase: 6, inputValid: verified, committedChanged: changed,
         intentResolvedComparison: verified ? 1 : 2, resolvedCommittedComparison: verified ? 1 : 2,
         selectionAfter: this.state.selection.length })
+    if (notificationFailure) reportPostcommitSubscriberError(notificationFailure.error)
     return !verified ? 'rejected' : changed ? 'committed' : 'unchanged'
   }
   cancelProperty(lease: PropertyPreviewLease): PropertyPreviewResult {
@@ -894,9 +913,14 @@ export class Editor {
       if (committed) {
         const editIdentity = { documentId: committed.document.id, session: this.sessionGeneration, revision: this.state.version + 1 }
         const committedPage = this.state.page
-        this.set({ doc: committed.document, version: editIdentity.revision, message: before.label })
+        const result = { status: 'committed' as const, revision: editIdentity.revision }
+        this.committedEditReceipts.set(result, Object.freeze({ ...editIdentity, document: committed.document, pageId: committedPage,
+          selection: Object.freeze([...this.state.selection]), canUndo: this.canUndo, canRedo: this.canRedo }))
+        const notificationFailure = this.publishCommittedState({ doc: committed.document, version: editIdentity.revision, message: before.label })
         if (operation !== null) this.operationDiagnostics.finish(operation, 'committed', editIdentity.session, editIdentity.revision, committed.document, committedPage)
         this.publishEdit('edit', before.label, 'user', editIdentity)
+        if (notificationFailure) reportPostcommitSubscriberError(notificationFailure.error)
+        return result
       } else { if (doc !== this.state.doc) this.set({ doc }); finish('unchanged') }
     } catch (error) {
       finish('rejected')
@@ -914,11 +938,11 @@ export class Editor {
     }
   }
   undo(source: EditorEditEvent['source'] = 'user') {
+    this.repeatedDuplicate = null
     // First Undo only cancels the owned draft, not the preceding authored edit.
     if (this.propertyPreview) { this.cancelProperty(this.propertyPreview.lease); return }
     const action = beginEditorAction(this, CanvasAction.undo, ActionSource.unknown, 228)
     try {
-    this.repeatedDuplicate = null
     this.cancel()
     const h = this.undoStack.at(-1)
     if (!h) return
@@ -937,7 +961,7 @@ export class Editor {
     const result = { status: 'committed' as const, revision: editIdentity.revision }
     this.committedEditReceipts.set(result, Object.freeze({ ...editIdentity, document: doc, pageId: h.page,
       selection: Object.freeze([...h.selection]), canUndo: this.canUndo, canRedo: this.canRedo }))
-    this.set({
+    const notificationFailure = this.publishCommittedState({
       ...h,
       doc,
       tool: 'select', commentSelection:undefined, commentDraft:undefined,
@@ -947,15 +971,16 @@ export class Editor {
     })
     this.operationDiagnostics.finish(operation, 'committed', editIdentity.session, editIdentity.revision, doc, h.page)
     this.publishEdit('undo', h.label, source, editIdentity)
+    if (notificationFailure) reportPostcommitSubscriberError(notificationFailure.error)
     return result
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
   redo(source: EditorEditEvent['source'] = 'user') {
+    this.repeatedDuplicate = null
     if (!this.settleOwnedPropertyPreview('edit')) return
     const action = beginEditorAction(this, CanvasAction.redo, ActionSource.unknown, 229)
     try {
-    this.repeatedDuplicate = null
     this.cancel()
     const h = this.redoStack.at(-1)
     if (!h) return
@@ -974,7 +999,7 @@ export class Editor {
     const result = { status: 'committed' as const, revision: editIdentity.revision }
     this.committedEditReceipts.set(result, Object.freeze({ ...editIdentity, document: doc, pageId: h.page,
       selection: Object.freeze([...h.selection]), canUndo: this.canUndo, canRedo: this.canRedo }))
-    this.set({
+    const notificationFailure = this.publishCommittedState({
       ...h,
       doc,
       tool: 'select', commentSelection:undefined, commentDraft:undefined,
@@ -984,6 +1009,7 @@ export class Editor {
     })
     this.operationDiagnostics.finish(operation, 'committed', editIdentity.session, editIdentity.revision, doc, h.page)
     this.publishEdit('redo', h.label, source, editIdentity)
+    if (notificationFailure) reportPostcommitSubscriberError(notificationFailure.error)
     return result
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
@@ -1002,6 +1028,7 @@ export class Editor {
     this.operationDiagnostics.endSession()
     this.diagnosticOperation = null
     this.sessionEpoch++
+    this.repeatedDuplicate = null
     const adoptedSession = this.sessionEpoch, adoptedVersion = this.state.version + 1
     if (this.revealRequest) this.consumeReveal(this.revealRequest.nonce)
     this.preservedViewSession=(preserveView || saved)?this.sessionEpoch:-1
@@ -1329,75 +1356,75 @@ export class Editor {
     if (result.status === 'rejected') throw new Error(result.message)
     return result
   }
-  autoLayout(requestedMode?: AutoLayout['mode']) {
-    const mode = requestedMode ?? 'horizontal'
-    const ids = this.topSelection()
+  autoLayout(requestedMode?: AutoLayout['mode'], selected?: readonly string[]) {
+    const originalDocument = this.state.doc.id, originalSession = this.sessionGeneration
+    if (!commitPendingEdits(this) || !this.settleOwnedPropertyPreview('edit')) return
+    if (this.state.doc.id !== originalDocument || this.sessionGeneration !== originalSession) throw new Error('Layout command document was superseded')
+    const ids = [...(selected ?? this.state.selection)], state = { fresh: true }
     if (!ids.length) return
-    if (ids.length === 1 && container(this.state.doc.nodes[ids[0]])) {
-      if (mode === 'none') {
-        this.change('移除自动布局', (doc) => {
-          const n = doc.nodes[ids[0]]
-          delete n.layout
-          n.sizing = { ...defaultSizing(), ...n.sizing, width: 'fixed', height: 'fixed' }
-          for (const id of n.children) {
-            const child = doc.nodes[id]
-            if (child.sizing) {
-              child.sizing.width = child.sizing.width === 'fill' ? 'fixed' : child.sizing.width
-              child.sizing.height = child.sizing.height === 'fill' ? 'fixed' : child.sizing.height
-            }
-          }
+    const documentId = this.state.doc.id, session = this.sessionGeneration, revision = this.state.version
+    const assertOwner = (doc: DesignDocument) => {
+      if (doc.id !== documentId || this.sessionGeneration !== session || this.state.version !== revision) throw new Error('Layout command owner was superseded')
+    }
+    if (requestedMode === undefined) {
+      // Preserve the established inference input geometry, including its 16-unit
+      // wrapper outset. This strategy is not the explicit MCP add intent.
+      const admitted = layoutCommandAdmission(this.state.doc, ids), roots = admitted.ids
+      if (roots.some(id => this.state.doc.nodes[id].booleanOperation || this.state.doc.nodes[id].mask)) throw new Error('Boolean and mask containers require dedicated operations')
+      if (roots.length === 1 && container(this.state.doc.nodes[roots[0]])) {
+        const result = this.change('设置自动布局', doc => {
+          assertOwner(doc); layoutCommandAdmission(doc, ids)
+          const inferred = JSON.parse(inferred_layout_json(JSON.stringify(doc), roots[0]))
+          const target = doc.nodes[roots[0]]
+          target.kind = 'frame'; target.layout = { ...defaultLayout(), ...target.layout, mode: 'horizontal' }
+          applyInferredFrame(doc, target.id, inferred)
         })
-        return
+        if (result.status === 'rejected') throw new Error(result.message)
+        return result
       }
-      const inferred = requestedMode === undefined ? JSON.parse(inferred_layout_json(JSON.stringify(this.state.doc), ids[0])) : undefined
-      this.change('设置自动布局', doc => {
-        const n=doc.nodes[ids[0]]
-        n.kind='frame';n.layout={...defaultLayout(),...n.layout,mode}
-        if(inferred)applyInferredFrame(doc,n.id,inferred)
-      })
-      return
-    }
-    if (mode === 'none') return
-    const parents = allParents(this.state.doc),
-      parent = parents.get(ids[0])!
-    if (ids.some((id) => parents.get(id) !== parent)) {
-      this.notify('请先选中同一容器中的图层')
-      return
-    }
-    const box = this.selectionBounds(),
-      pm = worldMatrix(this.state.doc, parent),
-      frame = node('frame', 0, 0, Math.max(1, box.width + 32), Math.max(1, box.height + 32))
-    frame.name = '自动布局'
-    frame.fills = []
-    frame.clip = false
-    frame.layout = { ...defaultLayout(), mode }
-    frame.sizing = { ...defaultSizing(), width: 'hug', height: 'hug' }
-    frame.transform = multiply(inverse(pm), translate(box.x - 16, box.y - 16))
-    this.change(
-      '创建自动布局',
-      (d) => {
-        const siblings = d.nodes[parent]?.children || d.pages.find((p) => p.id === parent)!.children
-        const at = Math.min(...ids.map((id) => siblings.indexOf(id)))
-        const world = multiply(pm, frame.transform)
-        frame.children = [...ids].sort((a, b) => {
-          const x = apply(inverse(world), apply(worldMatrix(d, a), { x: 0, y: 0 })),
-            y = apply(inverse(world), apply(worldMatrix(d, b), { x: 0, y: 0 }))
-          return mode === 'vertical' ? x.y - y.y : x.x - y.x
+      const parent = admitted.parents.get(roots[0])!
+      if (roots.some(id => admitted.parents.get(id) !== parent)) throw new Error('请先选中同一容器中的图层')
+      const chosen = new Set(roots), box = unionBounds(this.entries().filter(entry => chosen.has(entry.id)).map(entry => entry.bounds)),
+        pm = worldMatrix(this.state.doc, parent), frame = node('frame', 0, 0, Math.max(1, box.width + 32), Math.max(1, box.height + 32))
+      frame.name = '自动布局'; frame.fills = []; frame.clip = false
+      frame.layout = defaultLayout(); frame.sizing = { ...defaultSizing(), width: 'hug', height: 'hug' }
+      frame.transform = multiply(inverse(pm), translate(box.x - 16, box.y - 16))
+      const result = this.change('创建自动布局', doc => {
+        assertOwner(doc); layoutCommandAdmission(doc, ids)
+        const siblings = doc.nodes[parent]?.children || doc.pages.find(page => page.id === parent)!.children
+        const at = Math.min(...roots.map(id => siblings.indexOf(id))), world = multiply(pm, frame.transform)
+        frame.children = [...roots].sort((a, b) => {
+          const x = apply(inverse(world), apply(worldMatrix(doc, a), { x: 0, y: 0 })), y = apply(inverse(world), apply(worldMatrix(doc, b), { x: 0, y: 0 }))
+          return x.x - y.x
         })
-        for (const id of ids) {
-          d.nodes[id].transform = multiply(inverse(world), worldMatrix(d, id))
-          const index = siblings.indexOf(id)
-          if (index >= 0) siblings.splice(index, 1)
+        for (const id of roots) {
+          doc.nodes[id].transform = multiply(inverse(world), worldMatrix(doc, id))
+          const index = siblings.indexOf(id); if (index >= 0) siblings.splice(index, 1)
         }
-        d.nodes[frame.id] = frame
-        if (requestedMode === undefined) {
-          const inferred = JSON.parse(inferred_layout_json(JSON.stringify(d), frame.id))
-          applyInferredFrame(d,frame.id,inferred)
-        }
+        doc.nodes[frame.id] = frame
+        applyInferredFrame(doc, frame.id, JSON.parse(inferred_layout_json(JSON.stringify(doc), frame.id)))
         siblings.splice(at, 0, frame.id)
-      },
-      [frame.id],
-    )
+      }, [frame.id])
+      if (result.status === 'rejected') throw new Error(result.message)
+      return result
+    }
+    if (requestedMode === 'none') {
+      prepareLayoutRemove(this.state.doc, ids, state)
+      const result = this.change('移除自动布局', doc => { assertOwner(doc); applyLayoutRemove(doc, prepareLayoutRemove(doc, ids, state)) }, ids)
+      if (result.status === 'rejected') throw new Error(result.message)
+      return result
+    }
+    const options = { mode: requestedMode === 'vertical' ? 'vertical' as const : 'horizontal' as const }
+    const initial = prepareLayoutAdd(this.state.doc, ids, options, state)
+    const wrapperId = initial.wrapper?.id
+    const result = this.change('设置自动布局', doc => {
+      assertOwner(doc)
+      const plan = prepareLayoutAdd(doc, ids, { ...options, ...(wrapperId ? { id: wrapperId } : {}) }, state)
+      applyLayoutAdd(doc, plan)
+      if (requestedMode === 'grid') doc.nodes[plan.target].layout!.mode = 'grid'
+    }, [initial.target])
+    if (result.status === 'rejected') throw new Error(result.message)
+    return result
   }
   previewLayoutOrder(id: string, point: Point): boolean {
     const base = this.transaction?.previewBase || this.transaction?.doc || this.state.doc,
@@ -1645,6 +1672,7 @@ export class Editor {
     // Cancellation publishes synchronously; a subscriber can adopt a new session
     // or remove the target. Never carry the old navigation across that boundary.
     if (!ownsDocument() || !this.state.doc.pages.some(value => value.id === page)) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return false }
+    this.repeatedDuplicate = null
     this.set({ page, selection: [], editingVertex: null })
     return ownsDocument() && this.state.page === page
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
@@ -1663,83 +1691,53 @@ export class Editor {
   group(mask = false, booleanOperation?: BooleanOp, kind: 'group' | 'frame' = 'group') {
     const action = beginEditorAction(this, CanvasAction.group, ActionSource.unknown, 220)
     try {
-    const ids = this.topSelection()
-    if (ids.length < (mask ? 2 : 1)) return
-    const parents = allParents(this.state.doc),
-      parent = parents.get(ids[0])!
-    if (ids.some((id) => parents.get(id) !== parent)) {
-      this.notify('请先将待编组图层放在同一容器内')
-      return
-    }
-    const entries = this.entries(),
-      box = unionBounds(entries.filter((e) => ids.includes(e.id)).map((e) => e.bounds))
-    const parentWorld = worldMatrix(this.state.doc, parent),
-      placement = planContainerPlacement(UI_SELECTION_PROFILE, box, parentWorld),
-      group = node(kind, 0, 0, placement.width, placement.height)
-    if (kind === 'frame') { group.fills = []; group.clip = false }
-    group.name = booleanOperation ? `布尔组合 · ${booleanOperation}` : mask ? '蒙版组' : kind === 'frame' ? '画板' : '编组'
-    if (booleanOperation) {
-      group.kind = 'vector'
-      group.booleanOperation = booleanOperation
-      group.fills = cloneValue(this.state.doc.nodes[ids[0]].fills)
-      group.strokes = cloneValue(this.state.doc.nodes[ids[0]].strokes)
-    }
-    group.blend = booleanOperation ? 'normal' : 'pass-through'
-    group.transform = placement.transform
-    this.change(
-      mask ? '创建蒙版' : kind === 'frame' ? '创建选区画板' : '编组',
-      (d) => {
-        const list = d.nodes[parent]?.children || d.pages.find((p) => p.id === parent)!.children
-        const ordered = list.filter((id) => ids.includes(id))
-        const position = Math.min(...ids.map((id) => list.indexOf(id)))
-        const worlds = ordered.map((id) => worldMatrix(d, id))
-        const transforms = ordered.map((id, i) => ({ id, transform: reparentedTransform(multiply(parentWorld, group.transform), worlds[i]) }))
-        if (mask) d.nodes[ordered[0]].mask = true
-        // Insert first, then use the shared pure reparent plan. The adapter owns
-        // selection, mask policy, defaults, validation and the sole transaction.
-        list.splice(position, 0, group.id)
-        d.nodes[group.id] = group
-        const plan = planChildReparent(UI_SELECTION_PROFILE, ordered.map(id => ({ id, parent })), [
-          { parent, children: list }, { parent: group.id, children: [] },
-        ], group.id)
-        applyChildListPlan(d, plan)
-        applyTransformPlan(d, transforms)
-      },
-      [group.id],
-    )
-    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
-    finally { action.finish() }
+      if (this.state.busy || this.interactionActive || !commitPendingEdits(this)) return
+      if (!this.state.selection.length) return
+      const base = this.state.doc, session = this.sessionGeneration, revision = this.state.version
+      if (booleanOperation) {
+        const plan = prepareBooleanCreate(base, this.state.selection, { operation: booleanOperation }, { fresh: true }, 'existing-fill')
+        if (mask && plan.wrap.ids.length < 2) throw new SelectionCommandError('invalid_params', 'Mask grouping requires at least two nodes')
+        return this.change(mask ? '创建蒙版' : kind === 'frame' ? '创建选区画板' : '编组', draft => {
+          if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)
+            throw new SelectionCommandError('superseded', 'Selection owner changed before boolean grouping')
+          if (mask) draft.nodes[plan.wrap.ids[0]].mask = true
+          applyBooleanCreate(draft, plan)
+        }, [plan.wrapper.id])
+      }
+      const plan = prepareSelectionWrap(base, this.state.selection, { fresh: true })
+      if (mask && plan.ids.length < 2) throw new SelectionCommandError('invalid_params', 'Mask grouping requires at least two nodes')
+      const group = node(kind, 0, 0, plan.width, plan.height)
+      configureSelectionWrapper(group, plan)
+      group.name = mask ? '蒙版组' : kind === 'frame' ? '画板' : '编组'
+      return this.change(mask ? '创建蒙版' : kind === 'frame' ? '创建选区画板' : '编组', draft => {
+        if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)
+          throw new SelectionCommandError('superseded', 'Selection owner changed before grouping')
+        if (mask) draft.nodes[plan.ids[0]].mask = true
+        applySelectionWrap(draft, plan, group)
+      }, [group.id])
+    } catch (error) {
+      action.result(ActionOutcome.rejected, ActionReason.validation)
+      if (error instanceof SelectionCommandError) { this.notify(error.message); return { status: 'rejected' as const, code: error.code, revision: this.state.version } }
+      throw error
+    } finally { action.finish() }
   }
   ungroup() {
     const action = beginEditorAction(this, CanvasAction.ungroup, ActionSource.unknown, 221)
     try {
-    const ids = this.topSelection()
-    const selected: string[] = []
-    this.change(
-      '解除编组',
-      (d) => {
-        for (const id of ids) {
-          const n = d.nodes[id]
-          if (!n || (!['group', 'frame', 'section'].includes(n.kind) && !n.booleanOperation) || n.component || n.instance || n.componentSet) continue
-          const parent = allParents(d).get(id)!
-          const list = d.nodes[parent]?.children || d.pages.find((p) => p.id === parent)!.children
-          const children = [...n.children]
-          const transforms = children.map(child => ({ id: child, transform: multiply(n.transform, d.nodes[child].transform) }))
-          const plan = planChildReparent(UI_SELECTION_PROFILE, children.map(child => ({ id: child, parent: id })), [
-            { parent: id, children }, { parent, children: list },
-          ], parent, list.indexOf(id))
-          applyChildListPlan(d, plan)
-          applyTransformPlan(d, transforms)
-          for (const child of children) d.nodes[child].mask = false
-          for (const child of children) selected.push(child)
-          list.splice(list.indexOf(id), 1)
-          delete d.nodes[id]
-        }
-      },
-      selected,
-    )
-    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
-    finally { action.finish() }
+      if (this.state.busy || this.interactionActive || !commitPendingEdits(this)) return
+      if (!this.state.selection.length) return
+      const base = this.state.doc, session = this.sessionGeneration, revision = this.state.version
+      const plan = prepareSelectionUnwrap(base, this.state.selection, { fresh: true }), selection = plan.entries.flatMap(entry => entry.children)
+      return this.change('解除编组', draft => {
+        if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)
+          throw new SelectionCommandError('superseded', 'Selection owner changed before ungrouping')
+        applySelectionUnwrap(draft, plan)
+      }, selection)
+    } catch (error) {
+      action.result(ActionOutcome.rejected, ActionReason.validation)
+      if (error instanceof SelectionCommandError) { this.notify(error.message); return { status: 'rejected' as const, code: error.code, revision: this.state.version } }
+      throw error
+    } finally { action.finish() }
   }
   reparent(id: string, parent: string, before?: string) { this.reparentMany([id], parent, before) }
   reparentMany(ids: string[], parent: string, before?: string) {
@@ -2213,43 +2211,58 @@ export class Editor {
       transaction.previewBase = this.state.doc
     }
   }
-  rememberDuplication(roots: string[], reference: Map<string, Matrix>) {
-    this.repeatedDuplicate = { roots: [...roots], reference: new Map(reference) }
+  /** Read-only command facts for the shared Core planner, not request authority. */
+  duplicationRepeat(): DuplicationRepeat | null {
+    const repeat = this.repeatedDuplicate
+    if (!repeat || repeat.document !== this.state.doc || repeat.session !== this.sessionGeneration ||
+      repeat.revision !== this.state.version || repeat.pageId !== this.state.page) return null
+    return { roots: [...repeat.roots], reference: new Map([...repeat.reference].map(([id, matrix]) => [id, [...matrix] as Matrix])) }
+  }
+  /** Seed only from this Editor's actual accepted commit and current owner.
+   * A copied/JSON/foreign receipt cannot publish context into a newer session. */
+  rememberDuplication(result: unknown, roots: readonly string[], reference: ReadonlyMap<string, Matrix>, publishedPage?: string) {
+    const receipt = this.committedEditReceipt(result), pageId = publishedPage ?? receipt?.pageId
+    if (!receipt || this.state.doc !== receipt.document || this.sessionGeneration !== receipt.session ||
+      this.state.version !== receipt.revision || this.state.page !== pageId || !roots.length ||
+      roots.length !== this.state.selection.length || !roots.every((id, i) => this.state.selection[i] === id &&
+        !!receipt.document.nodes[id] && reference.get(id)?.every(Number.isFinite))) return false
+    const parents = allParents(receipt.document)
+    if (!roots.every(id => { let at = id; while (parents.has(at)) at = parents.get(at)!; return at === pageId })) return false
+    this.repeatedDuplicate = { document: receipt.document, session: receipt.session, revision: receipt.revision,
+      pageId: pageId!, roots: [...roots], reference: new Map(roots.map(id => [id, [...reference.get(id)!] as Matrix])) }
+    return true
   }
   duplicate() {
     const action = beginEditorAction(this, CanvasAction.duplicate, ActionSource.unknown, 224)
     try {
-    const originals = this.topSelection(), source = this.state.doc, parents = allParents(source)
-    if (!originals.length) return
-    const previous = this.repeatedDuplicate
-    const repeat = previous && originals.length === previous.roots.length && originals.every(id => previous.reference.has(id))
-    const topFrames = originals.every(id => source.nodes[id].kind === 'frame' && source.pages.some(page => page.id === parents.get(id)))
-    const box = topFrames ? this.selectionBounds() : null
-    const transforms = new Map(originals.map(id => {
-      const current = worldMatrix(source, id), reference = previous?.reference.get(id)
-      const delta = repeat && reference ? current.every((v, i) => v === reference[i]) ? identity()
-        : current.slice(0, 4).every((v, i) => v === reference[i]) ? translate(current[4] - reference[4], current[5] - reference[5])
-          : multiply(current, inverse(reference))
-        : box ? translate(box.width + 24, 0) : identity()
-      return [id, delta] as const
-    }))
-    const content = this.copyGraph(originals)
-    let roots: string[] = [], reference = new Map<string, Matrix>()
-    this.change('创建副本', d => { ({ roots, reference } = duplicateGraph(d, content, { transforms })) })
-    if (roots.length && roots.every(id => this.state.doc.nodes[id])) {
-      this.select(roots)
-      this.rememberDuplication(roots, reference)
-    }
-    } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
-    finally { action.finish() }
+      if (this.state.busy || this.interactionActive || !commitPendingEdits(this) || !this.settleOwnedPropertyPreview('edit')) return
+      if (this.state.busy || this.interactionActive || !this.state.selection.length) return
+      const base = this.state.doc, session = this.sessionGeneration, revision = this.state.version
+      const plan = prepareDuplication(base, this.state.selection, { kind: 'default' },
+        { fresh: true, singleStep: true, mutable: false, repeat: this.duplicationRepeat() })
+      const selected: string[] = []
+      let reference = new Map<string, Matrix>()
+      const result = this.change('创建副本', draft => {
+        if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)
+          throw new SelectionCommandError('superseded', 'Duplicate owner changed before commit')
+        const created = applyDuplication(draft, plan)
+        for (const id of created.roots) selected.push(id)
+        reference = created.reference
+      }, selected)
+      this.rememberDuplication(result, selected, reference)
+      return result
+    } catch (error) {
+      action.result(ActionOutcome.rejected, ActionReason.validation)
+      if (error instanceof SelectionCommandError) { this.notify(error.message); return { status: 'rejected' as const, code: error.code, revision: this.state.version } }
+      throw error
+    } finally { action.finish() }
   }
   scaleSelection(factor: number, anchor = 4): boolean {
     if (this.state.busy || this.interactionActive) return false
-    const ids = this.topSelection(true)
+    const ids = this.state.selection
     if (!ids.length) return false
     try {
-      const frame = selectionScaleFrame(this.state.doc, this.state.page, ids)
-      const transforms = scaleSelectionTransforms(this.state.doc, ids, factor, scaleAnchor(frame, anchor))
+      const { transforms } = prepareSelectionScale(this.state.doc, this.state.page, ids, factor, anchor)
       if (factor === 1) return true
       const before = this.state.doc
       this.change('等比缩放图层', doc => { for (const [id, transform] of Object.entries(transforms)) doc.nodes[id].transform = transform })
@@ -2270,28 +2283,21 @@ export class Editor {
     })
   }
   align(axis: 'x' | 'y', mode: 'start' | 'center' | 'end' | 'distribute') {
-    if (this.state.busy || this.interactionActive) return
-    const ids = this.topSelection(),
-      entries = this.entries().filter((e) => ids.includes(e.id))
-    if (entries.length === 1 && mode !== 'distribute') {
-      const entry = entries[0], doc = this.state.doc, parents = allParents(doc)
-      const parent = doc.nodes[parents.get(entry.id) || '']
-      if (!parent) return
-      const n = doc.nodes[entry.id]
-      const box = bounds(boxPoints(kernelBounds(n) || { x: 0, y: 0, width: n.width, height: n.height }).map(p => apply(n.transform, p)))
-      const delta = planArrangement(UI_SELECTION_PROFILE, [box], axis, mode, { x: 0, y: 0, width: parent.width, height: parent.height })!.offsets[0][axis]
-      this.updateProperties([entry.id], target => { target.transform[axis === 'x' ? 4 : 5] += delta }, '对齐到父级')
-      return
+    if (this.state.busy || this.interactionActive || !commitPendingEdits(this)) return
+    if (!this.state.selection.length) return
+    try {
+      const base = this.state.doc, session = this.sessionGeneration, revision = this.state.version
+      const plan = prepareSelectionArrangement(base, this.state.selection, axis, mode, { fresh: true })
+      if (!plan.patches.length) return { status: 'unchanged' as const, revision }
+      return this.change(mode === 'distribute' ? '等距分布' : '对齐图层', draft => {
+        if (this.state.doc !== base || this.sessionGeneration !== session || this.state.version !== revision)
+          throw new SelectionCommandError('superseded', 'Selection owner changed before alignment')
+        applyTransformPlan(draft, plan.patches)
+      })
+    } catch (error) {
+      if (error instanceof SelectionCommandError) { this.notify(error.message); return { status: 'rejected' as const, code: error.code, revision: this.state.version } }
+      throw error
     }
-    if (entries.length < 2) return
-    const plan = planArrangement(UI_SELECTION_PROFILE, entries.map(e => e.bounds), axis, mode)
-    if (!plan) return
-    const parents = allParents(this.state.doc)
-    this.change(mode === 'distribute' ? '等距分布' : '对齐图层', (d) => {
-      applyTransformPlan(d, entries.map((e, index) => ({ id: e.id,
-        transform: translatedLocalTransform(worldMatrix(d, parents.get(e.id)!), e.matrix, plan.offsets[index]),
-      })))
-    })
   }
   convert() {
     const ids = this.topSelection()

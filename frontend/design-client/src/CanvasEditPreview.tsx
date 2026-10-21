@@ -111,7 +111,8 @@ export const CanvasEditPreview = memo(function CanvasEditPreview({ document, bas
     foreground.style.cssText = `position:absolute;left:${crop.x}px;top:${crop.y}px;width:${crop.width}px;height:${crop.height}px;will-change:transform;transform:translate(${retainedOffset.x * view.zoom}px,${retainedOffset.y * view.zoom}px)`
     if (background.parentElement !== retainedHost.current) retainedHost.current.replaceChildren(background, foreground)
   }, [retained, retainedOffset?.x, retainedOffset?.y, view.zoom])
-  const plan = useMemo(() => movePreviewPlan(baseDocument, pageId, selection), [baseDocument, pageId, selection.join(',')])
+  const plan = useMemo(() => vectorSupported ? movePreviewPlan(baseDocument, pageId, selection) : null,
+    [baseDocument, pageId, selection.join(','), vectorSupported])
   const offset = useMemo(() => plan && movePreviewOffset(plan, document), [plan, document])
   const viewport = useMemo(() => ({ x: -view.x / view.zoom, y: -view.y / view.zoom,
     width: size.width / view.zoom, height: size.height / view.zoom }), [view.x, view.y, view.zoom, size.width, size.height])
