@@ -40,7 +40,7 @@ test('actual uploaded ordinary bytes own a captured proof shared by RGBA and opa
   const bound = f.dispatch(kernel)
   expect(bound).toBeGreaterThan(0); expect(bound).toBeLessThanOrEqual(120)
   expect(f.dispatch(kernel, true)).toBe(bound)
-  expect((f.encode.mock.calls.at(-1) as unknown as unknown[]).slice(7)).toEqual([7, 255, true, bound])
+  expect((f.encode.mock.calls.at(-1) as unknown as unknown[]).slice(7,11)).toEqual([7, 255, true, bound])
   bytes.fill(255)
   expect(f.dispatch(kernel)).toBe(bound)
   expect(f.dispatch(kernel, false, 40.25)).toBe(0)
@@ -86,6 +86,11 @@ test.each(['clear', 'pass', 'mask', 'solid', 'copy', 'atlas-float', 'atlas-byte'
   'actual %s writer revokes bound ownership even if finitePixels is reasserted', writer => {
     const f = fixture(), kernel = f.upload()
     expect(f.dispatch(kernel)).toBeGreaterThan(0)
+    // A public flag reassignment must not revive any private upload proof.
+    const imageProof = { pixels: kernel.width, opaqueAlpha: true }
+    ;(f.driver as any).imageRanges.set(kernel,imageProof)
+    ;(f.driver as any).imageAxisPrograms.set(kernel,new Float32Array(8))
+    expect(f.driver.imageTableRange(kernel)).toBe(imageProof)
     const u = parameters({ x: 0, y: 0, w: kernel.width, h: 1 }); u[16] = 12
     switch (writer) {
       case 'clear': f.driver.clear(kernel); break
@@ -114,5 +119,7 @@ test.each(['clear', 'pass', 'mask', 'solid', 'copy', 'atlas-float', 'atlas-byte'
     kernel.finitePixels = true
     expect(f.dispatch(kernel)).toBe(0)
     expect((f.driver as any).rationalKernelBounds.has(kernel)).toBe(false)
+    expect(f.driver.imageTableRange(kernel)).toBeUndefined()
+    expect(f.driver.imageTableAxes(kernel)).toBeUndefined()
   },
 )

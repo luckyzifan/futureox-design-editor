@@ -14,6 +14,7 @@ import { prefixModule } from './prefix-module'
 import { PREFIX_MIN_RADIUS } from './prefix-band'
 import { certifyPrefixRationalBound, prefixRationalBoundBits, type PrefixRationalBoundCertificate } from './prefix-preflight'
 import { completeFilterAxisSupport } from './opaque-filter'
+import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSourceWindow } from './filter-source-window'
 import { displayFilterWgsl, pairedDisplayFilterWgsl } from './display-filter'
 import { displayArithmeticSource } from './display-arithmetic'
 import { imageCoordinateSource } from './image-coordinate-source'
@@ -191,7 +192,7 @@ export class WebGpuDriver implements Driver {
         ![offsetX,offsetY].every(Number.isSafeInteger) || offsetX<0 || offsetY<0 ||
         offsetX+target.width>table.width || offsetY+target.height>table.height)
       throw Error('Invalid exact image table window')
-    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha;delete target.uniformColor;delete target.transparentZero
+    this.invalidateTextureCertificates(target);delete target.uniformColor;delete target.transparentZero
     this.closeOver()
     const words=new Uint32Array(256);words.set(entry.storage.config)
     words.set([offsetX,offsetY,target.width,target.height],12)
@@ -789,10 +790,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return prefixRationalBoundBits(proof.packet, radius)
   }
   prepareFilterPass(target: Texture, u: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number) {
+    this.prepareWindowFilterPass(target, u, inputs, channels, filter, availableBytes)
+  }
+  private prepareWindowFilterPass(target: Texture, u: Float32Array, inputs: Texture[], channels: number,
+    filter: {kind: 'tent'; radius: number}, availableBytes: number, sourceWindow?: FilterSourceWindow) {
     if (!this.prefixPolicy(u, channels, filter, inputs[1]) || this.prefix!.scratchBytes) return
     recordGpuDiagnostic('prefix',{reasonCode:availableBytes<PREFIX_SCRATCH_BYTES?1:0,availableBytes,scratchBytes:PREFIX_SCRATCH_BYTES,radius:filter.radius,width:u[2],height:u[3]})
     const sources = [0, 1, 2].map((i) => (inputs[i] || this.blank).resource as GPUTexture)
-    if (availableBytes < PREFIX_SCRATCH_BYTES || !this.prefix!.canEncode(target.resource as GPUTexture, sources, u, filter.radius, filter.kind, {x:u[0],y:u[1],w:u[2],h:u[3]}, channels)) return
+    if (availableBytes < PREFIX_SCRATCH_BYTES || !this.prefix!.canEncode(target.resource as GPUTexture, sources, u, filter.radius, filter.kind, {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,sourceWindow)) return
     this.prefix!.reserveScratch()
     this.prefix!.resetCounters(this.encoder)
     this.frameScratchBytes = Math.max(this.frameScratchBytes, this.prefix!.scratchBytes)
@@ -985,9 +990,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.textures.add(t)
     return t
   }
+  private invalidateTextureCertificates(texture: Texture) {
+    this.rationalKernelBounds?.delete(texture)
+    this.imageRanges?.delete(texture)
+    this.imageAxisPrograms?.delete(texture)
+    delete texture.finitePixels;delete texture.opaqueAlpha
+  }
   destroy(t: Texture) {
-    this.rationalKernelBounds?.delete(t);delete t.finitePixels;delete t.opaqueAlpha
-    this.imageRanges?.delete(t);this.imageAxisPrograms?.delete(t)
+    this.invalidateTextureCertificates(t)
     this.replayParameterTextures.delete(t)
     if (this.textures.delete(t)) (t.resource as GPUTexture).destroy()
   }
@@ -1071,7 +1081,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     height: number,
     values: Float32Array,
   ) {
-    this.rationalKernelBounds?.delete(texture);delete texture.finitePixels;delete texture.opaqueAlpha
+    this.invalidateTextureCertificates(texture)
     if (values.length !== width * height * 4) throw new Error('无效的浮点纹理写入')
     this.device.queue.writeTexture(
       { texture: texture.resource as GPUTexture, origin: { x, y } },
@@ -1088,7 +1098,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     height: number,
     bytes: Uint8Array,
   ) {
-    this.rationalKernelBounds?.delete(texture);delete texture.finitePixels;delete texture.opaqueAlpha
+    this.invalidateTextureCertificates(texture)
     if (this.managed) {
       this.uploadAtlasLinear(
         texture,
@@ -1131,7 +1141,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       target = this.createFormat(1024, 1024, 'rgba32float')
       this.replayParameterTextures.add(target)
     }
-    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
+    this.invalidateTextureCertificates(target)
     this.device.queue.writeTexture(
       { texture: target.resource as GPUTexture },
       values,
@@ -1141,7 +1151,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return target
   }
   clear(t: Texture) {
-    this.rationalKernelBounds?.delete(t);delete t.finitePixels;delete t.opaqueAlpha
+    this.invalidateTextureCertificates(t)
     this.closeOver()
     const pass = this.encoder.beginRenderPass({
       colorAttachments: [
@@ -1212,7 +1222,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         targetOrigin[0] + sourceRegion.w > target.width || targetOrigin[1] + sourceRegion.h > target.height)
       throw Error('Invalid exact filter texture copy')
     this.closeOver()
-    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
+    this.invalidateTextureCertificates(target)
     delete target.uniformColor
     delete target.transparentZero
     this.encoder.copyTextureToTexture(
@@ -1311,7 +1321,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.mask(path, target, sampleIndex, region)
   }
   mask(path: PathMesh, target: Texture, sampleIndex?: number, region = path.rect) {
-    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
+    this.invalidateTextureCertificates(target)
     if (path.area) {
       if (!this.areaPipeline) throw new Error('Coverage program unavailable')
       const u = parameters(region)
@@ -1450,7 +1460,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return { group, offsets: this.dynamicUniformBindings ? [uniform.offset] : [] }
   }
   solidBatch(target: Texture, u: Float32Array, data: Float32Array, clip?: Texture) {
-    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
+    this.invalidateTextureCertificates(target)
     if (clip === target) throw new Error('GPU texture feedback loop')
     this.closeOver()
     if (!this.solidBuffer) {
@@ -1489,7 +1499,38 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.triangles += count * 2
   }
   pass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15, filter?: {kind: 'tent'; radius: number}, clearOutside = false) {
-    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
+    this.encodePass(target,u,inputs,region,channels,filter,clearOutside)
+  }
+  passFilterWindow(target: Texture, uniforms: Float32Array, inputs: Texture[], physicalWindow: Readonly<Rect>,
+    channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number): boolean {
+    if(import.meta.env.VITE_DESIGN_FILTER_SOURCE_WINDOW!=='1' || !this.managed || this.displayMath || this.displayFilters ||
+        this.disposed || this.lost || !(uniforms instanceof Float32Array) || !(uniforms.buffer instanceof ArrayBuffer) || uniforms.length!==256 ||
+        !Array.isArray(inputs) || !inputs.length || !filter || filter.kind!=='tent' || !Number.isFinite(filter.radius) ||
+        filter.radius<=0 || filter.radius>2048 || !Number.isSafeInteger(availableBytes) || availableBytes<0 ||
+        !Number.isInteger(channels) || channels<1 || channels>15 || uniforms[16]!==22 ||
+        (uniforms[37]!==0 && uniforms[37]!==1) || uniforms[36]!==Math.fround(filter.radius) || uniforms[242]!==0 ||
+        !uniforms.subarray(0,4).every(Number.isSafeInteger) || Math.abs(uniforms[0])>1048576 || Math.abs(uniforms[1])>1048576 ||
+        uniforms[2]<1 || uniforms[3]<1 || uniforms[2]>16384 || uniforms[3]>16384 ||
+        !this.textures.has(target) || inputs.some(input=>!this.textures.has(input)) ||
+        target.binaryCoverage || target.scalarCoverage || inputs[0].binaryCoverage || inputs[0].scalarCoverage ||
+        inputs.some(input=>input===target || input.resource===target.resource))return false
+    const source=inputs[0], physical=source.resource as GPUTexture, output=target.resource as GPUTexture
+    if(!physical || !output || output.format!=='rgba32float' || output.width!==uniforms[2] || output.height!==uniforms[3] ||
+        target.width!==output.width || target.height!==output.height ||
+        source.width!==physical.width || source.height!==physical.height || !this.filterPipelines.length)return false
+    const window=snapshotFilterSourceWindow(physical,uniforms,physicalWindow)
+    if(!window)return false
+    // All caller-owned metadata is captured before a uniform-arena rollover
+    // can submit work. Geometry grants no finite/opaque certificate.
+    const captured=filterSourceWindowUniforms(uniforms,window),sources=inputs.slice(),parameters={kind:'tent' as const,radius:filter.radius}
+    this.prepareWindowFilterPass(target,captured,sources,channels,parameters,availableBytes,window)
+    this.encodePass(target,captured,sources,undefined,channels,parameters,false,window)
+    return true
+  }
+  private encodePass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15,
+    filter?: {kind: 'tent'; radius: number}, clearOutside = false, sourceWindow?: FilterSourceWindow) {
+    if(u[16]===22)u=filterSourceWindowUniforms(u,sourceWindow)
+    this.invalidateTextureCertificates(target)
     this.closeOver()
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
     const rationalBoundBits = filter ? this.rationalKernelBoundBits(inputs[1], filter.radius) : 0
@@ -1499,13 +1540,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         {x:u[0],y:u[1],w:u[2],h:u[3]},u[37],filter.radius)
       if(complete && this.prefix!.encode(()=>this.encoder,target.resource as GPUTexture,
           [0,1,2].map(i=>(inputs[i]||this.blank).resource as GPUTexture),u,filter.radius,filter.kind,
-          {x:u[0],y:u[1],w:u[2],h:u[3]},7,255,true,rationalBoundBits)) {
+          {x:u[0],y:u[1],w:u[2],h:u[3]},7,255,true,rationalBoundBits,sourceWindow)) {
         this.drawCalls+=this.prefix!.lastRenderPasses;this.opaqueTentPasses++;target.opaqueAlpha=true;return
       }
     }
     if (this.prefixPolicy(u, channels, filter, inputs[1]) && filter && !region && this.prefix!.encode(() => this.encoder, target.resource as GPUTexture,
       [0, 1, 2].map((i) => (inputs[i] || this.blank).resource as GPUTexture), u, filter.radius, filter.kind,
-      {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,false,rationalBoundBits)) { this.drawCalls += this.prefix!.lastRenderPasses; return }
+      {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,false,rationalBoundBits,sourceWindow)) { this.drawCalls += this.prefix!.lastRenderPasses; return }
     const bind = this.bind(u, inputs)
     // With integer origins/sizes bounded by 2^20, pixel centres and every
     // subtraction/addition forming q/base are exactly representable binary32
@@ -1599,7 +1640,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return { querySet: this.timingQueries, beginningOfPassWriteIndex: index, endOfPassWriteIndex: index + 1 }
   }
   over(target: Texture, u: Float32Array, inputs: Texture[], region: Rect) {
-    this.rationalKernelBounds?.delete(target);delete target.finitePixels;delete target.opaqueAlpha
+    this.invalidateTextureCertificates(target)
     if (this.managed) throw new Error('RGBA32F 合成必须使用显式着色器混合')
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
     if (this.activeTarget !== target) this.closeOver()

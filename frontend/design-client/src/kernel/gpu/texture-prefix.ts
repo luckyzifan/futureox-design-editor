@@ -1,4 +1,5 @@
 import { PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES, prefixBandSize, prefixRgbBandSize } from './prefix-band'
+import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSourceWindow } from './filter-source-window'
 import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 /// <reference types="@webgpu/types" />
 /** Exact tent filtering, including fractional radii and cropped outputs,
@@ -183,7 +184,10 @@ export class TexturePrefix {
     rect: Rectangle,
     channels = 15,
     maxBandLines = 255,
+    sourceWindow?: FilterSourceWindow,
   ): boolean {
+    const window = sourceWindow === undefined ? undefined : snapshotFilterSourceWindow(inputs[0], base, sourceWindow)
+    if (sourceWindow !== undefined && (import.meta.env.VITE_DESIGN_FILTER_SOURCE_WINDOW !== '1' || !window)) return false
     if (
       kind !== 'tent' ||
       !Number.isFinite(originalRadius) ||
@@ -222,15 +226,14 @@ export class TexturePrefix {
       inputs[0]?.format !== 'rgba32float' ||
       target.width !== rect.w ||
       target.height !== rect.h ||
-      inputs[0].width !== base[6] ||
-      inputs[0].height !== base[7] ||
+      !window && (inputs[0].width !== base[6] || inputs[0].height !== base[7]) ||
       inputs[0].width > 16384 || inputs[0].height > 16384 ||
       inputs.includes(target)
     )
       return false
     const axis = base[37]
     if (axis !== 0 && axis !== 1) return false
-    const length = axis === 0 ? inputs[0].width : inputs[0].height,
+    const length = axis === 0 ? base[6] : base[7],
       lineCount = axis === 0 ? rect.h : rect.w
     const bandSize = prefixBandSize(length, maxBandLines)
     if (!Number.isInteger(bandSize) || bandSize < 1) return false
@@ -249,15 +252,19 @@ export class TexturePrefix {
     maxBandLines = 255,
     opaqueAlpha = false,
     rationalBoundBits = 0,
+    sourceWindow?: FilterSourceWindow,
   ): boolean {
     this.lastRenderPasses = 0
     this.lastComputePasses = 0
     const getEncoder = typeof encoderSource === 'function' ? encoderSource : () => encoderSource
+    const window = sourceWindow === undefined ? undefined : snapshotFilterSourceWindow(inputs[0], base, sourceWindow)
+    if (sourceWindow !== undefined && !window) return false
     if (
       !this.scratchGroup ||
-      !this.canEncode(target, inputs, base, originalRadius, kind, rect, channels, maxBandLines)
+      !this.canEncode(target, inputs, base, originalRadius, kind, rect, channels, maxBandLines, window)
     )
       return false
+    base = filterSourceWindowUniforms(base, window)
     // The caller obtains this bound from the actual immutable coefficient
     // upload. Zero/unknown values retain the existing shader admission gate.
     const boundBits = Number.isInteger(rationalBoundBits) && rationalBoundBits >= 1 && rationalBoundBits <= 120
@@ -266,7 +273,7 @@ export class TexturePrefix {
         this.solveRgb && this.resolveRgb)
       return this.encodeOpaqueRgb(getEncoder, target, inputs, base, originalRadius, rect, maxBandLines, boundBits)
     const axis = base[37],
-      length = axis === 0 ? inputs[0].width : inputs[0].height,
+      length = axis === 0 ? base[6] : base[7],
       lineCount = axis === 0 ? rect.h : rect.w
     const outputLength = axis === 0 ? rect.w : rect.h
     const offset = axis === 0 ? rect.x - base[4] : rect.y - base[5]
@@ -340,7 +347,7 @@ export class TexturePrefix {
    * encoder between channels; always reacquire it after creating the group. */
   private encodeOpaqueRgb(getEncoder: () => GPUCommandEncoder, target: GPUTexture, inputs: GPUTexture[],
     base: Float32Array, radius: number, rect: Rectangle, maxBandLines: number, rationalBoundBits: number): boolean {
-    const axis = base[37], length = axis === 0 ? inputs[0].width : inputs[0].height
+    const axis = base[37], length = axis === 0 ? base[6] : base[7]
     const outputLength = axis === 0 ? rect.w : rect.h, lineCount = axis === 0 ? rect.h : rect.w
     const bandSize = prefixRgbBandSize(length, outputLength, maxBandLines)
     if (!bandSize) return false
