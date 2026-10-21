@@ -6,7 +6,7 @@ import { ResidentPresentation, type ResidentAcknowledgement } from './resident-p
 import { registerContentPlane } from './content-plane'
 import type { CanvasCamera } from '../canvas-camera'
 import type { DesignDocument } from '../model'
-import type { KernelClient, KernelOptions } from './client'
+import { renderExecutionPolicy, type KernelClient, type KernelOptions } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { CompositeItem } from './gpu/tile-compositor'
 import type { ResidentFrame } from './gpu/resident-presenter'
@@ -248,7 +248,7 @@ export function ResidentCompositeSurface(props: {
           flushSync(() => latest.current.onPresented?.(actual, presentation.current.resolve(actual)))
         }
       }
-      interaction.current = new InteractionRenderer(() => repaint.current(), p.client)
+      interaction.current = new InteractionRenderer(() => repaint.current(), p.client, renderExecutionPolicy.desktopDisplay)
       pageTranslation.current = new PageTranslation(() => repaint.current(), (document, patches, displayed) => {
         const p = latest.current, renderer = interaction.current
         if (!p.interaction || !renderer) return null

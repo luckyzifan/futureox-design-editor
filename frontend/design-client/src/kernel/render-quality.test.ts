@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import { allowsReducedSampling, renderQualityContract } from './render-quality'
+import { hostRenderPolicy, usesDesktopDisplay } from './render-policy'
 
 test('preview, settle and export contracts keep transport separate from quality', () => {
   for (const zoom of [NaN, Infinity, -1, 0, .01, .25, .25001, 1, 8]) {
@@ -14,4 +15,19 @@ test('preview, settle and export contracts keep transport separate from quality'
           if (png || exportFormat || exportRegion) expect(q.purpose).toBe('export')
         }
   }
+})
+test('desktop display does not authorize effect skipping or reduced normal-zoom coverage', () => {
+  const policy = hostRenderPolicy(true, false, false, false, false, true)
+  expect(usesDesktopDisplay(policy, { renderIntent: 'preview' })).toBe(true)
+  for (const zoom of [.25, 1, 32]) {
+    const quality = renderQualityContract({ ...policy, renderIntent: 'preview', zoom })
+    expect(quality.existingInteractiveEffectsPolicy).toBe(false)
+    expect(quality.reducedSamplingAllowed).toBe(zoom <= .25)
+  }
+  for (const renderIntent of ['canvas', 'settled']) {
+    const quality = renderQualityContract({ ...policy, renderIntent, zoom: 1 })
+    expect(quality.existingInteractiveEffectsPolicy).toBe(false)
+    expect(quality.reducedSamplingAllowed).toBe(false)
+  }
+  expect(renderQualityContract({ ...policy, renderIntent: 'preview', png: true, zoom: 1 }).purpose).toBe('export')
 })

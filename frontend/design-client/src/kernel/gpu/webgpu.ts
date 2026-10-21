@@ -17,6 +17,7 @@ import { completeFilterAxisSupport } from './opaque-filter'
 import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSourceWindow } from './filter-source-window'
 import { displayFilterWgsl, pairedDisplayFilterWgsl } from './display-filter'
 import { displayArithmeticSource } from './display-arithmetic'
+import { displayImageSource } from './display-image-source'
 import { imageCoordinateSource } from './image-coordinate-source'
 import { IMAGE_RESOLVE_STEP_MODE, imageResolveStepWgsl } from './image-resolve-step'
 import { certifyExactImageRange, imageXTablePlanRange, type ExactImageRange, type ExactImageXTablePlan } from './exact-image-x-table'
@@ -48,6 +49,19 @@ const CAPACITY_SHRINK_FRAMES = 60
  * adapter/device/pipeline rebuild. Idle entries are reaped so the memory
  * returns when no recovery follows (freeGPUMemoryForWorker semantics). */
 const PARKED_REAP_MS = 30_000
+function boundedDisplayRadius(radius: number, limit: number, channels = 15) {
+  return Number.isFinite(limit) && limit > 0 && limit <= 32 && Number.isFinite(radius) &&
+    radius > 0 && radius <= limit && channels === 15 && Math.ceil(Math.fround(radius)) === Math.ceil(radius)
+}
+function displayFilterPass(enabled: boolean, limit: number | undefined, prepared: boolean,
+  u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}) {
+  if (!enabled || u[16] !== 22) return false
+  if (limit === undefined) return true // Existing unbounded web display contract.
+  // The rational and display coefficient textures have different layouts.
+  // Keep the original radius, not just its rounded uniform, in the decision.
+  return prepared && filter?.kind === 'tent' && Math.fround(filter.radius) === u[36] &&
+    boundedDisplayRadius(filter.radius, limit, channels)
+}
 type ParkedDriver = {
   driver: WebGpuDriver
   key: string
@@ -109,9 +123,20 @@ export class WebGpuDriver implements Driver {
   readonly constantTextureSampling = true
   readonly sequentialSampleResolve = true
   readonly exactImageResolveStep = true
+  // Scene intent is mutable; both arithmetic domains retain their own pipeline
+  // on this device. A late compilation may populate the cache, never intent.
+  private displayImageRequested = false
+  private displayImageUnavailable = false
+  private displayImageBaseSource?: string
+  private displayImagePipeline?: GPURenderPipeline
+  private displayImagePreparing?: Promise<void>
+  displayImageSourcePasses = 0
   readonly scalarAlphaFilter = true
   readonly exactShadowOver = true
   private displayFilters = false
+  private displayFilterRadiusLimit?: number
+  private boundedDisplayFilterFailed = false
+  boundedDisplayFilterPasses = 0
   private displayFilterPipeline?: GPURenderPipeline
   private pairedDisplay?: { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout; sampler: GPUSampler }
   private pairDisplayTaps = true
@@ -140,10 +165,26 @@ export class WebGpuDriver implements Driver {
    * begin() resets it. */
   finishTransientBytes = 0
   private imageRanges = new WeakMap<Texture, ExactImageRange>()
+  private displayImageUploads = new WeakMap<Texture, { resource: GPUTexture; width: number; height: number; range: ExactImageRange }>()
   private imageAxisPrograms = new WeakMap<Texture, Float32Array>()
   private imageTablePipeline?: Promise<ImageXTablePipeline>
   private imageTables = new Map<ExactImageTable, {storage: ImageXTableStorage; pipeline: ImageXTablePipeline; image: Texture; opaqueAlpha: boolean}>()
   private preparingImageTables = new Map<Texture, number>()
+  usesDisplayFilter(radius: number, channels = 15): boolean {
+    if (!this.managed || this.hdr || this.disposed || this.lost || !this.displayFilters || !this.displayFilterPipeline) return false
+    return this.displayFilterRadiusLimit === undefined ? Number.isFinite(radius) && radius > 0 && radius <= 16384 :
+      !this.displayMath && boundedDisplayRadius(radius, this.displayFilterRadiusLimit, channels)
+  }
+  usesDisplayImageSource(image: Texture): boolean {
+    if (!this.displayImageRequested || this.displayImageUnavailable || !this.displayImagePipeline ||
+        !this.managed || this.displayMath || this.hdr || this.disposed || this.lost) return false
+    const range = this.imageTableRange(image)
+    const upload = this.displayImageUploads.get(image), resource = image.resource as GPUTexture
+    return !!range && !!upload && upload.range === range && upload.resource === resource &&
+      upload.width === image.width && upload.height === image.height && resource.width === upload.width &&
+      resource.height === upload.height && resource.format === 'rgba32float' && range.nonnegativeRgb &&
+      range.opaqueAlpha && range.maximum.every(value => value <= 127)
+  }
   get scratchBytes(){ return (this.prefix?.scratchBytes || 0) + [...(this.imageTables?.keys() || [])].reduce((sum,table)=>sum+table.bytes,0) }
   imageTableRange(image: Texture) { return image.finitePixels === true && this.textures.has(image) ? this.imageRanges.get(image) : undefined }
   imageTableAxes(field: Texture) { return field.finitePixels === true && this.textures.has(field) ? this.imageAxisPrograms.get(field)?.slice() : undefined }
@@ -466,6 +507,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
  return addRN4(src,mulRN4(dst,vec4<f32>(addRN(1.,-src.a))));
 }`
     const addressedCode = this.managed ? scalarCoverageSource(imageCoordinateSource(compositorCode + imageResolveStepWgsl)) : compositorCode
+    if (this.managed && !this.displayMath && !this.hdr) this.displayImageBaseSource = addressedCode
     const module = this.device.createShaderModule({
       code: this.displayMath ? displayArithmeticSource(addressedCode, import.meta.env.VITE_DESIGN_NATIVE_DIVISION !== '0') : addressedCode,
       label: 'Self-developed vector compositor',
@@ -693,10 +735,16 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.initialized = true
   }
   async prepareScene(scene: GpuScene) {
+    const displayImageRequested = scene.displayImageSource === true && this.managed && !this.displayMath && !this.hdr && !this.displayImageUnavailable
+    this.displayImageRequested = displayImageRequested
     this.interactionPresentation = scene.interactionRetained === true
     this.nativeInteractionPresentation = scene.nativeInteraction === true
     this.pairDisplayTaps = scene.pairedDisplayFilters ?? (import.meta.env.VITE_DESIGN_PAIRED_DISPLAY === '1')
-    this.displayFilters = scene.displayFilters === true
+    const radiusLimit = scene.displayFilterRadiusLimit
+    this.displayFilterRadiusLimit = radiusLimit
+    this.displayFilters = scene.displayFilters === true && !this.hdr && (radiusLimit === undefined ||
+      import.meta.env.VITE_DESIGN_BOUNDED_DISPLAY_FILTER === '1' && !this.displayMath &&
+      !this.boundedDisplayFilterFailed && boundedDisplayRadius(radiusLimit, radiusLimit))
     this.softwareRaster = !!scene.softwareRaster && !this.managed
 
     const paths = Object.values(scene.nodes).flatMap(n => [n.fill, ...n.strokes.map(s => s.path)])
@@ -726,10 +774,51 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       })
     }
     await this.pipelines.prepare(pending)
+    if (displayImageRequested) await this.prepareDisplayImagePipeline()
+  }
+  private prepareDisplayImagePipeline(): Promise<void> {
+    if (this.displayImagePipeline || this.displayImageUnavailable) return Promise.resolve()
+    if (this.displayImagePreparing) return this.displayImagePreparing
+    const device = this.device, layout = this.layout, source = this.displayImageBaseSource
+    this.displayImagePreparing = (async () => {
+      try {
+        if (!source) throw new Error('Managed image source is unavailable')
+        // Pop each scope before awaiting, so concurrent scene/frame work cannot
+        // inherit our scope. Candidate validation must not poison exact frames.
+        const validated = async <T>(create: () => T | Promise<T>): Promise<T> => {
+          device.pushErrorScope('validation')
+          let pending: T | Promise<T>
+          try { pending = create() }
+          catch (error) { await device.popErrorScope(); throw error }
+          const validation = device.popErrorScope()
+          const [value, error] = await Promise.all([pending, validation])
+          if (error) throw new Error(error.message)
+          return value
+        }
+        const module = await validated(() => device.createShaderModule({ code: displayImageSource(source), label: 'Screen finite image source' }))
+        const errors = (await module.getCompilationInfo()).messages.filter(message => message.type === 'error')
+        if (errors.length) throw new Error(errors.map(message => `${message.lineNum}:${message.message}`).join('\n'))
+        const pipeline = await validated(() => device.createRenderPipelineAsync({
+          layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+          vertex: { module, entryPoint: 'quad' },
+          fragment: { module, entryPoint: 'exactImageResolveStep', targets: [{ format: 'rgba32float' }] },
+          primitive: { topology: 'triangle-list' },
+        }))
+        // Compiling does not grant a scene capability. The current scene may
+        // have switched to export/readback, or this driver may have parked.
+        this.displayImagePipeline = pipeline
+      } catch (error) {
+        this.displayImageUnavailable = true
+        this.displayImageRequested = false
+        console.warn('Screen finite image source unavailable; using exact image arithmetic', error)
+      }
+    })()
+    return this.displayImagePreparing
   }
   async prepareFilters(prefixUseful = false) {
+    const bounded = this.displayFilterRadiusLimit !== undefined
     if (this.managed && this.displayFilters) {
-      if (this.pairDisplayTaps && !this.pairedDisplay && !this.pairedDisplayFailed && this.device.features.has('float32-filterable')) {
+      if (!bounded && this.pairDisplayTaps && !this.pairedDisplay && !this.pairedDisplayFailed && this.device.features.has('float32-filterable')) {
         try {
         const layout = this.device.createBindGroupLayout({ entries: [
           { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', minBindingSize: 1024 } },
@@ -749,14 +838,37 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         }
       }
       if (!this.displayFilterPipeline) {
-        const module = this.device.createShaderModule({ code: displayFilterWgsl, label: 'Canvas integrated tent' })
-        this.displayFilterPipeline = await this.device.createRenderPipelineAsync({
-          layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
-          vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', targets: [{ format: this.layerFormat }] },
-          primitive: { topology: 'triangle-list' },
-        })
+        try {
+          const device = this.device
+          // The candidate's validation scope never spans an await. A failed
+          // optional shader must not contaminate the exact frame's scope.
+          const validated = async <T>(create: () => T | Promise<T>): Promise<T> => {
+            if (!bounded) return create()
+            device.pushErrorScope('validation')
+            let pending: T | Promise<T>
+            try { pending = create() } catch (error) { await device.popErrorScope(); throw error }
+            const validation = device.popErrorScope(), [value, error] = await Promise.all([pending, validation])
+            if (error) throw new Error(error.message)
+            return value
+          }
+          const module = await validated(() => device.createShaderModule({ code: displayFilterWgsl, label: 'Canvas integrated tent' }))
+          if (bounded) {
+            const errors = (await module.getCompilationInfo()).messages.filter(message => message.type === 'error')
+            if (errors.length) throw new Error(errors.map(message => `${message.lineNum}:${message.message}`).join('\n'))
+          }
+          this.displayFilterPipeline = await validated(() => device.createRenderPipelineAsync({
+            layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
+            vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', targets: [{ format: this.layerFormat }] },
+            primitive: { topology: 'triangle-list' },
+          }))
+        } catch (error) {
+          if (!bounded) throw error
+          this.boundedDisplayFilterFailed = true
+          if (this.displayFilterRadiusLimit !== undefined) this.displayFilters = false
+          console.warn('Bounded display filter unavailable; using exact filters', error)
+        }
       }
-      return
+      if (!bounded) return
     }
     if (this.managed && !this.filterPipelines.length) {
       const filterModule = this.device.createShaderModule({ code: exactFilterWgsl(this.certifiedFilter), label: 'Exact rational filter' })
@@ -780,7 +892,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   private prefixPolicy(u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}, kernel?: Texture) {
     // Actual operator measurements: alpha-only remains faster on the old path;
     // eligible RGBA lines can use 4 MiB bands from the measured crossover.
-    return !!(!this.displayFilters && this.prefix && filter?.kind === 'tent' && filter.radius >= PREFIX_MIN_RADIUS &&
+    return !!(!displayFilterPass(this.displayFilters, this.displayFilterRadiusLimit, !!this.displayFilterPipeline, u, channels, filter) &&
+      this.prefix && filter?.kind === 'tent' && filter.radius >= PREFIX_MIN_RADIUS &&
       !((!Number.isInteger(filter.radius) || filter.radius > 512) && kernel?.prefixRationalUnsupported === true) && channels === 15 && u[16] === 22)
   }
   private rationalKernelBoundBits(kernel: Texture | undefined, radius: number) {
@@ -825,10 +938,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.geometryUploadBytes = 0
     this.bindingCache.begin()
     this.pairedFilterPasses = 0
+    this.boundedDisplayFilterPasses = 0
     if (this.disposed || this.lost) throw new Error('WebGPU 设备已丢失')
     this.resourceEpoch++
     this.drawCalls = 0
     this.opaqueTentPasses = 0
+    this.displayImageSourcePasses = 0
     this.mergedExactFilterPasses = 0
     this.finishTransientBytes = 0
     this.frameScratchBytes = 0
@@ -993,6 +1108,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   private invalidateTextureCertificates(texture: Texture) {
     this.rationalKernelBounds?.delete(texture)
     this.imageRanges?.delete(texture)
+    this.displayImageUploads?.delete(texture)
     this.imageAxisPrograms?.delete(texture)
     delete texture.finitePixels;delete texture.opaqueAlpha
   }
@@ -1024,6 +1140,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     texture.finitePixels=true
     if(height===2 && values[3]===-1 && width<=8192)this.imageAxisPrograms.set(texture,values.slice())
     this.imageRanges.set(texture,range)
+    this.displayImageUploads.set(texture,{resource:texture.resource as GPUTexture,width,height,range})
     return texture
   }
   uploadParameters(values: Float32Array, width: number, height: number) {
@@ -1558,10 +1675,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         !inputs[0]?.binaryCoverage || inputs[1]?.finitePixels !== true || !inputs[3] ||
         channels !== 15 || !!region || !!target.binaryCoverage || !!target.scalarCoverage))
       throw new Error('精确图片累积缺少有效的有限输入证明')
+    const displayImage = u[16] === IMAGE_RESOLVE_STEP_MODE && this.usesDisplayImageSource(inputs[1])
     if (target.binaryCoverage && ![12, 20, 31].includes(u[16]))
       throw new Error('Only binary coverage may write a binary mask texture')
-    const displayFilter = this.managed && this.displayFilters && u[16] === 22
-    if (displayFilter && this.pairDisplayTaps && this.pairedDisplay && u[40] === 0 && channels === 15 && !region && inputs[0] && inputs[1]) {
+    const displayFilter = this.managed && displayFilterPass(this.displayFilters, this.displayFilterRadiusLimit, !!this.displayFilterPipeline, u, channels, filter)
+    if (displayFilter && this.displayFilterRadiusLimit !== undefined &&
+        (target.scalarCoverage || target.binaryCoverage || sourceWindow || inputs[0]?.scalarCoverage || inputs[0]?.binaryCoverage))
+      throw new Error('Bounded display filter requires ordinary RGBA source and target')
+    if (displayFilter && this.displayFilterRadiusLimit === undefined && this.pairDisplayTaps && this.pairedDisplay && u[40] === 0 && channels === 15 && !region && inputs[0] && inputs[1]) {
       const bind = this.device.createBindGroup({ layout: this.pairedDisplay.layout, entries: [
         { binding: 0, resource: this.uniform(u) }, { binding: 1, resource: this.pairedDisplay.sampler },
         { binding: 2, resource: this.bindingCache.view((inputs[0].resource as GPUTexture)) },
@@ -1579,7 +1700,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const pipelines = target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?this.scalarAreaPipeline!:this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
       ? [u[16] === 31 ? this.binaryAreaPipeline! : this.binaryPipelines.get(u[16])!]
       : this.managed && u[16] === 22 ? this.filterPipelines : [
-      u[16] === IMAGE_RESOLVE_STEP_MODE ? this.imageResolveStepPipeline! : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? this.areaPipeline! : this.managed && u[16] === 3 && u[17] === 0
+      u[16] === IMAGE_RESOLVE_STEP_MODE ? (displayImage ? this.displayImagePipeline! : this.imageResolveStepPipeline!) : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? this.areaPipeline! : this.managed && u[16] === 3 && u[17] === 0
         ? (integerCentres ? this.normalCornerPipeline! : this.normalPipeline!) :
       this.managed && u[16] === 0 ? (integerCentres ? this.copyCornerPipeline! : this.copyPipeline!) :
       this.managed ? this.modePipelines.get(u[16])! : this.paintPipeline]
@@ -1630,6 +1751,11 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     pass.end()
     drawn = true
     this.drawCalls++
+    if (displayFilter && this.displayFilterRadiusLimit !== undefined) this.boundedDisplayFilterPasses++
+    if (displayImage) {
+      this.displayImageSourcePasses++
+      recordGpuDiagnostic('cache', { displayImageSourcePasses: 1 })
+    }
     }
   }
   private timestampWrites(row: typeof this.timingRows[number]): GPUComputePassTimestampWrites | undefined {
@@ -1882,6 +2008,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       bindGroupCacheSize: this.bindingCache.size,
       dynamicUniformBindings: this.dynamicUniformBindings,
       mergedExactFilterPasses: this.mergedExactFilterPasses,
+      displayImageSourcePasses: this.displayImageSourcePasses,
+      boundedDisplayFilterPasses: this.boundedDisplayFilterPasses,
     }
   }
   async loseDeviceForTesting() {
@@ -1984,6 +2112,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
    * commands completed (park path) or after device loss (every destroy is then
    * a safe no-op). */
   private releaseFrameResources() {
+    this.displayImageRequested = false
     this.prefix?.releaseScratch()
     this.releaseImageTables()
     for (const t of [...this.textures]) this.destroy(t)

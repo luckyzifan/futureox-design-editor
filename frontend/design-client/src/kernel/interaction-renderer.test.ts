@@ -20,7 +20,7 @@ vi.mock('./client', () => ({ KernelClient: class {
 } }))
 
 const owners: InteractionRenderer[] = []
-afterEach(() => { owners.splice(0).forEach(owner => owner.dispose()); worker.jobs.length = 0; worker.poses.length=worker.stops.length=worker.released.length=0;worker.disposed = 0 })
+afterEach(() => { owners.splice(0).forEach(owner => owner.dispose()); worker.jobs.length = 0; worker.poses.length=worker.stops.length=worker.released.length=0;worker.disposed = 0; vi.unstubAllEnvs() })
 function fixture(dependent = false, zoom = 1, extent = 100, active = dependent) {
   const doc = blank(), root = node('frame', 0, 0, extent, extent)
   root.blend = 'normal'
@@ -698,4 +698,112 @@ test('replaced shared capture retires its own requests without cancelling anothe
   one.prepare({ ...props, selection: [b.id] }, doc.pages[0].id, view, 1, 'analytic', 'cpu', doc, size)
   expect(worker.jobs).toHaveLength(3); expect(latest.signal.aborted).toBe(false)
   one.dispose(); expect(latest.signal.aborted).toBe(true); expect(independent.signal.aborted).toBe(false)
+})
+
+function pendingRetainedFixture(active = true) {
+  vi.stubEnv('VITE_DESIGN_RESIDENT_PENDING_POSE', '1')
+  const doc = blank(), root = node('frame', 0, 0, 240, 180), child = node('rectangle', 40, 40, 24, 20)
+  root.blend = 'normal'; root.clip = false; root.children = [child.id]
+  doc.nodes[root.id] = root; doc.nodes[child.id] = child; doc.pages[0].children = [root.id]
+  const shared = new KernelClient(), owner = new InteractionRenderer(vi.fn(), shared); owners.push(owner)
+  const props: InteractionProps = { document: doc, selection: [child.id], active, epoch: 1,
+    control: { current: null }, onReady() {} }
+  const view = { x: 0, y: 0, zoom: 1 }, size = { width: 240, height: 180 }
+  const prepare = (next = props, camera = view) =>
+    owner.prepare(next, doc.pages[0].id, camera, 2, 'figmaSubpixel', 'webgpu', undefined, size)
+  prepare()
+  const transform = (dx: number) => [1, 0, 0, 1, 40 + dx, 40] as typeof child.transform
+  const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
+  return { doc, root, child, owner, shared, props, view, prepare, transform, flush }
+}
+
+test('first retained capture transfers its latest queued pure translation to the same worker slot without a second capture', async () => {
+  const f = pendingRetainedFixture(), original = JSON.stringify(f.doc), first = worker.jobs[0]
+  expect(first.options.retainInteractionGraph).toBe(true)
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(4) } })
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
+  expect(worker.jobs).toHaveLength(1)
+  first.resolve({ gpuTile: 801, residentInteraction: true }); await f.flush()
+  expect(worker.jobs).toHaveLength(1)
+  expect(worker.poses).toHaveLength(1)
+  expect(worker.poses[0][0]).toBe(801)
+  expect(worker.poses[0][1][f.child.id]).toEqual(f.transform(12))
+  expect(worker.poses[0][2].sequence).toBe(2)
+  // Sending is not a presentation acknowledgement. The captured original is
+  // displayed until the actual resident sample reports the latest sequence.
+  expect(f.owner.presentedInput.sequence).toBe(0)
+  f.owner.acceptResidentSample({ slot: 801, ...worker.poses[0][2], nativePose: true })
+  expect(f.owner.presentedInput.sequence).toBe(2)
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(16) } })
+  expect(worker.poses).toHaveLength(2)
+  expect(worker.jobs).toHaveLength(1)
+  expect(JSON.stringify(f.doc)).toBe(original)
+})
+
+test('a first capture without worker residency keeps the original whole-scene pending path', async () => {
+  const f = pendingRetainedFixture()
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
+  worker.jobs[0].resolve({ gpuTile: 802, residentInteraction: false }); await f.flush()
+  expect(worker.poses).toHaveLength(0)
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.jobs[1].document.nodes[f.child.id].transform).toEqual(f.transform(12))
+})
+
+test('camera changes during the first retained capture require a new capture instead of an old-lattice pose', async () => {
+  const f = pendingRetainedFixture(), first = worker.jobs[0]
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
+  f.prepare(f.props, { x: 11.25, y: -.125, zoom: 1.25 })
+  first.resolve({ gpuTile: 803, residentInteraction: true }); await f.flush()
+  expect(worker.poses).toHaveLength(0)
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.jobs[1].options.view.zoom).toBe(2.5)
+})
+
+test('a queued style change cannot enter the first retained capture as a transform-only pose', async () => {
+  const f = pendingRetainedFixture()
+  const styled = { ...f.doc, nodes: { ...f.doc.nodes, [f.child.id]: { ...f.child, opacity: .25 } } }
+  f.prepare({ ...f.props, document: styled })
+  worker.jobs[0].resolve({ gpuTile: 804, residentInteraction: true }); await f.flush()
+  expect(worker.poses).toHaveLength(0)
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.jobs[1].document.nodes[f.child.id].opacity).toBe(.25)
+})
+
+test('queued translation is checked against the completed capture document rather than only the original plan', async () => {
+  const f = pendingRetainedFixture(false)
+  expect(worker.jobs).toHaveLength(0)
+  const styled = { ...f.doc, nodes: { ...f.doc.nodes, [f.child.id]: { ...f.child, opacity: .25 } } }
+  f.prepare({ ...f.props, document: styled, active: true })
+  expect(worker.jobs[0].document).toBe(styled)
+  // This pending pose is compatible with the initial plan, but not with the
+  // actual styled document currently being captured into slot 805.
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
+  worker.jobs[0].resolve({ gpuTile: 805, residentInteraction: true }); await f.flush()
+  expect(worker.poses).toHaveLength(0)
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.jobs[1].document.nodes[f.child.id].opacity).toBe(f.child.opacity)
+})
+
+test('session replacement while the first capture is pending releases its late slot without sending a pose', async () => {
+  const f = pendingRetainedFixture(), first = worker.jobs[0]
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
+  f.prepare({ ...f.props, epoch: 2 })
+  expect(first.signal.aborted).toBe(true)
+  first.resolve({ gpuTile: 806, residentInteraction: true }); await f.flush()
+  expect(worker.released).toContain(806)
+  expect(worker.poses).toHaveLength(0)
+  expect(worker.jobs).toHaveLength(2)
+  expect(f.owner.tiles.some(tile => tile.gpuTile === 806)).toBe(false)
+})
+
+test('a transferred pending pose outside the worker capture guard still rebuilds the latest real transform', async () => {
+  const f = pendingRetainedFixture()
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(60) } })
+  worker.jobs[0].resolve({ gpuTile: 807, residentInteraction: true }); await f.flush()
+  expect(worker.poses).toHaveLength(1)
+  expect(worker.jobs).toHaveLength(1)
+  f.owner.acceptResidentSample({ slot: 807, ...worker.poses[0][2], needsRebase: true })
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.jobs[1].document.nodes[f.child.id].transform).toEqual(f.transform(60))
+  expect(f.doc.nodes[f.child.id].transform).toEqual(f.transform(0))
 })

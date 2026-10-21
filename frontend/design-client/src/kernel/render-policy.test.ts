@@ -17,6 +17,7 @@ import {
   usesTransientDisplayFilters,
   usesDisplayArithmetic,
   canvasSamplingProfile,
+  usesDesktopDisplay,
 } from './render-policy.ts'
 
 test('exact desktop arithmetic is independent of same-device SDR presentation', () => {
@@ -31,6 +32,58 @@ test('exact desktop arithmetic is independent of same-device SDR presentation', 
   assert.equal(canvasSamplingProfile(desktop, 'figma', 'webgpu', true), 'figma')
   assert.equal(usesDisplayArithmetic(desktop, { renderIntent: 'canvas' }), false)
   assert.equal(usesTransientDisplayFilters(desktop, { renderIntent: 'preview' }), false)
+})
+test('desktop display capability preserves full effects while admitting screen-density four-sample display', () => {
+  const desktop = hostRenderPolicy(true, false, false, false, false, true)
+  assert.equal(desktop.desktopDisplay, true)
+  assert.equal(desktop.desktopFullMath, true)
+  for (const renderIntent of ['canvas', 'preview']) {
+    const request = { renderIntent, rasterProfile: 'figma' }
+    assert.equal(usesDesktopDisplay(desktop, request), true)
+    assert.equal(canvasSamplingProfile(desktop, 'figma', 'webgpu', true, 0, request), 'figmaSubpixel')
+    // Arithmetic is a separately wired capability, not permission to switch
+    // filters or skip effects. The first candidate build can leave it off.
+    assert.equal(usesDisplayArithmetic(desktop, request), true)
+    assert.equal(usesCanvasDisplayFilters(desktop, request), false)
+    assert.equal(usesTransientDisplayFilters(desktop, request), false)
+  }
+  assert.equal(canvasSamplingProfile(desktop, 'figma', 'webgpu', true), 'figmaSubpixel')
+  assert.equal(requiresFloatCompositing(desktop, { colorManagement: {} }), true)
+})
+test('desktop display cannot change explicit exact output, HDR, CPU or software profiles', () => {
+  const desktop = hostRenderPolicy(true, false, false, false, false, true)
+  for (const request of [{}, { renderIntent: 'settled' }, { renderIntent: 'settle' }, { renderIntent: 'export' },
+    { renderIntent: 'canvas', readback: true }, { renderIntent: 'preview', readback: true },
+    { renderIntent: 'canvas', png: true }, { renderIntent: 'preview', png: true },
+    { renderIntent: 'preview', exportFormat: 'png' }, { renderIntent: 'canvas', exportRegion: {} },
+    { renderIntent: 'preview', pixelPreview: 1 }, { renderIntent: 'preview', rasterProfile: 'figmaSoftware' }]) {
+    assert.equal(usesDesktopDisplay(desktop, request), false)
+    assert.equal(usesDisplayArithmetic(desktop, request), false)
+    const profile = request.rasterProfile === 'figmaSoftware' ? 'figmaSoftware' : 'figma'
+    assert.equal(canvasSamplingProfile(desktop, profile, 'webgpu', true, 0, request), profile)
+  }
+  for (const policy of [hostRenderPolicy(true, true, false, false, false, true),
+    hostRenderPolicy(true, false, true, false, false, true)]) {
+    assert.equal(usesDesktopDisplay(policy, { renderIntent: 'canvas' }), false)
+    assert.equal(canvasSamplingProfile(policy, 'figma', 'webgpu', true), 'figma')
+  }
+  assert.equal(canvasSamplingProfile(desktop, 'figma', 'cpu', true), 'figma')
+  assert.equal(canvasSamplingProfile(desktop, 'figma', 'webgpu', false), 'figma')
+  for (const profile of ['analytic', 'figmaSubpixel', 'figmaSoftware'] as const)
+    assert.equal(canvasSamplingProfile(desktop, profile, 'webgpu', true), profile)
+})
+test('desktop display defaults off, is desktop-only and cannot change inside a worker', () => {
+  assert.equal(hostRenderPolicy(true, false).desktopDisplay, false)
+  assert.equal(hostRenderPolicy(false, false, false, false, false, true).desktopDisplay, false)
+  const on = hostRenderPolicy(true, false, false, false, false, true), off = hostRenderPolicy(true, false)
+  const pinned = pinRenderPolicy(undefined, structuredClone(on))
+  assert.equal(Object.isFrozen(pinned), true)
+  assert.equal(pinRenderPolicy(pinned, structuredClone(on)), pinned)
+  assert.throws(() => Object.assign(pinned, { desktopDisplay: false }), TypeError)
+  assert.throws(() => pinRenderPolicy(pinned, off), /cannot change/)
+  assert.throws(() => pinRenderPolicy(off, on), /cannot change/)
+  for (const value of [undefined, '1', 1, null, {}])
+    assert.equal(pinRenderPolicy(undefined, { ...on, desktopDisplay: value }).desktopDisplay, false)
 })
 test('HQ resolve and pixel-preview never consume an unconverted interaction window',()=>{
   assert.equal(allowsInteractionWindow(true,{}),true)

@@ -141,6 +141,11 @@ export type GpuScene = {
   interactionSelection?: string[]
   /** Transient web-canvas filter reduction. Never set by export/readback. */
   displayFilters?: boolean
+  /** Screen-only bounded filter tier. Larger radii retain exact reduction. */
+  displayFilterRadiusLimit?: number
+  /** Worker-selected SDR display-only image sampler. Exact outputs overwrite it. */
+  displayMaterialSource?: boolean
+  displayImageSource?: boolean
   softwareRaster?: boolean
   output?: Rect
   floatCompositing?: boolean
@@ -229,6 +234,9 @@ export type GpuAdmissionDiagnostic = Readonly<{
 
 export type ExactImageTable = { resource: unknown; width: number; height: number; bytes: number; opaqueAlpha?: true; nonnegativeResolved?: true }
 export interface Driver {
+  usesDisplayFilter?(radius: number, channels?: number): boolean
+  /** True only for this driver's actual immutable finite image upload. */
+  usesDisplayImageSource?(image: Texture): boolean
   imageTableRange?(image: Texture): import('./exact-image-x-table').ExactImageRange | undefined
   imageTableAxes?(field: Texture): Float32Array | undefined
   hasActiveImageTableSource?(image: Texture): boolean
