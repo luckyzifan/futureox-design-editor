@@ -19,6 +19,13 @@ test('tile order correlation retains bounded original indices, signed row deltas
   assert.deepEqual(sanitizeFields({tileSourceIndex:256,tileOrderIndex:-1,tileColumnNextIndex:-2,
     tileColumnReordered:2,tileColumnDeltaY:1e7+1,filterColumnPlans:257,filterColumnReorders:-1}),{})
 })
+test('static image blur telemetry contains only five bounded numeric counters',()=>{
+  const sample={staticImageBlurEligible:4,staticImageBlurHits:1,staticImageBlurPixels:1065024,staticImageBlurBytes:17825792,staticImageBlurEntries:1}
+  assert.deepEqual(sanitizeFields({...sample,staticImageBlurSource:'private-uri'}),sample)
+  for(const value of [NaN,Infinity,-1,.5,'1',true,{}])
+    assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(sample).map(key=>[key,value]))),{})
+  assert.deepEqual(sanitizeFields({staticImageBlurBytes:17825793,staticImageBlurEntries:2}),{})
+})
 test('disabled path never reads clocks, schedules, serializes payloads, or emits',()=>{
   const fail=()=>{throw Error('disabled side effect')}
   const d=createRenderDiagnostics({sink:fail,now:fail,schedule:fail})

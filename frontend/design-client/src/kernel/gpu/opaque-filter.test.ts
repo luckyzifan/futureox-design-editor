@@ -53,11 +53,11 @@ test('real pass dispatcher skips alpha only with the complete source footprint a
   const target = texture(12, 12), kernel = texture(), u = parameters(output, source)
   u[16] = 22; u[36] = radius; u[37] = 0
   driver.pass(target, u, [image, kernel], undefined, 15, { kind: 'tent', radius })
-  expect(encode.mock.calls[0].slice(7)).toEqual([7, 255, true, 0])
+  expect(encode.mock.calls[0].slice(7,11)).toEqual([7, 255, true, 0])
   expect(target.opaqueAlpha).toBe(true)
   u[4] = 40; u[6] = 60
   driver.pass(target, u, [image, kernel], undefined, 15, { kind: 'tent', radius })
-  expect(encode.mock.calls[1].slice(7)).toEqual([15, 255, false, 0])
+  expect(encode.mock.calls[1].slice(7,11)).toEqual([15, 255, false, 0])
   expect(target.opaqueAlpha).toBeUndefined()
 })
 

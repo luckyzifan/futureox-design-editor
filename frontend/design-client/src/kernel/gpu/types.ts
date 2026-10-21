@@ -294,6 +294,11 @@ export interface Driver {
     deviceLost: boolean
   }
   prepareFilterPass?(target: Texture, uniforms: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number): void
+  /** Opt-in bounded physical subrect for exact mode22 only. The logical source
+   * remains uniforms[4..7]. False encodes nothing; callers retain their normal
+   * small-texture path. No content/alpha proof or lifetime lease is granted. */
+  passFilterWindow?(target: Texture, uniforms: Float32Array, inputs: Texture[], window: Readonly<Rect>,
+    channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number): boolean
   abortFrameAndReleaseFilterScratch?(reason?: 'admission' | 'cancel'): Promise<void>
   readonly certifiedFilter?: boolean
   readonly exactSolidPaintOver?: boolean

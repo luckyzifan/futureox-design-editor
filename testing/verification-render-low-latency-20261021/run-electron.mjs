@@ -11,6 +11,8 @@ const [fixture,out]=process.argv.slice(2); if(!fixture||!out)throw Error('fixtur
 await mkdir(out,{recursive:false}); await mkdir(path.join(out,'profiles'));
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const report={fixture:path.basename(fixture),fixtureSha256:hash(await readFile(fixture)),startedAt:new Date().toISOString(),stages:[],errors:[],scope:`${process.env.DESIGN_TEST_PASSIVE==='1'?'Passive visible window, opacity 0.01':process.env.DESIGN_TEST_HIDDEN==='1'?'Hidden':'Visible'} release Electron, sandbox retained, isolated user profile; real pointer/keyboard input through Playwright; sampled diagnostics, not physical input-to-photon or FPS acceptance.`};
+report.harnessRuntime={node:process.version,v8:process.versions.v8};
+report.harnessSha256=hash(await readFile(new URL(import.meta.url)));
 await writeFile(path.join(out,'build-manifest.json'),await readFile(path.join(desktop,'dist/build-manifest.json')));
 const artifacts={};for(const f of await readdir(path.join(desktop,'dist/renderer/assets'))){const relative=path.relative(root,path.join(desktop,'dist/renderer/assets',f));artifacts[relative]=hash(await readFile(path.join(root,relative)))};await writeFile(path.join(out,'runtime-artifacts.json'),JSON.stringify({captured:'before launch',artifacts},null,2));
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(ELECTRON_RUN_AS_NODE|NODE_OPTIONS|LD_PRELOAD|DYLD_)/.test(k)));
@@ -217,7 +219,12 @@ try {
       report.extended.edit.heldPreview={waitMs:performance.now()-holdStarted,...await snapshot()};
       if(report.extended.edit.heldPreview.compositor.interactionActive!=='true')throw Error('Held gesture ended before a verified content update; inspect capture trace');
       if(process.env.DESIGN_TEST_HIDDEN!=='1'&&process.env.DESIGN_TEST_PASSIVE!=='1')await page.locator('.kernel-compositor').screenshot({path:path.join(out,'held-drag-compositor.png')});
+      const readbackStarted=performance.now();
       const heldPng=await page.locator('.kernel-compositor').evaluate(c=>c.toDataURL('image/png'));
+      report.extended.edit.heldPreview.readbackMs=performance.now()-readbackStarted;
+      // Includes IPC and PNG encoding, so this is a conservative upper bound
+      // for complete actual pixels, not an exclusive GPU timestamp or photon time.
+      report.extended.edit.heldPreview.verifiedPixelsUpperMs=performance.now()-holdStarted;
       await writeFile(path.join(out,'held-drag-canvas-buffer.png'),Buffer.from(heldPng.split(',')[1],'base64'));
      }
     }finally{await page.mouse.up()}

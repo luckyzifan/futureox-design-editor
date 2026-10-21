@@ -1179,6 +1179,8 @@ self.onmessage = (e) => {
                     materialFieldBuildMs: result.materialFieldBuildMs,
                     materialFieldUploadBytes: result.materialFieldUploadBytes,
                     ...('imageXTableBuilds' in result ? {wholeFilterAxes:result.wholeFilterAxes,opaqueTentPasses:result.opaqueTentPasses,imageXTableBuilds:result.imageXTableBuilds,imageXTablePixels:result.imageXTablePixels,imageXTableBytes:result.imageXTableBytes} : {}),
+                    ...('staticImageBlurHits' in result ? {staticImageBlurEligible:result.staticImageBlurEligible,staticImageBlurHits:result.staticImageBlurHits,
+                      staticImageBlurPixels:result.staticImageBlurPixels,staticImageBlurBytes:result.staticImageBlurBytes,staticImageBlurEntries:result.staticImageBlurEntries} : {}),
                     ...('horizontalFilterHits' in result ? {
                       horizontalFilterHits: result.horizontalFilterHits,
                       horizontalFilterPixels: result.horizontalFilterPixels,
@@ -1680,6 +1682,7 @@ async function renderTiledPreview(
   const { renderPreviewTiles, renderBitmapPreviewTiles } = await import('./preview-tiles')
   let hybridEffects = 0, materialFieldHits = 0, materialFieldBuilds = 0, materialFieldBuildMs = 0, materialFieldUploadBytes = 0
   let wholeFilterAxes = 0, opaqueTentPasses = 0, imageXTableBuilds = 0, imageXTablePixels = 0, imageXTableBytes = 0
+  let staticImageBlurEligible = 0, staticImageBlurHits = 0, staticImageBlurPixels = 0, staticImageBlurBytes = 0, staticImageBlurEntries = 0
   let horizontalFilterHits = 0, horizontalFilterPixels = 0, horizontalFilterRows = 0
   const managedOutput = !!(executionPolicy?.hdrCompositing && color)
   const admissionKey=JSON.stringify(activeLane) + "/" + JSON.stringify([laneState.documentGeneration,laneState.resourceGeneration,options.pageId,options.view.zoom,
@@ -1778,6 +1781,11 @@ async function renderTiledPreview(
         imageXTableBuilds += result.imageXTableBuilds
         imageXTablePixels += result.imageXTablePixels
         imageXTableBytes = Math.max(imageXTableBytes, result.imageXTableBytes)
+        staticImageBlurEligible += result.staticImageBlurEligible
+        staticImageBlurHits += result.staticImageBlurHits
+        staticImageBlurPixels += result.staticImageBlurPixels
+        staticImageBlurBytes = Math.max(staticImageBlurBytes, result.staticImageBlurBytes)
+        staticImageBlurEntries = Math.max(staticImageBlurEntries, result.staticImageBlurEntries)
         drawCalls += result.drawCalls
         triangles += result.triangles
         graphMs += result.graphMs
@@ -1896,6 +1904,11 @@ async function renderTiledPreview(
         imageXTableBuilds += result.imageXTableBuilds
         imageXTablePixels += result.imageXTablePixels
         imageXTableBytes = Math.max(imageXTableBytes, result.imageXTableBytes)
+        staticImageBlurEligible += result.staticImageBlurEligible
+        staticImageBlurHits += result.staticImageBlurHits
+        staticImageBlurPixels += result.staticImageBlurPixels
+        staticImageBlurBytes = Math.max(staticImageBlurBytes, result.staticImageBlurBytes)
+        staticImageBlurEntries = Math.max(staticImageBlurEntries, result.staticImageBlurEntries)
         drawCalls += result.drawCalls
         triangles += result.triangles
         graphMs += result.graphMs
@@ -1970,6 +1983,7 @@ async function renderTiledPreview(
       description,
       hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
       wholeFilterAxes, opaqueTentPasses, imageXTableBuilds, imageXTablePixels, imageXTableBytes,
+      staticImageBlurEligible, staticImageBlurHits, staticImageBlurPixels, staticImageBlurBytes, staticImageBlurEntries,
       horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
       compileMs,
       renderMs: performance.now() - start - compileMs,
@@ -2012,6 +2026,7 @@ async function renderTiledPreview(
     description,
     hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
     wholeFilterAxes, opaqueTentPasses, imageXTableBuilds, imageXTablePixels, imageXTableBytes,
+    staticImageBlurEligible, staticImageBlurHits, staticImageBlurPixels, staticImageBlurBytes, staticImageBlurEntries,
     horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
     compileMs,
     renderMs: performance.now() - start - compileMs,
