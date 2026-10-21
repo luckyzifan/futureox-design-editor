@@ -1,7 +1,24 @@
 import { expect, test } from 'vitest'
-import { DecodedImageCache, imageCacheVictims, validDecodedImage } from './decoded-image-cache'
+import { DecodedImageCache, createDecodedImageOwner, decodedImageScope, imageCacheVictims, validDecodedImage } from './decoded-image-cache'
 
 const image = (data: Uint8Array | Float32Array = new Uint8Array([1, 2, 3, 4])) => ({ width: 1, height: 1, data })
+
+test('only the same opaque owner and complete color settings share image residency', () => {
+  const owner = createDecodedImageOwner(), reopened = createDecodedImageOwner()
+  const settings = JSON.stringify({ documentSpace: 'srgb', referenceWhiteNits: 100, peakLuminanceNits: 1000 })
+  const scope = decodedImageScope(owner, settings), cache = new DecodedImageCache()
+  const original = image(new Float32Array([1.25, -0, -0.125, 0.5]))
+  cache.begin(scope); cache.set(scope, 'f:whole-data-uri', original)
+  cache.begin(decodedImageScope(owner, settings))
+  expect(cache.get(scope, 'f:whole-data-uri')).toBe(original)
+  expect(cache.get(scope, 'b:whole-data-uri')).toBeUndefined()
+  expect(cache.get(scope, 'f:different-icc-data-uri')).toBeUndefined()
+  expect(decodedImageScope(reopened, settings)).not.toBe(scope)
+  expect(() => decodedImageScope({} as any, settings)).toThrow('Unknown decoded image owner')
+  cache.begin(decodedImageScope(owner, settings.replace('1000', '2000')))
+  expect(cache.get(scope, 'f:whole-data-uri')).toBeUndefined()
+  expect(new Uint32Array(original.data.buffer)).toEqual(new Uint32Array(new Float32Array([1.25, -0, -0.125, 0.5]).buffer))
+})
 
 test('decoded residency includes scope, keys and entire backing buffers', () => {
   const cache = new DecodedImageCache(400)

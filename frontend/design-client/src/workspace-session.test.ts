@@ -3,6 +3,7 @@ import { Editor } from './engine'
 import { blank, node } from './model'
 import { DesktopSession } from './desktop-session'
 import type { DesktopBridge, WorkspaceBridge, WorkspaceOpened, WorkspaceDocument } from './desktop'
+import { pendingEditsChanged, registerPendingEdit } from './pending-edits'
 
 const sessions: DesktopSession[] = []
 const ok = { status:'ok' } as const
@@ -64,6 +65,100 @@ describe('Rust workspace persistence session',()=>{
     f.editor.commit();await vi.advanceTimersByTimeAsync(650)
     expect(f.store.commit).toHaveBeenCalledTimes(1)
     expect(JSON.parse(f.rows.get(doc.id)!.documentJson).nodes[n.id].transform[4]).toBe(300)
+  })
+  it.each(['BUSY', 'WORKSPACE_BUSY'])('autosaves a property undo after %s using the exact pending receipt', async code => {
+    vi.useFakeTimers()
+    const doc = blank('Property undo'), text = node('text', 75.85958862304688, 0, 120, 30)
+    text.text = 'Original'; doc.nodes[text.id] = text; doc.pages[0].children = [text.id]
+    const f = fixture(doc); await f.session.start(); await f.session.save()
+    const original = f.rows.get(doc.id)!.documentJson
+    f.editor.change('X', d => { d.nodes[text.id].transform[4] = 99.86 })
+    await vi.advanceTimersByTimeAsync(650)
+    expect(JSON.parse(f.rows.get(doc.id)!.documentJson).nodes[text.id].transform[4]).toBe(99.86)
+    vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code, message: 'Native workspace read owns the gate' })
+    f.editor.undo(); expect(JSON.stringify(f.editor.state.doc)).toBe(original)
+    await vi.advanceTimersByTimeAsync(650)
+    expect(f.session.dirty).toBe(true)
+    expect(JSON.parse(f.rows.get(doc.id)!.documentJson).nodes[text.id].transform[4]).toBe(99.86)
+    const rejected = vi.mocked(f.store.commit).mock.calls.at(-1)![0]
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(f.rows.get(doc.id)!.documentJson).toBe(original)
+    expect(vi.mocked(f.store.commit).mock.calls.at(-1)![0]).toEqual(rejected)
+    expect(f.session.status).toMatchObject({ dirty: false, revision: 3, error: undefined })
+  })
+  it('busy autosaves back off and settle the older receipt before committing newer edits', async () => {
+    vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
+    const busy = { status: 'error', code: 'BUSY', message: 'busy' } as const
+    vi.mocked(f.store.commit).mockResolvedValueOnce(busy).mockResolvedValueOnce(busy)
+    f.rename('First pending'); await vi.advanceTimersByTimeAsync(600)
+    const submitted = vi.mocked(f.store.commit).mock.calls.at(-1)![0]
+    await vi.advanceTimersByTimeAsync(599); expect(f.store.commit).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1); expect(f.store.commit).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(1199); expect(f.store.commit).toHaveBeenCalledTimes(3)
+    f.rename('Latest authored')
+    await vi.advanceTimersByTimeAsync(650)
+    const calls = vi.mocked(f.store.commit).mock.calls.map(call => call[0])
+    expect(calls[2]).toEqual(submitted); expect(calls[3]).toEqual(submitted)
+    expect(calls[4].mutationId).not.toBe(submitted.mutationId)
+    expect(calls[4].expectedRevision).toBe(2)
+    expect(f.rows.get(f.editor.state.doc.id)!.documentJson).toBe(JSON.stringify(f.editor.state.doc))
+    expect(f.session.status).toMatchObject({ dirty: false, revision: 3, error: undefined })
+  })
+  it.each(['WORKSPACE_CONFLICT', 'BACKEND_TIMEOUT', 'WORKSPACE_UNAVAILABLE'])('does not loop on non-busy outcome %s', async code => {
+    vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
+    vi.mocked(f.store.commit).mockResolvedValue({ status: code === 'WORKSPACE_CONFLICT' ? 'conflict' : 'error', code, message: 'retained error' })
+    f.rename('Unsaved'); await vi.advanceTimersByTimeAsync(60_000)
+    expect(f.store.commit).toHaveBeenCalledTimes(2); expect(f.session.dirty).toBe(true)
+  })
+  it('disposal stops a pending busy autosave retry', async () => {
+    vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
+    vi.mocked(f.store.commit).mockResolvedValue({ status: 'error', code: 'BUSY', message: 'busy' })
+    f.rename('Keep dirty'); await vi.advanceTimersByTimeAsync(600)
+    f.session.dispose(); await vi.advanceTimersByTimeAsync(60_000)
+    expect(f.store.commit).toHaveBeenCalledTimes(2)
+  })
+  it.each(['interaction', 'busy', 'pending'] as const)('known busy retry survives a temporary %s gate with no authored revision change', async gate => {
+    vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
+    vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code: 'BUSY', message: 'busy' })
+    f.rename('Persist after gate'); await vi.advanceTimersByTimeAsync(600)
+    let pending = false
+    const unregister = registerPendingEdit(f.editor, { dirty: () => pending, commit: () => false })
+    try {
+      if (gate === 'interaction') f.editor.begin('Cancelled without changes')
+      else if (gate === 'busy') f.editor.set({ busy: true })
+      else { pending = true; pendingEditsChanged(f.editor) }
+      const version = f.editor.state.version
+      await vi.advanceTimersByTimeAsync(600)
+      expect(f.store.commit).toHaveBeenCalledTimes(2)
+      if (gate === 'interaction') f.editor.cancel()
+      else if (gate === 'busy') f.editor.set({ busy: false })
+      else { pending = false; pendingEditsChanged(f.editor) }
+      expect(f.editor.state.version).toBe(version)
+      await vi.advanceTimersByTimeAsync(1200)
+      expect(f.rows.get(f.editor.state.doc.id)!.name).toBe('Persist after gate')
+      expect(f.session.dirty).toBe(false)
+    } finally { unregister() }
+  })
+  it('approved close stops a known busy retry without writing discarded changes', async () => {
+    vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
+    vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code: 'BUSY', message: 'busy' })
+    f.rename('Discard on close'); await vi.advanceTimersByTimeAsync(600)
+    expect(await f.session.requestClose()).toBe(true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(f.store.commit).toHaveBeenCalledTimes(2)
+  })
+  it.each(['transport', 'invalid-ack'] as const)('a %s failure after BUSY stops automatic retry and preserves its pending receipt', async failure => {
+    vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
+    vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code: 'BUSY', message: 'busy' })
+    if (failure === 'transport') vi.mocked(f.store.commit).mockRejectedValueOnce(Error('transport lost'))
+    else vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'ok', id: 'wrong-owner', name: 'bad ack', revision: 0, hash: 'bad', updatedAt: 0, deleted: false })
+    f.rename('Keep pending'); await vi.advanceTimersByTimeAsync(600)
+    const pending = (f.session as any).workspacePending
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(f.store.commit).toHaveBeenCalledTimes(3)
+    expect((f.session as any).workspacePending).toBe(pending)
+    expect(f.session.dirty).toBe(true)
+    expect(f.session.status.revision).toBe(1)
   })
   it('preserves the canvas and original database row on revision conflict',async()=>{
     const f=fixture();await f.session.start();f.rename('mine');await f.session.save()
