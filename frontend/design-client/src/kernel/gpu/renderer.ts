@@ -26,7 +26,7 @@ import { prefixRationalUnsupported } from './prefix-preflight'
 import { renderErrorWithBudget, sanitizeRenderBudget, type RenderBudgetDiagnostic } from '../render-diagnostics'
 import { textureByteLength } from './texture-byte-length'
 import { movingBackdropKey, staticBackdropKey } from './static-backdrop'
-import { workingSetBudget, usesNativeNavigationWorkingBudget } from './working-set-budget'
+import { DEFAULT_GPU_WORKING_BUDGET_BYTES, workingSetBudget, usesNativeNavigationWorkingBudget } from './working-set-budget'
 import {rectangleBorder} from './rect-partition'
 import {disjointNeutralGroup} from './neutral-group'
 import { backdropOverlap, exactBlendLattice, interactionEffectRegion, interactionHalo } from './effect-region'
@@ -95,7 +95,7 @@ import {
 // Initial admission before the first scene. renderAttempt selects the actual
 // physical working-set budget. This renderer runs in a Worker on both hosts:
 // window/desktop globals and system RAM are not available-VRAM measurements.
-const SURFACE_BUDGET_BYTES = 256 * 1024 * 1024
+const SURFACE_BUDGET_BYTES = DEFAULT_GPU_WORKING_BUDGET_BYTES
 /** Frame-scratch reclamation starts once the ledger passes this share and
  * destroys at most one bounded batch per completed checkpoint cycle. */
 const RECLAIM_BATCH_BYTES = 48 * 1024 * 1024
@@ -2393,7 +2393,7 @@ export class GpuRenderer {
     // above 64 MiB throughout a frame. Waiting on the GPU for every tiny dead
     // leaf then destroys reusable targets and serializes hundreds of nodes.
     // Reclaim one meaningful batch, or synchronize immediately at the pressure
-    // line; the unchanged allocation gate still enforces the 256 MiB ceiling.
+    // line; the allocation gate still enforces the selected working-budget ceiling.
     const reclaimableBytes = [...pooled, ...this.retiredUploads, ...coordinates]
       .reduce((sum, texture) => sum + texture.bytes, retiredImageTableBytes + retiredImageAssetBytes)
     if (!pressure && !imagesUnderPressure && reclaimableBytes < RECLAIM_BATCH_BYTES) return

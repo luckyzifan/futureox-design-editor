@@ -3,14 +3,14 @@ import { workingSetBudget, usesNativeNavigationWorkingBudget } from './working-s
 import { GpuRenderer } from './renderer'
 import type { Driver, GpuScene } from './types'
 afterEach(() => vi.unstubAllEnvs())
-test('working-set admission grows with native target pixels, not a pretend VRAM query', () => {
+test('default admission is 1 GiB for every target without pretending to query VRAM', () => {
   const MiB=1024*1024
-  expect(workingSetBudget(512,512,false)).toBe(256*MiB)
-  expect(workingSetBudget(2560,1440,true)).toBe(512*MiB)
-  expect(workingSetBudget(5120,2880,true)).toBe(960*MiB)
+  expect(workingSetBudget(512,512,false)).toBe(1024*MiB)
+  expect(workingSetBudget(2560,1440,true)).toBe(1024*MiB)
+  expect(workingSetBudget(5120,2880,true)).toBe(1024*MiB)
   expect(workingSetBudget(8192,8192,true)).toBe(1024*MiB)
-  expect(workingSetBudget(Infinity,1,true)).toBe(512*MiB)
-  expect(workingSetBudget(8192,8192,false)).toBe(256*MiB)
+  expect(workingSetBudget(Infinity,1,true)).toBe(1024*MiB)
+  expect(workingSetBudget(8192,8192,false)).toBe(1024*MiB)
 })
 test('an explicit host budget supports 4 GiB without uint32 wrap or target-based substitution', () => {
   const MiB = 1024 * 1024
@@ -85,22 +85,22 @@ test('coherent resident and bitmap presentation use the existing native working 
     .toBe(workingSetBudget(5120, 2880, true))
 })
 
-test('flag-off scene hints, readback/export transport, HDR, software and other drivers retain their prior coherent budget', async () => {
+test('flag-off scene hints, readback/export transport, HDR, software and other drivers retain the same default working budget', async () => {
   const hints = { displayTentRadius: true, displayImageSource: true, nativeInteraction: true }
-  expect((await observedBudget(undefined, { capture: true, sceneExtra: hints })).workingBudgetBytes).toBe(256 * 1024 * 1024)
+  expect((await observedBudget(undefined, { capture: true, sceneExtra: hints })).workingBudgetBytes).toBe(1024 * 1024 * 1024)
   for (const excluded of [{ readback: true }, { present: false }, { hdr: true }, { managed: false },
     { software: true }, { driverName: 'webgl2' }])
-    expect((await observedBudget('1', { ...excluded, sceneExtra: hints })).workingBudgetBytes).toBe(256 * 1024 * 1024)
+    expect((await observedBudget('1', { ...excluded, sceneExtra: hints })).workingBudgetBytes).toBe(1024 * 1024 * 1024)
   expect((await observedBudget('1', { readback: true,
     sceneExtra: { resolve: { width: 1710, height: 1776, offsetX: 0, offsetY: 0, scale: .5 } } })).workingBudgetBytes)
-    .toBe(256 * 1024 * 1024)
+    .toBe(1024 * 1024 * 1024)
 })
 
-test('the established noncoherent capture budget stays unchanged, including its old transport exceptions', async () => {
+test('noncoherent captures and ordinary outputs share the default budget', async () => {
   for (const flag of [undefined, '0', '1']) for (const readback of [false, true])
     expect((await observedBudget(flag, { capture: true, coherent: false, readback })).workingBudgetBytes)
       .toBe(workingSetBudget(1710, 1776, true))
-  expect((await observedBudget(undefined, { capture: false, coherent: false })).workingBudgetBytes).toBe(256 * 1024 * 1024)
+  expect((await observedBudget(undefined, { capture: false, coherent: false })).workingBudgetBytes).toBe(1024 * 1024 * 1024)
 })
 
 test('explicit host limits still override new native display admission without changing cache policies or preallocating', async () => {
@@ -108,5 +108,20 @@ test('explicit host limits still override new native display admission without c
     const budget = await observedBudget('1', { configured })
     expect(budget.workingBudgetBytes).toBe(configured * 1024 * 1024)
     expect(budget.interactionBudgetBytes).toBe(64 * 1024 * 1024)
+  }
+})
+
+
+test('default allocation boundary stays finite and explicit lower limits remain valid', () => {
+  const MiB = 1024 * 1024
+  for (const [configured, budget] of [[undefined, 1024 * MiB], [256, 256 * MiB], [4096, 4096 * MiB]] as const) {
+    const driver = { scratchBytes: 0 } as unknown as Driver
+    const renderer = new GpuRenderer(driver, true, true, undefined, false, false, configured) as any
+    expect(renderer.memoryPolicy().workingBudgetBytes).toBe(budget)
+    renderer.bytes = budget - 16
+    expect(renderer.overBudget(16)).toBe(false)
+    expect(renderer.overBudget(17)).toBe(true)
+    expect(renderer.lastBudgetFailure.budgetBytes).toBe(budget)
+    expect(() => renderer.overBudget(-1)).toThrow('无效的 GPU 分配字节数')
   }
 })

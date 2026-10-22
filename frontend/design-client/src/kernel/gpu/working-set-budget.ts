@@ -1,6 +1,8 @@
 import { validGpuWorkingBudgetMiB } from '../render-policy'
 
 const MiB = 1024 * 1024
+/** Default working-resource admission, not a total VRAM limit or allocation. */
+export const DEFAULT_GPU_WORKING_BUDGET_BYTES = 1024 * MiB
 /** The launch flag and actual render-call output are trusted host inputs.
  * Scene display hints and captureDisplay do not grant this new admission.
  * Bitmap assembly is also a real SDR presentation, so it keeps the same
@@ -13,26 +15,15 @@ export function usesNativeNavigationWorkingBudget(flag: unknown, boundary: {
     boundary.readback === false && boundary.present === true &&
     (boundary.softwareRaster === undefined || boundary.softwareRaster === false)
 }
-/** Admission policy, not a claim about free VRAM. WebGPU exposes per-resource
- * limits but no reliable remaining-memory query. Grow for the actual physical
- * render target; never lower sampling density to meet this policy. */
-export function workingSetBudget(width: number, height: number, nativeDisplay: boolean, effectPixels=0,
+/** Working-resource policy, not a claim about free VRAM. No scene or output
+ * mode silently lowers the default. Explicit host limits remain authoritative;
+ * per-resource device limits and all allocation/fence checks still apply. */
+export function workingSetBudget(_width: number, _height: number, _nativeDisplay: boolean, _effectPixels=0,
   configuredMiB?: number) {
   if (configuredMiB !== undefined) {
     if (!validGpuWorkingBudgetMiB(configuredMiB)) throw Error('Invalid GPU working budget')
     // Keep Number arithmetic: 4096 MiB is 2^32 bytes and must not wrap to zero.
     return configuredMiB * MiB
   }
-  const minimum = (nativeDisplay ? 512 : 256) * MiB
-  if (!nativeDisplay || !Number.isFinite(width * height) || width <= 0 || height <= 0) return minimum
-  // Four RGBA32F-sized working planes cover destination/source + a separable
-  // filter pair. Real effects may require more; normal allocation/fallback
-  // handling still applies. 1 GiB is a policy ceiling, never adapter free VRAM.
-  const demand = Math.ceil(width * height * 16 * 4 / (64 * MiB)) * 64 * MiB
-  // Live backdrop effects overlap destination, sampled backdrop and filtered
-  // output. Account for those three exact-density planes separately from the
-  // ordinary target allowance; this is bounded admission, not free VRAM.
-  const optical=Number.isFinite(effectPixels)&&effectPixels>0
-    ?Math.min(256*MiB,Math.ceil(effectPixels*16*3/(64*MiB))*64*MiB):0
-  return Math.min(1024*MiB,Math.max(minimum,demand)+optical)
+  return DEFAULT_GPU_WORKING_BUDGET_BYTES
 }
