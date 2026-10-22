@@ -1,0 +1,1533 @@
+diff --git a/docs/RENDER_FAILURE_DICTIONARY_V2.json b/docs/RENDER_FAILURE_DICTIONARY_V2.json
+new file mode 100644
+--- /dev/null
++++ b/docs/RENDER_FAILURE_DICTIONARY_V2.json
+@@ -0,0 +1,463 @@
++{
++  "version": 2,
++  "source": "frontend/design-client/src/kernel/render-failure-telemetry.ts",
++  "sourceSha256": "b4ce0f92ef737c559fdbd478799f13f41b57e5ee4867787aab4b38b1b93d211d",
++  "categories": {
++    "0": "unknown",
++    "1": "cancellation",
++    "2": "unsupported",
++    "3": "resource budget",
++    "4": "device lost",
++    "5": "validation",
++    "6": "protocol"
++  },
++  "stages": {
++    "0": "unknown",
++    "1": "request",
++    "2": "load",
++    "3": "derive",
++    "4": "patch",
++    "5": "compile",
++    "6": "hydrate",
++    "7": "encode",
++    "8": "submit",
++    "9": "fence",
++    "10": "present",
++    "11": "fallback",
++    "12": "graph",
++    "13": "admission"
++  },
++  "exactMessages": [
++    {
++      "code": 1,
++      "category": 1,
++      "exactMessage": "PREVIEW_CANCELLED"
++    },
++    {
++      "code": 2,
++      "category": 2,
++      "exactMessage": "DERIVATION_UNSUPPORTED"
++    },
++    {
++      "code": 3,
++      "category": 6,
++      "exactMessage": "DOCUMENT_PREPARATION_PENDING"
++    },
++    {
++      "code": 4,
++      "category": 6,
++      "exactMessage": "STALE_PREPARED_PACKET"
++    },
++    {
++      "code": 5,
++      "category": 6,
++      "exactMessage": "DERIVATION_RECEIPT_MISSING"
++    },
++    {
++      "code": 6,
++      "category": 6,
++      "exactMessage": "STALE_BASE"
++    },
++    {
++      "code": 7,
++      "category": 6,
++      "exactMessage": "STALE_TARGET"
++    },
++    {
++      "code": 61,
++      "category": 5,
++      "exactMessage": "PATCH_GUARD_SCHEMA"
++    },
++    {
++      "code": 62,
++      "category": 6,
++      "exactMessage": "STALE_AUTHORED_PATCH_BASE"
++    },
++    {
++      "code": 63,
++      "category": 2,
++      "exactMessage": "PATCH_GUARD_UNSUPPORTED"
++    },
++    {
++      "code": 8,
++      "category": 5,
++      "exactMessage": "DERIVE_SCHEMA"
++    },
++    {
++      "code": 9,
++      "category": 6,
++      "exactMessage": "DERIVE_RETRY_REJECTED"
++    },
++    {
++      "code": 10,
++      "category": 5,
++      "exactMessage": "DERIVATION_INVALID_ENVELOPE"
++    },
++    {
++      "code": 11,
++      "category": 6,
++      "exactMessage": "DERIVATION_STALE_SOURCE"
++    },
++    {
++      "code": 12,
++      "category": 3,
++      "exactMessage": "DERIVATION_FALLBACK_BUDGET"
++    },
++    {
++      "code": 13,
++      "category": 6,
++      "exactMessage": "DERIVATION_FALLBACK_TIMEOUT"
++    },
++    {
++      "code": 64,
++      "category": 3,
++      "exactMessage": "GPU surface budget exceeded"
++    },
++    {
++      "code": 65,
++      "category": 2,
++      "exactMessage": "SEQUENTIAL_DISPLAY_UNSUPPORTED"
++    },
++    {
++      "code": 20,
++      "category": 3,
++      "exactMessage": "GPU 表面内存预算超限"
++    },
++    {
++      "code": 21,
++      "category": 3,
++      "exactMessage": "GPU 浮点图片内存预算超限"
++    },
++    {
++      "code": 22,
++      "category": 3,
++      "exactMessage": "GPU 图片总内存预算超限"
++    },
++    {
++      "code": 23,
++      "category": 3,
++      "exactMessage": "GPU 图集页内存预算超限"
++    },
++    {
++      "code": 24,
++      "category": 3,
++      "exactMessage": "GPU 图片像素预算超限"
++    },
++    {
++      "code": 25,
++      "category": 3,
++      "exactMessage": "GPU display resident budget exceeded"
++    },
++    {
++      "code": 26,
++      "category": 3,
++      "exactMessage": "GPU linear display budget exceeded"
++    },
++    {
++      "code": 27,
++      "category": 3,
++      "exactMessage": "GPU frame command work budget exceeded"
++    },
++    {
++      "code": 28,
++      "category": 3,
++      "exactMessage": "GPU solid instance budget exceeded"
++    },
++    {
++      "code": 30,
++      "category": 4,
++      "exactMessage": "WebGPU 设备已丢失"
++    },
++    {
++      "code": 31,
++      "category": 4,
++      "exactMessage": "GPU 设备已丢失"
++    },
++    {
++      "code": 32,
++      "category": 5,
++      "exactMessage": "GPU texture feedback loop"
++    },
++    {
++      "code": 33,
++      "category": 5,
++      "exactMessage": "无效的 GPU 表面边界"
++    },
++    {
++      "code": 34,
++      "category": 5,
++      "exactMessage": "无效的 GPU 图片资源"
++    },
++    {
++      "code": 35,
++      "category": 5,
++      "exactMessage": "无效的 GPU 分配字节数"
++    },
++    {
++      "code": 40,
++      "category": 2,
++      "exactMessage": "GPU exact blur radius exceeds 2048 pixels"
++    },
++    {
++      "code": 41,
++      "category": 2,
++      "exactMessage": "GPU 积分模糊半径超过 512 像素"
++    },
++    {
++      "code": 42,
++      "category": 2,
++      "exactMessage": "GPU 扩展半径超过 2048 像素"
++    },
++    {
++      "code": 43,
++      "category": 2,
++      "exactMessage": "不支持的填充类型"
++    },
++    {
++      "code": 44,
++      "category": 2,
++      "exactMessage": "渐变色标超过 32 个"
++    },
++    {
++      "code": 50,
++      "category": 6,
++      "exactMessage": "Invalid CPU preparation request"
++    },
++    {
++      "code": 51,
++      "category": 6,
++      "exactMessage": "CPU preparation response could not be decoded"
++    },
++    {
++      "code": 52,
++      "category": 3,
++      "exactMessage": "CPU preparation request budget exceeded"
++    },
++    {
++      "code": 53,
++      "category": 6,
++      "exactMessage": "Native preparation timed out"
++    },
++    {
++      "code": 54,
++      "category": 6,
++      "exactMessage": "Invalid native preparation protocol"
++    },
++    {
++      "code": 55,
++      "category": 6,
++      "exactMessage": "Native preparation sequence mismatch"
++    },
++    {
++      "code": 56,
++      "category": 6,
++      "exactMessage": "文档补丁版本未同步，请重试当前画布"
++    },
++    {
++      "code": 57,
++      "category": 6,
++      "exactMessage": "PREPARATION_SESSION_EXHAUSTED"
++    },
++    {
++      "code": 80,
++      "category": 5,
++      "exactMessage": "Singular transform"
++    },
++    {
++      "code": 81,
++      "category": 5,
++      "exactMessage": "Nonfinite composed transform"
++    },
++    {
++      "code": 82,
++      "category": 5,
++      "exactMessage": "Composed inverse exceeds precision budget"
++    },
++    {
++      "code": 83,
++      "category": 5,
++      "exactMessage": "Invalid image sampling geometry"
++    },
++    {
++      "code": 84,
++      "category": 5,
++      "exactMessage": "Image coordinate bounds exceed integer range"
++    },
++    {
++      "code": 85,
++      "category": 3,
++      "exactMessage": "Sampling coordinate field exceeds 64 MiB"
++    },
++    {
++      "code": 86,
++      "category": 3,
++      "exactMessage": "Sampling coordinate allocation failed"
++    },
++    {
++      "code": 87,
++      "category": 3,
++      "exactMessage": "Parameter field exceeds 64 MiB"
++    },
++    {
++      "code": 88,
++      "category": 3,
++      "exactMessage": "Parameter field allocation failed"
++    },
++    {
++      "code": 89,
++      "category": 5,
++      "exactMessage": "Nonfinite material parameter"
++    },
++    {
++      "code": 90,
++      "category": 5,
++      "exactMessage": "Invalid analytic glass shape"
++    },
++    {
++      "code": 91,
++      "category": 5,
++      "exactMessage": "Glass field region exceeds original geometry domain"
++    },
++    {
++      "code": 92,
++      "category": 5,
++      "exactMessage": "Invalid GPU viewport"
++    },
++    {
++      "code": 93,
++      "category": 5,
++      "exactMessage": "Invalid GPU tile viewport"
++    },
++    {
++      "code": 94,
++      "category": 3,
++      "exactMessage": "GPU analytic interval program budget exceeded"
++    },
++    {
++      "code": 95,
++      "category": 5,
++      "exactMessage": "Sampling coordinate size overflow"
++    },
++    {
++      "code": 96,
++      "category": 5,
++      "exactMessage": "Parameter field horizontal bounds overflow"
++    },
++    {
++      "code": 97,
++      "category": 5,
++      "exactMessage": "Parameter field vertical bounds overflow"
++    },
++    {
++      "code": 98,
++      "category": 5,
++      "exactMessage": "Parameter field size overflow"
++    },
++    {
++      "code": 99,
++      "category": 5,
++      "exactMessage": "Nonfinite sample coordinate"
++    },
++    {
++      "code": 100,
++      "category": 5,
++      "exactMessage": "Non-finite image sampling coordinate"
++    },
++    {
++      "code": 101,
++      "category": 2,
++      "exactMessage": "Exact blur radius must be in (0,2048]"
++    },
++    {
++      "code": 102,
++      "category": 2,
++      "exactMessage": "Box filter radius exceeds 512 pixels"
++    },
++    {
++      "code": 103,
++      "category": 5,
++      "exactMessage": "Gaussian sigma must be in [0,512]"
++    },
++    {
++      "code": 104,
++      "category": 2,
++      "exactMessage": "Gaussian box radius exceeds 512 pixels"
++    },
++    {
++      "code": 105,
++      "category": 5,
++      "exactMessage": "WebGPU 纹理尺寸超限"
++    },
++    {
++      "code": 106,
++      "category": 5,
++      "exactMessage": "无效的材质参数纹理"
++    },
++    {
++      "code": 107,
++      "category": 6,
++      "exactMessage": "Regional coverage requires an interval program"
++    },
++    {
++      "code": 108,
++      "category": 6,
++      "exactMessage": "Coverage program unavailable"
++    },
++    {
++      "code": 109,
++      "category": 6,
++      "exactMessage": "Resident coverage program is missing"
++    },
++    {
++      "code": 110,
++      "category": 5,
++      "exactMessage": "GPU 纹理精度与文档色彩空间不一致"
++    },
++    {
++      "code": 111,
++      "category": 2,
++      "exactMessage": "不支持的 GPU 命令版本"
++    },
++    {
++      "code": 112,
++      "category": 6,
++      "exactMessage": "GPU 区域命令缺少输出矩形"
++    },
++    {
++      "code": 113,
++      "category": 5,
++      "exactMessage": "无效的参数字段布局"
++    },
++    {
++      "code": 114,
++      "category": 5,
++      "exactMessage": "空 GPU 表面"
++    },
++    {
++      "code": 115,
++      "category": 2,
++      "exactMessage": "GPU frame abort is unavailable"
++    },
++    {
++      "code": 116,
++      "category": 5,
++      "exactMessage": "Prefix scratch was not retired after frame abort"
++    },
++    {
++      "code": 117,
++      "category": 4,
++      "exactMessage": "GPU device preview recovery failed"
++    },
++    {
++      "code": 118,
++      "category": 4,
++      "exactMessage": "GPU device lost during preview recovery"
++    }
++  ],
++  "otherCodes": {
++    "0": "unknown or classified GPU class without exact known message",
++    "60": "SyntaxError fallback when exact known message is absent",
++    "200": "generic allocation rejection source tag; exact known inherited code20/21 remains authoritative"
++  },
++  "knownAdditionsEvidence": "Verified exact static literals in main1e4a3ba; no prefix or raw-message hash matching."
++}
+diff --git a/docs/RENDER_FAILURE_GAPS_V2.md b/docs/RENDER_FAILURE_GAPS_V2.md
+new file mode 100644
+--- /dev/null
++++ b/docs/RENDER_FAILURE_GAPS_V2.md
+@@ -0,0 +1,43 @@
++# 117 原因定位补充：V2
++
++基线：1e4a3ba07b6922444801e81ba2ad3fbc7f7d5733。此增量只补诊断，不包含浮点图片准入修复、缓存优化、设置 UI 或原生 Rust 改动。现有 WebGPU 默认 1 GiB 策略不变。
++
++## 已确认的证据缺口
++
++新日志的 9 个失败请求在 Worker 端已经是 stage/category/code=0，不能归因于随后主线程重建 Error。原生绑定存在将 Rust 错误转为 JsValue 字符串的路径；WeakMap 无法给字符串贴标签，后续包装又会把它变成 Error。用实际遥测函数复现该路径，可得到和这 9 个请求相同的计数组合。这证明诊断有缺口，不证明原始 9 次失败的具体文本。
++
++新字段 lastFailureBoundaryStage 独立记录最后失败的受控 attempt 边界，范围1..13，0未知；lastFailureThrownKind 记录最初抛出值的类型，1 Error、2 string、3 number、4 boolean、5 null、6 undefined、7其他object、8 function、9 symbol、10 bigint。lastFailureClassCode 保留该边界原有的安全错误类别码。已有 failureStage 仍表示该精确错误实际携带的标签，未知不伪装成已知。不会为了贴标签替换原始抛出值。
++
++## 精确错误码字典
++
++新增 RENDER_FAILURE_DICTIONARY_V2.json，failureDictionaryVersion=2。保留旧码，新增80..118共39条经源码验证的静态完整字面量，覆盖原生变换/坐标字段/玻璃域等失败、设备纹理参数和相关协议守卫。仅精确匹配，不匹配私人文本中的子串、动态前缀，不记录原始消息或消息哈希。比如数学精度约束是validation，不冒充显存预算。
++
++V1文件保留作为旧日志的历史字典；当前字典源SHA-256绑定当前遥测源模块。源码输入摘要仍有之前文档说明的边界，不证明实际运行WASM/native二进制。
++
++## failure-origin：失败时的受控来源
++
++这不是逐帧日志。仅在对应调用抛错时发出，沿已有session/requestId通道，包含当前运行时配置和安全分类字段。failureOriginCode：
++
++1 driver.prepareScene；2 driver.prepareFilters；3 loadImages的异步准备结果；4图执行/driver.begin；5 driver.finish；6原生材质参数build；7参数纹理upload。
++
++failureBuildKind：0未知，1 image-axes-support，2 image-grid，3 gradient-grid，4 gradient-lookup，5 figma-gradient-field，6 texture，7 glass，8 glass-border，9 glass-interior。仅比较代码内固定辨别字，不序列化inputs、变换矩阵、路径、像素或文档数据。failureBoundaryStage独立标记所处边界；failureThrownKind即使原生直接抛字符串也存在。
++
++嵌套边界可能各有一条事件，例如材质build与外层graph；它们是同一请求的不同观察边界，不是额外失败次数。失败代码与最早对象标签保持既有优先级。事件仍受原有日志限流和缓冲限制，不承诺每条记录都保留。
++
++## 分配失败位置与O(1)账本快照
++
++仅在实际budgetError生成时保存不可变标量，并通过既有包装和Worker平面字段保留。failureAllocationSnapshotVersion=1。failureAllocationKind：
++
++0未知；1 acquire表面；2 materialField预估准入；3 materialField实际字节准入；4浮点图片；5字节图片；6图集页；7图片坐标稠密回退；8字节阴影中间场；9系数字段；10纹理重放参数；11纹理数学表；12渐变查找表。
++
++快照含：failureLedgerTotalBytes、InteractionBytes、NestedPrefixBytes、DriverScratchBytes、MaterialFieldBytes、CoverageBytes、KernelBytes，以及BusyCount、ImageCount、AtlasPageCount、RetiredUploadCount、CoordinateCount。实际完整字段名均带failureLedger前缀。仅读取已有常量时间计数器和集合size，不遍历资源，不等GPU，不改变释放时机。
++
++失败时还读取已有failureMaterialFieldBuilds、failureMaterialFieldUploadBytes、failureImageAxisFields、failureImageFieldBytes计数，均为当前尝试已发生的工作，非逐像素事件。
++
++这些类别可能重叠，不能相加推导总显存，也不是已完成/可回收字节证明。实际拒绝仍由failureRequestedBytes + failureWorkingBytes > failureBudgetBytes解释。新日志请求130已经证明超出1GiB，但旧记录不能区分acquire还是materialField；新allocationKind用于区分。
++
++## 验证与限制
++
++测试覆盖原生字符串与Error对照、真实公开render的try/finally生命周期、同步/异步准备失败、材质build和上传前失败、预估/实际分配区别、不可变账本及错误包装、真实Node MessageChannel、清洗边界和全部静态字典项。新增代码不修改分配策略、上传内容、采样、GPU等待或错误返回身份。
++
++尚未运行生产构建、真实Electron Worker、117/FIG或GPU图像/性能验收。不是所有任意动态native错误都能自动得到已知code；未识别时仍保持unknown，由受控来源和边界缩小范围，不泄露文本。
+diff --git a/docs/RENDER_ROOTCAUSE_DIAGNOSTICS_20261022.md b/docs/RENDER_ROOTCAUSE_DIAGNOSTICS_20261022.md
+--- a/docs/RENDER_ROOTCAUSE_DIAGNOSTICS_20261022.md
++++ b/docs/RENDER_ROOTCAUSE_DIAGNOSTICS_20261022.md
+@@ -1,3 +1,5 @@
++> 后续1e4a3ba基线的诊断增量使用错误码字典V2；详见 RENDER_FAILURE_GAPS_V2.md。下文保留第一版字段与构建来源说明。
++
+ # 117 渲染诊断增量：错误预算快照与构建输入来源
+ 
+ 基线：ee97b408860990e2aa89c5510c11eb05ca8a3ba6。本增量仅增加诊断，不改变渲染、资源预算、回退、缓存、取消或文件保存行为。
+diff --git a/docs/RENDER_RUNTIME_CONFIGURATION_V1.md b/docs/RENDER_RUNTIME_CONFIGURATION_V1.md
+new file mode 100644
+--- /dev/null
++++ b/docs/RENDER_RUNTIME_CONFIGURATION_V1.md
+@@ -0,0 +1,38 @@
++# 运行时配置诊断 v1
++
++这是已交付 117 诊断 + WebGPU 默认 1 GiB 增量之上的独立诊断层，不包含浮点图片准入修复，也不改变任何分配、上传、采样、等待、回退或默认开关。
++
++## 为什么需要
++
++原日志含 backendCode、rendererCode、samplingMode、readback 和 admissionBudgetBytes，但没有 imageAtlas 等实际运行时分支配置。源码/WASM 输入摘要本身不能证明运行时配置。新字段不能倒推出旧日志的配置，也不能证明旧失败必定命中某项候选优化。
++
++## 采集位置与字段
++
++GpuRenderer.renderAttempt 在选定实际 frameBudget 后，从本次局部、已规范化 scene 参数、该 renderer 的构造配置和实际 driver 采集。不会读取尚未替换的 this.scene，也不会扫描节点、资源内容、环境字符串或设备描述文本。
++
++- runtimeConfigVersion = 1；缺失表示没有可用快照，不能视为全关。
++- runtimeDriverCode：0 未知、1 WebGL2、2 WebGPU。
++- runtimeImageAtlas、runtimeImageMips：构造时启用状态。
++- runtimeDriverManaged、runtimeLinearLight、runtimeHdr、runtimeDisplayMath、runtimeCaptureDisplay：实际 driver 的布尔模式，0/1。
++- runtimeFloatUpload、runtimeFloatAtlasUpload：对应 uploadLinear、uploadAtlasLinear 方法是否存在，0/1。仅证明接口能力，不证明调用、分配或物理显示器能力。
++- runtimeFloatCompositing、runtimeColorManaged、runtimeCoherentSamples、runtimeSoftwareRaster：本次 scene 的有效布尔选项，0/1。不包含色彩配置名称、值或文档内容。
++- runtimeCompactImageFields、runtimeImageAxesEnabled、runtimeImageAxesEligible、runtimeStreamImageFields：紧凑字段和axes/stream开关的有效布尔值；eligible按当前driver/scene/flag规则计算，不表示某个图片实际生成了轴字段。已有结果里的imageAxisFields、imageFieldBytes也作为有界数值保留，不新增逐像素日志。
++- runtimeReadback、runtimePresent：实际 render 调用的布尔输出意图，不代表结果已成功读回或呈现。
++- runtimeWorkingBudgetBytes：本次有效工作资源准入上限，256 MiB 至 4 GiB；不是已用显存、总进程显存上限或预分配量。
++- runtimeBudgetSource：1 默认策略、2 显式构造参数覆盖。runtimeConfiguredBudgetMiB：默认时 0，否则 256..4096。显式 1024 与默认 1024 因此可以区分，不输出原始环境变量或设置来源字符串。
++
++imageAtlas=1 仅表示开启，不能证明某个失败图片实际走了图集路径。部分调用会传入 intoAtlas=false；图片尺寸也决定是否使用图集，而现有浮点图片预算检查位于该分支之前。imageMips=1 同样不证明实际选择了非零 mip。
++
++## 事件和错误归属
++
++新增 runtime-config 事件使用原有 GPU 诊断接收器，因此继承已有 session、requestId。每个 renderer、每次诊断 sink 生命周期最多发送 16 个不同配置；重复 A→B→A 只发送两次。只有固定数量的布尔/整数比较和短标量键，不做逐帧哈希、内容序列化或额外 GPU 等待。关闭诊断时不计算配置。
++
++事件上限仅限制独立配置事件，不限制错误快照。预算错误在产生时把当前不可变标量快照关联到该精确 Error 的 WeakMap 条目；恢复、后续请求或其他 renderer 不会改写它。已存在的错误包装继承该条目；renderFailureFields 将其作为受限标量交给原 Worker 错误消息与终端记录。渲染入口/退出清除活动归属，未知、取消或非预算错误不借用旧快照。
++
++普通日志模式仍会按原规则合并/限流，detail 模式仍有固定缓冲和丢弃机制，因此不保证保留每个配置事件。预算失败本身携带快照，避免只依赖早期事件。主线程终端记录保留受限平面字段；现有 client.ts 重建的 Error 不会重建此私有 WeakMap 条目，不能据此承诺所有后续 Error 消费者都拥有快照。
++
++## 验证边界
++
++新增测试覆盖：实际渲染入口、局部 scene 而非旧 this.scene、默认/显式 1024/4096、重复配置、16 项上限、诊断重启/关闭再开启、独立 renderer、错误不可变归属及包装、禁止 getter/继承字段/文本、真实 Node MessageChannel 和两次现有清洗边界。原有失败代码保持不变。
++
++这些是 CPU/mock 与 Node 传输测试，不是实际 Electron Worker、GPU 纹理、HDR 显示器、117/FIG 或整机性能验收。真实启用分支和失败结果仍需重建后的新日志确认。
+diff --git a/frontend/design-client/src/kernel/gpu/failure-origins.test.ts b/frontend/design-client/src/kernel/gpu/failure-origins.test.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/failure-origins.test.ts
+@@ -0,0 +1,87 @@
++import { afterEach, expect, test, vi } from 'vitest'
++import { GpuRenderer } from './renderer'
++import type { Driver, GpuScene } from './types'
++import { RenderFailureAttempts, renderFailureFields } from '../render-failure-telemetry'
++import { renderErrorWithBudget } from '../render-diagnostics'
++import { sanitizeFields, setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
++afterEach(() => setGpuDiagnosticSink(undefined))
++const scene = () => ({ version:7, width:1, height:1, extent:{x:0,y:0,w:1,h:1},
++  nodes:{}, roots:[], vertices:[], curves:[], floatCompositing:true, coherentSamples:true } as unknown as GpuScene)
++const driver = () => ({name:'webgpu', managed:true, scratchBytes:0} as unknown as Driver)
++
++test('primitive native failure preserves throw identity and separately proves the failed graph boundary', async () => {
++  for (const original of ['Singular transform', 'private document text']) {
++    const attempts = new RenderFailureAttempts()
++    attempts.run(5,()=>undefined); attempts.run(6,()=>undefined)
++    await expect(attempts.run(12,async()=>{throw original})).rejects.toBe(original)
++    attempts.run(11,()=>false)
++    expect(attempts.fields()).toMatchObject({compileAttempts:1,hydrateAttempts:1,graphAttempts:1,
++      fallbackAttempts:1,failureAttempts:1,lastFailureStage:0,lastFailureBoundaryStage:12,
++      lastFailureThrownKind:2,lastFailureClassCode:0})
++    const fields = renderFailureFields(renderErrorWithBudget(original))
++    expect(fields).toMatchObject({errorClassCode:1,failureStage:0,failureCode:original==='Singular transform'?80:0})
++    expect(JSON.stringify({...fields,...attempts.fields()})).not.toContain('private')
++  }
++})
++
++test('native material build reports fixed family before any upload without serializing cache inputs', () => {
++  const records:any[]=[];setGpuDiagnosticSink((event,fields)=>records.push({event,fields}))
++  const renderer=new GpuRenderer(driver()) as any, upload=vi.fn(), original='Singular transform'
++  renderer.scene={coherentSamples:true}
++  expect(()=>renderer.materialField(['gradient-grid','private image URI'],{x:0,y:0,w:1,h:1},
++    ()=>{throw original},upload,undefined,0)).toThrow(original)
++  expect(upload).not.toHaveBeenCalled()
++  expect(records).toHaveLength(1)
++  expect(records[0]).toMatchObject({event:'failure-origin',fields:{failureOriginCode:6,failureBuildKind:3,
++    failureBoundaryStage:12,failureThrownKind:2,failureCode:80}})
++  expect(sanitizeFields(records[0].fields)).toEqual(records[0].fields)
++  expect(JSON.stringify(records)).not.toContain('private')
++})
++
++test('real public render captures rejected allocation before finally clears active runtime ownership', async () => {
++  const rows:any[]=[];setGpuDiagnosticSink((event,fields)=>rows.push({event,fields}))
++  const gpu=driver(), renderer=new GpuRenderer(gpu) as any
++  gpu.prepareScene=()=>{
++    renderer.bytes=1024*1024**2;renderer.fieldBuilds=5;renderer.fieldUploadBytes=64;renderer.imageAxisFields=2;renderer.imageFieldBytes=128
++    expect(renderer.overBudget(16,1,1)).toBe(true)
++    throw renderer.budgetError('GPU 表面内存预算超限',1)
++  }
++  let rejected:unknown
++  try { await renderer.render(scene()) } catch(error) { rejected=error }
++  expect(rejected).toBeInstanceOf(Error);expect(renderer.activeRuntimeConfiguration).toBeUndefined()
++  renderer.bytes=0
++  const fields=renderFailureFields(renderErrorWithBudget(rejected,'PREVIEW_BUDGET: private'))
++  expect(fields).toMatchObject({failureCode:20,failureStage:13,failureAllocationKind:1,
++    failureLedgerTotalBytes:1073741824,failureWorkingBytes:1073741824,failureRequestedBytes:16,
++    runtimeWorkingBudgetBytes:1073741824,runtimeBudgetSource:1,
++    failureMaterialFieldBuilds:5,failureMaterialFieldUploadBytes:64,failureImageAxisFields:2,failureImageFieldBytes:128})
++  expect(rows.some(row=>row.event==='failure-origin'&&row.fields.failureOriginCode===1)).toBe(true)
++  expect(renderFailureFields(new Error('GPU 表面内存预算超限'))).not.toHaveProperty('failureAllocationKind')
++})
++
++test('async preparation primitive has precise origin and is rethrown unchanged', async () => {
++  const rows:any[]=[];setGpuDiagnosticSink((event,fields)=>rows.push({event,fields}))
++  const gpu=driver();gpu.prepareScene=async()=>{throw 'Nonfinite composed transform'}
++  const renderer=new GpuRenderer(gpu) as any
++  await expect(renderer.render(scene())).rejects.toBe('Nonfinite composed transform')
++  expect(rows.find(row=>row.event==='failure-origin')?.fields).toMatchObject({failureOriginCode:1,
++    failureBoundaryStage:12,failureThrownKind:2,failureCode:81})
++  expect(renderer.activeRuntimeConfiguration).toBeUndefined()
++})
++
++test('material-field preflight and actual-byte admission remain distinguishable', () => {
++  setGpuDiagnosticSink(()=>{})
++  for (const actual of [false,true]) {
++    const renderer=new GpuRenderer(driver()) as any, build=vi.fn(()=>new Float32Array(4)), upload=vi.fn()
++    renderer.scene={coherentSamples:true};let calls=0
++    renderer.overBudget=()=>{
++      if (actual && ++calls===1) return false
++      renderer.lastBudgetFailure={requestedBytes:16,workingBytes:1073741824,budgetBytes:1073741824,width:1,height:1}
++      return true
++    }
++    let rejected:unknown
++    try { renderer.materialField(['glass'],{x:0,y:0,w:1,h:1},build,upload) } catch(error) { rejected=error }
++    expect(renderFailureFields(rejected)).toMatchObject({failureAllocationKind:actual?3:2,failureBuildKind:7})
++    expect(build).toHaveBeenCalledTimes(actual?1:0);expect(upload).not.toHaveBeenCalled()
++  }
++})
+diff --git a/frontend/design-client/src/kernel/gpu/renderer.ts b/frontend/design-client/src/kernel/gpu/renderer.ts
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -19,8 +19,10 @@
+ import { planExactImageXTable } from './exact-image-x-table'
+ import type { ExactImageTable } from './types'
+ import { completeFilterAxisSupport } from './opaque-filter'
+-import { gpuDiagnosticsEnabled, recordGpuDiagnostic } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
+-import { markRenderFailure } from '../render-failure-telemetry'
++import { gpuDiagnosticsEnabled, gpuDiagnosticEpoch, recordGpuDiagnostic } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
++import { markRuntimeConfiguration } from '../../../../design-desktop/src/render-runtime-configuration.mjs'
++import { markFailureAllocation } from '../../../../design-desktop/src/render-failure-allocation.mjs'
++import { markRenderFailure, renderFailureFields, renderFailureThrownKind } from '../render-failure-telemetry'
+ import { backdropEffect, backdropRadius, classifyCompiledSourceReuse } from '../render-dependency'
+ import { prefixRationalUnsupported } from './prefix-preflight'
+ import { renderErrorWithBudget, sanitizeRenderBudget, type RenderBudgetDiagnostic } from '../render-diagnostics'
+@@ -154,6 +156,8 @@
+   }
+   return levels
+ }
++const MATERIAL_FIELD_KINDS = new Map<unknown, number>(['image-axes-support','image-grid','gradient-grid','gradient-lookup',
++  'figma-gradient-field','texture','glass','glass-border'].map((kind,index) => [kind,index+1]))
+ export class GpuRenderer {
+   private encodeYield = new EncodeYield()
+   private frameCurrent?: () => boolean
+@@ -170,6 +174,53 @@
+       this.checkFrameCurrent()
+       if (import.meta.env.VITE_DESIGN_ENCODE_SUBMIT !== '0') this.driver.submitPending?.()
+     })
++  }
++  // Only numeric runtime branch facts. The snapshot belongs to the current
++  // local renderAttempt; an Error keeps that immutable version across retries.
++  private activeRuntimeConfiguration?: Readonly<Record<string, number>>
++  private runtimeConfiguration?: Readonly<Record<string, number>>
++  private runtimeConfigurationKey = ''
++  private runtimeConfigurationEpoch = -1
++  private reportedRuntimeConfigurations = new Set<string>()
++  private recordRuntimeConfiguration(scene: GpuScene, readback: boolean, present: boolean) {
++    if (!gpuDiagnosticsEnabled()) {
++      this.runtimeConfiguration = undefined; this.runtimeConfigurationKey = ''; return
++    }
++    const epoch = gpuDiagnosticEpoch()
++    if (epoch !== this.runtimeConfigurationEpoch) {
++      this.runtimeConfigurationEpoch = epoch; this.reportedRuntimeConfigurations.clear()
++    }
++    const driverCode = this.driver.name === 'webgpu' ? 2 : this.driver.name === 'webgl2' ? 1 : 0
++    const bits = Number(!!this.imageAtlas) | Number(!!this.imageMips) << 1 |
++      Number(!!this.driver.managed) << 2 | Number(!!this.driver.linearLight) << 3 |
++      Number(!!this.driver.hdr) << 4 | Number(!!this.driver.displayMath) << 5 |
++      Number(!!this.driver.captureDisplay) << 6 | Number(typeof this.driver.uploadLinear === 'function') << 7 |
++      Number(typeof this.driver.uploadAtlasLinear === 'function') << 8 | Number(!!scene.floatCompositing) << 9 |
++      Number(!!scene.colorManagement) << 10 | Number(!!scene.coherentSamples) << 11 |
++      Number(readback) << 12 | Number(present) << 13 | Number(!!scene.softwareRaster) << 14 |
++      Number(scene.compactImageFields !== false) << 15 | Number(import.meta.env.VITE_DESIGN_IMAGE_AXES !== '0') << 16 |
++      Number(!!this.driver.managed && this.driver.name === 'webgpu' && scene.compactImageFields !== false &&
++        import.meta.env.VITE_DESIGN_IMAGE_AXES !== '0') << 17 | Number(import.meta.env.VITE_DESIGN_STREAM_IMAGE_FIELDS !== '0') << 18
++    const configured = this.gpuWorkingBudgetMiB ?? 0
++    // Constant-size scalar comparison, not content hashing or a scene walk.
++    const key = `${bits}:${driverCode}:${this.frameBudget}:${configured}`
++    if (key !== this.runtimeConfigurationKey) {
++      const fields: Record<string, number> = { runtimeConfigVersion: 1, runtimeDriverCode: driverCode,
++        runtimeWorkingBudgetBytes: this.frameBudget, runtimeBudgetSource: this.gpuWorkingBudgetMiB === undefined ? 1 : 2,
++        runtimeConfiguredBudgetMiB: configured }
++      const names = ['runtimeImageAtlas','runtimeImageMips','runtimeDriverManaged','runtimeLinearLight',
++        'runtimeHdr','runtimeDisplayMath','runtimeCaptureDisplay','runtimeFloatUpload','runtimeFloatAtlasUpload',
++        'runtimeFloatCompositing','runtimeColorManaged','runtimeCoherentSamples','runtimeReadback','runtimePresent','runtimeSoftwareRaster',
++        'runtimeCompactImageFields','runtimeImageAxesEnabled','runtimeImageAxesEligible','runtimeStreamImageFields']
++      names.forEach((name, index) => { fields[name] = bits >>> index & 1 })
++      this.runtimeConfiguration = Object.freeze(fields); this.runtimeConfigurationKey = key
++    }
++    this.activeRuntimeConfiguration = this.runtimeConfiguration
++    if (this.reportedRuntimeConfigurations.size < 16 && !this.reportedRuntimeConfigurations.has(key)) {
++      this.reportedRuntimeConfigurations.add(key)
++      // Logging failure must never change allocation/throw/recovery behavior.
++      try { recordGpuDiagnostic('runtime-config', this.runtimeConfiguration) } catch { /* diagnostics only */ }
++    }
+   }
+   lastBudgetFailure?: RenderBudgetDiagnostic
+   private frameBudget = SURFACE_BUDGET_BYTES
+@@ -625,23 +676,41 @@
+     this.driver.destroy(texture)
+     this.bytes -= texture.bytes
+   })
++  private failureOrigin<T>(error: T, origin: number, buildKind = 0): T {
++    markRenderFailure(error, { failureOriginCode: origin, failureBuildKind: buildKind })
++    if (gpuDiagnosticsEnabled()) try {
++      recordGpuDiagnostic('failure-origin', { ...this.activeRuntimeConfiguration, ...renderFailureFields(error),
++        failureOriginCode: origin, failureBuildKind: buildKind, failureBoundaryStage: origin === 5 ? 7 : 12,
++        failureThrownKind: renderFailureThrownKind(error),
++        failureMaterialFieldBuilds:this.fieldBuilds,failureMaterialFieldUploadBytes:this.fieldUploadBytes,
++        failureImageAxisFields:this.imageAxisFields,failureImageFieldBytes:this.imageFieldBytes })
++    } catch { /* diagnostic transport must not change the thrown value */ }
++    return error
++  }
++  private prepareWithFailureOrigin<T>(origin: number, work: () => T, buildKind = 0): T {
++    try { return work() } catch (error) { throw this.failureOrigin(error, origin, buildKind) }
++  }
+   private materialField<T extends Float32Array | Uint8Array>(inputs: unknown[], r: Rect, build: () => T,
+     upload: (values: T, width: number, height: number) => Texture,
+     layout?: (values: T) => [number, number], admissionBytes = r.w * r.h * 16, allowCache = true): Surface {
++    // Only the private, code-controlled discriminator is inspected; no inputs are logged.
++    const fieldKind = gpuDiagnosticsEnabled() ? MATERIAL_FIELD_KINDS.get(inputs[0]) || 0 : 0
+     const key = JSON.stringify(inputs, (_key, value) => Object.is(value, -0) ? '-0' : value)
+     const bits = new Uint32Array(0)
+     let texture = this.optimized && allowCache ? this.materialFields.get(key, bits) : undefined
+     if (texture) this.fieldHits++
+     else {
+-      if (this.overBudget(admissionBytes, layout ? undefined : r.w, layout ? undefined : r.h)) throw this.budgetError('GPU 表面内存预算超限')
++      if (this.overBudget(admissionBytes, layout ? undefined : r.w, layout ? undefined : r.h)) throw this.budgetError('GPU 表面内存预算超限', 2, fieldKind)
+       const start = performance.now()
+-      const values = build()
++      let values: T
++      try { values = build() } catch (error) { throw this.failureOrigin(error, 6, fieldKind) }
+       this.fieldBuildMs += performance.now() - start
+       this.fieldBuilds++
+       const [width,height] = layout?.(values) || [r.w,r.h]
+       if (values.length !== width * height * 4) throw Error('无效的参数字段布局')
+-      if (this.overBudget(values.byteLength, width, height)) throw this.budgetError('GPU 表面内存预算超限')
+-      texture = upload.call(this.driver, values, width, height)
++      if (this.overBudget(values.byteLength, width, height)) throw this.budgetError('GPU 表面内存预算超限', 3, fieldKind)
++      try { texture = upload.call(this.driver, values, width, height) }
++      catch (error) { throw this.failureOrigin(error, 7, fieldKind) }
+       this.fieldUploadBytes += values.byteLength
+       this.bytes += texture.bytes
+       this.peak = Math.max(this.peak, this.bytes)
+@@ -697,7 +766,7 @@
+               binary:!!t.binaryCoverage,scalar:!!t.scalarCoverage,aliases:this.aliases.get(t)||1,...this.traceSurfaces.get(t) })),
+             coordinates: this.coordinateMaps.size, stack: new Error().stack }))
+         }
+-        throw this.budgetError('GPU 表面内存预算超限')
++        throw this.budgetError('GPU 表面内存预算超限', 1)
+       }
+       texture = scalarCoverage ? this.driver.createScalarCoverage!(r.w,r.h) : binaryCoverage ? this.driver.createBinaryCoverage!(r.w, r.h) : this.driver.create(r.w, r.h)
+       this.bytes += texture.bytes
+@@ -824,10 +893,24 @@
+   }
+   /** Consume at the immediate allocation rejection, before any recovery can
+    * clear/reuse this renderer. Optional failed admissions own no error. */
+-  private budgetError(message: string): Error {
++  private budgetError(message: string, allocationKind = 0, buildKind = 0): Error {
+     const diagnostic = this.lastBudgetFailure
+     this.lastBudgetFailure = undefined
+-    return markRenderFailure(renderErrorWithBudget(message, undefined, diagnostic), { failureStage: 13, failureCategory: 3, failureCode: 200 })
++    const error = markRenderFailure(markRuntimeConfiguration(renderErrorWithBudget(message, undefined, diagnostic), this.activeRuntimeConfiguration),
++      { failureStage: 13, failureCategory: 3, failureCode: 200 })
++    if (gpuDiagnosticsEnabled()) try {
++      markFailureAllocation(error, { failureAllocationSnapshotVersion: 1, failureAllocationKind: allocationKind,
++        failureBuildKind: buildKind, failureLedgerTotalBytes: this.bytes,
++        failureMaterialFieldBuilds:this.fieldBuilds,failureMaterialFieldUploadBytes:this.fieldUploadBytes,
++        failureImageAxisFields:this.imageAxisFields,failureImageFieldBytes:this.imageFieldBytes,
++        failureLedgerInteractionBytes: this.interactionBytes, failureLedgerNestedPrefixBytes: this.nestedPrefixBytes,
++        failureLedgerDriverScratchBytes: this.driver.scratchBytes || 0, failureLedgerMaterialFieldBytes: this.materialFields.bytes,
++        failureLedgerCoverageBytes: this.coverage.bytes, failureLedgerKernelBytes: this.kernelCache.bytes,
++        failureLedgerBusyCount: this.busy.size, failureLedgerImageCount: this.images.size,
++        failureLedgerAtlasPageCount: this.atlasPages.length, failureLedgerRetiredUploadCount: this.retiredUploads.length,
++        failureLedgerCoordinateCount: this.coordinateMaps.size })
++    } catch { /* existing allocation failure remains authoritative */ }
++    return error
+   }
+   private release(...surfaces: (Surface | undefined)[]) {
+     for (const s of new Set(surfaces)) {
+@@ -1561,7 +1644,7 @@
+       const image = this.managedImageLoader(uri, false, level)
+       // Images share the one surface ledger; pressure evicts older images
+       // first instead of failing the frame.
+-      if (this.overBudget(image.width * image.height * 16, image.width, image.height)) throw this.budgetError('GPU 浮点图片内存预算超限')
++      if (this.overBudget(image.width * image.height * 16, image.width, image.height)) throw this.budgetError('GPU 浮点图片内存预算超限', 4)
+       if (intoAtlas && image.width <= ATLAS_MAX_IMAGE && image.height <= ATLAS_MAX_IMAGE)
+         return this.writeAtlasSlot(uri, level, image.width, image.height, { floats: bakeFloats(image.pixels) }, adjust)
+       const texture = this.driver.uploadLinear(bakeFloats(image.pixels), image.width, image.height)
+@@ -1586,7 +1669,7 @@
+     // fidelity pixels as a successfully rendered native-density tile.
+     if (level === 0 && image.width * image.height > 16_777_216)
+       throw new Error('GPU 图片像素预算超限')
+-    if (this.overBudget(image.bytes.length, image.width, image.height)) throw this.budgetError('GPU 图片总内存预算超限')
++    if (this.overBudget(image.bytes.length, image.width, image.height)) throw this.budgetError('GPU 图片总内存预算超限', 5)
+     if (intoAtlas && image.width <= ATLAS_MAX_IMAGE && image.height <= ATLAS_MAX_IMAGE)
+       return this.writeAtlasSlot(uri, level, image.width, image.height, { bytes: bake(image.bytes) }, adjust)
+     const texture = this.driver.uploadRgba8(bake(image.bytes), image.width, image.height)
+@@ -1628,7 +1711,7 @@
+       const texture = this.driver.create(ATLAS_SIDE, ATLAS_SIDE)
+       if (this.overBudget(texture.bytes, texture.width, texture.height)) {
+         this.driver.destroy(texture)
+-        throw this.budgetError('GPU 图集页内存预算超限')
++        throw this.budgetError('GPU 图集页内存预算超限', 6)
+       }
+       this.bytes += texture.bytes
+       this.peak = Math.max(this.peak, this.bytes)
+@@ -1930,7 +2013,7 @@
+       (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin], n.rect, () => {
+       let values = compact ? image_sampling_axes_placed(...arguments_) : new Float32Array()
+       if (!values.length) {
+-        if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16, n.rect.w, n.rect.h)) throw this.budgetError('GPU 表面内存预算超限')
++        if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16, n.rect.w, n.rect.h)) throw this.budgetError('GPU 表面内存预算超限', 7)
+         values = this.driver.managed ? image_sampling_grid_placed(...arguments_) : image_byte_sampling_field_placed(...arguments_)
+       }
+       separated = this.driver.managed ? values[3] === -1 : values[3] === 1
+@@ -3243,7 +3326,7 @@
+       this.checkFrameCurrent()
+       const before = this.driver.scratchBytes || 0
+       try {
+-        if (this.overBudget(plan.bytes)) throw this.budgetError('GPU 表面内存预算超限')
++        if (this.overBudget(plan.bytes)) throw this.budgetError('GPU 表面内存预算超限', 8)
+         if (!this.driver.encodeByteTentAlpha!(target.texture, source.texture,
+           { radius: plan.radius, axis: plan.axis, source: plan.source, output: plan.output, scratchBudgetBytes: plan.bytes },
+           this.frameBudget - this.workingBytes))
+@@ -4119,7 +4202,7 @@
+       }
+       const [width, height] = shape ? shape(values) : [values.length / 4, 1]
+       const bytes = values.byteLength * (values instanceof Uint8Array && this.driver.managed ? 4 : 1)
+-      if (this.overBudget(bytes, width, height)) throw this.budgetError('GPU 表面内存预算超限')
++      if (this.overBudget(bytes, width, height)) throw this.budgetError('GPU 表面内存预算超限', 9)
+       if (values instanceof Float32Array) {
+         if (!this.driver.uploadLinear) throw new Error('Backend cannot upload linear coefficients')
+         texture = this.driver.uploadLinear(values, width, height)
+@@ -4426,8 +4509,8 @@
+           import.meta.env.VITE_DESIGN_COHERENT_SPARSE_GLASS==='1')&&!this.scene.softwareRaster&&
+           !n.captureReplay&&import.meta.env.VITE_DESIGN_SPARSE_GLASS!=='0') {
+         const started=performance.now()
+-        const plan=JSON.parse(glass_geometry_interior(JSON.stringify(region),JSON.stringify(fieldRegion),new Float64Array(n.matrix),
+-          JSON.stringify(n.glassShape),JSON.stringify(fx),sample)) as {interior:Rect;value:number[]}|null
++        const plan=JSON.parse(this.prepareWithFailureOrigin(6, () => glass_geometry_interior(JSON.stringify(region),JSON.stringify(fieldRegion),new Float64Array(n.matrix),
++          JSON.stringify(n.glassShape),JSON.stringify(fx),sample), 9)) as {interior:Rect;value:number[]}|null
+         this.fieldBuildMs+=performance.now()-started
+         if(plan&&plan.interior.w*plan.interior.h>fieldRegion.w*fieldRegion.h*.5)
+           return this.sparseGlass(backdrop,mask,n,fx,fieldRegion,plan,unmasked,sample)
+@@ -4559,7 +4642,7 @@
+     const reusable = this.driver.uploadReplayParameters
+     if (!reusable && !this.driver.uploadParameters) throw new Error('后端不支持纹理重放参数')
+     const bytes = reusable ? (this.replayParameters ? 0 : 1024 * 1024 * 16) : r.w * r.h * 16
+-    if (this.overBudget(bytes)) throw this.budgetError('GPU 表面内存预算超限')
++    if (this.overBudget(bytes)) throw this.budgetError('GPU 表面内存预算超限', 10)
+     const values = texture_replay_field(
+       JSON.stringify(n.textureReplay),
+       JSON.stringify(viewport),
+@@ -4587,7 +4670,7 @@
+     }
+     if (!this.driver.uploadRgba8) throw new Error('后端不支持纹理裁剪数学表')
+     const bytes = 1024 * 1024 * 4
+-    if (this.overBudget(bytes)) throw this.budgetError('GPU 表面内存预算超限')
++    if (this.overBudget(bytes)) throw this.budgetError('GPU 表面内存预算超限', 11)
+     const values = texture_clip_math_atlas()
+     if (values.length !== bytes) throw new Error('纹理裁剪数学表长度不一致')
+     this.textureMath = this.retainTextureData(
+@@ -4619,7 +4702,7 @@
+       let lookup = this.textureLookups.get(key)
+       if (!lookup) {
+         if (!this.driver.uploadRgba8) throw new Error('后端不支持纹理渐变查找表')
+-        if (this.overBudget(8192, 1024, 2)) throw this.budgetError('GPU 表面内存预算超限')
++        if (this.overBudget(8192, 1024, 2)) throw this.budgetError('GPU 表面内存预算超限', 12)
+         const values = figma_gradient_lookup(key)
+         if (values.length !== 8192) throw new Error('纹理渐变查找表长度不一致')
+         lookup = this.retainTextureData(
+@@ -5017,9 +5100,10 @@
+       console.debug('DESIGN_GPU_PREFIX_BUDGET_FALLBACK ' + JSON.stringify({ reserved, extent: scene.extent }))
+       try { return await this.renderAttempt(scene, readback, present) }
+       finally { this.prefixAllowed = true; this.nestedPrefixAllowed = true }
+-    } finally { this.frameCurrent = undefined }
++    } finally { this.frameCurrent = undefined; this.activeRuntimeConfiguration = undefined }
+   }
+   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
++    this.activeRuntimeConfiguration = undefined
+     if (this.painterStagesEnabled(scene)) {
+       // Bind candidate coverage proofs and driver uploads to one private
+       // snapshot before any pipeline preparation yields. Native JSON already
+@@ -5079,6 +5163,8 @@
+       ?Object.values(scene.nodes).reduce((largest,n)=>n.effects.some(e=>e.visible&&(e.kind==='glass'||e.kind==='background-blur'))
+         ?Math.max(largest,intersect(n.rect,scene.extent).w*intersect(n.rect,scene.extent).h):largest,0):0
+     this.frameBudget = workingSetBudget(workingTarget.w, workingTarget.h, nativeDisplay, opticalPixels, this.gpuWorkingBudgetMiB)
++    try { this.recordRuntimeConfiguration(scene, readback, present) }
++    catch { this.activeRuntimeConfiguration = undefined /* diagnostics must not change rendering */ }
+ 
+     if (!!(scene.floatCompositing || scene.colorManagement) !== !!this.driver.managed)
+       throw new Error('GPU 纹理精度与文档色彩空间不一致')
+@@ -5150,20 +5236,22 @@
+     const started = performance.now()
+     // Scene policy is installed synchronously before its async pipeline work.
+     // Filter programs and image uploads can then prepare independently.
+-    const preparation = [this.driver.prepareScene?.(scene, !readback && present)]
++    const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present))]
+     if (index.hasFilters)
+-      preparation.push(this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized && this.driver.managed && scene.integratedBlur && index.hasPrefixFilter)))
++      preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized && this.driver.managed && scene.integratedBlur && index.hasPrefixFilter))))
+     preparation.push(this.loadImages(scene))
+     const prepared = await Promise.allSettled(preparation)
+-    const prepareFailure = prepared.find(result => result.status === 'rejected')
+-    if (prepareFailure?.status === 'rejected') throw prepareFailure.reason
++    const prepareFailureIndex = prepared.findIndex(result => result.status === 'rejected')
++    const prepareFailure = prepared[prepareFailureIndex]
++    if (prepareFailure?.status === 'rejected') throw this.failureOrigin(prepareFailure.reason,
++      prepareFailureIndex === 0 ? 1 : prepareFailureIndex === prepared.length - 1 ? 3 : 2)
+     const vertices = scene.vertices instanceof Float32Array ? scene.vertices : new Float32Array(scene.vertices)
+     this.meshBits = new Uint32Array(vertices.buffer, vertices.byteOffset, vertices.length)
+     const curves = scene.curves instanceof Float32Array ? scene.curves : new Float32Array(scene.curves || [])
+     this.curveBits = new Uint32Array(curves.buffer, curves.byteOffset, curves.length)
+     this.hybridEffects = 0
+     this.checkFrameCurrent()
+-    this.driver.begin(vertices, curves)
++    this.prepareWithFailureOrigin(4, () => this.driver.begin(vertices, curves))
+     this.masks.clear()
+     this.independentSampleNodes.clear()
+     this.maskOwners.clear()
+@@ -5266,7 +5354,7 @@
+         scene.presentation,
+         present,
+         scene.output,
+-      ) } catch (error) { throw markRenderFailure(error, { failureStage: 7 }) } finally {
++      ) } catch (error) { throw this.failureOrigin(markRenderFailure(error, { failureStage: 7 }), 5) } finally {
+         // Driver finish may retire scratch before a later readback fails.
+         this.bytes += (this.driver.scratchBytes || 0) - finishingScratch
+       }
+@@ -5333,7 +5421,7 @@
+         description: this.driver.description,
+       }
+     } catch (error) {
+-      markRenderFailure(error, { failureStage: 12 })
++      this.failureOrigin(markRenderFailure(error, { failureStage: 12 }), 4)
+       if (scene.sequentialDisplay || error instanceof Error && error.message === 'PREVIEW_CANCELLED') {
+         // Never pool/destroy frame resources while submitted commands still
+         // reference them. This leaves the separately owned presented frame alive.
+diff --git a/frontend/design-client/src/kernel/gpu/runtime-configuration.test.ts b/frontend/design-client/src/kernel/gpu/runtime-configuration.test.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/runtime-configuration.test.ts
+@@ -0,0 +1,113 @@
++import { afterEach, expect, test, vi } from 'vitest'
++import { GpuRenderer } from './renderer'
++import type { Driver, GpuScene } from './types'
++import { renderFailureFields } from '../render-failure-telemetry'
++import { renderErrorWithBudget } from '../render-diagnostics'
++import { sanitizeFields, setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
++
++afterEach(() => { setGpuDiagnosticSink(undefined); vi.unstubAllEnvs() })
++const scene = { version: 0, width: 16, height: 16, extent: { x: 0, y: 0, w: 16, h: 16 },
++  floatCompositing: true, coherentSamples: true } as unknown as GpuScene
++const driver = () => ({ name: 'webgpu', managed: true, linearLight: true, hdr: false,
++  displayMath: false, captureDisplay: true, scratchBytes: 0,
++  uploadLinear: vi.fn(), uploadAtlasLinear: vi.fn() } as unknown as Driver)
++
++test('actual render entry snapshots flags/default before validation, then suppresses repeated frames', async () => {
++  const rows: { event: string; fields: any }[] = []
++  setGpuDiagnosticSink((event, fields) => rows.push({ event, fields }))
++  const renderer = new GpuRenderer(driver(), true, true, undefined, true, true) as any
++  renderer.scene = { floatCompositing: false, coherentSamples: false }
++  for (let i = 0; i < 20; i++) await expect(renderer.renderAttempt(scene, false, true)).rejects.toThrow(/版本/)
++  expect(rows).toHaveLength(1); expect(rows[0].event).toBe('runtime-config')
++  const fields = rows[0].fields
++  expect(fields).toMatchObject({ runtimeConfigVersion: 1, runtimeDriverCode: 2,
++    runtimeImageAtlas: 1, runtimeImageMips: 1, runtimeDriverManaged: 1,
++    runtimeFloatUpload: 1, runtimeFloatAtlasUpload: 1, runtimeHdr: 0,
++    runtimeFloatCompositing: 1, runtimeCoherentSamples: 1,
++    runtimeCompactImageFields: 1, runtimeImageAxesEnabled: 1, runtimeImageAxesEligible: 1, runtimeStreamImageFields: 1,
++    runtimeReadback: 0, runtimePresent: 1, runtimeWorkingBudgetBytes: 1024 * 1024 ** 2,
++    runtimeBudgetSource: 1, runtimeConfiguredBudgetMiB: 0 })
++  expect(sanitizeFields(fields)).toEqual(fields)
++  expect(Object.values(fields).every(Number.isSafeInteger)).toBe(true)
++})
++
++test('actual override and output changes are explicit; repeated configurations do not relog', async () => {
++  const rows: any[] = []
++  setGpuDiagnosticSink((_event, fields) => rows.push(fields))
++  const renderer = new GpuRenderer(driver(), true, true, undefined, false, false, 4096) as any
++  for (const [readback, present] of [[false, true], [true, false], [false, true]])
++    await expect(renderer.renderAttempt(scene, readback, present)).rejects.toThrow(/版本/)
++  expect(rows).toHaveLength(2)
++  expect(rows[1]).toMatchObject({ runtimeImageAtlas: 0, runtimeImageMips: 0,
++    runtimeReadback: 1, runtimePresent: 0, runtimeWorkingBudgetBytes: 4294967296,
++    runtimeBudgetSource: 2, runtimeConfiguredBudgetMiB: 4096 })
++  setGpuDiagnosticSink((_event, fields) => rows.push(fields))
++  await expect(renderer.renderAttempt(scene)).rejects.toThrow(/版本/)
++  expect(rows).toHaveLength(3)
++})
++
++test('diagnostics disabled or a throwing sink does not change render validation or GPU work', async () => {
++  const gpu = driver(), renderer = new GpuRenderer(gpu) as any
++  await expect(renderer.renderAttempt(scene)).rejects.toThrow(/版本/)
++  expect(renderer.runtimeConfiguration).toBeUndefined()
++  setGpuDiagnosticSink(() => { throw Error('diagnostic transport failure') })
++  await expect(renderer.renderAttempt(scene)).rejects.toThrow(/版本/)
++  expect(gpu.uploadLinear).not.toHaveBeenCalled()
++  setGpuDiagnosticSink(undefined)
++  await expect(renderer.renderAttempt(scene)).rejects.toThrow(/版本/)
++  expect(renderer.runtimeConfiguration).toBeUndefined()
++})
++
++test('16 configuration event cap does not cap exact error-owned snapshots or leak later state', async () => {
++  const rows: any[] = [], gpu = driver() as any
++  setGpuDiagnosticSink((_event, fields) => rows.push(fields))
++  const renderer = new GpuRenderer(gpu, true, true, undefined, false, false, 256) as any
++  let oldError: Error | undefined
++  for (let i = 0; i < 24; i++) {
++    renderer.imageAtlas = !!(i & 1); renderer.imageMips = !!(i & 2)
++    gpu.hdr = !!(i & 4); gpu.displayMath = !!(i & 8); gpu.captureDisplay = !!(i & 16)
++    await expect(renderer.renderAttempt(scene)).rejects.toThrow(/版本/)
++    renderer.lastBudgetFailure = { requestedBytes: 16, workingBytes: 256 * 1024 ** 2,
++      budgetBytes: 256 * 1024 ** 2, width: 1, height: 1, coherent: true }
++    const error = renderer.budgetError('GPU 浮点图片内存预算超限')
++    const fields = renderFailureFields(renderErrorWithBudget(error, 'PREVIEW_BUDGET: private text'))
++    expect(fields.failureCode).toBe(21); expect(fields.runtimeImageAtlas).toBe(Number(!!(i & 1)))
++    expect(fields.runtimeCaptureDisplay).toBe(Number(!!(i & 16)))
++    if (!i) oldError = error
++  }
++  expect(rows).toHaveLength(16)
++  expect(renderFailureFields(oldError)).toMatchObject({ runtimeImageAtlas: 0, runtimeCaptureDisplay: 0 })
++  expect(renderFailureFields(new Error('GPU 浮点图片内存预算超限'))).not.toHaveProperty('runtimeConfigVersion')
++  expect(JSON.stringify(rows)).not.toContain('private')
++})
++
++test('explicit 1024 MiB differs from default and independent renderers reset after disable/enable', async () => {
++  const rows: any[] = [], sink = (_event: string, fields: unknown) => rows.push(fields)
++  const a = new GpuRenderer(driver()) as any
++  const b = new GpuRenderer(driver(), true, true, undefined, false, false, 1024) as any
++  setGpuDiagnosticSink(sink)
++  for (const renderer of [a, b]) await expect(renderer.render(scene)).rejects.toThrow(/版本/)
++  expect(rows).toHaveLength(2)
++  expect(rows[0].runtimeBudgetSource).toBe(1); expect(rows[1].runtimeBudgetSource).toBe(2)
++  expect(rows[0].runtimeWorkingBudgetBytes).toBe(rows[1].runtimeWorkingBudgetBytes)
++  expect(rows[1].runtimeConfiguredBudgetMiB).toBe(1024)
++  expect(a.activeRuntimeConfiguration).toBeUndefined()
++  expect(renderFailureFields(a.budgetError('GPU 浮点图片内存预算超限'))).not.toHaveProperty('runtimeConfigVersion')
++  setGpuDiagnosticSink(undefined)
++  await expect(a.render(scene)).rejects.toThrow(/版本/)
++  setGpuDiagnosticSink(sink)
++  await expect(a.render(scene)).rejects.toThrow(/版本/)
++  expect(rows).toHaveLength(3)
++})
++
++test('compact and axes booleans track actual admission rule without raw environment strings', async () => {
++  const rows:any[]=[];setGpuDiagnosticSink((_event,fields)=>rows.push(fields))
++  const renderer=new GpuRenderer(driver()) as any
++  vi.stubEnv('VITE_DESIGN_IMAGE_AXES','0')
++  await expect(renderer.renderAttempt(scene)).rejects.toThrow(/版本/)
++  expect(rows.at(-1)).toMatchObject({runtimeImageAxesEnabled:0,runtimeImageAxesEligible:0})
++  vi.stubEnv('VITE_DESIGN_IMAGE_AXES','private-value')
++  await expect(renderer.renderAttempt({...scene,compactImageFields:false})).rejects.toThrow(/版本/)
++  expect(rows.at(-1)).toMatchObject({runtimeCompactImageFields:0,runtimeImageAxesEnabled:1,runtimeImageAxesEligible:0})
++  expect(JSON.stringify(rows)).not.toContain('private-value')
++})
+diff --git a/frontend/design-client/src/kernel/render-failure-origin.test.mjs b/frontend/design-client/src/kernel/render-failure-origin.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-client/src/kernel/render-failure-origin.test.mjs
+@@ -0,0 +1,69 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { readFile } from 'node:fs/promises'
++import { createHash } from 'node:crypto'
++import { MessageChannel } from 'node:worker_threads'
++import { RenderFailureAttempts, markRenderFailure, renderFailureFields } from './render-failure-telemetry.ts'
++import { renderErrorWithBudget } from './render-diagnostics.ts'
++import { markFailureAllocation, sanitizeFailureAllocation } from '../../../design-desktop/src/render-failure-allocation.mjs'
++import { createRenderDiagnostics, sanitizeFields, sanitizeBatch } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
++
++test('fallback boundary is distinct from original Error origin and survives scalar transport',()=>{
++  const attempts=new RenderFailureAttempts(), original=markRenderFailure(new Error('private'),
++    {failureStage:12,failureOriginCode:6,failureBuildKind:5})
++  assert.throws(()=>attempts.run(12,()=>{throw original}),error=>error===original)
++  assert.throws(()=>attempts.run(11,()=>{throw original}),error=>error===original)
++  assert.equal(attempts.fields().lastFailureBoundaryStage,11)
++  assert.equal(attempts.fields().lastFailureStage,12)
++  assert.equal(attempts.fields().lastFailureThrownKind,1)
++  const wrapped=renderErrorWithBudget(original,'private wrapper')
++  const fields=sanitizeFields({...renderFailureFields(wrapped),...attempts.fields()})
++  assert.equal(fields.failureOriginCode,6);assert.equal(fields.failureBuildKind,5)
++  assert.equal(fields.lastFailureBoundaryStage,11);assert(!JSON.stringify(fields).includes('private'))
++})
++
++test('V2 dictionary binds actual source and every static literal matches without prefix classification', async()=>{
++  const dictionary=JSON.parse(await readFile(new URL('../../../../docs/RENDER_FAILURE_DICTIONARY_V2.json',import.meta.url),'utf8'))
++  const source=await readFile(new URL('./render-failure-telemetry.ts',import.meta.url))
++  assert.equal(dictionary.version,2);assert.equal(dictionary.sourceSha256,createHash('sha256').update(source).digest('hex'))
++  const used=new Set()
++  for(const item of dictionary.exactMessages){
++    assert(!used.has(item.code));used.add(item.code)
++    for(const value of [item.exactMessage,new Error(item.exactMessage)]){
++      const fields=renderFailureFields(value)
++      assert.equal(fields.failureCode,item.code);assert.equal(fields.failureCategory,item.category)
++    }
++    assert.equal(renderFailureFields('private-prefix '+item.exactMessage).failureCode,0)
++  }
++})
++
++test('allocation snapshot rejects getters, inherited values, strings and overflows',()=>{
++  let calls=0;const input={failureAllocationSnapshotVersion:1}
++  Object.defineProperty(input,'failureLedgerTotalBytes',{get(){calls++;throw Error('private')}})
++  assert.deepEqual(sanitizeFailureAllocation(input),{failureAllocationSnapshotVersion:1});assert.equal(calls,0)
++  assert.deepEqual(sanitizeFailureAllocation(Object.create({failureAllocationSnapshotVersion:1,failureAllocationKind:1})),{})
++  for(const bad of [-1,1.5,NaN,Infinity,17179869185,'1',{},true])
++    assert(!('failureLedgerTotalBytes' in sanitizeFailureAllocation({failureAllocationSnapshotVersion:1,failureLedgerTotalBytes:bad})))
++  assert(!('failureAllocationKind' in sanitizeFields({failureAllocationSnapshotVersion:1,failureAllocationKind:13})))
++})
++
++test('allocation kind and ledger survive actual worker-style message and main sanitizer without raw text',async()=>{
++  const source={failureAllocationSnapshotVersion:1,failureAllocationKind:2,failureBuildKind:3,
++    failureLedgerTotalBytes:1073741824,failureLedgerBusyCount:7}
++  const error=markFailureAllocation(renderErrorWithBudget('GPU 表面内存预算超限',undefined,
++    {requestedBytes:16,workingBytes:1073741824,budgetBytes:1073741824}),source)
++  source.failureLedgerBusyCount=0
++  const wrapped=renderErrorWithBudget(error,'PREVIEW_BUDGET: private')
++  const {port1,port2}=new MessageChannel()
++  try{
++    const received=new Promise(resolve=>port2.once('message',resolve))
++    port1.postMessage({...renderFailureFields(wrapped),requestId:130,privateText:'private'})
++    const wire=await received,rows=[]
++    const recorder=createRenderDiagnostics({enabled:true,detail:true,session:1,sink:row=>rows.push(row)})
++    recorder.record('error',sanitizeFields(wire));recorder.flush();recorder.close()
++    const row=sanitizeBatch(rows)[0]
++    assert.equal(row.failureAllocationKind,2);assert.equal(row.failureBuildKind,3)
++    assert.equal(row.failureLedgerBusyCount,7);assert.equal(row.requestId,130)
++    assert(!JSON.stringify(row).includes('private'))
++  }finally{port1.close();port2.close()}
++})
+diff --git a/frontend/design-client/src/kernel/render-failure-telemetry.ts b/frontend/design-client/src/kernel/render-failure-telemetry.ts
+--- a/frontend/design-client/src/kernel/render-failure-telemetry.ts
++++ b/frontend/design-client/src/kernel/render-failure-telemetry.ts
+@@ -1,12 +1,53 @@
++import { failureAllocationFields, inheritFailureAllocation } from '../../../design-desktop/src/render-failure-allocation.mjs'
++import { runtimeConfigurationFields, inheritRuntimeConfiguration } from '../../../design-desktop/src/render-runtime-configuration.mjs'
+ /** Content-free classifications only. Inspect exact known messages/classes, never
+  * serialize arbitrary names, messages, stacks, cause chains or document values. */
+-export type RenderFailureTag = { failureStage?: number; failureCategory?: number; failureCode?: number }
++export type RenderFailureTag = { failureStage?: number; failureCategory?: number; failureCode?: number; failureOriginCode?: number; failureBuildKind?: number }
+ // Stages: 0 unknown,1 request,2 load,3 derive,4 patch,5 compile,6 hydrate,
+ // 7 encode,8 submit,9 fence,10 present,11 fallback,12 graph,13 admission.
+ // Categories: 0 unknown,1 cancellation,2 unsupported,3 resource budget,
+ // 4 device lost,5 validation,6 protocol.
+ const tags = new WeakMap<object, RenderFailureTag>()
+ const known: readonly [string, number, number][] = [
++ ["Singular transform", 5, 80],
++ ["Nonfinite composed transform", 5, 81],
++ ["Composed inverse exceeds precision budget", 5, 82],
++ ["Invalid image sampling geometry", 5, 83],
++ ["Image coordinate bounds exceed integer range", 5, 84],
++ ["Sampling coordinate field exceeds 64 MiB", 3, 85],
++ ["Sampling coordinate allocation failed", 3, 86],
++ ["Parameter field exceeds 64 MiB", 3, 87],
++ ["Parameter field allocation failed", 3, 88],
++ ["Nonfinite material parameter", 5, 89],
++ ["Invalid analytic glass shape", 5, 90],
++ ["Glass field region exceeds original geometry domain", 5, 91],
++ ["Invalid GPU viewport", 5, 92],
++ ["Invalid GPU tile viewport", 5, 93],
++ ["GPU analytic interval program budget exceeded", 3, 94],
++ ["Sampling coordinate size overflow", 5, 95],
++ ["Parameter field horizontal bounds overflow", 5, 96],
++ ["Parameter field vertical bounds overflow", 5, 97],
++ ["Parameter field size overflow", 5, 98],
++ ["Nonfinite sample coordinate", 5, 99],
++ ["Non-finite image sampling coordinate", 5, 100],
++ ["Exact blur radius must be in (0,2048]", 2, 101],
++ ["Box filter radius exceeds 512 pixels", 2, 102],
++ ["Gaussian sigma must be in [0,512]", 5, 103],
++ ["Gaussian box radius exceeds 512 pixels", 2, 104],
++ ["WebGPU 纹理尺寸超限", 5, 105],
++ ["无效的材质参数纹理", 5, 106],
++ ["Regional coverage requires an interval program", 6, 107],
++ ["Coverage program unavailable", 6, 108],
++ ["Resident coverage program is missing", 6, 109],
++ ["GPU 纹理精度与文档色彩空间不一致", 5, 110],
++ ["不支持的 GPU 命令版本", 2, 111],
++ ["GPU 区域命令缺少输出矩形", 6, 112],
++ ["无效的参数字段布局", 5, 113],
++ ["空 GPU 表面", 5, 114],
++ ["GPU frame abort is unavailable", 2, 115],
++ ["Prefix scratch was not retired after frame abort", 5, 116],
++ ["GPU device preview recovery failed", 4, 117],
++ ["GPU device lost during preview recovery", 4, 118],
+  ['PREVIEW_CANCELLED',1,1], ['DERIVATION_UNSUPPORTED',2,2], ['DOCUMENT_PREPARATION_PENDING',6,3],
+  ['STALE_PREPARED_PACKET',6,4], ['DERIVATION_RECEIPT_MISSING',6,5], ['STALE_BASE',6,6], ['STALE_TARGET',6,7],
+  ['PATCH_GUARD_SCHEMA',5,61], ['STALE_AUTHORED_PATCH_BASE',6,62], ['PATCH_GUARD_UNSUPPORTED',2,63],
+@@ -31,7 +72,7 @@
+ export function markRenderFailure<T>(error: T, input: RenderFailureTag): T {
+  if (!object(error)) return error
+  const previous = tags.get(error) || {}, next = { ...previous }
+- for (const [key, max] of [['failureStage',13],['failureCategory',6],['failureCode',255]] as const) {
++ for (const [key, max] of [['failureStage',13],['failureCategory',6],['failureCode',255],['failureOriginCode',7],['failureBuildKind',9]] as const) {
+   const value = input[key]
+   if ((next[key] === undefined || next[key] === 0) && typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max) next[key] = value
+  }
+@@ -60,7 +101,7 @@
+   return out
+  } catch { return missing }
+ }
+-export function renderFailureFields(error: unknown) {
++export function renderFailureFields(error: unknown): Record<string, number> & { failureCategory: number; failureCode: number; failureStage: number; errorClassCode: number } {
+  const tagged = object(error) ? tags.get(error) : undefined
+  let errorClassCode = 0, exact: {failureCategory:number;failureCode:number} | undefined
+  try {
+@@ -76,11 +117,13 @@
+   }
+  } catch { /* A hostile getter/class check yields explicit unknown, never text. */ }
+  const category = tagged?.failureCategory ?? exact?.failureCategory ?? 0
+- return { ...(category === 3 ? failureBudgetFields(error) : {}), failureCategory: category,
++ return { ...(category === 3 ? { ...failureBudgetFields(error), ...runtimeConfigurationFields(error), ...failureAllocationFields(error) } : {}), failureCategory: category,
++  ...(tagged?.failureOriginCode ? { failureOriginCode: tagged.failureOriginCode } : {}),
++  ...(tagged?.failureBuildKind ? { failureBuildKind: tagged.failureBuildKind } : {}),
+   failureCode: tagged?.failureCode ?? exact?.failureCode ?? 0, failureStage: tagged?.failureStage ?? 0, errorClassCode }
+ }
+ export function inheritRenderFailure<T>(source: unknown, target: T): T {
+- return markRenderFailure(target,renderFailureFields(source))
++ return markRenderFailure(inheritFailureAllocation(source,inheritRuntimeConfiguration(source,target)),renderFailureFields(source))
+ }
+ export function withRenderFailureStage<T>(stage: number, work: () => T): T {
+  try {
+@@ -89,20 +132,29 @@
+   return result
+  } catch (error) { throw markRenderFailure(error,{failureStage:stage}) }
+ }
++/** Type only; never coerce/read a thrown primitive or arbitrary object. */
++export function renderFailureThrownKind(value: unknown): number {
++ try { if (value instanceof Error) return 1 } catch { /* hostile class boundary */ }
++ if (value === null) return 5
++ return ({ string:2, number:3, boolean:4, undefined:6, object:7, function:8, symbol:9, bigint:10 })[typeof value] ?? 0
++}
+ /** A fixed-size per-request counter. It retains no exception/content references.
+  * Errors handled by fallback remain observable without one log per tile/pass. */
+ export class RenderFailureAttempts {
+  private counts = new Uint16Array(14)
+  private errors = 0
++ private lastBoundary = 0
++ private lastThrownKind = 0
+  private last = { failureCategory:0, failureStage:0, failureCode:0, errorClassCode:0 }
+- observe(error:unknown,stage?:number) { if(stage!==undefined)markRenderFailure(error,{failureStage:stage});this.errors=Math.min(65535,this.errors+1);this.last=renderFailureFields(error) }
++ observe(error:unknown,stage?:number) { this.lastBoundary=Number.isInteger(stage)&&stage!>=1&&stage!<=13?stage!:0;this.lastThrownKind=renderFailureThrownKind(error);if(stage!==undefined)markRenderFailure(error,{failureStage:stage});this.errors=Math.min(65535,this.errors+1);this.last=renderFailureFields(error) }
+  run<T>(stage:number, work:()=>T):T {
+   if (Number.isInteger(stage) && stage>=1 && stage<=13) this.counts[stage]=Math.min(65535,this.counts[stage]+1)
+-  const failed=(error:unknown)=>{this.observe(error);throw error}
++  const failed=(error:unknown)=>{this.observe(error,stage);throw error}
+   try { const result=withRenderFailureStage(stage,work);return result instanceof Promise ? result.catch(failed) as T : result }
+   catch(error){return failed(error)}
+  }
+  fields() { return { compileAttempts:this.counts[5], hydrateAttempts:this.counts[6], graphAttempts:this.counts[12],
+    fallbackAttempts:this.counts[11], failureAttempts:this.errors, failureCountsCapped:this.errors===65535 || this.counts.some(n=>n===65535), lastFailureStage:this.last.failureStage,
+-   lastFailureCategory:this.last.failureCategory, lastFailureCode:this.last.failureCode } }
++   lastFailureCategory:this.last.failureCategory, lastFailureCode:this.last.failureCode,
++   lastFailureBoundaryStage:this.lastBoundary,lastFailureThrownKind:this.lastThrownKind,lastFailureClassCode:this.last.errorClassCode } }
+ }
+diff --git a/frontend/design-desktop/src/render-diagnostic-identity.mjs b/frontend/design-desktop/src/render-diagnostic-identity.mjs
+--- a/frontend/design-desktop/src/render-diagnostic-identity.mjs
++++ b/frontend/design-desktop/src/render-diagnostic-identity.mjs
+@@ -1,6 +1,6 @@
+ // Versioned content-free provenance. Hashes identify inputs, not GPU correctness
+ // or reproducible output. No URLs, paths, environment values or document data.
+-export const FAILURE_DICTIONARY_VERSION = 1
++export const FAILURE_DICTIONARY_VERSION = 2
+ export const DIAGNOSTIC_PRODUCER_VERSION = 1
+ const digestFields = ['producerSourceSha256', 'producerWasmInputSha256', 'failureDictionarySha256']
+ export function sanitizeProducerIdentity(value) {
+diff --git a/frontend/design-desktop/src/render-failure-allocation.d.mts b/frontend/design-desktop/src/render-failure-allocation.d.mts
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-desktop/src/render-failure-allocation.d.mts
+@@ -0,0 +1,4 @@
++export function sanitizeFailureAllocation(value: unknown): Record<string, number>
++export function markFailureAllocation<T>(error: T, fields: unknown): T
++export function failureAllocationFields(error: unknown): Record<string, number>
++export function inheritFailureAllocation<T>(source: unknown, target: T): T
+diff --git a/frontend/design-desktop/src/render-failure-allocation.mjs b/frontend/design-desktop/src/render-failure-allocation.mjs
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-desktop/src/render-failure-allocation.mjs
+@@ -0,0 +1,31 @@
++const limits = Object.entries({ failureMaterialFieldBuilds:1e9,failureMaterialFieldUploadBytes:1e12,
++  failureImageAxisFields:1e9,failureImageFieldBytes:1e12, failureAllocationSnapshotVersion: 1, failureAllocationKind: 12,
++  failureBuildKind: 9, failureLedgerTotalBytes: 17179869184,
++  failureLedgerInteractionBytes: 17179869184, failureLedgerNestedPrefixBytes: 17179869184,
++  failureLedgerDriverScratchBytes: 17179869184, failureLedgerMaterialFieldBytes: 17179869184,
++  failureLedgerCoverageBytes: 17179869184, failureLedgerKernelBytes: 17179869184,
++  failureLedgerBusyCount: 1000000, failureLedgerImageCount: 1000000,
++  failureLedgerAtlasPageCount: 1000000, failureLedgerRetiredUploadCount: 1000000,
++  failureLedgerCoordinateCount: 1000000 })
++export function sanitizeFailureAllocation(value) {
++  const out = {}
++  try {
++    if (!value || typeof value !== 'object' || Object.getOwnPropertyDescriptor(value, 'failureAllocationSnapshotVersion')?.value !== 1) return out
++    for (const [key, maximum] of limits) {
++      const item = Object.getOwnPropertyDescriptor(value, key)?.value
++      if (Number.isSafeInteger(item) && item >= 0 && item <= maximum) out[key] = item
++    }
++  } catch { return {} }
++  return out
++}
++const snapshots = new WeakMap()
++const object = value => (typeof value === 'object' && value !== null) || typeof value === 'function'
++export function markFailureAllocation(error, fields) {
++  if (object(error)) snapshots.set(error, Object.freeze(sanitizeFailureAllocation(fields)))
++  return error
++}
++export function failureAllocationFields(error) { return object(error) ? { ...snapshots.get(error) } : {} }
++export function inheritFailureAllocation(source, target) {
++  if (object(source) && object(target) && snapshots.has(source)) snapshots.set(target, snapshots.get(source))
++  return target
++}
+diff --git a/frontend/design-desktop/src/render-runtime-configuration.d.mts b/frontend/design-desktop/src/render-runtime-configuration.d.mts
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-desktop/src/render-runtime-configuration.d.mts
+@@ -0,0 +1,5 @@
++export const RUNTIME_CONFIGURATION_LIMITS: Readonly<Record<string, number>>
++export function sanitizeRuntimeConfiguration(value: unknown): Record<string, number>
++export function markRuntimeConfiguration<T>(error: T, snapshot: unknown): T
++export function runtimeConfigurationFields(error: unknown): Record<string, number>
++export function inheritRuntimeConfiguration<T>(source: unknown, target: T): T
+diff --git a/frontend/design-desktop/src/render-runtime-configuration.mjs b/frontend/design-desktop/src/render-runtime-configuration.mjs
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-desktop/src/render-runtime-configuration.mjs
+@@ -0,0 +1,45 @@
++// Runtime branch facts only. Never accept environment strings, resource names,
++// document payloads, getters or prototype properties.
++export const RUNTIME_CONFIGURATION_LIMITS = Object.freeze({
++  runtimeConfigVersion: 1, runtimeDriverCode: 2,
++  runtimeImageAtlas: 1, runtimeImageMips: 1, runtimeDriverManaged: 1,
++  runtimeLinearLight: 1, runtimeHdr: 1, runtimeDisplayMath: 1,
++  runtimeCaptureDisplay: 1, runtimeFloatUpload: 1, runtimeFloatAtlasUpload: 1,
++  runtimeFloatCompositing: 1, runtimeColorManaged: 1, runtimeCoherentSamples: 1,
++  runtimeReadback: 1, runtimePresent: 1, runtimeSoftwareRaster: 1,
++  runtimeCompactImageFields: 1, runtimeImageAxesEnabled: 1, runtimeImageAxesEligible: 1, runtimeStreamImageFields: 1,
++  runtimeWorkingBudgetBytes: 4294967296, runtimeBudgetSource: 2,
++  runtimeConfiguredBudgetMiB: 4096,
++})
++const limits = Object.entries(RUNTIME_CONFIGURATION_LIMITS)
++export function sanitizeRuntimeConfiguration(value) {
++  const out = {}
++  try {
++    if (!value || typeof value !== 'object' || Object.getOwnPropertyDescriptor(value, 'runtimeConfigVersion')?.value !== 1) return out
++    for (const [key, maximum] of limits) {
++      const item = Object.getOwnPropertyDescriptor(value, key)?.value
++      if (!Number.isSafeInteger(item) || item < 0 || item > maximum) continue
++      if (key === 'runtimeConfigVersion' && item !== 1) continue
++      if (key === 'runtimeBudgetSource' && item !== 1 && item !== 2) continue
++      if (key === 'runtimeWorkingBudgetBytes' && item < 268435456) continue
++      if (key === 'runtimeConfiguredBudgetMiB' && item !== 0 && item < 256) continue
++      out[key] = item
++    }
++  } catch { return {} }
++  return out
++}
++const errors = new WeakMap()
++const object = value => (typeof value === 'object' && value !== null) || typeof value === 'function'
++export function markRuntimeConfiguration(error, snapshot) {
++  const fields = sanitizeRuntimeConfiguration(snapshot)
++  if (object(error) && fields.runtimeConfigVersion === 1)
++    errors.set(error, Object.freeze(fields))
++  return error
++}
++export function runtimeConfigurationFields(error) {
++  return object(error) ? { ...errors.get(error) } : {}
++}
++export function inheritRuntimeConfiguration(source, target) {
++  if (object(source) && object(target) && errors.has(source)) errors.set(target, errors.get(source))
++  return target
++}
+diff --git a/frontend/design-desktop/src/render-terminal-diagnostics.d.mts b/frontend/design-desktop/src/render-terminal-diagnostics.d.mts
+--- a/frontend/design-desktop/src/render-terminal-diagnostics.d.mts
++++ b/frontend/design-desktop/src/render-terminal-diagnostics.d.mts
+@@ -14,3 +14,6 @@
+ export function renderResultReason(error:unknown):number
+ 
+ export function snapshotResourceFields(sourceCodeUnits: number, fonts: unknown): Record<string, number>
++
++/** Changes whenever the trusted worker installs/restarts its diagnostic sink. */
++export function gpuDiagnosticEpoch():number
+diff --git a/frontend/design-desktop/src/render-terminal-diagnostics.mjs b/frontend/design-desktop/src/render-terminal-diagnostics.mjs
+--- a/frontend/design-desktop/src/render-terminal-diagnostics.mjs
++++ b/frontend/design-desktop/src/render-terminal-diagnostics.mjs
+@@ -1,11 +1,13 @@
++import { sanitizeFailureAllocation } from './render-failure-allocation.mjs'
++import { sanitizeRuntimeConfiguration } from './render-runtime-configuration.mjs'
+ import { producerIdentityFields, sanitizeProducerIdentity } from './render-diagnostic-identity.mjs'
+ // Strict scalar allowlist shared by worker, renderer and terminal. Never stringify a render payload.
+-const tileCostLimits = {displayImageSourcePasses:1e9,nestedPrefixHits:1e9,nestedPrefixBuilds:1e9,nestedPrefixBytes:67108864,staticImageBlurEligible:1e9,staticImageBlurHits:1e9,staticImageBlurPixels:1e12,staticImageBlurBytes:17825792,staticImageBlurEntries:1,wholeFilterAxes:1e9,opaqueTentPasses:1e9,imageXTableBuilds:1e6,imageXTablePixels:1e12,imageXTableBytes:41943040,tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
++const tileCostLimits = {imageAxisFields:1e9,imageFieldBytes:1e12,displayImageSourcePasses:1e9,nestedPrefixHits:1e9,nestedPrefixBuilds:1e9,nestedPrefixBytes:67108864,staticImageBlurEligible:1e9,staticImageBlurHits:1e9,staticImageBlurPixels:1e12,staticImageBlurBytes:17825792,staticImageBlurEntries:1,wholeFilterAxes:1e9,opaqueTentPasses:1e9,imageXTableBuilds:1e6,imageXTablePixels:1e12,imageXTableBytes:41943040,tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
+ export const PREFIX = '[render-diag] '
+ const tileOrderLimits = {tileSourceIndex:[0,255],tileOrderIndex:[0,255],tileColumnNextIndex:[-1,255],
+  tileColumnReordered:[0,1],tileColumnDeltaY:[-1e7,1e7],filterColumnPlans:[0,256],filterColumnReorders:[0,256]}
+-const events = new Set(['canvas-action','grid-state','frame-window','operation','request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage','failure-summary','device-lifecycle'])
+-const failureLimits = {diagnosticProducerVersion:1,failureDictionaryVersion:1,failureBudgetAvailable:1,failureRequestedBytes:17179869184,failureWorkingBytes:17179869184,failureBudgetBytes:17179869184,failureAllocationWidth:1e9,failureAllocationHeight:1e9,failureCoherent:1,failureCategory:6,lastFailureCategory:6,failureStage:13,lastFailureStage:13,
++const events = new Set(['canvas-action','grid-state','frame-window','operation','request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage','failure-summary','device-lifecycle','runtime-config','failure-origin'])
++const failureLimits = {failureMaterialFieldBuilds:1e9,failureMaterialFieldUploadBytes:1e12,failureImageAxisFields:1e9,failureImageFieldBytes:1e12,failureOriginCode:7,failureBuildKind:9,failureBoundaryStage:13,failureThrownKind:10,lastFailureBoundaryStage:13,lastFailureThrownKind:10,lastFailureClassCode:7,diagnosticProducerVersion:1,failureDictionaryVersion:2,failureBudgetAvailable:1,failureRequestedBytes:17179869184,failureWorkingBytes:17179869184,failureBudgetBytes:17179869184,failureAllocationWidth:1e9,failureAllocationHeight:1e9,failureCoherent:1,failureCategory:6,lastFailureCategory:6,failureStage:13,lastFailureStage:13,
+  failureCode:255,lastFailureCode:255,errorClassCode:7,rendererCode:3,compileAttempts:65535,hydrateAttempts:65535,graphAttempts:65535,fallbackAttempts:65535,failureAttempts:65535}
+ const qualityLimits = {qualitySequence: 0xffffffff, qualityRevision: 0xffffffff, documentRevision: 0xffffffff}
+ const diagnosticLimits = {originChannelId: 0xffffffffffff, backendCode: 2, boundaryCode: 16, boundaryDurationMs: 120000}
+@@ -83,7 +85,7 @@
+     if (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e15) out[key] = v
+     else if (typeof v === 'boolean') out[key] = v ? 1 : 0
+   }
+-  return out
++  return { ...out, ...sanitizeRuntimeConfiguration(value), ...sanitizeFailureAllocation(value) }
+ }
+ export function sanitizeRecord(value) {
+   if (!value || value.v !== 1 || !events.has(value.event) || !['main','worker','host'].includes(value.source)) return null
+@@ -128,7 +130,9 @@
+   }
+ }
+ let gpuSink
+-export function setGpuDiagnosticSink(sink) { gpuSink=sink }
++let gpuSinkEpoch=0
++export function setGpuDiagnosticSink(sink) { gpuSink=sink; gpuSinkEpoch=gpuSinkEpoch>=Number.MAX_SAFE_INTEGER?1:gpuSinkEpoch+1 }
++export function gpuDiagnosticEpoch() { return gpuSinkEpoch }
+ export function recordGpuDiagnostic(event, fields) { if(gpuSink) gpuSink(event,fields) }
+ export function gpuDiagnosticsEnabled() { return !!gpuSink }
+ 
+diff --git a/frontend/design-desktop/test/render-producer-identity.test.mjs b/frontend/design-desktop/test/render-producer-identity.test.mjs
+--- a/frontend/design-desktop/test/render-producer-identity.test.mjs
++++ b/frontend/design-desktop/test/render-producer-identity.test.mjs
+@@ -57,7 +57,7 @@
+     sink: row => rows.push(row), now: () => 1, schedule: () => 1, cancel: () => {} })
+   d.record('queue-start', { requestId: 1 }); d.record('tile', { requestId: 1 }); d.record('error', { requestId: 1, failureCode: 20 }); d.flush()
+   assert.equal(rows.length, 3); assert.equal(rows[0].diagnosticProducerVersion, 1)
+-  assert(!('producerIdentityStatus' in rows[1])); assert.equal(rows[2].failureDictionaryVersion, 1)
++  assert(!('producerIdentityStatus' in rows[1])); assert.equal(rows[2].failureDictionaryVersion, 2)
+   rows.length = 0
+   for (let i = 0; i < 2000; i++) d.record('tile', { requestId: 1 })
+   d.flush(); assert.equal(rows.length, 513); assert.equal(rows.at(-1).dropped, 1488)
+diff --git a/frontend/design-desktop/test/render-runtime-configuration.test.mjs b/frontend/design-desktop/test/render-runtime-configuration.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-desktop/test/render-runtime-configuration.test.mjs
+@@ -0,0 +1,53 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { sanitizeRuntimeConfiguration, markRuntimeConfiguration, runtimeConfigurationFields, inheritRuntimeConfiguration } from '../src/render-runtime-configuration.mjs'
++import { createRenderDiagnostics, sanitizeFields, sanitizeBatch } from '../src/render-terminal-diagnostics.mjs'
++const config = { runtimeConfigVersion: 1, runtimeImageAtlas: 0, runtimeImageMips: 1,
++  runtimeDriverCode: 2, runtimeDriverManaged: 1, runtimeHdr: 0, runtimeFloatUpload: 1,
++  runtimeReadback: 0, runtimePresent: 1, runtimeWorkingBudgetBytes: 1073741824,
++  runtimeBudgetSource: 1, runtimeConfiguredBudgetMiB: 0 }
++
++test('only bounded own numeric fields pass; no getters, strings, paths or payloads', () => {
++  let reads = 0
++  const getter = { runtimeConfigVersion: 1 }
++  Object.defineProperty(getter, 'runtimeImageAtlas', { get() { reads++; throw Error('private') } })
++  assert.deepEqual(sanitizeRuntimeConfiguration(getter), { runtimeConfigVersion: 1 }); assert.equal(reads, 0)
++  assert.deepEqual(sanitizeRuntimeConfiguration(Object.create(config)), {})
++  assert.deepEqual(sanitizeRuntimeConfiguration({ ...config, env: 'secret', document: 'private' }), config)
++  for (const invalid of [NaN, Infinity, -1, .5, 2, '1', true, {}])
++    assert(!('runtimeImageAtlas' in sanitizeFields({ runtimeConfigVersion: 1, runtimeImageAtlas: invalid })))
++  assert(!('runtimeWorkingBudgetBytes' in sanitizeFields({ runtimeConfigVersion: 1, runtimeWorkingBudgetBytes: 4294967297 })))
++  assert.deepEqual(sanitizeRuntimeConfiguration({ runtimeConfigVersion: 2, runtimeImageAtlas: 1 }), {})
++})
++
++test('error-owned immutable snapshot survives wrappers and never borrows another error state', () => {
++  const original = new Error('private'), data = { ...config }
++  assert.equal(markRuntimeConfiguration(original, data), original); data.runtimeImageAtlas = 1
++  const wrapper = new Error('wrapped private')
++  assert.equal(inheritRuntimeConfiguration(original, wrapper), wrapper)
++  assert.deepEqual(runtimeConfigurationFields(wrapper), config)
++  const copy = runtimeConfigurationFields(wrapper); copy.runtimeImageAtlas = 1
++  assert.equal(runtimeConfigurationFields(original).runtimeImageAtlas, 0)
++  assert.deepEqual(runtimeConfigurationFields(new Error('private')), {})
++})
++
++test('real MessageChannel and both existing sanitizers preserve runtime scalars with request correlation', async () => {
++  const { MessageChannel } = await import('node:worker_threads')
++  const { port1, port2 } = new MessageChannel(), rows = []
++  try {
++    const received = new Promise(resolve => port2.once('message', resolve))
++    port1.postMessage({ ...config, requestId: 117, failureCode: 21, privateText: 'never log this' })
++    const wire = await received
++    const recorder = createRenderDiagnostics({ enabled: true, detail: true, session: 9, source: 'main',
++      sink: row => rows.push(row) })
++    recorder.record('runtime-config', sanitizeFields(wire)); recorder.record('error', sanitizeFields(wire))
++    recorder.flush(); recorder.close()
++    const clean = sanitizeBatch(rows)
++    assert.equal(clean.length, 2)
++    for (const row of clean) {
++      assert.equal(row.runtimeImageAtlas, 0); assert.equal(row.runtimeWorkingBudgetBytes, 1073741824)
++      assert.equal(row.requestId, 117); assert.equal(row.session, 9)
++      assert(!JSON.stringify(row).includes('never log this'))
++    }
++  } finally { port1.close(); port2.close() }
++})

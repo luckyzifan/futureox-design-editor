@@ -1,11 +1,13 @@
+import { sanitizeFailureAllocation } from './render-failure-allocation.mjs'
+import { sanitizeRuntimeConfiguration } from './render-runtime-configuration.mjs'
 import { producerIdentityFields, sanitizeProducerIdentity } from './render-diagnostic-identity.mjs'
 // Strict scalar allowlist shared by worker, renderer and terminal. Never stringify a render payload.
-const tileCostLimits = {displayImageSourcePasses:1e9,nestedPrefixHits:1e9,nestedPrefixBuilds:1e9,nestedPrefixBytes:67108864,staticImageBlurEligible:1e9,staticImageBlurHits:1e9,staticImageBlurPixels:1e12,staticImageBlurBytes:17825792,staticImageBlurEntries:1,wholeFilterAxes:1e9,opaqueTentPasses:1e9,imageXTableBuilds:1e6,imageXTablePixels:1e12,imageXTableBytes:41943040,tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
+const tileCostLimits = {imageAxisFields:1e9,imageFieldBytes:1e12,displayImageSourcePasses:1e9,nestedPrefixHits:1e9,nestedPrefixBuilds:1e9,nestedPrefixBytes:67108864,staticImageBlurEligible:1e9,staticImageBlurHits:1e9,staticImageBlurPixels:1e12,staticImageBlurBytes:17825792,staticImageBlurEntries:1,wholeFilterAxes:1e9,opaqueTentPasses:1e9,imageXTableBuilds:1e6,imageXTablePixels:1e12,imageXTableBytes:41943040,tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
 export const PREFIX = '[render-diag] '
 const tileOrderLimits = {tileSourceIndex:[0,255],tileOrderIndex:[0,255],tileColumnNextIndex:[-1,255],
  tileColumnReordered:[0,1],tileColumnDeltaY:[-1e7,1e7],filterColumnPlans:[0,256],filterColumnReorders:[0,256]}
-const events = new Set(['canvas-action','grid-state','frame-window','operation','request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage','failure-summary','device-lifecycle'])
-const failureLimits = {diagnosticProducerVersion:1,failureDictionaryVersion:1,failureBudgetAvailable:1,failureRequestedBytes:17179869184,failureWorkingBytes:17179869184,failureBudgetBytes:17179869184,failureAllocationWidth:1e9,failureAllocationHeight:1e9,failureCoherent:1,failureCategory:6,lastFailureCategory:6,failureStage:13,lastFailureStage:13,
+const events = new Set(['canvas-action','grid-state','frame-window','operation','request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage','failure-summary','device-lifecycle','runtime-config','failure-origin'])
+const failureLimits = {failureMaterialFieldBuilds:1e9,failureMaterialFieldUploadBytes:1e12,failureImageAxisFields:1e9,failureImageFieldBytes:1e12,failureOriginCode:7,failureBuildKind:9,failureBoundaryStage:13,failureThrownKind:10,lastFailureBoundaryStage:13,lastFailureThrownKind:10,lastFailureClassCode:7,diagnosticProducerVersion:1,failureDictionaryVersion:2,failureBudgetAvailable:1,failureRequestedBytes:17179869184,failureWorkingBytes:17179869184,failureBudgetBytes:17179869184,failureAllocationWidth:1e9,failureAllocationHeight:1e9,failureCoherent:1,failureCategory:6,lastFailureCategory:6,failureStage:13,lastFailureStage:13,
  failureCode:255,lastFailureCode:255,errorClassCode:7,rendererCode:3,compileAttempts:65535,hydrateAttempts:65535,graphAttempts:65535,fallbackAttempts:65535,failureAttempts:65535}
 const qualityLimits = {qualitySequence: 0xffffffff, qualityRevision: 0xffffffff, documentRevision: 0xffffffff}
 const diagnosticLimits = {originChannelId: 0xffffffffffff, backendCode: 2, boundaryCode: 16, boundaryDurationMs: 120000}
@@ -83,7 +85,7 @@ export function sanitizeFields(value) {
     if (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e15) out[key] = v
     else if (typeof v === 'boolean') out[key] = v ? 1 : 0
   }
-  return out
+  return { ...out, ...sanitizeRuntimeConfiguration(value), ...sanitizeFailureAllocation(value) }
 }
 export function sanitizeRecord(value) {
   if (!value || value.v !== 1 || !events.has(value.event) || !['main','worker','host'].includes(value.source)) return null
@@ -128,7 +130,9 @@ export function createRenderDiagnostics({enabled=false, detail=false, session=0,
   }
 }
 let gpuSink
-export function setGpuDiagnosticSink(sink) { gpuSink=sink }
+let gpuSinkEpoch=0
+export function setGpuDiagnosticSink(sink) { gpuSink=sink; gpuSinkEpoch=gpuSinkEpoch>=Number.MAX_SAFE_INTEGER?1:gpuSinkEpoch+1 }
+export function gpuDiagnosticEpoch() { return gpuSinkEpoch }
 export function recordGpuDiagnostic(event, fields) { if(gpuSink) gpuSink(event,fields) }
 export function gpuDiagnosticsEnabled() { return !!gpuSink }
 

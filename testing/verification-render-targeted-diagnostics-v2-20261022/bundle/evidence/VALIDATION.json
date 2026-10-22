@@ -1,0 +1,25 @@
+{
+  "baseline": "1e4a3ba07b6922444801e81ba2ad3fbc7f7d5733",
+  "tests": {
+    "vitestPassed": 171,
+    "vitestFiles": 9,
+    "nodePassed": 57,
+    "strictAffectedTypecheck": "passed",
+    "productionBuild": "not run",
+    "electronGpu117": "not run",
+    "guardTestsPassed": 12,
+    "auditedSourceFiles": 293
+  },
+  "testCommands": {
+    "node": "From project root: node --import ./testing/lib/register-typescript.mjs --test frontend/design-desktop/test/render-terminal-diagnostics.test.mjs frontend/design-desktop/test/render-producer-identity.test.mjs frontend/design-desktop/test/render-runtime-configuration.test.mjs frontend/design-client/src/kernel/render-diagnostics.test.mjs frontend/design-client/src/kernel/render-failure-budget-fields.test.mjs frontend/design-client/src/kernel/render-failure-origin.test.mjs",
+    "vitest": "From frontend/design-client: node node_modules/vitest/vitest.mjs run --config /path/to/bundle/evidence/vitest.config.mjs",
+    "typecheck": "From frontend/design-client: node node_modules/typescript/bin/tsc --noEmit --strict --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler --jsx react-jsx --allowImportingTsExtensions --types vite/client,node,@webgpu/types src/kernel/gpu/failure-origins.test.ts src/kernel/gpu/runtime-configuration.test.ts src/kernel/render-failure-telemetry.ts"
+  },
+  "noDuplicateCounting": "171 Vitest and57Node are final exact-combination runs, not totals added across earlier reruns.",
+  "unrun": [
+    "full project typecheck",
+    "production Vite/Rust/WASM build",
+    "actual Electron Worker/GPU/117 acceptance"
+  ],
+  "review": "Frozen patch766640d7 reviewed with no definite correctness/privacy blocker"
+}

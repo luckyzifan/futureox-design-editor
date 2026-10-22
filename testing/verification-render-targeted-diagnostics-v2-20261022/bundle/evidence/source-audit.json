@@ -1,0 +1,7 @@
+{
+  "baseline": "1e4a3ba07b6922444801e81ba2ad3fbc7f7d5733",
+  "checkedSourceFiles": 293,
+  "unexpectedFiles": [],
+  "nativeRustProductionUnchanged": true,
+  "scope": "TS/MJS/MTS/Rust dependency fixture; generated JS test binding stubs are not production build evidence"
+}

@@ -1,0 +1,12 @@
+
+ RUN  v5.0.1 /workspace/shared/render-rootcause-gapfix-20261022/source/frontend/design-client
+
+
+ Test Files  9 passed (9)
+      Tests  171 passed (171)
+   Start at  15:41:33
+   Duration  16.47s (tests 88%, transform 7%, import 3%, setup 2%)
+
+    Isolate  9 workers spawned · ~112ms startup each (spawn + environment, per file)
+             at least ~894ms faster with isolate: false — reuses workers across files instead of one per file
+

@@ -1,0 +1,127 @@
+{
+  "baseline": "1e4a3ba07b6922444801e81ba2ad3fbc7f7d5733",
+  "baselineSourceInventorySha256": "6b50d890dd25380ec55d3ba3a9ef1605de6cf8a8709c69de9d9e404940c78857",
+  "patchSha256": "766640d74ea7db19a34bea774862f1537988e91627be7de75fd5c0d822ec6bcc",
+  "changes": [
+    {
+      "path": "docs/RENDER_FAILURE_DICTIONARY_V2.json",
+      "baselineSha256": null,
+      "sha256": "ec3b0246a83edf7e42cb8e2891b4ce2f204b32fd4f4cbedd4662b4b8c736a9a9",
+      "size": 10239
+    },
+    {
+      "path": "docs/RENDER_FAILURE_GAPS_V2.md",
+      "baselineSha256": null,
+      "sha256": "f22ce799fd6647d0c44ae87c112365a1248f300378ed4fa9a949ee47fc495dc0",
+      "size": 4958
+    },
+    {
+      "path": "docs/RENDER_ROOTCAUSE_DIAGNOSTICS_20261022.md",
+      "baselineSha256": "f715eafbfa5d5a10011fd272e6a074c4bc9e68ee1a9f5e93c42b625067d557d2",
+      "sha256": "b94ed71ca240984605a6db0730c2f0afeb62b97ea3e89e687ee5142f09db47d7",
+      "size": 5145
+    },
+    {
+      "path": "docs/RENDER_RUNTIME_CONFIGURATION_V1.md",
+      "baselineSha256": null,
+      "sha256": "5c5a01ee841a38767e45058c1b2743e59db0fd9b9781e7eabf91f7f472de9e0e",
+      "size": 4572
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/failure-origins.test.ts",
+      "baselineSha256": null,
+      "sha256": "1f295fc927c28144ddcb4964afefa2db0d7594ec77eea3bc17f085b430d69a59",
+      "size": 5530
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "baselineSha256": "6880e02659c9ce87fd113b8a0fdd0382fdb4b1b86182a7cefefc8e8251fbf1fc",
+      "sha256": "e75e43d7caed38b01ea41d21216dafef12bf5503f56a766462f775e4a477def6",
+      "size": 308456
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/runtime-configuration.test.ts",
+      "baselineSha256": null,
+      "sha256": "20744aa1d61f24c3b6bbfb4947ebd56d2cf0d94e54e5fd795a56c72587d471e3",
+      "size": 7060
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-failure-origin.test.mjs",
+      "baselineSha256": null,
+      "sha256": "d409c294feeec330c073509d713847f405b8a3eab97d754b1976022441a6fe1e",
+      "size": 4597
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-failure-telemetry.ts",
+      "baselineSha256": "33381accaad1488ee889f61e3932b97912d3e47bb3ddb10f8b91395bd60927ec",
+      "sha256": "b4ce0f92ef737c559fdbd478799f13f41b57e5ee4867787aab4b38b1b93d211d",
+      "size": 11401
+    },
+    {
+      "path": "frontend/design-desktop/src/render-diagnostic-identity.mjs",
+      "baselineSha256": "d716f94dc4f9726a0f7fd7fb14f37ed59c274818bc1bc749a783c4b216134e0d",
+      "sha256": "986f42a7faf6b2f68f5301d9160f0f38ca5d9c01762ecb9fc83ee6da4ee28051",
+      "size": 1665
+    },
+    {
+      "path": "frontend/design-desktop/src/render-failure-allocation.d.mts",
+      "baselineSha256": null,
+      "sha256": "2eadde75663f4d8d8c55690c0603b865ad6970ea8b4f0a7b04dfe8168acd0fa2",
+      "size": 308
+    },
+    {
+      "path": "frontend/design-desktop/src/render-failure-allocation.mjs",
+      "baselineSha256": null,
+      "sha256": "8e42588ec7ab88e4aac40afb8ebe7cc479c80e9ce79b47e0d2d60c7e00593b83",
+      "size": 1803
+    },
+    {
+      "path": "frontend/design-desktop/src/render-runtime-configuration.d.mts",
+      "baselineSha256": null,
+      "sha256": "5cb6a4123a87ecc654ea68bbe1593160f611adddf467f385a389599efe5820c9",
+      "size": 398
+    },
+    {
+      "path": "frontend/design-desktop/src/render-runtime-configuration.mjs",
+      "baselineSha256": null,
+      "sha256": "90fc5baa0f4bf289fc8ad7b703285b7758b3446812dbd2e246a09a2c866b5abd",
+      "size": 2318
+    },
+    {
+      "path": "frontend/design-desktop/src/render-terminal-diagnostics.d.mts",
+      "baselineSha256": "bf74e21767770c16af07bf71067c56ea03e96d83438179feea32e2bcd46a1479",
+      "sha256": "f89186712bf8b7862ab87d77073b4a71e21cf88e33d4fa4f9bdbc6fd5d34b55b",
+      "size": 1356
+    },
+    {
+      "path": "frontend/design-desktop/src/render-terminal-diagnostics.mjs",
+      "baselineSha256": "898b2085127ae9e12e191073c8f4e69b9030e629a7da3462a32aec71495be9c6",
+      "sha256": "5e6cf12579b6ae2d47211fc4a50ec4f641607b3bdf55905c922ef698e3fc6575",
+      "size": 20247
+    },
+    {
+      "path": "frontend/design-desktop/test/render-producer-identity.test.mjs",
+      "baselineSha256": "25efde927ed99bcfecd06f03bfc4292c22d62ae5794b30ce2a8d62605d90b7c6",
+      "sha256": "c13b1304b78d11ae729f3df519cbebc33ee5f14ff1ed780a44cb8a4af417a723",
+      "size": 6164
+    },
+    {
+      "path": "frontend/design-desktop/test/render-runtime-configuration.test.mjs",
+      "baselineSha256": null,
+      "sha256": "28f82137d5400c2744c8f20875c51436fdc7e5cdd809ddc64c19f243521f096f",
+      "size": 3435
+    }
+  ],
+  "scope": "Diagnostic only: runtime config, primitive failure boundary/origin, V2 static dictionary, error-owned allocation kind and O(1) ledger counters",
+  "priorDeliveredZipUnmodified": "1d0444c3e85b41b5779daa8287deac5e727d9fe40b9e93ecd6dbd90ea5e0eeb2",
+  "validation": {
+    "vitestPassed": 171,
+    "vitestFiles": 9,
+    "nodePassed": 57,
+    "strictAffectedTypecheck": "passed",
+    "productionBuild": "not run",
+    "electronGpu117": "not run",
+    "guardTestsPassed": 12,
+    "auditedSourceFiles": 293
+  }
+}

@@ -1,12 +1,53 @@
+import { failureAllocationFields, inheritFailureAllocation } from '../../../design-desktop/src/render-failure-allocation.mjs'
+import { runtimeConfigurationFields, inheritRuntimeConfiguration } from '../../../design-desktop/src/render-runtime-configuration.mjs'
 /** Content-free classifications only. Inspect exact known messages/classes, never
  * serialize arbitrary names, messages, stacks, cause chains or document values. */
-export type RenderFailureTag = { failureStage?: number; failureCategory?: number; failureCode?: number }
+export type RenderFailureTag = { failureStage?: number; failureCategory?: number; failureCode?: number; failureOriginCode?: number; failureBuildKind?: number }
 // Stages: 0 unknown,1 request,2 load,3 derive,4 patch,5 compile,6 hydrate,
 // 7 encode,8 submit,9 fence,10 present,11 fallback,12 graph,13 admission.
 // Categories: 0 unknown,1 cancellation,2 unsupported,3 resource budget,
 // 4 device lost,5 validation,6 protocol.
 const tags = new WeakMap<object, RenderFailureTag>()
 const known: readonly [string, number, number][] = [
+ ["Singular transform", 5, 80],
+ ["Nonfinite composed transform", 5, 81],
+ ["Composed inverse exceeds precision budget", 5, 82],
+ ["Invalid image sampling geometry", 5, 83],
+ ["Image coordinate bounds exceed integer range", 5, 84],
+ ["Sampling coordinate field exceeds 64 MiB", 3, 85],
+ ["Sampling coordinate allocation failed", 3, 86],
+ ["Parameter field exceeds 64 MiB", 3, 87],
+ ["Parameter field allocation failed", 3, 88],
+ ["Nonfinite material parameter", 5, 89],
+ ["Invalid analytic glass shape", 5, 90],
+ ["Glass field region exceeds original geometry domain", 5, 91],
+ ["Invalid GPU viewport", 5, 92],
+ ["Invalid GPU tile viewport", 5, 93],
+ ["GPU analytic interval program budget exceeded", 3, 94],
+ ["Sampling coordinate size overflow", 5, 95],
+ ["Parameter field horizontal bounds overflow", 5, 96],
+ ["Parameter field vertical bounds overflow", 5, 97],
+ ["Parameter field size overflow", 5, 98],
+ ["Nonfinite sample coordinate", 5, 99],
+ ["Non-finite image sampling coordinate", 5, 100],
+ ["Exact blur radius must be in (0,2048]", 2, 101],
+ ["Box filter radius exceeds 512 pixels", 2, 102],
+ ["Gaussian sigma must be in [0,512]", 5, 103],
+ ["Gaussian box radius exceeds 512 pixels", 2, 104],
+ ["WebGPU 纹理尺寸超限", 5, 105],
+ ["无效的材质参数纹理", 5, 106],
+ ["Regional coverage requires an interval program", 6, 107],
+ ["Coverage program unavailable", 6, 108],
+ ["Resident coverage program is missing", 6, 109],
+ ["GPU 纹理精度与文档色彩空间不一致", 5, 110],
+ ["不支持的 GPU 命令版本", 2, 111],
+ ["GPU 区域命令缺少输出矩形", 6, 112],
+ ["无效的参数字段布局", 5, 113],
+ ["空 GPU 表面", 5, 114],
+ ["GPU frame abort is unavailable", 2, 115],
+ ["Prefix scratch was not retired after frame abort", 5, 116],
+ ["GPU device preview recovery failed", 4, 117],
+ ["GPU device lost during preview recovery", 4, 118],
  ['PREVIEW_CANCELLED',1,1], ['DERIVATION_UNSUPPORTED',2,2], ['DOCUMENT_PREPARATION_PENDING',6,3],
  ['STALE_PREPARED_PACKET',6,4], ['DERIVATION_RECEIPT_MISSING',6,5], ['STALE_BASE',6,6], ['STALE_TARGET',6,7],
  ['PATCH_GUARD_SCHEMA',5,61], ['STALE_AUTHORED_PATCH_BASE',6,62], ['PATCH_GUARD_UNSUPPORTED',2,63],
@@ -31,7 +72,7 @@ const object = (error: unknown): error is object => (typeof error === 'object' &
 export function markRenderFailure<T>(error: T, input: RenderFailureTag): T {
  if (!object(error)) return error
  const previous = tags.get(error) || {}, next = { ...previous }
- for (const [key, max] of [['failureStage',13],['failureCategory',6],['failureCode',255]] as const) {
+ for (const [key, max] of [['failureStage',13],['failureCategory',6],['failureCode',255],['failureOriginCode',7],['failureBuildKind',9]] as const) {
   const value = input[key]
   if ((next[key] === undefined || next[key] === 0) && typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max) next[key] = value
  }
@@ -60,7 +101,7 @@ function failureBudgetFields(error: unknown): Record<string, number> {
   return out
  } catch { return missing }
 }
-export function renderFailureFields(error: unknown) {
+export function renderFailureFields(error: unknown): Record<string, number> & { failureCategory: number; failureCode: number; failureStage: number; errorClassCode: number } {
  const tagged = object(error) ? tags.get(error) : undefined
  let errorClassCode = 0, exact: {failureCategory:number;failureCode:number} | undefined
  try {
@@ -76,11 +117,13 @@ export function renderFailureFields(error: unknown) {
   }
  } catch { /* A hostile getter/class check yields explicit unknown, never text. */ }
  const category = tagged?.failureCategory ?? exact?.failureCategory ?? 0
- return { ...(category === 3 ? failureBudgetFields(error) : {}), failureCategory: category,
+ return { ...(category === 3 ? { ...failureBudgetFields(error), ...runtimeConfigurationFields(error), ...failureAllocationFields(error) } : {}), failureCategory: category,
+  ...(tagged?.failureOriginCode ? { failureOriginCode: tagged.failureOriginCode } : {}),
+  ...(tagged?.failureBuildKind ? { failureBuildKind: tagged.failureBuildKind } : {}),
   failureCode: tagged?.failureCode ?? exact?.failureCode ?? 0, failureStage: tagged?.failureStage ?? 0, errorClassCode }
 }
 export function inheritRenderFailure<T>(source: unknown, target: T): T {
- return markRenderFailure(target,renderFailureFields(source))
+ return markRenderFailure(inheritFailureAllocation(source,inheritRuntimeConfiguration(source,target)),renderFailureFields(source))
 }
 export function withRenderFailureStage<T>(stage: number, work: () => T): T {
  try {
@@ -89,20 +132,29 @@ export function withRenderFailureStage<T>(stage: number, work: () => T): T {
   return result
  } catch (error) { throw markRenderFailure(error,{failureStage:stage}) }
 }
+/** Type only; never coerce/read a thrown primitive or arbitrary object. */
+export function renderFailureThrownKind(value: unknown): number {
+ try { if (value instanceof Error) return 1 } catch { /* hostile class boundary */ }
+ if (value === null) return 5
+ return ({ string:2, number:3, boolean:4, undefined:6, object:7, function:8, symbol:9, bigint:10 })[typeof value] ?? 0
+}
 /** A fixed-size per-request counter. It retains no exception/content references.
  * Errors handled by fallback remain observable without one log per tile/pass. */
 export class RenderFailureAttempts {
  private counts = new Uint16Array(14)
  private errors = 0
+ private lastBoundary = 0
+ private lastThrownKind = 0
  private last = { failureCategory:0, failureStage:0, failureCode:0, errorClassCode:0 }
- observe(error:unknown,stage?:number) { if(stage!==undefined)markRenderFailure(error,{failureStage:stage});this.errors=Math.min(65535,this.errors+1);this.last=renderFailureFields(error) }
+ observe(error:unknown,stage?:number) { this.lastBoundary=Number.isInteger(stage)&&stage!>=1&&stage!<=13?stage!:0;this.lastThrownKind=renderFailureThrownKind(error);if(stage!==undefined)markRenderFailure(error,{failureStage:stage});this.errors=Math.min(65535,this.errors+1);this.last=renderFailureFields(error) }
  run<T>(stage:number, work:()=>T):T {
   if (Number.isInteger(stage) && stage>=1 && stage<=13) this.counts[stage]=Math.min(65535,this.counts[stage]+1)
-  const failed=(error:unknown)=>{this.observe(error);throw error}
+  const failed=(error:unknown)=>{this.observe(error,stage);throw error}
   try { const result=withRenderFailureStage(stage,work);return result instanceof Promise ? result.catch(failed) as T : result }
   catch(error){return failed(error)}
  }
  fields() { return { compileAttempts:this.counts[5], hydrateAttempts:this.counts[6], graphAttempts:this.counts[12],
    fallbackAttempts:this.counts[11], failureAttempts:this.errors, failureCountsCapped:this.errors===65535 || this.counts.some(n=>n===65535), lastFailureStage:this.last.failureStage,
-   lastFailureCategory:this.last.failureCategory, lastFailureCode:this.last.failureCode } }
+   lastFailureCategory:this.last.failureCategory, lastFailureCode:this.last.failureCode,
+   lastFailureBoundaryStage:this.lastBoundary,lastFailureThrownKind:this.lastThrownKind,lastFailureClassCode:this.last.errorClassCode } }
 }

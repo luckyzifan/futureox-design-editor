@@ -1,0 +1,8 @@
+{
+  "commit": "1e4a3ba07b6922444801e81ba2ad3fbc7f7d5733",
+  "sourceFiles": 1953,
+  "computedSourceSha256": "6b50d890dd25380ec55d3ba3a9ef1605de6cf8a8709c69de9d9e404940c78857",
+  "logSourceSha256": "6b50d890dd25380ec55d3ba3a9ef1605de6cf8a8709c69de9d9e404940c78857",
+  "matches": true,
+  "scope": "Git tracked configured build source inputs, excludes generated JS/WASM and native runtime binary"
+}
