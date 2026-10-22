@@ -1,3 +1,4 @@
+import type { InteractionPreviewFailure } from './interaction-preview-recovery'
 import { effectsAreKnown } from './render-dependency'
 import type { Bounds, DesignDocument, Matrix } from '../model'
 import { scene, unionBounds } from '../geometry'
@@ -19,6 +20,7 @@ export type GpuMoveControl = {
 export type InteractionProps = {
   document: DesignDocument; selection: string[]; active: boolean; epoch: number; control: RefObject<GpuMoveControl | null>; onReady: () => void
   /** Optional Canvas-only published geometry. Other callers remain uncached. */
+  onPreviewFailed?: (failure: InteractionPreviewFailure) => void
   onPosePresented?: (pose: { sequence: number; offset: { x: number; y: number }; latencyMs: number; document: DesignDocument; epoch: number }) => void
   scene?: CanvasSceneBorrow
 }

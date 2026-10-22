@@ -1,0 +1,19 @@
+{
+  "passed": 12,
+  "failed": 0,
+  "kind": "temporary real Git fixture with fixture HEAD in test-only manifest; not applied to user checkout",
+  "checks": [
+    "wrong HEAD rejected before writes",
+    "staged affected path rejected even when working bytes equal baseline",
+    "all baseline hashes validated",
+    "apply exact candidate hashes",
+    "idempotent reapply",
+    "rollback preserves user edits by refusal",
+    "rollback exact original hashes and removes only new files",
+    "idempotent rollback",
+    "interrupted mixed baseline/candidate rollback",
+    "unrelated staged work and content preserved",
+    "symlink escape rejected",
+    "tampered bundle rejected before writes"
+  ]
+}

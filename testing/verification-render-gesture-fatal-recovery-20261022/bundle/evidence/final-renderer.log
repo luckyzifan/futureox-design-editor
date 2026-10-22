@@ -1,0 +1,12 @@
+
+ RUN  v5.0.1 <Core>/frontend/design-client
+
+
+ Test Files  18 passed (18)
+      Tests  284 passed (284)
+   Start at  18:19:40
+   Duration  31.56s (tests 90%, transform 4%, import 3%, setup 2%)
+
+    Isolate  18 workers spawned · ~118ms startup each (spawn + environment, per file)
+             at least ~2.00s faster with isolate: false — reuses workers across files instead of one per file
+

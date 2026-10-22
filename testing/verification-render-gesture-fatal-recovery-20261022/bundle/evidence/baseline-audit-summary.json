@@ -1,0 +1,21 @@
+{
+  "baseline": "146825dad9e292b1b06046d17a269397d75ab323",
+  "previousBaseline": "8b0f006618d41f4fee4d08c3efc35a6111c6ad6c",
+  "onlyChangedPath": [
+    "frontend/design-client/src/kernel/interaction-renderer.test.ts"
+  ],
+  "testCompatibilityChangePreserved": true,
+  "productionTreesUnchanged": true,
+  "sevenPatchPreconditionsMatch": true,
+  "sourceFileCount": 1973,
+  "sourceFingerprint": "b5949f9fb6939f14ed0bc1602380d86ede33a355c1f7ed56cd1514efb6d41760",
+  "matchesNewLogs": true,
+  "gitHeadLabelInLogs": "8b0f006618d41f4fee4d08c3efc35a6111c6ad6c",
+  "interpretation": "source snapshot matches146; Git HEAD stamp is separate and may predate test-only commit",
+  "rustTree": "2a29bd31444023a8d661f757c38fb67d7c9f17e0",
+  "vendorTree": "2d9a6036e6e5654dcccf8c065216417a65cc69bd",
+  "wasmSha256": "d0062466914e7e79f58375153a110077dd54374060918b04f9e370ae163c609c",
+  "compatibilityTestSha256": "3808911a4182a014ce105f1bbd8b22db2c9e0e74e4ce50b073a6ab30a44282a7",
+  "originalAuditSha256": "665460a1af5c9b73f281adf7c6f8e9c8274cc6cc565adcc191ad82631d1358d1",
+  "packagingCheck": "Compatibility test compared directly with exact Git; Rust/vendor tree identities rechecked."
+}
