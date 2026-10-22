@@ -5,6 +5,7 @@ import type { Bounds, DesignDocument, Matrix } from '../model'
 import { translateOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
 import type { CanvasCamera } from '../canvas-camera'
 import { allowsReducedSampling } from './render-quality'
+import { interactionAdaptiveScale } from './interaction-adaptive-density'
 import { renderFailureFields } from './render-failure-telemetry'
 import { interactionCaptureTiles, recoverableInteractionBudget } from './interaction-capture-tiles'
 import { canvasRasterPlan } from './canvas-raster-plan'
@@ -795,7 +796,13 @@ export class InteractionRenderer {
             b = resident.captureBounds = { x: bounds.x - guard, y: bounds.y - guard, width: bounds.width + guard * 2, height: bounds.height + guard * 2 }
           }
           const reduced=allowsReducedSampling(this.qualityZoom)
-          if(!reduced && b.width*b.height*resident.scale**2>8_000_000){
+          // Gesture-time adaptive density (strict opt-in): a still-moving
+          // capture above the pixel budget rasterizes at the Figma-viewer
+          // stepped density instead of full zoom*DPR. Settled exact tiles and
+          // the low-zoom reduced tier are unchanged.
+          const gestureScale = interactionAdaptiveScale(resident.scale, b, this.props?.active === true, reduced)
+          const adaptive = gestureScale !== resident.scale
+          if(!adaptive && !reduced && b.width*b.height*resident.scale**2>8_000_000){
             // Spend the native pixel budget on visible output, not speculative
             // movement guard. A later pose can expand/rebase the exact capture.
             const area=8_000_000/resident.scale**2
@@ -803,7 +810,7 @@ export class InteractionRenderer {
             b=resident.captureBounds={x:bounds.x-guard,y:bounds.y-guard,width:bounds.width+2*guard,height:bounds.height+2*guard}
           }
           let scale = reduced ? Math.min(resident.scale, 8192 / Math.max(1, b.width, b.height),
-            Math.sqrt(4_194_304 / Math.max(1, b.width * b.height))) : resident.scale
+            Math.sqrt(4_194_304 / Math.max(1, b.width * b.height))) : gestureScale
           const targetScale=scale
           this.lastSamplePrepareMs = performance.now() - started
           let result: KernelResult | undefined, width = 1, height = 1, originX = 0, originY = 0, phaseX = 0, phaseY = 0
@@ -897,7 +904,10 @@ export class InteractionRenderer {
           if (!result || !capturedTiles && !result.gpuTile && !result.bitmap && result.bytes.length !== width * height * 4) throw Error('交互场景像素不完整')
           // Remember a successful budget negotiation. Retrying an oversized
           // capture on every pointer sample discarded the warmed GPU caches.
-          if (this.viewportRevision === viewportRevision) resident.scale = scale
+          // An adaptively reduced gesture sample must not overwrite the full
+          // device-density record: post-gesture density bookkeeping and the
+          // next gesture's demand computation both read resident.scale.
+          if (this.viewportRevision === viewportRevision && !adaptive) resident.scale = scale
           resident.visibleBounds = this.viewport ? { ...bounds } : undefined
           this.poseEvent(2,0,input.sequence,2)
           this.lastPresentedInput = input
