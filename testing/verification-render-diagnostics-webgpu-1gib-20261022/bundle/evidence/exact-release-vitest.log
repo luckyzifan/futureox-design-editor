@@ -1,0 +1,9 @@
+
+ RUN  v5.0.1 /workspace/shared/render-rootcause-diagnostics-20261022/combined-source/frontend/design-client
+
+
+ Test Files  7 passed (7)
+      Tests  160 passed (160)
+   Start at  14:58:57
+   Duration  14.21s (tests 89%, transform 7%, import 2%, setup 2%)
+

@@ -1,0 +1,7 @@
+{
+  "gitApplyCheck": "passed",
+  "gitApplyExactCandidateBytes": "passed",
+  "gitReverseCheck": "passed",
+  "files": 18,
+  "scope": "temporary exact baseline file fixture, not user checkout"
+}

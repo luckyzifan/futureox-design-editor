@@ -1,0 +1,12 @@
+{
+  "baseline": "ee97b408860990e2aa89c5510c11eb05ca8a3ba6",
+  "node": { "version": "24.19.0", "passed": 50, "failed": 0, "source": "final-node-tests.log", "command": "node --import ./testing/lib/register-typescript.mjs --test frontend/design-desktop/test/render-terminal-diagnostics.test.mjs frontend/design-desktop/test/render-producer-identity.test.mjs frontend/design-client/src/kernel/render-diagnostics.test.mjs frontend/design-client/src/kernel/render-failure-budget-fields.test.mjs" },
+  "vitest": { "version": "5.0.1", "passed": 7, "failed": 0, "source": "existing-vitest.log", "scope": "src/kernel/render-failure-telemetry.test.ts; isolated node environment" },
+  "focusedTelemetryTypecheck": { "exitCode": 0, "command": "node node_modules/typescript/lib/tsc.js --noEmit --target ES2022 --lib ES2022,DOM --module ESNext --moduleResolution Bundler --strict --skipLibCheck src/kernel/render-failure-telemetry.ts" },
+  "viteConfigTypecheck": { "exitCode": 0, "command": "node node_modules/typescript/lib/tsc.js --noEmit --target ES2022 --lib ES2022,DOM --module ESNext --moduleResolution Bundler --strict --skipLibCheck --allowJs --types node vite.config.ts" },
+  "syntax": { "exitCode": 0, "commands": ["node --check frontend/design-client/vite.config.ts", "node --check frontend/design-desktop/src/render-terminal-diagnostics.mjs"] },
+  "applyRollback": { "passed": 12, "failed": 0, "source": "apply-rollback-tests.json", "scope": "temporary Git fixture; no user checkout changes" },
+  "toolingLimitation": "An optional JS TypeScript API transpile attempt could not load typescript/lib/typescript.js because the installed compiler uses a native executable wrapper. Replaced by successful actual compiler noEmit check and Node syntax check; no product test failed.",
+  "unrun": ["full project typecheck", "production Vite bundle", "Rust/WASM build", "actual Electron Worker/Client callback", "GPU visual parity", "117 whole-editor reproduction"],
+  "transportScope": "Actual Node MessageChannel and both production sanitation functions tested; not an Electron or GPU acceptance test."
+}

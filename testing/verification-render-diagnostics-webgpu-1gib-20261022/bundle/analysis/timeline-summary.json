@@ -1,0 +1,27 @@
+{
+  "logSha256": "c24e31c33cf76dee011bf0081fd7aded980da86a374727153e247683346ab032",
+  "eventCount": 17382,
+  "remoteMainVerified": "ee97b408860990e2aa89c5510c11eb05ca8a3ba6",
+  "logRuntimeCommitVerified": false,
+  "utcStart": "2026-10-22T05:37:40.786000+00:00",
+  "utcEnd": "2026-10-22T05:39:01.654000+00:00",
+  "workerErrors": 185,
+  "budgetRejections": 71,
+  "cancellations": 114,
+  "measuredCameraSubmits": 171,
+  "incompleteCoverageMeasurements": 25,
+  "zeroCoverageMeasurements": 9,
+  "zeroSharpCoverageMeasurements": 120,
+  "maxUpscale": 71.81285867739398,
+  "minUiFps": 16.837716484926226,
+  "maxUiIntervalMs": 808.5,
+  "maxPendingInputAgeMs": 2041.699951171875,
+  "limits": [
+    "Conditional code mapping from verified current main, log has no runtime commit/hash",
+    "Coverage telemetry is not pixel proof of whiteout",
+    "UI rAF rate and software submit rate are not physical GPU presentation FPS",
+    "P95 fields are histogram bucket upper bounds",
+    "Operation9 commit-to-ACK40.432s spans continued camera movement, not fixed-view settle latency",
+    "114 cancellation events are not all defects;71 budget rejections are not an exhaustive issue list"
+  ]
+}

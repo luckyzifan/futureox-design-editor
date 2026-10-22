@@ -1,0 +1,672 @@
+diff --git a/docs/RENDER_FAILURE_DICTIONARY_V1.json b/docs/RENDER_FAILURE_DICTIONARY_V1.json
+new file mode 100644
+--- /dev/null
++++ b/docs/RENDER_FAILURE_DICTIONARY_V1.json
+@@ -0,0 +1,267 @@
++{
++  "version": 1,
++  "source": "frontend/design-client/src/kernel/render-failure-telemetry.ts",
++  "sourceSha256": "33381accaad1488ee889f61e3932b97912d3e47bb3ddb10f8b91395bd60927ec",
++  "categories": {
++    "0": "unknown",
++    "1": "cancellation",
++    "2": "unsupported",
++    "3": "resource budget",
++    "4": "device lost",
++    "5": "validation",
++    "6": "protocol"
++  },
++  "stages": {
++    "0": "unknown",
++    "1": "request",
++    "2": "load",
++    "3": "derive",
++    "4": "patch",
++    "5": "compile",
++    "6": "hydrate",
++    "7": "encode",
++    "8": "submit",
++    "9": "fence",
++    "10": "present",
++    "11": "fallback",
++    "12": "graph",
++    "13": "admission"
++  },
++  "exactMessages": [
++    {
++      "code": 1,
++      "category": 1,
++      "exactMessage": "PREVIEW_CANCELLED"
++    },
++    {
++      "code": 2,
++      "category": 2,
++      "exactMessage": "DERIVATION_UNSUPPORTED"
++    },
++    {
++      "code": 3,
++      "category": 6,
++      "exactMessage": "DOCUMENT_PREPARATION_PENDING"
++    },
++    {
++      "code": 4,
++      "category": 6,
++      "exactMessage": "STALE_PREPARED_PACKET"
++    },
++    {
++      "code": 5,
++      "category": 6,
++      "exactMessage": "DERIVATION_RECEIPT_MISSING"
++    },
++    {
++      "code": 6,
++      "category": 6,
++      "exactMessage": "STALE_BASE"
++    },
++    {
++      "code": 7,
++      "category": 6,
++      "exactMessage": "STALE_TARGET"
++    },
++    {
++      "code": 61,
++      "category": 5,
++      "exactMessage": "PATCH_GUARD_SCHEMA"
++    },
++    {
++      "code": 62,
++      "category": 6,
++      "exactMessage": "STALE_AUTHORED_PATCH_BASE"
++    },
++    {
++      "code": 63,
++      "category": 2,
++      "exactMessage": "PATCH_GUARD_UNSUPPORTED"
++    },
++    {
++      "code": 8,
++      "category": 5,
++      "exactMessage": "DERIVE_SCHEMA"
++    },
++    {
++      "code": 9,
++      "category": 6,
++      "exactMessage": "DERIVE_RETRY_REJECTED"
++    },
++    {
++      "code": 10,
++      "category": 5,
++      "exactMessage": "DERIVATION_INVALID_ENVELOPE"
++    },
++    {
++      "code": 11,
++      "category": 6,
++      "exactMessage": "DERIVATION_STALE_SOURCE"
++    },
++    {
++      "code": 12,
++      "category": 3,
++      "exactMessage": "DERIVATION_FALLBACK_BUDGET"
++    },
++    {
++      "code": 13,
++      "category": 6,
++      "exactMessage": "DERIVATION_FALLBACK_TIMEOUT"
++    },
++    {
++      "code": 64,
++      "category": 3,
++      "exactMessage": "GPU surface budget exceeded"
++    },
++    {
++      "code": 65,
++      "category": 2,
++      "exactMessage": "SEQUENTIAL_DISPLAY_UNSUPPORTED"
++    },
++    {
++      "code": 20,
++      "category": 3,
++      "exactMessage": "GPU 表面内存预算超限"
++    },
++    {
++      "code": 21,
++      "category": 3,
++      "exactMessage": "GPU 浮点图片内存预算超限"
++    },
++    {
++      "code": 22,
++      "category": 3,
++      "exactMessage": "GPU 图片总内存预算超限"
++    },
++    {
++      "code": 23,
++      "category": 3,
++      "exactMessage": "GPU 图集页内存预算超限"
++    },
++    {
++      "code": 24,
++      "category": 3,
++      "exactMessage": "GPU 图片像素预算超限"
++    },
++    {
++      "code": 25,
++      "category": 3,
++      "exactMessage": "GPU display resident budget exceeded"
++    },
++    {
++      "code": 26,
++      "category": 3,
++      "exactMessage": "GPU linear display budget exceeded"
++    },
++    {
++      "code": 27,
++      "category": 3,
++      "exactMessage": "GPU frame command work budget exceeded"
++    },
++    {
++      "code": 28,
++      "category": 3,
++      "exactMessage": "GPU solid instance budget exceeded"
++    },
++    {
++      "code": 30,
++      "category": 4,
++      "exactMessage": "WebGPU 设备已丢失"
++    },
++    {
++      "code": 31,
++      "category": 4,
++      "exactMessage": "GPU 设备已丢失"
++    },
++    {
++      "code": 32,
++      "category": 5,
++      "exactMessage": "GPU texture feedback loop"
++    },
++    {
++      "code": 33,
++      "category": 5,
++      "exactMessage": "无效的 GPU 表面边界"
++    },
++    {
++      "code": 34,
++      "category": 5,
++      "exactMessage": "无效的 GPU 图片资源"
++    },
++    {
++      "code": 35,
++      "category": 5,
++      "exactMessage": "无效的 GPU 分配字节数"
++    },
++    {
++      "code": 40,
++      "category": 2,
++      "exactMessage": "GPU exact blur radius exceeds 2048 pixels"
++    },
++    {
++      "code": 41,
++      "category": 2,
++      "exactMessage": "GPU 积分模糊半径超过 512 像素"
++    },
++    {
++      "code": 42,
++      "category": 2,
++      "exactMessage": "GPU 扩展半径超过 2048 像素"
++    },
++    {
++      "code": 43,
++      "category": 2,
++      "exactMessage": "不支持的填充类型"
++    },
++    {
++      "code": 44,
++      "category": 2,
++      "exactMessage": "渐变色标超过 32 个"
++    },
++    {
++      "code": 50,
++      "category": 6,
++      "exactMessage": "Invalid CPU preparation request"
++    },
++    {
++      "code": 51,
++      "category": 6,
++      "exactMessage": "CPU preparation response could not be decoded"
++    },
++    {
++      "code": 52,
++      "category": 3,
++      "exactMessage": "CPU preparation request budget exceeded"
++    },
++    {
++      "code": 53,
++      "category": 6,
++      "exactMessage": "Native preparation timed out"
++    },
++    {
++      "code": 54,
++      "category": 6,
++      "exactMessage": "Invalid native preparation protocol"
++    },
++    {
++      "code": 55,
++      "category": 6,
++      "exactMessage": "Native preparation sequence mismatch"
++    },
++    {
++      "code": 56,
++      "category": 6,
++      "exactMessage": "文档补丁版本未同步，请重试当前画布"
++    },
++    {
++      "code": 57,
++      "category": 6,
++      "exactMessage": "PREPARATION_SESSION_EXHAUSTED"
++    }
++  ],
++  "otherCodes": {
++    "0": "unknown or classified GPU class without exact known message",
++    "60": "SyntaxError fallback when exact known message is absent",
++    "200": "generic allocation rejection source tag; exact known inherited code20/21 remains authoritative"
++  }
++}
+diff --git a/docs/RENDER_ROOTCAUSE_DIAGNOSTICS_20261022.md b/docs/RENDER_ROOTCAUSE_DIAGNOSTICS_20261022.md
+new file mode 100644
+--- /dev/null
++++ b/docs/RENDER_ROOTCAUSE_DIAGNOSTICS_20261022.md
+@@ -0,0 +1,41 @@
++# 117 渲染诊断增量：错误预算快照与构建输入来源
++
++基线：ee97b408860990e2aa89c5510c11eb05ca8a3ba6。本增量仅增加诊断，不改变渲染、资源预算、回退、缓存、取消或文件保存行为。
++
++## 补齐的证据
++
++1. 构建输入来源：实际执行的 renderer / Worker 中嵌入当前构建时的源码清单 SHA-256、错误字典源码 SHA-256、生成 WASM 输入 SHA-256，以及可取得的 Git HEAD。
++2. 原始错误拥有的分配失败快照：failureRequestedBytes（本次请求）、failureWorkingBytes（拒绝时占用）、failureBudgetBytes（当时限额）、可用的分配宽高、coherent 标记。缺失时明确 failureBudgetAvailable=0，不拿稍后全局计数代替。
++3. 以既有 session、source、requestId、generation、documentRevision 关联既有 fence/admission 事件，不再加入逐帧时间事件。主线程 error 常是 Worker error 的镜像，统计失败须先按 Worker 请求去重。
++
++## 来源字段的准确含义
++
++- diagnosticProducerVersion=1；failureDictionaryVersion=1。精确字典随包附带，使用 failureDictionarySha256 与当前字典源码摘要核对，不能仅凭版本号认定旧日志来自此版本。
++- producerSourceSha256：现有 buildInputs 清单中源码文件的 SHA-256 清单摘要，包含未提交的文件内容。它不是整棵 Git 树、编译输出哈希或编译器版本证明；生成 JS bindings 与 public/kernel 原本就不在该清单。
++- producerWasmInputSha256：构建配置阶段唯一生成 WASM 输入文件的摘要。不是“实际运行时加载字节”的验证，不证明 native design-prepare/design-render 二进制身份，也不能排除外部替换、旧缓存或工具链差异。
++- producerCommit：可获得的 Git HEAD，仅供定位；相同 HEAD 可以有不同源码输入摘要，不表示 clean、全部内容相等或应用已验收。producerCommitStatus=0 表示未知，不填猜测值。
++- producerIdentityStatus=0：没有已验证源码输入清单；1：源码清单已哈希但 WASM 输入缺失/歧义；2：源码清单与唯一 WASM 输入均有摘要。
++- producerBuildMode=1：Vite build；2：serve。serve/HMR 故意标记来源未知且不计算启动快照，避免热更新后误报。未经过 Vite 注入的 Node host 明确未知。
++- 这些字段是诊断证据而不是安全认证；进程内恶意代码可以伪造遥测。
++
++所有摘要仅在构建配置时计算，不在帧/请求路径读文件或做哈希。运行时只给首次记录、错误、失败摘要及丢弃摘要加少量固定字段。原有 512 环形缓冲、64 条批次、节流和关闭开关保留。摘要只接受固定长度小写十六进制，禁止路径、文档、节点、URI、原始异常消息或堆栈。
++
++## 117 已知代码及读法
++
++- stage13 / category3 / code20：GPU 表面内存预算超限。
++- stage13 / category3 / code21：GPU 浮点图片内存预算超限。
++- stage5 / category3 / code64：native 编译器 surface-area guard，不能与 renderer 字节预算混为一谈。
++- code200：分配拒绝的通用来源标签。精确 code20/21 已存在时保留精确码，并不是 code200 缺失说明版本错配。
++- code1：PREVIEW_CANCELLED，需要结合 superseded / generation 等字段判断；不是 GPU 预算故障。
++
++对新错误：先核对来源/字典摘要，再算 failureRequestedBytes + failureWorkingBytes - failureBudgetBytes；这是该次拒绝的超额数，不是可安全释放量。再看同 session / requestId 的 admissionRequiredBytes、admissionReclaimableBytes、fence reason 与 queueWaitMs。fence 等待属于 CPU 观察到的 GPU 完成等待，不等于 GPU timestamp 性能或真实显示帧率。
++
++旧的 core-render-detail3.log 没有这些构建来源字段，也缺少错误所属分配快照。本补丁无法从旧日志反推出它们；旧日志仍可定位预算失败与 fence 等待，但不能据此证明其运行源码身份或完整分配根因。
++
++## 验证与界限
++
++最终源码：50 项 Node 测试通过（既有39项、新增11项）；既有 render-failure-telemetry Vitest 7项通过。新增覆盖来源缺失/脏源码/WASM输入变化、HMR未知、隐私边界、环形缓冲、错误快照、实际 Node MessageChannel 传输与两层清洗。TypeScript 对受影响遥测模块和 Vite 配置的局部检查通过，Node语法检查通过。
++
++没有运行完整项目 typecheck、生产 Vite/Rust/WASM build、实际 Electron Worker/GUI/设备验收或117复测。MessageChannel 测试不是实际 Electron Client 回调或 GPU 证据；字面量注入测试不是最终打包产物验证。本增量可用于补齐下一份日志，不是117问题已修复或GPU实时性能达标的声明。
++
++复测使用原项目既有诊断启动方式：CORE_RENDER_DIAGNOSTICS=detail，并重新构建使来源字段进入新 renderer/Worker。若来源状态仍未知，应先保留日志并核对构建步骤，而不是补填假摘要。
+diff --git a/frontend/design-client/src/kernel/render-failure-budget-fields.test.mjs b/frontend/design-client/src/kernel/render-failure-budget-fields.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-client/src/kernel/render-failure-budget-fields.test.mjs
+@@ -0,0 +1,66 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { markRenderFailure, renderFailureFields } from './render-failure-telemetry.ts'
++import { renderErrorWithBudget } from './render-diagnostics.ts'
++import { createRenderDiagnostics, sanitizeFields, sanitizeBatch, sanitizeRecord } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
++const budget = { requestedBytes: 80 * 1024**2, workingBytes: 220 * 1024**2, budgetBytes: 256 * 1024**2, width: 1000, height: 2000, coherent: true }
++test('same rejected Error retains exact numeric allocation snapshot through worker and main relay', () => {
++  const error = markRenderFailure(renderErrorWithBudget('GPU 表面内存预算超限', undefined, budget), { failureStage: 13, failureCategory: 3, failureCode: 200 })
++  const fields = renderFailureFields(error)
++  assert.deepEqual(fields, { failureBudgetAvailable: 1, failureRequestedBytes: budget.requestedBytes, failureWorkingBytes: budget.workingBytes,
++    failureBudgetBytes: budget.budgetBytes, failureAllocationWidth: 1000, failureAllocationHeight: 2000, failureCoherent: 1,
++    failureCategory: 3, failureCode: 20, failureStage: 13, errorClassCode: 1 })
++  const wrapped = renderErrorWithBudget(error, 'PREVIEW_BUDGET: private document text')
++  assert.deepEqual(renderFailureFields(wrapped), fields)
++  const rows = [], d = createRenderDiagnostics({ enabled: true, detail: true, source: 'worker', session: 42, sink: row => rows.push(row) })
++  d.record('error', { ...fields, requestId: 15, generation: 7, documentRevision: 1 }); d.flush(); d.close()
++  const relayed = sanitizeRecord(sanitizeBatch(rows)[0]); assert.equal(relayed.failureRequestedBytes, budget.requestedBytes)
++  assert.equal(relayed.requestId, 15); assert.equal(relayed.session, 42); assert.equal(relayed.generation, 7)
++  assert(!JSON.stringify(relayed).includes('private'))
++  const wire = structuredClone({ ...fields }); assert.deepEqual(sanitizeFields(wire), fields)
++})
++test('unknown budget snapshot is explicit unavailable and never borrowed from another Error', () => {
++  const error = renderErrorWithBudget('GPU 浮点图片内存预算超限', undefined, budget)
++  assert.equal(renderFailureFields(error).failureBudgetAvailable, 1)
++  const next = renderFailureFields(new Error('GPU 浮点图片内存预算超限'))
++  assert.equal(next.failureCode, 21); assert.equal(next.failureBudgetAvailable, 0); assert(!('failureRequestedBytes' in next))
++  const cancelled = renderFailureFields(new Error('PREVIEW_CANCELLED'))
++  assert.equal(cancelled.failureCategory, 1); assert(!('failureBudgetAvailable' in cancelled))
++})
++test('budget getters, invalid values, inherited or over-limit data never reach telemetry', () => {
++  let reads = 0
++  const getter = new Error('GPU 表面内存预算超限')
++  Object.defineProperty(getter, 'budgetDiagnostic', { get: () => { reads++; throw Error('private') } })
++  assert.equal(renderFailureFields(getter).failureBudgetAvailable, 0); assert.equal(reads, 0)
++  const inherited = new Error('GPU 表面内存预算超限'); Object.setPrototypeOf(inherited, Object.assign(Object.create(Error.prototype), { budgetDiagnostic: budget }))
++  assert.equal(renderFailureFields(inherited).failureBudgetAvailable, 0)
++  for (const bad of [-1, .5, Infinity, NaN, '1', true, {}, 17179869185]) {
++    const error = new Error('GPU 表面内存预算超限'); Object.defineProperty(error, 'budgetDiagnostic', { value: { ...budget, requestedBytes: bad } })
++    assert.equal(renderFailureFields(error).failureBudgetAvailable, 0)
++    assert.deepEqual(sanitizeFields({ failureRequestedBytes: bad }), {})
++  }
++  const under = new Error('GPU 表面内存预算超限'); Object.defineProperty(under, 'budgetDiagnostic', { value: { ...budget, requestedBytes: 1, workingBytes: 1 } })
++  assert.equal(renderFailureFields(under).failureBudgetAvailable, 0)
++})
++test('known dictionary 20/21/64 and fallback 200 keep their existing exact meaning', () => {
++  for (const [message, code] of [['GPU 表面内存预算超限', 20], ['GPU 浮点图片内存预算超限', 21], ['GPU surface budget exceeded', 64]])
++    assert.equal(renderFailureFields(new Error(message)).failureCode, code)
++  assert.equal(renderFailureFields(markRenderFailure(new Error('private'), { failureCategory: 3, failureCode: 200 })).failureCode, 200)
++  assert.equal(renderFailureFields(new Error('private GPU 表面内存预算超限')).failureCode, 0)
++})
++
++test('actual MessageChannel preserves only allowed budget scalars through worker-style response and main recorder', async () => {
++  const { MessageChannel } = await import('node:worker_threads')
++  const { renderFailureEnvelope } = await import('./render-diagnostics.ts')
++  const error = renderErrorWithBudget('GPU 浮点图片内存预算超限', undefined, budget)
++  const { port1, port2 } = new MessageChannel()
++  const response = new Promise(resolve => port2.once('message', resolve))
++  port1.postMessage({ id: 73, ...renderFailureEnvelope(error), ...renderFailureFields(error), privateDocument: 'never log this' })
++  const wire = await response
++  const rows = [], recorder = createRenderDiagnostics({ enabled: true, source: 'main', session: 42, sink: row => rows.push(row) })
++  recorder.record('error', { ...sanitizeFields(wire), requestId: wire.id })
++  recorder.close(); port1.close(); port2.close()
++  assert.equal(rows.length, 1); assert.equal(rows[0].failureCode, 21)
++  assert.equal(rows[0].failureWorkingBytes, budget.workingBytes); assert.equal(rows[0].requestId, 73)
++  assert(!('error' in rows[0])); assert(!('budgetDiagnostic' in rows[0])); assert(!JSON.stringify(rows).includes('never log this'))
++})
+diff --git a/frontend/design-client/src/kernel/render-failure-telemetry.ts b/frontend/design-client/src/kernel/render-failure-telemetry.ts
+--- a/frontend/design-client/src/kernel/render-failure-telemetry.ts
++++ b/frontend/design-client/src/kernel/render-failure-telemetry.ts
+@@ -37,6 +37,29 @@
+  }
+  tags.set(error,next); return error
+ }
++/** Allocation-rejection snapshot already owned by this exact Error. Never read
++ * renderer-global counters after recovery; never traverse exception causes or
++ * invoke a payload getter. Availability=0 is not a claim that usage was zero. */
++function failureBudgetFields(error: unknown): Record<string, number> {
++ const missing = { failureBudgetAvailable: 0 }
++ try {
++  if (!object(error)) return missing
++  const budget = Object.getOwnPropertyDescriptor(error, 'budgetDiagnostic')?.value
++  if (!budget || typeof budget !== 'object') return missing
++  const own = (name: string) => Object.getOwnPropertyDescriptor(budget, name)?.value
++  const requested = own('requestedBytes'), working = own('workingBytes'), limit = own('budgetBytes')
++  const bytes = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 17179869184
++  if (!bytes(requested) || !bytes(working) || !bytes(limit) || !limit || requested <= limit - working) return missing
++  const out: Record<string, number> = { failureBudgetAvailable: 1, failureRequestedBytes: requested,
++   failureWorkingBytes: working, failureBudgetBytes: limit }
++  const width = own('width'), height = own('height'), coherent = own('coherent')
++  if (Number.isSafeInteger(width) && width > 0 && width <= 1e9 && Number.isSafeInteger(height) && height > 0 && height <= 1e9) {
++   out.failureAllocationWidth = width; out.failureAllocationHeight = height
++  }
++  if (typeof coherent === 'boolean') out.failureCoherent = Number(coherent)
++  return out
++ } catch { return missing }
++}
+ export function renderFailureFields(error: unknown) {
+  const tagged = object(error) ? tags.get(error) : undefined
+  let errorClassCode = 0, exact: {failureCategory:number;failureCode:number} | undefined
+@@ -52,7 +75,8 @@
+    if (typeof ctor === 'function' && error instanceof ctor) { errorClassCode = klass; exact ??= {failureCategory:category,failureCode:0}; break }
+   }
+  } catch { /* A hostile getter/class check yields explicit unknown, never text. */ }
+- return { failureCategory: tagged?.failureCategory ?? exact?.failureCategory ?? 0,
++ const category = tagged?.failureCategory ?? exact?.failureCategory ?? 0
++ return { ...(category === 3 ? failureBudgetFields(error) : {}), failureCategory: category,
+   failureCode: tagged?.failureCode ?? exact?.failureCode ?? 0, failureStage: tagged?.failureStage ?? 0, errorClassCode }
+ }
+ export function inheritRenderFailure<T>(source: unknown, target: T): T {
+diff --git a/frontend/design-client/vite.config.ts b/frontend/design-client/vite.config.ts
+--- a/frontend/design-client/vite.config.ts
++++ b/frontend/design-client/vite.config.ts
+@@ -1,7 +1,10 @@
+ import { defineConfig } from 'vite'
+ import react from '@vitejs/plugin-react'
++import { fileURLToPath } from 'node:url'
++import { renderDiagnosticBuildIdentity } from '../design-desktop/scripts/render-diagnostic-build.mjs'
+ import { productionPublicAssets } from './scripts/production-public.mjs'
+-export default defineConfig({
++export default defineConfig(async ({ command }) => ({
++  define: { __CORE_RENDER_DIAGNOSTIC_BUILD__: JSON.stringify(await renderDiagnosticBuildIdentity(fileURLToPath(new URL('../../', import.meta.url)), command)) },
+   plugins: [react(), productionPublicAssets()],
+   server: {
+     port: 1430,
+@@ -17,4 +20,4 @@
+     },
+   },
+   build: { sourcemap: true },
+-})
++}))
+diff --git a/frontend/design-desktop/scripts/render-diagnostic-build.mjs b/frontend/design-desktop/scripts/render-diagnostic-build.mjs
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-desktop/scripts/render-diagnostic-build.mjs
+@@ -0,0 +1,42 @@
++import { createHash } from 'node:crypto'
++import { execFile } from 'node:child_process'
++import { readdir, readFile } from 'node:fs/promises'
++import path from 'node:path'
++import { promisify } from 'node:util'
++import { buildInputs } from './build-inputs.mjs'
++const exec = promisify(execFile)
++const sha = value => createHash('sha256').update(value).digest('hex')
++export const identityFingerprint = entries => sha(JSON.stringify(Object.entries(entries).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)))
++
++// Runs at Vite configuration time, never per request/frame. The existing source
++// inventory excludes generated bindings; WASM gets a separate artifact hash.
++// Missing files/git are explicit unknowns, not stale hard-coded release labels.
++export async function renderDiagnosticBuildIdentity(core, command, dependencies = {}) {
++  const sources = dependencies.sources ?? (() => buildInputs(core))
++  const read = dependencies.read ?? readFile
++  const list = dependencies.list ?? readdir
++  const head = dependencies.head ?? (async () => (await exec('git', ['rev-parse', '--verify', 'HEAD'], { cwd: core, timeout: 2000, maxBuffer: 1024 })).stdout.trim())
++  const out = { producerIdentityStatus: 0, producerCommitStatus: 0, producerBuildMode: command === 'build' ? 1 : 2 }
++  // A dev server may hot-replace modules after config time. Do not stamp that
++  // startup snapshot as if it identified the currently executing HMR producer.
++  if (command !== 'build') return out
++  try {
++    const commit = await head()
++    if (/^[0-9a-f]{40}$/.test(commit)) { out.producerCommit = commit; out.producerCommitStatus = 1 }
++  } catch { /* Git is optional in a source increment. */ }
++  try {
++    const inputs = await sources()
++    if (!Object.keys(inputs).length || Object.values(inputs).some(value => !/^[0-9a-f]{64}$/.test(value))) return out
++    const dictionary = inputs['frontend/design-client/src/kernel/render-failure-telemetry.ts']
++    if (!dictionary) return out
++    out.producerSourceSha256 = identityFingerprint(inputs)
++    out.failureDictionarySha256 = dictionary
++    out.producerIdentityStatus = 1 // Complete configured source inventory; no verified WASM yet.
++    const directory = path.join(core, 'frontend/design-client/src/generated/design-kernel')
++    const files = (await list(directory)).filter(name => /^[A-Za-z0-9_.-]+\.wasm$/.test(name)).sort()
++    if (files.length !== 1) return out // Missing/ambiguous artifact remains unknown.
++    out.producerWasmInputSha256 = sha(await read(path.join(directory, files[0])))
++    out.producerIdentityStatus = 2 // Source inventory + exact generated WASM input.
++  } catch { /* Diagnostics must not turn an otherwise valid build into failure. */ }
++  return out
++}
+diff --git a/frontend/design-desktop/src/render-diagnostic-identity.d.mts b/frontend/design-desktop/src/render-diagnostic-identity.d.mts
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-desktop/src/render-diagnostic-identity.d.mts
+@@ -0,0 +1,4 @@
++export const FAILURE_DICTIONARY_VERSION: 1
++export const DIAGNOSTIC_PRODUCER_VERSION: 1
++export function sanitizeProducerIdentity(value: unknown): Record<string, number|string>
++export function producerIdentityFields(): Record<string, number|string>
+diff --git a/frontend/design-desktop/src/render-diagnostic-identity.mjs b/frontend/design-desktop/src/render-diagnostic-identity.mjs
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-desktop/src/render-diagnostic-identity.mjs
+@@ -0,0 +1,25 @@
++// Versioned content-free provenance. Hashes identify inputs, not GPU correctness
++// or reproducible output. No URLs, paths, environment values or document data.
++export const FAILURE_DICTIONARY_VERSION = 1
++export const DIAGNOSTIC_PRODUCER_VERSION = 1
++const digestFields = ['producerSourceSha256', 'producerWasmInputSha256', 'failureDictionarySha256']
++export function sanitizeProducerIdentity(value) {
++  const out = {}
++  if (!value || typeof value !== 'object') return out
++  for (const name of digestFields) {
++    const digest = value[name]
++    if (typeof digest === 'string' && /^[0-9a-f]{64}$/.test(digest)) out[name] = digest
++  }
++  if (typeof value.producerCommit === 'string' && /^[0-9a-f]{40}$/.test(value.producerCommit)) out.producerCommit = value.producerCommit
++  for (const [name, max] of [['producerIdentityStatus', 2], ['producerCommitStatus', 1], ['producerBuildMode', 2]])
++    if (Number.isInteger(value[name]) && value[name] >= 0 && value[name] <= max) out[name] = value[name]
++  return out
++}
++// Vite substitutes this literal for both the renderer and its Worker bundles.
++// Node hosts and other consumers explicitly report unavailable, never borrow a
++// source checkout's identity and claim it proves which binary is running.
++const injected = typeof __CORE_RENDER_DIAGNOSTIC_BUILD__ === 'undefined' ? undefined : __CORE_RENDER_DIAGNOSTIC_BUILD__
++const identity = Object.freeze({ producerIdentityStatus: 0, producerCommitStatus: 0, ...sanitizeProducerIdentity(injected) })
++export function producerIdentityFields() {
++  return { diagnosticProducerVersion: DIAGNOSTIC_PRODUCER_VERSION, failureDictionaryVersion: FAILURE_DICTIONARY_VERSION, ...identity }
++}
+diff --git a/frontend/design-desktop/src/render-terminal-diagnostics.mjs b/frontend/design-desktop/src/render-terminal-diagnostics.mjs
+--- a/frontend/design-desktop/src/render-terminal-diagnostics.mjs
++++ b/frontend/design-desktop/src/render-terminal-diagnostics.mjs
+@@ -1,10 +1,11 @@
++import { producerIdentityFields, sanitizeProducerIdentity } from './render-diagnostic-identity.mjs'
+ // Strict scalar allowlist shared by worker, renderer and terminal. Never stringify a render payload.
+ const tileCostLimits = {displayImageSourcePasses:1e9,nestedPrefixHits:1e9,nestedPrefixBuilds:1e9,nestedPrefixBytes:67108864,staticImageBlurEligible:1e9,staticImageBlurHits:1e9,staticImageBlurPixels:1e12,staticImageBlurBytes:17825792,staticImageBlurEntries:1,wholeFilterAxes:1e9,opaqueTentPasses:1e9,imageXTableBuilds:1e6,imageXTablePixels:1e12,imageXTableBytes:41943040,tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
+ export const PREFIX = '[render-diag] '
+ const tileOrderLimits = {tileSourceIndex:[0,255],tileOrderIndex:[0,255],tileColumnNextIndex:[-1,255],
+  tileColumnReordered:[0,1],tileColumnDeltaY:[-1e7,1e7],filterColumnPlans:[0,256],filterColumnReorders:[0,256]}
+ const events = new Set(['canvas-action','grid-state','frame-window','operation','request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage','failure-summary','device-lifecycle'])
+-const failureLimits = {failureCategory:6,lastFailureCategory:6,failureStage:13,lastFailureStage:13,
++const failureLimits = {diagnosticProducerVersion:1,failureDictionaryVersion:1,failureBudgetAvailable:1,failureRequestedBytes:17179869184,failureWorkingBytes:17179869184,failureBudgetBytes:17179869184,failureAllocationWidth:1e9,failureAllocationHeight:1e9,failureCoherent:1,failureCategory:6,lastFailureCategory:6,failureStage:13,lastFailureStage:13,
+  failureCode:255,lastFailureCode:255,errorClassCode:7,rendererCode:3,compileAttempts:65535,hydrateAttempts:65535,graphAttempts:65535,fallbackAttempts:65535,failureAttempts:65535}
+ const qualityLimits = {qualitySequence: 0xffffffff, qualityRevision: 0xffffffff, documentRevision: 0xffffffff}
+ const diagnosticLimits = {originChannelId: 0xffffffffffff, backendCode: 2, boundaryCode: 16, boundaryDurationMs: 120000}
+@@ -21,6 +22,7 @@
+  backdropRegionBuilds:1e9,backdropRegionSourcePixels:1e12,backdropRegionResultPixels:1e12,
+  displayTentRadiusPasses:1e9,displayTentRadiusPixels:1e12})
+ for (const key of [...Object.keys(tileCostLimits), ...Object.keys(admissionLimits)]) fields.add(key)
++for (const key of Object.keys(failureLimits)) fields.add(key)
+ for (const key of Object.keys(deviceLimits)) fields.add(key)
+ for (const key of Object.keys(tileOrderLimits)) fields.add(key)
+ export function sanitizeFields(value) {
+@@ -86,17 +88,18 @@
+ export function sanitizeRecord(value) {
+   if (!value || value.v !== 1 || !events.has(value.event) || !['main','worker','host'].includes(value.source)) return null
+   if (!['session','seq','at'].every(k => Number.isFinite(value[k]) && value[k] >= 0 && value[k] <= 1e15)) return null
+-  return {v:1, session:value.session, source:value.source, seq:value.seq, at:value.at, event:value.event, ...sanitizeFields(value)}
++  return {v:1, session:value.session, source:value.source, seq:value.seq, at:value.at, event:value.event, ...sanitizeFields(value), ...sanitizeProducerIdentity(value)}
+ }
+ export function createRenderDiagnostics({enabled=false, detail=false, session=0, source='main', sink=()=>{}, batchSink,  now=()=>Date.now(), schedule=setTimeout, cancel=clearTimeout}={}) {
+   let seq=0, timer, emitted=0, suppressed=0
+   const aggregates=new Map()
++  const provenance = event => seq === 0 || ['error','failure-summary','start','summary'].includes(event) ? producerIdentityFields() : {}
+   const ring=[]; let dropped=0
+-  function output(event, values) { const record=sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event,...sanitizeFields(values)}); if(record) {try{sink(record)}catch{}} }
++  function output(event, values) { const identity=provenance(event); const record=sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event,...sanitizeFields(values),...identity}); if(record) {try{sink(record)}catch{}} }
+   function flush() {
+     timer=undefined
+     if(detail) {
+-      if(dropped) ring.push(sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event:'summary',dropped}))
++      if(dropped) ring.push(sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event:'summary',dropped,...producerIdentityFields()}))
+       for(let i=0;i<ring.length;i+=64) { const batch=ring.slice(i,i+64); try{if(batchSink)batchSink(batch);else for(const row of batch)sink(row)}catch{} }
+       ring.length=0;dropped=0;return
+     }
+@@ -110,7 +113,8 @@
+       if (!enabled || !events.has(event)) return
+       if (timer===undefined) timer=schedule(flush,detail?250:1000)
+       if(detail) {
+-        const row=sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event,...sanitizeFields(values)})
++        const identity=provenance(event)
++        const row=sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event,...sanitizeFields(values),...identity})
+         if(ring.length>=512){ring.shift();dropped++}
+         if(row)ring.push(row)
+         return
+diff --git a/frontend/design-desktop/test/render-producer-identity.test.mjs b/frontend/design-desktop/test/render-producer-identity.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-desktop/test/render-producer-identity.test.mjs
+@@ -0,0 +1,72 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { createHash } from 'node:crypto'
++import { readFile } from 'node:fs/promises'
++import { renderDiagnosticBuildIdentity, identityFingerprint } from '../scripts/render-diagnostic-build.mjs'
++import { sanitizeProducerIdentity, producerIdentityFields } from '../src/render-diagnostic-identity.mjs'
++import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch } from '../src/render-terminal-diagnostics.mjs'
++const sha = value => createHash('sha256').update(value).digest('hex')
++const source = { 'frontend/design-client/src/kernel/render-failure-telemetry.ts': sha('dictionary'), 'dirty-source.ts': sha('source') }
++const dependencies = extra => ({ sources: async () => source, head: async () => 'a'.repeat(40), list: async () => ['design_kernel_bg.wasm'], read: async () => Buffer.from('wasm bytes'), ...extra })
++test('build identity binds actual source, dictionary, WASM input and optional HEAD separately', async () => {
++  const identity = await renderDiagnosticBuildIdentity('/unused', 'build', dependencies())
++  assert.deepEqual(identity, { producerIdentityStatus: 2, producerCommitStatus: 1, producerBuildMode: 1,
++    producerCommit: 'a'.repeat(40), producerSourceSha256: identityFingerprint(source),
++    failureDictionarySha256: sha('dictionary'), producerWasmInputSha256: sha('wasm bytes') })
++  assert.equal(identityFingerprint(source), identityFingerprint(Object.fromEntries(Object.entries(source).reverse())))
++  const dirty = await renderDiagnosticBuildIdentity('/unused', 'build', dependencies({ sources: async () => ({ ...source, 'dirty-source.ts': sha('changed') }) }))
++  assert.equal(dirty.producerCommit, identity.producerCommit)
++  assert.notEqual(dirty.producerSourceSha256, identity.producerSourceSha256)
++  const wasm = await renderDiagnosticBuildIdentity('/unused', 'build', dependencies({ read: async () => Buffer.from('different WASM') }))
++  assert.notEqual(wasm.producerWasmInputSha256, identity.producerWasmInputSha256)
++})
++test('missing Git, source, dictionary or unambiguous WASM is explicit unknown without leaking failures', async () => {
++  const fail = async () => { throw Error('/private/machine/credentials') }
++  const noGit = await renderDiagnosticBuildIdentity('/unused', 'build', dependencies({ head: fail }))
++  assert.equal(noGit.producerCommitStatus, 0); assert(!('producerCommit' in noGit)); assert.equal(noGit.producerIdentityStatus, 2)
++  for (const extra of [{ sources: fail }, { sources: async () => ({}) }, { sources: async () => ({ secret: 'private' }) }]) {
++    const unknown = await renderDiagnosticBuildIdentity('/unused', 'build', dependencies(extra))
++    assert.equal(unknown.producerIdentityStatus, 0); assert(!('producerSourceSha256' in unknown))
++  }
++  for (const extra of [{ list: fail }, { list: async () => [] }, { list: async () => ['a.wasm', 'b.wasm'] }, { read: fail }]) {
++    const partial = await renderDiagnosticBuildIdentity('/unused', 'build', dependencies(extra))
++    assert.equal(partial.producerIdentityStatus, 1); assert(!('producerWasmInputSha256' in partial))
++    assert(!JSON.stringify(partial).includes('private'))
++  }
++})
++test('identity sanitizer permits only fixed length digests, optional HEAD and bounded enums', () => {
++  const hashes = { producerSourceSha256: 'a'.repeat(64), producerWasmInputSha256: 'b'.repeat(64), failureDictionarySha256: 'c'.repeat(64), producerCommit: 'd'.repeat(40) }
++  assert.deepEqual(sanitizeProducerIdentity({ ...hashes, path: 'private', url: 'private', document: 'private' }), hashes)
++  for (const value of ['private', 'a'.repeat(63), 'F'.repeat(64), 123, {}, null, Infinity, -1, true])
++    assert.deepEqual(sanitizeProducerIdentity(Object.fromEntries(Object.keys(hashes).map(k => [k, value]))), {})
++  assert.deepEqual(sanitizeProducerIdentity({ producerIdentityStatus: 3, producerCommitStatus: 2, producerBuildMode: 3 }), {})
++  assert.equal(producerIdentityFields().producerIdentityStatus, 0) // Node is not a bundled renderer.
++})
++test('literal-injected producer has immutable identity and survives both relay sanitizers', async () => {
++  const identity = await renderDiagnosticBuildIdentity('/unused', 'build', dependencies())
++  const original = await readFile(new URL('../src/render-diagnostic-identity.mjs', import.meta.url), 'utf8')
++  const injected = original.replaceAll('__CORE_RENDER_DIAGNOSTIC_BUILD__', JSON.stringify(identity))
++  const runtime = await import(`data:text/javascript;base64,${Buffer.from(injected).toString('base64')}`)
++  const values = runtime.producerIdentityFields(); values.producerSourceSha256 = 'e'.repeat(64)
++  assert.equal(runtime.producerIdentityFields().producerSourceSha256, identity.producerSourceSha256)
++  const record = { v: 1, source: 'worker', session: 4, seq: 5, at: 6, event: 'error', requestId: 7, ...runtime.producerIdentityFields() }
++  assert.deepEqual(sanitizeRecord(sanitizeBatch([record])[0]), record)
++})
++test('provenance adds no events or per-frame work and remains on error and dropped-ring summary', () => {
++  const rows = [], d = createRenderDiagnostics({ enabled: true, detail: true, source: 'worker', session: 9,
++    sink: row => rows.push(row), now: () => 1, schedule: () => 1, cancel: () => {} })
++  d.record('queue-start', { requestId: 1 }); d.record('tile', { requestId: 1 }); d.record('error', { requestId: 1, failureCode: 20 }); d.flush()
++  assert.equal(rows.length, 3); assert.equal(rows[0].diagnosticProducerVersion, 1)
++  assert(!('producerIdentityStatus' in rows[1])); assert.equal(rows[2].failureDictionaryVersion, 1)
++  rows.length = 0
++  for (let i = 0; i < 2000; i++) d.record('tile', { requestId: 1 })
++  d.flush(); assert.equal(rows.length, 513); assert.equal(rows.at(-1).dropped, 1488)
++  assert.equal(rows.at(-1).producerIdentityStatus, 0)
++  d.close()
++})
++
++test('serve/HMR deliberately reports unknown and does not hash a stale startup snapshot', async () => {
++  const fail = () => { throw Error('must not read') }
++  assert.deepEqual(await renderDiagnosticBuildIdentity('/unused', 'serve', { sources: fail, head: fail, list: fail, read: fail }),
++    { producerIdentityStatus: 0, producerCommitStatus: 0, producerBuildMode: 2 })
++})

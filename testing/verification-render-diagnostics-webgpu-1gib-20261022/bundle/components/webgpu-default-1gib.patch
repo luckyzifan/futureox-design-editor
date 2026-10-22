@@ -1,0 +1,422 @@
+diff --git a/frontend/design-client/src/kernel/gpu/renderer.ts b/frontend/design-client/src/kernel/gpu/renderer.ts
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -26,7 +26,7 @@
+ import { renderErrorWithBudget, sanitizeRenderBudget, type RenderBudgetDiagnostic } from '../render-diagnostics'
+ import { textureByteLength } from './texture-byte-length'
+ import { movingBackdropKey, staticBackdropKey } from './static-backdrop'
+-import { workingSetBudget, usesNativeNavigationWorkingBudget } from './working-set-budget'
++import { DEFAULT_GPU_WORKING_BUDGET_BYTES, workingSetBudget, usesNativeNavigationWorkingBudget } from './working-set-budget'
+ import {rectangleBorder} from './rect-partition'
+ import {disjointNeutralGroup} from './neutral-group'
+ import { backdropOverlap, exactBlendLattice, interactionEffectRegion, interactionHalo } from './effect-region'
+@@ -95,7 +95,7 @@
+ // Initial admission before the first scene. renderAttempt selects the actual
+ // physical working-set budget. This renderer runs in a Worker on both hosts:
+ // window/desktop globals and system RAM are not available-VRAM measurements.
+-const SURFACE_BUDGET_BYTES = 256 * 1024 * 1024
++const SURFACE_BUDGET_BYTES = DEFAULT_GPU_WORKING_BUDGET_BYTES
+ /** Frame-scratch reclamation starts once the ledger passes this share and
+  * destroys at most one bounded batch per completed checkpoint cycle. */
+ const RECLAIM_BATCH_BYTES = 48 * 1024 * 1024
+@@ -2393,7 +2393,7 @@
+     // above 64 MiB throughout a frame. Waiting on the GPU for every tiny dead
+     // leaf then destroys reusable targets and serializes hundreds of nodes.
+     // Reclaim one meaningful batch, or synchronize immediately at the pressure
+-    // line; the unchanged allocation gate still enforces the 256 MiB ceiling.
++    // line; the allocation gate still enforces the selected working-budget ceiling.
+     const reclaimableBytes = [...pooled, ...this.retiredUploads, ...coordinates]
+       .reduce((sum, texture) => sum + texture.bytes, retiredImageTableBytes + retiredImageAssetBytes)
+     if (!pressure && !imagesUnderPressure && reclaimableBytes < RECLAIM_BATCH_BYTES) return
+diff --git a/frontend/design-client/src/kernel/gpu/working-set-budget.ts b/frontend/design-client/src/kernel/gpu/working-set-budget.ts
+--- a/frontend/design-client/src/kernel/gpu/working-set-budget.ts
++++ b/frontend/design-client/src/kernel/gpu/working-set-budget.ts
+@@ -1,6 +1,8 @@
+ import { validGpuWorkingBudgetMiB } from '../render-policy'
+ 
+ const MiB = 1024 * 1024
++/** Default working-resource admission, not a total VRAM limit or allocation. */
++export const DEFAULT_GPU_WORKING_BUDGET_BYTES = 1024 * MiB
+ /** The launch flag and actual render-call output are trusted host inputs.
+  * Scene display hints and captureDisplay do not grant this new admission.
+  * Bitmap assembly is also a real SDR presentation, so it keeps the same
+@@ -13,26 +15,15 @@
+     boundary.readback === false && boundary.present === true &&
+     (boundary.softwareRaster === undefined || boundary.softwareRaster === false)
+ }
+-/** Admission policy, not a claim about free VRAM. WebGPU exposes per-resource
+- * limits but no reliable remaining-memory query. Grow for the actual physical
+- * render target; never lower sampling density to meet this policy. */
+-export function workingSetBudget(width: number, height: number, nativeDisplay: boolean, effectPixels=0,
++/** Working-resource policy, not a claim about free VRAM. No scene or output
++ * mode silently lowers the default. Explicit host limits remain authoritative;
++ * per-resource device limits and all allocation/fence checks still apply. */
++export function workingSetBudget(_width: number, _height: number, _nativeDisplay: boolean, _effectPixels=0,
+   configuredMiB?: number) {
+   if (configuredMiB !== undefined) {
+     if (!validGpuWorkingBudgetMiB(configuredMiB)) throw Error('Invalid GPU working budget')
+     // Keep Number arithmetic: 4096 MiB is 2^32 bytes and must not wrap to zero.
+     return configuredMiB * MiB
+   }
+-  const minimum = (nativeDisplay ? 512 : 256) * MiB
+-  if (!nativeDisplay || !Number.isFinite(width * height) || width <= 0 || height <= 0) return minimum
+-  // Four RGBA32F-sized working planes cover destination/source + a separable
+-  // filter pair. Real effects may require more; normal allocation/fallback
+-  // handling still applies. 1 GiB is a policy ceiling, never adapter free VRAM.
+-  const demand = Math.ceil(width * height * 16 * 4 / (64 * MiB)) * 64 * MiB
+-  // Live backdrop effects overlap destination, sampled backdrop and filtered
+-  // output. Account for those three exact-density planes separately from the
+-  // ordinary target allowance; this is bounded admission, not free VRAM.
+-  const optical=Number.isFinite(effectPixels)&&effectPixels>0
+-    ?Math.min(256*MiB,Math.ceil(effectPixels*16*3/(64*MiB))*64*MiB):0
+-  return Math.min(1024*MiB,Math.max(minimum,demand)+optical)
++  return DEFAULT_GPU_WORKING_BUDGET_BYTES
+ }
+diff --git a/frontend/design-client/src/kernel/gpu/working-set-budget.test.ts b/frontend/design-client/src/kernel/gpu/working-set-budget.test.ts
+--- a/frontend/design-client/src/kernel/gpu/working-set-budget.test.ts
++++ b/frontend/design-client/src/kernel/gpu/working-set-budget.test.ts
+@@ -3,14 +3,14 @@
+ import { GpuRenderer } from './renderer'
+ import type { Driver, GpuScene } from './types'
+ afterEach(() => vi.unstubAllEnvs())
+-test('working-set admission grows with native target pixels, not a pretend VRAM query', () => {
++test('default admission is 1 GiB for every target without pretending to query VRAM', () => {
+   const MiB=1024*1024
+-  expect(workingSetBudget(512,512,false)).toBe(256*MiB)
+-  expect(workingSetBudget(2560,1440,true)).toBe(512*MiB)
+-  expect(workingSetBudget(5120,2880,true)).toBe(960*MiB)
++  expect(workingSetBudget(512,512,false)).toBe(1024*MiB)
++  expect(workingSetBudget(2560,1440,true)).toBe(1024*MiB)
++  expect(workingSetBudget(5120,2880,true)).toBe(1024*MiB)
+   expect(workingSetBudget(8192,8192,true)).toBe(1024*MiB)
+-  expect(workingSetBudget(Infinity,1,true)).toBe(512*MiB)
+-  expect(workingSetBudget(8192,8192,false)).toBe(256*MiB)
++  expect(workingSetBudget(Infinity,1,true)).toBe(1024*MiB)
++  expect(workingSetBudget(8192,8192,false)).toBe(1024*MiB)
+ })
+ test('an explicit host budget supports 4 GiB without uint32 wrap or target-based substitution', () => {
+   const MiB = 1024 * 1024
+@@ -85,22 +85,22 @@
+     .toBe(workingSetBudget(5120, 2880, true))
+ })
+ 
+-test('flag-off scene hints, readback/export transport, HDR, software and other drivers retain their prior coherent budget', async () => {
++test('flag-off scene hints, readback/export transport, HDR, software and other drivers retain the same default working budget', async () => {
+   const hints = { displayTentRadius: true, displayImageSource: true, nativeInteraction: true }
+-  expect((await observedBudget(undefined, { capture: true, sceneExtra: hints })).workingBudgetBytes).toBe(256 * 1024 * 1024)
++  expect((await observedBudget(undefined, { capture: true, sceneExtra: hints })).workingBudgetBytes).toBe(1024 * 1024 * 1024)
+   for (const excluded of [{ readback: true }, { present: false }, { hdr: true }, { managed: false },
+     { software: true }, { driverName: 'webgl2' }])
+-    expect((await observedBudget('1', { ...excluded, sceneExtra: hints })).workingBudgetBytes).toBe(256 * 1024 * 1024)
++    expect((await observedBudget('1', { ...excluded, sceneExtra: hints })).workingBudgetBytes).toBe(1024 * 1024 * 1024)
+   expect((await observedBudget('1', { readback: true,
+     sceneExtra: { resolve: { width: 1710, height: 1776, offsetX: 0, offsetY: 0, scale: .5 } } })).workingBudgetBytes)
+-    .toBe(256 * 1024 * 1024)
++    .toBe(1024 * 1024 * 1024)
+ })
+ 
+-test('the established noncoherent capture budget stays unchanged, including its old transport exceptions', async () => {
++test('noncoherent captures and ordinary outputs share the default budget', async () => {
+   for (const flag of [undefined, '0', '1']) for (const readback of [false, true])
+     expect((await observedBudget(flag, { capture: true, coherent: false, readback })).workingBudgetBytes)
+       .toBe(workingSetBudget(1710, 1776, true))
+-  expect((await observedBudget(undefined, { capture: false, coherent: false })).workingBudgetBytes).toBe(256 * 1024 * 1024)
++  expect((await observedBudget(undefined, { capture: false, coherent: false })).workingBudgetBytes).toBe(1024 * 1024 * 1024)
+ })
+ 
+ test('explicit host limits still override new native display admission without changing cache policies or preallocating', async () => {
+@@ -110,3 +110,18 @@
+     expect(budget.interactionBudgetBytes).toBe(64 * 1024 * 1024)
+   }
+ })
++
++
++test('default allocation boundary stays finite and explicit lower limits remain valid', () => {
++  const MiB = 1024 * 1024
++  for (const [configured, budget] of [[undefined, 1024 * MiB], [256, 256 * MiB], [4096, 4096 * MiB]] as const) {
++    const driver = { scratchBytes: 0 } as unknown as Driver
++    const renderer = new GpuRenderer(driver, true, true, undefined, false, false, configured) as any
++    expect(renderer.memoryPolicy().workingBudgetBytes).toBe(budget)
++    renderer.bytes = budget - 16
++    expect(renderer.overBudget(16)).toBe(false)
++    expect(renderer.overBudget(17)).toBe(true)
++    expect(renderer.lastBudgetFailure.budgetBytes).toBe(budget)
++    expect(() => renderer.overBudget(-1)).toThrow('无效的 GPU 分配字节数')
++  }
++})
+diff --git a/frontend/design-client/src/kernel/gpu/renderer.test.ts b/frontend/design-client/src/kernel/gpu/renderer.test.ts
+--- a/frontend/design-client/src/kernel/gpu/renderer.test.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.test.ts
+@@ -1,3 +1,4 @@
++// Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
+ import { setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
+ import { expect, test, vi } from 'vitest'
+ import { GpuRenderer } from './renderer'
+@@ -12,9 +13,9 @@
+     // Invalid protocol stops before allocating a device resource, after the
+     // real render entry has selected its working-surface admission.
+     await expect(renderer.renderAttempt(scene)).rejects.toThrow(/版本/)
+-    expect(renderer.frameBudget).toBe(512*1024*1024)
++    expect(renderer.frameBudget).toBe(1024*1024*1024)
+     await expect(renderer.renderAttempt({...scene,coherentSamples:true})).rejects.toThrow(/版本/)
+-    expect(renderer.frameBudget).toBe(256*1024*1024)
++    expect(renderer.frameBudget).toBe(1024*1024*1024)
+   }
+ })
+ 
+@@ -23,7 +24,7 @@
+   const destroyed:Texture[]=[]
+   const driver={name:'webgpu',managed:true,captureDisplay:true,scratchBytes:0,
+     checkpoint:vi.fn(async()=>{completed=true}),destroy(t:Texture){expect(completed).toBe(true);destroyed.push(t)}} as unknown as Driver
+-  const renderer=new GpuRenderer(driver) as any
++  const renderer=new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   renderer.scene={interactionRetained:true};renderer.bytes=200*1024*1024
+   const owned={width:1024,height:1024,bytes:16*1024*1024,resource:{}} as Texture
+   const shared={...owned,resource:{}} as Texture
+@@ -45,7 +46,7 @@
+ })
+ 
+ test('display scratch and retained pixels have separate bounded admission',()=>{
+-  const renderer=new GpuRenderer({name:'webgpu',managed:true,captureDisplay:true,scratchBytes:0} as Driver) as any
++  const renderer=new GpuRenderer({name:'webgpu',managed:true,captureDisplay:true,scratchBytes:0} as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   renderer.bytes=300*1024*1024;renderer.interactionBytes=128*1024*1024
+   expect(renderer.workingBytes).toBe(172*1024*1024)
+   expect(renderer.overBudget(60*1024*1024)).toBe(false)
+@@ -58,7 +59,7 @@
+     create(w:number,h:number){expect(Number.isInteger(w)&&Number.isInteger(h)).toBe(true);return {width:w,height:h,bytes:w*h*16,resource:{}}},
+     pass(target:Texture,_u:Float32Array,inputs:Texture[],region?:Rect){expect(inputs).not.toContain(target);passes.push({target,inputs,region})},
+   } as unknown as Driver
+-  const renderer=new GpuRenderer(driver) as any
++  const renderer=new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   renderer.scene={interactionRetained:true,coherentSamples:false,integratedBlur:true}
+   const src={rect:{x:10.25,y:10.5,w:8,h:8},texture:{width:8,height:8,bytes:1024,resource:{}}}
+   const dst={rect:{x:.25,y:.25,w:128,h:128},texture:{width:128,height:128,bytes:128*128*16,resource:{}}}
+@@ -71,7 +72,7 @@
+ })
+ 
+ test('transient neutral-group fusion preserves cache, clip, mask, and backdrop boundaries',async()=>{
+-  const renderer=new GpuRenderer({name:'webgpu',managed:true,displayMath:true,scratchBytes:0} as Driver) as any
++  const renderer=new GpuRenderer({name:'webgpu',managed:true,displayMath:true,scratchBytes:0} as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   const side=Math.ceil(Math.sqrt(renderer.interactionBudget/16))+1
+   const group={id:'group',rect:{x:0,y:0,w:side,h:side},opacity:1,blend:'normal',children:['child'],fills:[],strokes:[],effects:[]}
+   const child={id:'child',blend:'normal',effects:[]}
+@@ -152,7 +153,7 @@
+       throw new Error('No real device')
+     },
+   }
+-  const renderer = new GpuRenderer(driver)
++  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256)
+   const scene = (width: number): GpuScene => {
+     const r = { x: 0, y: 0, w: width, h: 2048 },
+       matrix: [number, number, number, number, number, number] = [1, 0, 0, 1, 0, 0]
+@@ -340,7 +341,7 @@
+       },
+     },
+   }
+-  const renderer = new GpuRenderer(driver)
++  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256)
+   await renderer.render(scene)
+   const optical = passes.filter((pass) => pass.mode === 34)
+   expect(optical).toHaveLength(8)
+@@ -502,7 +503,7 @@
+       },
+     },
+   }
+-  const renderer = new GpuRenderer(driver)
++  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256)
+   await renderer.render(scene)
+   expect([lookups, fields]).toEqual([1, 4])
+   const first = passes.filter(({ u }) => u[16] === 42)
+@@ -761,7 +762,7 @@
+ ]) {
+   test(`texture replay paints independent sources and directly blends canonical tiles (original=${original})`, async () => {
+     const mock = textureReplayDriver()
+-    const renderer = new GpuRenderer(mock.driver)
++    const renderer = new GpuRenderer(mock.driver, undefined, undefined, undefined, undefined, undefined, 256)
+     await renderer.render(textureReplayScene(radius, clipped))
+     const effects = mock.passes.filter((p) => p.mode === 43)
+     const copybacks = mock.passes.filter((p) => p.mode === 44)
+@@ -803,7 +804,7 @@
+ 
+ test('texture passthrough skips texture processing while unsupported replay keeps the old effect', async () => {
+   const pass = textureReplayDriver()
+-  const ordinary = new GpuRenderer(pass.driver)
++  const ordinary = new GpuRenderer(pass.driver, undefined, undefined, undefined, undefined, undefined, 256)
+   await ordinary.render(textureReplayScene(0.01, true))
+   expect(pass.passes.some((p) => [8, 43, 44, 45].includes(p.mode))).toBe(false)
+   expect(pass.passes.some((p) => p.mode === 42)).toBe(true)
+@@ -814,7 +815,7 @@
+   unsupported.nodes.leaf.rect = { x: 456, y: 36, w: 9, h: 9 }
+   unsupported.nodes.leaf.fill.rect = unsupported.nodes.leaf.rect
+   const fallback = textureReplayDriver()
+-  const renderer = new GpuRenderer(fallback.driver)
++  const renderer = new GpuRenderer(fallback.driver, undefined, undefined, undefined, undefined, undefined, 256)
+   await renderer.render(unsupported)
+   expect(fallback.passes.some((p) => [43, 44, 45].includes(p.mode))).toBe(false)
+   expect(fallback.passes.some((p) => p.mode === 8)).toBe(true)
+@@ -824,7 +825,7 @@
+ 
+ test('texture metadata upload errors release retained inputs without retrying or fallback', async () => {
+   const mock = textureReplayDriver(3, true)
+-  const renderer = new GpuRenderer(mock.driver)
++  const renderer = new GpuRenderer(mock.driver, undefined, undefined, undefined, undefined, undefined, 256)
+   await expect(renderer.render(textureReplayScene())).rejects.toThrow(
+     'injected parameter upload failure',
+   )
+@@ -862,7 +863,7 @@
+     nodeSize: [8, 8],
+   })
+   const mock = textureReplayDriver(Infinity, true)
+-  const renderer = new GpuRenderer(mock.driver)
++  const renderer = new GpuRenderer(mock.driver, undefined, undefined, undefined, undefined, undefined, 256)
+   await renderer.render(scene)
+   expect(mock.passes.filter((p) => p.mode === 43)).toHaveLength(16)
+   expect(mock.passes.filter((p) => p.mode === 44)).toHaveLength(16)
+@@ -874,7 +875,7 @@
+ 
+ test('command v5 cannot silently omit texture replay', async () => {
+   const mock = textureReplayDriver()
+-  const renderer = new GpuRenderer(mock.driver)
++  const renderer = new GpuRenderer(mock.driver, undefined, undefined, undefined, undefined, undefined, 256)
+   await expect(
+     renderer.render({ ...textureReplayScene(), version: 6 } as unknown as GpuScene),
+   ).rejects.toThrow('GPU 命令版本')
+@@ -889,7 +890,7 @@
+ test('external failed-frame recovery reconciles retired driver scratch with the renderer ledger', async () => {
+   const driver = { name: 'webgpu', managed: true, scratchBytes: 128,
+     async abortFrameAndReleaseFilterScratch(this: { scratchBytes: number }) { this.scratchBytes = 0 } } as unknown as Driver
+-  const renderer = new GpuRenderer(driver) as any
++  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   renderer.bytes += 64 // Valid resident textures remain accounted and alive.
+   await renderer.abortFrameAndReleaseFilterScratch()
+   expect(renderer.bytes).toBe(64)
+@@ -898,7 +899,7 @@
+ test('external abort failure still reconciles partially retired scratch exactly once', async () => {
+   const driver = { name: 'webgpu', managed: true, scratchBytes: 128,
+     async abortFrameAndReleaseFilterScratch(this: { scratchBytes: number }) { this.scratchBytes = 32; throw Error('submit failed') } } as unknown as Driver
+-  const renderer = new GpuRenderer(driver) as any
++  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   renderer.bytes += 64
+   await expect(renderer.abortFrameAndReleaseFilterScratch()).rejects.toThrow('submit failed')
+   expect(renderer.bytes).toBe(96)
+@@ -907,14 +908,14 @@
+ 
+ test.each([NaN, Infinity, -Infinity, .5, Number.MAX_SAFE_INTEGER + 1])('invalid surface dimension %s is rejected before GPU allocation or eviction', width => {
+   const create = vi.fn(), destroy = vi.fn()
+-  const renderer = new GpuRenderer({ managed: true, create, destroy } as unknown as Driver) as any
++  const renderer = new GpuRenderer({ managed: true, create, destroy } as unknown as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   expect(() => renderer.acquire({ x: 0, y: 0, w: width, h: 2 })).toThrow()
+   expect(create).not.toHaveBeenCalled(); expect(destroy).not.toHaveBeenCalled()
+   expect(renderer.bytes).toBe(0)
+ })
+ 
+ test('unsafe surface products, non-finite origins, and invalid byte admissions cannot poison the ledger', () => {
+-  const create = vi.fn(), renderer = new GpuRenderer({ managed: true, create } as unknown as Driver) as any
++  const create = vi.fn(), renderer = new GpuRenderer({ managed: true, create } as unknown as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   expect(() => renderer.acquire({ x: 0, y: 0, w: 2 ** 28, h: 2 ** 28 })).toThrow(/字节数/)
+   expect(() => renderer.acquire({ x: NaN, y: 0, w: 1, h: 1 })).toThrow(/边界/)
+   for (const bytes of [NaN, Infinity, -.1, .5, Number.MAX_SAFE_INTEGER + 1])
+@@ -933,7 +934,7 @@
+       checkpoint: vi.fn(async (_reason: unknown, fields: unknown) => { metadata = fields; await new Promise<void>(resolve => { finish = resolve }); completed = true }),
+       destroy(texture: Texture) { expect(completed).toBe(true); destroyed.push(texture) },
+     } as unknown as Driver
+-    const renderer = new GpuRenderer(driver) as any
++    const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+     renderer.scene = {}; renderer.bytes = 220 * MiB
+     const texture = { width: 1536, height: 2048, bytes: 48 * MiB, resource: {} } as Texture
+     renderer.free.set('1536:2048', [texture])
+@@ -953,7 +954,7 @@
+ 
+ test('disabled admission diagnostics preserve the same fence with no metadata payload', async () => {
+   const driver = { name: 'webgpu', managed: true, scratchBytes: 0, checkpoint: vi.fn(async () => {}), destroy() {} } as unknown as Driver
+-  const renderer = new GpuRenderer(driver) as any
++  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   renderer.scene = {}; renderer.bytes = 220 * 1024 * 1024
+   const texture = { width: 1536, height: 2048, bytes: 48 * 1024 * 1024, resource: {} } as Texture
+   renderer.free.set('1536:2048', [texture])
+@@ -966,7 +967,7 @@
+   const MiB=1024*1024
+   const driver={name:'webgpu',managed:true,scratchBytes:0,resourceEpoch:1,completedResourceEpoch:1,
+     checkpoint:vi.fn(async()=>{}),destroy:vi.fn()}
+-  const renderer=new GpuRenderer(driver as unknown as Driver) as any;renderer.scene={};renderer.bytes=96*MiB
++  const renderer=new GpuRenderer(driver as unknown as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any;renderer.scene={};renderer.bytes=96*MiB
+   const texture={width:1536,height:2048,bytes:48*MiB,resource:{}} as Texture
+   renderer.busy.add(texture);renderer.release({texture,rect:{x:0,y:0,w:1536,h:2048}})
+   driver.resourceEpoch=2
+diff --git a/frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts b/frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts
+--- a/frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts
++++ b/frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts
+@@ -1,3 +1,4 @@
++// Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
+ import { afterEach, expect, test, vi } from 'vitest'
+ import { GpuRenderer } from './renderer'
+ import type { Driver, Texture } from './types'
+@@ -15,7 +16,7 @@
+     }),
+     destroy: vi.fn((_texture: Texture) => { expect(finished).toBe(true) }),
+   }
+-  const renderer = new GpuRenderer(driver as unknown as Driver) as any
++  const renderer = new GpuRenderer(driver as unknown as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   renderer.scene = {}; renderer.bytes = 203 * MiB
+   const pooled = { width: 128, height: poolBytes / (128 * 16), bytes: poolBytes, resource: {} } as Texture
+   renderer.free.set(`${pooled.width}:${pooled.height}`, [pooled])
+diff --git a/frontend/design-client/src/kernel/gpu/prefix-budget.test.ts b/frontend/design-client/src/kernel/gpu/prefix-budget.test.ts
+--- a/frontend/design-client/src/kernel/gpu/prefix-budget.test.ts
++++ b/frontend/design-client/src/kernel/gpu/prefix-budget.test.ts
+@@ -1,3 +1,4 @@
++// Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
+ import { describe, expect, it } from 'vitest'
+ import { GpuRenderer } from './renderer'
+ import type { Driver, Texture } from './types'
+@@ -13,7 +14,7 @@
+     },
+     destroy() {},
+   } as unknown as Driver
+-  const renderer = new GpuRenderer(driver) as unknown as {
++  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as unknown as {
+     acquire(rect: { x: number; y: number; w: number; h: number }): unknown
+   }
+   return { renderer, created: () => created }
+diff --git a/frontend/design-client/src/kernel/gpu/image-table-lifetime.test.ts b/frontend/design-client/src/kernel/gpu/image-table-lifetime.test.ts
+--- a/frontend/design-client/src/kernel/gpu/image-table-lifetime.test.ts
++++ b/frontend/design-client/src/kernel/gpu/image-table-lifetime.test.ts
+@@ -1,3 +1,4 @@
++// Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
+ import { afterEach, expect, test, vi } from 'vitest'
+ import { setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
+ import { WebGpuDriver } from './webgpu'
+@@ -34,7 +35,7 @@
+       queue: { writeBuffer(_buffer: unknown, _offset: number, value: Uint32Array) { writes.push(value.slice()) } } },
+     checkpoint: vi.fn(async () => {}),
+   }) as WebGpuDriver
+-  const renderer = new GpuRenderer(driver as Driver) as any
++  const renderer = new GpuRenderer(driver as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
+   renderer.images.set('image', { texture: image, rect: { x: 0, y: 0, w: imageWidth, h: imageHeight } })
+   renderer.bytes = image.bytes
+   return { driver, renderer, image, resource, range, plan, axes, buffers, writes, pipeline, width, height,
+diff --git a/frontend/design-client/src/kernel/gpu/static-image-blur-renderer.test.ts b/frontend/design-client/src/kernel/gpu/static-image-blur-renderer.test.ts
+--- a/frontend/design-client/src/kernel/gpu/static-image-blur-renderer.test.ts
++++ b/frontend/design-client/src/kernel/gpu/static-image-blur-renderer.test.ts
+@@ -1,3 +1,4 @@
++// Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
+ import { afterEach, expect, test, vi } from 'vitest'
+ import { GpuRenderer, type Surface } from './renderer'
+ import { certifyExactImageRange, imageXTablePlanRange } from './exact-image-x-table'
+@@ -94,7 +95,7 @@
+     },
+   } as unknown as Driver & { resourceEpoch: number; completedResourceEpoch: number; scratchBytes: number }
+   const load = vi.fn(() => ({ width: 16, height: 16, pixels: sourcePixels }))
+-  const renderer = new GpuRenderer(driver, true, false, load) as any
++  const renderer = new GpuRenderer(driver, true, false, load, undefined, undefined, 256) as any
+   // Keep this native-field/ownership transport small. Only the performance
+   // size predicate is overridden; its real large/edge limits have a separate
+   // test. Source, table, coverage, halo and equality admission remain real.
+@@ -211,7 +212,7 @@
+     async finish() { if (fail) throw Error('finish rejected'); driver.completedResourceEpoch = driver.resourceEpoch; return {} },
+     async abortFrameAndReleaseFilterScratch() { driver.completedResourceEpoch = driver.resourceEpoch }, dispose: vi.fn(),
+   } as unknown as Driver & { resourceEpoch: number; completedResourceEpoch: number }
+-  const renderer = new GpuRenderer(driver, true, false) as any
++  const renderer = new GpuRenderer(driver, true, false, undefined, undefined, undefined, 256) as any
+   // This seam isolates publication/retirement. Native admission itself is
+   // covered by the actual coordinate/plan fixtures above, not this injected plane.
+   const source = renderer.staticImageBlurs.registerUpload(image, range, 'actual-upload', 'color/adjust')

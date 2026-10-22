@@ -1,3 +1,4 @@
+// Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
 import { describe, expect, it } from 'vitest'
 import { GpuRenderer } from './renderer'
 import type { Driver, Texture } from './types'
@@ -13,7 +14,7 @@ function allocator(reserved: number) {
     },
     destroy() {},
   } as unknown as Driver
-  const renderer = new GpuRenderer(driver) as unknown as {
+  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as unknown as {
     acquire(rect: { x: number; y: number; w: number; h: number }): unknown
   }
   return { renderer, created: () => created }

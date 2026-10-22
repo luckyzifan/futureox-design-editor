@@ -1,10 +1,11 @@
+import { producerIdentityFields, sanitizeProducerIdentity } from './render-diagnostic-identity.mjs'
 // Strict scalar allowlist shared by worker, renderer and terminal. Never stringify a render payload.
 const tileCostLimits = {displayImageSourcePasses:1e9,nestedPrefixHits:1e9,nestedPrefixBuilds:1e9,nestedPrefixBytes:67108864,staticImageBlurEligible:1e9,staticImageBlurHits:1e9,staticImageBlurPixels:1e12,staticImageBlurBytes:17825792,staticImageBlurEntries:1,wholeFilterAxes:1e9,opaqueTentPasses:1e9,imageXTableBuilds:1e6,imageXTablePixels:1e12,imageXTableBytes:41943040,tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
 export const PREFIX = '[render-diag] '
 const tileOrderLimits = {tileSourceIndex:[0,255],tileOrderIndex:[0,255],tileColumnNextIndex:[-1,255],
  tileColumnReordered:[0,1],tileColumnDeltaY:[-1e7,1e7],filterColumnPlans:[0,256],filterColumnReorders:[0,256]}
 const events = new Set(['canvas-action','grid-state','frame-window','operation','request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage','failure-summary','device-lifecycle'])
-const failureLimits = {failureCategory:6,lastFailureCategory:6,failureStage:13,lastFailureStage:13,
+const failureLimits = {diagnosticProducerVersion:1,failureDictionaryVersion:1,failureBudgetAvailable:1,failureRequestedBytes:17179869184,failureWorkingBytes:17179869184,failureBudgetBytes:17179869184,failureAllocationWidth:1e9,failureAllocationHeight:1e9,failureCoherent:1,failureCategory:6,lastFailureCategory:6,failureStage:13,lastFailureStage:13,
  failureCode:255,lastFailureCode:255,errorClassCode:7,rendererCode:3,compileAttempts:65535,hydrateAttempts:65535,graphAttempts:65535,fallbackAttempts:65535,failureAttempts:65535}
 const qualityLimits = {qualitySequence: 0xffffffff, qualityRevision: 0xffffffff, documentRevision: 0xffffffff}
 const diagnosticLimits = {originChannelId: 0xffffffffffff, backendCode: 2, boundaryCode: 16, boundaryDurationMs: 120000}
@@ -21,6 +22,7 @@ Object.assign(tileCostLimits, {imageXTablePrograms:4e6,imageXTableDuplicateBytes
  backdropRegionBuilds:1e9,backdropRegionSourcePixels:1e12,backdropRegionResultPixels:1e12,
  displayTentRadiusPasses:1e9,displayTentRadiusPixels:1e12})
 for (const key of [...Object.keys(tileCostLimits), ...Object.keys(admissionLimits)]) fields.add(key)
+for (const key of Object.keys(failureLimits)) fields.add(key)
 for (const key of Object.keys(deviceLimits)) fields.add(key)
 for (const key of Object.keys(tileOrderLimits)) fields.add(key)
 export function sanitizeFields(value) {
@@ -86,17 +88,18 @@ export function sanitizeFields(value) {
 export function sanitizeRecord(value) {
   if (!value || value.v !== 1 || !events.has(value.event) || !['main','worker','host'].includes(value.source)) return null
   if (!['session','seq','at'].every(k => Number.isFinite(value[k]) && value[k] >= 0 && value[k] <= 1e15)) return null
-  return {v:1, session:value.session, source:value.source, seq:value.seq, at:value.at, event:value.event, ...sanitizeFields(value)}
+  return {v:1, session:value.session, source:value.source, seq:value.seq, at:value.at, event:value.event, ...sanitizeFields(value), ...sanitizeProducerIdentity(value)}
 }
 export function createRenderDiagnostics({enabled=false, detail=false, session=0, source='main', sink=()=>{}, batchSink,  now=()=>Date.now(), schedule=setTimeout, cancel=clearTimeout}={}) {
   let seq=0, timer, emitted=0, suppressed=0
   const aggregates=new Map()
+  const provenance = event => seq === 0 || ['error','failure-summary','start','summary'].includes(event) ? producerIdentityFields() : {}
   const ring=[]; let dropped=0
-  function output(event, values) { const record=sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event,...sanitizeFields(values)}); if(record) {try{sink(record)}catch{}} }
+  function output(event, values) { const identity=provenance(event); const record=sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event,...sanitizeFields(values),...identity}); if(record) {try{sink(record)}catch{}} }
   function flush() {
     timer=undefined
     if(detail) {
-      if(dropped) ring.push(sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event:'summary',dropped}))
+      if(dropped) ring.push(sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event:'summary',dropped,...producerIdentityFields()}))
       for(let i=0;i<ring.length;i+=64) { const batch=ring.slice(i,i+64); try{if(batchSink)batchSink(batch);else for(const row of batch)sink(row)}catch{} }
       ring.length=0;dropped=0;return
     }
@@ -110,7 +113,8 @@ export function createRenderDiagnostics({enabled=false, detail=false, session=0,
       if (!enabled || !events.has(event)) return
       if (timer===undefined) timer=schedule(flush,detail?250:1000)
       if(detail) {
-        const row=sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event,...sanitizeFields(values)})
+        const identity=provenance(event)
+        const row=sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event,...sanitizeFields(values),...identity})
         if(ring.length>=512){ring.shift();dropped++}
         if(row)ring.push(row)
         return

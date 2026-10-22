@@ -1,3 +1,4 @@
+// Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
 import { afterEach, expect, test, vi } from 'vitest'
 import { GpuRenderer } from './renderer'
 import type { Driver, Texture } from './types'
@@ -15,7 +16,7 @@ function fixture(poolBytes = 128 * 1024) {
     }),
     destroy: vi.fn((_texture: Texture) => { expect(finished).toBe(true) }),
   }
-  const renderer = new GpuRenderer(driver as unknown as Driver) as any
+  const renderer = new GpuRenderer(driver as unknown as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   renderer.scene = {}; renderer.bytes = 203 * MiB
   const pooled = { width: 128, height: poolBytes / (128 * 16), bytes: poolBytes, resource: {} } as Texture
   renderer.free.set(`${pooled.width}:${pooled.height}`, [pooled])
