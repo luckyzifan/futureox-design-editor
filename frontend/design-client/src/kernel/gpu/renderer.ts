@@ -23,6 +23,7 @@ import { completeFilterAxisSupport } from './opaque-filter'
 import { gpuDiagnosticsEnabled, gpuDiagnosticEpoch, recordGpuDiagnostic } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { markRuntimeConfiguration } from '../../../../design-desktop/src/render-runtime-configuration.mjs'
 import { markFailureAllocation } from '../../../../design-desktop/src/render-failure-allocation.mjs'
+import { snapshotSurfaceLedger, surfaceAllocationTag, SurfaceAllocationSite, type SurfaceAllocationTag } from '../../../../design-desktop/src/render-surface-ledger.mjs'
 import { markRenderFailure, renderFailureFields, renderFailureThrownKind } from '../render-failure-telemetry'
 import { backdropEffect, backdropRadius, classifyCompiledSourceReuse } from '../render-dependency'
 import { prefixRationalUnsupported } from './prefix-preflight'
@@ -678,10 +679,13 @@ export class GpuRenderer {
     this.driver.destroy(texture)
     this.bytes -= texture.bytes
   })
-  private failureOrigin<T>(error: T, origin: number, buildKind = 0): T {
+  // Synchronous dynamic scope only; restored even when a primitive is thrown.
+  private activeImageFieldFailure?: () => Record<string, number>
+  private failureOrigin<T>(error: T, origin: number, buildKind = 0, imageFields?: Record<string, number>): T {
     markRenderFailure(error, { failureOriginCode: origin, failureBuildKind: buildKind })
     if (gpuDiagnosticsEnabled()) try {
       recordGpuDiagnostic('failure-origin', { ...this.activeRuntimeConfiguration, ...renderFailureFields(error),
+        ...(imageFields ?? this.activeImageFieldFailure?.()),
         failureOriginCode: origin, failureBuildKind: buildKind, failureBoundaryStage: origin === 5 ? 7 : 12,
         failureThrownKind: renderFailureThrownKind(error),
         failureMaterialFieldBuilds:this.fieldBuilds,failureMaterialFieldUploadBytes:this.fieldUploadBytes,
@@ -744,7 +748,21 @@ export class GpuRenderer {
   private alpha(s: string): number {
     return this.scene.colors?.[s]?.[3] ?? 1
   }
-  private acquire(r: Rect, binaryCoverage = false, scalarCoverage = false): Surface {
+  // Diagnostic-only latest pool hand-out; never used for allocation/reclaim decisions.
+  private surfaceAllocationTags = new WeakMap<Texture, SurfaceAllocationTag>()
+  private surfaceFailureSnapshot() {
+    return snapshotSurfaceLedger<Texture>({ ledgerBytes: this.bytes, completedEpoch: this.driver.completedResourceEpoch,
+      sources: [{mask:1,items:this.busy},{mask:2,items:this.free.values(),nested:true},
+        {mask:4,items:this.used},{mask:8,items:this.coordinateMaps},{mask:16,items:this.retiredUploads},
+        {mask:32,items:this.interactionTextures},{mask:64,items:this.images.values(),surface:true},
+        {mask:64,items:this.atlasPages,surface:true},{mask:16|64,items:this.retiredImageAssets.keys()},
+        {mask:0,items:this.lastUsed.keys()}],
+      aliases:texture=>this.aliases.get(texture)||1,
+      pinned:texture=>!!this.filterImageFields?.pinned.has(texture)||this.sequentialImagePins.has(texture)||this.pendingImageTableSources.has(texture),
+      material:texture=>this.materialFields.has(texture),coverage:texture=>this.coverage.has(texture),
+      tag:texture=>this.surfaceAllocationTags.get(texture),poolEpoch:texture=>this.poolReleaseEpoch.get(texture) })
+  }
+  private acquire(r: Rect, binaryCoverage = false, scalarCoverage = false, allocationSite = 0, passMode = -1): Surface {
     if (r.w < 1 || r.h < 1) throw new Error('空 GPU 表面')
     const required = textureByteLength(r.w, r.h, this.driver.managed && !binaryCoverage && !scalarCoverage ? 16 : 4)
     if (![r.x, r.y, r.x + r.w, r.y + r.h].every(value => Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER))
@@ -768,12 +786,14 @@ export class GpuRenderer {
               binary:!!t.binaryCoverage,scalar:!!t.scalarCoverage,aliases:this.aliases.get(t)||1,...this.traceSurfaces.get(t) })),
             coordinates: this.coordinateMaps.size, stack: new Error().stack }))
         }
-        throw this.budgetError('GPU 表面内存预算超限', 1)
+        throw this.budgetError('GPU 表面内存预算超限', 1, 0, allocationSite, passMode)
       }
       texture = scalarCoverage ? this.driver.createScalarCoverage!(r.w,r.h) : binaryCoverage ? this.driver.createBinaryCoverage!(r.w, r.h) : this.driver.create(r.w, r.h)
       this.bytes += texture.bytes
       this.peak = Math.max(this.peak, this.bytes)
     }
+    if (gpuDiagnosticsEnabled()) try { this.surfaceAllocationTags.set(texture, surfaceAllocationTag(allocationSite, passMode)) }
+    catch { /* diagnostic-only tag cannot alter allocation */ }
     this.poolReleaseEpoch.delete(texture)
     delete texture.transparentZero
     delete texture.uniformColor
@@ -895,13 +915,16 @@ export class GpuRenderer {
   }
   /** Consume at the immediate allocation rejection, before any recovery can
    * clear/reuse this renderer. Optional failed admissions own no error. */
-  private budgetError(message: string, allocationKind = 0, buildKind = 0): Error {
+  private budgetError(message: string, allocationKind = 0, buildKind = 0, allocationSite = 0, passMode = -1): Error {
     const diagnostic = this.lastBudgetFailure
     this.lastBudgetFailure = undefined
     const error = markRenderFailure(markRuntimeConfiguration(renderErrorWithBudget(message, undefined, diagnostic), this.activeRuntimeConfiguration),
       { failureStage: 13, failureCategory: 3, failureCode: 200 })
     if (gpuDiagnosticsEnabled()) try {
-      markFailureAllocation(error, { failureAllocationSnapshotVersion: 1, failureAllocationKind: allocationKind,
+      const requested = surfaceAllocationTag(allocationSite, passMode)
+      markFailureAllocation(error, { ...this.surfaceFailureSnapshot(),
+        failureAllocationCallsite:requested.site,failureAllocationRole:requested.role,failureAllocationPassMode:requested.mode,
+        failureAllocationSnapshotVersion: 1, failureAllocationKind: allocationKind,
         failureBuildKind: buildKind, failureLedgerTotalBytes: this.bytes,
         failureMaterialFieldBuilds:this.fieldBuilds,failureMaterialFieldUploadBytes:this.fieldUploadBytes,
         failureImageAxisFields:this.imageAxisFields,failureImageFieldBytes:this.imageFieldBytes,
@@ -948,14 +971,14 @@ export class GpuRenderer {
       // in particular source D may share source A's rectangle at resolve.
       let zero = this.constantTargets.get('transparent-zero')
       if (!zero) {
-        zero = this.acquire(rect(0, 0, 1, 1))
+        zero = this.acquire(rect(0, 0, 1, 1), false, false, SurfaceAllocationSite.transparentZero)
         this.driver.clear(zero.texture)
         zero.texture.transparentZero = true
         this.constantTargets.set('transparent-zero', zero)
       }
       return { ...this.retain(zero), rect: r }
     }
-    const s = this.acquire(r)
+    const s = this.acquire(r, false, false, SurfaceAllocationSite.empty)
     this.driver.clear(s.texture)
     if (import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile')
       this.traceSurfaces.set(s.texture,{node:this.activeNode,mode:-1,sample:this.sampleIndex})
@@ -994,7 +1017,7 @@ export class GpuRenderer {
           throw Error('Invalid compact painter bounds')
         await this.reclaimForSurface(bounds)
         this.checkFrameCurrent()
-        const expanded = this.acquire(bounds)
+        const expanded = this.acquire(bounds, false, false, SurfaceAllocationSite.painterExpand)
         out.push(expanded)
         this.driver.clear(expanded.texture)
         this.driver.copyColorRegion(expanded.texture, source.texture,
@@ -1034,7 +1057,7 @@ export class GpuRenderer {
             source.texture.transparentZero && this.driver.zeroTextureSampling) {
           next = this.retain(source); next.rect = { ...output }
         } else {
-          next = this.acquire(output)
+          next = this.acquire(output, false, false, SurfaceAllocationSite.painterCrop)
           cropped.push(next)
           const copied = source.logicalBounds ? intersect(output, source.rect) : output
           if (source.logicalBounds) this.driver.clear(next.texture)
@@ -1090,7 +1113,7 @@ export class GpuRenderer {
         this.horizontalFilters.has(destination.texture) || this.staticImageBlurs.has(destination.texture) ||
         inputs.some(input => input.texture === destination.texture || input.texture.resource === destination.texture.resource)))
       throw Error('Invalid private exact filter destination')
-    const out = destination || this.acquire(r, false, scalarOutput),
+    const out = destination || this.acquire(r, false, scalarOutput, SurfaceAllocationSite.passOutput, mode),
       u = parameters(r, inputs[0]?.rect, inputs[1]?.rect, inputs[2]?.rect)
     if (import.meta.env.DEV && import.meta.env.VITE_DESIGN_TRACE_PASSES === 'tile')
       this.traceSurfaces.set(out.texture,{node:this.activeNode,mode,sample:this.sampleIndex})
@@ -1223,7 +1246,7 @@ export class GpuRenderer {
     const scalar = !!(this.optimized && this.driver.managed && this.driver.createScalarCoverage &&
       !binary && path.area &&
       import.meta.env.VITE_DESIGN_SCALAR_COVERAGE !== '0')
-    s = this.acquire(path.rect, binary, scalar)
+    s = this.acquire(path.rect, binary, scalar, SurfaceAllocationSite.pathCoverage)
     if (path.count) this.driver.mask(path, s.texture, this.sampleIndex)
     else this.driver.clear(s.texture)
     this.masks.set(key, s)
@@ -1244,7 +1267,7 @@ export class GpuRenderer {
     const key = `opaque:${n.rect.x}:${n.rect.y}:${n.rect.w}:${n.rect.h}`
     const known = this.masks.get(key)
     if (known) return this.trackMask({ ...known, opaqueInterior: n.fill?.opaqueRect })
-    const mask = this.acquire(compact ? rect(0, 0, 1, 1) : n.rect, !!(this.driver.managed && this.driver.createBinaryCoverage))
+    const mask = this.acquire(compact ? rect(0, 0, 1, 1) : n.rect, !!(this.driver.managed && this.driver.createBinaryCoverage), false, SurfaceAllocationSite.nodeMask)
     const u = parameters(mask.rect)
     u[16] = 12
     u.set([1, 1, 1, 1], 48)
@@ -1718,10 +1741,11 @@ export class GpuRenderer {
       const texture = this.driver.create(ATLAS_SIDE, ATLAS_SIDE)
       if (this.overBudget(texture.bytes, texture.width, texture.height)) {
         this.driver.destroy(texture)
-        throw this.budgetError('GPU 图集页内存预算超限', 6)
+        throw this.budgetError('GPU 图集页内存预算超限', 6, 0, SurfaceAllocationSite.atlasPage)
       }
       this.bytes += texture.bytes
       this.peak = Math.max(this.peak, this.bytes)
+      if (gpuDiagnosticsEnabled()) try { this.surfaceAllocationTags.set(texture, surfaceAllocationTag(SurfaceAllocationSite.atlasPage)) } catch { /* diagnostic only */ }
       page = { texture, x: 0, y: 0, rowHeight: 0, entries: new Map() }
       this.atlasPages.push(page)
       fresh = true
@@ -1949,7 +1973,30 @@ export class GpuRenderer {
         throw new Error('后端缺少统一的图片解码器')
     }
   }
-  private imageGrid(n: GpuNode, p: GpuPaint, image: Surface, level = 0, origin: [number, number] = [0, 0], preparedAxes?: Float32Array): Surface {
+  /** Numeric callsites: 1 ordinary compact probe, 2 ordinary region, 3 sync
+   * paint, 4 streamed leaf region, 5 filter resolve, 6 table, 7 table probe. */
+  private imageFieldDiagnostic(n: GpuNode, callsite: number, stage: number, outcome: number, axes: number, level: number) {
+    if (!gpuDiagnosticsEnabled()) return
+    try { recordGpuDiagnostic('filter', this.imageFieldSnapshot(n, callsite, stage, outcome, axes, level)) }
+    catch { /* diagnostics cannot replace the original error */ }
+  }
+  private imageFieldSnapshot(n: GpuNode, callsite: number, stage: number, outcome: number, axes: number, level: number): Record<string, number> {
+    const source = n.previewSource || n
+    return { imageFieldCallsite: callsite, imageFieldStage: stage,
+      imageFieldOutcome: outcome, imageFieldAxes: axes, imageFieldSample: this.sampleIndex ?? 4,
+      imageFieldLevel: level, imageFieldWidth: n.rect.w, imageFieldHeight: n.rect.h,
+      imageFieldSourceWidth: source.rect.w, imageFieldSourceHeight: source.rect.h,
+      imageFieldDenseBytes: n.rect.w * n.rect.h * 16 }
+  }
+  private imageGrid(n: GpuNode, p: GpuPaint, image: Surface, level = 0, origin: [number, number] = [0, 0], preparedAxes?: Float32Array, callsite = 0): Surface {
+    const trace = { stage: 1, axes: preparedAxes?.length ? 1 : 0 }
+    const previous = this.activeImageFieldFailure
+    if (gpuDiagnosticsEnabled()) this.activeImageFieldFailure = () => this.imageFieldSnapshot(n, callsite, trace.stage, 2, trace.axes, level)
+    try { return this.imageGridExact(n, p, image, level, origin, preparedAxes, trace) }
+    catch (error) { this.imageFieldDiagnostic(n, callsite, trace.stage, 2, trace.axes, level); throw error }
+    finally { this.activeImageFieldFailure = previous }
+  }
+  private imageGridExact(n: GpuNode, p: GpuPaint, image: Surface, level: number, origin: [number, number], preparedAxes: Float32Array | undefined, trace: {stage: number; axes: number}): Surface {
     const sample = this.sampleIndex ?? 4
     let grids = this.imageGrids.get(p)
     const known = grids?.get(sample)
@@ -2018,11 +2065,16 @@ export class GpuRenderer {
     let separated: boolean | undefined
     const surface = this.materialField(['image-grid',this.driver.managed,compact,[n.rect.w,n.rect.h],(n.previewSource || n).rect,
       (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin], n.rect, () => {
+      trace.stage = 2
       let values = preparedAxes ?? (compact ? image_sampling_axes_placed(...arguments_) : new Float32Array())
+      trace.axes = values.length ? 1 : 2
       if (!values.length) {
+        trace.stage = 3
         if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16, n.rect.w, n.rect.h)) throw this.budgetError('GPU 表面内存预算超限', 7)
+        trace.stage = 4
         values = this.driver.managed ? image_sampling_grid_placed(...arguments_) : image_byte_sampling_field_placed(...arguments_)
       }
+      trace.stage = 5
       separated = this.driver.managed ? values[3] === -1 : values[3] === 1
       this.imageFieldBytes += values.byteLength
       return values
@@ -2100,16 +2152,18 @@ export class GpuRenderer {
   }
   /** Probe one original phase only. A certified full compact field stays
    * reusable across bands; only its dense fallback needs regional generation. */
-  private prepareLargeImageAxes(n: GpuNode, p: GpuPaint, image: Surface, level: number): boolean {
+  private prepareLargeImageAxes(n: GpuNode, p: GpuPaint, image: Surface, level: number, callsite = 1): boolean {
     if (this.imageGrids.get(p)?.has(this.sampleIndex ?? 4)) return true
     if (this.scene.compactImageFields === false || import.meta.env.VITE_DESIGN_IMAGE_AXES === '0') return false
     const source = n.previewSource || n
-    const values = image_sampling_axes_placed(JSON.stringify(source.rect), new Float64Array(source.matrix),
+    let values: Float32Array
+    try { values = image_sampling_axes_placed(JSON.stringify(source.rect), new Float64Array(source.matrix),
       new Float64Array(n.size), new Uint32Array(this.baseDims(p.image || '')),
       JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile }),
       this.sampleIndex ?? 4, level, new Int32Array([0, 0]))
-    if (!values.length) return false
-    this.imageGrid(n, p, image, level, [0, 0], values)
+    } catch (error) { throw this.failureOrigin(error, 6, 2, this.imageFieldSnapshot(n, callsite, 2, 2, 0, level)) }
+    if (!values.length) { this.imageFieldDiagnostic(n, callsite, 2, 3, 2, level); return false }
+    this.imageGrid(n, p, image, level, [0, 0], values, callsite)
     return true
   }
   private async paintImageFieldRegions(n: GpuNode, p: GpuPaint, mask: Surface, image: Surface, level: number): Promise<Surface> {
@@ -2121,7 +2175,7 @@ export class GpuRenderer {
       if (!this.free.get(`${n.rect.w}:${n.rect.h}`)?.length && this.workingBytes + outputBytes > this.frameBudget)
         await this.reclaimScratch(outputBytes)
       this.checkFrameCurrent(); this.requireImageResidencyCurrent()
-      out = this.acquire(n.rect)
+      out = this.acquire(n.rect, false, false, SurfaceAllocationSite.boundedImageOutput)
       const visible = this.drawRegion(n.rect)
       if (visible) this.driver.clear(out.texture)
       const columns = Math.min(n.rect.w, 4096), rows = Math.max(1, Math.min(256, Math.floor(8 * 1024 * 1024 / (columns * 16))))
@@ -2137,7 +2191,7 @@ export class GpuRenderer {
           previewSource: { ...source, rect: rect(source.rect.x + x, source.rect.y + y, w, h) } }
         let field: Surface | undefined
         try {
-          field = this.imageGrid(regionNode, regionPaint, image, level)
+          field = this.imageGrid(regionNode, regionPaint, image, level, [0, 0], undefined, 2)
           regions++; fieldBytes += field.texture.bytes; maxFieldBytes = Math.max(maxFieldBytes, field.texture.bytes)
           maxWidth = Math.max(maxWidth, w); maxHeight = Math.max(maxHeight, h)
           const u = parameters(n.rect, mask.rect, image.rect, mask.rect)
@@ -2182,7 +2236,7 @@ export class GpuRenderer {
     }
     const inputs = image
       ? this.driver.managed || (this.scene.coherentSamples && this.sampleIndex !== undefined)
-        ? [mask, image, mask, this.imageGrid(n, p, image, imageLevel, imageOrigin)]
+        ? [mask, image, mask, this.imageGrid(n, p, image, imageLevel, imageOrigin, undefined, 3)]
         : [mask, image]
       : this.driver.managed &&
           ['linear', 'radial', 'angular', 'diamond'].includes(p.kind)
@@ -2578,14 +2632,23 @@ export class GpuRenderer {
       // Conflicting ownership must not fall through to either retirement path:
       // forgetUpload cannot detach coordinate aliases or free-list references.
       if (overlaps) throw new Error('GPU maintenance resource ownership overlaps')
+      // captureDisplay selects output presentation; it does not prove that
+      // this no-release maintenance decision needs synchronization. Deferring
+      // preserves every charge/handle and grants no resource completion.
+      const epochKnown = Number.isSafeInteger(this.driver.resourceEpoch) && this.driver.resourceEpoch! >= 0 &&
+        Number.isSafeInteger(this.driver.completedResourceEpoch) && this.driver.completedResourceEpoch! >= 0 &&
+        this.driver.completedResourceEpoch! <= this.driver.resourceEpoch!
+      const mandatoryReasonBits = Number(required !== 0) | Number(pressure) << 1 |
+        Number(imagesUnderPressure) << 2 | Number(!!retiredImageTableBytes) << 3 |
+        Number(!!retiredImageAssetBytes) << 4 | Number(!epochKnown) << 5
       const reason = this.maintenanceResidency.decide(required,
-        pressure || imagesUnderPressure || !!this.driver.captureDisplay ||
+        pressure || imagesUnderPressure ||
           !!retiredImageTableBytes || !!retiredImageAssetBytes,
         this.workingBytes, this.frameBudget, poolBytes, transientBytes,
         this.driver.resourceEpoch, this.driver.completedResourceEpoch)
       if (gpuDiagnosticsEnabled()) {
         try { recordGpuDiagnostic('cache', { maintenanceDecision: reason,
-          maintenanceDeferredCount: this.maintenanceResidency.count,
+          maintenanceDeferredCount: this.maintenanceResidency.count, mandatoryReasonBits,
           maintenancePoolBytes: poolBytes, maintenanceTransientBytes: transientBytes,
           maintenanceWorkingBytes: this.workingBytes, maintenanceBudgetBytes: this.frameBudget,
           maintenanceRequiredBytes: required, resourceEpoch: this.driver.resourceEpoch,
@@ -2827,7 +2890,7 @@ export class GpuRenderer {
           if (inplace) out = dst
           else {
             await this.reclaimForSurface(bounds); this.checkFrameCurrent()
-            out = this.acquire(bounds)
+            out = this.acquire(bounds, false, false, SurfaceAllocationSite.streamImageOutput)
           }
           for (let row = 0; row < bounds.h; row += 64) {
             const height = Math.min(64, bounds.h - row)
@@ -2844,14 +2907,14 @@ export class GpuRenderer {
               rect: rect(original.rect.x + band.x - node.rect.x, original.rect.y + band.y - node.rect.y, band.w, band.h) } } : node
             try {
               if (inplace) {
-                before = this.acquire(band)
+                before = this.acquire(band, false, false, SurfaceAllocationSite.streamImageBefore)
                 this.driver.copyColorRegion(before.texture, dst.texture, { x: 0, y: row, w: band.w, h: band.h }, [0, 0])
                 this.painterStageCopies++; this.painterStageCopyBytes += band.w * band.h * 16
               }
-              field = this.imageGrid(regionNode, regionPaint, image, level)
+              field = this.imageGrid(regionNode, regionPaint, image, level, [0, 0], undefined, 4)
               fieldRegions++; fieldBytes += field.texture.bytes; maxFieldBytes = Math.max(maxFieldBytes, field.texture.bytes)
               maxFieldWidth = Math.max(maxFieldWidth, band.w); maxFieldHeight = Math.max(maxFieldHeight, band.h)
-              source = this.acquire(band)
+              source = this.acquire(band, false, false, SurfaceAllocationSite.streamImageSource)
               const paintParameters = parameters(band, mask.rect, image.rect, mask.rect)
               paintParameters[16] = 2
               this.configurePaint(paintParameters, node, paint)
@@ -3462,7 +3525,7 @@ export class GpuRenderer {
       // The byte compositor already stores ordinary color masks as RGBA8.
       // Its scene preparation owns areaPipeline, while the separately flagged
       // binary coverage pipelines are prepared only for managed rendering.
-      const mask=this.acquire(region,!!(this.driver.managed&&this.driver.createBinaryCoverage))
+      const mask=this.acquire(region,!!(this.driver.managed&&this.driver.createBinaryCoverage), false, SurfaceAllocationSite.filterSourceMask)
       if(n.fill.count)this.driver.maskRegion!(n.fill,mask.texture,sample,region)
       else this.driver.clear(mask.texture)
       for(const paint of node.fills)if(paint.visible)layer=this.paintOver(node,paint,mask,layer)
@@ -3487,7 +3550,7 @@ export class GpuRenderer {
         await this.reclaimScratch(output.w * output.h * 4 + plan.bytes)
         this.checkFrameCurrent()
       }
-      target = this.acquire(output)
+      target = this.acquire(output, false, false, SurfaceAllocationSite.byteShadowOutput)
       await this.reclaimScratch(plan.bytes)
       this.checkFrameCurrent()
       const before = this.driver.scratchBytes || 0
@@ -3552,7 +3615,7 @@ export class GpuRenderer {
         const missing = this.free.get(`${plan.source.w}:${plan.source.h}`)?.length ? 0 : plan.source.w * plan.source.h * 4
         await this.reclaimScratch(missing)
         this.checkFrameCurrent()
-        source = this.acquire(plan.source)
+        source = this.acquire(plan.source, false, false, SurfaceAllocationSite.byteShadowSource)
         for (let y = plan.source.y; y < plan.source.y + plan.source.h; y += 64) {
           const pause = this.yieldEncoding(); if (pause) await pause
           const region = { x: plan.source.x, y, w: plan.source.w, h: Math.min(64, plan.source.y + plan.source.h - y) }
@@ -3621,11 +3684,11 @@ export class GpuRenderer {
     const origin = intoAtlas
       ? this.imageOrigins.get(this.imageKey(paint.image || '', level, true, paint.adjust)) ?? [0, 0] as [number, number]
       : [0, 0] as [number, number]
-    const mask = this.acquire(region, true)
+    const mask = this.acquire(region, true, false, SurfaceAllocationSite.filterImageMask)
     try {
       if (n.fill.count) this.driver.maskRegion!(n.fill, mask.texture, sample, region)
       else this.driver.clear(mask.texture)
-      const field = this.imageGrid(node, paint, image, level, origin)
+      const field = this.imageGrid(node, paint, image, level, origin, undefined, 5)
       return this.run(IMAGE_RESOLVE_STEP_MODE, region, [mask, image, previous || mask, field], u => {
         this.configurePaint(u, node, paint)
         u[17] = sample
@@ -3703,7 +3766,11 @@ export class GpuRenderer {
     try{
       for(let sample=0;sample<4;sample++){
         this.sampleIndex=sample
-        const field=this.imageGrid(node,clone,image,0,[0,0])
+        // The table consumes separable axes only. Prove that representation
+        // before imageGrid can fall back to a full-support dense allocation.
+        // A nonseparable transform keeps the existing exact strip sampler.
+        if (!this.prepareLargeImageAxes(node, clone, image, 0, 7)) return
+        const field=this.imageGrid(node,clone,image,0,[0,0],undefined,6)
         if(field.rect.x!==input.x || field.rect.y!==input.y || field.rect.w!==input.w || field.rect.h!==input.h)return
         const values=this.driver.imageTableAxes(field.texture);if(!values)return
         axes.push(values)
@@ -3801,7 +3868,7 @@ export class GpuRenderer {
     let staticSourcePin: Texture | undefined
     try {
     const reusable = this.horizontalFilterSource(n, input, output, radius)
-    const horizontal = this.acquire({x:output.x,y:input.y,w:output.w,h:input.h})
+    const horizontal = this.acquire({x:output.x,y:input.y,w:output.w,h:input.h}, false, false, SurfaceAllocationSite.isolatedHorizontal)
     this.driver.clear(horizontal.texture)
     // Lookup happens after allocation: admission pressure is allowed to drop
     // the old entry. No await separates this last ownership check and its copy.
@@ -3843,7 +3910,7 @@ export class GpuRenderer {
       await this.reclaimScratch(required)
       this.checkFrameCurrent()
       if (this.workingBytes + required <= this.frameBudget) {
-        const resolved = this.acquire(input)
+        const resolved = this.acquire(input, false, false, SurfaceAllocationSite.filterTableResolve)
         try {
           this.driver.resolveImageTable!(resolved.texture, imageTable, 0, 0)
           this.imageXTablePixels += input.w * input.h; this.passPixels += input.w * input.h
@@ -3859,7 +3926,7 @@ export class GpuRenderer {
       const region={x:input.x,y,w:input.w,h:Math.min(rows,part.y+part.h-y)}
       let resolved:Surface|undefined
       if(imageTable){
-        resolved=this.acquire(region)
+        resolved=this.acquire(region, false, false, SurfaceAllocationSite.filterRegionResolve)
         this.driver.resolveImageTable!(resolved.texture,imageTable,region.x-input.x,region.y-input.y)
         this.imageXTablePixels+=region.w*region.h
         this.passPixels+=region.w*region.h
@@ -3885,7 +3952,7 @@ export class GpuRenderer {
       finally{this.bytes+=(this.driver.scratchBytes||0)-before;this.checkpointMs+=performance.now()-at}
     }
     await this.reclaimScratch(output.w*output.h*16 + (whole ? 0 : output.h*64*16))
-    const blurred=this.acquire(output)
+    const blurred=this.acquire(output, false, false, SurfaceAllocationSite.isolatedBlurOutput)
     if (!whole) this.driver.clear(blurred.texture)
     // Bound vertical encoding too: one whole-width prefix pass can otherwise
     // delay camera-presentation messages behind hundreds of dispatches.
@@ -4026,7 +4093,7 @@ export class GpuRenderer {
         await this.reclaimScratch()
         const pause = this.yieldEncoding(); if (pause) await pause
         this.sampleIndex = sample
-        const mask = this.acquire(output, !!this.driver.createBinaryCoverage)
+        const mask = this.acquire(output, !!this.driver.createBinaryCoverage, false, SurfaceAllocationSite.displayMaterialMask)
         let layer: Surface | undefined
         try {
           this.driver.maskRegion!(n.fill, mask.texture, sample, output)
@@ -4060,7 +4127,7 @@ export class GpuRenderer {
   }
   private sequentialMask(path: PathMesh, region: Rect) {
     if (this.sampleIndex === undefined) { this.sequentialRejected(608, region); throw Error('SEQUENTIAL_DISPLAY_UNSUPPORTED') }
-    const mask = this.acquire(region, true)
+    const mask = this.acquire(region, true, false, SurfaceAllocationSite.displayImageMask)
     if (path.count) this.driver.maskRegion!(path, mask.texture, this.sampleIndex, region)
     else this.driver.clear(mask.texture)
     return { ...mask, opaqueInterior: path.opaqueRect }
@@ -4144,7 +4211,7 @@ export class GpuRenderer {
       for (const id of candidates)
         for (const paint of scene.nodes[id].fills) if (paint.visible && paint.kind === 'image' && paint.image)
           this.sequentialImagePins.add(this.imageFor(paint.image, 0, false, paint.adjust).texture)
-      frame = this.acquire(output)
+      frame = this.acquire(output, false, false, SurfaceAllocationSite.sequentialFrame)
       this.driver.clear(frame.texture)
       // The frame stays resident. Bounded bands avoid four full-frame planes
       // plus arbitrary nested isolation stacks exceeding the shared ledger.
@@ -4420,11 +4487,11 @@ export class GpuRenderer {
     const surfaces: Surface[] = [], key = `${region.w}:${region.h}`
     try {
       while (surfaces.length < count && this.free.get(key)?.length) {
-        const surface = this.acquire(region); this.aliases.set(surface.texture, 1); surfaces.push(surface)
+        const surface = this.acquire(region, false, false, SurfaceAllocationSite.displayBackdropStripReuse); this.aliases.set(surface.texture, 1); surfaces.push(surface)
       }
       await this.reclaimScratch((count - surfaces.length) * region.w * region.h * 16 + PREFIX_SCRATCH_BYTES)
       this.checkFrameCurrent()
-      while (surfaces.length < count) { const surface = this.acquire(region); this.aliases.set(surface.texture, 1); surfaces.push(surface) }
+      while (surfaces.length < count) { const surface = this.acquire(region, false, false, SurfaceAllocationSite.displayBackdropStripNew); this.aliases.set(surface.texture, 1); surfaces.push(surface) }
       return surfaces
     } catch (error) { this.release(...surfaces); throw error }
   }
@@ -4450,7 +4517,7 @@ export class GpuRenderer {
     this.interactionCapturing = true
     let result: Surface | undefined
     try {
-      result = this.acquire(plan.source)
+      result = this.acquire(plan.source, false, false, SurfaceAllocationSite.displayBackdropSource)
       for (const [index, row] of plan.rows.entries()) {
         const pause = this.yieldEncoding(); if (pause) await pause
         const [horizontal] = await this.acquireDisplayBackdropStrips(row, 1)
@@ -4509,7 +4576,7 @@ export class GpuRenderer {
     await this.reclaimScratch(horizontalRect.w * horizontalRect.h * 16 +
       Math.max(output.w, output.h) * strip * 16 + PREFIX_SCRATCH_BYTES)
     this.checkFrameCurrent()
-    const horizontal = this.acquire(horizontalRect)
+    const horizontal = this.acquire(horizontalRect, false, false, SurfaceAllocationSite.displayBackdropHorizontal)
     let result: Surface | undefined
     try {
       for (let row = 0; row < horizontalRect.h; row += strip) {
@@ -4524,7 +4591,7 @@ export class GpuRenderer {
       }
       await this.reclaimScratch(output.w * output.h * 16 + Math.min(strip, output.w) * output.h * 16 + PREFIX_SCRATCH_BYTES)
       this.checkFrameCurrent()
-      result = this.acquire(output)
+      result = this.acquire(output, false, false, SurfaceAllocationSite.displayBackdropOutput)
       for (let column = 0; column < output.w; column += strip) {
         this.checkFrameCurrent()
         const pause = this.yieldEncoding(); if (pause) await pause
@@ -4750,7 +4817,7 @@ export class GpuRenderer {
   }
   private sparseGlass(backdrop:Surface,mask:Surface,n:GpuNode,fx:Effect,fieldRegion:Rect,
     plan:{interior:Rect;value:number[]},unmasked:boolean,sample:number):Surface {
-    const region=n.rect,out=this.acquire(region),scissor=this.drawRegion(region)
+    const region=n.rect,out=this.acquire(region, false, false, SurfaceAllocationSite.textureReplayOutput),scissor=this.drawRegion(region)
     this.driver.clear(out.texture)
     const draw=scissor?{x:region.x+scissor.x,y:region.y+scissor.y,w:scissor.w,h:scissor.h}:region
     const interior=intersect(draw,plan.interior)

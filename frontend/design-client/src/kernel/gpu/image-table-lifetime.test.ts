@@ -270,6 +270,8 @@ function rendererPreparation(f: ReturnType<typeof fixture>) {
     ;(f.driver as any).textures.add(texture); (f.driver as any).imageAxisPrograms.set(texture, values)
     return texture
   })
+  // This fixture replaces coordinate generation; real qualification is covered separately.
+  renderer.prepareLargeImageAxes = () => true
   renderer.imageGrid = () => ({ texture: fields[renderer.sampleIndex], rect: input })
   renderer.reclaimScratch = vi.fn(async () => { renderer.evictImages(f.image.bytes, true) })
   renderer.frameBudget = 256 * 1024 * 1024

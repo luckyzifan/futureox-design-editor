@@ -805,15 +805,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   },[state.doc,state.page,drawingPreview,utility.preview,textPreview,previewFonts])
   const exactOverlayMatches = editPreviewVisible || (presentationScopeMatches && presented.document === renderedDocument)
   const [refineDocument, setRefineDocument] = useState(renderedDocument)
-  const refineOverview = snapshots.refineOverview(refineDocument, state.page)
+  // Without a retained edit preview there is no alternate current content.
+  // Submit the current document immediately, not after an effect/timer turn.
+  const surfaceDocument = !editPreviewSupported ? renderedDocument :
+    refineDocument.id === renderedDocument.id && refineDocument.pages.some(page => page.id === state.page) ? refineDocument : renderedDocument
+  const refineOverview = snapshots.refineOverview(surfaceDocument, state.page)
   const editBaseDocument = useRef(renderedDocument)
   if (ownedDrag?.sourceDocument) editBaseDocument.current = ownedDrag.sourceDocument
   else if (!editPreviewVisible) editBaseDocument.current = renderedDocument
   useEffect(() => {
-    if (editor.interactionActive && editPreviewSupported) return
+    if (!editPreviewSupported) { setRefineDocument(renderedDocument); return }
+    if (editor.interactionActive) return
     // Give the current edit one paint opportunity before serializing a large
     // exact worker request. Rapid edits coalesce to the newest document.
-    const timer = setTimeout(() => setRefineDocument(renderedDocument), editPreviewSupported ? 80 : 0)
+    const timer = setTimeout(() => setRefineDocument(renderedDocument), 80)
     return () => clearTimeout(timer)
   }, [renderedDocument, editPreviewSupported, editor.interactionActive])
   function zoomCanvas(command: 'zoomIn' | 'zoomOut' | 'zoom100') {
@@ -2229,7 +2234,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         onPresentation={recordPresentation}
         overview={refineOverview}
         presentationEpoch={editor.sessionGeneration}
-        document={refineDocument.id === renderedDocument.id && refineDocument.pages.some(page => page.id === state.page) ? refineDocument : renderedDocument}
+        document={surfaceDocument}
         interactionPreview={editPreviewVisible}
         pageId={state.page}
         width={size.width}
