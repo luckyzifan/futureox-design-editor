@@ -43,3 +43,52 @@ test('window preferences use bounded reads and atomic replacement without tempor
     await assert.rejects(readWindowState(file), /size/)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
+
+test('display changes synchronize minimum before bounds and defer bounds until restored', async () => {
+  const { constrainWindowToDisplays } = await import('../src/window-state.mjs')
+  const calls = [], small = { workArea: { x: 0, y: 0, width: 800, height: 600 } }
+  let maximized = false, fullscreen = false, bounds = { x: 0, y: 0, width: 1440, height: 940 }, minimum = [1000, 640]
+  const window = { isDestroyed: () => false, isMaximized: () => maximized, isFullScreen: () => fullscreen,
+    getNormalBounds: () => bounds, getMinimumSize: () => minimum,
+    setMinimumSize: (w, h) => { minimum = [w, h]; calls.push(['minimum', w, h]) },
+    setBounds: value => { bounds = value; calls.push(['bounds', value]) } }
+  constrainWindowToDisplays(window, [small], small)
+  assert.deepEqual(calls.map(x => x[0]), ['minimum', 'bounds']); assert.deepEqual(minimum, [800, 600])
+  assert.deepEqual(bounds, { x: 0, y: 0, width: 800, height: 600 })
+  for (const state of ['maximized', 'fullscreen']) {
+    maximized = state === 'maximized'; fullscreen = state === 'fullscreen'; bounds = { x: 1500, y: 0, width: 1400, height: 900 }; minimum = [1000, 640]; calls.length = 0
+    constrainWindowToDisplays(window, [small], small); assert.deepEqual(calls.map(x => x[0]), ['minimum'])
+    maximized = false; fullscreen = false; constrainWindowToDisplays(window, [small], small)
+    assert.deepEqual(bounds, { x: 0, y: 0, width: 800, height: 600 })
+  }
+})
+
+test('host connects restore/move and display changes to the same constraint coordinator', async () => {
+  const source = await readFile(new URL('../src/main.mjs', import.meta.url), 'utf8')
+  assert.match(source, /for \(const event of \['unmaximize', 'leave-full-screen'\]\)/)
+  assert.match(source, /ownedWindow\.on\(event, \(\) => constrainWindowToDisplays\(ownedWindow, screen\.getAllDisplays\(\), screen\.getPrimaryDisplay\(\)\)\)/)
+  assert.match(source, /const constrainWindow = \(\) => constrainWindowToDisplays\(window, screen\.getAllDisplays\(\), screen\.getPrimaryDisplay\(\)\)/)
+})
+
+
+test('cross-display drag updates minimum without snapping intermediate bounds back', async () => {
+  const { constrainWindowToDisplays } = await import('../src/window-state.mjs')
+  const large = { workArea: { x: 0, y: 0, width: 1440, height: 900 } }, small = { workArea: { x: 1440, y: 0, width: 800, height: 600 } }
+  let bounds, minimum = [1000, 640]
+  const mutations = []
+  const window = { isDestroyed: () => false, isMaximized: () => false, isFullScreen: () => false,
+    getNormalBounds: () => bounds, getMinimumSize: () => minimum,
+    setMinimumSize: (w, h) => { minimum = [w, h] }, setBounds: next => { mutations.push(next); bounds = next } }
+  for (const x of [100, 600, 900, 1200, 1440]) {
+    bounds = { x, y: 30, width: 1000, height: 640 }
+    const dragging = { ...bounds }
+    constrainWindowToDisplays(window, [large, small], large, { fitBounds: false })
+    assert.deepEqual(bounds, dragging)
+  }
+  assert.deepEqual(mutations, []); assert.deepEqual(minimum, [800, 600])
+  // Removal/restore still performs a full fit, unlike a live drag.
+  constrainWindowToDisplays(window, [small], small)
+  assert.deepEqual(bounds, { x: 1440, y: 0, width: 800, height: 600 })
+  const source = await readFile(new URL('../src/main.mjs', import.meta.url), 'utf8')
+  assert.match(source, /ownedWindow\.on\('move', \(\) => constrainWindowToDisplays\(ownedWindow, screen\.getAllDisplays\(\), screen\.getPrimaryDisplay\(\), \{ fitBounds: false \}\)\)/)
+})

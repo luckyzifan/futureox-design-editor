@@ -6,6 +6,24 @@ import { multiply } from './geometry'
 export function commonValue<T>(values: T[]): T | undefined {
   return values.length && values.every((value) => Object.is(value, values[0])) ? values[0] : undefined
 }
+/** Use live descendant bounds, but the caller's current transform (which may
+ * already be an edited draft). Never substitute the snapshot's old transform. */
+export function selectionPropertyBounds(node: DesignNode, doc?: DesignDocument) {
+  return doc ? selectionParentBounds(doc, node.id, node.transform) : parentBounds(node)
+}
+/** Handle intent is explicit; a zero movement in one axis of a corner drag
+ * still authors both axes. For a world-axis multi-selection edge, map that
+ * axis to each node's local dimension directions. */
+export function resizeGestureAxes(handle: number, proportional: boolean, world?: Matrix): readonly ('width' | 'height')[] {
+  if (handle < 4 || proportional) return ['width', 'height']
+  const horizontal = (handle - 4) % 2 === 1
+  if (!world) return horizontal ? ['width'] : ['height']
+  const component = horizontal ? 0 : 1
+  const axes: ('width' | 'height')[] = []
+  if (Math.abs(world[component]) > 1e-10 * Math.hypot(world[0], world[1])) axes.push('width')
+  if (Math.abs(world[component + 2]) > 1e-10 * Math.hypot(world[2], world[3])) axes.push('height')
+  return axes
+}
 export type SelectionMetric = 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity'
 export function selectionMetric(node: DesignNode, field: SelectionMetric, doc?: DesignDocument, resolvedUnits?: PropertyUnits): number {
   if (field === 'rotation') return rotationDegrees(node)
@@ -50,8 +68,8 @@ export function resizedNode(source: DesignNode, transform: Matrix, editedAxes?: 
   const sy = Math.hypot(transform[2], transform[3]) / Math.hypot(source.transform[2], source.transform[3])
   if (![sx, sy].every(v => Number.isFinite(v) && v > 0)) throw new Error('图层缩放矩阵无效')
   // Property fields supply the authored axis, including exact-size writes.
-  // The existing canvas contract remains dual-axis until gesture intent is
-  // passed explicitly by the caller; matrix deltas cannot determine intent.
+  // Canvas supplies handle/proportion intent explicitly as well. Legacy callers
+  // without an authored axis retain dual-axis semantics.
   const axes = editedAxes ?? ['width', 'height'] as const
   const sizing = { ...defaultSizing(), ...source.sizing }
   for (const axis of axes) sizing[axis] = 'fixed'

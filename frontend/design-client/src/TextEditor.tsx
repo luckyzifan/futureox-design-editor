@@ -143,6 +143,7 @@ export function CanvasTextEditor({
   matrix,
   viewport = { width: 1000, height: 800 },
   onClose,
+  isCurrent,
 }: {
   onPreview: (node:DesignNode|null)=>void
   document: DesignDocument
@@ -150,7 +151,8 @@ export function CanvasTextEditor({
   editor: Editor
   matrix: Matrix
   viewport?: { width: number; height: number }
-  onClose: () => void
+  onClose: (restoreCanvasFocus?: boolean) => void
+  isCurrent?: () => boolean
 }) {
   const diagnostic = useMemo(() => createInputDiagnostics(editor, InputFamily.richText, ActionSource.keyboard), [editor])
   useEffect(() => () => diagnostic.dispose(), [diagnostic])
@@ -189,6 +191,7 @@ export function CanvasTextEditor({
     if (!error) queueMicrotask(() => setError(String(e)))
   }
   useEffect(() => {
+    if (isCurrent && !isCurrent()) return
     input.current?.focus()
     input.current?.setSelectionRange(0, node.text.length)
   }, [node.id])
@@ -200,7 +203,8 @@ export function CanvasTextEditor({
     input.current?.setSelectionRange(Math.min(a, b), Math.max(a, b), a > b ? 'backward' : 'forward')
     setSelection([Math.min(a, b), Math.max(a, b)])
   }
-  const finish = (cancel = false) => {
+  const finish = (cancel = false, restoreCanvasFocus = false) => {
+    if (isCurrent && !isCurrent()) return true
     if (done.current) return true
     if (composing.current) return false
     const changed = latest.current.text !== original.current.text || JSON.stringify(latest.current.textRuns) !== JSON.stringify(original.current.textRuns)
@@ -224,7 +228,7 @@ export function CanvasTextEditor({
     if (cancel) diagnostic.cancel(); else diagnostic.finish(changed, true)
     done.current = true
     pendingEditsChanged(editor)
-    onClose()
+    onClose(restoreCanvasFocus)
     return true
   }
   const commit = useRef(finish)
@@ -466,10 +470,10 @@ export function CanvasTextEditor({
             }
           }}
         />
-        <button type="button" onClick={() => finish()}>
+        <button type="button" onClick={() => finish(false, true)}>
           完成
         </button>
-        <button type="button" onClick={() => finish(true)}>
+        <button type="button" onClick={() => finish(true, true)}>
           取消
         </button>
       </div>
@@ -551,11 +555,11 @@ export function CanvasTextEditor({
           navigate(e)
           if (e.key === 'Escape') {
             e.preventDefault()
-            finish(true)
+            finish(true, true)
           }
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
             e.preventDefault()
-            finish()
+            finish(false, true)
           }
         }}
       />

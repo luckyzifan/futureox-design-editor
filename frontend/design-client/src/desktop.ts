@@ -100,6 +100,7 @@ export interface DesktopBridge {
     observe(value:{documentId:string;pageId:string;view:[number,number,number];cursor:[number,number]|null;selection:string[];viewHash:string}):Promise<DesktopResult<{viewHash:string;changed:boolean;peers:LocalPeer[];documents:WorkspaceDocument[]|null}>>
     openWindow(value:{id:string}):Promise<DesktopResult<{windowId:string}>>
   }
+  setInterfaceLocale?(locale: 'zh-CN' | 'en'): Promise<DesktopResult>
   rendererReady?(): Promise<DesktopResult>
   performTextCommand?(command: 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll'): Promise<DesktopResult>
   readonly fonts?: {

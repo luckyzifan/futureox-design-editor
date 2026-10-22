@@ -79,12 +79,19 @@ describe('keyboard dimensions with real Editor/WASM', () => {
     const { editor, a } = fixture(); editor.update([a.id], { width: .5 }); await dispatchEditorCommand(editor, 'resize-width-decrease-large'); expect(editor.state.doc.nodes[a.id].width).toBe(.01)
     const minimum = editor.state.doc; await dispatchEditorCommand(editor, 'resize-width-decrease'); expect(editor.state.doc).toBe(minimum); editor.undo(); expect(editor.state.doc.nodes[a.id].width).toBe(.5)
   })
-  test('repeat resizes; IME/AltGraph/text/extra modifiers and Figma-like do not dispatch', async () => {
+  test('repeat resizes; IME/AltGraph/text/extra modifiers reject; mac Figma shares dimensions, non-mac stays unbound', async () => {
     const { editor, a } = fixture(), context: ShortcutContext = { profile: 'sketch-like', platform: 'mac' }
     for (const repeat of [false, true, true]) await dispatchEditorShortcut(editor, key('ArrowRight', { metaKey: true, repeat }), context)
     expect(editor.state.doc.nodes[a.id].width).toBe(33); const before = editor.state.doc
     for (const event of [key('ArrowRight', { metaKey: true, isComposing: true }), key('ArrowRight', { metaKey: true, keyCode: 229 }), key('ArrowRight', { metaKey: true, altKey: true }), key('ArrowRight', { metaKey: true, ctrlKey: true }), key('ArrowRight', { ctrlKey: true }), key('ArrowRight', { metaKey: true, getModifierState: k => k === 'AltGraph' }), key('ArrowRight', { metaKey: true, target: { closest: () => ({}) } as unknown as EventTarget })]) expect(await dispatchEditorShortcut(editor, event, context)).toBe(false)
-    expect(await dispatchEditorShortcut(editor, key('ArrowRight', { metaKey: true }), { ...context, profile: 'figma-like' })).toBe(false); expect(editor.state.doc).toBe(before)
+    expect(editor.state.doc).toBe(before)
+    expect(await dispatchEditorShortcut(editor, key('ArrowRight', { metaKey: true }), { ...context, profile: 'figma-like' })).toBe(true)
+    expect(editor.state.doc.nodes[a.id].width).toBe(34); const resized = editor.state.doc
+    editor.undo(); expect(editor.state.doc).toEqual(before)
+    editor.redo(); expect(editor.state.doc).toEqual(resized)
+    for (const platform of ['windows', 'linux'] as const)
+      expect(await dispatchEditorShortcut(editor, key('ArrowRight', { ctrlKey: true }), { ...context, profile: 'figma-like', platform })).toBe(false)
+    expect(editor.state.doc).toBe(resized)
   })
   test('busy/drawing/active drag are protected; cancel restores the original design', async () => {
     const { editor, a } = fixture(), context: ShortcutContext = { profile: 'sketch-like', platform: 'linux' }, before = editor.state.doc

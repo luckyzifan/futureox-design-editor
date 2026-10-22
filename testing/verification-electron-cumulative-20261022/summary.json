@@ -1,0 +1,846 @@
+{
+  "archive": "futureox-design-electron-cumulative-main2e5-to-ab501-20261022.zip",
+  "archiveSha256": "6745949a233ebed06fdce72a35bc0ea67553098ce9f6468a58d2727268c7d1fb",
+  "packageBaseCommit": "2e5db09e10011dbe2603046341b72a14b0b43d27",
+  "previousMainCommit": "53bf5e5976fe1998fec964a315db2d8e3d24f9f9",
+  "packageFinalArchiveSha256": "ab501b6bc39edf2485f5b8e8567af8bcd618935d9461491d54f2ec8706620ecf",
+  "archiveChecksumsMatched": 109,
+  "integratedPaths": 100,
+  "threeWayConflictPaths": [
+    "frontend/design-client/src/Inspector.tsx",
+    "frontend/design-client/src/LayoutPanel.tsx",
+    "frontend/design-client/src/MixedNumberField.tsx",
+    "frontend/design-client/src/MultiSelectionInspector.tsx",
+    "frontend/design-client/src/MultiStylePanel.tsx",
+    "frontend/design-client/src/TextStylePanel.tsx",
+    "frontend/design-client/src/editor-commands.ts",
+    "frontend/design-client/src/engine.ts",
+    "frontend/design-client/src/fields.tsx",
+    "frontend/design-client/src/selection-properties.ts",
+    "frontend/design-client/src/shortcut-profiles.ts",
+    "frontend/design-desktop/test/main.test.mjs"
+  ],
+  "counts": {
+    "new-delta": 82,
+    "merged-delta": 6,
+    "conflict": 12
+  },
+  "testsRun": false,
+  "typecheckRun": false,
+  "buildRun": false,
+  "packageApplyScriptExecuted": false,
+  "historicalPackageEvidence": {
+    "uniqueTestFiles": 525,
+    "passed": 4501,
+    "knownFailed": 1,
+    "source": "Package README and historical evidence; not rerun or adopted as current combined-source acceptance."
+  },
+  "scope": "Static three-way integration of package functional/UI/i18n changes. Existing later main changes retained. No actual Electron, native-dialog, clipboard or current full-regression acceptance claim.",
+  "files": [
+    {
+      "path": "docs/I18N_ELECTRON_REPAIR_CHECKLIST_20261021.md",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "0324f7a4fa481ec9a6bb2b79fc000c16a36b05882600a52a44c93efba38d43d6",
+      "mergedSha256": "0324f7a4fa481ec9a6bb2b79fc000c16a36b05882600a52a44c93efba38d43d6",
+      "merge": "new-delta"
+    },
+    {
+      "path": "docs/I18N_FOLLOWUP_ACCEPTANCE_20261021.md",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "effb86bfd748cba0511497abb549d507c99ca075a2fe90f0697c30ac2812c1ec",
+      "mergedSha256": "effb86bfd748cba0511497abb549d507c99ca075a2fe90f0697c30ac2812c1ec",
+      "merge": "new-delta"
+    },
+    {
+      "path": "docs/I18N_REMAINING_STRINGS_V1.json",
+      "packageBaseSha256": "276ecf6545cde2d6be94a97c02c9606adc54e02eaef4d7298006bf1c1cc4d32f",
+      "previousMainSha256": "276ecf6545cde2d6be94a97c02c9606adc54e02eaef4d7298006bf1c1cc4d32f",
+      "packageFinalSha256": "a3847b2690bf998fdf848d569d3cd4271e52e14b28c15dadcf41eea809e80fed",
+      "mergedSha256": "a3847b2690bf998fdf848d569d3cd4271e52e14b28c15dadcf41eea809e80fed",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/SHORTCUT_PROFILES.md",
+      "packageBaseSha256": "b6a93e00794d29b1ed8267e79013af7dc8f8d398fabb3a9277a1d0b5448de10d",
+      "previousMainSha256": "b6a93e00794d29b1ed8267e79013af7dc8f8d398fabb3a9277a1d0b5448de10d",
+      "packageFinalSha256": "044a31bee3b59e9cb31640a39be154d93bbb00d3d301ebb09255c24fea642c6a",
+      "mergedSha256": "044a31bee3b59e9cb31640a39be154d93bbb00d3d301ebb09255c24fea642c6a",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/AdaptivePanels.tsx",
+      "packageBaseSha256": "677600719125785a4593c6c5fef2cc6315eba1b1a913a1c1fad9b46fe79a842f",
+      "previousMainSha256": "677600719125785a4593c6c5fef2cc6315eba1b1a913a1c1fad9b46fe79a842f",
+      "packageFinalSha256": "186cc25d6434bc0b2630baef13fae10eb0167effcb5139565fbd2155d1734360",
+      "mergedSha256": "186cc25d6434bc0b2630baef13fae10eb0167effcb5139565fbd2155d1734360",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/AlignmentControls.tsx",
+      "packageBaseSha256": "e1da462910e8875b5e348126fe89962cff5a29f5809c4031bc03f2e81698240e",
+      "previousMainSha256": "e1da462910e8875b5e348126fe89962cff5a29f5809c4031bc03f2e81698240e",
+      "packageFinalSha256": "9cbb93c74f701fb870ce34674e355fbd29d6a87a9bde25cfb9c20fb1aeeb7bff",
+      "mergedSha256": "9cbb93c74f701fb870ce34674e355fbd29d6a87a9bde25cfb9c20fb1aeeb7bff",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/App.tsx",
+      "packageBaseSha256": "d3c2afead6f2ffa57a509769d84811bece6dfe7aec6625329ee8e233fe533c15",
+      "previousMainSha256": "b1f71b02010b35c50b0b0fafd9189cf1c3b301a4f5a1f4babef8a62daa84a2ee",
+      "packageFinalSha256": "50fce68b57507d0d03b0f1b59ea8b40864efd873876d0f4a27411ff60abf1ed9",
+      "mergedSha256": "ca4e549350dbaebd83627aa06eaeff39aaab7a399d8a10495509183d7b837a64",
+      "merge": "merged-delta"
+    },
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "packageBaseSha256": "6b01b86a65ea51688c0a2fd48fcc084dd3c41b54fa0b0c3a4c43672efbf76aec",
+      "previousMainSha256": "2b84deca545e9e4c9c4e06a6d746072b653273ada84e123d00a0cb70ff4bcd8c",
+      "packageFinalSha256": "6414ea99de6bc58a8695704369b4276028bcc38443e735ae0e7cdb86593ee721",
+      "mergedSha256": "7ed2eea3042ce81996fdb001091be735cd3cbaf34571b876c3d99680270864db",
+      "merge": "merged-delta"
+    },
+    {
+      "path": "frontend/design-client/src/CanvasContextMenu.tsx",
+      "packageBaseSha256": "d7b8866c0d1dac469c9cc32ad81d12e8fadff5d938178e553e0c2cba1068751d",
+      "previousMainSha256": "d7b8866c0d1dac469c9cc32ad81d12e8fadff5d938178e553e0c2cba1068751d",
+      "packageFinalSha256": "4a6c620f9bf6d7497ecef76237b03b1fc3b548a8b4113a406f9548d5b600b9fe",
+      "mergedSha256": "4a6c620f9bf6d7497ecef76237b03b1fc3b548a8b4113a406f9548d5b600b9fe",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/ColorInput.tsx",
+      "packageBaseSha256": "a192b8498107d4b829940e0ad3890dd36e9d8b8b85c8b973e628844652b0c3e2",
+      "previousMainSha256": "a192b8498107d4b829940e0ad3890dd36e9d8b8b85c8b973e628844652b0c3e2",
+      "packageFinalSha256": "f0d066bcf1edc2e9aec2dc4e8abef9097d30294239c95235d304406ab95e9603",
+      "mergedSha256": "f0d066bcf1edc2e9aec2dc4e8abef9097d30294239c95235d304406ab95e9603",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/ColorPickerPopover.tsx",
+      "packageBaseSha256": "06f3c15385f227cb14b10672af854f2f06c8bcb0b0836b6a3a9c57f0ac221dc3",
+      "previousMainSha256": "06f3c15385f227cb14b10672af854f2f06c8bcb0b0836b6a3a9c57f0ac221dc3",
+      "packageFinalSha256": "6082aacb7236fd441ef1f7f60ff9a7ef542ab124d4c12d2038e762241bf4529e",
+      "mergedSha256": "6082aacb7236fd441ef1f7f60ff9a7ef542ab124d4c12d2038e762241bf4529e",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/DraftInput.tsx",
+      "packageBaseSha256": "a7117be843a68f025ccf1d94a6b233837f07675d68b99a12e0c911bba3c9dc94",
+      "previousMainSha256": "a7117be843a68f025ccf1d94a6b233837f07675d68b99a12e0c911bba3c9dc94",
+      "packageFinalSha256": "8c99c98bd030ed8f637562a43360a5363be631f3015239d1212ad9e692458ab6",
+      "mergedSha256": "8c99c98bd030ed8f637562a43360a5363be631f3015239d1212ad9e692458ab6",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/EditorChrome.tsx",
+      "packageBaseSha256": "dce6b752553908f2be7edff09ee6c5999e53d34e208138656677181e302e4df3",
+      "previousMainSha256": "dce6b752553908f2be7edff09ee6c5999e53d34e208138656677181e302e4df3",
+      "packageFinalSha256": "af440f54bd7daa791ce9c6c25793c53a4e23c086c5129a39106531d0b0bcc185",
+      "mergedSha256": "af440f54bd7daa791ce9c6c25793c53a4e23c086c5129a39106531d0b0bcc185",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/FontManagementPanel.tsx",
+      "packageBaseSha256": "6f6815019bbee4f0f20f6c75c36583004b399effe450cf32cbd8734302a02e0e",
+      "previousMainSha256": "6f6815019bbee4f0f20f6c75c36583004b399effe450cf32cbd8734302a02e0e",
+      "packageFinalSha256": "d09b5066cf343dd0d4fd63d8a1883f2c31e4754798bdb8e7eb18960afde953b4",
+      "mergedSha256": "d09b5066cf343dd0d4fd63d8a1883f2c31e4754798bdb8e7eb18960afde953b4",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/FramePresetPanel.tsx",
+      "packageBaseSha256": "0c0da11a45257c347ef3c717574f2cacecd9133062ccbe9d298b6291024b4448",
+      "previousMainSha256": "0c0da11a45257c347ef3c717574f2cacecd9133062ccbe9d298b6291024b4448",
+      "packageFinalSha256": "bd2049f20e2ef5303778302c3f1b7769372968e70020f4b408e8ba8d7f1f0676",
+      "mergedSha256": "bd2049f20e2ef5303778302c3f1b7769372968e70020f4b408e8ba8d7f1f0676",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/Inspector.tsx",
+      "packageBaseSha256": "1c9097095e30d4a43a9f86fa660b752170eec5abb0e2d31dfac52c1c8101307b",
+      "previousMainSha256": "3f57eaffd47b0d39166f27a916ee39a36f2ce9160384d9f856b76aa7ee4388a3",
+      "packageFinalSha256": "91aa8defb2892346939c427d7100e01b7e8b87dfd3b2ef664c8c3cd5b8a66f6a",
+      "mergedSha256": "6489c0d1c4232980f9ba8d28ff14db0127b427cb715e23c6d8085e164566df59",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/LayoutPanel.tsx",
+      "packageBaseSha256": "09d9e316ecceb6dbac428f3e272f71b1a6f80ea5c75a20c54a88b8d0f9383661",
+      "previousMainSha256": "9cffcce6a8bab634429de7e891778e61363a62715b3bcfd47b32dcafdf296f29",
+      "packageFinalSha256": "34a4d9d232e59b911bb8f8f3a221c32dc776fb5219c9b8520e57fe0a51c2c098",
+      "mergedSha256": "c37706f3b41863cb0d0f44ad173bef17de829b256ea11a95aec0e9ba3405fd0c",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/MixedNumberField.tsx",
+      "packageBaseSha256": "9ce4deb1c289212a741e59c64e27c3664014b351472b9199e524113ffc78346e",
+      "previousMainSha256": "a74271b81062304a2e630f1b202eb3db4c36c773f20aa48215cdd2553f138c32",
+      "packageFinalSha256": "75a812f772dbc94db735db7be10e6ef7d7874b3da1bd14189bc41cd6a46153f2",
+      "mergedSha256": "2804eb14b7ae95752b27bfb924e58404dc9340835c1376e4e74bbba722bdb9aa",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/MultiSelectionInspector.tsx",
+      "packageBaseSha256": "c7bdddcc8cbf997cf11eda5c1c72b160dac8260aa86895c75e380d156c577038",
+      "previousMainSha256": "03836d6648b1d38455a33cdaa16843650cb04c8118d94330c07098d28668a8b6",
+      "packageFinalSha256": "d62178f704cdb6a5ff862799f56d5ff0ce9356d30a6462a79eb803e015ce0756",
+      "mergedSha256": "08bf90d155b27739b8b198d93b5b2cfcda3fe910a01c4ee336671599820aceb6",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/MultiStylePanel.tsx",
+      "packageBaseSha256": "272f0c260054f98792345395f8e54d239b282ca179de751c62619494ea49dcfd",
+      "previousMainSha256": "bf1face7125882a749474b1301d4d31b1468c7b81c9d9d696290416fc8dbdb9a",
+      "packageFinalSha256": "19390bfebbe420e81ce301fa1d04c4e8af6cac6e3adee351f49c53bda05c0582",
+      "mergedSha256": "8b325bc65b100785f4613ef7c7862e1a266263ae1dfc73e36a5ea19969e2f95e",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/ScaleInspector.tsx",
+      "packageBaseSha256": "e2b8e43e0f4937af571f506a13ade75c8f5f7b508b66f2ec710ae0448a4b1f10",
+      "previousMainSha256": "e2b8e43e0f4937af571f506a13ade75c8f5f7b508b66f2ec710ae0448a4b1f10",
+      "packageFinalSha256": "f28b56cf2342848f2ddc34dcc72f319f17ebb3d06017302bbdfa29702865bd5f",
+      "mergedSha256": "f28b56cf2342848f2ddc34dcc72f319f17ebb3d06017302bbdfa29702865bd5f",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/SelectionColorsPanel.tsx",
+      "packageBaseSha256": "9ba29f02c048da70c94dd25079ad44aeb8c4e53d349e9ad093fc5b22956797f1",
+      "previousMainSha256": "9ba29f02c048da70c94dd25079ad44aeb8c4e53d349e9ad093fc5b22956797f1",
+      "packageFinalSha256": "7ca2ce64034e6ad073aa2a7ce59f8216b03fd0df706ac9cbd89daf4966d552d3",
+      "mergedSha256": "7ca2ce64034e6ad073aa2a7ce59f8216b03fd0df706ac9cbd89daf4966d552d3",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/ShapeBuilderDialog.tsx",
+      "packageBaseSha256": "89ab226bd433170f3de6ac980de2942415c13692a032966d789c5d57dfb1aa5d",
+      "previousMainSha256": "89ab226bd433170f3de6ac980de2942415c13692a032966d789c5d57dfb1aa5d",
+      "packageFinalSha256": "f2dc5899756bfbb5d645daf9969d512dd1bdcf8ff40c2e776b55c62b74a155ed",
+      "mergedSha256": "f2dc5899756bfbb5d645daf9969d512dd1bdcf8ff40c2e776b55c62b74a155ed",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/SystemFontPicker.tsx",
+      "packageBaseSha256": "2a40080bc1aa98be1b515091a9374454d2e9bfc46350001fe3c0090cd8b874d1",
+      "previousMainSha256": "2a40080bc1aa98be1b515091a9374454d2e9bfc46350001fe3c0090cd8b874d1",
+      "packageFinalSha256": "d28feabe924360236ee3dbd477f0d9886c5d4b66f147b79c53863a430c63e493",
+      "mergedSha256": "d28feabe924360236ee3dbd477f0d9886c5d4b66f147b79c53863a430c63e493",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/TextEditor.tsx",
+      "packageBaseSha256": "eb0c0e2dcd7c86171946164e27a394df8caa32a238f89353f02608caa7a7f861",
+      "previousMainSha256": "eb0c0e2dcd7c86171946164e27a394df8caa32a238f89353f02608caa7a7f861",
+      "packageFinalSha256": "40b7f116d820b68af22a21bb9c5adab8ecad845bdf514842339ad445bc20454e",
+      "mergedSha256": "40b7f116d820b68af22a21bb9c5adab8ecad845bdf514842339ad445bc20454e",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/TextStylePanel.tsx",
+      "packageBaseSha256": "36d488c7516d47eb840cfff79f3c1c87f29d198a6fa396185e9fb7c37f4baebf",
+      "previousMainSha256": "cb34b4c3b94e4984bbd2b7e20122cee634ff86a68d82c96e4a6c1997c9e11ca6",
+      "packageFinalSha256": "e279e6f4f01901e47d6a854f898398b4760389465dbd588442468c19c4b01eac",
+      "mergedSha256": "88c333f134ec873000072896550313c1d6bf4f14ebc832ab71729cc4edeed4d8",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/adaptive-panels.test.tsx",
+      "packageBaseSha256": "fe671a3c044ab438e652c426512d4679745e2e00d68271c25ff1d5a1174a3f0a",
+      "previousMainSha256": "fe671a3c044ab438e652c426512d4679745e2e00d68271c25ff1d5a1174a3f0a",
+      "packageFinalSha256": "07bb7e9fd41b1773c9993b4bb92c70a2d164d197cfa041d4be0d81b09b0b1824",
+      "mergedSha256": "07bb7e9fd41b1773c9993b4bb92c70a2d164d197cfa041d4be0d81b09b0b1824",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/canvas-interface-messages.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "306d17e62c98870285c1c5dc9f311ed35d60b28814fe55af8038bc3a540ab397",
+      "mergedSha256": "306d17e62c98870285c1c5dc9f311ed35d60b28814fe55af8038bc3a540ab397",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/canvas-menu-model.ts",
+      "packageBaseSha256": "aa22961e0f8bcdde5c9ac4587f681b5a588a7ec4ca0f625ca6e84d5d43ec6575",
+      "previousMainSha256": "aa22961e0f8bcdde5c9ac4587f681b5a588a7ec4ca0f625ca6e84d5d43ec6575",
+      "packageFinalSha256": "56ccce0cb93b598245149d046009992aedb534e64fec3e4f34e0bad77d57f792",
+      "mergedSha256": "56ccce0cb93b598245149d046009992aedb534e64fec3e4f34e0bad77d57f792",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/canvas-workflow-shortcuts.test.ts",
+      "packageBaseSha256": "ece0820f433b1b6633ccd81910bfbf5adcc92445efad1d7b9909215541ffb97b",
+      "previousMainSha256": "ece0820f433b1b6633ccd81910bfbf5adcc92445efad1d7b9909215541ffb97b",
+      "packageFinalSha256": "19f999054b35499f5c806cc998c2c0a6fdce0b9fa626f6829ed3a1e18d5a08be",
+      "mergedSha256": "19f999054b35499f5c806cc998c2c0a6fdce0b9fa626f6829ed3a1e18d5a08be",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/desktop.ts",
+      "packageBaseSha256": "f40707b8cf20618d80720154a8a04d87012afc240e47f1035d2e6509e1de7dbb",
+      "previousMainSha256": "f40977a8dbac60490e7dc78d15b9c19b6d5a08ca78535da75b25cb00da21737c",
+      "packageFinalSha256": "2cacfb6e0c887e72219a3251454f73e0c85b0814e017596b9cc4e40dfb6d5314",
+      "mergedSha256": "1cda7b203c94af068a19ca2268686ddf24626f9dac0c850040e52a87fce1b8a1",
+      "merge": "merged-delta"
+    },
+    {
+      "path": "frontend/design-client/src/editor-commands.ts",
+      "packageBaseSha256": "448908e301f3d11ec79a5b21fe8108369ac3165796d9033af5d77a6d1779d16f",
+      "previousMainSha256": "2aed6a2951fce4ca338c3160a7becefdfba095e7f1b5aa8a9d0b84c31aab8725",
+      "packageFinalSha256": "9aee8129ed67f916d9b68f816b8f4a3b7b523be418ca0b12dbaf3347faf861ec",
+      "mergedSha256": "2b935d44d8c875f3eb307162a7ebacbc2aab794b9d3c1a52b4b052f51e030bac",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/electron-app-export-ownership-entry.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "e145b354eedc70db9c6467a57ac1c7b13298af1ab76c32c08b157a630645049a",
+      "mergedSha256": "e145b354eedc70db9c6467a57ac1c7b13298af1ab76c32c08b157a630645049a",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-app-file-entry-boundaries.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "85ae76abbf886088a33971d05cf723eb57ad966317adc7f1c3ed5813d49c6c08",
+      "mergedSha256": "85ae76abbf886088a33971d05cf723eb57ad966317adc7f1c3ed5813d49c6c08",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-basic-operation-entry-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "4a2a71efb2986b7a70d4db878e2ead54549258245b61a9cdee112d152913c635",
+      "mergedSha256": "4a2a71efb2986b7a70d4db878e2ead54549258245b61a9cdee112d152913c635",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-canvas-axis-repair.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "d359366cfaa285e6d1bbe9a66b60113841e34ed6e71d61d7d349b67575c10f63",
+      "mergedSha256": "d359366cfaa285e6d1bbe9a66b60113841e34ed6e71d61d7d349b67575c10f63",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-canvas-locale-repair.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "385ed1b4fcfc6cc40fb55a8bbc36242e82b79a68c9708bdc07588f5b65953c00",
+      "mergedSha256": "385ed1b4fcfc6cc40fb55a8bbc36242e82b79a68c9708bdc07588f5b65953c00",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-clipboard-font-repair.test.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "57cffab23d8cf29e8a84022a65fa95c2c053d813da981d657a6d0282ae4d33a5",
+      "mergedSha256": "57cffab23d8cf29e8a84022a65fa95c2c053d813da981d657a6d0282ae4d33a5",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-clipboard-positive-assets.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "5e3641f1eea5b5bf5e870790864423886645f41697e3f587bfec56030351aefd",
+      "mergedSha256": "5e3641f1eea5b5bf5e870790864423886645f41697e3f587bfec56030351aefd",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-clipboard-positive-commands.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "f2876fd213d028624e83ae2a7de64a85e2118b7f5a4d68361f1ca71d9e111255",
+      "mergedSha256": "f2876fd213d028624e83ae2a7de64a85e2118b7f5a4d68361f1ca71d9e111255",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-command-menu-positive-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "7c340dc19c6930972f42e0d09d3b767cd85227c8d8ac70839d976b5d413e8af1",
+      "mergedSha256": "7c340dc19c6930972f42e0d09d3b767cd85227c8d8ac70839d976b5d413e8af1",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-continuous-operation-chains.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "0a6566a780bf544c8efaa6265af776ccb946f921b728d74098fe9ee84ce0c2a8",
+      "mergedSha256": "0a6566a780bf544c8efaa6265af776ccb946f921b728d74098fe9ee84ce0c2a8",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-cross-page-continuous-chain.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "1f4ffae2e228cb5fb1113638c9460870081f64d9153043777fd379d9b55668ff",
+      "mergedSha256": "1f4ffae2e228cb5fb1113638c9460870081f64d9153043777fd379d9b55668ff",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-cross-parent-placement-boundaries.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "efdfacddc97d05ae08aaa211f84d2b2e2b05ad023dc75608c5b0018eef5eed39",
+      "mergedSha256": "efdfacddc97d05ae08aaa211f84d2b2e2b05ad023dc75608c5b0018eef5eed39",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-dimension-shortcut-profiles.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "cf87ecce27891ca11a7f1e13f3f161e7b7af042bd39c063853379369bb8d07e3",
+      "mergedSha256": "cf87ecce27891ca11a7f1e13f3f161e7b7af042bd39c063853379369bb8d07e3",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-freehand-board-connector-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "bf71066beb4d96086c83099b62d77cdcec6f3e735b6e25a8cf8738e4c09cd0b0",
+      "mergedSha256": "bf71066beb4d96086c83099b62d77cdcec6f3e735b6e25a8cf8738e4c09cd0b0",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-group-geometry-repair.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "b801dd51f7e4b21960fe5861dc34d165566e735f40d871804b40167718fed42e",
+      "mergedSha256": "b801dd51f7e4b21960fe5861dc34d165566e735f40d871804b40167718fed42e",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-local-board-review-picker-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "e3c56958e10d859e6ca05daa2a947de65cf873f7ee35faadf6f4e039e06b13b9",
+      "mergedSha256": "e3c56958e10d859e6ca05daa2a947de65cf873f7ee35faadf6f4e039e06b13b9",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-locale-storage-repair.test.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "a72dbbfafb53b654964d340792c6038b3a56396388eb46896115659cca66e595",
+      "mergedSha256": "a72dbbfafb53b654964d340792c6038b3a56396388eb46896115659cca66e595",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-locale-viewport-entry-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "62873a5420045abec6b39de1dc944a1df9e80098b9b301727e21dd5c82785f3c",
+      "mergedSha256": "62873a5420045abec6b39de1dc944a1df9e80098b9b301727e21dd5c82785f3c",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-mcp-inspector-equivalence-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "44f395fd7f44dfe98c1db451f5c5f9be6afec9210a96a714c9bf8b2b9d00f903",
+      "mergedSha256": "44f395fd7f44dfe98c1db451f5c5f9be6afec9210a96a714c9bf8b2b9d00f903",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-mcp-ui-continuous-chain.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "fdd02f38fd66748e05a213b27628738dcf41811147e16e58753e3c9eff489174",
+      "mergedSha256": "fdd02f38fd66748e05a213b27628738dcf41811147e16e58753e3c9eff489174",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-normal-operation-families.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "ebc2e11a5bb0705e29738ae715d16909dda8e9c1f1ec00105951a663fffe8723",
+      "mergedSha256": "ebc2e11a5bb0705e29738ae715d16909dda8e9c1f1ec00105951a663fffe8723",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-paint-entry-boundaries.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "887bce3cb642b0323a88d2b254aefc98960991672460c350e6e7c43db422bb59",
+      "mergedSha256": "887bce3cb642b0323a88d2b254aefc98960991672460c350e6e7c43db422bb59",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-paint-image-entry-boundaries.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "957b3bab55b48c87ecb4b984b672551f61615b940edd9fb5413dd3ef44f13756",
+      "mergedSha256": "957b3bab55b48c87ecb4b984b672551f61615b940edd9fb5413dd3ef44f13756",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-remaining-vector-tools-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "4a85bdfe26fae5fa47a55efbf04974a4530b90264b0964c56696027e6dcd45c1",
+      "mergedSha256": "4a85bdfe26fae5fa47a55efbf04974a4530b90264b0964c56696027e6dcd45c1",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-resize-rotate-boundaries.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "e168fa5096ebe6b1eef921474aa9bf6541a0103d9ed1d0a9d8400349571901ca",
+      "mergedSha256": "e168fa5096ebe6b1eef921474aa9bf6541a0103d9ed1d0a9d8400349571901ca",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-resource-switch-continuous-chain.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "f601200197e9164940a05388fb6bcf14ab813105a3d1b9fdb63981873c713945",
+      "mergedSha256": "f601200197e9164940a05388fb6bcf14ab813105a3d1b9fdb63981873c713945",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-selection-move-boundaries.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "739893105654d7822726819280e17ca0ad393ed8063a73efbe00497e94c12d0d",
+      "mergedSha256": "739893105654d7822726819280e17ca0ad393ed8063a73efbe00497e94c12d0d",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-text-continuous-chains.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "ec1ceac46e966c139dbef974d8be34c6c2ad7ab60bfc876f466d6fc5d9759229",
+      "mergedSha256": "ec1ceac46e966c139dbef974d8be34c6c2ad7ab60bfc876f466d6fc5d9759229",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-text-entry-boundaries.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "02f3276054cd4e6e72a95d9754da6336d117afb3353ca20440cd96d2ab6b0ee9",
+      "mergedSha256": "02f3276054cd4e6e72a95d9754da6336d117afb3353ca20440cd96d2ab6b0ee9",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-transform-interruption-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "a41cbc899177a32b77a45b3ddc9a9ee1e641a6cb9276e0bd9cc6379522f9de74",
+      "mergedSha256": "a41cbc899177a32b77a45b3ddc9a9ee1e641a6cb9276e0bd9cc6379522f9de74",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-vector-utility-entry-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "1c4ea96494a99b1f8af5a9cdc4a87e18c8d5dd396b618b8bd16280c24091c048",
+      "mergedSha256": "1c4ea96494a99b1f8af5a9cdc4a87e18c8d5dd396b618b8bd16280c24091c048",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-zoom-app-route.test.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "0efb5da81460dc629dbd45f9cb9d954e4bc94eb864f6eb41f4a232c3b4015667",
+      "mergedSha256": "0efb5da81460dc629dbd45f9cb9d954e4bc94eb864f6eb41f4a232c3b4015667",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/electron-zoom-routing-repair.test.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "d03722586cf8c27f8ecbdcb82363fbb679d6bfaddb6900e04cda9bdd20d9195a",
+      "mergedSha256": "d03722586cf8c27f8ecbdcb82363fbb679d6bfaddb6900e04cda9bdd20d9195a",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/engine.ts",
+      "packageBaseSha256": "fb247dace2c0fbe43d72d51ddaf44673be880122d162056804733e6615dfa94e",
+      "previousMainSha256": "ba5b5e93dab5581216613d9e62f4b052b18c2f14b52e5de050cfdc760f5c0d1a",
+      "packageFinalSha256": "c0b9a67f7cea6f07fc2c48167cea06b25b6706b2d7ff428407035006b08b6344",
+      "mergedSha256": "a9f5091ac714563287951eae9259cdc2bca9761830ee625ca2b724c70c1aba9d",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/fields.tsx",
+      "packageBaseSha256": "ca8f9747295e365b61791c39dd0a8e2ebc77f129dd402d20d57e1d79c7f78b0e",
+      "previousMainSha256": "3f2e9192ff4923105e495e87e73226b4cd93ebf3c15e2647b3814693a2a31774",
+      "packageFinalSha256": "88a0a91090f4b63a5a3a41d2f0f14b441c5dafcf2e5fff31735ec738fb198326",
+      "mergedSha256": "637cd5ca76dcfd84cbe93b90d8703a2f738ae6e8273ebc31b07fd9bde015773f",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/font-management.ts",
+      "packageBaseSha256": "58b8a2bb6d288a6dc6df3a1f954132b2ed4d50a5f1d2166093b72b55534b4aec",
+      "previousMainSha256": "58b8a2bb6d288a6dc6df3a1f954132b2ed4d50a5f1d2166093b72b55534b4aec",
+      "packageFinalSha256": "cc3d9040c53f99cb0b7516932d0242b8b7bf6de4753f6188f4b9d049bc6431e8",
+      "mergedSha256": "cc3d9040c53f99cb0b7516932d0242b8b7bf6de4753f6188f4b9d049bc6431e8",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/inspector-label-accessibility.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "990c0c6b6396295fc5ab2d8f7d6adeb28ce669f5c0075017ab01134cb1b43470",
+      "mergedSha256": "990c0c6b6396295fc5ab2d8f7d6adeb28ce669f5c0075017ab01134cb1b43470",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/inspector-label-layout.test.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "63c2ff8fae36fd4b405021228e630f9c1ca65f0361e9b50f93a7362782dd55fd",
+      "mergedSha256": "63c2ff8fae36fd4b405021228e630f9c1ca65f0361e9b50f93a7362782dd55fd",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/interface-preference.ts",
+      "packageBaseSha256": "ae524480cdab9da0ff4f005dc4b01525fb56b924dd7c738fa51f863988566457",
+      "previousMainSha256": "ae524480cdab9da0ff4f005dc4b01525fb56b924dd7c738fa51f863988566457",
+      "packageFinalSha256": "1c36fd0eeec0ed0b7d493dbcca46a0d393c3598eb03541ed539f29a6e7db4887",
+      "mergedSha256": "1c36fd0eeec0ed0b7d493dbcca46a0d393c3598eb03541ed539f29a6e7db4887",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/layout-suggestion-locale-fifth.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "48514bb4f266d953fa9cae2aeb27a4bb95eb076a414271fc8d43061d994d883b",
+      "mergedSha256": "48514bb4f266d953fa9cae2aeb27a4bb95eb076a414271fc8d43061d994d883b",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/layout-suggestion-messages.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "deb00fee2064ecb5f8a969332b93a45b6f3cff957f1384beff174da8943a278b",
+      "mergedSha256": "deb00fee2064ecb5f8a969332b93a45b6f3cff957f1384beff174da8943a278b",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/layout-suggestions-ui.test.tsx",
+      "packageBaseSha256": "609e66c9d9356e21b4945882a7d0f251dc7b738d6b5c05bf1c5195d891f38037",
+      "previousMainSha256": "609e66c9d9356e21b4945882a7d0f251dc7b738d6b5c05bf1c5195d891f38037",
+      "packageFinalSha256": "4592049812baf8020e5c0398ad6b096e03c36728285e9bbc4040183ab7ef1be6",
+      "mergedSha256": "4592049812baf8020e5c0398ad6b096e03c36728285e9bbc4040183ab7ef1be6",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/layout-suggestions.ts",
+      "packageBaseSha256": "72ac489cb0c944fe4ec6ac43cb322773092e6d2a23a186590a3733b81cd155d3",
+      "previousMainSha256": "72ac489cb0c944fe4ec6ac43cb322773092e6d2a23a186590a3733b81cd155d3",
+      "packageFinalSha256": "aa5434f4ee3328d7596a65775a920c549eb44e49278dac3a09ee3c94788e70f1",
+      "mergedSha256": "aa5434f4ee3328d7596a65775a920c549eb44e49278dac3a09ee3c94788e70f1",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/number-field-session-boundaries.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "a223bde6f2172e46982fe40cb50af0ddc1f6814eca339fc54d0ba6c00f0c7124",
+      "mergedSha256": "a223bde6f2172e46982fe40cb50af0ddc1f6814eca339fc54d0ba6c00f0c7124",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/operation-status-display-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "56e96149f178d410b87b216cd3480ff331d735ccbae4bc6782096ed6e52e61ff",
+      "mergedSha256": "56e96149f178d410b87b216cd3480ff331d735ccbae4bc6782096ed6e52e61ff",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/operation-status-lifecycle-next.test.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "77ed6e17786aca83581204c94d494edc81607c14700523c0ce3289b21bf1e143",
+      "mergedSha256": "77ed6e17786aca83581204c94d494edc81607c14700523c0ce3289b21bf1e143",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/operation-status-messages.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "3d08e6df6553f77335a10d15c1ee92c0b9136a4de7d6799f805c23447f63b702",
+      "mergedSha256": "3d08e6df6553f77335a10d15c1ee92c0b9136a4de7d6799f805c23447f63b702",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/operation-status-mounted-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "6bc7979cab7650e4f844e02e3947b1ff8889d6299eea37824310ee6abacef191",
+      "mergedSha256": "6bc7979cab7650e4f844e02e3947b1ff8889d6299eea37824310ee6abacef191",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/operation-status-producers-next.test.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "0c3b6f239c596ed8404ebcb148d5581c51fecb39c97658adba2a0c6d92b48ae5",
+      "mergedSha256": "0c3b6f239c596ed8404ebcb148d5581c51fecb39c97658adba2a0c6d92b48ae5",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/professional-dialog-locale-fourth.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "33718016b4fc01be38418b2ac292dda4b6c14ba2bc4d7eba5b0140619ff7c8bf",
+      "mergedSha256": "33718016b4fc01be38418b2ac292dda4b6c14ba2bc4d7eba5b0140619ff7c8bf",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/professional-dialog-messages.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "d429e99d2ee75f2d3c8aaa7fa479544c4c72f39279dcae89a8a6f401aaeefe5e",
+      "mergedSha256": "d429e99d2ee75f2d3c8aaa7fa479544c4c72f39279dcae89a8a6f401aaeefe5e",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/property-interface-messages.ts",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "2f48e763bf168b154899fb6f819e149c0d08ef1ff339dcc8626ac1c6eac959a0",
+      "mergedSha256": "2f48e763bf168b154899fb6f819e149c0d08ef1ff339dcc8626ac1c6eac959a0",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/property-locale-async-combinations-next.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "c3dc55d379fffe95a7ab14b4556c304a22c93bfd0770d927f3c341cb2c332858",
+      "mergedSha256": "c3dc55d379fffe95a7ab14b4556c304a22c93bfd0770d927f3c341cb2c332858",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/property-locale-batch3.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "ccedb693b6c558cdc5259b27a5e7d04390963a9edb154bdd1e45c88907f976e6",
+      "mergedSha256": "ccedb693b6c558cdc5259b27a5e7d04390963a9edb154bdd1e45c88907f976e6",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/property-subpanels-locale-batch4.test.tsx",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "bb389b130d696e9a6c3318e00db26d3e6c1a5b12cb361df36960c87f82b6bb39",
+      "mergedSha256": "bb389b130d696e9a6c3318e00db26d3e6c1a5b12cb361df36960c87f82b6bb39",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/selection-properties.ts",
+      "packageBaseSha256": "454a2a6323a967e53cf48928e00d26a7f6830e2e8061a3b6e2156a08b684d8de",
+      "previousMainSha256": "b9c9ba4b587b1c5d00615164fca180fa6f052d0a6a27155cc5d869f2e0e127a0",
+      "packageFinalSha256": "734bec8f76d852dc5deddc58f611c7e43c5888393edbc673d9553d992c42466f",
+      "mergedSha256": "6027039e70bff90804fe3af0dd74061667c9e9a7192c2373d6166ce2b999de25",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/shortcut-profiles.ts",
+      "packageBaseSha256": "d7440a68db4244951ddd83ad7ad4f57a0532b1df8c7108d4ba113befca2cecf9",
+      "previousMainSha256": "fbc67d50c95a5ce7d76cb0b201c5c37ccde0f0b9aaf53a483d1d8204ce092de7",
+      "packageFinalSha256": "519f5b2296373cb3849f919b24065785ffde2ac43ba4f2d2de238a0fb12b9e46",
+      "mergedSha256": "7bdea99fb84a41c49fda89a59b27f8fbdc9dc1223628b464dbd1bbb62b881e75",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-client/src/styles.css",
+      "packageBaseSha256": "10f52a79292dcad66edbd058b785786412c14a11bb68fb1928dabeac8336b694",
+      "previousMainSha256": "10f52a79292dcad66edbd058b785786412c14a11bb68fb1928dabeac8336b694",
+      "packageFinalSha256": "9d871dde6ebd6da52c3a336448c5e0f0d2b2e5dfe7e2985c90c0ba86fdc6349a",
+      "mergedSha256": "9d871dde6ebd6da52c3a336448c5e0f0d2b2e5dfe7e2985c90c0ba86fdc6349a",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/tool-registry.ts",
+      "packageBaseSha256": "6e175226a687322a0665fb087468d6354dab964463c67db8b6772c296bef22ab",
+      "previousMainSha256": "6e175226a687322a0665fb087468d6354dab964463c67db8b6772c296bef22ab",
+      "packageFinalSha256": "cfd1c2a5ff1b68e7650c43ed59d2be8f8d13f38ce65e211731742efe60c2ac82",
+      "mergedSha256": "cfd1c2a5ff1b68e7650c43ed59d2be8f8d13f38ce65e211731742efe60c2ac82",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-client/src/workspace-ui.test.tsx",
+      "packageBaseSha256": "0f0a854c2d31bd468eae3bf536f001b9de41610e635f0519eee99155d38d1045",
+      "previousMainSha256": "0f0a854c2d31bd468eae3bf536f001b9de41610e635f0519eee99155d38d1045",
+      "packageFinalSha256": "7f63aec07e247344322232ffebf2c548ee8baa97a2f333ae612db82e43f63b9b",
+      "mergedSha256": "7f63aec07e247344322232ffebf2c548ee8baa97a2f333ae612db82e43f63b9b",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-desktop/src/main.mjs",
+      "packageBaseSha256": "9e58631fc6fa7a403b551443160bb49b15042dca4720a5c476a639adc2d82fe8",
+      "previousMainSha256": "cc49cbcbceaaadd3860f407d333c3cbffcc663552a60f54e8b65f19867aab3ba",
+      "packageFinalSha256": "41498838716989442ad8e0afa2efd1df41ae8c6fc519432691ed8be30213e121",
+      "mergedSha256": "b6b9cb3adf817d30a6d68a1387222e7596821bbe47ae9d3b4838f60fd9598607",
+      "merge": "merged-delta"
+    },
+    {
+      "path": "frontend/design-desktop/src/native-locale.mjs",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "875bfea1d8dec932c935481228d90e334ebe73b28c5f0080890d4a70c0c1e7dc",
+      "mergedSha256": "ef95b471b71d721e07f15cb37e9717a274beb5add635121f3cd36d0bb98f524e",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-desktop/src/preload.cjs",
+      "packageBaseSha256": "5a77d825cf61f931fc3ef200649ce98a70093a33ee2b785c880958a1902703db",
+      "previousMainSha256": "17efc3d992e3357a3c8f7cf5d5dace8cc10edf64bafad5099212cacc450e312b",
+      "packageFinalSha256": "a4b636fef72fe61d3f8173a88869fc1062960a42bf02a3b35c11cb5367cfca19",
+      "mergedSha256": "7927b0f414389c39a8d5f515c614d7b4a1ce0a59c07dedc4129f4e38dfbd4f42",
+      "merge": "merged-delta"
+    },
+    {
+      "path": "frontend/design-desktop/src/window-state.mjs",
+      "packageBaseSha256": "2f7d5679e7c4749894a6eb7c1d4d38ab9f1f3ab9550d3096ad2ed1750adc1659",
+      "previousMainSha256": "2f7d5679e7c4749894a6eb7c1d4d38ab9f1f3ab9550d3096ad2ed1750adc1659",
+      "packageFinalSha256": "6e1e32e71f38f7f95d6f193a69af8588d2b59a626653cbd0f8bd07377676a4cc",
+      "mergedSha256": "6e1e32e71f38f7f95d6f193a69af8588d2b59a626653cbd0f8bd07377676a4cc",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-desktop/test/main.test.mjs",
+      "packageBaseSha256": "c0f480818c7e53079a4758d9c997f62d570bcf8fe3696b0434c9fb872f7580dd",
+      "previousMainSha256": "fac8c263e4cac91ab4b3e4150c403128ab71ed72057417dbae04d394245c3b5e",
+      "packageFinalSha256": "0d8cd3aed9a7919d59d2a7cb62fea41c1aae9be9a46a90504ae1b11fd7d02003",
+      "mergedSha256": "6266af0846125ef16d1f6e65bc298bb5d7114dabc65072c65dd0c7b987a1181c",
+      "merge": "conflict"
+    },
+    {
+      "path": "frontend/design-desktop/test/native-locale-repair.test.mjs",
+      "packageBaseSha256": null,
+      "previousMainSha256": null,
+      "packageFinalSha256": "81a923a765444ff0aa40c8a3b9715e346f94753a003fa4f4a92410447e736972",
+      "mergedSha256": "81a923a765444ff0aa40c8a3b9715e346f94753a003fa4f4a92410447e736972",
+      "merge": "new-delta"
+    },
+    {
+      "path": "frontend/design-desktop/test/preload.test.mjs",
+      "packageBaseSha256": "1af84e8542a33527aa88646e1b4e0b9c47f40f395ca4c7023579d05f5f69bce0",
+      "previousMainSha256": "82bf9135e4d33ed134eecd102b71592b113a28c04d690e94ce3be263cf99e848",
+      "packageFinalSha256": "1b5b18e2503df4f9a3144a357bb05ea19320a1d6003c71d6c4c27dbd9867dfc6",
+      "mergedSha256": "20c8b019b5cdb54a31d1a12e50ebc8206d8d90f98024d2abd7a58fbf17736f60",
+      "merge": "merged-delta"
+    },
+    {
+      "path": "frontend/design-desktop/test/window-state.test.mjs",
+      "packageBaseSha256": "f6f1f806a9f67da7de9421dead187b45cb5e0fd44598ff13be687423ac6e8aa8",
+      "previousMainSha256": "f6f1f806a9f67da7de9421dead187b45cb5e0fd44598ff13be687423ac6e8aa8",
+      "packageFinalSha256": "713c248de1168729ded882dd28551b5bacf50efccf17855c07aa0e0ec7e0a9b6",
+      "mergedSha256": "713c248de1168729ded882dd28551b5bacf50efccf17855c07aa0e0ec7e0a9b6",
+      "merge": "new-delta"
+    }
+  ],
+  "staticSyntaxInspection": {
+    "files": 95,
+    "syntaxErrors": 0,
+    "method": "Bun.Transpiler in-memory syntax parsing; source files not executed; no type checking or build output."
+  }
+}

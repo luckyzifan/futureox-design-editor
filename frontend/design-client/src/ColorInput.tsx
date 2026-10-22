@@ -1,3 +1,4 @@
+import { usePropertyText } from './property-interface-messages'
 import { SolidFillColorInput } from './ColorPickerPopover'
 import type { SolidFillTarget } from './property-preview'
 import { createInputDiagnostics, InputFamily, InputPhase } from './input-diagnostics'
@@ -23,6 +24,7 @@ function LegacyColorInput({
   onChange: (value: string) => void
   label: string
 }) {
+  const { locale, tr } = usePropertyText()
   const editor = useContext(PendingEditContext),
     current = useRef({ value, onChange }),
     controller = useRef<AbortController | null>(null),
@@ -114,7 +116,7 @@ function LegacyColorInput({
           validate={(color) => validColor(color, true)}
         />
       )}
-      <button type="button" aria-label={`吸取${label}`} title="从画布取样" onClick={() => void sample()}>
+      <button type="button" aria-label={locale === 'en' ? `Sample ${label}` : `吸取${label}`} title={tr("从画布取样")} onClick={() => void sample()}>
         <Pipette size={13} />
       </button>
       {error && <span role="alert">{error}</span>}

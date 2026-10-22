@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld(
       onCancel: callback => subscribe('design-desktop:automation-cancel', callback,
         value => value && typeof value.requestId === 'string'),
     }),
+    setInterfaceLocale: locale => invoke('set-interface-locale', locale),
     rendererReady: () => invoke('renderer-ready'),
     performTextCommand: (value) => invoke('text-command', value),
     fonts: Object.freeze({ list: () => invoke('fonts-list'), read: (value) => invoke('fonts-read', value) }),

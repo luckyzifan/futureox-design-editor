@@ -88,7 +88,7 @@ const emptyResult = (message: string): FontEditResult => ({ status: 'blocked', c
 export function applySelectionFont(editor: Editor, ids: readonly string[], fontId: string, options: FontEditOptions = {}, resource?: FontResource): FontEditResult {
   if (!commitPendingEdits(editor)) return emptyResult(editor.state.message)
   const targets = fontTargets(editor.state.doc, { kind: 'selection', ids }, options)
-  if (targets.skippedLinked) { editor.notify('所选文字引用共享样式；请先勾选「转为本地文字样式」'); return emptyResult(editor.state.message) }
+  if (targets.skippedLinked) { editor.notify('所选文字引用共享样式；请先勾选「转为本地文字样式」', { key: 'sharedFontStyleNeedsLocalOverride' }); return emptyResult(editor.state.message) }
   if (!targets.targets.length) return emptyResult('请选择文字图层')
   let changedNodes = 0, changedReferences = 0, visitedRuns = 0
   const change = editor.change('应用所选文字字体', doc => {

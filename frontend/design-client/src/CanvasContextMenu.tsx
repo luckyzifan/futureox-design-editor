@@ -1,3 +1,5 @@
+import { useInterfacePreferences } from './interface-preference'
+import { canvasText } from './canvas-interface-messages'
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Lock } from 'lucide-react'
@@ -22,13 +24,14 @@ export type CanvasContextMenuProps = {
 }
 
 export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClose, onEditText }: CanvasContextMenuProps) {
+  const { locale } = useInterfacePreferences(), text = canvasText[locale]
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const root = useRef<HTMLDivElement>(null), close = useRef(onClose)
   const previousFocus = useRef(document.activeElement), restoreFocus = useRef(false)
   close.current = onClose
   const [layers, setLayers] = useState(false), [position, setPosition] = useState({ x, y })
   const [pages, setPages] = useState(false),[group,setGroup]=useState<string|null>(null)
-  const groupName=(id:string)=>id==='copy-as'?'复制／粘贴为':'选择相同'
+  const groupName=(id:string)=>id==='copy-as'?text.copyAs:text.selectSame
   const context = useRef({ session: editor.sessionGeneration, page: state.page, version: state.version, selection: state.selection.join('\n') })
   const profile = useShortcutProfile()
   const items = canvasMenuItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), parents = editor.parentMap(state.doc)
@@ -45,6 +48,10 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
     const box = menu.getBoundingClientRect()
     const next = clampContextMenu({ x, y }, box, { width: window.innerWidth, height: window.innerHeight })
     setPosition((old) => old.x === next.x && old.y === next.y ? old : next)
+  }, [x, y, layers, pages, group, locale])
+  useLayoutEffect(() => {
+    const menu = root.current
+    if (!menu) return
     ;(menu.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') || menu).focus({ preventScroll: true })
   }, [x, y, layers, pages, group])
   useEffect(() => {
@@ -74,7 +81,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
     })
   }
   let previousGroup = ''
-  return createPortal(<div ref={root} role="menu" aria-label={layers ? '选择图层' : pages ? '移动到页面' : group?groupName(group):'画布右键菜单'} className="canvas-context-menu"
+  return createPortal(<div ref={root} role="menu" aria-label={layers ? text.selectLayer : pages ? text.moveToPage : group?groupName(group):text.menu} className="canvas-context-menu"
     style={{ left: position.x, top: position.y }} tabIndex={-1}
     onPointerDown={(event) => event.stopPropagation()} onPointerMove={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()}
     onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}
@@ -99,21 +106,21 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
       if (event.key === 'ArrowRight' && (document.activeElement as HTMLElement)?.dataset.pagePicker === 'true') { event.preventDefault(); setPages(true) }
     }}>
     {layers ? <>
-      <button type="button" role="menuitem" className="context-back" onClick={() => setLayers(false)}><ChevronLeft size={14} /><span>选择图层</span></button>
+      <button type="button" role="menuitem" className="context-back" onClick={() => setLayers(false)}><ChevronLeft size={14} /><span>{text.selectLayer}</span></button>
       <div role="separator" />
-      {visible.map((candidate) => <button type="button" role="menuitem" key={candidate.id} aria-label={`选择图层 ${candidate.name}${candidate.locked ? '（已锁定）' : ''}`}
+      {visible.map((candidate) => <button type="button" role="menuitem" key={candidate.id} aria-label={`${text.selectLayer} ${candidate.name}${candidate.locked ? text.lockedSuffix : ''}`}
         onClick={() => { restoreFocus.current = true; editor.select([candidate.id]); close.current() }}><span className="context-label">{candidate.name}</span>{candidate.locked && <Lock size={12} aria-hidden="true" />}</button>)}
     </> : pages ? <>
-      <button type="button" role="menuitem" className="context-back" onClick={() => setPages(false)}><ChevronLeft size={14} /><span>移动到页面</span></button>
+      <button type="button" role="menuitem" className="context-back" onClick={() => setPages(false)}><ChevronLeft size={14} /><span>{text.moveToPage}</span></button>
       <div role="separator" />
       {state.doc.pages.map(page => <button type="button" role="menuitem" key={page.id} disabled={page.id === state.page} onClick={() => action('move-to-page', page.id)}>{page.name}</button>)}
     </> : group ? <>
       <button type="button" role="menuitem" className="context-back" onClick={()=>setGroup(null)}><ChevronLeft size={14}/><span>{groupName(group)}</span></button><div role="separator"/>
       {items.filter(item=>item.group===group).map(item=><button type="button" role="menuitem" key={item.command} disabled={item.disabled} onClick={()=>action(item.command)}><span className="context-label">{item.label}</span>{item.shortcut&&<kbd>{item.shortcut}</kbd>}</button>)}
     </> : <>
-      {visible.length > 0 && <><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-layer-picker="true" onClick={() => setLayers(true)}><span>选择图层</span><ChevronRight size={14} /></button><div role="separator" /></>}
-      {onEditText && selected?.kind === 'text' && !lockedSelectionIds(editor).length && <><button type="button" role="menuitem" onClick={() => { close.current(); queueMicrotask(() => onEditText(selected.id)) }}>编辑文字</button><div role="separator" /></>}
-      {!!state.selection.length && <><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-page-picker="true" disabled={state.busy || editor.interactionActive || !!lockedSelectionIds(editor).length || state.doc.pages.length < 2} onClick={() => setPages(true)}><span>移动到页面</span><ChevronRight size={14} /></button><div role="separator" /></>}
+      {visible.length > 0 && <><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-layer-picker="true" onClick={() => setLayers(true)}><span>{text.selectLayer}</span><ChevronRight size={14} /></button><div role="separator" /></>}
+      {onEditText && selected?.kind === 'text' && !lockedSelectionIds(editor).length && <><button type="button" role="menuitem" onClick={() => { close.current(); queueMicrotask(() => onEditText(selected.id)) }}>{text.editText}</button><div role="separator" /></>}
+      {!!state.selection.length && <><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-page-picker="true" disabled={state.busy || editor.interactionActive || !!lockedSelectionIds(editor).length || state.doc.pages.length < 2} onClick={() => setPages(true)}><span>{text.moveToPage}</span><ChevronRight size={14} /></button><div role="separator" /></>}
       {items.filter((item,index)=>!['copy-as','selection'].includes(item.group)||!state.selection.length||items.findIndex(other=>other.group===item.group)===index).map((item) => {
         if(state.selection.length&&['copy-as','selection'].includes(item.group))return <div key={item.group} role="none"><div role="separator"/><button type="button" role="menuitem" aria-haspopup="menu" data-menu-group={item.group} onClick={()=>setGroup(item.group)}><span>{groupName(item.group)}</span><ChevronRight size={14}/></button></div>
         const separator = previousGroup && previousGroup !== item.group

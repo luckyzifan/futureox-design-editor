@@ -1,3 +1,4 @@
+import { usePropertyText, propertyOwnerLabel, propertyLayerCount } from './property-interface-messages'
 import { RepeatPanel } from './RepeatPanel'
 import {BoardPanel} from './BoardPanel'
 import { AlignmentControls } from './AlignmentControls'
@@ -86,6 +87,7 @@ function PaintEditor({
   onChange: (p: Paint) => void
   maxImagePixels: number
 }) {
+  const { tr } = usePropertyText()
   const file = useRef<HTMLInputElement>(null)
   const editor = useContext(PendingEditContext), mounted = useRef(true), latestPaint = useRef(p), imageRequest = useRef(0)
   latestPaint.current = p
@@ -93,31 +95,31 @@ function PaintEditor({
   return (
     <div className="paint-editor">
       <div className="paint-row">
-        <ColorInput label="颜色" target={target} value={p.color} onChange={(color) => onChange({ ...p, color })} />
+        <ColorInput label={tr("颜色")} target={target} value={p.color} onChange={(color) => onChange({ ...p, color })} />
         <select
-          aria-label="填充类型"
+          aria-label={tr("填充类型")}
           value={p.kind}
           onChange={(e) => onChange({ ...p, kind: e.target.value as Paint['kind'] })}
         >
-          <option value="solid">纯色</option>
-          <option value="linear">线性渐变</option>
-          <option value="radial">径向渐变</option>
-          <option value="angular">角度渐变</option>
-          <option value="diamond">菱形渐变</option>
-          <option value="image">图片</option>
+          <option value="solid">{tr("纯色")}</option>
+          <option value="linear">{tr("线性渐变")}</option>
+          <option value="radial">{tr("径向渐变")}</option>
+          <option value="angular">{tr("角度渐变")}</option>
+          <option value="diamond">{tr("菱形渐变")}</option>
+          <option value="image">{tr("图片")}</option>
         </select>
         <span className="hex">
-          {p.color.startsWith('#') ? p.color.slice(1).toUpperCase() : '扩展颜色'}
+          {p.color.startsWith('#') ? p.color.slice(1).toUpperCase() : tr("扩展颜色")}
         </span>
       </div>
       {p.kind !== 'solid' && (
         <details>
-          <summary>填充变换 / 图片裁切</summary>
+          <summary>{tr("填充变换 / 图片裁切")}</summary>
           <div className="field-grid">
             {['缩放 X', '倾斜 Y', '倾斜 X', '缩放 Y', '平移 X', '平移 Y'].map((label, i) => (
-              <NumberField
+              <NumberField historyLabel={label} unit="number" diagnosticFamily={2}
                 key={label}
-                label={label}
+                label={tr(label)}
                 value={(p.transform || [1, 0, 0, 1, 0, 0])[i]}
                 onChange={(v) => {
                   const transform = [
@@ -128,22 +130,21 @@ function PaintEditor({
                 }}
               />
             ))}
-            <button onClick={() => onChange({ ...p, transform: undefined })}>重置变换</button>
+            <button onClick={() => onChange({ ...p, transform: undefined })}>{tr("重置变换")}</button>
           </div>
         </details>
       )}
       <div className="field-grid">
-        {target ? <label className="paint-opacity-field">填充不透明度 %
-          <SolidFillColorInput target={target} label="填充不透明度" value={String(p.opacity * 100)} opacity />
-        </label> : <NumberField
-          label="不透明度 %"
+        {target ? <label className="paint-opacity-field">{tr("填充不透明度 %")}<SolidFillColorInput target={target} label={tr("填充不透明度")} value={String(p.opacity * 100)} opacity />
+        </label> : <NumberField historyLabel="不透明度 %" diagnosticFamily={11} unit="percent"
+          label={tr("不透明度 %")}
           value={p.opacity * 100}
           min={0}
           max={100}
           onChange={(v) => onChange({ ...p, opacity: v / 100 })}
         />}
         <select
-          aria-label="填充混合模式"
+          aria-label={tr("填充混合模式")}
           value={p.blend}
           onChange={(e) => onChange({ ...p, blend: e.target.value as Blend })}
         >
@@ -154,8 +155,8 @@ function PaintEditor({
       </div>
       {['linear', 'radial', 'angular', 'diamond'].includes(p.kind) && (
         <>
-          <NumberField
-            label="渐变角度"
+          <NumberField historyLabel="渐变角度" diagnosticFamily={2} unit="angle"
+            label={tr("渐变角度")}
             value={p.angle}
             onChange={(v) => onChange({ ...p, angle: v })}
           />
@@ -168,7 +169,7 @@ function PaintEditor({
           {p.stops.map((s, i) => (
             <div className="stop-row" key={i}>
               <ColorInput
-                label={`色标 ${i + 1}`}
+                label={`${tr("色标")} ${i + 1}`}
                 value={s.color}
                 onChange={(color) =>
                   onChange({
@@ -177,8 +178,8 @@ function PaintEditor({
                   })
                 }
               />
-              <NumberField
-                label="位置 %"
+              <NumberField historyLabel="位置 %" diagnosticFamily={2} unit="percent"
+                label={tr("位置 %")}
                 value={s.offset * 100}
                 min={0}
                 max={100}
@@ -192,7 +193,7 @@ function PaintEditor({
                 }
               />
               <button
-                title="删除色标"
+                title={tr("删除色标")}
                 disabled={p.stops.length <= 2}
                 onClick={() => onChange({ ...p, stops: p.stops.filter((_, k) => k !== i) })}
               >
@@ -210,9 +211,7 @@ function PaintEditor({
                 ),
               })
             }
-          >
-            ＋ 添加色标
-          </button>
+          >{tr("＋ 添加色标")}</button>
         </>
       )}
       {p.kind === 'image' && (
@@ -244,11 +243,9 @@ function PaintEditor({
             }}
           />
           <button className="wide-button" onClick={() => file.current?.click()}>
-            <ImagePlus size={14} />
-            选择图片
-          </button>
+            <ImagePlus size={14} />{tr("选择图片")}</button>
           <select
-            aria-label="图片适应方式"
+            aria-label={tr("图片适应方式")}
             value={p.fit}
             // Tiling replaces the fit placement (the pattern chain starts
             // from its own tiling math, not cover/contain), so the mode is inert while
@@ -256,15 +253,15 @@ function PaintEditor({
             disabled={!!p.tile && p.tile.mode !== 'none'}
             onChange={(e) => onChange({ ...p, fit: e.target.value as Paint['fit'] })}
           >
-            <option value="cover">填充 / 裁剪</option>
-            <option value="contain">适应</option>
-            <option value="stretch">拉伸</option>
+            <option value="cover">{tr("填充 / 裁剪")}</option>
+            <option value="contain">{tr("适应")}</option>
+            <option value="stretch">{tr("拉伸")}</option>
           </select>
           <details className="pattern-tile">
-            <summary>图案平铺</summary>
+            <summary>{tr("图案平铺")}</summary>
             <div className="field-grid">
-              <label aria-label="平铺模式">
-                <span>模式</span>
+              <label aria-label={tr("平铺模式")}>
+                <span>{tr("模式")}</span>
                 <select
                   value={p.tile?.mode ?? 'none'}
                   onChange={(e) => {
@@ -277,10 +274,10 @@ function PaintEditor({
                     })
                   }}
                 >
-                  <option value="none">不平铺</option>
-                  <option value="grid">规则平铺</option>
-                  <option value="stagger_horizontal">横错列</option>
-                  <option value="stagger_vertical">竖错列</option>
+                  <option value="none">{tr("不平铺")}</option>
+                  <option value="grid">{tr("规则平铺")}</option>
+                  <option value="stagger_horizontal">{tr("横错列")}</option>
+                  <option value="stagger_vertical">{tr("竖错列")}</option>
                 </select>
               </label>
               {(
@@ -293,13 +290,13 @@ function PaintEditor({
               ).map(([field, axis, label, hint]) => {
                 const tile = { ...defaultPatternTile(), ...p.tile }
                 return (
-                  <label key={`${field}${axis}`} aria-label={label}>
-                    <span>{label}</span>
+                  <label key={`${field}${axis}`} aria-label={tr(label)}>
+                    <span>{tr(label)}</span>
                     <input
                       type="number"
                       step={1}
                       min={field === 'size' ? 0 : undefined}
-                      placeholder={hint || '0'}
+                      placeholder={tr(hint) || '0'}
                       value={tile[field][axis]}
                       onChange={(e) => {
                         const raw = Number(e.target.value)
@@ -319,7 +316,7 @@ function PaintEditor({
             </div>
           </details>
           <details className="image-adjust">
-            <summary>图片调整</summary>
+            <summary>{tr("图片调整")}</summary>
             <div className="field-grid">
               {(
                 [
@@ -334,8 +331,8 @@ function PaintEditor({
               ).map(([key, label]) => {
                 const adjust = { ...defaultImageAdjust(), ...p.adjust }
                 return (
-                  <label key={key} className="adjust-row" aria-label={label}>
-                    <span>{label}</span>
+                  <label key={key} className="adjust-row" aria-label={tr(label)}>
+                    <span>{tr(label)}</span>
                     <input
                       type="range"
                       min={-100}
@@ -358,7 +355,7 @@ function PaintEditor({
                   </label>
                 )
               })}
-              <button onClick={() => onChange({ ...p, adjust: undefined })}>重置调整</button>
+              <button onClick={() => onChange({ ...p, adjust: undefined })}>{tr("重置调整")}</button>
             </div>
           </details>
         </>
@@ -369,6 +366,7 @@ function PaintEditor({
 // Camera presentation updates re-render the parent shell. The controls consume
 // the editor's independent panel snapshot and must not rebuild for those frames.
 export const Inspector = memo(function Inspector({ editor }: { editor: Editor }) {
+  const { locale, tr } = usePropertyText()
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     ids = s.selection,
@@ -380,14 +378,14 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
     return (
       <aside className="inspector">
         <div className="panel-tabs">
-          <b>设计</b>
-          <span>属性</span>
+          <b>{tr("设计")}</b>
+          <span>{tr("属性")}</span>
         </div>
         <section>
-          <h3>页面</h3>
+          <h3>{tr("页面")}</h3>
           <label className="paint-row">
             <ColorInput
-              label="页面背景"
+              label={tr("页面背景")}
               value={s.doc.pages.find((p) => p.id === s.page)!.background}
               onChange={(color) =>
                 editor.change('页面背景', (d) => {
@@ -395,45 +393,41 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 })
               }
             />
-            <span>画布背景</span>
+            <span>{tr("画布背景")}</span>
           </label>
           <label className="check-row">
             <input
               type="checkbox"
               checked={s.grid}
               onChange={(e) => editor.set({ grid: e.target.checked })}
-            />
-            显示网格
-          </label>
+            />{tr("显示网格")}</label>
           <label className="check-row">
             <input
               type="checkbox"
               checked={s.snap}
               onChange={(e) => editor.set({ snap: e.target.checked })}
-            />
-            智能吸附
-          </label>
+            />{tr("智能吸附")}</label>
         </section>
         <section className="empty-inspector">
           <div className="selection-illustration">⌘</div>
-          <h3>为想法留一点空间</h3>
-          <p>选中图层，探索它的颜色、形状与质感。</p>
+          <h3>{tr("为想法留一点空间")}</h3>
+          <p>{tr("选中图层，探索它的颜色、形状与质感。")}</p>
           <dl>
-            <dt>选择 / 平移</dt>
+            <dt>{tr("选择 / 平移")}</dt>
             <dd>V / H</dd>
-            <dt>矩形 / 椭圆</dt>
+            <dt>{tr("矩形 / 椭圆")}</dt>
             <dd>R / O</dd>
-            <dt>画板 / 钢笔</dt>
+            <dt>{tr("画板 / 钢笔")}</dt>
             <dd>F / P</dd>
-            <dt>编组</dt>
+            <dt>{tr("编组")}</dt>
             <dd>⌘ G</dd>
-            <dt>深层选择</dt>
-            <dd>⌘ 点击</dd>
-            <dt>适合画布</dt>
+            <dt>{tr("深层选择")}</dt>
+            <dd>{tr("⌘ 点击")}</dd>
+            <dt>{tr("适合画布")}</dt>
             <dd>⇧ 1</dd>
           </dl>
         </section>
-        <div className="local-badge">独立工作空间 · 本地优先</div>
+        <div className="local-badge">{tr("独立工作空间 · 本地优先")}</div>
       </aside>
     )
   const units = propertyUnits(s.doc, n.id, editor.parentMap(s.doc))
@@ -443,7 +437,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
   const listControls = (field: 'fills' | 'strokes' | 'effects', i: number) => (
     <div className="mini-actions">
       <button
-        title="上移"
+        title={tr("上移")}
         disabled={!i}
         onClick={() =>
           update((n) => {
@@ -458,7 +452,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
         <ChevronUp size={13} />
       </button>
       <button
-        title="下移"
+        title={tr("下移")}
         disabled={i === n[field].length - 1}
         onClick={() =>
           update((n) => {
@@ -473,7 +467,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
         <ChevronDown size={13} />
       </button>
       <button
-        title="切换可见性"
+        title={tr("切换可见性")}
         onClick={() =>
           update((n) => {
             if (n[field][i]) {
@@ -486,7 +480,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
         {n[field][i].visible ? <Eye size={13} /> : <EyeOff size={13} />}
       </button>
       <button
-        title="删除"
+        title={tr("删除")}
         onClick={() =>
           update((n) => {
             if (n[field][i]) {
@@ -501,19 +495,19 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
     </div>
   )
   return (
-    <aside className="inspector" data-node-id={n.id} data-node-name={n.name} aria-label={`${n.name} 属性`}>
+    <aside className="inspector" data-node-id={n.id} data-node-name={n.name} aria-label={propertyOwnerLabel(n.name, locale)}>
       <div className="panel-tabs">
-        <span>{ids.length > 1 ? `${ids.length} 个图层` : ({ slice:'切片', frame: '画板', section: '分区', group: '编组', rectangle: '矩形', ellipse: '椭圆', polygon: '多边形', star: '星形', line: '直线', vector: '矢量', text: '文字' }[n.kind])}</span>
-        <button type="button" aria-label="更多图层操作" onClick={event => setContext({ x: event.clientX, y: event.clientY })}>⋯</button>
+        <span>{ids.length > 1 ? propertyLayerCount(ids.length, locale) : tr({ slice:'切片', frame: '画板', section: '分区', group: '编组', rectangle: '矩形', ellipse: '椭圆', polygon: '多边形', star: '星形', line: '直线', vector: '矢量', text: '文字' }[n.kind])}</span>
+        <button type="button" aria-label={tr("更多图层操作")} onClick={event => setContext({ x: event.clientX, y: event.clientY })}>⋯</button>
       </div>
       <div className="inspector-scroll">
         {styleDescription && <p role="note" className="property-unit-notice">＊ 最大缩放系数换算。{styleDescription}</p>}
         <section>
 
-          <h3>位置</h3>
+          <h3>{tr("位置")}</h3>
           <AlignmentControls editor={editor}/>
           <div className="field-grid">
-            <NumberField
+            <NumberField historyLabel="X" diagnosticFamily={2} unit="length"
               label="X"
               value={position.x * units.parentX}
               onChange={(v) =>
@@ -522,7 +516,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 })
               }
             />
-            <NumberField
+            <NumberField historyLabel="Y" diagnosticFamily={2} unit="length"
               label="Y"
               value={position.y * units.parentY}
               onChange={(v) =>
@@ -531,8 +525,8 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 })
               }
             />
-            <NumberField
-              label="旋转 °"
+            <NumberField historyLabel="旋转 °" diagnosticFamily={2} unit="angle"
+              label={tr("旋转 °")}
               value={angle}
               onChange={(v) =>
                 update((n) => {
@@ -544,9 +538,9 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           </div>
         </section>
         <section>
-          <h3>布局</h3>
+          <h3>{tr("布局")}</h3>
           <div className="field-grid">
-            <NumberField
+            <NumberField historyLabel="W" diagnosticFamily={3} unit="length"
               label="W"
               value={selectionMetric(n, 'width', s.doc, units)}
               min={0.01}
@@ -554,7 +548,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 update((n) => resizeNodeDimension(n, 'width', v, s.doc))
               }
             />
-            <NumberField
+            <NumberField historyLabel="H" diagnosticFamily={4} unit="length"
               label="H"
               value={selectionMetric(n, 'height', s.doc, units)}
               min={0.01}
@@ -564,21 +558,19 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
             />
           </div>
           <label className="check-row">
-            <input type="checkbox" aria-label="锁定宽高比" checked={!!n.constrainProportions}
-              onChange={e => update(n => { n.constrainProportions = e.target.checked }, '锁定宽高比')} />
-            锁定宽高比
-          </label>
+            <input type="checkbox" aria-label={tr("锁定宽高比")} checked={!!n.constrainProportions}
+              onChange={e => update(n => { n.constrainProportions = e.target.checked }, '锁定宽高比')} />{tr("锁定宽高比")}</label>
           {n.kind === 'ellipse' && !n.network && (
             <div className="field-grid">
-              <NumberField label="圆弧起始 °" value={(n.arc?.startAngle ?? 0) * 180 / Math.PI}
+              <NumberField historyLabel="圆弧起始 °" diagnosticFamily={2} unit="angle" label={tr("圆弧起始 °")} value={(n.arc?.startAngle ?? 0) * 180 / Math.PI}
                 onChange={v => update(n => { n.arc = { sweepAngle: Math.PI * 2, innerRadius: 0, ...n.arc, startAngle: v * Math.PI / 180 } })} />
-              <NumberField label="圆弧扫过 °" value={(n.arc?.sweepAngle ?? Math.PI * 2) * 180 / Math.PI} min={-360} max={360}
+              <NumberField historyLabel="圆弧扫过 °" diagnosticFamily={2} unit="angle" label={tr("圆弧扫过 °")} value={(n.arc?.sweepAngle ?? Math.PI * 2) * 180 / Math.PI} min={-360} max={360}
                 onChange={v => update(n => { n.arc = { startAngle: 0, innerRadius: 0, ...n.arc, sweepAngle: v * Math.PI / 180 } })} />
-              <NumberField label="圆环内径 %" value={(n.arc?.innerRadius ?? 0) * 100} min={0} max={100}
+              <NumberField historyLabel="圆环内径 %" diagnosticFamily={2} unit="percent" label={tr("圆环内径 %")} value={(n.arc?.innerRadius ?? 0) * 100} min={0} max={100}
                 onChange={v => update(n => { n.arc = { startAngle: 0, sweepAngle: Math.PI * 2, ...n.arc, innerRadius: v / 100 } })} />
             </div>
           )}
-          {['polygon', 'star'].includes(n.kind) && !n.network && <UnitNumberField unitDescription={styleDescription} unitScale={units.style} label="顶点圆角" min={0} value={n.cornerRadius ?? 0}
+          {['polygon', 'star'].includes(n.kind) && !n.network && <UnitNumberField unitDescription={styleDescription} historyLabel="顶点圆角" diagnosticFamily={2} unit="length" unitScale={units.style} label={tr("顶点圆角")} min={0} value={n.cornerRadius ?? 0}
             onChange={v => update(n => { n.cornerRadius = v })} />}
           {container(n) && (
             <label className="check-row">
@@ -590,17 +582,15 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                     n.clip = e.target.checked
                   })
                 }
-              />
-              裁剪超出内容
-            </label>
+              />{tr("裁剪超出内容")}</label>
           )}
           {n.kind!=='slice' && <LayoutPanel editor={editor} node={n} ids={ids} embedded />}
         </section>
         {n.kind!=='slice' && <section>
-          <h3>外观</h3>
+          <h3>{tr("外观")}</h3>
           <div className="field-grid">
-            <NumberField
-              label="透明度 %"
+            <NumberField historyLabel="透明度 %" diagnosticFamily={10} unit="percent"
+              label={tr("透明度 %")}
               value={n.opacity * 100}
               min={0}
               max={100}
@@ -611,10 +601,8 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
               }
             />
           </div>
-          <label className="labeled-select">
-            混合模式
-            <select
-              aria-label="混合模式"
+          <label className="labeled-select">{tr("混合模式")}<select
+              aria-label={tr("混合模式")}
               value={n.blend}
               onChange={(e) =>
                 update((n) => {
@@ -622,7 +610,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 })
               }
             >
-              <option value="pass-through">穿透（Pass through）</option>
+              <option value="pass-through">{tr("穿透（Pass through）")}</option>
               {blends.map((b) => (
                 <option key={b}>{b}</option>
               ))}
@@ -630,12 +618,12 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           </label>
           {['rectangle', 'frame', 'section'].includes(n.kind) && (
             <>
-              <h4>圆角</h4>
+              <h4>{tr("圆角")}</h4>
               <div className="field-grid">
                 {n.radii.map((r, i) => (
-                  <UnitNumberField unitDescription={styleDescription} unitScale={units.style}
+                  <UnitNumberField unitDescription={styleDescription} historyLabel={['左上', '右上', '右下', '左下'][i]} unit="length" diagnosticFamily={2} unitScale={units.style}
                     key={i}
-                    label={['左上', '右上', '右下', '左下'][i]}
+                    label={tr(['左上', '右上', '右下', '左下'][i])}
                     value={r}
                     min={0}
                     onChange={(v) =>
@@ -646,8 +634,8 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                   />
                 ))}
               </div>
-              <NumberField
-                label="圆角平滑 %"
+              <NumberField historyLabel="圆角平滑 %" diagnosticFamily={2} unit="percent"
+                label={tr("圆角平滑 %")}
                 value={n.smoothing * 100}
                 min={0}
                 max={100}
@@ -660,8 +648,8 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
             </>
           )}
           {['star', 'polygon'].includes(n.kind) && (
-            <NumberField
-              label="顶点数量"
+            <NumberField historyLabel="顶点数量" diagnosticFamily={2} unit="number"
+              label={tr("顶点数量")}
               value={n.points}
               min={3}
               max={60}
@@ -673,8 +661,8 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
             />
           )}
           {n.kind === 'star' && (
-            <NumberField
-              label="内半径 %"
+            <NumberField historyLabel="内半径 %" diagnosticFamily={2} unit="percent"
+              label={tr("内半径 %")}
               value={n.innerRadius * 100}
               min={1}
               max={99}
@@ -688,10 +676,10 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           {n.kind === 'text' && (
             <>
               <TextInput key={`${editor.sessionGeneration}:${n.id}`} node={n} editor={editor} />
-              {n.textPath&&<><NumberField label="沿路径偏移" value={n.textPath.offset} onChange={v=>update(n=>{n.textPath!.offset=v})}/><NumberField label="路径基线偏移" value={n.textPath.normal} onChange={v=>update(n=>{n.textPath!.normal=v})}/><label><input type="checkbox" checked={n.textPath.reverse} onChange={e=>update(n=>{n.textPath!.reverse=e.target.checked})}/>反向路径</label></>}
+              {n.textPath&&<><NumberField historyLabel="沿路径偏移" diagnosticFamily={2} unit="number" label={tr("沿路径偏移")} value={n.textPath.offset} onChange={v=>update(n=>{n.textPath!.offset=v})}/><NumberField historyLabel="路径基线偏移" diagnosticFamily={2} unit="number" label={tr("路径基线偏移")} value={n.textPath.normal} onChange={v=>update(n=>{n.textPath!.normal=v})}/><label><input type="checkbox" checked={n.textPath.reverse} onChange={e=>update(n=>{n.textPath!.reverse=e.target.checked})}/>{tr("反向路径")}</label></>}
               <TextStylePanel editor={editor} node={n} ids={ids} />
-              <UnitNumberField unitDescription={styleDescription} unitScale={units.style}
-                label="字号"
+              <UnitNumberField unitDescription={styleDescription} historyLabel="字号" diagnosticFamily={2} unit="length" unitScale={units.style}
+                label={tr("字号")}
                 value={n.fontSize}
                 min={1}
                 max={1024}
@@ -705,10 +693,8 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           )}
         </section>}
         {n.mask && (
-          <label>
-            蒙版类型
-            <select
-              aria-label="蒙版类型"
+          <label>{tr("蒙版类型")}<select
+              aria-label={tr("蒙版类型")}
               value={n.maskType || 'alpha'}
               onChange={(e) =>
                 update((n) => {
@@ -717,15 +703,15 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
               }
             >
               <option value="alpha">Alpha</option>
-              <option value="luminance">亮度</option>
+              <option value="luminance">{tr("亮度")}</option>
             </select>
           </label>
         )}
         {n.booleanOperation && (
           <section>
-            <h3>可编辑布尔组合</h3>
+            <h3>{tr("可编辑布尔组合")}</h3>
             <select
-              aria-label="布尔运算"
+              aria-label={tr("布尔运算")}
               value={n.booleanOperation}
               onChange={(e) =>
                 update((n) => {
@@ -737,21 +723,19 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 <option key={op}>{op}</option>
               ))}
             </select>
-            <p>在图层树选择原图形可继续修改；组合会重新计算。</p>
-            <button onClick={() => editor.ungroup()}>释放原图形</button>
+            <p>{tr("在图层树选择原图形可继续修改；组合会重新计算。")}</p>
+            <button onClick={() => editor.ungroup()}>{tr("释放原图形")}</button>
           </section>
         )}
         {n.kind!=='slice' && <>
         <VectorBrushPanel editor={editor} node={n}/>
-        {(n.pathOffset!==undefined || s.tool==='offset-path') && <NumberField label="路径偏移距离" value={n.pathOffset||0} min={-10000} max={10000} onChange={v=>update(n=>{n.pathOffset=v})}/>}
+        {(n.pathOffset!==undefined || s.tool==='offset-path') && <NumberField historyLabel="路径偏移距离" diagnosticFamily={2} unit="number" label={tr("路径偏移距离")} value={n.pathOffset||0} min={-10000} max={10000} onChange={v=>update(n=>{n.pathOffset=v})}/>}
         <BoardPanel editor={editor} node={n}/>
         <RepeatPanel editor={editor} node={n}/>
         <ComponentPanel editor={editor} node={n} ids={ids} />
         <section>
-          <h3>
-            填充
-            <button
-              title="添加填充"
+          <h3>{tr("填充")}<button
+              title={tr("添加填充")}
               onClick={() =>
                 update((n) => {
                   if (n.fills.length < 16) {
@@ -767,7 +751,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           {n.fills.map((p, i) => (
             <div className="property-card" key={p.id}>
               <div className="property-title">
-                <span>填充 {i + 1}</span>
+                <span>{tr("填充")}{i + 1}</span>
                 {listControls('fills', i)}
               </div>
               <PaintEditor
@@ -785,13 +769,11 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
               />
             </div>
           ))}
-          {!n.fills.length && <p className="muted">无填充</p>}
+          {!n.fills.length && <p className="muted">{tr("无填充")}</p>}
         </section>
         <section>
-          <h3>
-            描边
-            <button
-              title="添加描边"
+          <h3>{tr("描边")}<button
+              title={tr("添加描边")}
               onClick={() =>
                 update((n) => {
                   if (n.strokes.length < 16) n.strokes.push(stroke())
@@ -804,7 +786,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           {n.strokes.map((st, i) => (
             <div className="property-card" key={st.id}>
               <div className="property-title">
-                <span>描边 {i + 1}</span>
+                <span>{tr("描边")}{i + 1}</span>
                 {listControls('strokes', i)}
               </div>
               <PaintEditor
@@ -817,8 +799,8 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 }
               />
               <div className="field-grid">
-                <UnitNumberField unitDescription={styleDescription} unitScale={units.style}
-                  label="粗细"
+                <UnitNumberField unitDescription={styleDescription} historyLabel="粗细" diagnosticFamily={2} unit="number" unitScale={units.style}
+                  label={tr("粗细")}
                   value={st.width}
                   min={0}
                   max={10000}
@@ -829,7 +811,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                   }
                 />
                 <select
-                  aria-label="描边位置"
+                  aria-label={tr("描边位置")}
                   value={st.align}
                   onChange={(e) =>
                     update((n) => {
@@ -837,12 +819,12 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                     })
                   }
                 >
-                  <option value="center">居中</option>
-                  <option value="inside">内部</option>
-                  <option value="outside">外部</option>
+                  <option value="center">{tr("居中")}</option>
+                  <option value="inside">{tr("内部")}</option>
+                  <option value="outside">{tr("外部")}</option>
                 </select>
                 <select
-                  aria-label="端点"
+                  aria-label={tr("端点")}
                   value={st.cap}
                   onChange={(e) =>
                     update((n) => {
@@ -850,12 +832,12 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                     })
                   }
                 >
-                  <option value="butt">平头</option>
-                  <option value="round">圆头</option>
-                  <option value="square">方头</option>
+                  <option value="butt">{tr("平头")}</option>
+                  <option value="round">{tr("圆头")}</option>
+                  <option value="square">{tr("方头")}</option>
                 </select>
                 <select
-                  aria-label="连接"
+                  aria-label={tr("连接")}
                   value={st.join}
                   onChange={(e) =>
                     update((n) => {
@@ -863,27 +845,27 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                     })
                   }
                 >
-                  <option value="round">圆角</option>
-                  <option value="miter">尖角</option>
-                  <option value="bevel">斜角</option>
+                  <option value="round">{tr("圆角")}</option>
+                  <option value="miter">{tr("尖角")}</option>
+                  <option value="bevel">{tr("斜角")}</option>
                 </select>
               </div>
               {['line', 'vector'].includes(n.kind) && <div className="field-grid">
                 {(['startMarker', 'endMarker'] as const).map(field => <label key={field}>
-                  {field === 'startMarker' ? '起点' : '终点'}
-                  <select aria-label={field === 'startMarker' ? '起点箭头' : '终点箭头'} value={st[field] ?? 'none'}
+                  {field === 'startMarker' ? tr("起点") : tr("终点")}
+                  <select aria-label={tr(field === 'startMarker' ? '起点箭头' : '终点箭头')} value={st[field] ?? 'none'}
                     onChange={event => update(n => { if (n.strokes[i]) n.strokes[i][field] = event.target.value as NonNullable<Stroke[typeof field]> })}>
-                    {([['none','无'],['arrow','线条箭头'],['triangle','实心三角'],['circle','实心圆'],['diamond','实心菱形'],['square','实心方形'],['bar','垂线']] as const).map(([value,label]) => <option key={value} value={value}>{label}</option>)}
+                    {([['none','无'],['arrow','线条箭头'],['triangle','实心三角'],['circle','实心圆'],['diamond','实心菱形'],['square','实心方形'],['bar','垂线']] as const).map(([value,label]) => <option key={value} value={value}>{tr(label)}</option>)}
                   </select>
                 </label>)}
               </div>}
               {styleDescription && <small title={styleDescription}>虚线：最大缩放系数换算</small>}
-              <DraftInput aria-description={styleDescription} title={styleDescription} aria-label="虚线" placeholder="虚线，如 8 4" value={dashInUnits(st.dash, units.style)}
+              <DraftInput aria-description={styleDescription} title={styleDescription} aria-label={tr("虚线")} placeholder={tr("虚线，如 8 4")} value={dashInUnits(st.dash, units.style)}
                 validate={value => { try { dashInUnits(value, 1 / units.style); return true } catch { return false } }}
                 onCommit={(value) => update((n) => { if (n.strokes[i]) n.strokes[i].dash = dashInUnits(value, 1 / units.style) })} />
               <StrokeProfilePanel n={n} index={i} editor={editor} update={update} />
-              <UnitNumberField unitDescription={styleDescription} unitScale={units.style}
-                label="虚线偏移"
+              <UnitNumberField unitDescription={styleDescription} historyLabel="虚线偏移" diagnosticFamily={2} unit="number" unitScale={units.style}
+                label={tr("虚线偏移")}
                 value={st.dashOffset || 0}
                 min={-1e7}
                 max={1e7}
@@ -897,10 +879,8 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           ))}
         </section>
         <section>
-          <h3>
-            效果
-            <select
-              aria-label="添加效果"
+          <h3>{tr("效果")}<select
+              aria-label={tr("添加效果")}
               value=""
               onChange={(e) => {
                 if (e.target.value)
@@ -910,10 +890,10 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                   }, '添加效果')
               }}
             >
-              <option value="">＋ 添加</option>
+              <option value="">{tr("＋ 添加")}</option>
               {Object.entries(effects).map(([k, label]) => (
                 <option key={k} value={k}>
-                  {label}
+                  {tr(label)}
                 </option>
               ))}
             </select>
@@ -921,7 +901,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           {n.effects.map((fx, i) => (
             <div className="property-card" key={fx.id}>
               <div className="property-title">
-                <b>{effects[fx.kind]}</b>
+                <b>{tr(effects[fx.kind])}</b>
                 {listControls('effects', i)}
               </div>
               <div className="field-grid">
@@ -938,9 +918,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                             : ['radius', 'amount', 'opacity'].includes(k),
                   )
                   .map((key) => (
-                    <UnitNumberField unitDescription={['radius', 'x', 'y', 'spread'].includes(key) || (key === 'amount' && fx.kind !== 'noise') ? styleDescription : undefined} unitScale={['radius', 'x', 'y', 'spread'].includes(key) || (key === 'amount' && fx.kind !== 'noise') ? units.style : 1}
-                      key={key}
-                      label={
+                    <UnitNumberField unitDescription={['radius', 'x', 'y', 'spread'].includes(key) || (key === 'amount' && fx.kind !== 'noise') ? styleDescription : undefined} historyLabel={
                         {
                           radius: fx.glass ? '磨砂' : fx.texture ? '位移半径' : '模糊',
                           x: '偏移 X',
@@ -954,6 +932,22 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                                 ? '颗粒密度'
                                 : '纹理幅度',
                         }[key]
+                      } unit={key === 'opacity' ? 'percent' : key === 'radius' && fx.texture ? 'length' : 'number'} diagnosticFamily={2} unitScale={['radius', 'x', 'y', 'spread'].includes(key) || (key === 'amount' && fx.kind !== 'noise') ? units.style : 1}
+                      key={key}
+                      label={
+                        tr({
+                          radius: fx.glass ? '磨砂' : fx.texture ? '位移半径' : '模糊',
+                          x: '偏移 X',
+                          y: '偏移 Y',
+                          spread: '扩展',
+                          opacity: '强度 %',
+                          amount:
+                            fx.kind === 'glass'
+                              ? '折射'
+                              : fx.kind === 'noise'
+                                ? '颗粒密度'
+                                : '纹理幅度',
+                        }[key])
                       }
                       value={key === 'opacity' ? fx[key] * 100 : fx[key]}
                       min={key === 'x' || key === 'y' || key === 'spread' ? -1000 : 0}
@@ -968,13 +962,13 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                   ))}
               </div>
               {fx.kind === 'blur' && <>
-                <label className="check-row"><input aria-label="渐变模糊" type="checkbox" checked={!!fx.gradientBlur} onChange={e=>update(n=>{
+                <label className="check-row"><input aria-label={tr("渐变模糊")} type="checkbox" checked={!!fx.gradientBlur} onChange={e=>update(n=>{
                   const effect=n.effects[i];if(e.target.checked)effect.gradientBlur={start:[0,0],end:[n.width,0],startCount:0,endCount:4,smooth:true};else delete effect.gradientBlur
-                })}/>渐变模糊</label>
+                })}/>{tr("渐变模糊")}</label>
                 {fx.gradientBlur && <div className="field-grid">
-                  {(['start','end'] as const).flatMap(anchor=>([0,1] as const).map(axis=><UnitNumberField key={`${anchor}:${axis}`} unitScale={axis?units.y:units.x} label={`${anchor==='start'?'起点':'终点'} ${axis?'Y':'X'}`} value={fx.gradientBlur![anchor][axis]} onChange={v=>update(n=>{n.effects[i].gradientBlur![anchor][axis]=v})}/>))}
-                  {(['startCount','endCount'] as const).map(key=><NumberField key={key} label={key==='startCount'?'起点强度':'终点强度'} min={0} max={64} step={.1} value={fx.gradientBlur![key]} onChange={v=>update(n=>{n.effects[i].gradientBlur![key]=v})}/>)}
-                  <label><input aria-label="平滑渐变模糊" type="checkbox" checked={fx.gradientBlur.smooth} onChange={e=>update(n=>{n.effects[i].gradientBlur!.smooth=e.target.checked})}/>平滑权重</label>
+                  {(['start','end'] as const).flatMap(anchor=>([0,1] as const).map(axis=><UnitNumberField historyLabel={`${anchor==='start'?'起点':'终点'} ${axis?'Y':'X'}`} unit="number" diagnosticFamily={2} key={`${anchor}:${axis}`} unitScale={axis?units.y:units.x} label={`${tr(anchor==='start'?'起点':'终点')} ${axis?'Y':'X'}`} value={fx.gradientBlur![anchor][axis]} onChange={v=>update(n=>{n.effects[i].gradientBlur![anchor][axis]=v})}/>))}
+                  {(['startCount','endCount'] as const).map(key=><NumberField historyLabel={key==='startCount'?'起点强度':'终点强度'} unit="number" diagnosticFamily={2} key={key} label={tr(key==='startCount'?'起点强度':'终点强度')} min={0} max={64} step={.1} value={fx.gradientBlur![key]} onChange={v=>update(n=>{n.effects[i].gradientBlur![key]=v})}/>)}
+                  <label><input aria-label={tr("平滑渐变模糊")} type="checkbox" checked={fx.gradientBlur.smooth} onChange={e=>update(n=>{n.effects[i].gradientBlur!.smooth=e.target.checked})}/>{tr("平滑权重")}</label>
                 </div>}
               </>}
               {fx.glass && (
@@ -985,9 +979,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                     const percentage =
                       key === 'refraction' || key === 'dispersion' || key === 'lightIntensity'
                     return (
-                      <UnitNumberField unitDescription={key === 'depth' || key === 'bevelSize' ? styleDescription : undefined} unitScale={key === 'depth' || key === 'bevelSize' ? units.style : 1}
-                        key={key}
-                        label={
+                      <UnitNumberField unitDescription={key === 'depth' || key === 'bevelSize' ? styleDescription : undefined} historyLabel={
                           {
                             depth: '深度',
                             bevelSize: '倒角宽度',
@@ -996,6 +988,17 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                             lightAngle: '光线角度',
                             lightIntensity: '照明 %',
                           }[key]
+                        } unit={percentage ? 'percent' : key === 'lightAngle' ? 'angle' : key === 'bevelSize' ? 'length' : 'number'} diagnosticFamily={2} unitScale={key === 'depth' || key === 'bevelSize' ? units.style : 1}
+                        key={key}
+                        label={
+                          tr({
+                            depth: '深度',
+                            bevelSize: '倒角宽度',
+                            refraction: '折射 %',
+                            dispersion: '色散 %',
+                            lightAngle: '光线角度',
+                            lightIntensity: '照明 %',
+                          }[key])
                         }
                         value={(fx.glass?.[key] ?? (key === 'bevelSize' ? 1 : 0)) * (percentage ? 100 : 1)}
                         min={key === 'lightAngle' ? -360 : key === 'depth' ? 1 : key === 'bevelSize' ? 0.001 : 0}
@@ -1014,21 +1017,20 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
               )}
               {fx.texture && (
                 <>
-                  <label>纹理样式
-                    <select aria-label="纹理样式" value={fx.texture.noise ?? 'figma'} onChange={event => {
+                  <label>{tr("纹理样式")}<select aria-label={tr("纹理样式")} value={fx.texture.noise ?? 'figma'} onChange={event => {
                       const noise = event.target.value as 'figma' | 'gabor' | 'perlin'
                       update(n => { const t = n.effects[i]?.texture; if (t) t.noise = noise })
                     }}>
-                      <option value="figma">颗粒</option>
+                      <option value="figma">{tr("颗粒")}</option>
                       <option value="gabor">Gabor</option>
                       <option value="perlin">Perlin</option>
                     </select>
                   </label>
                   <div className="field-grid">
                     {([0, 1] as const).map((axis) => (
-                      <UnitNumberField unitScale={axis === 0 ? units.x : units.y}
+                      <UnitNumberField historyLabel={axis === 0 ? '纹理尺寸 X' : '纹理尺寸 Y'} unit="length" diagnosticFamily={2} unitScale={axis === 0 ? units.x : units.y}
                         key={axis}
-                        label={axis === 0 ? '纹理尺寸 X' : '纹理尺寸 Y'}
+                        label={tr(axis === 0 ? '纹理尺寸 X' : '纹理尺寸 Y')}
                         value={fx.texture?.noiseSize[axis] ?? 8}
                         min={0.001}
                         max={10000}
@@ -1053,14 +1055,12 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                           if (t) t.clipToShape = checked
                         })
                       }}
-                    />
-                    裁剪到形状
-                  </label>
+                    />{tr("裁剪到形状")}</label>
                 </>
               )}
               {['shadow', 'inner-shadow'].includes(fx.kind) && (
                 <ColorInput
-                  label="阴影颜色"
+                  label={tr("阴影颜色")}
                   value={fx.color}
                   onChange={(color) =>
                     update((n) => {
@@ -1071,7 +1071,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
               )}
             </div>
           ))}
-          {!n.effects.length && <p className="muted">用光影和质感表达层次</p>}
+          {!n.effects.length && <p className="muted">{tr("用光影和质感表达层次")}</p>}
         </section>
         <SelectionColorsPanel editor={editor} />
         </>}
