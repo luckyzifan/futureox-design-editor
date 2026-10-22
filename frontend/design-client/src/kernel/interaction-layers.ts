@@ -11,11 +11,15 @@ export type GpuMoveControl = {
   isActive(): boolean
   apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>): { x: number; y: number } | null
   covers(document: DesignDocument, ids: string[], view: CanvasCamera): boolean
+  feedbackPending?(): boolean
+  inputSequence?(): number
+  previewFailure?(): number
   end(document: DesignDocument): void
 }
 export type InteractionProps = {
   document: DesignDocument; selection: string[]; active: boolean; epoch: number; control: RefObject<GpuMoveControl | null>; onReady: () => void
   /** Optional Canvas-only published geometry. Other callers remain uncached. */
+  onPosePresented?: (pose: { sequence: number; offset: { x: number; y: number }; latencyMs: number; document: DesignDocument; epoch: number }) => void
   scene?: CanvasSceneBorrow
 }
 

@@ -250,6 +250,10 @@ export function ResidentCompositeSurface(props: {
         if (stats.presented) {
           const actual = stats.presented as ResidentAcknowledgement
           actualPresentation.current=actual
+          // Use the exact displayed input and its owner, not the latest pointer
+          // or resident-sampling completion. Worker and SVG meet at this pose.
+          if (input?.sequence && input.owner === inputOwner.current && !usePageTranslation.current)
+            interaction.current?.acceptPresentedInput(input.sequence, input.at)
           if (import.meta.env.DEV)
             el.dataset.presentedCamera = JSON.stringify((stats.presented as { view: CanvasCamera }).view)
           // This callback runs in a worker message task. Publish the same

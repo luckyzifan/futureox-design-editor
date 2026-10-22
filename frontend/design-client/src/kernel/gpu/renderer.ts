@@ -1,3 +1,4 @@
+import { MaintenanceResidency } from './maintenance-residency'
 import { prefixAlignedStrip, prefixAlignedRgbStrip } from './prefix-band'
 import { PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { backdropFilterRegion } from './backdrop-filter-region'
@@ -223,6 +224,7 @@ export class GpuRenderer {
     }
   }
   lastBudgetFailure?: RenderBudgetDiagnostic
+  private maintenanceResidency = new MaintenanceResidency()
   private frameBudget = SURFACE_BUDGET_BYTES
   private imageResidencyOwner?: ImageResidencyOwner
   private imageResidencyPolicy?: string
@@ -1509,38 +1511,43 @@ export class GpuRenderer {
       this.release(dst)
       return out
     }
-    const source = this.paint(n, paint, mask)
-    if (admitMerge && source.imageZeroOverIdentity && !clip && paint.blend === 'normal' &&
-        dst.texture.transparentZero && this.driver.zeroTextureSampling &&
-        containsRect(source.rect, dst.rect) && containsRect(dst.rect, source.rect)) {
-      // This particular source is finite/canonical, has alpha 0 or 1 and is
-      // all +0 whenever alpha is 0. Integer sampling, opacity 1 and the old
-      // zero destination therefore reproduce its stored bits exactly.
-      this.release(dst)
-      return source
+    const compose = (source: Surface): Surface | Promise<Surface> => {
+      try { this.checkFrameCurrent() }
+      catch (error) { this.release(source); throw error }
+      if (admitMerge && source.imageZeroOverIdentity && !clip && paint.blend === 'normal' &&
+          dst.texture.transparentZero && this.driver.zeroTextureSampling &&
+          containsRect(source.rect, dst.rect) && containsRect(dst.rect, source.rect)) {
+        // This particular source is finite/canonical, has alpha 0 or 1 and is
+        // all +0 whenever alpha is 0. Integer sampling, opacity 1 and the old
+        // zero destination therefore reproduce its stored bits exactly.
+        this.release(dst)
+        return source
+      }
+      const merge = () => {
+        try {
+          this.checkFrameCurrent()
+          return this.merge(source, dst, paint.blend, 1, clip)
+        } finally { this.release(source) }
+      }
+      // Image and gradient fields are uploaded lazily inside paint. Their real
+      // bytes can cross the earlier two-plane admission after the source has
+      // been allocated. Coherent managed composition always writes a full fresh
+      // destination, so recheck its actual missing allocation here. The source
+      // stays busy across a real checkpoint; its sampled uploads can now retire
+      // safely. Synchronous bounded-strip consumers keep their existing path.
+      if (admitMerge && this.driver.managed && this.scene.coherentSamples &&
+          !this.free.get(`${dst.rect.w}:${dst.rect.h}`)?.length) {
+        const required = dst.rect.w * dst.rect.h * 16
+        if (this.workingBytes + required > this.frameBudget)
+          return this.reclaimScratch(required).then(merge, error => {
+            this.release(source)
+            throw error
+          })
+      }
+      return merge()
     }
-    const merge = () => {
-      try {
-        this.checkFrameCurrent()
-        return this.merge(source, dst, paint.blend, 1, clip)
-      } finally { this.release(source) }
-    }
-    // Image and gradient fields are uploaded lazily inside paint. Their real
-    // bytes can cross the earlier two-plane admission after the source has
-    // been allocated. Coherent managed composition always writes a full fresh
-    // destination, so recheck its actual missing allocation here. The source
-    // stays busy across a real checkpoint; its sampled uploads can now retire
-    // safely. Synchronous bounded-strip consumers keep their existing path.
-    if (admitMerge && this.driver.managed && this.scene.coherentSamples &&
-        !this.free.get(`${dst.rect.w}:${dst.rect.h}`)?.length) {
-      const required = dst.rect.w * dst.rect.h * 16
-      if (this.workingBytes + required > this.frameBudget)
-        return this.reclaimScratch(required).then(merge, error => {
-          this.release(source)
-          throw error
-        })
-    }
-    return merge()
+    const source = admitMerge ? this.paintWithBoundedImageFields(n, paint, mask) : this.paint(n, paint, mask)
+    return source instanceof Promise ? source.then(compose) : compose(source)
   }
   /** Consumes dst; retains src/mask. Source-over writes only the affected area. */
   private merge(src: Surface, dst: Surface, mode = 'normal', opacity = 1, mask?: Surface) {
@@ -1942,7 +1949,7 @@ export class GpuRenderer {
         throw new Error('后端缺少统一的图片解码器')
     }
   }
-  private imageGrid(n: GpuNode, p: GpuPaint, image: Surface, level = 0, origin: [number, number] = [0, 0]): Surface {
+  private imageGrid(n: GpuNode, p: GpuPaint, image: Surface, level = 0, origin: [number, number] = [0, 0], preparedAxes?: Float32Array): Surface {
     const sample = this.sampleIndex ?? 4
     let grids = this.imageGrids.get(p)
     const known = grids?.get(sample)
@@ -2011,7 +2018,7 @@ export class GpuRenderer {
     let separated: boolean | undefined
     const surface = this.materialField(['image-grid',this.driver.managed,compact,[n.rect.w,n.rect.h],(n.previewSource || n).rect,
       (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin], n.rect, () => {
-      let values = compact ? image_sampling_axes_placed(...arguments_) : new Float32Array()
+      let values = preparedAxes ?? (compact ? image_sampling_axes_placed(...arguments_) : new Float32Array())
       if (!values.length) {
         if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16, n.rect.w, n.rect.h)) throw this.budgetError('GPU 表面内存预算超限', 7)
         values = this.driver.managed ? image_sampling_grid_placed(...arguments_) : image_byte_sampling_field_placed(...arguments_)
@@ -2077,6 +2084,84 @@ export class GpuRenderer {
       this.driver.uploadParameters,undefined,n.rect.w*n.rect.h*16,import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS !== '0')
   }
 
+  /** Keep the Rust field bound intact. Oversized nonseparable fields are
+   * generated in exact global-coordinate regions, never resampled/downscaled. */
+  private paintWithBoundedImageFields(n: GpuNode, p: GpuPaint, mask: Surface): Surface | Promise<Surface> {
+    const source = n.previewSource || n
+    if (p.kind !== 'image' || !this.driver.managed || this.driver.name !== 'webgpu' || this.imageAtlas ||
+        n.rect.w * n.rect.h * 16 <= 64 * 1024 * 1024 ||
+        source.rect.w !== n.rect.w || source.rect.h !== n.rect.h || !exactBlendLattice([n.rect, source.rect]))
+      return this.paint(n, p, mask)
+    const sample = this.sampleIndex ?? 4
+    if (this.imageGrids.get(p)?.has(sample)) return this.paint(n, p, mask)
+    const level = this.imageLevel(n, p), image = this.imageFor(p.image || '', level, false, p.adjust)
+    if (this.prepareLargeImageAxes(n, p, image, level)) return this.paint(n, p, mask)
+    return this.paintImageFieldRegions(n, p, mask, image, level)
+  }
+  /** Probe one original phase only. A certified full compact field stays
+   * reusable across bands; only its dense fallback needs regional generation. */
+  private prepareLargeImageAxes(n: GpuNode, p: GpuPaint, image: Surface, level: number): boolean {
+    if (this.imageGrids.get(p)?.has(this.sampleIndex ?? 4)) return true
+    if (this.scene.compactImageFields === false || import.meta.env.VITE_DESIGN_IMAGE_AXES === '0') return false
+    const source = n.previewSource || n
+    const values = image_sampling_axes_placed(JSON.stringify(source.rect), new Float64Array(source.matrix),
+      new Float64Array(n.size), new Uint32Array(this.baseDims(p.image || '')),
+      JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile }),
+      this.sampleIndex ?? 4, level, new Int32Array([0, 0]))
+    if (!values.length) return false
+    this.imageGrid(n, p, image, level, [0, 0], values)
+    return true
+  }
+  private async paintImageFieldRegions(n: GpuNode, p: GpuPaint, mask: Surface, image: Surface, level: number): Promise<Surface> {
+    const source = n.previewSource || n, alreadyPinned = this.sequentialImagePins.has(image.texture)
+    if (!alreadyPinned) this.sequentialImagePins.add(image.texture)
+    let out: Surface | undefined, regions = 0, fieldBytes = 0, maxFieldBytes = 0, maxWidth = 0, maxHeight = 0, succeeded = false
+    try {
+      const outputBytes = n.rect.w * n.rect.h * 16
+      if (!this.free.get(`${n.rect.w}:${n.rect.h}`)?.length && this.workingBytes + outputBytes > this.frameBudget)
+        await this.reclaimScratch(outputBytes)
+      this.checkFrameCurrent(); this.requireImageResidencyCurrent()
+      out = this.acquire(n.rect)
+      const visible = this.drawRegion(n.rect)
+      if (visible) this.driver.clear(out.texture)
+      const columns = Math.min(n.rect.w, 4096), rows = Math.max(1, Math.min(256, Math.floor(8 * 1024 * 1024 / (columns * 16))))
+      for (let y = 0; y < n.rect.h; y += rows) for (let x = 0; x < n.rect.w; x += columns) {
+        const w = Math.min(columns, n.rect.w - x), h = Math.min(rows, n.rect.h - y)
+        const local = rect(x, y, w, h), draw = visible ? intersect(local, visible) : local
+        if (!draw.w || !draw.h) continue
+        const bytes = w * h * 16
+        if (this.workingBytes + bytes > this.frameBudget) await this.reclaimScratch(bytes)
+        this.checkFrameCurrent(); this.requireImageResidencyCurrent()
+        const region = rect(n.rect.x + x, n.rect.y + y, w, h)
+        const regionPaint = { ...p }, regionNode = { ...n, rect: region,
+          previewSource: { ...source, rect: rect(source.rect.x + x, source.rect.y + y, w, h) } }
+        let field: Surface | undefined
+        try {
+          field = this.imageGrid(regionNode, regionPaint, image, level)
+          regions++; fieldBytes += field.texture.bytes; maxFieldBytes = Math.max(maxFieldBytes, field.texture.bytes)
+          maxWidth = Math.max(maxWidth, w); maxHeight = Math.max(maxHeight, h)
+          const u = parameters(n.rect, mask.rect, image.rect, mask.rect)
+          u[16] = 2; this.configurePaint(u, n, p); u.set([field.rect.x, field.rect.y], 204)
+          this.driver.pass(out.texture, u, [mask.texture, image.texture, mask.texture, field.texture], draw)
+          this.passPixels += draw.w * draw.h
+        } finally {
+          this.imageGrids.delete(regionPaint)
+          if (field) this.retireUpload(field.texture)
+        }
+      }
+      if (this.imageZeroOverSource(n, p, mask, image)) out.imageZeroOverIdentity = true
+      const painted = out; out = undefined; succeeded = true; return painted
+    } finally {
+      this.release(out)
+      if (!alreadyPinned) this.sequentialImagePins.delete(image.texture)
+      if (gpuDiagnosticsEnabled()) try { recordGpuDiagnostic('filter', {
+        imageFieldRegionPath: 1, imageFieldRegionOutcome: succeeded ? 1 : 2,
+        imageFieldRegionCount: regions, imageFieldRegionBytes: fieldBytes,
+        imageFieldRegionMaxBytes: maxFieldBytes, imageFieldRegionMaxWidth: maxWidth, imageFieldRegionMaxHeight: maxHeight,
+        imageFieldRegionSample: this.sampleIndex ?? 4,
+      }) } catch { /* telemetry cannot change rendering */ }
+    }
+  }
   private paint(n: GpuNode, p: GpuPaint, mask: Surface, material?: Surface): Surface {
     let image: Surface | undefined
     let imageLevel = 0
@@ -2480,6 +2565,34 @@ export class GpuRenderer {
     const reclaimableBytes = [...pooled, ...this.retiredUploads, ...coordinates]
       .reduce((sum, texture) => sum + texture.bytes, retiredImageTableBytes + retiredImageAssetBytes)
     if (!pressure && !imagesUnderPressure && reclaimableBytes < RECLAIM_BATCH_BYTES) return
+    // Pool surfaces are already reusable in queue order and stay fully charged.
+    // Do not confuse their residency with dead upload/coordinate retirement.
+    // No resource is released, destroyed, or marked complete by this decision.
+    if (coordinates.length || this.retiredUploads.length) {
+      const poolSet = new Set(pooled)
+      const transientSet = new Set([...coordinates, ...this.retiredUploads])
+      const poolBytes = [...poolSet].reduce((sum, t) => sum + t.bytes, 0)
+      const transientBytes = [...transientSet].reduce((sum, t) => sum + t.bytes, 0)
+      const overlaps = [...transientSet].some(t => poolSet.has(t)) ||
+        this.retiredUploads.some(t => this.coordinateMaps.has(t))
+      // Conflicting ownership must not fall through to either retirement path:
+      // forgetUpload cannot detach coordinate aliases or free-list references.
+      if (overlaps) throw new Error('GPU maintenance resource ownership overlaps')
+      const reason = this.maintenanceResidency.decide(required,
+        pressure || imagesUnderPressure || !!this.driver.captureDisplay ||
+          !!retiredImageTableBytes || !!retiredImageAssetBytes,
+        this.workingBytes, this.frameBudget, poolBytes, transientBytes,
+        this.driver.resourceEpoch, this.driver.completedResourceEpoch)
+      if (gpuDiagnosticsEnabled()) {
+        try { recordGpuDiagnostic('cache', { maintenanceDecision: reason,
+          maintenanceDeferredCount: this.maintenanceResidency.count,
+          maintenancePoolBytes: poolBytes, maintenanceTransientBytes: transientBytes,
+          maintenanceWorkingBytes: this.workingBytes, maintenanceBudgetBytes: this.frameBudget,
+          maintenanceRequiredBytes: required, resourceEpoch: this.driver.resourceEpoch,
+          completedResourceEpoch: this.driver.completedResourceEpoch }) } catch { /* diagnostics only */ }
+      }
+      if (reason === 0) return
+    }
     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
     const resourceLimit = pressure ? 4096 : RECLAIM_BATCH_RESOURCES
     // Preserve the exact oldest-first batch. Only a pool-only maintenance
@@ -2519,6 +2632,7 @@ export class GpuRenderer {
     // Submission is still mandatory. Only the completion wait may be omitted,
     // and the driver independently validates the already-completed epoch.
     const checkpointScratch = this.driver.scratchBytes || 0
+    const transientCohort = [...new Set([...this.retiredUploads, ...coordinates])]
     const retiringImageAssets = this.retiredImageAssetCohort()
     try {
       if (completedPoolEpoch === undefined) await this.driver.checkpoint('admission', diagnostic)
@@ -2528,9 +2642,40 @@ export class GpuRenderer {
       // Preserve actual scratch accounting even when a later step rejects.
       this.bytes += (this.driver.scratchBytes || 0) - checkpointScratch
     }
+    this.maintenanceResidency.completed()
     this.checkpointMs += performance.now() - checkpointStart
     this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     this.coverRetiredImageAssets(retiringImageAssets)
+    // This no-pressure checkpoint already proves completion for the whole
+    // selected transient cohort. Spend the bounded disposal work on that
+    // cohort, rather than destroying reusable pool storage first and leaving
+    // coordinate uploads to force the next identical maintenance wait.
+    if (required === 0 && !pressure && !imagesUnderPressure &&
+        !retiredImageTableBytes && !retiredImageAssetBytes &&
+        this.workingBytes <= this.frameBudget * .75 &&
+        (coordinates.length || this.retiredUploads.length)) {
+      let count = 0, bytes = 0
+      // Snapshot ownership before awaiting above: later insertions are not
+      // allowed to borrow this completion boundary.
+      for (const texture of transientCohort) {
+        if (count >= RECLAIM_BATCH_RESOURCES) break
+        const retiredIndex = this.retiredUploads.indexOf(texture)
+        if (retiredIndex >= 0) {
+          this.retiredUploads.splice(retiredIndex, 1)
+          this.forgetUpload(texture)
+        } else if (this.coordinateMaps.has(texture) && !this.filterImageFields?.pinned.has(texture)) {
+          this.forgetCoordinateTexture(texture)
+        } else continue
+        count++; bytes += texture.bytes
+      }
+      if (gpuDiagnosticsEnabled()) {
+        try { recordGpuDiagnostic('cache', { maintenanceDecision: 6,
+          maintenanceRetiredBytes: bytes, maintenanceRetiredCount: count,
+          maintenanceWorkingBytes: this.workingBytes, maintenanceBudgetBytes: this.frameBudget,
+          resourceEpoch: this.driver.resourceEpoch, completedResourceEpoch: this.driver.completedResourceEpoch }) } catch { /* diagnostics only */ }
+      }
+      return
+    }
     // Every surface still needed by an ancestor is in busy. Completion is
     // proven for every selected destruction: by this fence, or (pool-only)
     // by the completed prior-frame release stamps checked above.
@@ -2658,9 +2803,10 @@ export class GpuRenderer {
     const bounds = targets[0].rect
     if (!exactBlendLattice([bounds]) || targets.some(target => !containsRect(bounds, target.rect) || !containsRect(target.rect, bounds))) return
     const node = this.bandImageNode(n, bounds)
-    if (!node) return
+    if (!node || (node.previewSource && (node.previewSource.rect.w !== node.rect.w || node.previewSource.rect.h !== node.rect.h))) return
     const paint = node.fills[0], previousSample = this.sampleIndex, previousNode = this.activeNode
     let pinned: Texture | undefined
+    let fieldRegions = 0, fieldBytes = 0, maxFieldBytes = 0, maxFieldWidth = 0, maxFieldHeight = 0, fieldStarted = false, fieldSucceeded = false
     try {
       this.activeNode = node.id; this.sampleIndex = 0
       const mask = this.nodeMask(node), level = this.imageLevel(node, paint), image = this.imageFor(paint.image!, level, false, paint.adjust)
@@ -2669,8 +2815,11 @@ export class GpuRenderer {
       // still needed by later bands and all four original sampling phases.
       const alreadyPinned = this.sequentialImagePins.has(image.texture)
       if (!alreadyPinned) { this.sequentialImagePins.add(image.texture); pinned = image.texture }
+      fieldStarted = true
       for (let sample = 0; sample < 4; sample++) {
         this.sampleIndex = sample
+        const regionalFields = node.rect.w * node.rect.h * 16 > 64 * 1024 * 1024 &&
+          !this.prepareLargeImageAxes(node, paint, image, level)
         const dst = targets[sample]
         const inplace = this.privateBandDestination(dst)
         let out: Surface | undefined
@@ -2689,14 +2838,19 @@ export class GpuRenderer {
             const missing = (this.free.get(`${band.w}:${band.h}`)?.length || 0)
             await this.reclaimScratch(Math.max(0, (inplace ? 2 : 1) - missing) * band.w * band.h * 16)
             this.checkFrameCurrent()
-            let before: Surface | undefined, source: Surface | undefined
+            let before: Surface | undefined, source: Surface | undefined, field: Surface | undefined
+            const regionPaint = regionalFields ? { ...paint } : paint, original = node.previewSource || node
+            const regionNode = regionalFields ? { ...node, rect: band, previewSource: { ...original,
+              rect: rect(original.rect.x + band.x - node.rect.x, original.rect.y + band.y - node.rect.y, band.w, band.h) } } : node
             try {
               if (inplace) {
                 before = this.acquire(band)
                 this.driver.copyColorRegion(before.texture, dst.texture, { x: 0, y: row, w: band.w, h: band.h }, [0, 0])
                 this.painterStageCopies++; this.painterStageCopyBytes += band.w * band.h * 16
               }
-              const field = this.imageGrid(node, paint, image, level)
+              field = this.imageGrid(regionNode, regionPaint, image, level)
+              fieldRegions++; fieldBytes += field.texture.bytes; maxFieldBytes = Math.max(maxFieldBytes, field.texture.bytes)
+              maxFieldWidth = Math.max(maxFieldWidth, band.w); maxFieldHeight = Math.max(maxFieldHeight, band.h)
               source = this.acquire(band)
               const paintParameters = parameters(band, mask.rect, image.rect, mask.rect)
               paintParameters[16] = 2
@@ -2708,7 +2862,13 @@ export class GpuRenderer {
               u.set([3, 0, 1, 0], 16)
               this.driver.pass(out.texture, u, [source.texture, old.texture], rect(0, row, bounds.w, height))
               this.passPixels += bounds.w * height
-            } finally { this.release(source, before) }
+            } finally {
+              this.release(source, before)
+              if (regionalFields) {
+                this.imageGrids.delete(regionPaint)
+                if (field) this.retireUpload(field.texture)
+              }
+            }
           }
           targets[sample] = out
           if (!inplace) this.release(dst)
@@ -2716,10 +2876,16 @@ export class GpuRenderer {
         } finally { if (out && out !== dst) this.release(out) }
       }
       this.retireLeafMasks(node, undefined, undefined, targets, true)
+      fieldSucceeded = true
       return targets
     } finally {
       if (pinned) this.sequentialImagePins.delete(pinned)
       this.sampleIndex = previousSample; this.activeNode = previousNode
+      if (fieldStarted && gpuDiagnosticsEnabled()) try { recordGpuDiagnostic('filter', {
+        imageFieldRegionPath: 2, imageFieldRegionOutcome: fieldSucceeded ? 1 : 2,
+        imageFieldRegionCount: fieldRegions, imageFieldRegionBytes: fieldBytes, imageFieldRegionMaxBytes: maxFieldBytes,
+        imageFieldRegionMaxWidth: maxFieldWidth, imageFieldRegionMaxHeight: maxFieldHeight,
+      }) } catch { /* telemetry cannot change rendering */ }
     }
   }
   private async drawBundle(
