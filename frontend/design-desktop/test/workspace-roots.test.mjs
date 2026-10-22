@@ -19,7 +19,7 @@ async function fixture(t) {
   return { base, profile, first, second, prompts, opens, choices, selected, probes, roots, dialog }
 }
 
-test('startup always asks, cancellation opens no database and does not silently choose default', async t => {
+test('first startup without a saved selection still asks; cancellation opens no database', async t => {
   const f = await fixture(t)
   assert.equal(await f.roots.startup(), undefined)
   assert.equal(f.prompts.length, 1)
@@ -59,17 +59,23 @@ test('chosen local directory stages distinct SQLite/recovery/catalog paths and i
   await assert.rejects(f.roots.take(result.selectionId), { code: 'WORKSPACE_ROOT_STALE' })
 })
 
-test('restart offers last workspace but never opens it without explicit choice', async t => {
+test('restart resumes the last workspace without prompting; a missing directory falls back to the picker', async t => {
   const f = await fixture(t)
   await f.roots.startup({ isolated: true })
   const selected = await f.roots.prepare(f.first); await f.roots.persist(selected)
   const next = new WorkspaceRoots({ profileRoot: f.profile, dialog: f.dialog, probe: async config => f.probes.push(config) })
-  assert.equal(await next.startup(), undefined)
-  assert.equal(f.probes.length, 0)
-  assert.deepEqual(f.prompts[0].buttons, ['继续上次工作区', '选择本地目录…', '打开原默认工作区', '退出'])
-  f.choices.push(0)
   const resumed = await next.startup()
   assert.equal(resumed.storagePath, selected.storagePath)
+  assert.equal(f.prompts.length, 0)
+  assert.equal(f.probes.length, 1)
+  // The saved directory disappearing must return to an explicit choice, not
+  // silently open the default workspace.
+  await rename(f.first, `${f.first}-gone`)
+  const third = new WorkspaceRoots({ profileRoot: f.profile, dialog: f.dialog, probe: async config => f.probes.push(config) })
+  assert.equal(await third.startup(), undefined)
+  assert.equal(f.prompts.length, 1)
+  assert.deepEqual(f.prompts[0].buttons, ['继续上次工作区', '选择本地目录…', '打开原默认工作区', '退出'])
+  assert.ok(f.probes.length >= 1)
 })
 
 test('choosing the legacy profile directly maps to original data rather than nested blank storage', async t => {
