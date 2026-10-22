@@ -57,3 +57,11 @@ test('expected/resolved geometry stays in process and exports only equality/unsu
   expect(actionGeometry(document,Array(17).fill(n.id))).toBeUndefined()
   expect(sanitizeActionFields({proposalResolvedComparison:compareActionGeometry(before,changed),width:101})).toEqual({proposalResolvedComparison:2})
 })
+
+ test('pose lifecycle fields survive terminal sanitation without coordinate content', () => {
+ const input={poseSubmittedSequence:12,posePresentedSequence:10,poseFallbackReason:1,poseLatencyMs:42,x:99,y:88}
+ const fields=sanitizeActionFields(input)
+ expect(fields).toEqual({poseSubmittedSequence:12,posePresentedSequence:10,poseFallbackReason:1,poseLatencyMs:42})
+ const row=sanitizeRecord({v:1,session:1,source:'main',seq:1,at:1,event:'canvas-action',...fields})
+ expect(row).toMatchObject(fields)
+ })

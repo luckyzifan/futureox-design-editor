@@ -1,0 +1,14 @@
+{
+  "testPath": "frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs",
+  "testSha256": "3717ca9fdc272f031feaa9c96867c74ada9b8a8a8fc7848d969d008e056990ea",
+  "rendererPath": "frontend/design-client/src/kernel/gpu/renderer.ts",
+  "rendererSha256": "f31c60d9bab86824a0218da01661b2a589a7fd78067198c135244c498b677215",
+  "productionConstants": {
+    "batchBytes": 50331648,
+    "batchResources": 64
+  },
+  "command": "From frontend/design-client: node --experimental-strip-types --test src/kernel/gpu/maintenance-residency.test.mjs",
+  "result": "14 tests passed",
+  "log": "combined-exact-harness-v3.log",
+  "correction": "Earlier32MiB/256constant wording and v2harness are superseded. v3 parses both actual constants."
+}

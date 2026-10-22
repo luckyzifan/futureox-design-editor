@@ -1,0 +1,96 @@
+{
+  "baseline": "1cdebec0a3bcde6633c71661511e532ab0b54aea",
+  "patches": [
+    {
+      "path": "1cdebec-maintenance-residency-v3.patch",
+      "sha256": "56c6a800c971a8eb189c8fe30e699983f656968fc9c3d2decb45872be70126be",
+      "files": [
+        "frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs",
+        "frontend/design-client/src/kernel/gpu/maintenance-residency.ts",
+        "frontend/design-client/src/kernel/gpu/renderer.ts",
+        "frontend/design-desktop/src/render-terminal-diagnostics.mjs"
+      ]
+    },
+    {
+      "path": "1cde-image-field-regions-v2.patch",
+      "sha256": "b32ecdb505b2d14fc045711fc20cb9eb890b53046e584f9b2cb7f82396b447fa",
+      "files": [
+        "frontend/design-client/src/kernel/gpu/renderer.ts",
+        "frontend/design-client/src/kernel/gpu/image-field-regions.test.ts",
+        "frontend/design-desktop/src/render-terminal-diagnostics.mjs"
+      ]
+    },
+    {
+      "path": "accepted-pose-and-preview-recovery-v3.patch",
+      "sha256": "d002f89474a89b9f38dbd3de5bb2fe9d348da810cfb3dcf5938c67a3c3bae20a",
+      "files": [
+        "frontend/design-client/src/Canvas.tsx",
+        "frontend/design-client/src/canvas-action-diagnostics.ts",
+        "frontend/design-client/src/canvas-action-diagnostics.test.ts",
+        "frontend/design-client/src/kernel/interaction-layers.ts",
+        "frontend/design-client/src/kernel/interaction-renderer.ts",
+        "frontend/design-client/src/kernel/interaction-renderer.test.ts",
+        "frontend/design-client/src/kernel/ResidentCompositeSurface.tsx",
+        "frontend/design-client/src/kernel/pose-feedback.ts",
+        "frontend/design-client/src/kernel/pose-feedback.test.mjs",
+        "frontend/design-client/src/kernel/interaction-editor-recovery.test.ts",
+        "frontend/design-desktop/src/render-terminal-diagnostics.mjs"
+      ]
+    },
+    {
+      "path": "1cde-maintenance-pressure-fixtures-v1.patch",
+      "sha256": "f9033bf56acf70ddae9d94c0489ce7a1ec2c6f31a90cc4d3e52d85a6c75bd585",
+      "files": [
+        "frontend/design-client/src/kernel/gpu/image-asset-residency.test.ts",
+        "frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts",
+        "frontend/design-client/src/kernel/gpu/renderer.test.ts",
+        "frontend/design-client/src/kernel/gpu/stream-image-fields.test.ts"
+      ]
+    }
+  ],
+  "files": {
+    "frontend/design-client/src/kernel/interaction-renderer.test.ts": "d405244dca0241291d39d82a7a14b26f7a3511d260ffceb7690937248ced093a",
+    "frontend/design-client/src/kernel/pose-feedback.test.mjs": "9a2a4635a5c4f182d27fc5cd476d396efc6a6c10761182d21f513efad692badb",
+    "frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs": "3717ca9fdc272f031feaa9c96867c74ada9b8a8a8fc7848d969d008e056990ea",
+    "frontend/design-client/src/canvas-action-diagnostics.test.ts": "e35fb7c249f68b48c432bc413e9b6e7954217bcc8f3eb2f250fdf441ba7d5128",
+    "frontend/design-client/src/kernel/pose-feedback.ts": "06c65682699323c1c88c69a5287224b67da1359328e36be77c1d0ea8893af8bd",
+    "frontend/design-client/src/kernel/gpu/image-asset-residency.test.ts": "8a2afbe30224fa6ca8966a83a7d48acc98696a7994850436cf1f0a23acfc654a",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "f31c60d9bab86824a0218da01661b2a589a7fd78067198c135244c498b677215",
+    "frontend/design-client/src/kernel/gpu/image-field-regions.test.ts": "15f700395111ff64dea150aec6c266881e1d7ccb322d5cbb844d8e88dd645206",
+    "frontend/design-client/src/kernel/gpu/stream-image-fields.test.ts": "189fc55386423490b57fbcda27d6ab81250796872825c234bdbb93d867d06158",
+    "frontend/design-client/src/kernel/interaction-layers.ts": "3aa6e11caecc7aebb91b68449ed797946423035c973ce0e9e68e8c626d9a9a2a",
+    "frontend/design-client/src/Canvas.tsx": "4b6c606adb490a44bec25388d5b62a570655e6b303a07bf1db30119b080f0d0e",
+    "frontend/design-client/src/kernel/gpu/maintenance-residency.ts": "d494222bf932783760ac298aa0d557d2b06b3222cfd5ccda5077194180d65eba",
+    "frontend/design-client/src/kernel/ResidentCompositeSurface.tsx": "024b04892b8afde643b3a3639482ba8849134f49f7e3a43da0845b5a38508ed5",
+    "frontend/design-client/src/kernel/interaction-renderer.ts": "0091db494044a22554fd139e36b612b5b5f0d4f27e94ed8268b09a5814c13fa2",
+    "frontend/design-client/src/kernel/interaction-editor-recovery.test.ts": "52e12ee2b5a7f08753b81d6cfbc71e5bea9617c0eebc5e344a8a711052649434",
+    "frontend/design-desktop/src/render-terminal-diagnostics.mjs": "ae2170dda019c2818e4cb07d9a11141dbb6f25bb901b6279c7557072c9afc708",
+    "frontend/design-client/src/kernel/gpu/renderer.test.ts": "3a2b196b0126dc26af6d2e3b42cc4423411282da309439aeb5073e894d2a3e76",
+    "frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts": "81720465632d294897c8e2d3c477ecfa431f1fa46f1bbc351850f5a766ace6b5",
+    "frontend/design-client/src/canvas-action-diagnostics.ts": "71166dc46981fe771ff5f8ca03e1909f56950b53592d018790279e4e017ca4d2"
+  },
+  "replayedFromExactBase": true,
+  "verification": {
+    "rendererExpanded": {
+      "passed": 248,
+      "files": 13,
+      "log": "combined-renderer-v3-final.log"
+    },
+    "poseEditor": {
+      "passed": 61,
+      "files": 3,
+      "log": "combined-pose-v3.log"
+    },
+    "node": {
+      "passed": 17,
+      "pose": 3,
+      "maintenance": 14,
+      "log": "combined-node-v3.log"
+    },
+    "distinctNamedTests": 326,
+    "additionalTelemetryAssertions": 2,
+    "typecheck": "strict scoped transitive pass; combined-typecheck-v3.log",
+    "fullApplicationBuild": false,
+    "gpuOrGuiVerified": false
+  }
+}

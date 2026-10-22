@@ -1,0 +1,1224 @@
+diff --git a/frontend/design-client/src/Canvas.tsx b/frontend/design-client/src/Canvas.tsx
+index 920181a..03dbf43 100644
+--- a/frontend/design-client/src/Canvas.tsx
++++ b/frontend/design-client/src/Canvas.tsx
+@@ -632,6 +632,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
+     [snapshots, currentScene, state.doc, state.page, editor, editor.sessionGeneration, geometryReady])
+   const gpuInteraction = useMemo<InteractionProps>(() => ({ document: state.doc, selection: state.selection,
+     active: editor.interactionActive, epoch: editor.sessionGeneration, control: gpuMove, onReady: interactionReady,
++    onPosePresented: pose => {
++      const gesture = drag.current
++      if (!pendingBoardMove.current || gesture?.kind !== 'move' ||
++          pose.epoch !== editor.sessionGeneration || pose.document !== editor.state.doc) return
++      if (host.current) moveCanvasFeedback(host.current, gesture.ids, pose.offset, gpuMovedOverlays.current)
++      if (gesture.actionToken) actionTrace.sample(gesture.actionToken, { posePresentedSequence: pose.sequence, poseLatencyMs: Math.round(pose.latencyMs) })
++    },
+     scene: interactionScene }),
+     [state.doc, state.selection, editor.interactionActive, editor.sessionGeneration, interactionReady, interactionScene])
+   const sliceEntries = useMemo(() => entries.filter(entry => state.doc.nodes[entry.id].kind === 'slice'),
+@@ -1796,10 +1803,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
+     if (d.kind === 'move' && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey) {
+       const offset = gpuMove.current?.apply(editor.state.doc, patches)
+       if (offset) {
+-        if (host.current) moveCanvasFeedback(host.current, d.ids, offset, gpuMovedOverlays.current)
++        if (!gpuMove.current?.feedbackPending?.() && host.current) moveCanvasFeedback(host.current, d.ids, offset, gpuMovedOverlays.current)
++        if (d.actionToken) actionTrace.sample(d.actionToken, { poseSubmittedSequence: gpuMove.current?.inputSequence?.() || 0 })
+         pendingBoardMove.current = [patches, placement]
+         return
+       }
++      if (d.actionToken && gpuMove.current?.previewFailure?.())
++        actionTrace.sample(d.actionToken, { poseFallbackReason: gpuMove.current.previewFailure() })
+     }
+     if (d.kind === 'move' && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey && d.ids.length === 1 &&
+       retainedMove.current?.apply(editor.state.doc, d.ids[0], patches[d.ids[0]].transform!)) {
+diff --git a/frontend/design-client/src/canvas-action-diagnostics.test.ts b/frontend/design-client/src/canvas-action-diagnostics.test.ts
+index 39d92c8..7591260 100644
+--- a/frontend/design-client/src/canvas-action-diagnostics.test.ts
++++ b/frontend/design-client/src/canvas-action-diagnostics.test.ts
+@@ -57,3 +57,11 @@ test('expected/resolved geometry stays in process and exports only equality/unsu
+   expect(actionGeometry(document,Array(17).fill(n.id))).toBeUndefined()
+   expect(sanitizeActionFields({proposalResolvedComparison:compareActionGeometry(before,changed),width:101})).toEqual({proposalResolvedComparison:2})
+ })
++
++ test('pose lifecycle fields survive terminal sanitation without coordinate content', () => {
++ const input={poseSubmittedSequence:12,posePresentedSequence:10,poseFallbackReason:1,poseLatencyMs:42,x:99,y:88}
++ const fields=sanitizeActionFields(input)
++ expect(fields).toEqual({poseSubmittedSequence:12,posePresentedSequence:10,poseFallbackReason:1,poseLatencyMs:42})
++ const row=sanitizeRecord({v:1,session:1,source:'main',seq:1,at:1,event:'canvas-action',...fields})
++ expect(row).toMatchObject(fields)
++ })
+diff --git a/frontend/design-client/src/canvas-action-diagnostics.ts b/frontend/design-client/src/canvas-action-diagnostics.ts
+index 1ec42a4..9c5cb22 100644
+--- a/frontend/design-client/src/canvas-action-diagnostics.ts
++++ b/frontend/design-client/src/canvas-action-diagnostics.ts
+@@ -11,8 +11,8 @@ export type ActionOutcomeCode = typeof ActionOutcome[keyof typeof ActionOutcome]
+ export type ActionEventOutcomeCode = Exclude<ActionOutcomeCode, typeof ActionOutcome.committed>
+ export type ActionReasonCode = typeof ActionReason[keyof typeof ActionReason]
+ /** Comparison fields:0 unobserved,1 equal,2 different,3 unsupported. Different is not automatically failure. */
+-export type ActionFields = Partial<Record<'modifiers' | 'toolCode' | 'hitCount' | 'hitDepth' | 'selectionBefore' | 'selectionAfter' | 'targetCount' | 'lockedCount' | 'commandCode' | 'inputSamples' | 'sampleUpdates' | 'coalescedSamples' | 'thresholdPassed' | 'motionObserved' | 'snapEnabled' | 'snapChanged' | 'constraintChanged' | 'constraintEnabled' | 'proposalChanged' | 'resolvedChanged' | 'committedChanged' | 'intentResolvedComparison' | 'resolvedCommittedComparison' | 'proposalResolvedComparison' | 'selectionChanged' | 'routeSupported' | 'geometrySupported' | 'inputPhase' | 'fieldFamily' | 'inputValid' | 'expectedWidthComparison' | 'expectedHeightComparison' | 'aspectRatioComparison' | 'layoutConstraintAccepted', number | boolean>>
+-const limits: Record<keyof ActionFields, number> = { modifiers: 15, toolCode: 64, hitCount: 1e6, hitDepth: 1e6, selectionBefore: 1e6, selectionAfter: 1e6, targetCount: 1e6, lockedCount: 1e6, commandCode: 1024, inputSamples: 1e9, sampleUpdates: 1e9, coalescedSamples: 1e9, thresholdPassed: 1, motionObserved: 1, snapEnabled: 1, snapChanged: 1, constraintChanged: 1, constraintEnabled: 1, proposalChanged: 1, resolvedChanged: 1, committedChanged: 1, intentResolvedComparison: 3, resolvedCommittedComparison: 3, proposalResolvedComparison: 3, selectionChanged: 1, routeSupported: 1, geometrySupported: 1, inputPhase: 9, fieldFamily: 11, inputValid: 1, expectedWidthComparison: 3, expectedHeightComparison: 3, aspectRatioComparison: 3, layoutConstraintAccepted: 1 }
++export type ActionFields = Partial<Record<'modifiers' | 'toolCode' | 'hitCount' | 'hitDepth' | 'selectionBefore' | 'selectionAfter' | 'targetCount' | 'lockedCount' | 'commandCode' | 'inputSamples' | 'sampleUpdates' | 'coalescedSamples' | 'thresholdPassed' | 'motionObserved' | 'snapEnabled' | 'snapChanged' | 'constraintChanged' | 'constraintEnabled' | 'proposalChanged' | 'resolvedChanged' | 'committedChanged' | 'intentResolvedComparison' | 'resolvedCommittedComparison' | 'proposalResolvedComparison' | 'selectionChanged' | 'routeSupported' | 'geometrySupported' | 'inputPhase' | 'fieldFamily' | 'inputValid' | 'expectedWidthComparison' | 'expectedHeightComparison' | 'aspectRatioComparison' | 'layoutConstraintAccepted' | 'poseSubmittedSequence' | 'posePresentedSequence' | 'poseFallbackReason' | 'poseLatencyMs', number | boolean>>
++const limits: Record<keyof ActionFields, number> = { modifiers: 15, toolCode: 64, hitCount: 1e6, hitDepth: 1e6, selectionBefore: 1e6, selectionAfter: 1e6, targetCount: 1e6, lockedCount: 1e6, commandCode: 1024, inputSamples: 1e9, sampleUpdates: 1e9, coalescedSamples: 1e9, thresholdPassed: 1, motionObserved: 1, snapEnabled: 1, snapChanged: 1, constraintChanged: 1, constraintEnabled: 1, proposalChanged: 1, resolvedChanged: 1, committedChanged: 1, intentResolvedComparison: 3, resolvedCommittedComparison: 3, proposalResolvedComparison: 3, selectionChanged: 1, routeSupported: 1, geometrySupported: 1, inputPhase: 9, fieldFamily: 11, inputValid: 1, expectedWidthComparison: 3, expectedHeightComparison: 3, aspectRatioComparison: 3, layoutConstraintAccepted: 1, poseSubmittedSequence: 1e9, posePresentedSequence: 1e9, poseFallbackReason: 9, poseLatencyMs: 600000 }
+ const limitEntries = Object.entries(limits)
+ export function sanitizeActionFields(input: unknown): Record<string, number> {
+   const out: Record<string, number> = {}
+diff --git a/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx b/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx
+index 6bee767..503bb60 100644
+--- a/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx
++++ b/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx
+@@ -250,6 +250,10 @@ export function ResidentCompositeSurface(props: {
+         if (stats.presented) {
+           const actual = stats.presented as ResidentAcknowledgement
+           actualPresentation.current=actual
++          // Use the exact displayed input and its owner, not the latest pointer
++          // or resident-sampling completion. Worker and SVG meet at this pose.
++          if (input?.sequence && input.owner === inputOwner.current && !usePageTranslation.current)
++            interaction.current?.acceptPresentedInput(input.sequence, input.at)
+           if (import.meta.env.DEV)
+             el.dataset.presentedCamera = JSON.stringify((stats.presented as { view: CanvasCamera }).view)
+           // This callback runs in a worker message task. Publish the same
+diff --git a/frontend/design-client/src/kernel/gpu/image-asset-residency.test.ts b/frontend/design-client/src/kernel/gpu/image-asset-residency.test.ts
+index 0eeda8e..694245a 100644
+--- a/frontend/design-client/src/kernel/gpu/image-asset-residency.test.ts
++++ b/frontend/design-client/src/kernel/gpu/image-asset-residency.test.ts
+@@ -229,12 +229,15 @@ test('same-epoch completion does not retire reads encoded after that earlier che
+   expect(f.driver.destroy).toHaveBeenCalledWith(a.texture); expect(f.renderer.bytes).toBe(0)
+ })
+ 
+-test('retired assets require a new checkpoint even when the free pool has a valid prior-epoch completion proof', async () => {
++test.each([undefined, 256])('retired assets require a new checkpoint with budget override %s even when the pool has prior-epoch proof', async budgetMiB => {
+   const f = fixture(); await f.region([])
+-  const asset = { width: 2048, height: 2048, bytes: 64 * 1024 * 1024, resource: {} } as Texture
++  if (budgetMiB !== undefined) f.renderer.frameBudget = budgetMiB * 1024 * 1024
++  else expect(f.renderer.frameBudget).toBe(1024 * 1024 * 1024)
++  const edge = budgetMiB === 256 ? 2048 : 4096
++  const asset = { width: edge, height: edge, bytes: f.renderer.frameBudget / 4, resource: {} } as Texture
+   const pooled = { width: 512, height: 512, bytes: 4 * 1024 * 1024, resource: {} } as Texture
+   f.driver.resourceEpoch = 3; f.driver.completedResourceEpoch = 2
+-  f.renderer.images.set(A, { texture: asset, rect: { x: 0, y: 0, w: 2048, h: 2048 } })
++  f.renderer.images.set(A, { texture: asset, rect: { x: 0, y: 0, w: edge, h: edge } })
+   f.renderer.bytes = asset.bytes; f.renderer.retireImageResidency()
+   f.renderer.free.set('512:512', [pooled]); f.renderer.poolReleaseEpoch.set(pooled, 1)
+   f.renderer.bytes += pooled.bytes
+diff --git a/frontend/design-client/src/kernel/gpu/image-field-regions.test.ts b/frontend/design-client/src/kernel/gpu/image-field-regions.test.ts
+new file mode 100644
+index 0000000..e7e2621
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/image-field-regions.test.ts
+@@ -0,0 +1,154 @@
++import {expect,test,vi,afterEach} from 'vitest'
++import { image_sampling_grid_placed } from '../../generated/design-kernel/design_kernel'
++import {setGpuDiagnosticSink,sanitizeFields} from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
++afterEach(()=>setGpuDiagnosticSink(undefined))
++import {GpuRenderer} from './renderer'
++import {inverse} from '../../geometry'
++import type {Driver,Texture} from './types'
++function fixture(width=2049,height=2048) {
++ const make=(w:number,h:number)=>({width:w,height:h,bytes:w*h*16,resource:{}} as Texture)
++ const fields:{width:number;height:number;bytes:number;head:number[]}[]=[],passes:any[]=[]
++ const driver={name:'webgpu',managed:true,linearLight:true,scratchBytes:0,create:vi.fn(make),clear:vi.fn(),destroy:vi.fn(),
++  uploadLinear:vi.fn((_values:Float32Array,w:number,h:number)=>make(w,h)),
++  uploadParameters:vi.fn((values:Float32Array,w:number,h:number)=>{fields.push({width:w,height:h,bytes:values.byteLength,head:Array.from(new Uint32Array(values.buffer,values.byteOffset,Math.min(values.length,32)))});return make(w,h)}),
++  pass:vi.fn((target:Texture,u:Float32Array,inputs:Texture[],region:any,_channels?:number,_filter?:unknown,clearOutside?:boolean)=>{passes.push({target,u:u.slice(),inputs:[...inputs],region,clearOutside})}),checkpoint:vi.fn(async()=>{})}
++ const loader=vi.fn(()=>({width:8,height:8,pixels:new Float32Array(8*8*4).fill(.5)}))
++ const r=new GpuRenderer(driver as unknown as Driver,true,false,loader as any,false,false,1024) as any
++ r.scene={floatCompositing:true,coherentSamples:true,nodes:{}};r.sampleIndex=0
++ const rect={x:-137,y:-59,w:width,h:height},matrix=[Math.cos(Math.PI/12),Math.sin(Math.PI/12),-Math.sin(Math.PI/12),Math.cos(Math.PI/12),0,0]
++ const p={kind:'image',image:'data:image/png;base64,AA==',color:'#ffffff',opacity:1,blend:'normal',visible:true,stops:[],angle:0,fit:'stretch'}
++ const n={id:'controlled-rotated-image',rect,size:[736,414],matrix,inverse:inverse(matrix as any),fills:[p],children:[],effects:[],strokes:[]}
++ const mask={texture:make(width,height),rect},dst={texture:make(width,height),rect};r.busy.add(mask.texture);r.busy.add(dst.texture);r.bytes=mask.texture.bytes+dst.texture.bytes
++ return {r,n,p,mask,dst,driver,fields,passes}
++}
++test('async rotated image paint above64MiB uses bounded exact fields rather than rejecting the full field',async()=>{
++ const f=fixture()
++ await expect(Promise.resolve().then(()=>f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true))).resolves.toBeDefined()
++ expect(f.fields.length).toBeGreaterThan(1)
++ expect(f.fields.every(v=>v.bytes<=64*1024*1024)).toBe(true)
++ const paintPasses=f.passes.filter(p=>p.u[16]===2)
++ expect(paintPasses.length).toBe(f.fields.length)
++ expect(paintPasses.every(p=>p.region && !p.clearOutside)).toBe(true)
++ expect(paintPasses.reduce((a,p)=>a+p.region.w*p.region.h,0)).toBe(2049*2048)
++ expect(new Set(paintPasses.map(p=>p.target)).size).toBe(1)
++})
++
++test('large separable image keeps one compact field instead of forcing dense regions',async()=>{
++ const f=fixture(); f.n.matrix=[1,0,0,1,0,0];f.n.inverse=[1,0,0,1,0,0]
++ await expect(Promise.resolve().then(()=>f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true))).resolves.toBeDefined()
++ expect(f.fields).toHaveLength(1);expect(f.fields[0].height).toBe(2)
++ expect(f.fields[0].bytes).toBeLessThan(64*1024*1024)
++})
++test('preview placement changes destination origins but retains original source mapping',async()=>{
++ const f=fixture(), original={...f.n,rect:{...f.n.rect}}, offset=[19,-31]
++ f.n={...f.n,rect:{...f.n.rect,x:f.n.rect.x+offset[0],y:f.n.rect.y+offset[1]},previewSource:original} as any
++ f.mask.rect=f.n.rect;f.dst.rect=f.n.rect
++ await f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true)
++ const passes=f.passes.filter(p=>p.u[16]===2)
++ for(let i=0;i<passes.length;i++){
++  const region=passes[i].region, sourceRect={x:original.rect.x+region.x,y:original.rect.y+region.y,w:region.w,h:region.h}
++  const expected=image_sampling_grid_placed(JSON.stringify(sourceRect),new Float64Array(original.matrix),new Float64Array(f.n.size),new Uint32Array([8,8]),JSON.stringify(f.p),0,0,new Int32Array([0,0]))
++  expect(f.fields[i].head).toEqual(Array.from(new Uint32Array(expected.buffer,expected.byteOffset,32)))
++  expect(Array.from(passes[i].u.slice(204,206))).toEqual([f.n.rect.x+region.x,f.n.rect.y+region.y])
++ }
++})
++test.each([0,1,2,3,undefined])('original sample phase%s survives all regional passes',async sample=>{
++ const f=fixture();f.r.sampleIndex=sample
++ await f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true)
++ const passes=f.passes.filter(p=>p.u[16]===2)
++ const offsets=sample===undefined?[0,0]:[[-.125,-.375],[.375,-.125],[-.375,.125],[.125,.375]][sample]
++ expect(passes.every(p=>Array.from(p.u.slice(184,186)).every((v,i)=>v===offsets[i]))).toBe(true)
++ expect(f.r.sampleIndex).toBe(sample)
++})
++test('pressure completion keeps the image pinned and mask/destination busy',async()=>{
++ const f=fixture(),bytes=f.n.rect.w*f.n.rect.h*16
++ const pooled={width:4096,height:4096,bytes:256*1024*1024,resource:{}} as Texture
++ f.r.free.set('4096:4096',[pooled]);f.r.used.add(pooled);f.r.bytes=f.r.frameBudget-Math.floor(bytes/2)
++ f.driver.checkpoint.mockImplementation(async()=>{
++  expect(f.r.sequentialImagePins.size).toBe(1)
++  expect(f.r.busy.has(f.mask.texture)).toBe(true);expect(f.r.busy.has(f.dst.texture)).toBe(true)
++ })
++ await f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true)
++ expect(f.driver.checkpoint).toHaveBeenCalled();expect(f.r.sequentialImagePins.size).toBe(0)
++ expect(f.driver.destroy).toHaveBeenCalledWith(pooled)
++})
++test('failed regional encoding releases its new output and pin, not caller masks or destination',async()=>{
++ const f=fixture();f.driver.pass.mockImplementation(()=>{throw Error('encode failed')})
++ await expect(f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true)).rejects.toThrow('encode failed')
++ expect(f.r.sequentialImagePins.size).toBe(0)
++ expect(f.r.busy.has(f.mask.texture)).toBe(true);expect(f.r.busy.has(f.dst.texture)).toBe(true)
++ expect(f.r.busy.size).toBeLessThanOrEqual(3) // possible retained exact coordinate-cache entry
++})
++test('region telemetry contains only bounded scalar metadata',async()=>{
++ const records:any[]=[];setGpuDiagnosticSink((event,fields)=>records.push({event,...sanitizeFields(fields)}))
++ const f=fixture();await f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true)
++ const record=records.find(r=>r.imageFieldRegionPath===1)
++ expect(record).toMatchObject({imageFieldRegionOutcome:1,imageFieldRegionSample:0})
++ expect(record.imageFieldRegionCount).toBe(f.fields.length)
++ expect(record.imageFieldRegionMaxBytes).toBeLessThanOrEqual(8*1024*1024)
++ expect(sanitizeFields({imageFieldRegionMaxBytes:Infinity,imageFieldRegionCount:'text',image:'secret'})).toEqual({})
++})
++test('existing streamImageLeaf uses band-sized image fields for all four phases',async()=>{
++ vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX','1')
++ try {
++ const f=fixture(),d=f.driver as any, n=f.n as any
++ Object.assign(d,{constantTextureSampling:true,zeroTextureSampling:true,copyColorRegion:vi.fn(),
++  createBinaryCoverage:(w:number,h:number)=>({width:w,height:h,bytes:w*h*4,resource:{},binaryCoverage:true}),
++  imageTableRange:()=>({opaqueAlpha:true,nonnegativeRgb:true,maximum:[1,1,1,1]})})
++ Object.assign(n,{opacity:1,blend:'normal',fill:{sampleCount:4,rect:n.rect,opaqueRect:n.rect,count:0}})
++ Object.assign(f.r.scene,{rootInputBox:[n.rect.x,n.rect.y,n.rect.x+n.rect.w,n.rect.y+n.rect.h],extent:n.rect})
++ const targets=Array.from({length:4},()=>({texture:d.create(n.rect.w,n.rect.h),rect:n.rect}))
++ for(const t of targets){f.r.busy.add(t.texture);f.r.aliases.set(t.texture,1)}
++ await expect(f.r.streamImageLeaf(n,targets)).resolves.toBeDefined()
++ const paintPasses=f.passes.filter(p=>p.u[16]===2)
++ expect(paintPasses.length).toBeGreaterThan(4)
++ expect(f.fields.every(v=>v.bytes<=64*1024*1024)).toBe(true)
++ expect(new Set(paintPasses.map(p=>Array.from(p.u.slice(184,186)).join(','))).size).toBe(4)
++ expect(f.r.sequentialImagePins.size).toBe(0)
++ } finally {vi.unstubAllEnvs()}
++})
++test('cancelled completed regional source is discarded before composition and does not consume destination',async()=>{
++ const f=fixture();const original=f.driver.pass.getMockImplementation()!
++ f.driver.pass.mockImplementation((...args:any[])=>{
++  (original as any)(...args)
++  if(args[1][16]===2 && args[3].y+args[3].h===f.n.rect.h) f.r.checkFrameCurrent=()=>{throw Error('cancel before compose')}
++ })
++ await expect(f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true)).rejects.toThrow('cancel before compose')
++ expect(f.r.busy.has(f.mask.texture)).toBe(true);expect(f.r.busy.has(f.dst.texture)).toBe(true)
++ expect(f.r.sequentialImagePins.size).toBe(0)
++ expect(f.passes.some(p=>p.u[16]===3)).toBe(false)
++})
++test.each([{x:100,y:100,w:1800,h:1700},{x:0,y:0,w:0,h:0}])('regional paint honors partial or empty interaction scissor %j',async clip=>{
++ const f=fixture();f.r.drawRegion=()=>clip
++ await f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true)
++ const passes=f.passes.filter(p=>p.u[16]===2)
++ expect(f.driver.clear).toHaveBeenCalled()
++ expect(new Set(f.driver.clear.mock.calls.map(call=>call[0])).size).toBe(f.driver.clear.mock.calls.length) // Each output is cleared once; empty merge also clears its separate result.
++ expect(passes.reduce((sum,p)=>sum+p.region.w*p.region.h,0)).toBe(clip.w*clip.h)
++ expect(passes.every(p=>!p.clearOutside && p.region.x>=clip.x && p.region.y>=clip.y && p.region.x+p.region.w<=clip.x+clip.w && p.region.y+p.region.h<=clip.y+clip.h)).toBe(true)
++})
++test('multi-column fields cover wide output exactly with original mapping',async()=>{
++ const f=fixture(4097,1024);await f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true)
++ const passes=f.passes.filter(p=>p.u[16]===2)
++ expect(new Set(passes.map(p=>p.region.x))).toEqual(new Set([0,4096]))
++ expect(passes.reduce((sum,p)=>sum+p.region.w*p.region.h,0)).toBe(4097*1024)
++ expect(f.fields.every(field=>field.bytes<=8*1024*1024)).toBe(true)
++ for(const pass of passes)expect(Array.from(pass.u.slice(204,206))).toEqual([f.n.rect.x+pass.region.x,f.n.rect.y+pass.region.y])
++})
++test('checkpoint rejection preserves source and caller-owned destinations',async()=>{
++ const f=fixture(),bytes=f.n.rect.w*f.n.rect.h*16,pooled={width:4096,height:4096,bytes:256*1024*1024,resource:{}} as Texture
++ f.r.free.set('4096:4096',[pooled]);f.r.used.add(pooled);f.r.bytes=f.r.frameBudget-Math.floor(bytes/2)
++ f.driver.checkpoint.mockRejectedValue(Error('checkpoint rejected'))
++ await expect(f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true)).rejects.toThrow('checkpoint rejected')
++ expect(f.driver.destroy).not.toHaveBeenCalled();expect(f.r.sequentialImagePins.size).toBe(0)
++ expect(f.r.busy.has(f.mask.texture)).toBe(true);expect(f.r.busy.has(f.dst.texture)).toBe(true)
++ expect(f.passes.some(p=>p.u[16]===3)).toBe(false)
++})
++test('mid-region cancellation releases new output and stops further passes',async()=>{
++ const f=fixture(),original=f.driver.pass.getMockImplementation()!
++ f.driver.pass.mockImplementation((...args:any[])=>{(original as any)(...args);if(args[1][16]===2)f.r.checkFrameCurrent=()=>{throw Error('mid-region cancelled')}})
++ await expect(f.r.paintOver(f.n,f.p,f.mask,f.dst,undefined,true)).rejects.toThrow('mid-region cancelled')
++ expect(f.passes.filter(p=>p.u[16]===2)).toHaveLength(1);expect(f.passes.some(p=>p.u[16]===3)).toBe(false)
++ expect(f.r.sequentialImagePins.size).toBe(0);expect(f.r.busy.has(f.mask.texture)).toBe(true);expect(f.r.busy.has(f.dst.texture)).toBe(true)
++ expect(f.r.busy.has(f.passes[0].target)).toBe(false)
++})
+diff --git a/frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs b/frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs
+new file mode 100644
+index 0000000..0cf16fa
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs
+@@ -0,0 +1,80 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import {readFileSync} from 'node:fs'
++import {stripTypeScriptTypes} from 'node:module'
++import {MaintenanceResidency} from './maintenance-residency.ts'
++const M=1024*1024
++const src=readFileSync(process.env.RENDERER_SOURCE || new URL('./renderer.ts',import.meta.url),'utf8')
++const body=src.slice(src.indexOf('  private async reclaimScratch('),src.indexOf('  private independentSamples(')).replaceAll("import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX", "'0'")
++const Renderer=Function('gpuDiagnosticsEnabled','recordGpuDiagnostic','RECLAIM_BATCH_BYTES','RECLAIM_BATCH_RESOURCES','return '+stripTypeScriptTypes('class Harness {\n'+body+'\n}'))(()=>true,(event,data)=>records.push({event,...data}),Number(src.match(/const RECLAIM_BATCH_BYTES = (\d+) \* 1024 \* 1024/)[1])*M,Number(src.match(/const RECLAIM_BATCH_RESOURCES = (\d+)/)[1]))
++const records=[]
++function fixture(working=272586144,pool=9844192,transient=160118336) {
++ const r=new Renderer(), p={bytes:pool},t={bytes:transient},calls={wait:0,destroy:0}
++ Object.assign(r,{maintenanceResidency:new MaintenanceResidency(),workingBytes:working,bytes:working,frameBudget:1024*M,
++ checkFrameCurrent(){},staticImageBlurs:{collect(){},discardPending(){},bytes:0,clear(){}},collectRetiredImageAssets(){},
++ driver:{completedResourceEpoch:1,resourceEpoch:2,async checkpoint(){calls.wait++}},scene:{},retiredImageAssets:new Map(),constantTargets:new Map(),aliases:new Map(),free:new Map([['pool',[p]]]),coordinateMaps:new Set([t]),retiredUploads:[],hasEvictableImage(){return false},images:new Map(),lastUsed:new Map(),poolReleaseEpoch:new Map(),
++ retiredImageAssetCohort(){return []},coverRetiredImageAssets(){},checkpointMs:0,retireDisplayMaterial(){},retireNestedPrefix(){},horizontalFilters:{clear(){}},evictImages(){},
++ destroyFree(t){for(const [k,list]of this.free)this.free.set(k,list.filter(v=>v!==t));this.bytes-=t.bytes;this.workingBytes-=t.bytes;calls.destroy++},
++ forgetCoordinateTexture(t){this.coordinateMaps.delete(t);this.bytes-=t.bytes;this.workingBytes-=t.bytes;calls.destroy++},
++ forgetUpload(t){this.bytes-=t.bytes;this.workingBytes-=t.bytes;calls.destroy++}})
++ return {r,p,t,calls}
++}
++test('actual req76 transient-heavy mix reclaims one completed cohort and preserves pool',async()=>{
++ const {r,p,calls}=fixture();r.coordinateMaps=new Set(Array.from({length:66},(_,i)=>({bytes:Math.floor(160118336/66)+(i<160118336%66?1:0)})));const pool=r.free.get('pool');await r.reclaimScratch();assert.equal(calls.wait,1);assert.equal(r.coordinateMaps.size,2)
++ assert.deepEqual(r.free.get('pool'),pool);assert.equal(r.workingBytes,272586144-[...Array(64)].reduce((sum,_,i)=>sum+Math.floor(160118336/66)+(i<160118336%66?1:0),0))
++ await r.reclaimScratch();assert.equal(calls.wait,1);assert.equal(records.findLast(x=>x.maintenanceDecision===6).maintenanceRetiredBytes,160118336-[...r.coordinateMaps].reduce((sum,t)=>sum+t.bytes,0))
++})
++test('small transient plus large reusable pool defers without uncharging',async()=>{
++ const {r,calls}=fixture(400*M,300*M,20*M);await r.reclaimScratch();assert.equal(calls.wait,0);assert.equal(calls.destroy,0);assert.equal(r.workingBytes,400*M)
++})
++test('large reusable pool does not relax total working watermark or transient cap',()=>{
++ const d=()=>new MaintenanceResidency();assert.equal(d().decide(0,false,768*M,1024*M,650*M,64*M,2,1),0)
++ assert.equal(d().decide(0,false,768*M+1,1024*M,650*M,64*M,2,1),3)
++ assert.equal(d().decide(0,false,768*M,1024*M,650*M,64*M+1,2,1),4)
++})
++test('required allocation boundary always waits even if allocation fits',async()=>{
++ const {r,calls}=fixture();await r.reclaimScratch(1);assert.equal(calls.wait,1);assert.ok(calls.destroy>0)
++})
++test('pressure, capture and retired-image-table boundaries are not deferred',async()=>{
++ for(const setup of [r=>{r.frameBudget=260*M},r=>{r.driver.captureDisplay=()=>{}},r=>{r.driver.retiredImageTableBytes=1}]){
++ const {r,calls}=fixture();setup(r);await r.reclaimScratch(r.frameBudget===260*M?64*M:0);assert.equal(calls.wait,1)
++ }
++})
++test('eight deferrals retain bounded charge, ninth completes original retirement',async()=>{
++ const {r,calls}=fixture(400*M,300*M,20*M);for(let i=0;i<8;i++)await r.reclaimScratch();assert.equal(calls.wait,0);assert.equal(r.maintenanceResidency.count,8)
++ await r.reclaimScratch();assert.equal(calls.wait,1);assert.ok(calls.destroy>0);assert.equal(r.maintenanceResidency.count,0)
++})
++test('failed checkpoint never resets quota or destroys retained resources',async()=>{
++ const {r,calls}=fixture(400*M,300*M,20*M);for(let i=0;i<8;i++)await r.reclaimScratch();r.driver.checkpoint=async()=>{calls.wait++;throw Error('device lost')}
++ await assert.rejects(r.reclaimScratch(),/device lost/);assert.equal(calls.destroy,0);assert.equal(r.maintenanceResidency.count,8)
++})
++test('invalid ledger or epochs fail closed',()=>{
++ for(const value of [NaN,Infinity,-1,.5,undefined])assert.equal(new MaintenanceResidency().decide(0,false,400*M,1024*M,300*M,20*M,value,1),1)
++ assert.equal(new MaintenanceResidency().decide(0,false,400*M,1024*M,300*M,20*M,1,2),1)
++ assert.equal(new MaintenanceResidency().decide(0,false,400*M,1024*M,390*M,20*M,2,1),1)
++ assert.equal(new MaintenanceResidency().decide(0,false,0,0,0,0,0,0),1)
++})
++test('conflicting pool/transient ownership fails before any destroy or completion',async()=>{
++ const {r,p,calls}=fixture(400*M,100*M,20*M);r.coordinateMaps=new Set([p]);await assert.rejects(r.reclaimScratch(),/ownership overlaps/)
++ assert.equal(calls.wait,0);assert.equal(calls.destroy,0);assert.equal(r.free.get('pool')[0],p);assert.equal(r.coordinateMaps.has(p),true)
++})
++test('conflicting retired/coordinate ownership preserves aliases and rejects',async()=>{
++ const {r,t,calls}=fixture();r.retiredUploads=[t];await assert.rejects(r.reclaimScratch(),/ownership overlaps/)
++ assert.equal(calls.wait,0);assert.equal(calls.destroy,0);assert.equal(r.retiredUploads[0],t);assert.equal(r.coordinateMaps.has(t),true)
++})
++test('completed cohort disposal remains bounded at the production64 handles',async()=>{
++ const {r,calls}=fixture(600*M,200*M,100*M);r.coordinateMaps=new Set(Array.from({length:300},()=>({bytes:M})))
++ await r.reclaimScratch();assert.equal(calls.wait,1);assert.equal(calls.destroy,64);assert.equal(r.coordinateMaps.size,236);assert.equal(r.free.get('pool').length,1)
++})
++test('new coordinate inserted during checkpoint does not borrow old completion',async()=>{
++ const {r,calls}=fixture();const late={bytes:M};r.driver.checkpoint=async()=>{calls.wait++;r.coordinateMaps.add(late);r.bytes+=M;r.workingBytes+=M}
++ await r.reclaimScratch();assert.equal(calls.wait,1);assert.deepEqual([...r.coordinateMaps],[late]);assert.equal(calls.destroy,1)
++})
++test('failed large-cohort completion destroys nothing',async()=>{
++ const {r,calls}=fixture();r.driver.checkpoint=async()=>{calls.wait++;throw Error('device lost')}
++ await assert.rejects(r.reclaimScratch(),/device lost/);assert.equal(calls.destroy,0);assert.equal(r.coordinateMaps.size,1)
++})
++test('newly pinned selected coordinate survives completed maintenance',async()=>{
++ const {r,t,calls}=fixture();r.driver.checkpoint=async()=>{calls.wait++;r.filterImageFields={pinned:new Set([t])}}
++ await r.reclaimScratch();assert.equal(calls.destroy,0);assert.equal(r.coordinateMaps.has(t),true)
++})
+diff --git a/frontend/design-client/src/kernel/gpu/maintenance-residency.ts b/frontend/design-client/src/kernel/gpu/maintenance-residency.ts
+new file mode 100644
+index 0000000..c206bf3
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/maintenance-residency.ts
+@@ -0,0 +1,20 @@
++/** Zero means defer without completion credit. Reusable pool storage stays
++ * charged by workingBytes; only transient retirement consumes the 64 MiB cap.
++ * Reasons: 1 invalid ledger/epoch, 2 mandatory boundary, 3 working watermark,
++ * 4 transient limit, 5 bounded consecutive deferrals exhausted. */
++export class MaintenanceResidency {
++  private deferred = 0
++  decide(required: number, mandatory: boolean, working: number, budget: number,
++    pool: number, transient: number, epoch: number | undefined, completed: number | undefined): number {
++    if (![required, working, budget, pool, transient, epoch, completed].every(v => Number.isSafeInteger(v) && v! >= 0) ||
++      !budget || completed! > epoch! || pool + transient > working) return 1
++    if (required !== 0 || mandatory) return 2
++    if (working > budget * .75) return 3
++    if (transient > Math.min(64 * 1024 * 1024, budget * .25)) return 4
++    if (this.deferred >= 8) return 5
++    this.deferred++
++    return 0
++  }
++  completed() { this.deferred = 0 }
++  get count() { return this.deferred }
++}
+diff --git a/frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts b/frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts
+index b1ff193..cc02b97 100644
+--- a/frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts
++++ b/frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts
+@@ -263,9 +263,23 @@ function requiredSequentialRetirement(kind: 'allocation' | 'retired-upload' | 'c
+   return { ...f, resource, required: kind === 'allocation' ? 128 * MiB : 0 }
+ }
+ 
++// Optional no-pressure retirement may defer, but no ownership or charge is
++// released until a real checkpoint. Then exercise the allocation boundary.
++async function observeDeferredRetirement(f: ReturnType<typeof requiredSequentialRetirement>, kind: string) {
++  if (kind !== 'retired-upload' && kind !== 'coordinate') return
++  const bytes = f.renderer.bytes, key = `${f.pooled.width}:${f.pooled.height}`
++  await f.renderer.reclaimScratch(0)
++  expect(f.driver.checkpoint).not.toHaveBeenCalled(); expect(f.driver.destroy).not.toHaveBeenCalled()
++  expect(f.renderer.bytes).toBe(bytes); expect(f.renderer.free.get(key)).toEqual([f.pooled])
++  if (kind === 'retired-upload') expect(f.renderer.retiredUploads).toContain(f.resource)
++  else expect(f.renderer.coordinateMaps.has(f.resource)).toBe(true)
++  f.required = 1 // A known allocation is an explicit non-deferrable boundary.
++}
++
+ test.each(['allocation', 'retired-upload', 'coordinate', 'image'] as const)(
+   'sequential %s work still waits for completion before retiring resources', async kind => {
+-    const f = requiredSequentialRetirement(kind), pending = f.renderer.reclaimScratch(f.required)
++    const f = requiredSequentialRetirement(kind); await observeDeferredRetirement(f, kind)
++    const pending = f.renderer.reclaimScratch(f.required)
+     expect(f.driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission', undefined)
+     expect(f.driver.destroy).not.toHaveBeenCalled()
+     f.complete(); await pending
+@@ -282,6 +296,7 @@ test.each(['allocation', 'retired-upload', 'coordinate', 'image'] as const)(
+   'ordinary %s work still fences before retiring resources and preserves every owner on device-loss failure', async kind => {
+     for (const fails of [false, true]) {
+       const f = requiredSequentialRetirement(kind); f.renderer.scene.sequentialDisplay = false
++      await observeDeferredRetirement(f, kind)
+       const bytes = f.renderer.bytes, key = `${f.pooled.width}:${f.pooled.height}`
+       const pending = f.renderer.reclaimScratch(f.required)
+       expect(f.driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission', undefined)
+@@ -367,7 +382,8 @@ test.each(['image', 'atlas', 'empty-atlas'] as const)(
+ 
+ test.each(['allocation', 'retired-upload', 'coordinate', 'image'] as const)(
+   'a failed sequential %s fence leaves all resource owners intact', async kind => {
+-    const f = requiredSequentialRetirement(kind), bytes = f.renderer.bytes
++    const f = requiredSequentialRetirement(kind); await observeDeferredRetirement(f, kind)
++    const bytes = f.renderer.bytes
+     const key = `${f.pooled.width}:${f.pooled.height}`, pending = f.renderer.reclaimScratch(f.required)
+     expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+     f.fail(); await expect(pending).rejects.toThrow('lost fence')
+diff --git a/frontend/design-client/src/kernel/gpu/renderer.test.ts b/frontend/design-client/src/kernel/gpu/renderer.test.ts
+index d80fda2..20faed9 100644
+--- a/frontend/design-client/src/kernel/gpu/renderer.test.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.test.ts
+@@ -1014,6 +1014,11 @@ test('real upload retirement respects the64-resource completed batch, preserving
+   const upload={width:1,height:1,bytes:16,resource:{}} as Texture
+   renderer.retiredUploads.push(upload)
+   await renderer.reclaimScratch()
++  expect(driver.checkpoint).not.toHaveBeenCalled(); expect(driver.destroy).not.toHaveBeenCalled()
++  expect(renderer.bytes).toBe(120*MiB); expect(renderer.retiredUploads).toContain(upload)
++  expect(renderer.free.get('128:256')).toEqual(old)
++  expect(renderer.free.get('1536:1536')).toEqual([current])
++  await renderer.reclaimScratch(1) // Known allocation, not optional maintenance.
+   expect(driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission',undefined)
+   expect(driver.destroy).toHaveBeenCalledTimes(64)
+   expect(driver.destroy).toHaveBeenCalledWith(upload)
+@@ -1040,5 +1045,9 @@ test('real upload retirement waits when a current-frame texture crosses the batc
+   }
+   renderer.retiredUploads.push({width:1,height:1,bytes:16,resource:{}} as Texture)
+   await renderer.reclaimScratch()
++  expect(driver.checkpoint).not.toHaveBeenCalled(); expect(driver.destroy).not.toHaveBeenCalled()
++  expect(renderer.bytes).toBe(120*MiB); expect(renderer.retiredUploads).toHaveLength(1)
++  expect(renderer.free.get('1:1')).toHaveLength(2)
++  await renderer.reclaimScratch(1) // Preserve the original mandatory-fence assertion.
+   expect((driver.checkpoint as any).mock.calls[0]).toHaveLength(2)
+ })
+diff --git a/frontend/design-client/src/kernel/gpu/renderer.ts b/frontend/design-client/src/kernel/gpu/renderer.ts
+index ce88978..241a4c6 100644
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -1,3 +1,4 @@
++import { MaintenanceResidency } from './maintenance-residency'
+ import { prefixAlignedStrip, prefixAlignedRgbStrip } from './prefix-band'
+ import { PREFIX_SCRATCH_BYTES } from './texture-prefix'
+ import { backdropFilterRegion } from './backdrop-filter-region'
+@@ -223,6 +224,7 @@ export class GpuRenderer {
+     }
+   }
+   lastBudgetFailure?: RenderBudgetDiagnostic
++  private maintenanceResidency = new MaintenanceResidency()
+   private frameBudget = SURFACE_BUDGET_BYTES
+   private imageResidencyOwner?: ImageResidencyOwner
+   private imageResidencyPolicy?: string
+@@ -1509,38 +1511,43 @@ export class GpuRenderer {
+       this.release(dst)
+       return out
+     }
+-    const source = this.paint(n, paint, mask)
+-    if (admitMerge && source.imageZeroOverIdentity && !clip && paint.blend === 'normal' &&
+-        dst.texture.transparentZero && this.driver.zeroTextureSampling &&
+-        containsRect(source.rect, dst.rect) && containsRect(dst.rect, source.rect)) {
+-      // This particular source is finite/canonical, has alpha 0 or 1 and is
+-      // all +0 whenever alpha is 0. Integer sampling, opacity 1 and the old
+-      // zero destination therefore reproduce its stored bits exactly.
+-      this.release(dst)
+-      return source
+-    }
+-    const merge = () => {
+-      try {
+-        this.checkFrameCurrent()
+-        return this.merge(source, dst, paint.blend, 1, clip)
+-      } finally { this.release(source) }
+-    }
+-    // Image and gradient fields are uploaded lazily inside paint. Their real
+-    // bytes can cross the earlier two-plane admission after the source has
+-    // been allocated. Coherent managed composition always writes a full fresh
+-    // destination, so recheck its actual missing allocation here. The source
+-    // stays busy across a real checkpoint; its sampled uploads can now retire
+-    // safely. Synchronous bounded-strip consumers keep their existing path.
+-    if (admitMerge && this.driver.managed && this.scene.coherentSamples &&
+-        !this.free.get(`${dst.rect.w}:${dst.rect.h}`)?.length) {
+-      const required = dst.rect.w * dst.rect.h * 16
+-      if (this.workingBytes + required > this.frameBudget)
+-        return this.reclaimScratch(required).then(merge, error => {
+-          this.release(source)
+-          throw error
+-        })
++    const compose = (source: Surface): Surface | Promise<Surface> => {
++      try { this.checkFrameCurrent() }
++      catch (error) { this.release(source); throw error }
++      if (admitMerge && source.imageZeroOverIdentity && !clip && paint.blend === 'normal' &&
++          dst.texture.transparentZero && this.driver.zeroTextureSampling &&
++          containsRect(source.rect, dst.rect) && containsRect(dst.rect, source.rect)) {
++        // This particular source is finite/canonical, has alpha 0 or 1 and is
++        // all +0 whenever alpha is 0. Integer sampling, opacity 1 and the old
++        // zero destination therefore reproduce its stored bits exactly.
++        this.release(dst)
++        return source
++      }
++      const merge = () => {
++        try {
++          this.checkFrameCurrent()
++          return this.merge(source, dst, paint.blend, 1, clip)
++        } finally { this.release(source) }
++      }
++      // Image and gradient fields are uploaded lazily inside paint. Their real
++      // bytes can cross the earlier two-plane admission after the source has
++      // been allocated. Coherent managed composition always writes a full fresh
++      // destination, so recheck its actual missing allocation here. The source
++      // stays busy across a real checkpoint; its sampled uploads can now retire
++      // safely. Synchronous bounded-strip consumers keep their existing path.
++      if (admitMerge && this.driver.managed && this.scene.coherentSamples &&
++          !this.free.get(`${dst.rect.w}:${dst.rect.h}`)?.length) {
++        const required = dst.rect.w * dst.rect.h * 16
++        if (this.workingBytes + required > this.frameBudget)
++          return this.reclaimScratch(required).then(merge, error => {
++            this.release(source)
++            throw error
++          })
++      }
++      return merge()
+     }
+-    return merge()
++    const source = admitMerge ? this.paintWithBoundedImageFields(n, paint, mask) : this.paint(n, paint, mask)
++    return source instanceof Promise ? source.then(compose) : compose(source)
+   }
+   /** Consumes dst; retains src/mask. Source-over writes only the affected area. */
+   private merge(src: Surface, dst: Surface, mode = 'normal', opacity = 1, mask?: Surface) {
+@@ -1942,7 +1949,7 @@ export class GpuRenderer {
+         throw new Error('后端缺少统一的图片解码器')
+     }
+   }
+-  private imageGrid(n: GpuNode, p: GpuPaint, image: Surface, level = 0, origin: [number, number] = [0, 0]): Surface {
++  private imageGrid(n: GpuNode, p: GpuPaint, image: Surface, level = 0, origin: [number, number] = [0, 0], preparedAxes?: Float32Array): Surface {
+     const sample = this.sampleIndex ?? 4
+     let grids = this.imageGrids.get(p)
+     const known = grids?.get(sample)
+@@ -2011,7 +2018,7 @@ export class GpuRenderer {
+     let separated: boolean | undefined
+     const surface = this.materialField(['image-grid',this.driver.managed,compact,[n.rect.w,n.rect.h],(n.previewSource || n).rect,
+       (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin], n.rect, () => {
+-      let values = compact ? image_sampling_axes_placed(...arguments_) : new Float32Array()
++      let values = preparedAxes ?? (compact ? image_sampling_axes_placed(...arguments_) : new Float32Array())
+       if (!values.length) {
+         if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16, n.rect.w, n.rect.h)) throw this.budgetError('GPU 表面内存预算超限', 7)
+         values = this.driver.managed ? image_sampling_grid_placed(...arguments_) : image_byte_sampling_field_placed(...arguments_)
+@@ -2077,6 +2084,84 @@ export class GpuRenderer {
+       this.driver.uploadParameters,undefined,n.rect.w*n.rect.h*16,import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS !== '0')
+   }
+ 
++  /** Keep the Rust field bound intact. Oversized nonseparable fields are
++   * generated in exact global-coordinate regions, never resampled/downscaled. */
++  private paintWithBoundedImageFields(n: GpuNode, p: GpuPaint, mask: Surface): Surface | Promise<Surface> {
++    const source = n.previewSource || n
++    if (p.kind !== 'image' || !this.driver.managed || this.driver.name !== 'webgpu' || this.imageAtlas ||
++        n.rect.w * n.rect.h * 16 <= 64 * 1024 * 1024 ||
++        source.rect.w !== n.rect.w || source.rect.h !== n.rect.h || !exactBlendLattice([n.rect, source.rect]))
++      return this.paint(n, p, mask)
++    const sample = this.sampleIndex ?? 4
++    if (this.imageGrids.get(p)?.has(sample)) return this.paint(n, p, mask)
++    const level = this.imageLevel(n, p), image = this.imageFor(p.image || '', level, false, p.adjust)
++    if (this.prepareLargeImageAxes(n, p, image, level)) return this.paint(n, p, mask)
++    return this.paintImageFieldRegions(n, p, mask, image, level)
++  }
++  /** Probe one original phase only. A certified full compact field stays
++   * reusable across bands; only its dense fallback needs regional generation. */
++  private prepareLargeImageAxes(n: GpuNode, p: GpuPaint, image: Surface, level: number): boolean {
++    if (this.imageGrids.get(p)?.has(this.sampleIndex ?? 4)) return true
++    if (this.scene.compactImageFields === false || import.meta.env.VITE_DESIGN_IMAGE_AXES === '0') return false
++    const source = n.previewSource || n
++    const values = image_sampling_axes_placed(JSON.stringify(source.rect), new Float64Array(source.matrix),
++      new Float64Array(n.size), new Uint32Array(this.baseDims(p.image || '')),
++      JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile }),
++      this.sampleIndex ?? 4, level, new Int32Array([0, 0]))
++    if (!values.length) return false
++    this.imageGrid(n, p, image, level, [0, 0], values)
++    return true
++  }
++  private async paintImageFieldRegions(n: GpuNode, p: GpuPaint, mask: Surface, image: Surface, level: number): Promise<Surface> {
++    const source = n.previewSource || n, alreadyPinned = this.sequentialImagePins.has(image.texture)
++    if (!alreadyPinned) this.sequentialImagePins.add(image.texture)
++    let out: Surface | undefined, regions = 0, fieldBytes = 0, maxFieldBytes = 0, maxWidth = 0, maxHeight = 0, succeeded = false
++    try {
++      const outputBytes = n.rect.w * n.rect.h * 16
++      if (!this.free.get(`${n.rect.w}:${n.rect.h}`)?.length && this.workingBytes + outputBytes > this.frameBudget)
++        await this.reclaimScratch(outputBytes)
++      this.checkFrameCurrent(); this.requireImageResidencyCurrent()
++      out = this.acquire(n.rect)
++      const visible = this.drawRegion(n.rect)
++      if (visible) this.driver.clear(out.texture)
++      const columns = Math.min(n.rect.w, 4096), rows = Math.max(1, Math.min(256, Math.floor(8 * 1024 * 1024 / (columns * 16))))
++      for (let y = 0; y < n.rect.h; y += rows) for (let x = 0; x < n.rect.w; x += columns) {
++        const w = Math.min(columns, n.rect.w - x), h = Math.min(rows, n.rect.h - y)
++        const local = rect(x, y, w, h), draw = visible ? intersect(local, visible) : local
++        if (!draw.w || !draw.h) continue
++        const bytes = w * h * 16
++        if (this.workingBytes + bytes > this.frameBudget) await this.reclaimScratch(bytes)
++        this.checkFrameCurrent(); this.requireImageResidencyCurrent()
++        const region = rect(n.rect.x + x, n.rect.y + y, w, h)
++        const regionPaint = { ...p }, regionNode = { ...n, rect: region,
++          previewSource: { ...source, rect: rect(source.rect.x + x, source.rect.y + y, w, h) } }
++        let field: Surface | undefined
++        try {
++          field = this.imageGrid(regionNode, regionPaint, image, level)
++          regions++; fieldBytes += field.texture.bytes; maxFieldBytes = Math.max(maxFieldBytes, field.texture.bytes)
++          maxWidth = Math.max(maxWidth, w); maxHeight = Math.max(maxHeight, h)
++          const u = parameters(n.rect, mask.rect, image.rect, mask.rect)
++          u[16] = 2; this.configurePaint(u, n, p); u.set([field.rect.x, field.rect.y], 204)
++          this.driver.pass(out.texture, u, [mask.texture, image.texture, mask.texture, field.texture], draw)
++          this.passPixels += draw.w * draw.h
++        } finally {
++          this.imageGrids.delete(regionPaint)
++          if (field) this.retireUpload(field.texture)
++        }
++      }
++      if (this.imageZeroOverSource(n, p, mask, image)) out.imageZeroOverIdentity = true
++      const painted = out; out = undefined; succeeded = true; return painted
++    } finally {
++      this.release(out)
++      if (!alreadyPinned) this.sequentialImagePins.delete(image.texture)
++      if (gpuDiagnosticsEnabled()) try { recordGpuDiagnostic('filter', {
++        imageFieldRegionPath: 1, imageFieldRegionOutcome: succeeded ? 1 : 2,
++        imageFieldRegionCount: regions, imageFieldRegionBytes: fieldBytes,
++        imageFieldRegionMaxBytes: maxFieldBytes, imageFieldRegionMaxWidth: maxWidth, imageFieldRegionMaxHeight: maxHeight,
++        imageFieldRegionSample: this.sampleIndex ?? 4,
++      }) } catch { /* telemetry cannot change rendering */ }
++    }
++  }
+   private paint(n: GpuNode, p: GpuPaint, mask: Surface, material?: Surface): Surface {
+     let image: Surface | undefined
+     let imageLevel = 0
+@@ -2480,6 +2565,34 @@ export class GpuRenderer {
+     const reclaimableBytes = [...pooled, ...this.retiredUploads, ...coordinates]
+       .reduce((sum, texture) => sum + texture.bytes, retiredImageTableBytes + retiredImageAssetBytes)
+     if (!pressure && !imagesUnderPressure && reclaimableBytes < RECLAIM_BATCH_BYTES) return
++    // Pool surfaces are already reusable in queue order and stay fully charged.
++    // Do not confuse their residency with dead upload/coordinate retirement.
++    // No resource is released, destroyed, or marked complete by this decision.
++    if (coordinates.length || this.retiredUploads.length) {
++      const poolSet = new Set(pooled)
++      const transientSet = new Set([...coordinates, ...this.retiredUploads])
++      const poolBytes = [...poolSet].reduce((sum, t) => sum + t.bytes, 0)
++      const transientBytes = [...transientSet].reduce((sum, t) => sum + t.bytes, 0)
++      const overlaps = [...transientSet].some(t => poolSet.has(t)) ||
++        this.retiredUploads.some(t => this.coordinateMaps.has(t))
++      // Conflicting ownership must not fall through to either retirement path:
++      // forgetUpload cannot detach coordinate aliases or free-list references.
++      if (overlaps) throw new Error('GPU maintenance resource ownership overlaps')
++      const reason = this.maintenanceResidency.decide(required,
++        pressure || imagesUnderPressure || !!this.driver.captureDisplay ||
++          !!retiredImageTableBytes || !!retiredImageAssetBytes,
++        this.workingBytes, this.frameBudget, poolBytes, transientBytes,
++        this.driver.resourceEpoch, this.driver.completedResourceEpoch)
++      if (gpuDiagnosticsEnabled()) {
++        try { recordGpuDiagnostic('cache', { maintenanceDecision: reason,
++          maintenanceDeferredCount: this.maintenanceResidency.count,
++          maintenancePoolBytes: poolBytes, maintenanceTransientBytes: transientBytes,
++          maintenanceWorkingBytes: this.workingBytes, maintenanceBudgetBytes: this.frameBudget,
++          maintenanceRequiredBytes: required, resourceEpoch: this.driver.resourceEpoch,
++          completedResourceEpoch: this.driver.completedResourceEpoch }) } catch { /* diagnostics only */ }
++      }
++      if (reason === 0) return
++    }
+     const batchLimit = pressure ? Math.max(RECLAIM_BATCH_BYTES, this.workingBytes + required - this.frameBudget) : RECLAIM_BATCH_BYTES
+     const resourceLimit = pressure ? 4096 : RECLAIM_BATCH_RESOURCES
+     // Preserve the exact oldest-first batch. Only a pool-only maintenance
+@@ -2519,6 +2632,7 @@ export class GpuRenderer {
+     // Submission is still mandatory. Only the completion wait may be omitted,
+     // and the driver independently validates the already-completed epoch.
+     const checkpointScratch = this.driver.scratchBytes || 0
++    const transientCohort = [...new Set([...this.retiredUploads, ...coordinates])]
+     const retiringImageAssets = this.retiredImageAssetCohort()
+     try {
+       if (completedPoolEpoch === undefined) await this.driver.checkpoint('admission', diagnostic)
+@@ -2528,9 +2642,40 @@ export class GpuRenderer {
+       // Preserve actual scratch accounting even when a later step rejects.
+       this.bytes += (this.driver.scratchBytes || 0) - checkpointScratch
+     }
++    this.maintenanceResidency.completed()
+     this.checkpointMs += performance.now() - checkpointStart
+     this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
+     this.coverRetiredImageAssets(retiringImageAssets)
++    // This no-pressure checkpoint already proves completion for the whole
++    // selected transient cohort. Spend the bounded disposal work on that
++    // cohort, rather than destroying reusable pool storage first and leaving
++    // coordinate uploads to force the next identical maintenance wait.
++    if (required === 0 && !pressure && !imagesUnderPressure &&
++        !retiredImageTableBytes && !retiredImageAssetBytes &&
++        this.workingBytes <= this.frameBudget * .75 &&
++        (coordinates.length || this.retiredUploads.length)) {
++      let count = 0, bytes = 0
++      // Snapshot ownership before awaiting above: later insertions are not
++      // allowed to borrow this completion boundary.
++      for (const texture of transientCohort) {
++        if (count >= RECLAIM_BATCH_RESOURCES) break
++        const retiredIndex = this.retiredUploads.indexOf(texture)
++        if (retiredIndex >= 0) {
++          this.retiredUploads.splice(retiredIndex, 1)
++          this.forgetUpload(texture)
++        } else if (this.coordinateMaps.has(texture) && !this.filterImageFields?.pinned.has(texture)) {
++          this.forgetCoordinateTexture(texture)
++        } else continue
++        count++; bytes += texture.bytes
++      }
++      if (gpuDiagnosticsEnabled()) {
++        try { recordGpuDiagnostic('cache', { maintenanceDecision: 6,
++          maintenanceRetiredBytes: bytes, maintenanceRetiredCount: count,
++          maintenanceWorkingBytes: this.workingBytes, maintenanceBudgetBytes: this.frameBudget,
++          resourceEpoch: this.driver.resourceEpoch, completedResourceEpoch: this.driver.completedResourceEpoch }) } catch { /* diagnostics only */ }
++      }
++      return
++    }
+     // Every surface still needed by an ancestor is in busy. Completion is
+     // proven for every selected destruction: by this fence, or (pool-only)
+     // by the completed prior-frame release stamps checked above.
+@@ -2658,9 +2803,10 @@ export class GpuRenderer {
+     const bounds = targets[0].rect
+     if (!exactBlendLattice([bounds]) || targets.some(target => !containsRect(bounds, target.rect) || !containsRect(target.rect, bounds))) return
+     const node = this.bandImageNode(n, bounds)
+-    if (!node) return
++    if (!node || (node.previewSource && (node.previewSource.rect.w !== node.rect.w || node.previewSource.rect.h !== node.rect.h))) return
+     const paint = node.fills[0], previousSample = this.sampleIndex, previousNode = this.activeNode
+     let pinned: Texture | undefined
++    let fieldRegions = 0, fieldBytes = 0, maxFieldBytes = 0, maxFieldWidth = 0, maxFieldHeight = 0, fieldStarted = false, fieldSucceeded = false
+     try {
+       this.activeNode = node.id; this.sampleIndex = 0
+       const mask = this.nodeMask(node), level = this.imageLevel(node, paint), image = this.imageFor(paint.image!, level, false, paint.adjust)
+@@ -2669,8 +2815,11 @@ export class GpuRenderer {
+       // still needed by later bands and all four original sampling phases.
+       const alreadyPinned = this.sequentialImagePins.has(image.texture)
+       if (!alreadyPinned) { this.sequentialImagePins.add(image.texture); pinned = image.texture }
++      fieldStarted = true
+       for (let sample = 0; sample < 4; sample++) {
+         this.sampleIndex = sample
++        const regionalFields = node.rect.w * node.rect.h * 16 > 64 * 1024 * 1024 &&
++          !this.prepareLargeImageAxes(node, paint, image, level)
+         const dst = targets[sample]
+         const inplace = this.privateBandDestination(dst)
+         let out: Surface | undefined
+@@ -2689,14 +2838,19 @@ export class GpuRenderer {
+             const missing = (this.free.get(`${band.w}:${band.h}`)?.length || 0)
+             await this.reclaimScratch(Math.max(0, (inplace ? 2 : 1) - missing) * band.w * band.h * 16)
+             this.checkFrameCurrent()
+-            let before: Surface | undefined, source: Surface | undefined
++            let before: Surface | undefined, source: Surface | undefined, field: Surface | undefined
++            const regionPaint = regionalFields ? { ...paint } : paint, original = node.previewSource || node
++            const regionNode = regionalFields ? { ...node, rect: band, previewSource: { ...original,
++              rect: rect(original.rect.x + band.x - node.rect.x, original.rect.y + band.y - node.rect.y, band.w, band.h) } } : node
+             try {
+               if (inplace) {
+                 before = this.acquire(band)
+                 this.driver.copyColorRegion(before.texture, dst.texture, { x: 0, y: row, w: band.w, h: band.h }, [0, 0])
+                 this.painterStageCopies++; this.painterStageCopyBytes += band.w * band.h * 16
+               }
+-              const field = this.imageGrid(node, paint, image, level)
++              field = this.imageGrid(regionNode, regionPaint, image, level)
++              fieldRegions++; fieldBytes += field.texture.bytes; maxFieldBytes = Math.max(maxFieldBytes, field.texture.bytes)
++              maxFieldWidth = Math.max(maxFieldWidth, band.w); maxFieldHeight = Math.max(maxFieldHeight, band.h)
+               source = this.acquire(band)
+               const paintParameters = parameters(band, mask.rect, image.rect, mask.rect)
+               paintParameters[16] = 2
+@@ -2708,7 +2862,13 @@ export class GpuRenderer {
+               u.set([3, 0, 1, 0], 16)
+               this.driver.pass(out.texture, u, [source.texture, old.texture], rect(0, row, bounds.w, height))
+               this.passPixels += bounds.w * height
+-            } finally { this.release(source, before) }
++            } finally {
++              this.release(source, before)
++              if (regionalFields) {
++                this.imageGrids.delete(regionPaint)
++                if (field) this.retireUpload(field.texture)
++              }
++            }
+           }
+           targets[sample] = out
+           if (!inplace) this.release(dst)
+@@ -2716,10 +2876,16 @@ export class GpuRenderer {
+         } finally { if (out && out !== dst) this.release(out) }
+       }
+       this.retireLeafMasks(node, undefined, undefined, targets, true)
++      fieldSucceeded = true
+       return targets
+     } finally {
+       if (pinned) this.sequentialImagePins.delete(pinned)
+       this.sampleIndex = previousSample; this.activeNode = previousNode
++      if (fieldStarted && gpuDiagnosticsEnabled()) try { recordGpuDiagnostic('filter', {
++        imageFieldRegionPath: 2, imageFieldRegionOutcome: fieldSucceeded ? 1 : 2,
++        imageFieldRegionCount: fieldRegions, imageFieldRegionBytes: fieldBytes, imageFieldRegionMaxBytes: maxFieldBytes,
++        imageFieldRegionMaxWidth: maxFieldWidth, imageFieldRegionMaxHeight: maxFieldHeight,
++      }) } catch { /* telemetry cannot change rendering */ }
+     }
+   }
+   private async drawBundle(
+diff --git a/frontend/design-client/src/kernel/gpu/stream-image-fields.test.ts b/frontend/design-client/src/kernel/gpu/stream-image-fields.test.ts
+index 37a498c..ec9f3e6 100644
+--- a/frontend/design-client/src/kernel/gpu/stream-image-fields.test.ts
++++ b/frontend/design-client/src/kernel/gpu/stream-image-fields.test.ts
+@@ -58,18 +58,21 @@ test('full-support proof failure retains dense per-strip fallback', () => {
+   expect([...f.renderer.filterImageFields.fields.values()]).toEqual([null])
+ })
+ 
+-test('uncached full-support uploads survive strip checkpoints and retire after scope end', async () => {
++test.each([undefined, 256])('uncached full-support uploads survive strip checkpoints and retire at real pressure with budget override %s', async budgetMiB => {
+   const f=fixture(false),field=f.field({...f.support,h:64},0)
+-  f.renderer.bytes=80*1024*1024
++  if (budgetMiB !== undefined) f.renderer.frameBudget=budgetMiB*1024*1024
++  else expect(f.renderer.frameBudget).toBe(1024*1024*1024)
++  const budget=f.renderer.frameBudget
++  f.renderer.bytes=budget*5/16
+   await f.renderer.reclaimScratch()
+   expect(f.destroyed).not.toContain(field.texture)
+   expect(f.field({...f.support,y:f.support.y+64,h:64},0).texture).toBe(field.texture)
+   f.renderer.filterImageFields=undefined
+-  f.renderer.bytes=220*1024*1024
++  f.renderer.bytes=budget*55/64
+   await f.renderer.reclaimScratch()
+   expect(f.driver.checkpoint).not.toHaveBeenCalled()
+   expect(f.destroyed).not.toContain(field.texture)
+-  await f.renderer.reclaimScratch(64*1024*1024)
++  await f.renderer.reclaimScratch(budget/4)
+   expect(f.driver.checkpoint).toHaveBeenCalled()
+   expect(f.destroyed).toContain(field.texture)
+ })
+diff --git a/frontend/design-client/src/kernel/interaction-editor-recovery.test.ts b/frontend/design-client/src/kernel/interaction-editor-recovery.test.ts
+new file mode 100644
+index 0000000..ad4bbdf
+--- /dev/null
++++ b/frontend/design-client/src/kernel/interaction-editor-recovery.test.ts
+@@ -0,0 +1,60 @@
++import { beforeAll, afterEach, expect, test, vi } from 'vitest'
++import { readFile } from 'node:fs/promises'
++import { blank, node, type Matrix } from '../model'
++import { Editor } from '../engine'
++import { initializePicking } from './picking'
++import { InteractionRenderer } from './interaction-renderer'
++import { KernelClient } from './client'
++const worker = vi.hoisted(() => ({ jobs: [] as any[], stops: [] as number[] }))
++vi.mock('./client', () => ({ KernelClient: class {
++  cancelPreview() {} dispose() {} moveResidentInteraction() {}
++  stopResidentInteraction(id: number) { worker.stops.push(id) }
++  releasePresented() {}
++  render(document: unknown, options: any) {
++    return new Promise((resolve, reject) => worker.jobs.push({document,options,reject,
++      resolve:(result={})=>resolve({bytes:new Uint8Array(options.width*options.height*4),...result})}))
++  }
++}}))
++beforeAll(async () => {
++ await initializePicking({wasm:new Uint8Array(await readFile(new URL('../../public/kernel/design_kernel_bg.wasm',import.meta.url))),
++ font:new Uint8Array(await readFile(new URL('../../public/fonts/NotoSansSC.ttf',import.meta.url)))})
++})
++afterEach(()=>{worker.jobs.length=worker.stops.length=0;vi.unstubAllEnvs()})
++for (const finish of ['commit','cancel'] as const) test(`failed live preview falls back to actual Editor ${finish} without double movement/history`,async()=>{
++ vi.stubEnv('VITE_DESIGN_RESIDENT_PENDING_POSE','1')
++ const doc=blank(),root=node('frame',0,0,240,180),child=node('rectangle',40,40,24,20)
++ root.blend='normal';root.clip=false;root.children=[child.id];doc.nodes[root.id]=root;doc.nodes[child.id]=child;doc.pages[0].children=[root.id]
++ const editor=new Editor(doc),client=new KernelClient(),owner=new InteractionRenderer(()=>{},client)
++ const flush=async()=>{for(let i=0;i<8;i++)await Promise.resolve()}
++ const patch=(x:number)=>({[child.id]:{transform:[1,0,0,1,x,40] as Matrix}})
++ try {
++  editor.select([child.id]);editor.begin('move')
++  owner.prepare({document:editor.state.doc,selection:[child.id],active:true,epoch:editor.sessionGeneration,control:{current:null},onReady(){}},doc.pages[0].id,{x:0,y:0,zoom:1},2,'figmaSubpixel','webgpu',undefined,{width:240,height:180})
++  worker.jobs[0].resolve({gpuTile:920,residentInteraction:false});await flush()
++  expect(owner.control.apply(editor.state.doc,patch(52))).toEqual({x:12,y:0})
++  worker.jobs[1].reject(Error('Sampling coordinate field exceeds 64 MiB'));await flush()
++  expect(owner.control.apply(editor.state.doc,patch(56))).toBeNull()
++  expect(editor.state.doc.nodes[child.id].transform[4]).toBe(40)
++  expect(editor.preview(patch(56))).toBe(true)
++  owner.control.end(editor.state.doc)
++  expect(owner.control.isActive()).toBe(false)
++  expect(worker.stops).toContain(920)
++  const jobs = worker.jobs.length
++  owner.prepare({document:editor.state.doc,selection:[child.id],active:true,epoch:editor.sessionGeneration,control:{current:null},onReady(){}},doc.pages[0].id,{x:0,y:0,zoom:1},2,'figmaSubpixel','webgpu',undefined,{width:240,height:180})
++  expect(owner.control.isActive()).toBe(false)
++  expect(worker.jobs.length).toBe(jobs)
++  // Canvas flushes the final pointer-up proposal again; it must remain an
++  // absolute preview in the same transaction, not a second delta or undo item.
++  expect(editor.preview(patch(56))).toBe(true)
++  owner.control.end(editor.state.doc)
++  expect(worker.stops.filter(id=>id===920)).toHaveLength(1)
++  editor[finish]()
++  expect(editor.state.doc.nodes[child.id].transform[4]).toBe(finish==='commit'?56:40)
++  expect(editor.canUndo).toBe(finish==='commit')
++  if(finish==='commit') {editor.undo();expect(editor.state.doc.nodes[child.id].transform[4]).toBe(40);expect(editor.canUndo).toBe(false);editor.redo();expect(editor.state.doc.nodes[child.id].transform[4]).toBe(56)}
++  owner.prepare({document:editor.state.doc,selection:[child.id],active:false,epoch:editor.sessionGeneration,control:{current:null},onReady(){}},doc.pages[0].id,{x:0,y:0,zoom:1},2,'figmaSubpixel','webgpu',undefined,{width:240,height:180})
++  expect(owner.error).toBe('')
++  owner.prepare({document:editor.state.doc,selection:[child.id],active:true,epoch:editor.sessionGeneration,control:{current:null},onReady(){}},doc.pages[0].id,{x:0,y:0,zoom:1},2,'figmaSubpixel','webgpu',undefined,{width:240,height:180})
++  expect(owner.control.apply(editor.state.doc,patch(64))).not.toBeNull()
++ } finally {owner.dispose();editor.dispose()}
++})
+diff --git a/frontend/design-client/src/kernel/interaction-layers.ts b/frontend/design-client/src/kernel/interaction-layers.ts
+index 7cbc58e..842f979 100644
+--- a/frontend/design-client/src/kernel/interaction-layers.ts
++++ b/frontend/design-client/src/kernel/interaction-layers.ts
+@@ -11,11 +11,15 @@ export type GpuMoveControl = {
+   isActive(): boolean
+   apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>): { x: number; y: number } | null
+   covers(document: DesignDocument, ids: string[], view: CanvasCamera): boolean
++  feedbackPending?(): boolean
++  inputSequence?(): number
++  previewFailure?(): number
+   end(document: DesignDocument): void
+ }
+ export type InteractionProps = {
+   document: DesignDocument; selection: string[]; active: boolean; epoch: number; control: RefObject<GpuMoveControl | null>; onReady: () => void
+   /** Optional Canvas-only published geometry. Other callers remain uncached. */
++  onPosePresented?: (pose: { sequence: number; offset: { x: number; y: number }; latencyMs: number; document: DesignDocument; epoch: number }) => void
+   scene?: CanvasSceneBorrow
+ }
+ 
+diff --git a/frontend/design-client/src/kernel/interaction-renderer.test.ts b/frontend/design-client/src/kernel/interaction-renderer.test.ts
+index 529d079..7d349da 100644
+--- a/frontend/design-client/src/kernel/interaction-renderer.test.ts
++++ b/frontend/design-client/src/kernel/interaction-renderer.test.ts
+@@ -870,3 +870,58 @@ test('missing or stale Canvas borrow falls back to fresh geometry, including sta
+     expect((owner as any).resident.rootBounds.get(child.id).width).toBe(120)
+   } finally { lookup.mockRestore() }
+ })
++
++test('live SVG feedback follows actual accepted presenter input, never the submitted or compiled pose', async () => {
++  const f = pendingRetainedFixture(), feedback = vi.fn()
++  f.props.onPosePresented = feedback
++  worker.jobs[0].resolve({ gpuTile: 901, residentInteraction: true }); await f.flush()
++  const submitted = f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
++  expect(submitted).toEqual({ x: 12, y: 0 })
++  expect(f.owner.control.feedbackPending?.()).toBe(true)
++  expect(feedback).not.toHaveBeenCalled()
++  f.owner.acceptResidentSample({ slot: 901, ...worker.poses[0][2], nativePose: true })
++  expect(feedback).not.toHaveBeenCalled()
++  f.owner.acceptPresentedInput(worker.poses[0][2].sequence)
++  expect(feedback).toHaveBeenCalledOnce()
++  expect(feedback.mock.calls[0][0]).toMatchObject({ sequence: 1, offset: { x: 12, y: 0 }, epoch: 1, document: f.doc })
++  f.owner.acceptPresentedInput(1); expect(feedback).toHaveBeenCalledOnce()
++})
++
++test('failed live preview stops claiming the gesture but does not mutate its authored document', async () => {
++  const f = pendingRetainedFixture(), original = JSON.stringify(f.doc)
++  worker.jobs[0].resolve({ gpuTile: 902, residentInteraction: false }); await f.flush()
++  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
++  worker.jobs[1].reject(Error('Sampling coordinate field exceeds 64 MiB')); await f.flush()
++  expect(f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(16) } })).toBeNull()
++  expect(f.owner.control.covers(f.doc, [f.child.id], f.view)).toBe(false)
++  expect(JSON.stringify(f.doc)).toBe(original)
++})
++
++test('ended or replaced gesture cannot publish delayed DOM feedback', async () => {
++  const f = pendingRetainedFixture(), feedback = vi.fn(); f.props.onPosePresented = feedback
++  worker.jobs[0].resolve({ gpuTile: 903, residentInteraction: true }); await f.flush()
++  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(8) } })
++  f.owner.acceptPresentedInput(999); expect(feedback).not.toHaveBeenCalled()
++  f.owner.control.end(f.doc)
++  f.owner.acceptPresentedInput(1); expect(feedback).not.toHaveBeenCalled()
++  f.owner.dispose(); f.owner.acceptPresentedInput(1); expect(feedback).not.toHaveBeenCalled()
++})
++
++
++test('same-epoch document replacement cannot relabel an older accepted pose', async () => {
++  const f = pendingRetainedFixture(), feedback = vi.fn(); f.props.onPosePresented = feedback
++  worker.jobs[0].resolve({ gpuTile: 904, residentInteraction: true }); await f.flush()
++  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(8) } })
++  const replacement = { ...f.doc, nodes: { ...f.doc.nodes,
++    [f.child.id]: { ...f.child, name: 'replacement' } } }
++  f.prepare({ ...f.props, document: replacement })
++  f.owner.acceptPresentedInput(1)
++  expect(feedback).not.toHaveBeenCalled()
++  // Returning to the old immutable snapshot must not revive its retired ACK.
++  f.prepare(f.props); f.owner.acceptPresentedInput(1)
++  expect(feedback).not.toHaveBeenCalled()
++  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
++  f.owner.acceptPresentedInput(2)
++  expect(feedback).toHaveBeenCalledOnce()
++  expect(feedback.mock.calls[0][0]).toMatchObject({ sequence: 2, document: f.doc, offset: { x: 12, y: 0 } })
++})
+diff --git a/frontend/design-client/src/kernel/interaction-renderer.ts b/frontend/design-client/src/kernel/interaction-renderer.ts
+index 9fdc161..8f3dec3 100644
+--- a/frontend/design-client/src/kernel/interaction-renderer.ts
++++ b/frontend/design-client/src/kernel/interaction-renderer.ts
+@@ -1,3 +1,4 @@
++import { PoseFeedback } from './pose-feedback'
+ import type { Bounds, DesignDocument, Matrix } from '../model'
+ import { translateOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
+ import type { CanvasCamera } from '../canvas-camera'
+@@ -81,6 +82,10 @@ export class InteractionRenderer {
+   private idleWarmAttempt?: IdleWarmContext
+   private idleWarmFailed?: IdleWarmContext
+   private inputs = new WeakMap<DesignDocument,{sequence:number;at:number}>()
++  private failedGesture = false
++  private feedbackDeferred = false
++  private readonly feedbackOwners = new WeakMap<DesignDocument, object>()
++  private readonly poseFeedback = new PoseFeedback()
+   private lastInput = {sequence:0,at:0}
+   private lastPresentedInput = {sequence:0,at:0}
+   private latestCandidate?: DesignDocument
+@@ -131,7 +136,7 @@ export class InteractionRenderer {
+         const inputStarted=performance.now()
+         this.endedDocument = undefined
+         const r = this.resident
+-        if (!r || this.error && !r.tiles.length || Object.keys(patches).some(id => !r.plan.ids.includes(id))) return null
++        if (!r || this.error && (!r.tiles.length || r.live && !r.retainedFallback) || Object.keys(patches).some(id => !r.plan.ids.includes(id))) return null
+         const fast=import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'
+         const offsets = interactionPatchedOffsets(r.plan, document, patches,fast?this.baseOffsets(r.plan,document):undefined)
+         if (!offsets) return null
+@@ -142,6 +147,7 @@ export class InteractionRenderer {
+         // pixels remain available while an aborted predecessor unwinds.
+         this.handoff = undefined
+         const transforms=Object.fromEntries(r.plan.ids.map(id=>[id,[...(patches[id]?.transform||document.nodes[id].transform)] as Matrix]))
++        if (this.liveAuthored !== document) this.poseFeedback.clear()
+         this.liveAuthored=document
+         this.latestPatch={document,patches:Object.fromEntries(r.plan.ids.map(id=>[id,{transform:transforms[id]}]))}
+         this.latestCandidate=fast?undefined:interactionPatchedDocument(document,patches)
+@@ -163,12 +169,20 @@ export class InteractionRenderer {
+         const id = r.plan.ids[0], next = patches[id]?.transform, current = document.nodes[id].transform
+         const m = r.parentLinear?.get(id) || [1, 0, 0, 1], dx = next ? next[4] - current[4] : 0, dy = next ? next[5] - current[5] : 0
+         if(import.meta.env.DEV){this.inputPreparationTrace.push(performance.now()-inputStarted);if(this.inputPreparationTrace.length>180)this.inputPreparationTrace.shift()}
+-        return { x: m[0] * dx + m[2] * dy, y: m[1] * dx + m[3] * dy }
++        const offset = { x: m[0] * dx + m[2] * dy, y: m[1] * dx + m[3] * dy }
++        const deferred = !!r.live || retainedRebase
++        if (deferred) this.poseFeedback.submit(this.lastInput.sequence, offset, this.feedbackOwner(document))
++        this.feedbackDeferred = deferred
++        return offset
+       },
+-      covers: (document, ids, _view) => !!this.resident && (!this.error || this.ready) && this.sameIds(ids) &&
++      covers: (document, ids, _view) => !!this.resident && (!this.error || (!this.resident.live || !!this.resident.retainedFallback) && this.ready) && this.sameIds(ids) &&
+         (this.resident.live && document.id === this.resident.plan.document.id && (this.props?.active || this.resident.active) ||
+           !!this.baseOffsets(this.resident.plan, document)),
++      feedbackPending: () => this.feedbackDeferred,
++      inputSequence: () => this.lastInput.sequence,
++      previewFailure: () => this.error ? 1 : 0,
+       end: document => {
++        this.poseFeedback.clear()
+         const r = this.resident
+         // Canvas forwards idle editor notifications (including hover) here.
+         // They must not dispose a warmed worker before the first pointer-down.
+@@ -176,6 +190,21 @@ export class InteractionRenderer {
+         if(this.endedDocument===document)return
+         this.endedDocument=document
+         this.latestPatch=undefined;this.latestCandidate=document
++        if (this.error && r.live && !r.retainedFallback) {
++          // Normal editor.preview now owns the authored transform. Do not keep
++          // the failed native pose active over that new document, or submit it
++          // a second time as a successful gesture handoff. Retain allocations
++          // until ordinary ownership retirement; only stop this pose session.
++          if (r.tiles[0]?.gpuTile) this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
++          this.failedGesture = true
++          this.inlineDisabled = true
++          this.livePending = this.liveRequested = undefined
++          this.handoff = undefined
++          this.nextGeneration()
++          r.active = false
++          this.changed()
++          return
++        }
+         const offsets = this.baseOffsets(r.plan, document)
+         this.lastEnd = offsets ? [...offsets.values()].map(p => `${p.x},${p.y}`).join(';') : 'content-changed'
+         r.active = r.live ? document !== r.plan.document && document.id === r.plan.document.id :
+@@ -337,6 +366,7 @@ export class InteractionRenderer {
+       this.liveRequested = undefined
+     }
+     if (this.props?.control !== props?.control && this.props?.control.current === this.control) this.props.control.current = null
++    if (this.props?.document !== props?.document) this.poseFeedback.clear()
+     this.props = props
+     if (props) props.control.current = this.control
+     if (this.disposed) return
+@@ -348,6 +378,15 @@ export class InteractionRenderer {
+       this.nextGeneration(); this.releaseClient(); this.pending = undefined; this.pendingDensity = undefined
+       this.closeResidents(); this.error = ''; this.sessionEpoch = props.epoch
+     }
++    if (this.failedGesture) {
++      // React updates from ordinary editor.preview must not reclaim the same
++      // failed gesture and reapply its retained native pose. Retry only after
++      // the gesture ends or its selection/session ownership changes.
++      if (props.active && this.resident?.plan.pageId === pageId && this.sameIds(props.selection)) return
++      this.failedGesture = false
++      this.pending = undefined; this.pendingDensity = undefined
++      this.closeResidents(); this.error = ''
++    }
+     const r = this.resident, key = props.selection.join(',')
+     const samePolicy = profile === this.profile && backend === this.backend
+     const handoff = this.handoff
+@@ -602,6 +641,20 @@ export class InteractionRenderer {
+   get mode() { return this.resident?.live && !this.resident.retainedFallback ? 'live-kernel' : 'retained-layers' }
+   get presentedInput() { return this.resident?.live ? this.lastPresentedInput : this.lastInput }
+   get backgroundLinear(){return this.resident?.backgroundLinear}
++  /** Only the compositor's owner-validated presented-frame acknowledgement
++   * may advance DOM feedback. Native sampling completion alone is insufficient. */
++  private feedbackOwner(document: DesignDocument) {
++    let owner = this.feedbackOwners.get(document)
++    if (!owner) { owner = {}; this.feedbackOwners.set(document, owner) }
++    return owner
++  }
++
++  acceptPresentedInput(sequence: number, at = performance.now()) {
++    const offset = this.poseFeedback.present(sequence, this.liveAuthored && this.feedbackOwner(this.liveAuthored))
++    if (!offset || !this.resident?.active || !this.liveAuthored || !this.props || this.error) return
++    this.props.onPosePresented?.({ sequence, offset, document: this.liveAuthored, epoch: this.props.epoch, latencyMs: Math.max(0, performance.now() - at) })
++  }
++
+   acceptResidentSample(sample:{slot:number;sequence:number;at:number;total?:number;compileMs?:number;nativePose?:boolean;graphMs?:number;finishMs?:number;groupHits?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number;bounds?:Bounds;needsRebase?:boolean;signature?:string}) {
+     const resident=this.resident
+     if(this.disposed||!resident?.live||resident.tiles[0]?.gpuTile!==sample.slot)return
+@@ -868,6 +921,8 @@ export class InteractionRenderer {
+     this.idleWarmAttempt = this.idleWarmFailed = undefined
+     if(this.resident?.tiles[0]?.gpuTile)this.sharedClient?.stopResidentInteraction(this.resident.tiles[0].gpuTile)
+     for (const tile of this.resident?.tiles || []) tile.bitmap?.close()
++    this.failedGesture = false
++    this.poseFeedback.clear()
+     this.resident = undefined; this.livePending = undefined; this.liveRequested = undefined; this.liveAuthored = undefined
+     this.liveCancelled = false
+     this.liveDeferred = false
+diff --git a/frontend/design-client/src/kernel/pose-feedback.test.mjs b/frontend/design-client/src/kernel/pose-feedback.test.mjs
+new file mode 100644
+index 0000000..2bffb68
+--- /dev/null
++++ b/frontend/design-client/src/kernel/pose-feedback.test.mjs
+@@ -0,0 +1,18 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { PoseFeedback } from './pose-feedback.ts'
++test('submitted input cannot move feedback before the matching accepted pose',()=>{
++ const p=new PoseFeedback();p.submit(1,{x:4,y:0});p.submit(2,{x:12,y:0})
++ assert.equal(p.present(3),undefined);assert.deepEqual(p.present(1),{x:4,y:0});assert.equal(p.present(1),undefined)
++ assert.deepEqual(p.present(2),{x:12,y:0});assert.equal(p.present(1),undefined)
++})
++test('coalescing, reset and bounded records reject missing/stale completions',()=>{
++ const p=new PoseFeedback();for(let i=1;i<=300;i++)p.submit(i,{x:i,y:-i})
++ assert.equal(p.present(1),undefined);assert.deepEqual(p.present(299),{x:299,y:-299});p.clear();assert.equal(p.present(300),undefined)
++ p.submit(301,{x:0,y:0});assert.deepEqual(p.present(301),{x:0,y:0})
++})
++
++test('opaque submission ownership cannot be relabeled by the accepting document',()=>{
++ const p=new PoseFeedback(),a={},b={};p.submit(1,{x:5,y:9},a)
++ assert.equal(p.present(1,b),undefined);assert.deepEqual(p.present(1,a),{x:5,y:9})
++})
+diff --git a/frontend/design-client/src/kernel/pose-feedback.ts b/frontend/design-client/src/kernel/pose-feedback.ts
+new file mode 100644
+index 0000000..db6085e
+--- /dev/null
++++ b/frontend/design-client/src/kernel/pose-feedback.ts
+@@ -0,0 +1,20 @@
++/** A submitted pose is not a displayed pose. Retain only small offsets, never
++ * document snapshots or geometry; acknowledgement ownership is checked by the
++ * resident presenter before it enters this ledger. */
++export class PoseFeedback {
++  private pending = new Map<number, { offset: { x: number; y: number }; owner?: object }>()
++  private accepted = 0
++  submit(sequence: number, offset: { x: number; y: number }, owner?: object) {
++    this.pending.set(sequence, { offset: { ...offset }, owner })
++    while (this.pending.size > 180) this.pending.delete(this.pending.keys().next().value!)
++  }
++  present(sequence: number, owner?: object) {
++    if (!Number.isSafeInteger(sequence) || sequence <= this.accepted) return undefined
++    const record = this.pending.get(sequence)
++    if (!record || record.owner !== owner) return undefined
++    this.accepted = sequence
++    for (const key of this.pending.keys()) if (key <= sequence) this.pending.delete(key)
++    return record.offset
++  }
++  clear() { this.pending.clear(); this.accepted = 0 }
++}
+diff --git a/frontend/design-desktop/src/render-terminal-diagnostics.mjs b/frontend/design-desktop/src/render-terminal-diagnostics.mjs
+index 84bcfb8..0faf32e 100644
+--- a/frontend/design-desktop/src/render-terminal-diagnostics.mjs
++++ b/frontend/design-desktop/src/render-terminal-diagnostics.mjs
+@@ -4,6 +4,11 @@ import { producerIdentityFields, sanitizeProducerIdentity } from './render-diagn
+ // Strict scalar allowlist shared by worker, renderer and terminal. Never stringify a render payload.
+ const tileCostLimits = {imageAxisFields:1e9,imageFieldBytes:1e12,displayImageSourcePasses:1e9,nestedPrefixHits:1e9,nestedPrefixBuilds:1e9,nestedPrefixBytes:67108864,staticImageBlurEligible:1e9,staticImageBlurHits:1e9,staticImageBlurPixels:1e12,staticImageBlurBytes:17825792,staticImageBlurEntries:1,wholeFilterAxes:1e9,opaqueTentPasses:1e9,imageXTableBuilds:1e6,imageXTablePixels:1e12,imageXTableBytes:41943040,tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
+ export const PREFIX = '[render-diag] '
++// Maintenance residency decisions contain scalar accounting only, no document payload.
++Object.assign(tileCostLimits, { maintenanceDecision:6, maintenanceDeferredCount:8, maintenanceRetiredBytes:17179869184, maintenanceRetiredCount:256,
++ maintenancePoolBytes:17179869184, maintenanceTransientBytes:17179869184,
++ maintenanceWorkingBytes:17179869184, maintenanceBudgetBytes:17179869184,
++ maintenanceRequiredBytes:17179869184 })
+ const tileOrderLimits = {tileSourceIndex:[0,255],tileOrderIndex:[0,255],tileColumnNextIndex:[-1,255],
+  tileColumnReordered:[0,1],tileColumnDeltaY:[-1e7,1e7],filterColumnPlans:[0,256],filterColumnReorders:[0,256]}
+ const events = new Set(['canvas-action','grid-state','frame-window','operation','request','result','tile','camera-request','camera-submit','compile','hydrate','queue-start','queue-end','cancel','stale-drop','error','gpu-exit','renderer-exit','cache','summary','start','filter','prefix','fence','camera-input','queue-enqueue','compile-start','hydrate-start','prepare-wait','viewport-state','skip','cache-invalidate','preparation','load-stage','failure-summary','device-lifecycle','runtime-config','failure-origin'])
+@@ -11,7 +16,7 @@ const failureLimits = {failureMaterialFieldBuilds:1e9,failureMaterialFieldUpload
+  failureCode:255,lastFailureCode:255,errorClassCode:7,rendererCode:3,compileAttempts:65535,hydrateAttempts:65535,graphAttempts:65535,fallbackAttempts:65535,failureAttempts:65535}
+ const qualityLimits = {qualitySequence: 0xffffffff, qualityRevision: 0xffffffff, documentRevision: 0xffffffff}
+ const diagnosticLimits = {originChannelId: 0xffffffffffff, backendCode: 2, boundaryCode: 16, boundaryDurationMs: 120000}
+-const resourceLimits = {actionRingDropped:1e9,actionPendingEvicted:1e9,submitIntervalCount:1e9,constraintEnabled:1,inputPhase:9,fieldFamily:11,inputValid:1,expectedWidthComparison:3,expectedHeightComparison:3,aspectRatioComparison:3,layoutConstraintAccepted:1,proposalResolvedComparison:3,actionOwner:1000000000000.0,actionId:1000000000.0,actionCode:73,actionSource:7,actionSession:1000000000.0,actionStartRevision:1000000000.0,actionFinalRevision:1000000000.0,actionPhase:2,actionOutcome:7,actionReason:17,modifiers:15,toolCode:64,hitCount:1000000.0,hitDepth:1000000.0,selectionBefore:1000000.0,selectionAfter:1000000.0,lockedCount:1000000.0,commandCode:1024,inputSamples:1000000000.0,sampleUpdates:1000000000.0,coalescedSamples:1000000000.0,thresholdPassed:1,motionObserved:1,snapEnabled:1,snapChanged:1,constraintChanged:1,proposalChanged:1,resolvedChanged:1,committedChanged:1,intentResolvedComparison:3,resolvedCommittedComparison:3,selectionChanged:1,routeSupported:1,geometrySupported:1,operationOwner:1e12,operationPresentation:1,operationId:1e9,operationSession:1e9,operationPhase:4,operationCategory:6,operationOutcome:5,authoredRevision:1e9,startRevision:1e9,targetCount:1e9,previewAttempts:1e9,previewAccepted:1e9,fullPayloadBytes:32*1024*1024,derivationReasonCode:4,sourceCodeUnits:32*1024*1024,embeddedFontCount:32,embeddedFontCodeUnits:32*28*1024*1024}
++const resourceLimits = {poseSubmittedSequence:1e9,posePresentedSequence:1e9,poseFallbackReason:9,poseLatencyMs:600000,actionRingDropped:1e9,actionPendingEvicted:1e9,submitIntervalCount:1e9,constraintEnabled:1,inputPhase:9,fieldFamily:11,inputValid:1,expectedWidthComparison:3,expectedHeightComparison:3,aspectRatioComparison:3,layoutConstraintAccepted:1,proposalResolvedComparison:3,actionOwner:1000000000000.0,actionId:1000000000.0,actionCode:73,actionSource:7,actionSession:1000000000.0,actionStartRevision:1000000000.0,actionFinalRevision:1000000000.0,actionPhase:2,actionOutcome:7,actionReason:17,modifiers:15,toolCode:64,hitCount:1000000.0,hitDepth:1000000.0,selectionBefore:1000000.0,selectionAfter:1000000.0,lockedCount:1000000.0,commandCode:1024,inputSamples:1000000000.0,sampleUpdates:1000000000.0,coalescedSamples:1000000000.0,thresholdPassed:1,motionObserved:1,snapEnabled:1,snapChanged:1,constraintChanged:1,proposalChanged:1,resolvedChanged:1,committedChanged:1,intentResolvedComparison:3,resolvedCommittedComparison:3,selectionChanged:1,routeSupported:1,geometrySupported:1,operationOwner:1e12,operationPresentation:1,operationId:1e9,operationSession:1e9,operationPhase:4,operationCategory:6,operationOutcome:5,authoredRevision:1e9,startRevision:1e9,targetCount:1e9,previewAttempts:1e9,previewAccepted:1e9,fullPayloadBytes:32*1024*1024,derivationReasonCode:4,sourceCodeUnits:32*1024*1024,embeddedFontCount:32,embeddedFontCodeUnits:32*28*1024*1024}
+ // Reclaim-kind bits: pool=1, uploads=2, coordinates=4, images=8, retired image tables=16.
+ const surfaceCacheLimits = {surfaceProposedBytes:17179869184,surfaceBudgetBytes:536870912,surfaceSteadyBudgetBytes:536870912,
+  surfaceTotalBudgetBytes:536870912,surfaceReserveBytes:536870912,surfaceHeldCount:4096,surfaceUsedCount:4096,
+@@ -19,7 +24,7 @@ const surfaceCacheLimits = {surfaceProposedBytes:17179869184,surfaceBudgetBytes:
+ const admissionLimits = {...surfaceCacheLimits,admissionRetiredKinds:31,admissionRetiredUploadCount:1000000,admissionCoordinateCount:1000000,admissionKind: 1, admissionPressure: 1, admissionRequiredBytes: 17179869184, admissionWorkingBytes: 17179869184, admissionBudgetBytes: 17179869184, admissionReclaimableBytes: 17179869184, admissionPoolBytes: 17179869184, admissionPoolCount: 1000000, admissionUploadCount: 1000000, admissionImageCount: 1000000}
+ const scalarLimits = {softwareRateValid:1,submitSpanCapped:1,windowCapped:1,uiIntervalCapped:1,submitIntervalCapped:1,inputPresentCapped:1,pendingInputAgeCapped:1,submitSampleSpanMs:120000,"uncorrelatedSubmits":1000000000,"pendingInputAgeMs":120000,"actionDurationMs": 1000000000.0, "windowMs": 120000, "uiFrames": 1000000000.0, "uiFps": 1000000000.0, "uiIntervalP95Ms": 120000, "uiIntervalMaxMs": 120000, "uiLongFrames": 1000000000.0, "uiStalls": 1000000000.0, "softwareSubmits": 1000000000.0, "softwareSubmitHz": 1000000000.0, "submitIntervalP95Ms": 120000, "submitIntervalMaxMs": 120000, "inputPresentCount": 1000000000.0, "inputPresentP95Ms": 120000, "inputPresentMaxMs": 120000, "staleCameraSubmits": 1000000000.0, "outOfOrderSubmits": 1000000000.0, "transformMismatch": 1000000000.0, "phaseChanges": 1000000000.0, "sameCameraSubmits": 1000000000.0, "changedCameraSubmits": 1000000000.0, "windowResetReason": 3, "gridKind": 5, "gridVisible": 1, "gridSpacingClass": 3, "gridPhaseMatch": 1, "gridAlignmentMatch": 1, "gridRedrawReason": 3, "gridStale": 1, "gridCount": 1000000000.0}
+ const deviceLimits = {"deviceWorkerScope":281474976710655,"deviceIncarnation":4294967295,"deviceCurrentIncarnation":4294967295,"deviceOwner":4294967295,"deviceScope":2,"devicePhase":14,"deviceLostReason":2,"deviceCallbackDisposition":4,"deviceRecoveryId":4294967295,"deviceRecoveryKind":4,"devicePreviousIncarnation":4294967295,"deviceCounterMask":15,"devicePendingCaptures":1000000,"devicePendingReadbacks":1000000,"devicePendingCapturePayloadBytes":17179869184,"deviceLogicalPayloadBytes":17179869184,"deviceRetiringPayloadBytes":17179869184,"deviceFenceResourceEpoch":4294967295,"deviceFenceCompletedResourceEpoch":4294967295}
+-const fields = new Set(('actionRingDropped actionPendingEvicted softwareRateValid submitSpanCapped windowCapped uiIntervalCapped submitIntervalCapped inputPresentCapped pendingInputAgeCapped submitIntervalCount submitSampleSpanMs constraintEnabled uncorrelatedSubmits pendingInputAgeMs inputPhase fieldFamily inputValid expectedWidthComparison expectedHeightComparison aspectRatioComparison layoutConstraintAccepted proposalResolvedComparison actionOwner actionId actionCode actionSource actionSession actionStartRevision actionFinalRevision actionPhase actionOutcome actionReason modifiers toolCode hitCount hitDepth selectionBefore selectionAfter lockedCount commandCode inputSamples sampleUpdates coalescedSamples thresholdPassed motionObserved snapEnabled snapChanged constraintChanged proposalChanged resolvedChanged committedChanged intentResolvedComparison resolvedCommittedComparison selectionChanged routeSupported geometrySupported actionDurationMs windowMs uiFrames uiFps uiIntervalP95Ms uiIntervalMaxMs uiLongFrames uiStalls softwareSubmits softwareSubmitHz submitIntervalP95Ms submitIntervalMaxMs inputPresentCount inputPresentP95Ms inputPresentMaxMs staleCameraSubmits outOfOrderSubmits transformMismatch phaseChanges sameCameraSubmits changedCameraSubmits windowResetReason gridKind gridVisible gridSpacingClass gridPhaseMatch gridAlignmentMatch gridRedrawReason gridStale gridCount failureCategory lastFailureCategory failureStage lastFailureStage failureCode lastFailureCode errorClassCode rendererCode compileAttempts hydrateAttempts graphAttempts fallbackAttempts failureAttempts failureCountsCapped recovered admissionKind admissionPressure admissionRequiredBytes admissionWorkingBytes admissionBudgetBytes admissionReclaimableBytes admissionPoolBytes admissionPoolCount admissionUploadCount admissionImageCount retainNativePanPhase cameraDependent samplingMode dpr qualitySequence qualityRevision documentRevision qualityTerminal operationOwner operationPresentation operationId operationSession operationPhase operationCategory operationOutcome authoredRevision startRevision targetCount previewAttempts previewAccepted originChannelId backendCode boundaryCode boundaryDurationMs derivationAdmitted derivationFallback fullPayloadBytes derivationReasonCode sourceCodeUnits embeddedFontCount embeddedFontCodeUnits preparationId methodCode activePreparationId documentFork documentEnvelope retainInteractionGraph interactionNative interactionOwner interactionGeneration interactionBranch purpose commandCode renderIntent preview finalRequest readback png coverageTiles livePreview tileViewport requestId sequence x y zoom width height milliseconds compileMs graphMs finishMs checkpointMs loadMs renderMs pipelineWallMs preparationWaitMs previewTiles tileCacheHits certifiedTileHits tileCacheBytes tileCacheEvictions drawCalls triangles peakTextureBytes workingTextureBytes missingTextureCount compositorFrames compositorTiles compositorDraws durationMs waitMs count sampleCount suppressed cached cameraFallback reasonCode exitCode quitRequested permitClose resourceEpoch completedResourceEpoch radius mode ms oldConfig newConfig channel acceptedLines declinedLines acceptedPixels narrowLines availableBytes scratchBytes mapMs queueWaitMs coverage sharpCoverage nativePhaseCoverage maxUpscale pixelCoverageComplete nativeCoverageComplete inputSequence inputAt inputTimeOrigin inputAgeMs deltaX deltaY deltaMode inputKind generation fillGeneration pageToken state phase navigating targetDensity effectiveDensity finalComplete oldContentAgeMs queueDepth activeRequestId superseded skipped coverageMeasured coverageAt dropped phaseX phaseY sceneReady tileIndex').split(' '))
++const fields = new Set(('poseSubmittedSequence posePresentedSequence poseFallbackReason poseLatencyMs actionRingDropped actionPendingEvicted softwareRateValid submitSpanCapped windowCapped uiIntervalCapped submitIntervalCapped inputPresentCapped pendingInputAgeCapped submitIntervalCount submitSampleSpanMs constraintEnabled uncorrelatedSubmits pendingInputAgeMs inputPhase fieldFamily inputValid expectedWidthComparison expectedHeightComparison aspectRatioComparison layoutConstraintAccepted proposalResolvedComparison actionOwner actionId actionCode actionSource actionSession actionStartRevision actionFinalRevision actionPhase actionOutcome actionReason modifiers toolCode hitCount hitDepth selectionBefore selectionAfter lockedCount commandCode inputSamples sampleUpdates coalescedSamples thresholdPassed motionObserved snapEnabled snapChanged constraintChanged proposalChanged resolvedChanged committedChanged intentResolvedComparison resolvedCommittedComparison selectionChanged routeSupported geometrySupported actionDurationMs windowMs uiFrames uiFps uiIntervalP95Ms uiIntervalMaxMs uiLongFrames uiStalls softwareSubmits softwareSubmitHz submitIntervalP95Ms submitIntervalMaxMs inputPresentCount inputPresentP95Ms inputPresentMaxMs staleCameraSubmits outOfOrderSubmits transformMismatch phaseChanges sameCameraSubmits changedCameraSubmits windowResetReason gridKind gridVisible gridSpacingClass gridPhaseMatch gridAlignmentMatch gridRedrawReason gridStale gridCount failureCategory lastFailureCategory failureStage lastFailureStage failureCode lastFailureCode errorClassCode rendererCode compileAttempts hydrateAttempts graphAttempts fallbackAttempts failureAttempts failureCountsCapped recovered admissionKind admissionPressure admissionRequiredBytes admissionWorkingBytes admissionBudgetBytes admissionReclaimableBytes admissionPoolBytes admissionPoolCount admissionUploadCount admissionImageCount retainNativePanPhase cameraDependent samplingMode dpr qualitySequence qualityRevision documentRevision qualityTerminal operationOwner operationPresentation operationId operationSession operationPhase operationCategory operationOutcome authoredRevision startRevision targetCount previewAttempts previewAccepted originChannelId backendCode boundaryCode boundaryDurationMs derivationAdmitted derivationFallback fullPayloadBytes derivationReasonCode sourceCodeUnits embeddedFontCount embeddedFontCodeUnits preparationId methodCode activePreparationId documentFork documentEnvelope retainInteractionGraph interactionNative interactionOwner interactionGeneration interactionBranch purpose commandCode renderIntent preview finalRequest readback png coverageTiles livePreview tileViewport requestId sequence x y zoom width height milliseconds compileMs graphMs finishMs checkpointMs loadMs renderMs pipelineWallMs preparationWaitMs previewTiles tileCacheHits certifiedTileHits tileCacheBytes tileCacheEvictions drawCalls triangles peakTextureBytes workingTextureBytes missingTextureCount compositorFrames compositorTiles compositorDraws durationMs waitMs count sampleCount suppressed cached cameraFallback reasonCode exitCode quitRequested permitClose resourceEpoch completedResourceEpoch radius mode ms oldConfig newConfig channel acceptedLines declinedLines acceptedPixels narrowLines availableBytes scratchBytes mapMs queueWaitMs coverage sharpCoverage nativePhaseCoverage maxUpscale pixelCoverageComplete nativeCoverageComplete inputSequence inputAt inputTimeOrigin inputAgeMs deltaX deltaY deltaMode inputKind generation fillGeneration pageToken state phase navigating targetDensity effectiveDensity finalComplete oldContentAgeMs queueDepth activeRequestId superseded skipped coverageMeasured coverageAt dropped phaseX phaseY sceneReady tileIndex').split(' '))
+ Object.assign(tileCostLimits, {imageXTablePrograms:4e6,imageXTableDuplicateBytesSaved:17179869184,
+  backdropRegionBuilds:1e9,backdropRegionSourcePixels:1e12,backdropRegionResultPixels:1e12,
+  displayTentRadiusPasses:1e9,displayTentRadiusPixels:1e12})
+@@ -27,6 +32,9 @@ for (const key of [...Object.keys(tileCostLimits), ...Object.keys(admissionLimit
+ for (const key of Object.keys(failureLimits)) fields.add(key)
+ for (const key of Object.keys(deviceLimits)) fields.add(key)
+ for (const key of Object.keys(tileOrderLimits)) fields.add(key)
++const imageFieldRegionLimits = {imageFieldRegionPath:2,imageFieldRegionOutcome:2,imageFieldRegionCount:1e9,
++ imageFieldRegionBytes:1e12,imageFieldRegionMaxBytes:67108864,imageFieldRegionMaxWidth:16384,imageFieldRegionMaxHeight:256,imageFieldRegionSample:4}
++for (const key of Object.keys(imageFieldRegionLimits)) fields.add(key)
+ export function sanitizeFields(value) {
+   const out = {}
+   if (!value || typeof value !== 'object') return out
+@@ -35,6 +43,10 @@ export function sanitizeFields(value) {
+     // Most records contain only a handful of the shared scalar fields. An
+     // absent value cannot pass any validator; avoid probing every limit map.
+     if (v === undefined) continue
++    if (Object.hasOwn(imageFieldRegionLimits,key)) {
++      if (Number.isSafeInteger(v) && v >= 0 && v <= imageFieldRegionLimits[key]) out[key] = v
++      continue
++    }
+     if (Object.hasOwn(tileOrderLimits,key)) {
+       const [minimum,maximum]=tileOrderLimits[key]
+       if (Number.isSafeInteger(v) && v>=minimum && v<=maximum) out[key]=v

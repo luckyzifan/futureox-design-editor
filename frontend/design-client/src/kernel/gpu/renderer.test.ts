@@ -1014,6 +1014,11 @@ test('real upload retirement respects the64-resource completed batch, preserving
   const upload={width:1,height:1,bytes:16,resource:{}} as Texture
   renderer.retiredUploads.push(upload)
   await renderer.reclaimScratch()
+  expect(driver.checkpoint).not.toHaveBeenCalled(); expect(driver.destroy).not.toHaveBeenCalled()
+  expect(renderer.bytes).toBe(120*MiB); expect(renderer.retiredUploads).toContain(upload)
+  expect(renderer.free.get('128:256')).toEqual(old)
+  expect(renderer.free.get('1536:1536')).toEqual([current])
+  await renderer.reclaimScratch(1) // Known allocation, not optional maintenance.
   expect(driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission',undefined)
   expect(driver.destroy).toHaveBeenCalledTimes(64)
   expect(driver.destroy).toHaveBeenCalledWith(upload)
@@ -1040,5 +1045,9 @@ test('real upload retirement waits when a current-frame texture crosses the batc
   }
   renderer.retiredUploads.push({width:1,height:1,bytes:16,resource:{}} as Texture)
   await renderer.reclaimScratch()
+  expect(driver.checkpoint).not.toHaveBeenCalled(); expect(driver.destroy).not.toHaveBeenCalled()
+  expect(renderer.bytes).toBe(120*MiB); expect(renderer.retiredUploads).toHaveLength(1)
+  expect(renderer.free.get('1:1')).toHaveLength(2)
+  await renderer.reclaimScratch(1) // Preserve the original mandatory-fence assertion.
   expect((driver.checkpoint as any).mock.calls[0]).toHaveLength(2)
 })

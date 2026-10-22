@@ -1,0 +1,12 @@
+
+ RUN  v5.0.1 /workspace/shared/combined-1cde-cpu-20261022/source/frontend/design-client
+
+
+ Test Files  13 passed (13)
+      Tests  248 passed (248)
+   Start at  16:42:04
+   Duration  26.15s (tests 90%, transform 5%, import 3%, setup 2%)
+
+    Isolate  13 workers spawned · ~120ms startup each (spawn + environment, per file)
+             at least ~1.44s faster with isolate: false — reuses workers across files instead of one per file
+

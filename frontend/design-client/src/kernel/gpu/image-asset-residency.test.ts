@@ -229,12 +229,15 @@ test('same-epoch completion does not retire reads encoded after that earlier che
   expect(f.driver.destroy).toHaveBeenCalledWith(a.texture); expect(f.renderer.bytes).toBe(0)
 })
 
-test('retired assets require a new checkpoint even when the free pool has a valid prior-epoch completion proof', async () => {
+test.each([undefined, 256])('retired assets require a new checkpoint with budget override %s even when the pool has prior-epoch proof', async budgetMiB => {
   const f = fixture(); await f.region([])
-  const asset = { width: 2048, height: 2048, bytes: 64 * 1024 * 1024, resource: {} } as Texture
+  if (budgetMiB !== undefined) f.renderer.frameBudget = budgetMiB * 1024 * 1024
+  else expect(f.renderer.frameBudget).toBe(1024 * 1024 * 1024)
+  const edge = budgetMiB === 256 ? 2048 : 4096
+  const asset = { width: edge, height: edge, bytes: f.renderer.frameBudget / 4, resource: {} } as Texture
   const pooled = { width: 512, height: 512, bytes: 4 * 1024 * 1024, resource: {} } as Texture
   f.driver.resourceEpoch = 3; f.driver.completedResourceEpoch = 2
-  f.renderer.images.set(A, { texture: asset, rect: { x: 0, y: 0, w: 2048, h: 2048 } })
+  f.renderer.images.set(A, { texture: asset, rect: { x: 0, y: 0, w: edge, h: edge } })
   f.renderer.bytes = asset.bytes; f.renderer.retireImageResidency()
   f.renderer.free.set('512:512', [pooled]); f.renderer.poolReleaseEpoch.set(pooled, 1)
   f.renderer.bytes += pooled.bytes

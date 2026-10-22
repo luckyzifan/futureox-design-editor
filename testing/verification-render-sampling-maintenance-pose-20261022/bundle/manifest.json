@@ -1,0 +1,264 @@
+{
+  "baseline": "1cdebec0a3bcde6633c71661511e532ab0b54aea",
+  "status": "FROZEN_SOURCE_INCREMENT",
+  "scope": [
+    "bounded exact image coordinate regions",
+    "maintenance residency and reclaim",
+    "pose receipt and preview failure recovery"
+  ],
+  "patchSha256": "4846db47d11f6771c73864dc8da340fbcc2785e8122e8347fcd05a39118d0d93",
+  "changes": [
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "role": "production",
+      "baselineSha256": "7ed2eea3042ce81996fdb001091be735cd3cbaf34571b876c3d99680270864db",
+      "sha256": "4b6c606adb490a44bec25388d5b62a570655e6b303a07bf1db30119b080f0d0e",
+      "size": 150609,
+      "beforeLines": 2774,
+      "afterLines": 2784,
+      "addedLines": 11,
+      "deletedLines": 1
+    },
+    {
+      "path": "frontend/design-client/src/canvas-action-diagnostics.test.ts",
+      "role": "test",
+      "baselineSha256": "ad9cd3d4efda7de9df6bb7030ab8a59ff2687571070eb0e70e1821c8708057a6",
+      "sha256": "e35fb7c249f68b48c432bc413e9b6e7954217bcc8f3eb2f250fdf441ba7d5128",
+      "size": 5398,
+      "beforeLines": 59,
+      "afterLines": 67,
+      "addedLines": 8,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/canvas-action-diagnostics.ts",
+      "role": "production",
+      "baselineSha256": "c54e663defaa43133541d8501ddacaec79fce464d242552e68d8e0798466d7d5",
+      "sha256": "71166dc46981fe771ff5f8ca03e1909f56950b53592d018790279e4e017ca4d2",
+      "size": 11270,
+      "beforeLines": 98,
+      "afterLines": 98,
+      "addedLines": 2,
+      "deletedLines": 2
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ResidentCompositeSurface.tsx",
+      "role": "production",
+      "baselineSha256": "b1c296b2b76c054b29068a00474e36d026b06299ebf35cc585ac1a1a5c024f83",
+      "sha256": "024b04892b8afde643b3a3639482ba8849134f49f7e3a43da0845b5a38508ed5",
+      "size": 16993,
+      "beforeLines": 368,
+      "afterLines": 372,
+      "addedLines": 4,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-asset-residency.test.ts",
+      "role": "test",
+      "baselineSha256": "bd5ecd191240a43dc6568a6ded1386e52d64a3d5c9cdbfcaa8a6c89916be013d",
+      "sha256": "8a2afbe30224fa6ca8966a83a7d48acc98696a7994850436cf1f0a23acfc654a",
+      "size": 20371,
+      "beforeLines": 322,
+      "afterLines": 325,
+      "addedLines": 6,
+      "deletedLines": 3
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-field-regions.test.ts",
+      "role": "test",
+      "baselineSha256": null,
+      "sha256": "15f700395111ff64dea150aec6c266881e1d7ccb322d5cbb844d8e88dd645206",
+      "size": 11512,
+      "beforeLines": 0,
+      "afterLines": 154,
+      "addedLines": 154,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs",
+      "role": "test",
+      "baselineSha256": null,
+      "sha256": "3717ca9fdc272f031feaa9c96867c74ada9b8a8a8fc7848d969d008e056990ea",
+      "size": 7296,
+      "beforeLines": 0,
+      "afterLines": 80,
+      "addedLines": 80,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/maintenance-residency.ts",
+      "role": "production",
+      "baselineSha256": null,
+      "sha256": "d494222bf932783760ac298aa0d557d2b06b3222cfd5ccda5077194180d65eba",
+      "size": 1054,
+      "beforeLines": 0,
+      "afterLines": 20,
+      "addedLines": 20,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts",
+      "role": "test",
+      "baselineSha256": "22b57e0085d75e72f5a02ed0ebc54933560ac98912119a2317e76e8ba0cd5954",
+      "sha256": "81720465632d294897c8e2d3c477ecfa431f1fa46f1bbc351850f5a766ace6b5",
+      "size": 23700,
+      "beforeLines": 380,
+      "afterLines": 396,
+      "addedLines": 18,
+      "deletedLines": 2
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.test.ts",
+      "role": "test",
+      "baselineSha256": "37f64136dc7accb55d04a1c67bd1b9aafbd32adc10cd166e44a3063f8e5e2a0c",
+      "sha256": "3a2b196b0126dc26af6d2e3b42cc4423411282da309439aeb5073e894d2a3e76",
+      "size": 42318,
+      "beforeLines": 1044,
+      "afterLines": 1053,
+      "addedLines": 9,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "role": "production",
+      "baselineSha256": "e75e43d7caed38b01ea41d21216dafef12bf5503f56a766462f775e4a477def6",
+      "sha256": "f31c60d9bab86824a0218da01661b2a589a7fd78067198c135244c498b677215",
+      "size": 319579,
+      "beforeLines": 5511,
+      "afterLines": 5677,
+      "addedLines": 203,
+      "deletedLines": 37
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/stream-image-fields.test.ts",
+      "role": "test",
+      "baselineSha256": "d1407d69bb881e6f44586245ea5d5d3e2d2af9f09dd3b512a6ac39d11ac69c38",
+      "sha256": "189fc55386423490b57fbcda27d6ab81250796872825c234bdbb93d867d06158",
+      "size": 6614,
+      "beforeLines": 117,
+      "afterLines": 120,
+      "addedLines": 7,
+      "deletedLines": 4
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-editor-recovery.test.ts",
+      "role": "test",
+      "baselineSha256": null,
+      "sha256": "52e12ee2b5a7f08753b81d6cfbc71e5bea9617c0eebc5e344a8a711052649434",
+      "size": 4393,
+      "beforeLines": 0,
+      "afterLines": 60,
+      "addedLines": 60,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-layers.ts",
+      "role": "production",
+      "baselineSha256": "aa84442d01f16bd29415f0376cf6b48c7d5b56bfaea4e0aad64826a80d2ce0fe",
+      "sha256": "3aa6e11caecc7aebb91b68449ed797946423035c973ce0e9e68e8c626d9a9a2a",
+      "size": 9319,
+      "beforeLines": 141,
+      "afterLines": 145,
+      "addedLines": 4,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.test.ts",
+      "role": "test",
+      "baselineSha256": "d0b4d5c060614a2b048bcca5ea645f8b44c2a8c16d3f253e8976b2d853d07ecd",
+      "sha256": "d405244dca0241291d39d82a7a14b26f7a3511d260ffceb7690937248ced093a",
+      "size": 54829,
+      "beforeLines": 872,
+      "afterLines": 927,
+      "addedLines": 55,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.ts",
+      "role": "production",
+      "baselineSha256": "fb9d38a3e1be6e68d49c29ead301f655216b5daf5c880addb5445a1d2cba3843",
+      "sha256": "0091db494044a22554fd139e36b612b5b5f0d4f27e94ed8268b09a5814c13fa2",
+      "size": 60774,
+      "beforeLines": 883,
+      "afterLines": 938,
+      "addedLines": 58,
+      "deletedLines": 3
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-feedback.test.mjs",
+      "role": "test",
+      "baselineSha256": null,
+      "sha256": "9a2a4635a5c4f182d27fc5cd476d396efc6a6c10761182d21f513efad692badb",
+      "size": 1075,
+      "beforeLines": 0,
+      "afterLines": 18,
+      "addedLines": 18,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-feedback.ts",
+      "role": "production",
+      "baselineSha256": null,
+      "sha256": "06c65682699323c1c88c69a5287224b67da1359328e36be77c1d0ea8893af8bd",
+      "size": 1037,
+      "beforeLines": 0,
+      "afterLines": 20,
+      "addedLines": 20,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-desktop/src/render-terminal-diagnostics.mjs",
+      "role": "production",
+      "baselineSha256": "5e6cf12579b6ae2d47211fc4a50ec4f641607b3bdf55905c922ef698e3fc6575",
+      "sha256": "ae2170dda019c2818e4cb07d9a11141dbb6f25bb901b6279c7557072c9afc708",
+      "size": 21340,
+      "beforeLines": 175,
+      "afterLines": 187,
+      "addedLines": 14,
+      "deletedLines": 2
+    }
+  ],
+  "lineStatistics": {
+    "production": {
+      "files": 9,
+      "addedLines": 336,
+      "deletedLines": 45,
+      "netLines": 291
+    },
+    "test": {
+      "files": 10,
+      "addedLines": 415,
+      "deletedLines": 9,
+      "netLines": 406
+    }
+  },
+  "validation": {
+    "rendererExpanded": {
+      "passed": 248,
+      "files": 13,
+      "log": "combined-renderer-v3-final.log"
+    },
+    "poseEditor": {
+      "passed": 61,
+      "files": 3,
+      "log": "combined-pose-v3.log"
+    },
+    "node": {
+      "passed": 17,
+      "pose": 3,
+      "maintenance": 14,
+      "log": "combined-node-v3.log"
+    },
+    "distinctNamedTests": 326,
+    "additionalTelemetryAssertions": 2,
+    "typecheck": "strict scoped transitive pass; combined-typecheck-v3.log",
+    "fullApplicationBuild": false,
+    "gpuOrGuiVerified": false
+  },
+  "limitations": [
+    "CPU/WASM/mock verification only",
+    "No production build, hardware GPU pixel, Electron GUI or complete117 replay acceptance",
+    "Ordinary Editor fallback DOM/frame visual coherence unresolved and excluded",
+    "No Rust/FGPD, settings, color or other rendering candidates"
+  ]
+}

@@ -632,6 +632,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     [snapshots, currentScene, state.doc, state.page, editor, editor.sessionGeneration, geometryReady])
   const gpuInteraction = useMemo<InteractionProps>(() => ({ document: state.doc, selection: state.selection,
     active: editor.interactionActive, epoch: editor.sessionGeneration, control: gpuMove, onReady: interactionReady,
+    onPosePresented: pose => {
+      const gesture = drag.current
+      if (!pendingBoardMove.current || gesture?.kind !== 'move' ||
+          pose.epoch !== editor.sessionGeneration || pose.document !== editor.state.doc) return
+      if (host.current) moveCanvasFeedback(host.current, gesture.ids, pose.offset, gpuMovedOverlays.current)
+      if (gesture.actionToken) actionTrace.sample(gesture.actionToken, { posePresentedSequence: pose.sequence, poseLatencyMs: Math.round(pose.latencyMs) })
+    },
     scene: interactionScene }),
     [state.doc, state.selection, editor.interactionActive, editor.sessionGeneration, interactionReady, interactionScene])
   const sliceEntries = useMemo(() => entries.filter(entry => state.doc.nodes[entry.id].kind === 'slice'),
@@ -1796,10 +1803,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (d.kind === 'move' && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey) {
       const offset = gpuMove.current?.apply(editor.state.doc, patches)
       if (offset) {
-        if (host.current) moveCanvasFeedback(host.current, d.ids, offset, gpuMovedOverlays.current)
+        if (!gpuMove.current?.feedbackPending?.() && host.current) moveCanvasFeedback(host.current, d.ids, offset, gpuMovedOverlays.current)
+        if (d.actionToken) actionTrace.sample(d.actionToken, { poseSubmittedSequence: gpuMove.current?.inputSequence?.() || 0 })
         pendingBoardMove.current = [patches, placement]
         return
       }
+      if (d.actionToken && gpuMove.current?.previewFailure?.())
+        actionTrace.sample(d.actionToken, { poseFallbackReason: gpuMove.current.previewFailure() })
     }
     if (d.kind === 'move' && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey && d.ids.length === 1 &&
       retainedMove.current?.apply(editor.state.doc, d.ids[0], patches[d.ids[0]].transform!)) {

@@ -58,18 +58,21 @@ test('full-support proof failure retains dense per-strip fallback', () => {
   expect([...f.renderer.filterImageFields.fields.values()]).toEqual([null])
 })
 
-test('uncached full-support uploads survive strip checkpoints and retire after scope end', async () => {
+test.each([undefined, 256])('uncached full-support uploads survive strip checkpoints and retire at real pressure with budget override %s', async budgetMiB => {
   const f=fixture(false),field=f.field({...f.support,h:64},0)
-  f.renderer.bytes=80*1024*1024
+  if (budgetMiB !== undefined) f.renderer.frameBudget=budgetMiB*1024*1024
+  else expect(f.renderer.frameBudget).toBe(1024*1024*1024)
+  const budget=f.renderer.frameBudget
+  f.renderer.bytes=budget*5/16
   await f.renderer.reclaimScratch()
   expect(f.destroyed).not.toContain(field.texture)
   expect(f.field({...f.support,y:f.support.y+64,h:64},0).texture).toBe(field.texture)
   f.renderer.filterImageFields=undefined
-  f.renderer.bytes=220*1024*1024
+  f.renderer.bytes=budget*55/64
   await f.renderer.reclaimScratch()
   expect(f.driver.checkpoint).not.toHaveBeenCalled()
   expect(f.destroyed).not.toContain(field.texture)
-  await f.renderer.reclaimScratch(64*1024*1024)
+  await f.renderer.reclaimScratch(budget/4)
   expect(f.driver.checkpoint).toHaveBeenCalled()
   expect(f.destroyed).toContain(field.texture)
 })
