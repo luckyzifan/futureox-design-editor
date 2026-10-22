@@ -1,3 +1,5 @@
+import { interfacePreference } from './interface-preference'
+import { canvasCommandLabel } from './canvas-interface-messages'
 import type { Editor } from './engine'
 import type { EditorCommand } from './editor-commands'
 import { container, type Point } from './model'
@@ -80,7 +82,8 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
     { command: 'select-all', label: '全选', group: 'selection', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
     { command: 'zoom-fit', label: '缩放至全部内容', group: 'view', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
   )
-  return items.map(item => ({ ...item, shortcut: shortcutLabel(item.command, context), disabled: !!item.disabled || busy || editor.interactionActive }))
+  const locale = interfacePreference.getSnapshot().locale
+  return items.map(item => ({ ...item, label: canvasCommandLabel(item.command, item.label, locale, nodes.length > 1, locks.some(id => !selection.includes(id))), shortcut: shortcutLabel(item.command, context), disabled: !!item.disabled || busy || editor.interactionActive }))
 }
 
 export function clampContextMenu(point: Point, size: { width: number; height: number }, viewport: { width: number; height: number }): Point {

@@ -1,3 +1,4 @@
+import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
 import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
 import { prepareLayoutAdd, applyLayoutAdd, prepareLayoutRemove, applyLayoutRemove, layoutCommandAdmission } from './commands/layout-command'
@@ -97,6 +98,7 @@ import {
   kernelLayout,
   invalidateGeometry,
   prepareDocumentForEditing,
+  activateDocumentFonts,
 } from './kernel/picking'
 import { shareDocument, type EditResult } from './document-patch'
 import { createEditingHistory } from './kernel/graph-history'
@@ -162,6 +164,7 @@ export type EditorState = {
   pixelPreview: 0 | 1 | 2
   lastPixelPreview: 1 | 2
   message: string
+  messagePresentation?: MessagePresentation
   busy: boolean
   widthStroke: number
   pencil: PencilSettings
@@ -432,6 +435,10 @@ export class Editor {
     }
     if (patch.view !== undefined) this.discardPendingView()
     const next = { ...this.state, ...patch }
+    // Explicit raw messages supersede presentation tags even when text is equal.
+    // Selection/camera updates do not shorten the existing notification lifetime.
+    if (Object.prototype.hasOwnProperty.call(patch, 'message') &&
+        !Object.prototype.hasOwnProperty.call(patch, 'messagePresentation')) next.messagePresentation = undefined
     if(next.page!==this.state.page||next.doc.id!==this.state.doc.id){this.pointerLocation=null;this.pointerScreen=null}
     if (next.page !== this.state.page || (next.hover && patch.doc &&
       !interactivePath(next.doc, next.page, next.hover, next.hoverSource === 'layers').length)) {
@@ -455,8 +462,8 @@ export class Editor {
     this.setState(patch, error => { failure = { error } })
     return failure
   }
-  notify(message: string) {
-    this.set({ message })
+  notify(message: string, status?: OperationStatus) {
+    this.set({ message, messagePresentation: status ? { raw: message, status: { ...status } } : undefined })
   }
   setScrollWheelZoom(enabled: boolean) {
     this.set({ scrollWheelZoom: enabled })
@@ -1896,33 +1903,37 @@ export class Editor {
     }
     document.pages[0].children = [...content.roots]
     const exportedRoots = applyClipboardSemantics(document, content.document, content.roots, dependencies.nodeIds, dependencies.designSystem, semantics, document.pages[0].id, 0)
-    const prepared = prepareDocumentForEditing(document)
-    return JSON.stringify({ format: 'forma-nodes', version: 1, document: prepared, roots: content.roots.map(id => exportedRoots.get(id)!), selection: content.roots, placements: Object.fromEntries(content.roots.map(id=>[exportedRoots.get(id)!,{...content.placements?.[id],transform:exportedRoots.get(id)===id?content.placements?.[id]?.transform:identity()}])) })
+    try {
+      const prepared = prepareDocumentForEditing(document)
+      return JSON.stringify({ format: 'forma-nodes', version: 1, document: prepared, roots: content.roots.map(id => exportedRoots.get(id)!), selection: content.roots, placements: Object.fromEntries(content.roots.map(id=>[exportedRoots.get(id)!,{...content.placements?.[id],transform:exportedRoots.get(id)===id?content.placements?.[id]?.transform:identity()}])) })
+    } finally { activateDocumentFonts(this.state.doc) }
   }
   importClipboard(source: string) {
     if (new TextEncoder().encode(source).byteLength > 32 * 1024 * 1024) throw new Error('剪贴板超过 32 MiB')
     const value = JSON.parse(source)
     if (value?.format !== 'forma-nodes' || value.version !== 1 || !Array.isArray(value.roots) ||
         !value.roots.length || value.roots.some((id: unknown) => typeof id !== 'string')) throw new Error('不支持的图层剪贴板')
-    const document = prepareDocumentForEditing(value.document)
-    const roots = [...new Set(value.roots as string[])]
-    if (roots.some(id => !document.pages.some(p => p.children.includes(id)))) throw new Error('剪贴板根图层无效')
-    const nodes: Record<string, DesignNode> = {}
-    const visit = (id: string) => { nodes[id] = cloneValue(document.nodes[id]); nodes[id].children.forEach(visit) }
-    roots.forEach(visit)
-    if (value.selection !== undefined && (!Array.isArray(value.selection) || !value.selection.length || value.selection.some((id: unknown) => typeof id !== 'string' || !nodes[id]))) throw new Error('剪贴板选择图层无效')
-    let placements: Record<string, { transform: Matrix; outsideX: boolean; outsideY: boolean }> | undefined
-    if (value.placements !== undefined) {
-      if (!value.placements || typeof value.placements!=='object' || Array.isArray(value.placements) || Object.keys(value.placements).some(id=>!roots.includes(id))) throw new Error('剪贴板位置无效')
-      for (const placement of Object.values(value.placements) as any[]) {
-        if(!placement || !Array.isArray(placement.transform) || placement.transform.length!==6 || placement.transform.some((v:unknown)=>typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>1e7) ||
-          typeof placement.outsideX!=='boolean' || typeof placement.outsideY!=='boolean') throw new Error('剪贴板位置无效')
-        inverse(placement.transform)
+    try {
+      const document = prepareDocumentForEditing(value.document)
+      const roots = [...new Set(value.roots as string[])]
+      if (roots.some(id => !document.pages.some(p => p.children.includes(id)))) throw new Error('剪贴板根图层无效')
+      const nodes: Record<string, DesignNode> = {}
+      const visit = (id: string) => { nodes[id] = cloneValue(document.nodes[id]); nodes[id].children.forEach(visit) }
+      roots.forEach(visit)
+      if (value.selection !== undefined && (!Array.isArray(value.selection) || !value.selection.length || value.selection.some((id: unknown) => typeof id !== 'string' || !nodes[id]))) throw new Error('剪贴板选择图层无效')
+      let placements: Record<string, { transform: Matrix; outsideX: boolean; outsideY: boolean }> | undefined
+      if (value.placements !== undefined) {
+        if (!value.placements || typeof value.placements!=='object' || Array.isArray(value.placements) || Object.keys(value.placements).some(id=>!roots.includes(id))) throw new Error('剪贴板位置无效')
+        for (const placement of Object.values(value.placements) as any[]) {
+          if(!placement || !Array.isArray(placement.transform) || placement.transform.length!==6 || placement.transform.some((v:unknown)=>typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>1e7) ||
+            typeof placement.outsideX!=='boolean' || typeof placement.outsideY!=='boolean') throw new Error('剪贴板位置无效')
+          inverse(placement.transform)
+        }
+        placements=cloneValue(value.placements)
       }
-      placements=cloneValue(value.placements)
-    }
-    this.clipboard = { nodes, roots, document, placements, selection: value.selection ? [...new Set(value.selection as string[])] : undefined }
-    this.duplicateOffset = 24
+      this.clipboard = { nodes, roots, document, placements, selection: value.selection ? [...new Set(value.selection as string[])] : undefined }
+      this.duplicateOffset = 24
+    } finally { activateDocumentFonts(this.state.doc) }
   }
   pasteToSelection(replace = false) {
     const action = beginEditorAction(this, CanvasAction.paste, ActionSource.unknown, 225)
@@ -2135,9 +2146,79 @@ export class Editor {
     const next=this.movePreviewDocument(this.state.doc,ids,point,force,preserveParent)
     if(next!==this.state.doc)this.set({doc:kernelLayout(next)})
   }
+  /** Narrow observed contract: separate free-frame leaves that remain wholly in
+   * their own original frames must not all adopt the frame under one pointer.
+   * Other placement intents (including groups, overlap and auto layout) retain
+   * the existing drop path. A null result means this exception is inapplicable. */
+  private retainContainedMoveParents(source: DesignDocument, ids: string[], point: Point, force: boolean): DesignDocument | null {
+    const tx = this.transaction
+    if (!tx || force || tx.copy || ids.length < 2 || source.id !== tx.doc.id || this.state.page !== tx.page) return null
+    const original = allParents(tx.doc), current = allParents(source), roots = new Set(ids)
+    if (roots.size !== ids.length) return null
+    const frames = new Set<string>(), worlds = new Map<string, Matrix>()
+    const animated = new Set(source.animations?.flatMap(clip => clip.tracks.map(track => track.nodeId)) || [])
+    for (const id of ids) {
+      const n = source.nodes[id], before = tx.doc.nodes[id], parent = original.get(id)
+      const frame = parent && source.nodes[parent]
+      if (!n || !before || container(n) || n.children.length || !frame || frame.kind !== 'frame' ||
+          original.get(frame.id) !== tx.page || current.get(frame.id) !== tx.page || roots.has(frame.id) ||
+          (frame.layout && frame.layout.mode !== 'none') || frame.instance || frame.instanceOrigin ||
+          n.instance || n.instanceOrigin || animated.has(id) || animated.has(frame.id) ||
+          !interactivePath(source, tx.page, id, false, current).length ||
+          !interactivePath(source, tx.page, frame.id, false, current).length) return null
+      const world = worldMatrix(source, id, current), frameWorld = worldMatrix(source, frame.id, current)
+      const local = multiply(inverse(frameWorld), world)
+      // Absolute local-coordinate tolerance only absorbs affine roundoff; it is
+      // not a center-only hit test or a screen-pixel containment expansion.
+      const epsilon = 1e-7
+      if (boxPoints({ x: 0, y: 0, width: n.width, height: n.height }).some(corner => {
+        const p = apply(local, corner)
+        return !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < -epsilon || p.y < -epsilon ||
+          p.x > frame.width + epsilon || p.y > frame.height + epsilon
+      })) return null
+      frames.add(frame.id); worlds.set(id, world)
+    }
+    if (frames.size < 2) return null
+    const boxes = [...frames].map(id => {
+      const frame = source.nodes[id], world = worldMatrix(source, id, current)
+      return bounds(boxPoints({ x: 0, y: 0, width: frame.width, height: frame.height }).map(p => apply(world, p)))
+    })
+    // Conservative AABB separation deliberately leaves rotated-overlap intent
+    // undecided, even where the exact frame polygons might be disjoint.
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j]
+      if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) return null
+    }
+    const target = canvasDropFrame(source, tx.page, ids, point)
+    if (!target || !frames.has(target)) return null
+    const moving = ids.filter(id => current.get(id) !== original.get(id))
+    if (!moving.length) return source
+    // A caller may supply a visible reparented preview. Restore the transaction's
+    // original membership, not that transient parent map, while keeping world pose.
+    return produceDraft(source, draft => {
+      for (const id of moving) {
+        const parent = current.get(id)!, list = draft.nodes[parent]?.children || draft.pages.find(p => p.id === parent)!.children
+        list.splice(list.indexOf(id), 1)
+      }
+      for (const frameId of frames) {
+        const order = tx.doc.nodes[frameId].children, list = draft.nodes[frameId].children
+        for (const id of order.filter(id => moving.includes(id))) {
+          const following = order.slice(order.indexOf(id) + 1).find(sibling => list.includes(sibling))
+          list.splice(following === undefined ? list.length : list.indexOf(following), 0, id)
+          draft.nodes[id].transform = multiply(inverse(worldMatrix(source, frameId, current)), worlds.get(id)!)
+          const constraints = tx.doc.nodes[id].constraints
+          if (constraints && draft.nodes[id].constraints) draft.nodes[id].constraints = {
+            ...draft.nodes[id].constraints!, referenceWidth: constraints.referenceWidth, referenceHeight: constraints.referenceHeight,
+          }
+        }
+      }
+    })
+  }
   private movePreviewDocument(source: DesignDocument, ids: string[], point: Point, force: boolean, preserveParent: boolean): DesignDocument {
     const tx=this.transaction
     if(!tx || preserveParent)return source
+    const retained = this.retainContainedMoveParents(source, ids, point, force)
+    if (retained) return retained
     const index=tx.dropIndex??=createCanvasDropIndex(source,this.state.page),parents=index.parents,frame=canvasDropFrame(source,this.state.page,ids,point,force,index)
     const target=frame || this.state.page
     const moving=ids.filter(id=>(frame?containingFrame(source,id,parents)!==frame:!!containingFrame(source,id,parents)) && parents.get(id)!==target)
@@ -2165,10 +2246,19 @@ export class Editor {
   finishCanvasMove(point: Point, force = false, absolute = false, preserveParent = false) {
     const transaction = this.transaction
     if (!transaction) return
-    const roots = this.topSelection(), doc = this.state.doc, parents = allParents(doc)
+    const roots = this.topSelection(), session = this.sessionGeneration, page = this.state.page
+    const retained = preserveParent ? null : this.retainContainedMoveParents(this.state.doc, roots, point, force)
+    if (retained && retained !== this.state.doc) {
+      this.set({ doc: retained })
+      // Publication can synchronously load another document or start a new
+      // gesture. Never feed this old drop point into that owner's layout/order.
+      if (this.transaction !== transaction || this.sessionGeneration !== session ||
+          this.state.page !== page || this.state.doc !== retained) return
+    }
+    const doc = this.state.doc, parents = allParents(doc)
     const frame = canvasDropFrame(doc, this.state.page, roots, point, force)
     const target = frame || this.state.page
-    const relocating = preserveParent ? [] : roots.filter(id => {
+    const relocating = preserveParent || retained ? [] : roots.filter(id => {
       const currentFrame = containingFrame(doc,id,parents)
       return (frame ? currentFrame !== frame : !!currentFrame) && parents.get(id) !== target
     })

@@ -7,9 +7,14 @@ import { container, defaultLayout, type AutoLayout, type DesignDocument, type De
 
 export const LAYOUT_SUGGESTION_LIMIT = 1000
 const EPS = 1e-9
+/** Optional view metadata; never part of document changes or fingerprint input. */
+export type LayoutSuggestionText =
+  | { key: 'horizontal' | 'vertical' | 'grid' | 'nested' | 'wrapped' | 'preserve-coordinates' | 'independent-containers' | 'wrapped-compatible' | 'grid-versus-wrap' | 'ancestor-excluded' }
+  | { key: 'subtree-excluded' | 'explicit-edit-required' | 'ambiguous-geometry'; frameName: string }
+  | { key: 'frame-layout'; frameName: string; mode: AutoLayout['mode']; gap: number; align: AutoLayout['align'] }
 export type LayoutSuggestionChange = { frameId: string; layout: AutoLayout; order: string[] }
-export type LayoutSuggestion = { id: string; label: string; confidence: number; explanation: string[]; changes: LayoutSuggestionChange[] }
-export type LayoutSuggestionPreview = { frameId: string; fingerprint: string; revision?: number; inspectedNodes: number; suggestions: LayoutSuggestion[]; warnings: string[] }
+export type LayoutSuggestion = { id: string; label: string; confidence: number; explanation: string[]; changes: LayoutSuggestionChange[]; display?: { label: LayoutSuggestionText; explanation: LayoutSuggestionText[] } }
+export type LayoutSuggestionPreview = { frameId: string; fingerprint: string; revision?: number; inspectedNodes: number; suggestions: LayoutSuggestion[]; warnings: string[]; warningDisplay?: LayoutSuggestionText[] }
 const near = (a: number, b: number) => Math.abs(a - b) <= EPS
 const uniform = (values: number[]) => values.length === 0 || values.every(v => near(v, values[0]))
 const fixed = (n: DesignNode) => (!n.sizing || (n.sizing.width === 'fixed' && n.sizing.height === 'fixed'))
@@ -71,7 +76,7 @@ function inspect(doc: DesignDocument, frameId: string): DesignNode[] {
   return result
 }
 export function previewLayoutSuggestion(doc: DesignDocument, frameId: string): LayoutSuggestionPreview {
-  const nodes = inspect(doc, frameId), warnings: string[] = [], changes: LayoutSuggestionChange[] = []
+  const nodes = inspect(doc, frameId), warnings: string[] = [], warningDisplay: LayoutSuggestionText[] = [], changes: LayoutSuggestionChange[] = []
   // SHA-256 covers the complete subtree without echoing text, fonts or image
   // payloads into the preview. Dispatcher/UI revision guards are also mandatory.
   const snapshot = JSON.stringify(nodes)
@@ -83,14 +88,14 @@ export function previewLayoutSuggestion(doc: DesignDocument, frameId: string): L
     ancestors.add(id)
     const ancestor = doc.nodes[id]
     if (ancestor.locked || !ancestor.visible || ancestor.instance || ancestor.component || ancestor.componentSet || ancestor.instanceOrigin)
-      return { frameId, fingerprint, inspectedNodes: nodes.length, suggestions: [], warnings: ['Locked, hidden or component ancestor: subtree left unchanged'] }
+      return { frameId, fingerprint, inspectedNodes: nodes.length, suggestions: [], warnings: ['Locked, hidden or component ancestor: subtree left unchanged'], warningDisplay: [{ key: 'ancestor-excluded' }] }
   }
   const excluded = new Set<string>()
   let rootGrid: LayoutSuggestionChange | undefined
   for (const frame of nodes) {
     if (excluded.has(frame.id) || frame.locked || !frame.visible || frame.instance || frame.component || frame.componentSet || frame.instanceOrigin) {
       frame.children.forEach(id => excluded.add(id))
-      if (container(frame)) warnings.push(`${frame.name}: locked, hidden or component subtree left unchanged`)
+      if (container(frame)) { warnings.push(`${frame.name}: locked, hidden or component subtree left unchanged`); warningDisplay.push({ key: 'subtree-excluded', frameName: frame.name }) }
       continue
     }
     if (!container(frame) || frame.children.length < 2) continue
@@ -98,16 +103,25 @@ export function previewLayoutSuggestion(doc: DesignDocument, frameId: string): L
     const children = frame.children.map(id => doc.nodes[id]).filter(n => n.visible && !n.sizing?.absolute)
     if (children.length < 2) continue
     if (!fixed(frame) || children.some(n => n.locked || !fixed(n) || !axisAligned(n) || (n.sizing && (n.sizing.alignSelf !== null || n.sizing.columnSpan !== 1 || n.sizing.rowSpan !== 1)))) {
-      warnings.push(`${frame.name}: locked, transformed or responsive children require explicit layout editing`); continue
+      warnings.push(`${frame.name}: locked, transformed or responsive children require explicit layout editing`); warningDisplay.push({ key: 'explicit-edit-required', frameName: frame.name }); continue
     }
     const candidate = stack(frame, children, 0) ?? stack(frame, children, 1) ?? grid(frame, children)
-    if (!candidate) { warnings.push(`${frame.name}: irregular spacing, overlap or ambiguous geometry; no automatic rearrangement`); continue }
+    if (!candidate) { warnings.push(`${frame.name}: irregular spacing, overlap or ambiguous geometry; no automatic rearrangement`); warningDisplay.push({ key: 'ambiguous-geometry', frameName: frame.name }); continue }
     if (candidate.layout.mode === 'grid' && frame.id === frameId) rootGrid = candidate
     changes.push(candidate)
   }
   const suggestions: LayoutSuggestion[] = changes.length ? [{ id: 'preserve-geometry', label: changes.length > 1 ? 'Nested layouts' : changes[0].layout.mode, confidence: 1, explanation: ['Regular geometry matches to numerical precision; coordinates and sizes are preserved.', 'Existing nested containers are inferred independently; hidden and absolute children retain their slots.', ...changes.map(c => `${doc.nodes[c.frameId].name}: ${c.layout.mode}, gap ${c.layout.gap}, alignment ${c.layout.align}`)], changes }] : []
   if (rootGrid) suggestions.push({ id: 'wrapped-rows', label: 'Wrapped rows', confidence: 0.85, explanation: ['The same regular geometry also fits wrapped horizontal rows.', 'Choose grid for stable columns, or wrap for flow that adapts to available width.'], changes: changes.map(c => c === rootGrid ? { ...c, layout: { ...c.layout, mode: 'horizontal', wrap: true } } : c) })
-  return { frameId, fingerprint, inspectedNodes: nodes.length, suggestions, warnings }
+  // Attach display descriptors only after inference has produced unchanged raw API data.
+  for (const suggestion of suggestions) {
+    suggestion.display = suggestion.id === 'wrapped-rows'
+      ? { label: { key: 'wrapped' }, explanation: [{ key: 'wrapped-compatible' }, { key: 'grid-versus-wrap' }] }
+      : { label: { key: changes.length > 1 ? 'nested' : changes[0].layout.mode as 'horizontal' | 'vertical' | 'grid' }, explanation: [
+        { key: 'preserve-coordinates' }, { key: 'independent-containers' },
+        ...changes.map(c => ({ key: 'frame-layout' as const, frameName: doc.nodes[c.frameId].name, mode: c.layout.mode, gap: c.layout.gap, align: c.layout.align })),
+      ] }
+  }
+  return { frameId, fingerprint, inspectedNodes: nodes.length, suggestions, warnings, warningDisplay }
 }
 /** Never trusts client-provided patches. Recompute and compare the preview before
  * applying a named candidate inside the caller's single native undo boundary. */

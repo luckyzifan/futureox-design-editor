@@ -1,3 +1,4 @@
+import { operationStatusText } from './operation-status-messages'
 import { FramePresetPanel } from './FramePresetPanel'
 import { LocalHome, HomeCanvasGate } from './LocalHome'
 import { localHomeSource, admitHomeDocumentCommand } from './local-home-source'
@@ -16,7 +17,7 @@ import { nativeSketchCapabilities } from './native-sketch-capabilities'
 import { alignmentAvailability, alignSelection } from './alignment-availability'
 import { SettingsDialog } from './SettingsDialog'
 import { PanelResizeHandle, useAdaptivePanels } from './AdaptivePanels'
-import { interfaceText, interfacePreference } from './interface-preference'
+import { interfaceText, interfacePreference, useInterfacePreferences } from './interface-preference'
 import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
@@ -42,8 +43,9 @@ import { PrototypePlayer } from './PrototypePlayer'
 import { WorkspaceLibrary } from './WorkspaceLibrary'
 import { DocumentHistoryDialog } from './DocumentHistoryDialog'
 import { ImportNotice } from './ImportNotice'
-import { dispatchEditorCommand, editorCommands, type EditorCommand } from './editor-commands'
-import { TOOL_COMMANDS, unavailableReason } from './tool-registry'
+import { dispatchEditorCommand, resolveDesktopEditorCommand, type EditorCommand } from './editor-commands'
+import { localizedToolCommands, localizedToolLabel, unavailableReason } from './tool-registry'
+import { canvasText } from './canvas-interface-messages'
 import { canvasMenuItems } from './canvas-menu-model'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
@@ -159,10 +161,12 @@ const utilityToolItems: { id: Tool; label: string; icon: typeof Square }[] = [
   { id: 'comments', label: '评论', icon: MessageSquare },
 ]
 export default function App() {
+  const { locale } = useInterfacePreferences()
+  const toolbarText = canvasText[locale]
   const shortcutProfile = useShortcutProfile()
   const shortcutContext = useMemo(() => ({ profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), [shortcutProfile])
-  const tools = useMemo(() => toolItems.map(tool => ({ ...tool, key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext])
-  const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext])
+  const tools = useMemo(() => toolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
+  const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)
   const [showHome, setShowHome] = useState(true)
   const [startupError, setStartupError] = useState('')
@@ -213,6 +217,21 @@ export default function App() {
   const setShowInspector = adaptivePanels.setRightOpen
   const [desktop] = useState(desktopBridge)
   const [editor] = useState(() => new Editor(blank()))
+  useEffect(() => {
+    if (!desktop?.setInterfaceLocale) return
+    let disposed = false, previous: string | undefined
+    const synchronize = () => {
+      const locale = interfacePreference.getSnapshot().locale
+      if (locale === previous) return
+      previous = locale
+      void desktop.setInterfaceLocale!(locale).then(result => {
+        if (!disposed && result.status === 'error') editor.notify(result.message)
+      }).catch(error => { if (!disposed) editor.notify(String(error)) })
+    }
+    synchronize()
+    const unsubscribe = interfacePreference.subscribe(synchronize)
+    return () => { disposed = true; unsubscribe() }
+  }, [desktop, editor])
   useEffect(() => desktopPet.bind(editor), [editor])
   useEffect(() => bindEditorSettings(editor), [editor])
   const [exports] = useState(() => new ExportOwner())
@@ -229,13 +248,13 @@ export default function App() {
       if (!commitExportEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
       request = exports.begin(editor, `menu:${format}`)
       if (!request) { trace.result(ActionOutcome.blocked, ActionReason.busy); return }
-      editor.notify('正在生成导出预览…')
+      editor.notify('正在生成导出预览…', { key: 'exportPreviewGenerating' })
       const module = await import('./export')
       if (!request.isCurrent()) { trace.result(ActionOutcome.cancelled, ActionReason.superseded); return }
       const result = format === 'visual-svg'
         ? await module.exportVisualSvg(request.document, request.page)
         : await module.exportImage(request.document, request.page, format, format === 'svg' ? 1 : 2, undefined, request.signal)
-      if (exports.publish(request, result)) { trace.result(ActionOutcome.observed); editor.notify('导出文件已生成') } else trace.result(ActionOutcome.cancelled, ActionReason.superseded)
+      if (exports.publish(request, result)) { trace.result(ActionOutcome.observed); editor.notify('导出文件已生成', { key: 'exportFileReady' }) } else trace.result(ActionOutcome.cancelled, ActionReason.superseded)
     } catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation);
       if (!request || request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) }
     } finally { if (request) exports.finish(request) }
@@ -249,13 +268,13 @@ export default function App() {
     if (!request) { trace.result(ActionOutcome.blocked, ActionReason.busy); return }
     setMenu(false)
     try {
-      editor.notify('正在生成 Sketch 兼容文件…')
+      editor.notify('正在生成 Sketch 兼容文件…', { key: 'sketchExportGenerating' })
       const bytes = await exportSketchInWorker(request.document, request.signal)
       if (!request.isCurrent()) { trace.result(ActionOutcome.cancelled, ActionReason.superseded); return }
       download(`${request.document.name}.sketch`, new Blob([new Uint8Array(bytes).buffer], { type: 'application/zip' }))
       trace.result(ActionOutcome.observed)
       desktopPet.event('export')
-      editor.notify('Sketch 兼容文件已生成；完整编辑信息请同时保留 .fd 文件')
+      editor.notify('Sketch 兼容文件已生成；完整编辑信息请同时保留 .fd 文件', { key: 'sketchExportReadyCompatibility' })
     } catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation); if (request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) } }
     finally { exports.finish(request) }
     } finally { trace.finish() }
@@ -266,7 +285,7 @@ export default function App() {
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 312)
     trace.result(ActionOutcome.cancelled, ActionReason.unobserved)
     try {
-    if(!ready || switching || desktopStatus.busy || editor.interactionActive){trace.result(ActionOutcome.blocked, ActionReason.busy);editor.notify('请结束当前操作后打开文件');return}
+    if(!ready || switching || desktopStatus.busy || editor.interactionActive){trace.result(ActionOutcome.blocked, ActionReason.busy);editor.notify('请结束当前操作后打开文件', { key: 'openBlockedActiveOperation' });return}
     const request = fileImports.begin(editor)
     try {
       const imported = await importStep(request, () => readDesignFile(f, request.signal))
@@ -279,13 +298,13 @@ export default function App() {
         const roots = editor.appendDocument(document)
         trace.result(editor.state.version !== revision ? ActionOutcome.committed : ActionOutcome.unchanged)
         setImportReport(imported.warnings.length ? { documentId: editor.state.doc.id, warnings: imported.warnings } : null)
-        editor.notify(`已追加 ${roots.length} 组内容，可整体拖动；撤销可移除此轮导入`)
+        editor.notify(`已追加 ${roots.length} 组内容，可整体拖动；撤销可移除此轮导入`, { key: 'importedGroupsAppended', count: roots.length })
         return
       }
       const opened = await switchDocument(document, undefined, true, request)
       if (opened) trace.result(ActionOutcome.observed)
       if (opened && request.isLatest() && editor.state.doc.id === document.id && imported.warnings.length) {
-        setImportReport({ documentId: document.id, warnings: imported.warnings }); editor.notify('导入完成，可以继续编辑')
+        setImportReport({ documentId: document.id, warnings: imported.warnings }); editor.notify('导入完成，可以继续编辑', { key: 'designImportComplete' })
       }
     } catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation); if (request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) } }
     finally { request.finish() }
@@ -294,7 +313,7 @@ export default function App() {
   async function importImageFiles(files: File[]) {
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 313)
     try {
-      if (!ready || editor.interactionActive) { trace.result(ActionOutcome.blocked, ActionReason.notReady); editor.notify('请结束当前操作后导入图片'); return }
+      if (!ready || editor.interactionActive) { trace.result(ActionOutcome.blocked, ActionReason.notReady); editor.notify('请结束当前操作后导入图片', { key: 'imageImportBlockedActiveOperation' }); return }
       if (!commitPendingEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
       const canvas = document.querySelector<HTMLElement>('[data-testid=canvas]')
       const anchor = captureImageImportAnchor(editor, { width: canvas?.clientWidth ?? 0, height: canvas?.clientHeight ?? 0 })
@@ -303,7 +322,8 @@ export default function App() {
     } catch (error) {
       trace.result(error instanceof StaleImageImport ? ActionOutcome.cancelled : ActionOutcome.rejected,
         error instanceof StaleImageImport ? ActionReason.superseded : ActionReason.validation)
-      editor.notify(error instanceof StaleImageImport ? error.message : `图片导入失败: ${String(error)}`)
+      if (error instanceof StaleImageImport) editor.notify(error.message)
+      else { const detail = String(error); editor.notify(`图片导入失败: ${detail}`, { key: 'imageImportFailed', error: detail }) }
     } finally { trace.finish() }
   }
   const switchLifetime = useRef(0)
@@ -354,11 +374,76 @@ export default function App() {
   const [localFiles, setLocalFiles] = useState<LocalEntry[] | null>(null)
   const [switching, setSwitching] = useState(false)
   const switchGate = useRef<object | null>(null)
+  const panelHost = useRef<HTMLDivElement>(null)
+  const leftPanel = useRef<HTMLDivElement>(null), rightPanel = useRef<HTMLDivElement>(null)
+  const leftPanelToggle = useRef<HTMLButtonElement>(null), rightPanelToggle = useRef<HTMLButtonElement>(null)
+  const panelActionsSummary = useRef<HTMLElement>(null)
+  type PanelFocus = { element: HTMLElement; side: 'left' | 'right'; session: number; page: string; selection: string; section: string }
+  const panelFocus = useRef<Partial<Record<'left' | 'right', PanelFocus>>>({})
+  const revealFocus = useRef<{ focus: PanelFocus; trigger: HTMLButtonElement } | null>(null)
+  const panelFocusCurrent = (focus: PanelFocus) => focus.element.isConnected &&
+    panelHost.current?.contains(focus.element) && (focus.side === 'left' ? leftPanel : rightPanel).current?.contains(focus.element) &&
+    !focus.element.closest('[hidden],[aria-hidden="true"]') &&
+    focus.section === (focus.side === 'left' ? workspaceSection : propertiesTab) &&
+    focus.session === editor.sessionGeneration && focus.page === editor.state.page &&
+    focus.selection === JSON.stringify(editor.state.selection)
+  // Only these live App controls can reveal a hidden panel without committing
+  // its recoverable input. Closing panels and ordinary navigation retain guards.
+  const panelRecoveryReady = () => ready && !showHome && !uiMinimized && !switching && !desktopStatus.busy &&
+    !desktopStatus.transitioning && !editor.state.busy && !editor.interactionActive && !editor.propertyPreviewActive
+  const panelRevealSide = (target: Element): 'left' | 'right' | null => {
+    if (!panelRecoveryReady() || !panelHost.current?.contains(target)) return null
+    const button = target.closest('button')
+    const side = !showLayers && button && button === leftPanelToggle.current ? 'left' :
+      !showInspector && button && button === rightPanelToggle.current ? 'right' : null
+    if (!side) return null
+    const focus = panelFocus.current[side]
+    return !hasPendingEdits(editor) || (focus && panelFocusCurrent(focus)) ? side : null
+  }
+  const canRefocusPendingPanelInput = (target: Element) => panelRecoveryReady() && hasPendingEdits(editor) &&
+    (['left', 'right'] as const).some(side => {
+      const focus = panelFocus.current[side]
+      return (side === 'left' ? showLayers : showInspector) && !!focus && focus.element === target && panelFocusCurrent(focus)
+    })
+  const panelRecoveryEntry = (target: Element) => {
+    if (panelRevealSide(target)) return true
+    if (!panelRecoveryReady() || !hasPendingEdits(editor) || !panelHost.current?.contains(target) ||
+      workspaceActions.current?.open || target.closest('summary') !== panelActionsSummary.current) return false
+    // The summary only exposes the recovery controls, not permission to use
+    // unrelated menu items. Require a reachable target in a hidden panel.
+    return (['left', 'right'] as const).some(side => {
+      const focus = panelFocus.current[side]
+      return !(side === 'left' ? showLayers : showInspector) && !!focus && panelFocusCurrent(focus)
+    })
+  }
+  const togglePanel = (side: 'left' | 'right') => {
+    if (!panelRecoveryReady()) return
+    const trigger = (side === 'left' ? leftPanelToggle : rightPanelToggle).current
+    if (trigger && panelRevealSide(trigger) === side) {
+      const focus = panelFocus.current[side]
+      if (hasPendingEdits(editor) && focus && panelFocusCurrent(focus)) revealFocus.current = { focus, trigger }
+      ;(side === 'left' ? setShowLayers : setShowInspector)(true)
+    } else if (!hasPendingEdits(editor) && !editor.interactionActive) {
+      ;(side === 'left' ? setShowLayers : setShowInspector)(value => !value)
+    }
+  }
+  useLayoutEffect(() => {
+    const recovery = revealFocus.current; revealFocus.current = null
+    if (!recovery || !panelRecoveryReady() || !panelHost.current?.contains(recovery.trigger) ||
+      recovery.trigger !== (recovery.focus.side === 'left' ? leftPanelToggle : rightPanelToggle).current ||
+      !hasPendingEdits(editor) || !panelFocusCurrent(recovery.focus) ||
+      !(recovery.focus.side === 'left' ? showLayers : showInspector)) return
+    const active = document.activeElement
+    if (active !== recovery.trigger && active !== panelActionsSummary.current && active !== recovery.focus.element && active !== document.body) return
+    // This is a focus target, not a draft snapshot: never restore values or
+    // write state after focus, which can synchronously publish a new owner.
+    recovery.focus.element.focus()
+  }, [showLayers, showInspector, editor, ready, showHome, uiMinimized, switching, desktopStatus.busy, desktopStatus.transitioning])
   const [saver] = useState(
     () =>
       new SaveCoordinator(undefined, (status) => {
         setSaved(status.error ? '本地保存失败' : status.dirty ? '保存中…' : '已保存到本机')
-        if (status.error) editor.notify(`保存失败，当前画布已保留：${status.error}`)
+        if (status.error) { const detail = status.error; editor.notify(`保存失败，当前画布已保留：${detail}`, { key: 'saveFailedCanvasRetained', error: detail }) }
       }),
   )
   const file = useRef<HTMLInputElement>(null)
@@ -391,7 +476,7 @@ export default function App() {
         await desktopSession.start()
         if (active) setReady(true)
       }).catch((e) => {
-        if (active) { setStartupError(`设计内核载入失败：${String(e)}`); editor.notify(`设计内核载入失败：${String(e)}`) }
+        if (active) { setStartupError(`设计内核载入失败：${String(e)}`); const detail = String(e); editor.notify(`设计内核载入失败：${detail}`, { key: 'kernelStartupFailed', error: detail }) }
       })
       return () => { active = false; desktopSession.dispose() }
     }
@@ -422,7 +507,8 @@ export default function App() {
         recordLocalError('workspace', e, 'STORAGE_ERROR')
         setSaved('本地恢复失败')
         setStartupError('本地恢复失败，文档操作和自动保存已暂停。')
-        editor.notify(`本地恢复失败，自动保存已暂停：${e.message}`)
+        const detail = e.message
+        editor.notify(`本地恢复失败，自动保存已暂停：${detail}`, { key: 'recoveryFailedAutosavePaused', error: detail })
       })
     return () => {
       active = false
@@ -608,7 +694,10 @@ export default function App() {
       else if (name === 'saveAs') void desktopSession.save(true)
       else if (name === 'new') void desktopSession.replace(blank())
       else if (name === 'recover') void desktopSession.recover()
-      else if (editorCommands.includes(name as EditorCommand)) void dispatchEditorCommand(editor, name as EditorCommand)
+      else {
+        const command = resolveDesktopEditorCommand(name)
+        if (command) void dispatchEditorCommand(editor, command)
+      }
     }
     const shortcut = (e: KeyboardEvent) => {
       const settingsMod = shortcutPlatform() === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
@@ -644,7 +733,8 @@ export default function App() {
         })
         .catch((error) => {
           desktopSession?.cancelClose()
-          editor.notify(`关闭请求失败，设计已保留：${String(error)}`)
+          const detail = String(error)
+          editor.notify(`关闭请求失败，设计已保留：${detail}`, { key: 'closeFailedDocumentRetained', error: detail })
         })
     })
     return () => { window.removeEventListener('keydown', shortcut); offCommand?.(); offClose?.() }
@@ -692,9 +782,10 @@ export default function App() {
     setShowRegions(open && name === 'regions'); setShowShapes(open && name === 'shapes'); setShowDrawing(open && name === 'drawing'); setShowCommands(open && name === 'commands')
     setShowUtility(open && name === 'utility')
   }
+  const actionLabels: Record<string, string> = { '撤销': toolbarText.undo, '重做': toolbarText.redo, '左对齐': toolbarText.alignLeft, '水平居中': toolbarText.alignCenter, '右对齐': toolbarText.alignRight, '顶部对齐': toolbarText.alignTop, '垂直居中': toolbarText.alignMiddle, '底部对齐': toolbarText.alignBottom, '水平等距': toolbarText.distributeHorizontal, '垂直等距': toolbarText.distributeVertical }
   const action = (label: string, Icon: typeof Square, fn: () => void, disabled = false, menuItem = false) => (
-    <button type="button" title={menuItem ? label : undefined} data-tooltip={menuItem ? undefined : label === '撤销' ? `撤销 (${shortcutLabel('undo', shortcutContext)})` : label === '重做' ? `重做 (${shortcutLabel('redo', shortcutContext)})` : label}
-      aria-label={label} data-property-preview-undo={label === '撤销' ? '' : undefined} role={menuItem ? 'menuitem' : undefined} tabIndex={menuItem ? -1 : undefined} disabled={disabled}
+    <button type="button" title={menuItem ? actionLabels[label] || label : undefined} data-tooltip={menuItem ? undefined : label === '撤销' ? `${toolbarText.undo} (${shortcutLabel('undo', shortcutContext)})` : label === '重做' ? `${toolbarText.redo} (${shortcutLabel('redo', shortcutContext)})` : actionLabels[label] || label}
+      aria-label={actionLabels[label] || label} data-property-preview-undo={label === '撤销' ? '' : undefined} role={menuItem ? 'menuitem' : undefined} tabIndex={menuItem ? -1 : undefined} disabled={disabled}
       onClick={() => { focusCanvas(); fn() }}>
       <Icon size={16} />
     </button>
@@ -705,7 +796,7 @@ export default function App() {
   const shapeTool = shapeTools.find(({ id }) => id === s.tool) || tools.find(({ id }) => id === lastShapeTool)!
   const drawingTool = tools.find(({ id }) => id === s.tool && ['pen', 'pencil', 'brush', 'marker', 'washi-tape'].includes(id)) || tools.find(({ id }) => id === lastDrawingTool)!
   const utilityTool = utilityTools.find(({ id }) => id === s.tool) || utilityTools.find(({ id }) => id === lastUtilityTool)!
-  const unavailableTools = TOOL_COMMANDS.filter((c) => !c.tool).filter((c, i, all) => all.findIndex((x) => x.id === c.id) === i)
+  const unavailableTools = localizedToolCommands(locale).filter((c) => !c.tool).filter((c, i, all) => all.findIndex((x) => x.id === c.id) === i)
   const MoveIcon = moveTool.icon, RegionIcon = regionTool.icon, ShapeIcon = shapeTool.icon, DrawingIcon = drawingTool.icon
   const UtilityIcon = utilityTool.icon
   const alignment = alignmentAvailability(editor)
@@ -716,6 +807,13 @@ export default function App() {
   }
   return (
     <div
+      ref={panelHost}
+      onFocusCapture={event => {
+        const element = event.target as HTMLElement
+        if (!element.matches('input,textarea,select,[contenteditable="true"]')) return
+        const side = leftPanel.current?.contains(element) ? 'left' : rightPanel.current?.contains(element) ? 'right' : null
+        if (side) panelFocus.current[side] = { element, side, session: editor.sessionGeneration, page: editor.state.page, selection: JSON.stringify(editor.state.selection), section: side === 'left' ? workspaceSection : propertiesTab }
+      }}
       style={adaptivePanels.style}
       className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'chrome-hide-inspector'} ${uiMinimized ? 'chrome-minimized' : ''}`}
       data-history-backend={editor.historyBackend} data-history-operation={editor.historyOperationMode} data-history-frame-bytes={editor.historyFrameBytes}
@@ -733,7 +831,7 @@ export default function App() {
         if(!designFiles.length&&!imageFiles.length)return
         e.preventDefault();e.stopPropagation()
         if(designFiles.length>0){
-          if(designFiles.length!==1){editor.notify('请一次导入一个设计文件');return}
+          if(designFiles.length!==1){editor.notify('请一次导入一个设计文件', { key: 'singleDesignFileRequired' });return}
           void importDesignFile(designFiles[0])
         }else if(imageFiles.length>0){
           void importImageFiles(imageFiles)
@@ -751,7 +849,7 @@ export default function App() {
         }
         if (showHome && target.closest('.local-home,.settings-backdrop')) return
         const penCanvas = editor.state.tool === 'pen' && target.closest('[data-testid="canvas"]') && !target.closest('button,input,select,textarea')
-        if (!penCanvas && target !== document.activeElement && !target.closest('.rich-text-editor') && !commitPendingEdits(editor)) {
+        if (!(e.button === 0 && (panelRecoveryEntry(target) || canRefocusPendingPanelInput(target))) && !penCanvas && target !== document.activeElement && !target.closest('.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
         }
         if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog]'))) {
@@ -765,7 +863,7 @@ export default function App() {
         if (showHome && (e.target as Element).closest('.local-home,.settings-backdrop')) return
         const penCanvas = editor.state.tool === 'pen' && (e.target as Element).closest('[data-testid="canvas"]')
         const nudgeKey = keyboardNudgeOwnsKey(editor, e.nativeEvent) && !shortcutTargetOwnsKeyboard(e.target)
-        if (!penCanvas && !nudgeKey && !(e.target as Element).closest('input,textarea,select,.rich-text-editor') && !commitPendingEdits(editor)) {
+        if (!((e.key === 'Enter' || e.key === ' ') && panelRecoveryEntry(e.target as Element)) && !penCanvas && !nudgeKey && !(e.target as Element).closest('input,textarea,select,.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
         }
         if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog]'))) {
@@ -824,7 +922,7 @@ export default function App() {
               event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus()
             }
           }}>
-            <summary aria-label="更多工作区操作" title="更多工作区操作"><SlidersHorizontal size={16} /></summary>
+            <summary ref={panelActionsSummary} aria-label="更多工作区操作" title="更多工作区操作"><SlidersHorizontal size={16} /></summary>
             <div className="workspace-actions-menu" onClick={event => { if ((event.target as Element).closest('button')) { const menu = event.currentTarget.closest('details'); menu?.removeAttribute('open'); menu?.querySelector('summary')?.focus() } }}>
           <button type="button" aria-pressed={showColor} onClick={() => setShowColor((v) => !v)}>
             色彩与 HDR
@@ -845,13 +943,14 @@ export default function App() {
           >
             历史版本
           </button>
-          <button title={panelText.left} aria-label={panelText.left} aria-expanded={showLayers} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setShowLayers((v) => !v) }}>
+          <button ref={leftPanelToggle} title={panelText.left} aria-label={panelText.left} aria-expanded={showLayers} onClick={() => togglePanel('left')}>
             <LayersIcon size={16} />
           </button>
           <button
+            ref={rightPanelToggle}
             title={panelText.right}
             aria-label={panelText.right}
-            aria-expanded={showInspector} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setShowInspector((v) => !v) }}
+            aria-expanded={showInspector} onClick={() => togglePanel('right')}
           >
             <VectorSquare size={16} />
           </button>
@@ -1087,7 +1186,7 @@ export default function App() {
         }}
           onFiles={() => { if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else if (desktopSession) setShowCatalog(true); else void openLocalFiles() }}
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
-        <div className="adaptive-layers-shell"><Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} /><PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
+        <div ref={leftPanel} className="adaptive-layers-shell"><Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} /><PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
         <div className="canvas-workspace">
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
           <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready}
@@ -1095,45 +1194,45 @@ export default function App() {
             zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} /></HomeCanvasGate>
           <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || (editor.interactionActive && !editor.propertyPreviewActive)}>
             <div className="tool-group">
-              <ToolPopover label="移动工具" icon={<MoveIcon size={18} />} open={showMove} onOpenChange={open => openToolbarMenu('move', open)}
+              <ToolPopover label={toolbarText.moveTools} icon={<MoveIcon size={18} />} open={showMove} onOpenChange={open => openToolbarMenu('move', open)}
                 primary={{ label: moveTool.label, title: `${moveTool.label}${moveTool.key ? ` (${moveTool.key})` : ''}`, active: s.tool === moveTool.id, onClick: () => chooseTool(moveTool.id) }}>
                 {tools.filter(({ id }) => ['select', 'hand', 'scale', 'zoom'].includes(id)).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={moveTool.id === id} onClick={() => { chooseTool(id); setShowMove(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
               </ToolPopover>
-              <ToolPopover label="区域工具" icon={<RegionIcon size={18} />} open={showRegions} onOpenChange={open => openToolbarMenu('regions', open)}
+              <ToolPopover label={toolbarText.regionTools} icon={<RegionIcon size={18} />} open={showRegions} onOpenChange={open => openToolbarMenu('regions', open)}
                 primary={{ label: regionTool.label, title: `${regionTool.label}${regionTool.key ? ` (${regionTool.key})` : ''}`, active: s.tool === regionTool.id, onClick: () => chooseTool(regionTool.id) }}>
                 {(['frame', 'section', 'slice'] as const).map(id => tools.find(tool => tool.id === id)!).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={regionTool.id === id} onClick={() => { chooseTool(id); setShowRegions(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
-                <button type="button" role="menuitem" tabIndex={-1} onClick={() => { if (!commitPendingEdits(editor)) return; setShowRegions(false); setShowFramePresets(true) }}>设备与尺寸预设…</button>
+                <button type="button" role="menuitem" tabIndex={-1} onClick={() => { if (!commitPendingEdits(editor)) return; setShowRegions(false); setShowFramePresets(true) }}>{toolbarText.devicePresets}</button>
               </ToolPopover>
-              <ToolPopover label="形状工具" icon={<ShapeIcon size={18} />} open={showShapes} onOpenChange={open => openToolbarMenu('shapes', open)}
+              <ToolPopover label={toolbarText.shapeTools} icon={<ShapeIcon size={18} />} open={showShapes} onOpenChange={open => openToolbarMenu('shapes', open)}
                 primary={{ label: shapeTool.label, title: `${shapeTool.label}${shapeTool.key ? ` (${shapeTool.key})` : ''}`, active: s.tool === shapeTool.id, onClick: () => chooseTool(shapeTool.id) }}>
                 {shapeTools.map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={shapeTool.id === id} onClick={() => { chooseTool(id); setShowShapes(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
               </ToolPopover>
-              <ToolPopover label="绘图工具" icon={<DrawingIcon size={18} />} open={showDrawing} onOpenChange={open => openToolbarMenu('drawing', open)}
+              <ToolPopover label={toolbarText.drawingTools} icon={<DrawingIcon size={18} />} open={showDrawing} onOpenChange={open => openToolbarMenu('drawing', open)}
                 primary={{ label: drawingTool.label, title: `${drawingTool.label}${drawingTool.key ? ` (${drawingTool.key})` : ''}`, active: s.tool === drawingTool.id, onClick: () => chooseTool(drawingTool.id) }}>
                 {tools.filter(({ id }) => ['pen', 'pencil', 'brush', 'marker', 'washi-tape'].includes(id)).map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={drawingTool.id === id} onClick={() => { chooseTool(id); setShowDrawing(false) }}><Icon size={16} /><span>{label}</span><kbd>{key}</kbd></button>
                 ))}
-                {(['bend','cut','vector-lasso','eraser','paint-bucket','offset-path','text-path','multiselect'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={utilityToolNames[id]} onClick={()=>{chooseTool(id);setShowDrawing(false)}}>{utilityToolNames[id]}</button>)}
-                <button type="button" role="menuitem" tabIndex={-1} disabled={s.busy || s.selection.length !== 1 || !editor.topSelection().includes(s.selection[0]) || ['frame', 'section', 'group', 'text'].includes(s.doc.nodes[s.selection[0]]?.kind)} onClick={() => { editor.set({ tool: 'vector', editingVertex: null }); setShowDrawing(false) }}>编辑矢量</button>
-                <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('outline-stroke')} onClick={() => { void dispatchEditorCommand(editor, 'outline-stroke'); setShowDrawing(false) }}>轮廓化描边</button>
+                {(['bend','cut','vector-lasso','eraser','paint-bucket','offset-path','text-path','multiselect'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowDrawing(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
+                <button type="button" role="menuitem" tabIndex={-1} disabled={s.busy || s.selection.length !== 1 || !editor.topSelection().includes(s.selection[0]) || ['frame', 'section', 'group', 'text'].includes(s.doc.nodes[s.selection[0]]?.kind)} onClick={() => { editor.set({ tool: 'vector', editingVertex: null }); setShowDrawing(false) }}>{toolbarText.editVector}</button>
+                <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('outline-stroke')} onClick={() => { void dispatchEditorCommand(editor, 'outline-stroke'); setShowDrawing(false) }}>{toolbarText.outlineStroke}</button>
               </ToolPopover>
-              <button type="button" data-tooltip={`评论${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label="评论" aria-pressed={s.tool==='comments'} onClick={()=>chooseTool('comments')}>◉</button>
-              <button type="button" data-tooltip="文字 (T)" aria-label="文字" aria-pressed={s.tool === 'text'} className={s.tool === 'text' ? 'active' : ''} onClick={() => chooseTool('text')}><Type size={18} /></button>
-              <ToolPopover label="实用工具" icon={<UtilityIcon size={18} />} open={showUtility} onOpenChange={open => openToolbarMenu('utility', open)}
+              <button type="button" data-tooltip={`${localizedToolLabel('comments', locale, '评论')}${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('comments', locale, '评论')} aria-pressed={s.tool==='comments'} onClick={()=>chooseTool('comments')}>◉</button>
+              <button type="button" data-tooltip={`${localizedToolLabel('text', locale, '文字')}${toolShortcutLabel('text', shortcutContext) ? ` (${toolShortcutLabel('text', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('text', locale, '文字')} aria-pressed={s.tool === 'text'} className={s.tool === 'text' ? 'active' : ''} onClick={() => chooseTool('text')}><Type size={18} /></button>
+              <ToolPopover label={toolbarText.utilityTools} icon={<UtilityIcon size={18} />} open={showUtility} onOpenChange={open => openToolbarMenu('utility', open)}
                 primary={{ label: utilityTool.label, title: `${utilityTool.label}${utilityTool.key ? ` (${utilityTool.key})` : ''}`, active: s.tool === utilityTool.id, onClick: () => chooseTool(utilityTool.id) }}>
                 {utilityTools.map(({ id, label, key, icon: Icon }) => (
                   <button type="button" role="menuitemradio" tabIndex={-1} key={id} aria-label={label} aria-checked={utilityTool.id === id} onClick={() => { chooseTool(id); setShowUtility(false) }}><Icon size={16} /><span>{label}</span>{key ? <kbd>{key}</kbd> : null}</button>
                 ))}
-                <strong>已解码但尚未提供</strong>
+                <strong>{toolbarText.decodedUnavailable}</strong>
                 {unavailableTools.map((c) => (
-                  <button type="button" role="menuitem" tabIndex={-1} key={c.id} disabled title={unavailableReason(c.id) || undefined}>
-                    <span>{c.label} · 未提供</span>
+                  <button type="button" role="menuitem" tabIndex={-1} key={c.id} disabled title={unavailableReason(c.id, locale) || undefined}>
+                    <span>{c.label} · {toolbarText.unavailable}</span>
                   </button>
                 ))}
               </ToolPopover>
@@ -1142,10 +1241,10 @@ export default function App() {
             <div className="tool-group">
               {action('撤销', Undo2, () => { void dispatchEditorCommand(editor, 'undo') }, !editor.canUndo || s.busy)}
               {action('重做', Redo2, () => { void dispatchEditorCommand(editor, 'redo') }, !editor.canRedo || s.busy)}
-              <ToolPopover label="排列与编辑" icon={<SlidersHorizontal size={18} />} open={showCommands} onOpenChange={open => openToolbarMenu('commands', open)}>
-                {(['eyedropper','measure','comments','annotate'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={utilityToolNames[id]} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{utilityToolNames[id]}</button>)}
-                <strong>白板与响应式</strong>{(Object.entries(boardToolNames) as [BoardTool,string][]).map(([id,label])=><button type="button" role="menuitem" tabIndex={-1} key={id} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{label}</button>)}
-                <strong>对齐与分布</strong><div className="arrangement-grid">
+              <ToolPopover label={toolbarText.arrangeAndEdit} icon={<SlidersHorizontal size={18} />} open={showCommands} onOpenChange={open => openToolbarMenu('commands', open)}>
+                {(['eyedropper','measure','comments','annotate'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
+                <strong>{toolbarText.whiteboardAndResponsive}</strong>{(Object.entries(boardToolNames) as [BoardTool,string][]).map(([id,label])=><button type="button" role="menuitem" tabIndex={-1} key={id} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, label)}</button>)}
+                <strong>{toolbarText.alignAndDistribute}</strong><div className="arrangement-grid">
                   {action('左对齐', AlignLeft, () => alignSelection(editor, 'x', 'start'), !alignment.align, true)}
                   {action('水平居中', AlignCenterHorizontal, () => alignSelection(editor, 'x', 'center'), !alignment.align, true)}
                   {action('右对齐', AlignRight, () => alignSelection(editor, 'x', 'end'), !alignment.align, true)}
@@ -1155,19 +1254,19 @@ export default function App() {
                   {action('水平等距', AlignHorizontalDistributeCenter, () => alignSelection(editor, 'x', 'distribute'), !alignment.distribute, true)}
                   {action('垂直等距', AlignVerticalDistributeCenter, () => alignSelection(editor, 'y', 'distribute'), !alignment.distribute, true)}
                 </div>
-                <strong>组合形状</strong>
-                {([['union', '联合'], ['subtract', '减去顶层'], ['intersect', '交集'], ['exclude', '排除交集'], ['divide', '分割为多边形区域（旧版）']] as const).map(([operation, label]) =>
+                <strong>{toolbarText.combineShapes}</strong>
+                {([['union', toolbarText.union], ['subtract', toolbarText.subtract], ['intersect', toolbarText.intersect], ['exclude', toolbarText.exclude], ['divide', toolbarText.divideLegacy]] as const).map(([operation, label]) =>
                   <button type="button" role="menuitem" tabIndex={-1} key={operation} disabled={s.selection.length < 2 || s.busy} onClick={() => { void editor.geometry(operation); setShowCommands(false) }}>{label}</button>)}
-                <button type="button" role="menuitem" tabIndex={-1} disabled={!s.selection.length || s.busy} onClick={() => { setShowShapeBuilder(true); setShowCommands(false) }}>形状构建器…</button>
-                <button type="button" role="menuitem" tabIndex={-1} disabled={s.selection.length < 2} onClick={() => { editor.group(true); setShowCommands(false) }}>蒙版组</button>
-                <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('group')} onClick={() => { void dispatchEditorCommand(editor, 'group'); setShowCommands(false) }}>编组 <kbd>{shortcutLabel('group', shortcutContext)}</kbd></button>
-                <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('ungroup')} onClick={() => { void dispatchEditorCommand(editor, 'ungroup'); setShowCommands(false) }}>解除编组 <kbd>{shortcutLabel('ungroup', shortcutContext)}</kbd></button>
-                <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setShowTools(true); setShowCommands(false) }}>变量 · 组件库 · 原型</button>
+                <button type="button" role="menuitem" tabIndex={-1} disabled={!s.selection.length || s.busy} onClick={() => { setShowShapeBuilder(true); setShowCommands(false) }}>{toolbarText.shapeBuilder}</button>
+                <button type="button" role="menuitem" tabIndex={-1} disabled={s.selection.length < 2} onClick={() => { editor.group(true); setShowCommands(false) }}>{toolbarText.maskGroup}</button>
+                <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('group')} onClick={() => { void dispatchEditorCommand(editor, 'group'); setShowCommands(false) }}>{toolbarText.group} <kbd>{shortcutLabel('group', shortcutContext)}</kbd></button>
+                <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('ungroup')} onClick={() => { void dispatchEditorCommand(editor, 'ungroup'); setShowCommands(false) }}>{toolbarText.ungroup} <kbd>{shortcutLabel('ungroup', shortcutContext)}</kbd></button>
+                <button type="button" role="menuitem" tabIndex={-1} onClick={() => { setShowTools(true); setShowCommands(false) }}>{toolbarText.designSystems}</button>
               </ToolPopover>
             </div>
           </DesignToolbar>
         </div>
-        <div className="properties-workspace">
+        <div ref={rightPanel} className="properties-workspace">
           <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
           <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label="属性工作区" onKeyDown={(event) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -1196,8 +1295,8 @@ export default function App() {
             if (workspaceRootPending.current || !ready || desktopStatus.busy || !commitPendingEdits(editor)) return
             workspaceRootPending.current = true; setWorkspaceRootBusy(true)
             void chooseWorkspaceRoot(desktop.workspaceRoot!, original, () => setShowSettings(false))
-              .then(error => { if (error) editor.notify(`工作区切换失败，当前设计已保留：${error}`) })
-              .catch(error => editor.notify(`工作区切换失败，当前设计已保留：${String(error)}`))
+              .then(error => { if (error) editor.notify(`工作区切换失败，当前设计已保留：${error}`, { key: 'workspaceSwitchFailedDocumentRetained', error }) })
+              .catch(error => { const detail = String(error); editor.notify(`工作区切换失败，当前设计已保留：${detail}`, { key: 'workspaceSwitchFailedDocumentRetained', error: detail }) })
               .finally(() => { workspaceRootPending.current = false; setWorkspaceRootBusy(false) })
           }} /></>}
         onClose={() => setShowSettings(false)} />}
@@ -1261,7 +1360,7 @@ export default function App() {
       <footer>
         <span>
           {s.busy ? <span className="spinner" /> : <span className="footer-dot" />}
-          {s.message}
+          {operationStatusText(s.message, s.messagePresentation, locale)}
         </span>
         <div>
           {s.selection.length ? `${s.selection.length} 个图层已选择` : '空格拖动画布 · H 平移 · V 选择'}

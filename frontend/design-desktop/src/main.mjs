@@ -1,3 +1,4 @@
+import { desktopText, localizeNativeMenu } from './native-locale.mjs'
 import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch, PREFIX } from './render-terminal-diagnostics.mjs'
 import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
@@ -30,11 +31,14 @@ import { registerNativeRender } from './native-render.mjs'
 import { registerNativePreparation } from './preparation.mjs'
 import { formatForNativePath, sketchInspection } from './kernel-admission.mjs'
 import { DirectoryGrants } from './directory-grants.mjs'
-import { fitWindowState, readWindowState, writeWindowState } from './window-state.mjs'
+import { fitWindowState, readWindowState, writeWindowState, constrainWindowToDisplays } from './window-state.mjs'
 import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legacy-user-data.mjs'
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 import { parseGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
+
+let interfaceLocale = 'zh-CN'
+let rebuildApplicationMenu = () => {}
 
 const renderDiagnosticsEnabled = !app.isPackaged && ['1','detail'].includes(process.env.CORE_RENDER_DIAGNOSTICS)
 const terminalDiagnostics=createRenderDiagnostics({enabled:renderDiagnosticsEnabled,source:'host',session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
@@ -210,7 +214,7 @@ const directoryGrants = new DirectoryGrants()
 let activeHandle
 const recoveryGrants = new Map()
 const recoveredSources = new Map()
-const fileFilters = [{ name: 'futureox-desgin design', extensions: ['fd'] }]
+const fileFilters = () => [{ name: desktopText[interfaceLocale].designFileFilter, extensions: ['fd'] }]
 let sketchInspectionEpoch = 0
 
 function grant(filePath, hash, directoryHandle, pendingPath) {
@@ -258,7 +262,7 @@ function enqueueNativeFile(filePath) {
 function reportPendingOverflow() {
   if (!pendingOverflow) return
   pendingOverflow = false
-  void dialog.showMessageBox({ type: 'warning', message: '最多同时等待打开 16 个设计文件，请先处理当前文件后再打开。' })
+  void dialog.showMessageBox({ type: 'warning', message: desktopText[interfaceLocale].tooManyPendingFiles })
 }
 // Finder can deliver files before Electron readiness. Only OS/main paths enter
 // this queue; the renderer cannot submit paths or consume one before accepting it.
@@ -293,6 +297,13 @@ function register(name, action, exclusiveOperation = true) {
     try { return await action(value) } catch (error) { return resultError(error) }
   })
 }
+// Renderer may choose presentation only. register retains current-window sender validation.
+register('set-interface-locale', value => {
+  if (value !== 'en' && value !== 'zh-CN') throw new TypeError('Unsupported interface locale')
+  interfaceLocale = value
+  rebuildApplicationMenu()
+  return { status: 'ok' }
+}, false)
 let petHost = null
 function getPetHost() {
   if (!petHost) {
@@ -345,7 +356,7 @@ const closeNativePreparation = registerNativePreparation(ipcMain, {
 async function nativeOpenMenu() {
   if (window && !window.isDestroyed()) { sendCommand('open'); return }
   if (!hostReady || quitRequested) return
-  const selected = await dialog.showOpenDialog({ title: 'Open futureox-desgin design', properties: ['openFile'], filters: fileFilters })
+  const selected = await dialog.showOpenDialog({ title: desktopText[interfaceLocale].openDesign, properties: ['openFile'], filters: fileFilters() })
   if (!selected.canceled && selected.filePaths.length === 1) enqueueNativeFile(selected.filePaths[0])
 }
 
@@ -511,7 +522,7 @@ register('catalog-list', async (value) => {
 register('catalog-select', async (value) => {
   if (value !== undefined) throw new Error('Unexpected arguments')
   const selection = await dialog.showOpenDialog(window, {
-    title: 'Choose a local futureox-desgin project folder', properties: ['openDirectory'],
+    title: desktopText[interfaceLocale].chooseProjectFolder, properties: ['openDirectory'],
   })
   if (selection.canceled || selection.filePaths.length !== 1) return cancelled()
   // Keep the accepted document's root alive, just as file-grant eviction preserves activeHandle.
@@ -561,8 +572,8 @@ register('sketch-inspect', async (value) => {
   if (sketchInspectionEpoch >= Number.MAX_SAFE_INTEGER) throw new Error('Sketch inspection epoch exhausted')
   const epoch = ++sketchInspectionEpoch, requester = window
   const selection = await dialog.showOpenDialog(requester, {
-    title: 'Inspect native Sketch document (editing unavailable)',
-    properties: ['openFile'], filters: [{ name: 'Sketch native document', extensions: ['sketch'] }],
+    title: desktopText[interfaceLocale].inspectSketch,
+    properties: ['openFile'], filters: [{ name: desktopText[interfaceLocale].sketchFileFilter, extensions: ['sketch'] }],
   })
   if (selection.canceled || selection.filePaths.length !== 1 || window !== requester || requester.isDestroyed()) return cancelled()
   const selected = selection.filePaths[0]
@@ -577,9 +588,9 @@ register('sketch-inspect', async (value) => {
 register('open', async (value) => {
   if (value !== undefined) throw new Error('Unexpected arguments')
   const selection = await dialog.showOpenDialog(window, {
-    title: 'Open futureox-desgin design',
+    title: desktopText[interfaceLocale].openDesign,
     properties: ['openFile'],
-    filters: fileFilters,
+    filters: fileFilters(),
   })
   if (selection.canceled || selection.filePaths.length !== 1) return cancelled()
   const selected = requireFd(selection.filePaths[0])
@@ -629,9 +640,9 @@ register('save', async (value) => {
   let handle = params.handle
   if (params.saveAs || !target) {
     const selection = await dialog.showSaveDialog(window, {
-      title: 'Save futureox-desgin design',
+      title: desktopText[interfaceLocale].saveDesign,
       defaultPath: target?.path || 'Untitled.fd',
-      filters: fileFilters,
+      filters: fileFilters(),
       properties: ['showOverwriteConfirmation', 'createDirectory'],
     })
     if (selection.canceled || !selection.filePath) return cancelled()
@@ -642,10 +653,10 @@ register('save', async (value) => {
     if (selected !== selection.filePath && current.hash !== null) {
       const overwrite = await dialog.showMessageBox(window, {
         type: 'warning',
-        title: 'Replace existing futureox-desgin file?',
-        message: `Replace “${path.basename(selected)}”?`,
-        detail: `The .fd extension was added. The existing file at ${selected} will be replaced.`,
-        buttons: ['Cancel', 'Replace'],
+        title: desktopText[interfaceLocale].replaceTitle,
+        message: desktopText[interfaceLocale].replaceMessage(path.basename(selected)),
+        detail: desktopText[interfaceLocale].replaceDetail(selected),
+        buttons: [desktopText[interfaceLocale].cancel, desktopText[interfaceLocale].replace],
         defaultId: 0,
         cancelId: 0,
         noLink: true,
@@ -717,23 +728,23 @@ register('recovery-read', async (value) => {
       return {
         status: 'error',
         code: 'RECOVERY_INVALID',
-        message: 'Recovery files were found but could not be read. They have been preserved.',
+        message: desktopText[interfaceLocale].recoveryUnreadable,
       }
     return cancelled()
   }
   const recoveryWarning = found.issues.length
-    ? `${found.issues.length} recovery file(s) could not be read and have been preserved. Other snapshots are still available.\n\n`
+    ? desktopText[interfaceLocale].recoveryWarning(found.issues.length)
     : ''
   // Read-only recovery selection. Never reattach an original writable capability.
   for (const candidate of entries) {
     const answer = await dialog.showMessageBox(window, {
       type: 'question',
-      title: 'Recover unsaved design?',
-      message: `Recover “${String(candidate.name).slice(0, 160)}” as an unsaved copy?`,
+      title: desktopText[interfaceLocale].recoverTitle,
+      message: desktopText[interfaceLocale].recoverMessage(String(candidate.name).slice(0, 160)),
       detail:
         recoveryWarning +
-        'The original file will not be overwritten. Use Save As to choose where to keep the recovered design.',
-      buttons: ['Recover copy', 'Next snapshot', 'Cancel'],
+        desktopText[interfaceLocale].recoverDetail,
+      buttons: [desktopText[interfaceLocale].recoverCopy, desktopText[interfaceLocale].nextSnapshot, desktopText[interfaceLocale].cancel],
       defaultId: 0,
       cancelId: 2,
       noLink: true,
@@ -823,7 +834,7 @@ async function commitWorkspaceSwitch() {
     return true
   } catch (error) {
     quitRequested = false
-    await dialog.showMessageBox(window, { type: 'error', title: '工作区未切换', message: workspaceRootError(error).message, buttons: ['保留当前工作区'], noLink: true })
+    await dialog.showMessageBox(window, { type: 'error', title: desktopText[interfaceLocale].workspaceNotChanged, message: workspaceRootError(error).message, buttons: [desktopText[interfaceLocale].keepWorkspace], noLink: true })
     return false
   }
 }
@@ -835,10 +846,10 @@ async function closeFallback() {
   // A renderer that failed to load/crashed cannot approve discarding work implicitly.
   const answer = await dialog.showMessageBox(requestWindow, {
     type: 'warning',
-    title: 'Editor is not responding',
-    message: 'Close without saving the current canvas?',
-    detail: 'The last recovery snapshot is kept, but changes after that snapshot may be lost.',
-    buttons: ['Keep open', 'Close without saving'],
+    title: desktopText[interfaceLocale].unresponsiveTitle,
+    message: desktopText[interfaceLocale].closeUnsavedMessage,
+    detail: desktopText[interfaceLocale].closeUnsavedDetail,
+    buttons: [desktopText[interfaceLocale].keepOpen, desktopText[interfaceLocale].closeWithoutSaving],
     defaultId: 0,
     cancelId: 0,
     noLink: true,
@@ -911,7 +922,7 @@ async function buildWindow() {
       void dialog.showMessageBox(window, {
         type: 'error',
         message:
-          'This export format is not supported here. Use Save or Save As for .fd documents.',
+          desktopText[interfaceLocale].canvasOnlyExport,
       })
       return
     }
@@ -920,16 +931,16 @@ async function buildWindow() {
       event.preventDefault()
       void dialog.showMessageBox(window, {
         type: 'error',
-        message: 'The export has an unknown size or exceeds the 64 MiB desktop limit.',
+        message: desktopText[interfaceLocale].exportUnknownSize,
       })
       return
     }
     // Existing React export buttons use Blob downloads. Retain them behind a native Save
     // dialog, without exposing paths, arbitrary MIME writes, network downloads or shell APIs.
     item.setSaveDialogOptions({
-      title: 'Export design',
+      title: desktopText[interfaceLocale].exportDesign,
       defaultPath: name,
-      filters: [{ name: 'Design export', extensions: [path.extname(name).slice(1)] }],
+      filters: [{ name: desktopText[interfaceLocale].exportFileFilter, extensions: [path.extname(name).slice(1)] }],
       properties: ['showOverwriteConfirmation'],
     })
     let sizeFailed = false
@@ -937,7 +948,7 @@ async function buildWindow() {
       if (state === 'interrupted' && window && !window.isDestroyed())
         void dialog.showMessageBox(window, {
           type: 'error',
-          message: 'The export was interrupted and was not completed. Please export again.',
+          message: desktopText[interfaceLocale].exportInterrupted,
         })
     })
     item.on('updated', () => {
@@ -949,7 +960,7 @@ async function buildWindow() {
         item.cancel()
         void dialog.showMessageBox(window, {
           type: 'error',
-          message: 'The export exceeds the 64 MiB desktop limit.',
+          message: desktopText[interfaceLocale].exportTooLarge,
         })
       }
     })
@@ -1021,6 +1032,10 @@ async function buildWindow() {
     },
   })
   const ownedWindow = window
+  // Moving across displays must not clamp the in-progress drag back to its origin.
+  ownedWindow.on('move', () => constrainWindowToDisplays(ownedWindow, screen.getAllDisplays(), screen.getPrimaryDisplay(), { fitBounds: false }))
+  for (const event of ['unmaximize', 'leave-full-screen'])
+    ownedWindow.on(event, () => constrainWindowToDisplays(ownedWindow, screen.getAllDisplays(), screen.getPrimaryDisplay()))
   petHost?.attachEditor(ownedWindow)
   for (const event of ['resize', 'move', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'])
     window.on(event, () => { clearTimeout(windowStateTimer); windowStateTimer = setTimeout(() => void saveWindowState(ownedWindow), 200) })
@@ -1087,8 +1102,8 @@ async function buildWindow() {
     windowCleanup = Promise.all([directoryGrants.clear(), closeNativeRender(), closeNativePreparation(), automationBridge.close()])
     if (process.platform !== 'darwin' || quitRequested) void shutdown()
   })
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
+  rebuildApplicationMenu = () => Menu.setApplicationMenu(
+    Menu.buildFromTemplate(localizeNativeMenu([
       ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
       {
         label: 'File',
@@ -1165,8 +1180,9 @@ async function buildWindow() {
       },
       automationBridge.menu,
       ...(process.platform === 'darwin' ? [{ role: 'windowMenu' }] : []),
-    ]),
+    ], interfaceLocale)),
   )
+  rebuildApplicationMenu()
   await window.loadURL(renderCheck?.url || APP_URL)
   window.webContents.setZoomFactor(1)
   return window
@@ -1212,11 +1228,7 @@ else {
         startupError = error
       }
       hostReady = true
-      const constrainWindow = () => {
-        if (!window || window.isDestroyed() || window.isMaximized() || window.isFullScreen()) return
-        const fitted = fitWindowState(currentWindowState(window), screen.getAllDisplays(), screen.getPrimaryDisplay())
-        if (JSON.stringify(window.getNormalBounds()) !== JSON.stringify(fitted.bounds)) window.setBounds(fitted.bounds)
-      }
+      const constrainWindow = () => constrainWindowToDisplays(window, screen.getAllDisplays(), screen.getPrimaryDisplay())
       screen.on('display-removed', constrainWindow)
       screen.on('display-metrics-changed', constrainWindow)
       await createWindow()
@@ -1224,10 +1236,10 @@ else {
       if (startupError)
         await dialog.showMessageBox(window, {
           type: 'error',
-          title: 'Local backend unavailable',
+          title: desktopText[interfaceLocale].backendUnavailableTitle,
           message:
-            'The local Rust backend could not start. File operations and recovery are unavailable.',
-          detail: 'Build or reinstall the desktop bundle before editing important work.',
+            desktopText[interfaceLocale].backendUnavailableMessage,
+          detail: desktopText[interfaceLocale].backendUnavailableDetail,
         })
       if (smoke) await runSmoke()
     })

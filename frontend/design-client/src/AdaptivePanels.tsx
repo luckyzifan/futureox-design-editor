@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
+import { useLayoutEffect, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { interfacePreference, interfaceText, panelWidth, useInterfacePreferences } from './interface-preference'
 
 /** Document-independent shell preferences: never change editor history or input drafts. */
@@ -29,19 +29,37 @@ export function useAdaptivePanels() {
 }
 export function PanelResizeHandle({ side, blocked = false, canResize = () => true }: { side: 'left' | 'right'; blocked?: boolean; canResize?: () => boolean }) {
   const preferences = useInterfacePreferences(), text = interfaceText[preferences.locale], width = side === 'left' ? preferences.leftWidth : preferences.rightWidth
-  const drag = useRef<{ id: number; x: number; width: number; next: number } | null>(null)
+  const drag = useRef<{ id: number; x: number; width: number; visibleWidth: number; next: number } | null>(null)
   const [preview, setPreview] = useState<number | null>(null)
   const handle = useRef<HTMLDivElement>(null)
+  // Stored width is a large-screen preference, not necessarily the width under
+  // the current CSS cap. A gesture must start at the edge the user can see.
+  const visibleWidth = () => {
+    const element = handle.current
+    const panel = element?.closest<HTMLElement>(side === 'left' ? '.adaptive-layers-shell' : '.properties-workspace') || element?.parentElement
+    const measured = panel?.getBoundingClientRect().width
+    return measured && Number.isFinite(measured) && measured > 0 ? measured : width
+  }
+  const [measuredWidth, setMeasuredWidth] = useState<number | null>(null)
+  useLayoutEffect(() => {
+    const element = handle.current
+    const panel = element?.closest<HTMLElement>(side === 'left' ? '.adaptive-layers-shell' : '.properties-workspace') || element?.parentElement
+    const update = () => setMeasuredWidth(visibleWidth())
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : undefined
+    if (panel) observer?.observe(panel)
+    window.addEventListener('resize', update); update()
+    return () => { observer?.disconnect(); window.removeEventListener('resize', update) }
+  }, [side, width])
   useEffect(() => { const shell = handle.current?.closest<HTMLElement>('.editor-shell'); return () => { if (drag.current) shell?.style.setProperty(side === 'left' ? '--workspace-layers-width' : '--workspace-inspector-width', `min(${drag.current.width}px, var(--workspace-panel-cap, max(260px, 26vw)))`); drag.current = null } }, [side])
   const commit = (value: number) => interfacePreference.set(side === 'left' ? { leftWidth: value } : { rightWidth: value })
   return <div ref={handle} className={`panel-resize-handle panel-resize-${side}`} role="separator" tabIndex={blocked ? -1 : 0} aria-disabled={blocked || undefined}
-    aria-label={`${text.resize}: ${text[side]}`} aria-orientation="vertical" aria-valuemin={side === 'left' ? 208 : 260} aria-valuemax={480} aria-valuenow={preview ?? width}
-    onPointerDown={event => { if (blocked || !canResize() || event.button !== 0) return; event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture?.(event.pointerId); drag.current = { id: event.pointerId, x: event.clientX, width, next: width } }}
-    onPointerMove={event => { const start = drag.current; if (!start || start.id !== event.pointerId) return; start.next = panelWidth(start.width + (event.clientX - start.x) * (side === 'left' ? 1 : -1), side); setPreview(start.next); const shell = event.currentTarget.closest<HTMLElement>('.editor-shell'); shell?.style.setProperty(side === 'left' ? '--workspace-layers-width' : '--workspace-inspector-width', `min(${start.next}px, var(--workspace-panel-cap, max(260px, 26vw)))`) }}
+    aria-label={`${text.resize}: ${text[side]}`} aria-orientation="vertical" aria-valuemin={side === 'left' ? 208 : 260} aria-valuemax={480} aria-valuenow={Math.round(preview ?? measuredWidth ?? width)}
+    onPointerDown={event => { if (blocked || !canResize() || event.button !== 0) return; event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture?.(event.pointerId); drag.current = { id: event.pointerId, x: event.clientX, width, visibleWidth: visibleWidth(), next: width } }}
+    onPointerMove={event => { const start = drag.current; if (!start || start.id !== event.pointerId) return; start.next = panelWidth(start.visibleWidth + (event.clientX - start.x) * (side === 'left' ? 1 : -1), side); setPreview(start.next); const shell = event.currentTarget.closest<HTMLElement>('.editor-shell'); shell?.style.setProperty(side === 'left' ? '--workspace-layers-width' : '--workspace-inspector-width', `min(${start.next}px, var(--workspace-panel-cap, max(260px, 26vw)))`) }}
     onPointerUp={event => { const start = drag.current; if (!start || start.id !== event.pointerId) return; drag.current = null; setPreview(null); commit(start.next); event.currentTarget.releasePointerCapture?.(event.pointerId) }}
     onLostPointerCapture={event => { if (!drag.current) return; drag.current = null; setPreview(null); event.currentTarget.closest<HTMLElement>('.editor-shell')?.style.setProperty(side === 'left' ? '--workspace-layers-width' : '--workspace-inspector-width', `min(${width}px, var(--workspace-panel-cap, max(260px, 26vw)))`) }}
     onPointerCancel={event => { drag.current = null; setPreview(null); event.currentTarget.closest<HTMLElement>('.editor-shell')?.style.setProperty(side === 'left' ? '--workspace-layers-width' : '--workspace-inspector-width', `min(${width}px, var(--workspace-panel-cap, max(260px, 26vw)))`) }}
-    onKeyDown={event => { if (blocked || !canResize() || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); event.stopPropagation(); commit(event.key === 'Home' ? (side === 'left' ? 208 : 260) : event.key === 'End' ? 480 : panelWidth(width + (event.key === 'ArrowRight' ? 1 : -1) * (side === 'left' ? 1 : -1) * (event.shiftKey ? 32 : 8), side)) }} />
+    onKeyDown={event => { if (blocked || !canResize() || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); event.stopPropagation(); commit(event.key === 'Home' ? (side === 'left' ? 208 : 260) : event.key === 'End' ? 480 : panelWidth(visibleWidth() + (event.key === 'ArrowRight' ? 1 : -1) * (side === 'left' ? 1 : -1) * (event.shiftKey ? 32 : 8), side)) }} />
 }
 export function InterfaceSettings() {
   const preferences = useInterfacePreferences(), text = interfaceText[preferences.locale]

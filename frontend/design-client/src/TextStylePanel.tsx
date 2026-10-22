@@ -1,3 +1,4 @@
+import { usePropertyText, translateProperty } from './property-interface-messages'
 import { UnitNumberField } from './UnitNumberField'
 import { propertyUnits, styleUnitDescription } from './property-units'
 import { SystemFontPicker } from './SystemFontPicker'
@@ -21,27 +22,27 @@ import { unmatchedSourceFonts as unmatchedSketchFonts } from './font-matching'
 import { font_faces_json } from './generated/design-kernel/design_kernel'
 import { initializeKernelModule } from './kernel/module'
 /** Kernel limits: at most 16 toggles, each at most 32 characters. */
-export function featuresIssue(items: string[]) {
-  if (items.length > 16) return '特性最多 16 项'
+export function featuresIssue(items: string[], locale: 'zh-CN' | 'en' = 'zh-CN') {
+  if (items.length > 16) return translateProperty('特性最多 16 项', locale)
   const long = items.find((item) => item.length > 32)
-  return long ? `特性 ${long} 超过 32 字符` : ''
+  return long ? (locale === 'en' ? `Feature ${long} exceeds 32 characters` : `特性 ${long} 超过 32 字符`) : ''
 }
 /** Fallback ids must resolve like fontId: "default" or a document font. */
-export function fallbacksIssue(items: string[], fonts: Record<string, unknown> | undefined) {
-  if (items.length > 16) return '后备字体最多 16 项'
+export function fallbacksIssue(items: string[], fonts: Record<string, unknown> | undefined, locale: 'zh-CN' | 'en' = 'zh-CN') {
+  if (items.length > 16) return translateProperty('后备字体最多 16 项', locale)
   const missing = items.find((id) => id !== 'default' && !(fonts && Object.hasOwn(fonts, id)))
-  return missing ? `字体资源 ${missing} 不存在` : ''
+  return missing ? (locale === 'en' ? `Font resource ${missing} does not exist` : `字体资源 ${missing} 不存在`) : ''
 }
 /** Variation axes are 4-character alphanumeric tags; wght follows 字重. */
 export const variationTagValid = (tag: string) => /^[a-zA-Z0-9]{4}$/.test(tag) && tag !== 'wght'
-export function variationsIssue(rows: { tag: string; value: string }[]) {
+export function variationsIssue(rows: { tag: string; value: string }[], locale: 'zh-CN' | 'en' = 'zh-CN') {
   const filled = rows.filter((r) => r.tag.trim() !== '' || r.value.trim() !== '')
-  if (filled.length > 16) return '变体轴最多 16 项'
+  if (filled.length > 16) return translateProperty('变体轴最多 16 项', locale)
   for (const row of filled) {
     const tag = row.tag.trim()
-    if (tag === 'wght') return 'wght 由字重字段控制'
-    if (!variationTagValid(tag)) return '轴标签需为 4 位字母或数字'
-    if (!Number.isFinite(Number(row.value))) return `轴 ${tag || '?'} 的数值无效`
+    if (tag === 'wght') return translateProperty('wght 由字重字段控制', locale)
+    if (!variationTagValid(tag)) return translateProperty('轴标签需为 4 位字母或数字', locale)
+    if (!Number.isFinite(Number(row.value))) return locale === 'en' ? `Axis ${tag || '?'} has an invalid value` : `轴 ${tag || '?'} 的数值无效`
   }
   return ''
 }
@@ -55,6 +56,7 @@ export function TextStylePanel({
   node: DesignNode
   ids: string[]
 }) {
+  const { locale, tr } = usePropertyText()
   // Match the Inspector's camera-independent, bounded preview cadence. A
   // direct full-state subscription would rebuild these controls on every pan.
   const { doc } = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
@@ -85,10 +87,10 @@ export function TextStylePanel({
     [variationsValue],
   )
   const featuresItems = parseCommaList(featuresDraft),
-    featuresHint = featuresIssue(featuresItems)
+    featuresHint = featuresIssue(featuresItems, locale)
   const fallbacksItems = parseCommaList(fallbacksDraft),
-    fallbacksHint = fallbacksIssue(fallbacksItems, doc.fonts)
-  const variationsHint = variationsIssue(variationRows)
+    fallbacksHint = fallbacksIssue(fallbacksItems, doc.fonts, locale)
+  const variationsHint = variationsIssue(variationRows, locale)
   useEffect(() => {
     const input = file.current
     const onCancel = () => imports.invalidate()
@@ -133,8 +135,7 @@ export function TextStylePanel({
     text ? <p role="alert" style={{ color: '#bf3d34', margin: 0 }}>{text}</p> : null
   return (
     <div className="text-style-panel" onCompositionStartCapture={() => { composing.current = true; pendingEditsChanged(editor) }} onCompositionEndCapture={() => { composing.current = false; pendingEditsChanged(editor) }}>
-      <label className="labeled-select">文字尺寸
-        <select aria-label="文字尺寸模式" value={node.sizing?.width === 'hug' ? 'width' : node.sizing?.height === 'hug' ? 'height' : 'fixed'}
+      <label className="labeled-select">{tr("文字尺寸")}<select aria-label={tr("文字尺寸模式")} value={node.sizing?.width === 'hug' ? 'width' : node.sizing?.height === 'hug' ? 'height' : 'fixed'}
           onChange={event => {
             const mode = event.target.value
             editor.updateProperties(ids, n => {
@@ -142,17 +143,15 @@ export function TextStylePanel({
               n.sizing = { ...defaultSizing(), ...n.sizing, width: mode === 'width' ? 'hug' : 'fixed', height: mode === 'fixed' ? 'fixed' : 'hug' }
             }, '调整文字尺寸模式')
           }}>
-          <option value="width">自动宽度</option><option value="height">自动高度</option><option value="fixed">固定尺寸</option>
+          <option value="width">{tr("自动宽度")}</option><option value="height">{tr("自动高度")}</option><option value="fixed">{tr("固定尺寸")}</option>
         </select>
       </label>
-      <label>
-        字体
-        <select
-          aria-label="文字字体"
+      <label>{tr("字体")}<select
+          aria-label={tr("文字字体")}
           value={style.fontId}
           onChange={(e) => applySelectionFont(editor, ids, e.target.value, { detachSharedStyle: detachFontStyle })}
         >
-          <option value="default">Noto Sans SC（内置）</option>
+          <option value="default">{tr("Noto Sans SC（内置）")}</option>
           {Object.entries(doc.fonts || {}).map(([id, font]) => (
             <option key={id} value={id}>
               {font.family}
@@ -160,10 +159,10 @@ export function TextStylePanel({
           ))}
         </select>
       </label>
-      {unmatchedFonts.length > 0 && <p role="status" aria-label="原字体匹配状态">原字体未匹配：{unmatchedFonts.join('、')}。当前使用 Noto Sans SC，可选择本机字体或导入字体替换。</p>}
+      {unmatchedFonts.length > 0 && <p role="status" aria-label={tr("原字体匹配状态")}>{tr("原字体未匹配：")}{unmatchedFonts.join('、')}{tr("。当前使用 Noto Sans SC，可选择本机字体或导入字体替换。")}</p>}
       <SystemFontPicker editor={editor} ids={ids} detachSharedStyle={detachFontStyle} />
-      <details><summary>字体管理与批量替换</summary><FontManagementPanel editor={editor} ids={ids} includeNative={false} detachSharedStyle={detachFontStyle} onDetachSharedStyleChange={setDetachFontStyle} /></details>
-      <button onClick={() => { if (commitPendingEdits(editor)) { imports.invalidate(); file.current?.click() } }}>导入 TTF / OTF 字体</button>
+      <details><summary>{tr("字体管理与批量替换")}</summary><FontManagementPanel editor={editor} ids={ids} includeNative={false} detachSharedStyle={detachFontStyle} onDetachSharedStyleChange={setDetachFontStyle} /></details>
+      <button onClick={() => { if (commitPendingEdits(editor)) { imports.invalidate(); file.current?.click() } }}>{tr("导入 TTF / OTF 字体")}</button>
       <input
         ref={file}
         type="file"
@@ -175,11 +174,11 @@ export function TextStylePanel({
           if (!selected || !commitPendingEdits(editor)) return
           const request = imports.begin(editor)
           try {
-            if (selected.size > 20 * 1024 * 1024) throw new Error('字体文件超过 20 MB')
+            if (selected.size > 20 * 1024 * 1024) throw new Error(tr('字体文件超过 20 MB'))
             const bytes = new Uint8Array(await importStep(request, () => selected.arrayBuffer()))
             await importStep(request, () => initializeKernelModule())
             const face = (JSON.parse(font_faces_json(bytes)) as Array<{ family: string; style: string; postscript: string; index: number }>)[0]
-            if (!face) throw new Error('字体文件中没有可用字形')
+            if (!face) throw new Error(tr('字体文件中没有可用字形'))
             const id = Array.from(
               new Uint8Array(await importStep(request, () => crypto.subtle.digest('SHA-256', bytes))),
               (v) => v.toString(16).padStart(2, '0'),
@@ -199,22 +198,22 @@ export function TextStylePanel({
           } finally { request.finish() }
         }}
       />
-      <NumberField
-        label="字重"
+      <NumberField historyLabel="字重" diagnosticFamily={2} unit="number"
+        label={tr("字重")}
         value={style.weight}
         min={1}
         max={1000}
         onChange={(weight) => update({ weight })}
       />
-      <NumberField
-        label="行高倍数"
+      <NumberField historyLabel="行高倍数" diagnosticFamily={2} unit="length"
+        label={tr("行高倍数")}
         value={style.lineHeight}
         min={0.1}
         max={10}
         onChange={(lineHeight) => update({ lineHeight })}
       />
-      <UnitNumberField unitDescription={styleDescription} unitScale={units.style}
-        label="字间距"
+      <UnitNumberField unitDescription={styleDescription} historyLabel="字间距" diagnosticFamily={2} unit="length" unitScale={units.style}
+        label={tr("字间距")}
         value={style.letterSpacing}
         min={-1000}
         max={1000}
@@ -225,49 +224,39 @@ export function TextStylePanel({
           type="checkbox"
           checked={style.wrap}
           onChange={(e) => update({ wrap: e.target.checked })}
-        />
-        按文本框宽度换行
-      </label>
-      <label>
-        对齐
-        <select
-          aria-label="文字对齐"
+        />{tr("按文本框宽度换行")}</label>
+      <label>{tr("对齐")}<select
+          aria-label={tr("文字对齐")}
           value={style.align}
           onChange={(e) => update({ align: e.target.value as TextStyle['align'] })}
         >
-          <option value="start">起始</option>
-          <option value="center">居中</option>
-          <option value="end">末尾</option><option value="justify">两端对齐</option>
+          <option value="start">{tr("起始")}</option>
+          <option value="center">{tr("居中")}</option>
+          <option value="end">{tr("末尾")}</option><option value="justify">{locale === 'en' ? 'Justify' : tr("两端对齐")}</option>
         </select>
       </label>
-      <UnitNumberField unitDescription={styleDescription} unitScale={units.style} label="段落间距" value={style.paragraphSpacing||0} min={0} max={10000} onChange={paragraphSpacing=>update({paragraphSpacing})}/><UnitNumberField unitDescription={styleDescription} unitScale={units.style} label="首行缩进" value={style.paragraphIndent||0} min={-10000} max={10000} onChange={paragraphIndent=>update({paragraphIndent})}/>
-      <label>
-        方向
-        <select
-          aria-label="文字方向"
+      <UnitNumberField unitDescription={styleDescription} historyLabel="段落间距" diagnosticFamily={2} unit="length" unitScale={units.style} label={tr("段落间距")} value={style.paragraphSpacing||0} min={0} max={10000} onChange={paragraphSpacing=>update({paragraphSpacing})}/><UnitNumberField unitDescription={styleDescription} historyLabel="首行缩进" diagnosticFamily={2} unit="number" unitScale={units.style} label={tr("首行缩进")} value={style.paragraphIndent||0} min={-10000} max={10000} onChange={paragraphIndent=>update({paragraphIndent})}/>
+      <label>{tr("方向")}<select
+          aria-label={tr("文字方向")}
           value={style.direction}
           onChange={(e) => update({ direction: e.target.value as TextStyle['direction'] })}
         >
-          <option value="auto">自动</option>
-          <option value="ltr">从左到右</option>
-          <option value="rtl">从右到左</option>
+          <option value="auto">{tr("自动")}</option>
+          <option value="ltr">{tr("从左到右")}</option>
+          <option value="rtl">{tr("从右到左")}</option>
         </select>
       </label>
-      <label>
-        排版走向
-        <select
-          aria-label="文字排版走向"
+      <label>{tr("排版走向")}<select
+          aria-label={tr("文字排版走向")}
           value={style.writingMode ?? 'horizontal'}
           onChange={(e) => update({ writingMode: e.target.value === 'vertical' ? 'vertical' : undefined })}
         >
-          <option value="horizontal">水平</option>
-          <option value="vertical">竖排</option>
+          <option value="horizontal">{tr("水平")}</option>
+          <option value="vertical">{tr("竖排")}</option>
         </select>
       </label>
-      <label>
-        OpenType 特性
-        <input
-          aria-label="OpenType 特性"
+      <label>{tr("OpenType 特性")}<input
+          aria-label={tr("OpenType 特性")}
           type="text"
           placeholder="-liga,kern,ss01"
           value={featuresDraft}
@@ -277,12 +266,10 @@ export function TextStylePanel({
         />
       </label>
       {hint(featuresHint)}
-      <div>
-        变体轴
-        {variationRows.map((row, i) => (
+      <div>{tr("变体轴")}{variationRows.map((row, i) => (
           <div className="feature-row" key={i}>
             <input
-              aria-label={`变体轴标签 ${i + 1}`}
+              aria-label={`${locale === 'en' ? 'Variation axis tag' : '变体轴标签'} ${i + 1}`}
               type="text"
               placeholder="wdth"
               value={row.tag}
@@ -291,7 +278,7 @@ export function TextStylePanel({
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
             />
             <input
-              aria-label={`变体轴数值 ${i + 1}`}
+              aria-label={`${locale === 'en' ? 'Variation axis value' : '变体轴数值'} ${i + 1}`}
               type="text"
               inputMode="decimal"
               value={row.value}
@@ -299,10 +286,10 @@ export function TextStylePanel({
               onBlur={commitVariations}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
             />
-            {row.tag.trim() === 'wght' && <span>由字重字段控制</span>}
+            {row.tag.trim() === 'wght' && <span>{tr("由字重字段控制")}</span>}
             <button
               type="button"
-              aria-label={`删除变体轴 ${i + 1}`}
+              aria-label={`${locale === 'en' ? 'Remove variation axis' : '删除变体轴'} ${i + 1}`}
               onClick={() => {
                 const next = variationRows.filter((_, j) => j !== i)
                 setVariationRows(next)
@@ -316,19 +303,17 @@ export function TextStylePanel({
         ))}
         <button
           type="button"
-          aria-label="添加变体轴"
+          aria-label={tr("添加变体轴")}
           onClick={() => setVariationRows([...variationRows, { tag: '', value: '' }])}
         >
           ＋
         </button>
       </div>
       {hint(variationsHint)}
-      <label>
-        后备字体
-        <input
-          aria-label="后备字体"
+      <label>{tr("后备字体")}<input
+          aria-label={tr("后备字体")}
           type="text"
-          placeholder="逗号分隔字体资源 id"
+          placeholder={tr("逗号分隔字体资源 id")}
           value={fallbacksDraft}
           onChange={(e) => setFallbacksDraft(e.currentTarget.value)}
           onBlur={() => { pending.current.commit() }}

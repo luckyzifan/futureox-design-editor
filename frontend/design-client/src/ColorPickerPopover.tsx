@@ -1,3 +1,4 @@
+import { usePropertyText } from './property-interface-messages'
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { ColorEditSession, type ColorDraft } from './color-edit-session'
@@ -10,6 +11,7 @@ import type { SolidFillTarget } from './property-preview'
 export function SolidFillColorInput({ target, value, label, opacity = false }: {
   target: SolidFillTarget; value: string; label: string; opacity?: boolean
 }) {
+  const { locale, tr } = usePropertyText()
   const editor = useContext(PendingEditContext), trigger = useRef<HTMLButtonElement>(null)
   const [session, setSession] = useState<ColorEditSession | null>(null), [error, setError] = useState('')
   useEffect(() => () => { session?.dispose() }, [session])
@@ -26,7 +28,7 @@ export function SolidFillColorInput({ target, value, label, opacity = false }: {
       style={opacity ? undefined : { background: value }} onClick={open}>
       {opacity ? `${value}%` : <span className="sr-only">{label}</span>}
     </button>
-    {error && <span role="alert">{error}</span>}
+    {error && <span role="alert">{tr(error)}</span>}
     {session && <ColorPickerPopover session={session} trigger={trigger} focusOpacity={opacity} onClose={() => setSession(null)} />}
   </span>
 }
@@ -34,6 +36,7 @@ export function SolidFillColorInput({ target, value, label, opacity = false }: {
 export function ColorPickerPopover({ session, trigger, focusOpacity = false, onClose }: {
   session: ColorEditSession; trigger: RefObject<HTMLButtonElement | null>; focusOpacity?: boolean; onClose: () => void
 }) {
+  const { locale, tr } = usePropertyText()
   const panel = useRef<HTMLDivElement>(null), color = useRef<HTMLInputElement>(null), opacity = useRef<HTMLInputElement>(null)
   const [, render] = useState(0), [model, setModel] = useState<'native' | 'hex'>('native')
   const [position, setPosition] = useState({ left: 8, top: 8 })
@@ -50,9 +53,14 @@ export function ColorPickerPopover({ session, trigger, focusOpacity = false, onC
       setPosition({ left: Math.max(8, Math.min((rect?.left ?? 8) - width, window.innerWidth - width - 8)),
         top: Math.max(8, Math.min(rect?.top ?? 8, window.innerHeight - height - 8)) })
     }
-    place(); (focusOpacity ? opacity : color).current?.focus({ preventScroll: true })
+    place()
     window.addEventListener('resize', place)
-    return () => { window.removeEventListener('resize', place); if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true }) }
+    return () => { window.removeEventListener('resize', place) }
+  }, [trigger, locale])
+  // Relabel/reclamp without rerunning autofocus or closing the active session.
+  useLayoutEffect(() => {
+    (focusOpacity ? opacity : color).current?.focus({ preventScroll: true })
+    return () => { if (trigger.current?.isConnected) trigger.current.focus({ preventScroll: true }) }
   }, [trigger, focusOpacity])
   useEffect(() => {
     const outside = (event: PointerEvent) => {
@@ -87,7 +95,7 @@ export function ColorPickerPopover({ session, trigger, focusOpacity = false, onC
     onPointerCancel: cancelDrag,
     onLostPointerCapture: cancelDrag,
   }
-  return createPortal(<div ref={panel} role="dialog" aria-label="填充颜色和不透明度" aria-modal="false"
+  return createPortal(<div ref={panel} role="dialog" aria-label={tr("填充颜色和不透明度")} aria-modal="false"
     className="property-color-popover" data-property-preview style={position}
     onKeyDown={event => {
       if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
@@ -104,33 +112,33 @@ export function ColorPickerPopover({ session, trigger, focusOpacity = false, onC
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
       }
     }}>
-    <div className="property-color-heading"><strong>填充颜色</strong><button type="button" aria-label="取消颜色编辑" onClick={() => session.cancel()}>×</button></div>
+    <div className="property-color-heading"><strong>{tr("填充颜色")}</strong><button type="button" aria-label={tr("取消颜色编辑")} onClick={() => session.cancel()}>×</button></div>
     <div className="property-color-sample" aria-hidden="true" style={{ background: session.valid ? draft.color : session.original.color, opacity: session.valid ? Number(draft.opacity) / 100 : 1 }} />
-    <label>显示方式<select aria-label="颜色显示方式" value={model} onChange={event => setModel(event.target.value as 'native' | 'hex')}>
-      <option value="native">原始颜色 / CSS</option><option value="hex">HEX 预览</option>
+    <label>{tr("显示方式")}<select aria-label={tr("颜色显示方式")} value={model} onChange={event => setModel(event.target.value as 'native' | 'hex')}>
+      <option value="native">{tr("原始颜色 / CSS")}</option><option value="hex">{tr("HEX 预览")}</option>
     </select></label>
-    {model === 'hex' && <p className="muted">{simple ? draft.color.toUpperCase() : '宽色域 / HDR 保留原始值，不转换为 8 位 HEX。'}</p>}
-    <label>颜色值<input ref={color} aria-label="填充颜色值" value={draft.color} spellCheck={false}
+    {model === 'hex' && <p className="muted">{simple ? draft.color.toUpperCase() : tr('宽色域 / HDR 保留原始值，不转换为 8 位 HEX。')}</p>}
+    <label>{tr("颜色值")}<input ref={color} aria-label={tr("填充颜色值")} value={draft.color} spellCheck={false}
       aria-invalid={!session.valid} onChange={event => update({ color: event.target.value })}
       onCompositionStart={() => { composing.current = true; session.setComposing(true) }}
       onCompositionEnd={() => { composing.current = false; session.setComposing(false) }} /></label>
     {rgb && <div className="property-color-components">{['R', 'G', 'B'].map((label, index) => <label key={label}>{label}
-      <input type="range" aria-label={`填充 ${label}`} min={0} max={255} step={1} value={rgb[index]} {...rangeEvents}
+      <input type="range" aria-label={`${tr("填充")} ${label}`} min={0} max={255} step={1} value={rgb[index]} {...rangeEvents}
         onChange={event => { const current = session.draft.color; if (!/^#[\da-f]{6}$/i.test(current)) return; const values = [1, 3, 5].map(at => parseInt(current.slice(at, at + 2), 16)); values[index] = Number(event.target.value); update({ color: '#' + values.map(value => value.toString(16).padStart(2, '0')).join('') }) }} />
     </label>)}</div>}
-    <label>填充不透明度 %<input ref={opacity} aria-label="填充不透明度 %" inputMode="decimal" value={draft.opacity}
+    <label>{tr("填充不透明度 %")}<input ref={opacity} aria-label={tr("填充不透明度 %")} inputMode="decimal" value={draft.opacity}
       aria-invalid={!session.valid} onChange={event => update({ opacity: event.target.value })}
       onCompositionStart={() => { composing.current = true; session.setComposing(true) }}
       onCompositionEnd={() => { composing.current = false; session.setComposing(false) }} /></label>
-    <input type="range" aria-label="填充不透明度滑块" min={0} max={100} step={0.1}
+    <input type="range" aria-label={tr("填充不透明度滑块")} min={0} max={100} step={0.1}
       value={/^\d*(?:\.\d*)?$/.test(draft.opacity) && Number(draft.opacity) <= 100 ? Number(draft.opacity) : 100}
       {...rangeEvents} onChange={event => update({ opacity: event.target.value })} />
-    <p className="muted">仅修改填充；图层不透明度与颜色自身 Alpha 保持独立。</p>
-    {session.error && <p role="alert">{session.error}</p>}
+    <p className="muted">{tr("仅修改填充；图层不透明度与颜色自身 Alpha 保持独立。")}</p>
+    {session.error && <p role="alert">{tr(session.error)}</p>}
     <div className="property-color-actions">
-      <button type="button" onClick={() => void session.sample((signal, lease) => requestCanvasColor(session.editor, signal, lease))}>从画布取色</button>
-      <button type="button" onClick={() => session.cancel()}>取消</button>
-      <button type="button" onClick={() => session.commit()}>应用</button>
+      <button type="button" onClick={() => void session.sample((signal, lease) => requestCanvasColor(session.editor, signal, lease))}>{tr("从画布取色")}</button>
+      <button type="button" onClick={() => session.cancel()}>{tr("取消")}</button>
+      <button type="button" onClick={() => session.commit()}>{tr("应用")}</button>
     </div>
   </div>, document.body)
 }

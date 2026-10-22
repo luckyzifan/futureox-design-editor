@@ -1,9 +1,10 @@
+import { usePropertyText } from './property-interface-messages'
 import { createInputDiagnostics, dimensionExpectation, numericInputFamily, InputPhase } from './input-diagnostics'
 import { numericExpression, propertyUnit, type NumericUnit } from './numeric-expression'
 import { useContext, useEffect, useMemo, useRef } from 'react'
 import { PendingEditContext } from './pending-edit-context'
 import { pendingEditsChanged, registerPendingEdit } from './pending-edits'
-export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, step = 1, unit = propertyUnit(label), unitDescription }: {
+export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, step = 1, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label }: {
   label: string
   value: number
   onChange: (v: number) => void
@@ -11,14 +12,36 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
   max?: number
   step?: number
   unitDescription?: string
+  /** Stable semantic label for history; independent from localized presentation. */
+  historyLabel?: string
+  diagnosticFamily?: number
   unit?: NumericUnit
 }) {
+  const { locale, tr } = usePropertyText()
   const editor = useContext(PendingEditContext)
-  const family = numericInputFamily(label)
+  const family = diagnosticFamily ?? numericInputFamily(label)
   const diagnostic = useMemo(() => createInputDiagnostics(editor, family), [editor, family])
   useEffect(() => () => diagnostic.dispose(), [diagnostic])
   const input = useRef<HTMLInputElement>(null), dirty = useRef(false), composing = useRef(false)
+  useEffect(() => {
+    if (input.current?.validity.customError) input.current.setCustomValidity(tr('请输入有效数值；若属性已变化，请按 Esc 取消后重试'))
+  }, [tr])
   const draft = useRef(String(value)), original = useRef(value), session = useRef(editor?.sessionGeneration)
+  // A retained field belongs to the target at first input, not its mount session.
+  // Locale changes do not alter this identity; equal values on another target do.
+  const target = () => editor ? JSON.stringify([editor.state.doc.id, editor.state.page, editor.state.selection]) : ''
+  const renderedSession = editor?.sessionGeneration, renderedTarget = target()
+  const draftRevision = useRef(0), committingValue = useRef<number | null>(null)
+  const draftTarget = useRef(renderedTarget)
+  const ownsDraft = () => !editor || (editor.sessionGeneration === session.current && target() === draftTarget.current)
+  const startDraft = () => {
+    if (dirty.current || composing.current) return
+    // Bind the callback's rendered target, never a newer live selection.
+    session.current = renderedSession
+    draftTarget.current = renderedTarget
+    original.current = committingValue.current ?? value
+    draft.current = String(original.current)
+  }
   const changed = () => { if (editor) pendingEditsChanged(editor) }
   const finish = () => {
     if (!dirty.current && !composing.current) return true
@@ -27,26 +50,41 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     let v: number
     try { v = numericExpression(draft.current, original.current, unit) } catch { v = NaN }
     if (!draft.current.trim() || !Number.isFinite(v) || v < min || v > max ||
-      (editor && (editor.sessionGeneration !== session.current || value !== original.current))) {
+      (editor && (!ownsDraft() || value !== original.current))) {
       diagnostic.valid(false)
-      input.current?.setCustomValidity('请输入有效数值；若属性已变化，请按 Esc 取消后重试')
+      input.current?.setCustomValidity(tr('请输入有效数值；若属性已变化，请按 Esc 取消后重试'))
       input.current?.reportValidity()
       return false
     }
     diagnostic.valid(true)
     const changedValue = v !== original.current
     const compare = dimensionExpectation(editor, family, v)
+    const revision = draftRevision.current, previousOriginal = original.current
+    const previousDraft = draft.current, ownerSession = session.current, ownerTarget = draftTarget.current
+    // Retire this draft before onChange publishes synchronously. A subscriber
+    // may type another draft into this same DOM input while the commit returns.
+    original.current = v; dirty.current = false
     if (changedValue) {
       const before = editor?.state.doc
-      onChange(v)
-      if (editor && editor.state.doc === before) { diagnostic.finish(false, false); return false }
+      committingValue.current = v
+      try { onChange(v) } finally { committingValue.current = null }
+      if (editor && editor.state.doc === before) {
+        if (draftRevision.current === revision) {
+          original.current = previousOriginal; draft.current = previousDraft; dirty.current = true
+        }
+        diagnostic.finish(false, false); return false
+      }
     }
     diagnostic.finish(changedValue, !!editor || !changedValue, compare())
-    original.current = v
-    dirty.current = false
+    if (draftRevision.current !== revision || (editor &&
+      (editor.sessionGeneration !== ownerSession || target() !== ownerTarget))) return false
     input.current?.setCustomValidity('')
-    changed()
-    return true
+    committingValue.current = v
+    try { changed() } finally { committingValue.current = null }
+    // Pending-edit listeners are synchronous too; they may own a fresh draft
+    // after the commit. Do not let this old Enter blur or submit that input.
+    return draftRevision.current === revision && !dirty.current && !composing.current &&
+      (!editor || (editor.sessionGeneration === ownerSession && target() === ownerTarget))
   }
   const scrub = useRef<{ pointer: number; x: number; base: number; session?: number; moved?: boolean } | null>(null)
   const applyScrub = (event: { pointerId: number; clientX: number; altKey: boolean; shiftKey: boolean }) => {
@@ -78,12 +116,12 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     }
   }, [value])
   return <label className="number-field">
-    <span className="number-scrub" title="拖动调整数值；Shift 加速，Option 精细调整" tabIndex={0} role="button" aria-label={`拖动调整 ${label}`} aria-description={unitDescription ? `拖动调整数值；Shift 加速，Option 精细调整；${unitDescription}` : undefined}
+    <span className="number-scrub" title={`${label}: ${tr("拖动调整数值；Shift 加速，Option 精细调整")}`} tabIndex={0} role="button" aria-label={locale === 'en' ? `Adjust ${label} by dragging` : `拖动调整 ${label}`} aria-description={unitDescription ? `${tr('拖动调整数值；Shift 加速，Option 精细调整')}；${unitDescription}` : undefined}
       onPointerDown={event => {
         if (event.button !== 0 || !event.isPrimary || composing.current || !finish() || editor?.interactionActive) return
         event.preventDefault(); event.stopPropagation(); event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId)
         scrub.current = { pointer: event.pointerId, x: event.clientX, base: original.current, session: editor?.sessionGeneration }
-        editor?.begin(`调整 ${label}`)
+        editor?.begin(`调整 ${historyLabel}`)
         diagnostic.event(InputPhase.scrub)
       }}
       onPointerMove={applyScrub}
@@ -97,19 +135,21 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     >{label}{unitDescription && <small title={unitDescription}>＊</small>}</span>
     <input ref={input} aria-label={label} aria-description={unitDescription} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={unitDescription ? `${value}；${unitDescription}` : String(value)} defaultValue={Number(value.toFixed(2))}
       onFocus={(e) => { diagnostic.event(InputPhase.focus); if (!dirty.current) e.currentTarget.select() }}
-      onChange={(e) => { diagnostic.start(); draft.current = e.currentTarget.value; dirty.current = true; e.currentTarget.setCustomValidity(''); changed() }}
-      onCompositionStart={() => { diagnostic.start(); diagnostic.event(InputPhase.compositionStart); composing.current = true; changed() }}
-      onCompositionEnd={(e) => { diagnostic.event(InputPhase.compositionEnd); composing.current = false; draft.current = e.currentTarget.value; dirty.current = true; changed() }}
+      onChange={(e) => { startDraft(); draftRevision.current++; diagnostic.start(); draft.current = e.currentTarget.value; dirty.current = true; e.currentTarget.setCustomValidity(''); changed() }}
+      onCompositionStart={() => { startDraft(); draftRevision.current++; diagnostic.start(); diagnostic.event(InputPhase.compositionStart); composing.current = true; changed() }}
+      onCompositionEnd={(e) => { if (!composing.current) return; draftRevision.current++; diagnostic.event(InputPhase.compositionEnd); composing.current = false; draft.current = e.currentTarget.value; dirty.current = true; changed() }}
       onBlur={() => { diagnostic.event(InputPhase.blur); finish() }}
       onKeyDown={(e) => {
         if (composing.current || e.nativeEvent.isComposing) return
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
           e.preventDefault()
+          startDraft()
+          draftRevision.current++
           diagnostic.start()
           try {
             const next = Math.min(max, Math.max(min, numericExpression(draft.current, original.current, unit) + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : e.altKey ? .1 : 1)))
             draft.current = String(next); dirty.current = true; e.currentTarget.value = draft.current; changed()
-          } catch { e.currentTarget.setCustomValidity('请先修正数值表达式') }
+          } catch { e.currentTarget.setCustomValidity(tr('请先修正数值表达式')) }
         }
         if (e.key === 'Escape') {
           e.preventDefault(); diagnostic.cancel(); original.current = value; draft.current = String(value); dirty.current = false

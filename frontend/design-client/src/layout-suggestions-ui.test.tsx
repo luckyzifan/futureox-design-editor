@@ -1,10 +1,12 @@
 import React from 'react'
-import { afterEach, expect, test } from 'vitest'
+import { beforeEach, afterEach, expect, test } from 'vitest'
+import { interfacePreference } from './interface-preference'
 import { Editor } from './engine'
 import { LayoutPanel } from './LayoutPanel'
 import { blank, node } from './model'
 const editors: Editor[]=[]
-afterEach(()=>editors.splice(0).forEach(e=>e.dispose()))
+beforeEach(()=>interfacePreference.set({locale:'en'}))
+afterEach(()=>{editors.splice(0).forEach(e=>e.dispose());interfacePreference.reset()})
 function find(tree: any, predicate:(v:any)=>boolean):any {
   if(!tree||typeof tree!=='object')return
   if(predicate(tree))return tree
@@ -17,25 +19,25 @@ function fixture(){
   for(const x of [10,60]){const n=node('rectangle',x,10,40,30);doc.nodes[n.id]=n;frame.children.push(n.id)}
   const editor=new Editor(doc);editors.push(editor);editor.select([frame.id])
   const slots:any[]=[];let cursor=0
-  const hooks={useState(initial:any){const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],(v:any)=>slots[i]=v]}}
+  const hooks={useSyncExternalStore(_subscribe:any,snapshot:()=>any){cursor++;return snapshot()},useState(initial:any){const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i],(v:any)=>slots[i]=v]}}
   const render=()=>{cursor=0;const internals=(React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,old=internals.H;internals.H=hooks;try{return LayoutPanel({editor,node:editor.state.doc.nodes[frame.id],ids:[frame.id]})}finally{internals.H=old}}
   const button=(label:string)=>find(render(),v=>v.type==='button'&&text(v)===label)
   return{editor,frame,render,button}
 }
 test('shared Web/Electron layout panel previews and cancels without document or history changes',()=>{
   const f=fixture(),before=f.editor.state.doc,version=f.editor.state.version
-  f.button('建议自动布局…').props.onClick();expect(text(f.render())).toContain('horizontal');expect(f.button('应用此方案')).toBeDefined()
+  f.button('Suggest auto layout…').props.onClick();expect(text(f.render())).toContain('horizontal');expect(f.button('Apply proposal')).toBeDefined()
   expect(f.editor.state.doc).toBe(before);expect(f.editor.state.version).toBe(version);expect(f.editor.canUndo).toBe(false)
-  f.button('取消').props.onClick();expect(f.button('应用此方案')).toBeUndefined();expect(f.editor.state.doc).toBe(before)
+  f.button('Cancel').props.onClick();expect(f.button('Apply proposal')).toBeUndefined();expect(f.editor.state.doc).toBe(before)
 })
 test('shared panel applies once and native undo restores original',()=>{
   const f=fixture(),before=f.editor.state.doc,version=f.editor.state.version
-  f.button('建议自动布局…').props.onClick();f.button('应用此方案').props.onClick()
+  f.button('Suggest auto layout…').props.onClick();f.button('Apply proposal').props.onClick()
   expect(f.editor.state.version).toBe(version+1);expect(f.editor.state.doc.nodes[f.frame.id].layout?.mode).toBe('horizontal')
-  expect(f.button('应用此方案')).toBeUndefined();f.editor.undo();expect(f.editor.state.doc).toEqual(before)
+  expect(f.button('Apply proposal')).toBeUndefined();f.editor.undo();expect(f.editor.state.doc).toEqual(before)
 })
 test('stale shared panel proposal stays visible with an error instead of silently reapplying',()=>{
-  const f=fixture();f.button('建议自动布局…').props.onClick();f.editor.change('rename',d=>{d.name='Changed'})
-  const before=f.editor.state.doc;f.button('应用此方案').props.onClick()
-  expect(f.editor.state.doc).toBe(before);expect(text(f.render())).toContain('stale');expect(f.button('应用此方案')).toBeDefined()
+  const f=fixture();f.button('Suggest auto layout…').props.onClick();f.editor.change('rename',d=>{d.name='Changed'})
+  const before=f.editor.state.doc;f.button('Apply proposal').props.onClick()
+  expect(f.editor.state.doc).toBe(before);expect(text(f.render())).toContain('stale');expect(f.button('Apply proposal')).toBeDefined()
 })

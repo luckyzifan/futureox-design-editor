@@ -1,3 +1,4 @@
+import { usePropertyText, stylePropertyLabel } from './property-interface-messages'
 import type { Editor } from './engine'
 import { blendModes, paint, stroke, effect, type DesignNode, type Effect } from './model'
 import { propertyUnitReader, styleUnitDescription, type PropertyUnitReader } from './property-units'
@@ -12,19 +13,21 @@ const effectNames: Record<Effect['kind'], string> = { shadow: '投影', 'inner-s
 const paintNames: Record<string, string> = {solid:'纯色',linear:'线性渐变',radial:'径向渐变',angular:'角度渐变',diamond:'菱形渐变',image:'图片'}
 const names = { fills: '填充', strokes: '描边', effects: '效果' }
 export function MultiStylePanel({ editor, nodes, field, readUnits = propertyUnitReader(editor.state.doc) }: { editor: Editor; nodes: DesignNode[]; field: StyleField; readUnits?: PropertyUnitReader }) {
+  const { locale, tr } = usePropertyText()
   const add = (kind: Effect['kind'] = 'shadow') => editor.updateProperties(nodes.map(n => n.id), n => {
-    if (n[field].length >= 16) throw new Error('每层最多支持 16 项样式')
+    if (n[field].length >= 16) throw new Error(tr('每层最多支持 16 项样式'))
     if (field === 'fills') { n.fills.push(paint()); clearWholeTextRunColor(n) }
     else if (field === 'strokes') n.strokes.push(stroke())
     else n.effects.push(effect(kind))
   }, `批量添加${names[field]}`)
-  return <section aria-label={`多选${names[field]}`}><h3>{names[field]}
-    {field === 'effects' ? <select aria-label="添加效果" value="" onChange={e => { if (e.target.value) add(e.target.value as Effect['kind']) }}>
-      <option value="">＋ 添加</option>{Object.entries(effectNames).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
-    </select> : <button type="button" aria-label={`批量添加${names[field]}`} onClick={() => add()}>＋ 添加</button>}
+  return <section aria-label={locale === 'en' ? `Multi-selection ${tr(names[field]).toLowerCase()}` : `多选${names[field]}`}><h3>{tr(names[field])}
+    {field === 'effects' ? <select aria-label={tr("添加效果")} value="" onChange={e => { if (e.target.value) add(e.target.value as Effect['kind']) }}>
+      <option value="">{tr("＋ 添加")}</option>{Object.entries(effectNames).map(([kind, label]) => <option key={kind} value={kind}>{tr(label)}</option>)}
+    </select> : <button type="button" aria-label={locale === 'en' ? `Add ${tr(names[field]).toLowerCase()} to selection` : `批量添加${names[field]}`} onClick={() => add()}>{tr("＋ 添加")}</button>}
   </h3>{styleSlots(nodes, field).map(slot => {
     const slotIds = new Set(slot.ids), selected = nodes.filter(n => slotIds.has(n.id)), items = selected.map(n => n[field][slot.index])
-    const title = `${names[field]} ${slot.index + 1}`, prefix = field === 'strokes' ? 'paint.' : ''
+    const title = `${names[field]} ${slot.index + 1}`, displayTitle = `${tr(names[field])} ${slot.index + 1}`, prefix = field === 'strokes' ? 'paint.' : ''
+    const displayLabel = (label: string) => stylePropertyLabel(field, slot.index, label.slice(title.length), locale)
     const update = (path: string, value: unknown, scaled = false) => {
       const units = propertyUnitReader(editor.state.doc)
       editor.updateProperties(slot.ids, n =>
@@ -39,18 +42,18 @@ export function MultiStylePanel({ editor, nodes, field, readUnits = propertyUnit
         return typeof v === 'number' ? v * (scaled ? readUnits(selected[i].id).style : 1) * (percent ? 100 : 1) : undefined
       })
       if (values.every(v => v === undefined)) return null
-      return <MixedNumberField key={path} unitDescription={scaled ? styleUnitDescription(editor.state.doc, selected.map(n => n.id), editor.parentMap()) : undefined} label={label} value={commonValue(values)} min={min} max={max}
+      return <MixedNumberField key={path} unitDescription={scaled ? styleUnitDescription(editor.state.doc, selected.map(n => n.id), editor.parentMap()) : undefined} historyLabel={label} diagnosticFamily={2} unit={percent ? 'percent' : path === 'angle' || path.endsWith('.angle') || path === 'glass.lightAngle' ? 'angle' : field === 'strokes' || path === 'glass.bevelSize' || path.startsWith('texture.noiseSize.') ? 'length' : 'number'} label={displayLabel(label)} value={commonValue(values)} min={min} max={max}
         onChange={v => update(path, percent ? v / 100 : v, scaled)}/>
     }
     const choice = (path: string, label: string, options: readonly (readonly [string, string])[]) => {
       const value = commonValue(items.map(item => styleValue(item, path)))
-      return <label className="labeled-select" key={path}>{label}<select aria-label={label} value={typeof value === 'string' ? value : ''} onChange={e => update(path, e.target.value)}>
-        <option value="" disabled>混合</option>{options.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
+      return <label className="labeled-select" key={path}>{displayLabel(label)}<select aria-label={displayLabel(label)} value={typeof value === 'string' ? value : ''} onChange={e => update(path, e.target.value)}>
+        <option value="" disabled>{tr("混合")}</option>{options.map(([v, text]) => <option key={v} value={v}>{tr(text)}</option>)}
       </select></label>
     }
     const color = (path: string, label: string) => {
       const value = commonValue(items.map(item => styleValue(item, path)))
-      return <label className="labeled-select" key={path}>{label}<DraftInput aria-label={label} value={typeof value === 'string' ? value : ''} placeholder="混合"
+      return <label className="labeled-select" key={path}>{displayLabel(label)}<DraftInput aria-label={displayLabel(label)} value={typeof value === 'string' ? value : ''} placeholder={tr("混合")}
         normalize={v => v.trim()} validate={v => !v || validColor(v)} onCommit={v => { if (v) update(path, v) }}/></label>
     }
     const remove = () => editor.updateProperties(slot.ids, n => editStyleSlot(n, field, slot, () => { n[field].splice(slot.index, 1); if (field === 'fills') clearWholeTextRunColor(n) }), `删除${title}`)
@@ -61,12 +64,12 @@ export function MultiStylePanel({ editor, nodes, field, readUnits = propertyUnit
     }), `排列${title}`)
     const visible = items.every(item => item.visible)
     return <div className="property-card" key={`${slot.index}:${slot.kind}`}>
-      <div className="property-title"><b>{title} · {field === 'effects' ? effectNames[slot.kind as Effect['kind']] : paintNames[slot.kind]}</b><small>{slot.ids.length}/{nodes.length} 层</small></div>
+      <div className="property-title"><b>{displayTitle} · {tr(field === 'effects' ? effectNames[slot.kind as Effect['kind']] : paintNames[slot.kind])}</b><small>{locale === 'en' ? `${slot.ids.length}/${nodes.length} layers` : `${slot.ids.length}/${nodes.length} 层`}</small></div>
       <div className="selection-actions">
-        <button type="button" aria-label={`上移${title}`} disabled={slot.index === 0} onClick={() => reorder(-1)}>↑</button>
-        <button type="button" aria-label={`下移${title}`} disabled={selected.every(n => n[field].length <= slot.index + 1)} onClick={() => reorder(1)}>↓</button>
-        <button type="button" aria-label={`${visible ? '隐藏' : '显示'}${title}`} onClick={() => update('visible', !visible)}>{visible ? '隐藏' : '显示'}</button>
-        <button type="button" aria-label={`删除${title}`} onClick={remove}>删除</button>
+        <button type="button" aria-label={locale === 'en' ? `Move up ${displayTitle}` : `上移${title}`} disabled={slot.index === 0} onClick={() => reorder(-1)}>↑</button>
+        <button type="button" aria-label={locale === 'en' ? `Move down ${displayTitle}` : `下移${title}`} disabled={selected.every(n => n[field].length <= slot.index + 1)} onClick={() => reorder(1)}>↓</button>
+        <button type="button" aria-label={locale === 'en' ? `${visible ? 'Hide' : 'Show'} ${displayTitle}` : `${tr(visible ? '隐藏' : '显示')}${title}`} onClick={() => update('visible', !visible)}>{tr(visible ? '隐藏' : '显示')}</button>
+        <button type="button" aria-label={locale === 'en' ? `Remove ${displayTitle}` : `删除${title}`} onClick={remove}>{tr("删除")}</button>
       </div>
       {field !== 'effects' && <>
         {slot.kind === 'solid' && color(`${prefix}color`, `${title}颜色`)}
