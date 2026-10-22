@@ -824,12 +824,15 @@ export default function App() {
       onKeyUp={e=>{if(showHome)e.stopPropagation()}}
       onDragOverCapture={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault()}}
       onDropCapture={e=>{
-        if(showHome){e.preventDefault();e.stopPropagation();return}
         const files=[...e.dataTransfer.files]
         const designFiles=files.filter(f=>/\.(fd|json|svg|svgz|fig|sketch|pdf)$/i.test(f.name))
         const imageFiles=files.filter(f=>/\.(png|jpe?g|webp)$/i.test(f.name))
         if(!designFiles.length&&!imageFiles.length)return
         e.preventDefault();e.stopPropagation()
+        // A design file dropped onto the home screen opens as a document via
+        // the same path as the home import button; images still need an open
+        // canvas and keep the previous home-screen ignore.
+        if(showHome){ if(designFiles.length===1) void importDesignFile(designFiles[0]); return }
         if(designFiles.length>0){
           if(designFiles.length!==1){editor.notify('请一次导入一个设计文件', { key: 'singleDesignFileRequired' });return}
           void importDesignFile(designFiles[0])

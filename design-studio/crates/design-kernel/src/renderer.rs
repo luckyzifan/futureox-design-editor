@@ -369,6 +369,13 @@ impl Engine {
         Some(bounds)
     }
     fn can_retain_translation(&self, patch: &crate::editing::DocumentPatch) -> bool {
+        self.can_retain_interaction(patch, false)
+    }
+    /// Shared interaction-lane validation. `affine` admits linear-part changes
+    /// (rotation/scale): the moved subtree's prepared entries and aggregate
+    /// ancestor bounds are always rebuilt, so only translation-specific cache
+    /// retention (camera metadata) differs, which the caller invalidates.
+    fn can_retain_interaction(&self, patch: &crate::editing::DocumentPatch, affine: bool) -> bool {
         let (Some(source), Some(resolved)) = (&self.source_doc, &self.doc) else { return false; };
         if crate::repeat::has_repeats(source) { return false; }
         let Some(index) = &self.render_index else { return false; };
@@ -378,7 +385,7 @@ impl Engine {
         let parents = &index.parents;
         patch.nodes.iter().all(|(id, next)| {
             let (Some(old), Some(next), Some(derived)) = (source.nodes.get(id), next, resolved.nodes.get(id)) else { return false; };
-            if old.transform.0[..4] != next.transform.0[..4] || derived.transform != old.transform { return false; }
+            if !affine && old.transform.0[..4] != next.transform.0[..4] || derived.transform != old.transform { return false; }
             let mut translated = old.clone(); translated.transform = next.transform;
             if translated != *next { return false; }
             let mut current = Some(id.as_str());
@@ -396,13 +403,20 @@ impl Engine {
             true
         })
     }
-    /// Interaction-lane translation only: keep authoritative local geometry
-    /// and recompile device coverage at the new sample phase. No document-table
-    /// clone or conservative damage walk is needed; the settled lane computes
-    /// damage when the actual edit is committed. Validate all nodes atomically.
+    /// Interaction-lane transforms for live pointer poses: keep authoritative
+    /// local geometry and recompile device coverage at the new sample phase.
+    /// No document-table clone or conservative damage walk is needed; the
+    /// settled lane computes damage when the actual edit is committed.
+    /// Translations retain every translation-safe cache; affine edits rotate
+    /// or scale the moved subtree and additionally rebuild the camera metadata
+    /// summary (device-space effect margins can change). Validate all nodes
+    /// atomically.
     pub fn apply_interaction_transforms(&mut self, transforms: &std::collections::BTreeMap<String, Transform>) -> Result<bool, String> {
         if transforms.is_empty() || transforms.len() > 16 { return Err("Invalid interaction transform count".into()); }
         let source = self.source_doc.as_ref().ok_or("Load document before interaction")?;
+        let affine = transforms.iter().any(|(id, transform)| {
+            source.nodes.get(id).map(|old| old.transform.0[..4] != transform.0[..4]).unwrap_or(true)
+        });
         let mut nodes = std::collections::BTreeMap::new();
         for (id, transform) in transforms {
             let mut node = source.nodes.get(id).ok_or("Unknown interaction node")?.clone();
@@ -411,7 +425,7 @@ impl Engine {
             nodes.insert(id.clone(), Some(node));
         }
         let patch = crate::editing::DocumentPatch { nodes, fields: Default::default() };
-        if !self.can_retain_translation(&patch) { return Ok(false); }
+        if !self.can_retain_interaction(&patch, affine) { return Ok(false); }
         source.validate_nodes(patch.nodes.iter().map(|(id,node)| (id,node.as_ref().unwrap())))?;
         let mut bytes = match self.source_doc_bytes {
             Some(bytes) => bytes,
@@ -432,7 +446,11 @@ impl Engine {
         self.source_doc_bytes = Some(bytes);
         self.geo_revision += 1;
         if let Some(cache) = &mut self.camera_prepare {
-            cache.translated(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+            if affine {
+                cache.transformed(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+            } else {
+                cache.translated(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+            }
         }
         Ok(true)
     }

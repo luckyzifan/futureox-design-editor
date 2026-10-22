@@ -57,9 +57,15 @@ fn native_interaction_reuses_full_capture_prepare_and_rebuilds_exact_fractional_
         ("missing".into(),Transform::default())].into_iter().collect();
     assert!(engine.apply_interaction_transforms(&invalid).is_err());
     assert_eq!(before,serde_json::to_string(engine.source_doc.as_ref().unwrap()).unwrap());
+    // Affine interaction transforms (rotation/scale) are retained since the
+    // affine camera-metadata rebuild; the recompiled capture must still match
+    // a fresh engine exactly.
     let scale = [("child".into(),Transform([2.,0.,0.,1.,25.,10.]))].into_iter().collect();
-    assert!(!engine.apply_interaction_transforms(&scale).unwrap());
-    assert_eq!(before,serde_json::to_string(engine.source_doc.as_ref().unwrap()).unwrap());
+    assert!(engine.apply_interaction_transforms(&scale).unwrap());
+    let mut fresh = Engine::new(); fresh.install_document(engine.source_doc.as_ref().unwrap().clone()).unwrap();
+    assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),
+        fresh.compile_gpu(&options()).unwrap().into_packet().unwrap(), "affine pose");
+    assert_eq!(engine.render(&options()).unwrap(), fresh.render(&options()).unwrap(), "affine pose");
 }
 
 #[test]

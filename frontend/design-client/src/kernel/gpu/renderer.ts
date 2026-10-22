@@ -160,6 +160,19 @@ export function mipLevelsFor(dims: [number, number]): number {
 }
 const MATERIAL_FIELD_KINDS = new Map<unknown, number>(['image-axes-support','image-grid','gradient-grid','gradient-lookup',
   'figma-gradient-field','texture','glass','glass-border'].map((kind,index) => [kind,index+1]))
+/** Kernel sampling-field guards (sampling.rs/paint.rs): dense coordinate
+ * grids reject over 16,777,216 f32 values (4,194,304 pixels); separable axis
+ * proofs reject spans over 2,097,152 entries. Rects past either limit must
+ * take the chunked regional path rather than fail the render request. */
+const SAMPLING_DENSE_PIXEL_LIMIT = 4_194_304
+const SAMPLING_AXES_SPAN_LIMIT = 2_097_152
+export const samplingFieldOverGuard = (rect: { w: number; h: number }) =>
+  rect.w * rect.h > SAMPLING_DENSE_PIXEL_LIMIT || Math.max(rect.w, rect.h) > SAMPLING_AXES_SPAN_LIMIT
+export const isSamplingFieldOverGuardError = (error: unknown) => {
+  // WASM kernel errors surface as plain strings, not Error instances.
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  return message.includes('exceeds 64 MiB')
+}
 export class GpuRenderer {
   private encodeYield = new EncodeYield()
   private frameCurrent?: () => boolean
@@ -2066,7 +2079,13 @@ export class GpuRenderer {
     const surface = this.materialField(['image-grid',this.driver.managed,compact,[n.rect.w,n.rect.h],(n.previewSource || n).rect,
       (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin], n.rect, () => {
       trace.stage = 2
-      let values = preparedAxes ?? (compact ? image_sampling_axes_placed(...arguments_) : new Float32Array())
+      let values = preparedAxes ?? new Float32Array()
+      if (!values.length && compact) {
+        // A span-only oversize proof may still admit the dense grid; keep the
+        // kernel guard from failing the request before that cheaper check.
+        try { values = image_sampling_axes_placed(...arguments_) }
+        catch (error) { if (!isSamplingFieldOverGuardError(error)) throw error }
+      }
       trace.axes = values.length ? 1 : 2
       if (!values.length) {
         trace.stage = 3
@@ -2141,7 +2160,7 @@ export class GpuRenderer {
   private paintWithBoundedImageFields(n: GpuNode, p: GpuPaint, mask: Surface): Surface | Promise<Surface> {
     const source = n.previewSource || n
     if (p.kind !== 'image' || !this.driver.managed || this.driver.name !== 'webgpu' || this.imageAtlas ||
-        n.rect.w * n.rect.h * 16 <= 64 * 1024 * 1024 ||
+        !samplingFieldOverGuard(n.rect) ||
         source.rect.w !== n.rect.w || source.rect.h !== n.rect.h || !exactBlendLattice([n.rect, source.rect]))
       return this.paint(n, p, mask)
     const sample = this.sampleIndex ?? 4
@@ -2161,7 +2180,17 @@ export class GpuRenderer {
       new Float64Array(n.size), new Uint32Array(this.baseDims(p.image || '')),
       JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile }),
       this.sampleIndex ?? 4, level, new Int32Array([0, 0]))
-    } catch (error) { throw this.failureOrigin(error, 6, 2, this.imageFieldSnapshot(n, callsite, 2, 2, 0, level)) }
+    } catch (error) {
+      // The kernel rejects a whole-support proof over its sampling-field
+      // guards instead of shrinking it. The regional path below stays exact
+      // for any extent, so an oversize proof falls through to it rather than
+      // failing the whole render request (observed at 3200% zoom).
+      if (isSamplingFieldOverGuardError(error)) {
+        this.imageFieldDiagnostic(n, callsite, 2, 4, 2, level)
+        return false
+      }
+      throw this.failureOrigin(error, 6, 2, this.imageFieldSnapshot(n, callsite, 2, 2, 0, level))
+    }
     if (!values.length) { this.imageFieldDiagnostic(n, callsite, 2, 3, 2, level); return false }
     this.imageGrid(n, p, image, level, [0, 0], values, callsite)
     return true
