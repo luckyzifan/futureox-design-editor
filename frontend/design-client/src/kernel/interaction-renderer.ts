@@ -1,3 +1,4 @@
+import { createHandoffTrace, gestureCode, type HandoffTrace } from './handoff-trace'
 import { createPoseDiagnostics, type PoseDiagnostics } from './pose-diagnostics'
 import { PoseFeedback } from './pose-feedback'
 import type { Bounds, DesignDocument, Matrix } from '../model'
@@ -18,6 +19,7 @@ import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffse
 
 let serial = -1
 type ResidentInteraction = {
+  sampleOrder?: number
   displayedOffsets?: Map<string, {x:number;y:number}>
   plan: InteractionPlan; tiles: CompositeTile[]; scale: number;
   offsets: Map<string, { x: number; y: number }>; active: boolean
@@ -69,6 +71,12 @@ export class InteractionRenderer {
   private profile?: KernelOptions['rasterProfile']
   private backend?: BackendPreference
   private sessionEpoch?: number
+  // Monotonic authored-document observations, separate from pointer sequence.
+  // A complete newer page may hide old pixels without retiring the warm owner.
+  private sourceOrder = 0
+  private completePageOrder = 0
+  private livePendingOrder = 0
+  private liveRequestedOrder = -1
   private livePending?: DesignDocument
   private liveRunning = false
   private liveRequested?: DesignDocument
@@ -143,7 +151,7 @@ export class InteractionRenderer {
   readonly control: GpuMoveControl
 
   constructor(private readonly changed: () => void, private readonly sharedClient?: KernelClient,
-    private readonly allowIdleWarm = false, poseDiagnostics?:PoseDiagnostics) {
+    private readonly allowIdleWarm = false, poseDiagnostics?:PoseDiagnostics, private readonly handoffTrace:HandoffTrace=createHandoffTrace()) {
     this.poseLog=poseDiagnostics??createPoseDiagnostics(this.interactionOwner)
     this.control = {
       isActive: () => !!this.resident?.active,
@@ -246,7 +254,7 @@ export class InteractionRenderer {
             Object.fromEntries(r.plan.ids.map(id=>[id,document.nodes[id].transform])),this.lastInput)
           this.changed();return
         }
-        if (this.sharedClient && r.live && r.tiledExact && !r.workerPoses && offsets &&
+        if (this.sharedClient && r.live && (r.tiledExact || r.tiles.length > 0) && !r.workerPoses && offsets &&
             this.viewport && this.props && this.sessionEpoch !== undefined && this.props.epoch === this.sessionEpoch &&
             document.id === r.plan.document.id && this.props.document.id === document.id &&
             this.sameIds(this.props.selection)) {
@@ -388,8 +396,11 @@ export class InteractionRenderer {
       this.liveRequested = undefined
     }
     if (this.props?.control !== props?.control && this.props?.control.current === this.control) this.props.control.current = null
-    if (this.props?.document !== props?.document) { this.clearPoseFeedback(2); this.retireRecovery() }
+    if (this.props?.document !== props?.document) { this.clearPoseFeedback(2); this.retireRecovery(); this.sourceOrder++ }
+    const previousFloor=this.completePageOrder
+    if (props && settledDocument === props.document) this.completePageOrder = this.sourceOrder
     this.props = props
+    if(previousFloor!==this.completePageOrder)this.traceHandoff(2,0)
     if (props) props.control.current = this.control
     if (this.disposed) return
     if (!props) {
@@ -633,6 +644,7 @@ export class InteractionRenderer {
   items(view: CanvasCamera): CompositeItem[] | null {
     const r = this.resident
     if (!r?.active || !r.tiles.length) return null
+    if (r.live && !r.retainedFallback && (r.sampleOrder ?? -1) < this.completePageOrder) { this.traceHandoff(6,4,r.sampleOrder);return null }
     return r.tiles.map((tile, i) => {
       const offsets = r.retainedFallback ? r.displayedOffsets : r.offsets
       const offset = (!r.live || r.retainedFallback) && r.plan.layers[i]?.moving ? offsets?.get(r.plan.layers[i].moving!) : undefined
@@ -710,10 +722,17 @@ export class InteractionRenderer {
       if(this.sampleTrace.length>120)this.sampleTrace.shift()}
     this.changed()
   }
-  private renderLive(document: DesignDocument) {
+  private traceHandoff(decision:number,reason:number,sampleOrder?:number,generation=this.generation) {
+    this.handoffTrace.record(decision,reason,{interactionOwner:this.interactionOwner,interactionGeneration:generation,
+      handoffGesture:gestureCode(this.props?.gestureKind),handoffActive:Number(!!this.props?.active),
+      handoffSourceOrder:this.sourceOrder,handoffFloor:this.completePageOrder,
+      handoffSampleKnown:Number(sampleOrder!==undefined),handoffSampleOrder:Math.max(0,sampleOrder??0)})
+  }
+  private renderLive(document: DesignDocument, order = this.sourceOrder) {
     const handoff = this.handoff
     if (handoff && handoff.resident === this.resident && handoff.document === document) return
-    if (this.liveRequested === document) return
+    if (this.liveRequested === document && this.liveRequestedOrder === order) return
+    this.liveRequestedOrder = order; this.livePendingOrder = order
     this.liveRequested = document; this.livePending = document
     this.liveCancelled = false
     this.liveDeferred = false
@@ -729,7 +748,8 @@ export class InteractionRenderer {
           captureSerial = this.recoverySerial; captureHadScope = !!this.recoveryScope
           const started = performance.now()
           const viewportRevision = this.viewportRevision
-          const document = this.livePending; this.livePending = undefined
+          const document = this.livePending, sampleOrder = this.livePendingOrder; this.livePending = undefined
+          this.traceHandoff(3,0,sampleOrder,token)
           const input = this.inputs.get(document) || this.lastInput
           const offsets = interactionOffsets(resident.plan, document)
           const roots = resident.rootBounds
@@ -861,9 +881,18 @@ export class InteractionRenderer {
             }
           }
           if (!current()) {
+            this.traceHandoff(5,5,sampleOrder,token)
             result?.bitmap?.close();for(const tile of capturedTiles||[])tile.bitmap?.close()
             client.releasePresented([...(result?.gpuTile?[result.gpuTile]:[]),...(capturedTiles||[]).flatMap(t=>t.gpuTile?[t.gpuTile]:[])])
             return
+          }
+          if (sampleOrder < this.completePageOrder) {
+            this.traceHandoff(5,4,sampleOrder,token)
+            // The exact page has already advanced past this in-flight sample.
+            // Never bring the old pose back; keep the page and the warm owner.
+            result?.bitmap?.close(); for (const tile of capturedTiles || []) tile.bitmap?.close()
+            client.releasePresented([...(result?.gpuTile ? [result.gpuTile] : []), ...(capturedTiles || []).flatMap(t => t.gpuTile ? [t.gpuTile] : [])])
+            continue
           }
           if (!result || !capturedTiles && !result.gpuTile && !result.bitmap && result.bytes.length !== width * height * 4) throw Error('交互场景像素不完整')
           // Remember a successful budget negotiation. Retrying an oversized
@@ -874,6 +903,8 @@ export class InteractionRenderer {
           this.lastPresentedInput = input
           this.error = ''
           resident.retainedFallback = false
+          resident.sampleOrder = sampleOrder
+          this.traceHandoff(4,0,sampleOrder,token)
           resident.displayedOffsets=offsets||undefined
           resident.workerPoses=!capturedTiles && result.residentInteraction===true
           this.inlineDisabled=false
@@ -970,7 +1001,7 @@ export class InteractionRenderer {
         // pool can park this idle GPU without destroying that state when an
         // export or another consumer needs its device slot.
         // A new owner may have queued work while the old job was unwinding.
-        if (this.livePending && !this.disposed) { const pending = this.livePending; this.liveRequested = undefined; this.renderLive(pending) }
+        if (this.livePending && !this.disposed) { const pending = this.livePending, order = this.livePendingOrder; this.liveRequested = undefined; this.renderLive(pending, order) }
       }
     })()
   }
@@ -979,6 +1010,7 @@ export class InteractionRenderer {
     this.client = null
   }
   private closeResidents() {
+    if(this.resident)this.traceHandoff(7,5,this.resident.sampleOrder)
     this.retireRecovery()
     this.poseEvent(5,this.disposed?6:9)
     this.cancelIdleWarmTimer(); this.idleWarmCapture = undefined
@@ -986,6 +1018,7 @@ export class InteractionRenderer {
     if(this.resident?.tiles[0]?.gpuTile)this.sharedClient?.stopResidentInteraction(this.resident.tiles[0].gpuTile)
     for (const tile of this.resident?.tiles || []) tile.bitmap?.close()
     this.failedGesture = false
+    this.completePageOrder = 0
     this.clearPoseFeedback(9)
     this.resident = undefined; this.livePending = undefined; this.liveRequested = undefined; this.liveAuthored = undefined
     this.liveCancelled = false

@@ -32,7 +32,7 @@ afterEach(() => {
 })
 
 const microtasks = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
-function fixture(shared = new KernelClient(), active = true) {
+function fixture(shared = new KernelClient(), active = true, profile: 'figma'|'analytic'|'figmaSoftware' = 'figma') {
   const document = blank(), root = node('frame', 0, 0, 200, 180)
   const selected = node('rectangle', 10, 10, 30, 20), other = node('rectangle', 60, 10, 30, 20)
   root.blend = 'normal'; root.clip = false; root.effects = [effect('background-blur')]
@@ -46,9 +46,9 @@ function fixture(shared = new KernelClient(), active = true) {
   owners.push(owner)
   const view = { x: -.375, y: .125, zoom: 1 }, size = { width: 160, height: 120 }
   const prepare = (next = props, settled?: DesignDocument, camera = view, viewport = size, dpr = 2,
-    profile: 'figma' | 'analytic' = 'figma') =>
+    profile: 'figma' | 'analytic' | 'figmaSoftware' = 'figma') =>
     owner.prepare(next, next.document.pages[0].id, camera, dpr, profile, 'webgpu', settled, viewport)
-  prepare({ ...props, active })
+  prepare({ ...props, active }, undefined, view, size, 2, profile)
   const moved = (x: number, source = document) =>
     interactionPatchedDocument(source, { [selected.id]: { transform: [1, 0, 0, 1, x, 10] } })
   const apply = (x: number, source = document) =>
@@ -337,4 +337,28 @@ test('repeated navigation removal and inactive restoration never initializes a l
   expect(f.apply(30)).not.toBeNull()
   expect(f.owner.moves).toBe(1)
   expect(worker.jobs).toHaveLength(2)
+})
+
+test.each(['analytic','figmaSoftware'] as const)('native %s translation commit hands exact work to canvas without another whole-viewport capture',async profile=>{
+  const f=fixture(new KernelClient(),true,profile)
+  expect(worker.jobs[0].options.interactionBranch).toBe(3)
+  worker.jobs[0].resolve({gpuTile:900,residentInteraction:false});await microtasks()
+  const previous=f.owner.tiles
+  const transform=[1,0,0,1,20,10]
+  f.owner.control.apply(f.document,{[f.selected.id]:{transform:transform as any}})
+  const inFlight=worker.jobs[1]
+  expect(inFlight.options.interactionBranch).toBe(3)
+  const final=interactionPatchedDocument(f.document,{[f.selected.id]:{transform:transform as any}})
+  f.owner.control.end(final)
+  expect(inFlight.signal.aborted).toBe(true)
+  const committed={...f.props,document:final,active:false}
+  f.prepare(committed,undefined,f.view,f.size,2,profile)
+  f.prepare(committed,undefined,f.view,f.size,2,profile)
+  expect(worker.jobs).toHaveLength(2)
+  inFlight.resolve({gpuTile:901,residentInteraction:false});await microtasks()
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.released).toContain(901)
+  expect(f.owner.tiles).toBe(previous)
+  f.prepare(committed,final,f.view,f.size,2,profile)
+  expect(f.owner.items(f.view)).toBeNull()
 })

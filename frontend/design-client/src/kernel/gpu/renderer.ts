@@ -1988,15 +1988,15 @@ export class GpuRenderer {
       imageFieldSourceWidth: source.rect.w, imageFieldSourceHeight: source.rect.h,
       imageFieldDenseBytes: n.rect.w * n.rect.h * 16 }
   }
-  private imageGrid(n: GpuNode, p: GpuPaint, image: Surface, level = 0, origin: [number, number] = [0, 0], preparedAxes?: Float32Array, callsite = 0): Surface {
+  private imageGrid(n: GpuNode, p: GpuPaint, image: Surface, level = 0, origin: [number, number] = [0, 0], preparedAxes?: Float32Array, callsite = 0, retainField = true): Surface {
     const trace = { stage: 1, axes: preparedAxes?.length ? 1 : 0 }
     const previous = this.activeImageFieldFailure
     if (gpuDiagnosticsEnabled()) this.activeImageFieldFailure = () => this.imageFieldSnapshot(n, callsite, trace.stage, 2, trace.axes, level)
-    try { return this.imageGridExact(n, p, image, level, origin, preparedAxes, trace) }
+    try { return this.imageGridExact(n, p, image, level, origin, preparedAxes, trace, retainField) }
     catch (error) { this.imageFieldDiagnostic(n, callsite, trace.stage, 2, trace.axes, level); throw error }
     finally { this.activeImageFieldFailure = previous }
   }
-  private imageGridExact(n: GpuNode, p: GpuPaint, image: Surface, level: number, origin: [number, number], preparedAxes: Float32Array | undefined, trace: {stage: number; axes: number}): Surface {
+  private imageGridExact(n: GpuNode, p: GpuPaint, image: Surface, level: number, origin: [number, number], preparedAxes: Float32Array | undefined, trace: {stage: number; axes: number}, retainField: boolean): Surface {
     const sample = this.sampleIndex ?? 4
     let grids = this.imageGrids.get(p)
     const known = grids?.get(sample)
@@ -2079,7 +2079,7 @@ export class GpuRenderer {
       this.imageFieldBytes += values.byteLength
       return values
     }, this.driver.uploadParameters, () => [separated ? Math.max(n.rect.w,n.rect.h) : n.rect.w, separated ? 2 : n.rect.h], 0,
-      import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS !== '0')
+      retainField && import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS !== '0')
     if (separated !== undefined) this.imageAxes.set(surface.texture,separated)
     if (this.driver.managed && this.imageAxes.get(surface.texture)) this.imageAxisFields++
     if (!grids) {
@@ -2191,7 +2191,11 @@ export class GpuRenderer {
           previewSource: { ...source, rect: rect(source.rect.x + x, source.rect.y + y, w, h) } }
         let field: Surface | undefined
         try {
-          field = this.imageGrid(regionNode, regionPaint, image, level, [0, 0], undefined, 2)
+          // This regional paint has one consumer and its private grid key is
+          // discarded below. Keep its upload out of the current-frame cache
+          // pins so retireUpload can reclaim it only after a real checkpoint.
+          // Whole-image compact fields and shared filter support remain cached.
+          field = this.imageGrid(regionNode, regionPaint, image, level, [0, 0], undefined, 2, false)
           regions++; fieldBytes += field.texture.bytes; maxFieldBytes = Math.max(maxFieldBytes, field.texture.bytes)
           maxWidth = Math.max(maxWidth, w); maxHeight = Math.max(maxHeight, h)
           const u = parameters(n.rect, mask.rect, image.rect, mask.rect)
