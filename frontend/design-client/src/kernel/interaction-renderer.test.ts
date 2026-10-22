@@ -959,7 +959,7 @@ test('actual renderer diagnostic output stays bounded through 10000 pointer subm
  for(let i=1;i<=10000;i++){now=i*8;f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(i)}})}
  f.owner.control.end(f.doc)
  expect(rows.length).toBeLessThanOrEqual(35)
- const end=rows.findLast(r=>r.poseStage===5)!
+ const end=rows.filter(r=>r.poseStage===5).pop()!
  expect(end.poseSubmittedCount).toBe(10000)
  expect(end.posePendingCount).toBe(180)
  expect(end.poseEvictedCount).toBe(9820)
