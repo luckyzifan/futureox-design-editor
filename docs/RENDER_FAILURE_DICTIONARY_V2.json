@@ -1,0 +1,463 @@
+{
+  "version": 2,
+  "source": "frontend/design-client/src/kernel/render-failure-telemetry.ts",
+  "sourceSha256": "b4ce0f92ef737c559fdbd478799f13f41b57e5ee4867787aab4b38b1b93d211d",
+  "categories": {
+    "0": "unknown",
+    "1": "cancellation",
+    "2": "unsupported",
+    "3": "resource budget",
+    "4": "device lost",
+    "5": "validation",
+    "6": "protocol"
+  },
+  "stages": {
+    "0": "unknown",
+    "1": "request",
+    "2": "load",
+    "3": "derive",
+    "4": "patch",
+    "5": "compile",
+    "6": "hydrate",
+    "7": "encode",
+    "8": "submit",
+    "9": "fence",
+    "10": "present",
+    "11": "fallback",
+    "12": "graph",
+    "13": "admission"
+  },
+  "exactMessages": [
+    {
+      "code": 1,
+      "category": 1,
+      "exactMessage": "PREVIEW_CANCELLED"
+    },
+    {
+      "code": 2,
+      "category": 2,
+      "exactMessage": "DERIVATION_UNSUPPORTED"
+    },
+    {
+      "code": 3,
+      "category": 6,
+      "exactMessage": "DOCUMENT_PREPARATION_PENDING"
+    },
+    {
+      "code": 4,
+      "category": 6,
+      "exactMessage": "STALE_PREPARED_PACKET"
+    },
+    {
+      "code": 5,
+      "category": 6,
+      "exactMessage": "DERIVATION_RECEIPT_MISSING"
+    },
+    {
+      "code": 6,
+      "category": 6,
+      "exactMessage": "STALE_BASE"
+    },
+    {
+      "code": 7,
+      "category": 6,
+      "exactMessage": "STALE_TARGET"
+    },
+    {
+      "code": 61,
+      "category": 5,
+      "exactMessage": "PATCH_GUARD_SCHEMA"
+    },
+    {
+      "code": 62,
+      "category": 6,
+      "exactMessage": "STALE_AUTHORED_PATCH_BASE"
+    },
+    {
+      "code": 63,
+      "category": 2,
+      "exactMessage": "PATCH_GUARD_UNSUPPORTED"
+    },
+    {
+      "code": 8,
+      "category": 5,
+      "exactMessage": "DERIVE_SCHEMA"
+    },
+    {
+      "code": 9,
+      "category": 6,
+      "exactMessage": "DERIVE_RETRY_REJECTED"
+    },
+    {
+      "code": 10,
+      "category": 5,
+      "exactMessage": "DERIVATION_INVALID_ENVELOPE"
+    },
+    {
+      "code": 11,
+      "category": 6,
+      "exactMessage": "DERIVATION_STALE_SOURCE"
+    },
+    {
+      "code": 12,
+      "category": 3,
+      "exactMessage": "DERIVATION_FALLBACK_BUDGET"
+    },
+    {
+      "code": 13,
+      "category": 6,
+      "exactMessage": "DERIVATION_FALLBACK_TIMEOUT"
+    },
+    {
+      "code": 64,
+      "category": 3,
+      "exactMessage": "GPU surface budget exceeded"
+    },
+    {
+      "code": 65,
+      "category": 2,
+      "exactMessage": "SEQUENTIAL_DISPLAY_UNSUPPORTED"
+    },
+    {
+      "code": 20,
+      "category": 3,
+      "exactMessage": "GPU 表面内存预算超限"
+    },
+    {
+      "code": 21,
+      "category": 3,
+      "exactMessage": "GPU 浮点图片内存预算超限"
+    },
+    {
+      "code": 22,
+      "category": 3,
+      "exactMessage": "GPU 图片总内存预算超限"
+    },
+    {
+      "code": 23,
+      "category": 3,
+      "exactMessage": "GPU 图集页内存预算超限"
+    },
+    {
+      "code": 24,
+      "category": 3,
+      "exactMessage": "GPU 图片像素预算超限"
+    },
+    {
+      "code": 25,
+      "category": 3,
+      "exactMessage": "GPU display resident budget exceeded"
+    },
+    {
+      "code": 26,
+      "category": 3,
+      "exactMessage": "GPU linear display budget exceeded"
+    },
+    {
+      "code": 27,
+      "category": 3,
+      "exactMessage": "GPU frame command work budget exceeded"
+    },
+    {
+      "code": 28,
+      "category": 3,
+      "exactMessage": "GPU solid instance budget exceeded"
+    },
+    {
+      "code": 30,
+      "category": 4,
+      "exactMessage": "WebGPU 设备已丢失"
+    },
+    {
+      "code": 31,
+      "category": 4,
+      "exactMessage": "GPU 设备已丢失"
+    },
+    {
+      "code": 32,
+      "category": 5,
+      "exactMessage": "GPU texture feedback loop"
+    },
+    {
+      "code": 33,
+      "category": 5,
+      "exactMessage": "无效的 GPU 表面边界"
+    },
+    {
+      "code": 34,
+      "category": 5,
+      "exactMessage": "无效的 GPU 图片资源"
+    },
+    {
+      "code": 35,
+      "category": 5,
+      "exactMessage": "无效的 GPU 分配字节数"
+    },
+    {
+      "code": 40,
+      "category": 2,
+      "exactMessage": "GPU exact blur radius exceeds 2048 pixels"
+    },
+    {
+      "code": 41,
+      "category": 2,
+      "exactMessage": "GPU 积分模糊半径超过 512 像素"
+    },
+    {
+      "code": 42,
+      "category": 2,
+      "exactMessage": "GPU 扩展半径超过 2048 像素"
+    },
+    {
+      "code": 43,
+      "category": 2,
+      "exactMessage": "不支持的填充类型"
+    },
+    {
+      "code": 44,
+      "category": 2,
+      "exactMessage": "渐变色标超过 32 个"
+    },
+    {
+      "code": 50,
+      "category": 6,
+      "exactMessage": "Invalid CPU preparation request"
+    },
+    {
+      "code": 51,
+      "category": 6,
+      "exactMessage": "CPU preparation response could not be decoded"
+    },
+    {
+      "code": 52,
+      "category": 3,
+      "exactMessage": "CPU preparation request budget exceeded"
+    },
+    {
+      "code": 53,
+      "category": 6,
+      "exactMessage": "Native preparation timed out"
+    },
+    {
+      "code": 54,
+      "category": 6,
+      "exactMessage": "Invalid native preparation protocol"
+    },
+    {
+      "code": 55,
+      "category": 6,
+      "exactMessage": "Native preparation sequence mismatch"
+    },
+    {
+      "code": 56,
+      "category": 6,
+      "exactMessage": "文档补丁版本未同步，请重试当前画布"
+    },
+    {
+      "code": 57,
+      "category": 6,
+      "exactMessage": "PREPARATION_SESSION_EXHAUSTED"
+    },
+    {
+      "code": 80,
+      "category": 5,
+      "exactMessage": "Singular transform"
+    },
+    {
+      "code": 81,
+      "category": 5,
+      "exactMessage": "Nonfinite composed transform"
+    },
+    {
+      "code": 82,
+      "category": 5,
+      "exactMessage": "Composed inverse exceeds precision budget"
+    },
+    {
+      "code": 83,
+      "category": 5,
+      "exactMessage": "Invalid image sampling geometry"
+    },
+    {
+      "code": 84,
+      "category": 5,
+      "exactMessage": "Image coordinate bounds exceed integer range"
+    },
+    {
+      "code": 85,
+      "category": 3,
+      "exactMessage": "Sampling coordinate field exceeds 64 MiB"
+    },
+    {
+      "code": 86,
+      "category": 3,
+      "exactMessage": "Sampling coordinate allocation failed"
+    },
+    {
+      "code": 87,
+      "category": 3,
+      "exactMessage": "Parameter field exceeds 64 MiB"
+    },
+    {
+      "code": 88,
+      "category": 3,
+      "exactMessage": "Parameter field allocation failed"
+    },
+    {
+      "code": 89,
+      "category": 5,
+      "exactMessage": "Nonfinite material parameter"
+    },
+    {
+      "code": 90,
+      "category": 5,
+      "exactMessage": "Invalid analytic glass shape"
+    },
+    {
+      "code": 91,
+      "category": 5,
+      "exactMessage": "Glass field region exceeds original geometry domain"
+    },
+    {
+      "code": 92,
+      "category": 5,
+      "exactMessage": "Invalid GPU viewport"
+    },
+    {
+      "code": 93,
+      "category": 5,
+      "exactMessage": "Invalid GPU tile viewport"
+    },
+    {
+      "code": 94,
+      "category": 3,
+      "exactMessage": "GPU analytic interval program budget exceeded"
+    },
+    {
+      "code": 95,
+      "category": 5,
+      "exactMessage": "Sampling coordinate size overflow"
+    },
+    {
+      "code": 96,
+      "category": 5,
+      "exactMessage": "Parameter field horizontal bounds overflow"
+    },
+    {
+      "code": 97,
+      "category": 5,
+      "exactMessage": "Parameter field vertical bounds overflow"
+    },
+    {
+      "code": 98,
+      "category": 5,
+      "exactMessage": "Parameter field size overflow"
+    },
+    {
+      "code": 99,
+      "category": 5,
+      "exactMessage": "Nonfinite sample coordinate"
+    },
+    {
+      "code": 100,
+      "category": 5,
+      "exactMessage": "Non-finite image sampling coordinate"
+    },
+    {
+      "code": 101,
+      "category": 2,
+      "exactMessage": "Exact blur radius must be in (0,2048]"
+    },
+    {
+      "code": 102,
+      "category": 2,
+      "exactMessage": "Box filter radius exceeds 512 pixels"
+    },
+    {
+      "code": 103,
+      "category": 5,
+      "exactMessage": "Gaussian sigma must be in [0,512]"
+    },
+    {
+      "code": 104,
+      "category": 2,
+      "exactMessage": "Gaussian box radius exceeds 512 pixels"
+    },
+    {
+      "code": 105,
+      "category": 5,
+      "exactMessage": "WebGPU 纹理尺寸超限"
+    },
+    {
+      "code": 106,
+      "category": 5,
+      "exactMessage": "无效的材质参数纹理"
+    },
+    {
+      "code": 107,
+      "category": 6,
+      "exactMessage": "Regional coverage requires an interval program"
+    },
+    {
+      "code": 108,
+      "category": 6,
+      "exactMessage": "Coverage program unavailable"
+    },
+    {
+      "code": 109,
+      "category": 6,
+      "exactMessage": "Resident coverage program is missing"
+    },
+    {
+      "code": 110,
+      "category": 5,
+      "exactMessage": "GPU 纹理精度与文档色彩空间不一致"
+    },
+    {
+      "code": 111,
+      "category": 2,
+      "exactMessage": "不支持的 GPU 命令版本"
+    },
+    {
+      "code": 112,
+      "category": 6,
+      "exactMessage": "GPU 区域命令缺少输出矩形"
+    },
+    {
+      "code": 113,
+      "category": 5,
+      "exactMessage": "无效的参数字段布局"
+    },
+    {
+      "code": 114,
+      "category": 5,
+      "exactMessage": "空 GPU 表面"
+    },
+    {
+      "code": 115,
+      "category": 2,
+      "exactMessage": "GPU frame abort is unavailable"
+    },
+    {
+      "code": 116,
+      "category": 5,
+      "exactMessage": "Prefix scratch was not retired after frame abort"
+    },
+    {
+      "code": 117,
+      "category": 4,
+      "exactMessage": "GPU device preview recovery failed"
+    },
+    {
+      "code": 118,
+      "category": 4,
+      "exactMessage": "GPU device lost during preview recovery"
+    }
+  ],
+  "otherCodes": {
+    "0": "unknown or classified GPU class without exact known message",
+    "60": "SyntaxError fallback when exact known message is absent",
+    "200": "generic allocation rejection source tag; exact known inherited code20/21 remains authoritative"
+  },
+  "knownAdditionsEvidence": "Verified exact static literals in main1e4a3ba; no prefix or raw-message hash matching."
+}

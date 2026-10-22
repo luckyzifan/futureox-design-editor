@@ -14,3 +14,6 @@ export function renderRequestCategories(payload:unknown):Record<string,number|bo
 export function renderResultReason(error:unknown):number
 
 export function snapshotResourceFields(sourceCodeUnits: number, fonts: unknown): Record<string, number>
+
+/** Changes whenever the trusted worker installs/restarts its diagnostic sink. */
+export function gpuDiagnosticEpoch():number
