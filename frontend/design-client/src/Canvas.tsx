@@ -1832,7 +1832,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     if (pendingBoardMove.current) { pendingBoardMove.current = null; retainedMove.current?.restore() }
     editor.preview(patches,placement)
-    gpuMove.current?.end(editor.state.doc)
+    // Only the translation fast path must retire its owner mid-gesture when
+    // falling back. Ending affine gestures (rotate/resize/scale) per sample
+    // tore the warm pose session down on every pointer event and consumed the
+    // ended-document fence, so the gesture-end handoff never engaged; those
+    // owners end once through the editor subscription after commit or cancel.
+    if (d.kind === 'move') gpuMove.current?.end(editor.state.doc)
     restoreGpuOverlays()
     if (host.current) host.current.dataset.inputTiming = JSON.stringify(editor.lastPreviewTiming)
   }
@@ -2181,6 +2186,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         const id = result.id
         if (!editor.topSelection().includes(id)) return
         const n = state.doc.nodes[id]
+        // Instance interiors are derived from the master component (imported
+        // .fig material is mostly instances). The deep-select chain stops at
+        // the instance boundary, so point the user at detach instead of a
+        // silent no-op.
+        if (n.instance)
+          editor.notify('实例内容由主组件派生：右键“分离实例”后即可编辑子元素', { key: 'instanceDetachHint' })
         if (n.kind === 'text') {
           setTextEdit(id)
         } else if (!['frame', 'section', 'group'].includes(n.kind)) {

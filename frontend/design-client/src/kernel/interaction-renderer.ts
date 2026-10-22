@@ -15,7 +15,7 @@ import { buildInteractionDependencyScope } from './interaction-scene-bounds'
 import { KernelClient, type KernelOptions, type KernelResult } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
-import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, planInteractionLayers,
+import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, interactionTransformsOnly, planInteractionLayers,
   type GpuMoveControl, type InteractionPlan, type InteractionProps } from './interaction-layers'
 
 let serial = -1
@@ -237,7 +237,12 @@ export class InteractionRenderer {
           return
         }
         const offsets = this.baseOffsets(r.plan, document)
-        this.lastEnd = offsets ? [...offsets.values()].map(p => `${p.x},${p.y}`).join(';') : 'content-changed'
+        // Rotation/scale edits have no translation offsets, but a selected-
+        // transforms-only diff still validates the last completed capture as
+        // the pose to retain across the commit handoff below. A cancelled
+        // gesture reverts to the plan snapshot and must not take that fence.
+        const affine = !offsets && document !== r.plan.document && interactionTransformsOnly(r.plan, document)
+        this.lastEnd = offsets ? [...offsets.values()].map(p => `${p.x},${p.y}`).join(';') : affine ? 'affine' : 'content-changed'
         r.active = r.live ? document !== r.plan.document && document.id === r.plan.document.id :
           !!offsets && [...offsets.values()].some(p => p.x !== 0 || p.y !== 0)
         if (offsets && !r.live && !this.retainedOffsetsReusable(r, offsets)) {
@@ -248,14 +253,16 @@ export class InteractionRenderer {
         if(r.live&&r.active&&offsets&&r.workerPoses&&this.sharedClient&&!this.liveRunning&&!this.livePending&&r.tiles[0]?.gpuTile){
           // Finish the gesture through the already compiled pose session.
           // The settled document lane will apply its own patch; it must not
-          // wait behind a redundant whole-viewport interaction render.
+          // wait behind a redundant whole-viewport interaction render. The
+          // kernel interaction lane is translation-only; affine ends fall
+          // through to the retention handoff instead of rebasing here.
           this.latestCandidate=document;this.liveAuthored=document
           this.lastInput={sequence:++this.moves,at:performance.now()}
           this.sharedClient.moveResidentInteraction(r.tiles[0].gpuTile,
             Object.fromEntries(r.plan.ids.map(id=>[id,document.nodes[id].transform])),this.lastInput)
           this.changed();return
         }
-        if (this.sharedClient && r.live && (r.tiledExact || r.tiles.length > 0) && !r.workerPoses && offsets &&
+        if (this.sharedClient && r.live && (r.tiledExact || r.tiles.length > 0) && (offsets && !r.workerPoses || affine) &&
             this.viewport && this.props && this.sessionEpoch !== undefined && this.props.epoch === this.sessionEpoch &&
             document.id === r.plan.document.id && this.props.document.id === document.id &&
             this.sameIds(this.props.selection)) {
@@ -323,7 +330,7 @@ export class InteractionRenderer {
   }
   private scheduleIdleWarm() {
     const props = this.props, resident = this.resident, viewport = this.viewport
-    if (!this.allowIdleWarm || import.meta.env.VITE_DESIGN_NESTED_IDLE_WARM !== '1' || !this.sharedClient ||
+    if (!this.allowIdleWarm || import.meta.env.VITE_DESIGN_NESTED_IDLE_WARM === '0' || !this.sharedClient ||
         this.profile !== 'figmaSubpixel' || this.backend !== 'webgpu' && this.backend !== 'auto' ||
         !props || !resident?.live || !viewport || this.disposed ||
         props.active || resident.active || this.handoff || this.error || this.liveRunning || this.livePending ||

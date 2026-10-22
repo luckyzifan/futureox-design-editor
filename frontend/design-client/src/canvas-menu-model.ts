@@ -60,6 +60,7 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
     items.push(
       { command: 'frame-selection', label: '创建选区画板', group: 'structure', disabled: !mutable || !siblings },
       { command: 'create-component', label: '创建组件', group: 'structure', disabled: !mutable || !siblings },
+      { command: 'detach-instance', label: '分离实例', group: 'structure', disabled: !mutable || nodes.length !== 1 || !nodes[0].instance },
       { command: 'mask-selection', label: '用作蒙版', group: 'structure', disabled: !mutable || !siblings || roots.length < 2 },
       { command: 'auto-layout', label: '添加自动布局', group: 'layout', disabled: !mutable || !siblings },
     )

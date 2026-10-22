@@ -132,6 +132,25 @@ export function interactionPatchedDocument(document: DesignDocument, patches: Re
     ...Object.fromEntries(Object.entries(patches).map(([id, patch]) => [id, { ...document.nodes[id], ...patch }])) } }
 }
 
+/** An affine edit (rotation/scale) has no translation offsets to reuse, but
+ * when only selected transforms differ from the plan snapshot the last
+ * completed capture is still the structurally valid pose: it may stay
+ * presented until exact tiles for the committed document replace it. */
+export function interactionTransformsOnly(plan: InteractionPlan, current: DesignDocument): boolean {
+  const source = plan.document
+  if (current === source) return true
+  if (Object.keys(current).some(key => key !== 'nodes' && current[key as keyof DesignDocument] !== source[key as keyof DesignDocument]) ||
+      Object.keys(current.nodes).length !== Object.keys(source.nodes).length) return false
+  const moved = new Set(plan.ids)
+  for (const [id, node] of Object.entries(current.nodes)) {
+    const old = source.nodes[id]
+    if (!old) return false
+    if (node !== old && (!moved.has(id) || Object.keys(node).length !== Object.keys(old).length ||
+        Object.keys(node).some(key => key !== 'transform' && node[key as keyof typeof node] !== old[key as keyof typeof old]))) return false
+  }
+  return true
+}
+
 /** Pointer translation validates selected transforms instead of enumerating
  * the whole unchanged document for every input event. */
 export function interactionPatchedOffsets(plan: InteractionPlan, document: DesignDocument,

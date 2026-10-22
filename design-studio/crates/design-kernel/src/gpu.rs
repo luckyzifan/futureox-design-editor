@@ -84,6 +84,14 @@ impl CameraPrepare {
         // summary even when all exact coverage programs remain reusable.
         self.metadata = None;
     }
+    /// Affine interaction edits (rotation/scale) reuse the translation dirty
+    /// set — moved subtree plus ancestors — but a changed linear part can move
+    /// device-space effect margins (radius × scale) and the guard padding, so
+    /// the camera metadata summary must be rebuilt instead of retained.
+    pub(crate) fn transformed(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &HashMap<String, String>) {
+        self.translated(doc, ids, revision, parents);
+        self.metadata = None;
+    }
     /// Only called after a validated pure-translation edit. The exact camera,
     /// guard, styles and resource lineage are unchanged. Descendants need new
     /// device geometry; ancestors need new aggregate bounds. Other entries and

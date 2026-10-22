@@ -4,13 +4,14 @@ import { operationStatusText, type OperationStatus } from './operation-status-me
 const app = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8')
 const commands = readFileSync(new URL('./editor-commands.ts', import.meta.url), 'utf8')
 const fonts = readFileSync(new URL('./font-management.ts', import.meta.url), 'utf8')
-// Exact 20-producer allowlist. These checks are wiring contracts, not twenty
+// Exact 21-producer allowlist. These checks are wiring contracts, not twenty
 // independently mounted workflows or twenty claimed Electron GUI operations.
 const sources: Record<OperationStatus['key'], string> = {
  exportPreviewGenerating: app, exportFileReady: app, sketchExportGenerating: app, sketchExportReadyCompatibility: app,
  openBlockedActiveOperation: app, imageImportBlockedActiveOperation: app, singleDesignFileRequired: app, importedGroupsAppended: app, designImportComplete: app,
  imageImportFailed: app, saveFailedCanvasRetained: app, kernelStartupFailed: app, recoveryFailedAutosavePaused: app, closeFailedDocumentRetained: app, workspaceSwitchFailedDocumentRetained: app,
  finishOrCancelDrag: commands, propertiesCopied: commands, toolUnavailable: commands, unknownToolCommand: commands, sharedFontStyleNeedsLocalOverride: fonts,
+ instanceDetachHint: readFileSync(new URL('./Canvas.tsx', import.meta.url), 'utf8'),
 }
 test.each(Object.keys(sources) as OperationStatus['key'][])('explicit producer %s localizes only tagged display; raw diagnostic/history APIs remain raw', key => {
  expect(sources[key]).toContain(`'${key}'`)
