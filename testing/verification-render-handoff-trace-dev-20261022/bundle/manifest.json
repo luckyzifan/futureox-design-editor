@@ -1,0 +1,198 @@
+{
+  "baseline": "8070ebeed52f75cadc66b036543e9fcc8fad104f",
+  "status": "DEVELOPMENT_TEST_PACKAGE_FINAL_COMBINATION_UNVERIFIED",
+  "label": "\u6309\u7528\u6237\u8981\u6c42\u8df3\u8fc7\u6700\u7ec8\u56de\u5f52\u7684\u5f00\u53d1\u6d4b\u8bd5\u5305",
+  "sourceManifestSha256": "fc5d063c7c3a507b8b45c11e9350b5a0564c4b8d88606cfb3ca7bf83d4384288",
+  "changes": [
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "role": "production",
+      "baselineSha256": "ab6e82d7571d862c3a6afbae28192df60d0cebd3750c590c75cb03057fe222af",
+      "sha256": "4f8320e2480ccbcce6e08939e7f1c086442f3c65739215070155813e9d2993f2",
+      "size": 151543,
+      "addedLines": 2,
+      "deletedLines": 2
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ResidentCompositeSurface.tsx",
+      "role": "production",
+      "baselineSha256": "66eceeb059964cdab200de9737737fb068e376367a76e1738e3a7ebd46c7f609",
+      "sha256": "ec91bc46cfa60d7a26f5878c57fe1e77296b4b21145cd7c7c4b508e4cfe0623f",
+      "size": 18469,
+      "addedLines": 19,
+      "deletedLines": 4
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/budget-working-set-repro.test.ts",
+      "role": "test",
+      "baselineSha256": null,
+      "sha256": "125f59afee2d7c2faac7c1ec91a4d06585b8d5789f4a3c8d03de5f6a021cbb10",
+      "size": 10159,
+      "addedLines": 144,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "role": "production",
+      "baselineSha256": "495690d50b841f460dc61667e0c9de0c36998c31aef305d87bbee453726dec69",
+      "sha256": "c0cb5a269e6d501211cb70de4c44fdf7bf016944764723e6a1874d15060e1cc3",
+      "size": 327099,
+      "addedLines": 9,
+      "deletedLines": 5
+    },
+    {
+      "path": "frontend/design-client/src/kernel/handoff-trace.test.ts",
+      "role": "test",
+      "baselineSha256": null,
+      "sha256": "617c7d61bc23b77fc82916bb43fb4330c74813190d8eca9131e603cc40544c15",
+      "size": 2738,
+      "addedLines": 36,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/handoff-trace.ts",
+      "role": "production",
+      "baselineSha256": null,
+      "sha256": "6d32fa0043edcac0f947072381ac0bb79ebd8cece170d1161308bdd0f28abd18",
+      "size": 2657,
+      "addedLines": 31,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-layers.ts",
+      "role": "production",
+      "baselineSha256": "987f85c5c08c457ba7f8ea2e9bf2a1b7036c4d5bd12ef4d863a3e4891fd31056",
+      "sha256": "fec6bf33fb9d99c962080c4f05ebe350a563eaaac24e3725c207b9f403cf3087",
+      "size": 9584,
+      "addedLines": 2,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-release-handoff.test.ts",
+      "role": "test",
+      "baselineSha256": "c5a9361d5a765ec0e9e66bf294f494b1e042f83828f5c13c3726c6ba3d5f7862",
+      "sha256": "994260be5177978f928f6eecbdeb4eb50015934466219c7fe2c5a238511e1a78",
+      "size": 16343,
+      "addedLines": 27,
+      "deletedLines": 3
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.ts",
+      "role": "production",
+      "baselineSha256": "4c0564743a5caff6ebeec0bb6bf0615b63cf55e58fdf296aa37f0c89e761c9f1",
+      "sha256": "f440202811c3f68aebe7686f917b32c52516e3b8adab9fbacadd03a164cc9b53",
+      "size": 67691,
+      "addedLines": 40,
+      "deletedLines": 7
+    },
+    {
+      "path": "frontend/design-client/src/kernel/rotation-handoff.integration.test.tsx",
+      "role": "test",
+      "baselineSha256": null,
+      "sha256": "9018f11e633dc1dc53d382d13f39753d3183879dcc4bbbd4f27503d951a5169d",
+      "size": 9210,
+      "addedLines": 109,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/vitest.handoff-regression.config.mts",
+      "role": "test-support",
+      "baselineSha256": null,
+      "sha256": "476ab25afd46b189f780703b08ed3c82e2d325dc3ed494fee2cf99d70793b448",
+      "size": 481,
+      "addedLines": 1,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-client/vitest.rotation-handoff.config.mts",
+      "role": "test-support",
+      "baselineSha256": null,
+      "sha256": "34d8804ebbeddf3feeb31f01199dc28ec366ca81a38d6926f2621d4ca97aca4c",
+      "size": 254,
+      "addedLines": 1,
+      "deletedLines": 0
+    },
+    {
+      "path": "frontend/design-desktop/src/render-terminal-diagnostics.mjs",
+      "role": "production",
+      "baselineSha256": "5a62b782a7b5ddaed06a0fd34ec1b49a70bf5d62af94812168ab70df783f4d91",
+      "sha256": "caf35314e171450a7575b34e9f7bd797e76bcc9494cdb3f71c44d41fa6861fbb",
+      "size": 22535,
+      "addedLines": 4,
+      "deletedLines": 3
+    }
+  ],
+  "patchSha256": "bedea90a08721de1e663fad369e418db29feb57b176696d3315136c1efd6e8b1",
+  "lineStatistics": {
+    "production": {
+      "files": 7,
+      "addedLines": 107,
+      "deletedLines": 21,
+      "netLines": 86
+    },
+    "test": {
+      "files": 4,
+      "addedLines": 316,
+      "deletedLines": 3,
+      "netLines": 313
+    },
+    "test-support": {
+      "files": 2,
+      "addedLines": 2,
+      "deletedLines": 0,
+      "netLines": 2
+    }
+  },
+  "candidates": [
+    {
+      "path": "146825-one-use-regional-field-retirement-v1.patch",
+      "sha256": "ab191eee9f758d645e6599a8a03c279001c72f867b821a06b41d67f74824d564"
+    },
+    {
+      "path": "146825-native-translation-handoff-v1.patch",
+      "sha256": "16aeb9b69b29ef2a991f6428cd69e611c199ac15e49160d7070c79e38697ff29"
+    },
+    {
+      "path": "active-affine-handoff-v3.patch",
+      "sha256": "629c981a3bfea64c1c14e31334fb64f9291da2795ef6885289e17276798889ac"
+    },
+    {
+      "path": "handoff-causal-trace-unverified-v1.patch",
+      "sha256": "8677526447a4778568175d28600b7eb1575c2908797bea1a55dd256f10a6af03",
+      "precondition": "three-fix frozen10-file result, not bare main"
+    }
+  ],
+  "staticAssembly": {
+    "tracePreconditionsMatched": 7,
+    "copiedPayloadHashesMatched": 7,
+    "changedFilesVsGit": 13,
+    "method": "merge-trace-snapshot.py verifies exact previous/candidate file hashes, copies frozen seven files, then reads Git baseline hashes; no test or dry-run execution"
+  },
+  "validation": {
+    "finalRegression": "NOT RUN by user instruction",
+    "finalTypecheck": "NOT RUN",
+    "finalTrace": "UNVERIFIED including final ringDropped edits",
+    "finalGuardTests": "NOT RUN",
+    "forwardReverseApplyTests": "NOT RUN",
+    "historicalBaseTests": 542,
+    "historicalBaseScope": "Before trace only; cannot establish final package correctness",
+    "author129Intermediate": "Predates final ringDropped edits; not current acceptance",
+    "packagingChecks": "File inventory, exact Git before/candidate hashes and ZIP integrity only"
+  },
+  "limits": [
+    "No physical GPU or Electron GUI validation",
+    "No Figma pixel parity claim",
+    "Queue experiment excluded",
+    "No Rust build or WASM change",
+    "Final trace changes and full final combination unverified",
+    "No further regression was run after user stopped testing",
+    "Trace is bounded handoff causality only, not whole-system tracing",
+    "No claim of lower req173 peak, all working-set problems solved, or physical same-frame/FPS acceptance"
+  ],
+  "wasm": {
+    "sha256": "d0062466914e7e79f58375153a110077dd54374060918b04f9e370ae163c609c",
+    "profile": "dev-opt1 CPU only",
+    "rustTree": "2a29bd31444023a8d661f757c38fb67d7c9f17e0",
+    "vendorTree": "2d9a6036e6e5654dcccf8c065216417a65cc69bd"
+  }
+}

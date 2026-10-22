@@ -1,0 +1,129 @@
+{
+  "baseline": "8070ebeed52f75cadc66b036543e9fcc8fad104f",
+  "source": "source before trace, not final payload",
+  "candidates": [
+    {
+      "path": "146825-one-use-regional-field-retirement-v1.patch",
+      "sha256": "ab191eee9f758d645e6599a8a03c279001c72f867b821a06b41d67f74824d564"
+    },
+    {
+      "path": "146825-native-translation-handoff-v1.patch",
+      "sha256": "16aeb9b69b29ef2a991f6428cd69e611c199ac15e49160d7070c79e38697ff29"
+    },
+    {
+      "path": "active-affine-handoff-v3.patch",
+      "sha256": "629c981a3bfea64c1c14e31334fb64f9291da2795ef6885289e17276798889ac"
+    }
+  ],
+  "files": [
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "beforeSha256": "ab6e82d7571d862c3a6afbae28192df60d0cebd3750c590c75cb03057fe222af",
+      "afterSha256": "4f8320e2480ccbcce6e08939e7f1c086442f3c65739215070155813e9d2993f2",
+      "bytes": 151543
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ResidentCompositeSurface.tsx",
+      "beforeSha256": "66eceeb059964cdab200de9737737fb068e376367a76e1738e3a7ebd46c7f609",
+      "afterSha256": "d88e9f887b27505e97395641a2b4afefb2a834d5c0ec251fa4d3dd0ee8427d48",
+      "bytes": 17783
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/budget-working-set-repro.test.ts",
+      "beforeSha256": null,
+      "afterSha256": "125f59afee2d7c2faac7c1ec91a4d06585b8d5789f4a3c8d03de5f6a021cbb10",
+      "bytes": 10159
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "beforeSha256": "495690d50b841f460dc61667e0c9de0c36998c31aef305d87bbee453726dec69",
+      "afterSha256": "c0cb5a269e6d501211cb70de4c44fdf7bf016944764723e6a1874d15060e1cc3",
+      "bytes": 327099
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-layers.ts",
+      "beforeSha256": "987f85c5c08c457ba7f8ea2e9bf2a1b7036c4d5bd12ef4d863a3e4891fd31056",
+      "afterSha256": "fec6bf33fb9d99c962080c4f05ebe350a563eaaac24e3725c207b9f403cf3087",
+      "bytes": 9584
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-release-handoff.test.ts",
+      "beforeSha256": "c5a9361d5a765ec0e9e66bf294f494b1e042f83828f5c13c3726c6ba3d5f7862",
+      "afterSha256": "994260be5177978f928f6eecbdeb4eb50015934466219c7fe2c5a238511e1a78",
+      "bytes": 16343
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.ts",
+      "beforeSha256": "4c0564743a5caff6ebeec0bb6bf0615b63cf55e58fdf296aa37f0c89e761c9f1",
+      "afterSha256": "45f19959f7f01b57e70648233ecbb689b69c92baa1783e30595d3249a634ae0f",
+      "bytes": 66594
+    },
+    {
+      "path": "frontend/design-client/src/kernel/rotation-handoff.integration.test.tsx",
+      "beforeSha256": null,
+      "afterSha256": "d60af6c792883c26842d9c2a1dc3da9cb13411d6cd688af3bd74d501d832b149",
+      "bytes": 7123
+    },
+    {
+      "path": "frontend/design-client/vitest.handoff-regression.config.mts",
+      "beforeSha256": null,
+      "afterSha256": "a97b446443350cc92e5d92e3f6a1e759b70cd3921a5ff08ea8d05319d4421f06",
+      "bytes": 446
+    },
+    {
+      "path": "frontend/design-client/vitest.rotation-handoff.config.mts",
+      "beforeSha256": null,
+      "afterSha256": "34d8804ebbeddf3feeb31f01199dc28ec366ca81a38d6926f2621d4ca97aca4c",
+      "bytes": 254
+    }
+  ],
+  "merge": "git apply --reject rotation-v3 followed by exact assert-count replacements in resolve-rotation-overlap.py; all preexisting fatal recovery preserved",
+  "tests": {
+    "status": "passed",
+    "logs": [
+      "final-renderer.log",
+      "final-pose.log",
+      "final-mounted.log",
+      "final-node.log",
+      "final-typecheck.log",
+      "final-handoff-extra.log"
+    ],
+    "distinctTests": 542,
+    "groups": {
+      "renderer": 284,
+      "poseEditor": 101,
+      "mountedCanvas": 17,
+      "handoffAndField": 58,
+      "node": 82
+    },
+    "scopedStrictTypecheck": "exit0; empty output",
+    "noDuplicateFiles": true,
+    "evidenceHashes": {
+      "final-renderer.log": "749ade4cb250c9543a80d3e8129af8bf52a5fb9797d7d6f37af35ccfd928fa27",
+      "final-pose.log": "81e30ec46e0112b890f2d6592680c54c95d6b5635afbf390b41fd2beea01d7ce",
+      "final-mounted.log": "b3f0c60aa567e69c3c6e3329f13e6507810f439cf978752edbab3dfd503a765a",
+      "final-node.log": "f5600b269fde12b0083f68e44a5b5f400ff9ed9fcb540a9e76ba427ead827793",
+      "final-typecheck.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "final-handoff-extra.log": "8c2e7c0cc8252f0c8edaee8f108dde88c8fb19b061de45ca9caa1b9d5da925ba"
+    }
+  },
+  "wasm": {
+    "sha256": "d0062466914e7e79f58375153a110077dd54374060918b04f9e370ae163c609c",
+    "profile": "dev-opt1 CPU only",
+    "rustTree": "2a29bd31444023a8d661f757c38fb67d7c9f17e0",
+    "vendorTree": "2d9a6036e6e5654dcccf8c065216417a65cc69bd"
+  },
+  "limits": [
+    "No physical GPU or Electron GUI validation",
+    "No Figma pixel parity claim",
+    "Queue experiment excluded",
+    "No Rust build or WASM change"
+  ],
+  "replay": {
+    "allExact": true,
+    "filesVerified": 10,
+    "script": "verify-replay.py"
+  },
+  "scope": "HISTORICAL 542-test three-repair base only; not validation of final trace or package",
+  "originalManifestSha256": "9ff75517e89a54385cf345792faa8b732331a796aaabc3c4d9eb9bf93ae5ef95"
+}

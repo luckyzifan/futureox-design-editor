@@ -1,3 +1,4 @@
+import { createHandoffTrace, gestureCode, type HandoffTrace } from './handoff-trace'
 import { useLayoutEffect, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import type { PresentedFrame } from './Surface'
@@ -16,6 +17,9 @@ import { InteractionRenderer } from './interaction-renderer'
 import { PageTranslation } from './page-translation'
 import { settleResidentImport } from './resident-import-ownership'
 import { viewportPreviewDeviceKey, type ViewportPreviewDevice } from './viewport-preview-cache'
+
+const activeAffineGesture = (interaction?: InteractionProps) =>
+  !!interaction?.active && !!interaction.gestureKind && interaction.gestureKind !== 'move'
 
 export function ResidentCompositeSurface(props: {
   client: KernelClient
@@ -46,6 +50,9 @@ export function ResidentCompositeSurface(props: {
    * This is not a GPU completion or a rendered-pixel quality certificate. */
   onCompositeItems?: (items: readonly CompositeItem[]) => void
 }) {
+  const trace=useRef<HandoffTrace|null>(null)
+  if(!trace.current)trace.current=createHandoffTrace()
+  const lastOwnerKind=useRef(0)
   const canvas = useRef<HTMLCanvasElement>(null),
     latest = useRef(props)
   latest.current = props
@@ -67,8 +74,12 @@ export function ResidentCompositeSurface(props: {
   repaint.current = () => {
     if (!attached.current) return
     const p = latest.current,
-      moving = usePageTranslation.current || pageTranslation.current?.handingOff && !interaction.current?.ready
+      moving = !activeAffineGesture(p.interaction) && (usePageTranslation.current || pageTranslation.current?.handingOff && !interaction.current?.ready)
         ? pageTranslation.current : interaction.current
+    const ownerKind=moving===pageTranslation.current?1:2
+    trace.current!.record(1,activeAffineGesture(p.interaction)?1:usePageTranslation.current?2:pageTranslation.current?.handingOff&&!interaction.current?.ready?3:0,{
+      handoffGesture:gestureCode(p.interaction?.gestureKind),handoffActive:Number(!!p.interaction?.active),handoffOwnerKind:ownerKind,handoffPreviousOwnerKind:lastOwnerKind.current})
+    lastOwnerKind.current=ownerKind
     const owner=`${inputScope.current}:${moving===pageTranslation.current?'page':'layer'}:${p.interaction?.epoch??0}`
     if(owner!==inputOwner.current){
       inputOwner.current=owner;inputTrace.current=[]
@@ -98,7 +109,7 @@ export function ResidentCompositeSurface(props: {
         importing.current.set(tile.serial, token)
         const owns = () => {
           const current = latest.current
-          const active = usePageTranslation.current || pageTranslation.current?.handingOff && !interaction.current?.ready
+          const active = !activeAffineGesture(current.interaction) && (usePageTranslation.current || pageTranslation.current?.handingOff && !interaction.current?.ready)
             ? pageTranslation.current : interaction.current
           return attached.current && importSession.current === session && current.client === p.client &&
             (current.items.some(item => item.tile === tile) || !!active?.tiles.includes(tile))
@@ -267,7 +278,7 @@ export function ResidentCompositeSurface(props: {
             viewportPreviewDeviceKey(device) ? device : undefined))
         }
       }
-      interaction.current = new InteractionRenderer(() => repaint.current(), p.client, renderExecutionPolicy.desktopDisplay)
+      interaction.current = new InteractionRenderer(() => repaint.current(), p.client, renderExecutionPolicy.desktopDisplay, undefined, trace.current!)
       pageTranslation.current = new PageTranslation(() => repaint.current(), (document, patches, displayed) => {
         const p = latest.current, renderer = interaction.current
         if (!p.interaction || !renderer) return null
@@ -315,7 +326,11 @@ export function ResidentCompositeSurface(props: {
       canvas.current.style.height = `${p.height}px`
     }
     // Initial document pixels have priority over warming a saved selection.
-    usePageTranslation.current =
+    // Exact page readiness is not permission to steal an active affine edit.
+    // Keep the live owner warm; its sample floor independently decides which
+    // complete pixels may be shown over the newly ready page.
+    const affineGesture = !!p.interaction?.active && !!p.interaction.gestureKind && p.interaction.gestureKind !== 'move'
+    usePageTranslation.current = !affineGesture &&
       pageTranslation.current?.prepare(
         p.interaction,
         p.pageId,

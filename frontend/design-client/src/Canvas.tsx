@@ -632,7 +632,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const interactionScene = useMemo(() => snapshots.borrowCurrentScene(state.doc, state.page, editor.sessionGeneration),
     [snapshots, currentScene, state.doc, state.page, editor, editor.sessionGeneration, geometryReady])
   const gpuInteraction = useMemo<InteractionProps>(() => ({ document: state.doc, selection: state.selection,
-    active: editor.interactionActive, epoch: editor.sessionGeneration, control: gpuMove, onReady: interactionReady,
+    active: editor.interactionActive, gestureKind: drag.current?.kind, epoch: editor.sessionGeneration, control: gpuMove, onReady: interactionReady,
     onPreviewFailed: failure => {
       recoverInteractionPreview(failure, { editor, pending: () => pendingBoardMove.current,
         gesture: () => drag.current as { kind: string; ids: string[]; duplicating?: boolean } | null,
@@ -649,7 +649,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (gesture.actionToken) actionTrace.sample(gesture.actionToken, { posePresentedSequence: pose.sequence, poseLatencyMs: Math.round(pose.latencyMs) })
     },
     scene: interactionScene }),
-    [state.doc, state.selection, editor.interactionActive, editor.sessionGeneration, interactionReady, interactionScene])
+    [state.doc, state.selection, editor.interactionActive, editor.sessionGeneration, interactionReady, interactionScene, drag.current?.kind])
   const sliceEntries = useMemo(() => entries.filter(entry => state.doc.nodes[entry.id].kind === 'slice'),
     [entries, state.doc])
   const lastOpenedSession = useRef(editor.sessionGeneration)
