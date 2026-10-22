@@ -18,6 +18,8 @@ export type GpuMoveControl = {
   end(document: DesignDocument): void
 }
 export type InteractionProps = {
+  /** Canvas gesture semantics; affine edits must not be rebound to a translation-only owner. */
+  gestureKind?: string
   document: DesignDocument; selection: string[]; active: boolean; epoch: number; control: RefObject<GpuMoveControl | null>; onReady: () => void
   /** Optional Canvas-only published geometry. Other callers remain uncached. */
   onPreviewFailed?: (failure: InteractionPreviewFailure) => void
