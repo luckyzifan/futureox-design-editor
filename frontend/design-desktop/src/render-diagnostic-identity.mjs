@@ -1,6 +1,6 @@
 // Versioned content-free provenance. Hashes identify inputs, not GPU correctness
 // or reproducible output. No URLs, paths, environment values or document data.
-export const FAILURE_DICTIONARY_VERSION = 1
+export const FAILURE_DICTIONARY_VERSION = 2
 export const DIAGNOSTIC_PRODUCER_VERSION = 1
 const digestFields = ['producerSourceSha256', 'producerWasmInputSha256', 'failureDictionarySha256']
 export function sanitizeProducerIdentity(value) {

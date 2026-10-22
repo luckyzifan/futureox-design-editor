@@ -19,8 +19,10 @@ import { isRecoverablePreviewBudget } from '../preview-budget-recovery'
 import { planExactImageXTable } from './exact-image-x-table'
 import type { ExactImageTable } from './types'
 import { completeFilterAxisSupport } from './opaque-filter'
-import { gpuDiagnosticsEnabled, recordGpuDiagnostic } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
-import { markRenderFailure } from '../render-failure-telemetry'
+import { gpuDiagnosticsEnabled, gpuDiagnosticEpoch, recordGpuDiagnostic } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
+import { markRuntimeConfiguration } from '../../../../design-desktop/src/render-runtime-configuration.mjs'
+import { markFailureAllocation } from '../../../../design-desktop/src/render-failure-allocation.mjs'
+import { markRenderFailure, renderFailureFields, renderFailureThrownKind } from '../render-failure-telemetry'
 import { backdropEffect, backdropRadius, classifyCompiledSourceReuse } from '../render-dependency'
 import { prefixRationalUnsupported } from './prefix-preflight'
 import { renderErrorWithBudget, sanitizeRenderBudget, type RenderBudgetDiagnostic } from '../render-diagnostics'
@@ -154,6 +156,8 @@ export function mipLevelsFor(dims: [number, number]): number {
   }
   return levels
 }
+const MATERIAL_FIELD_KINDS = new Map<unknown, number>(['image-axes-support','image-grid','gradient-grid','gradient-lookup',
+  'figma-gradient-field','texture','glass','glass-border'].map((kind,index) => [kind,index+1]))
 export class GpuRenderer {
   private encodeYield = new EncodeYield()
   private frameCurrent?: () => boolean
@@ -170,6 +174,53 @@ export class GpuRenderer {
       this.checkFrameCurrent()
       if (import.meta.env.VITE_DESIGN_ENCODE_SUBMIT !== '0') this.driver.submitPending?.()
     })
+  }
+  // Only numeric runtime branch facts. The snapshot belongs to the current
+  // local renderAttempt; an Error keeps that immutable version across retries.
+  private activeRuntimeConfiguration?: Readonly<Record<string, number>>
+  private runtimeConfiguration?: Readonly<Record<string, number>>
+  private runtimeConfigurationKey = ''
+  private runtimeConfigurationEpoch = -1
+  private reportedRuntimeConfigurations = new Set<string>()
+  private recordRuntimeConfiguration(scene: GpuScene, readback: boolean, present: boolean) {
+    if (!gpuDiagnosticsEnabled()) {
+      this.runtimeConfiguration = undefined; this.runtimeConfigurationKey = ''; return
+    }
+    const epoch = gpuDiagnosticEpoch()
+    if (epoch !== this.runtimeConfigurationEpoch) {
+      this.runtimeConfigurationEpoch = epoch; this.reportedRuntimeConfigurations.clear()
+    }
+    const driverCode = this.driver.name === 'webgpu' ? 2 : this.driver.name === 'webgl2' ? 1 : 0
+    const bits = Number(!!this.imageAtlas) | Number(!!this.imageMips) << 1 |
+      Number(!!this.driver.managed) << 2 | Number(!!this.driver.linearLight) << 3 |
+      Number(!!this.driver.hdr) << 4 | Number(!!this.driver.displayMath) << 5 |
+      Number(!!this.driver.captureDisplay) << 6 | Number(typeof this.driver.uploadLinear === 'function') << 7 |
+      Number(typeof this.driver.uploadAtlasLinear === 'function') << 8 | Number(!!scene.floatCompositing) << 9 |
+      Number(!!scene.colorManagement) << 10 | Number(!!scene.coherentSamples) << 11 |
+      Number(readback) << 12 | Number(present) << 13 | Number(!!scene.softwareRaster) << 14 |
+      Number(scene.compactImageFields !== false) << 15 | Number(import.meta.env.VITE_DESIGN_IMAGE_AXES !== '0') << 16 |
+      Number(!!this.driver.managed && this.driver.name === 'webgpu' && scene.compactImageFields !== false &&
+        import.meta.env.VITE_DESIGN_IMAGE_AXES !== '0') << 17 | Number(import.meta.env.VITE_DESIGN_STREAM_IMAGE_FIELDS !== '0') << 18
+    const configured = this.gpuWorkingBudgetMiB ?? 0
+    // Constant-size scalar comparison, not content hashing or a scene walk.
+    const key = `${bits}:${driverCode}:${this.frameBudget}:${configured}`
+    if (key !== this.runtimeConfigurationKey) {
+      const fields: Record<string, number> = { runtimeConfigVersion: 1, runtimeDriverCode: driverCode,
+        runtimeWorkingBudgetBytes: this.frameBudget, runtimeBudgetSource: this.gpuWorkingBudgetMiB === undefined ? 1 : 2,
+        runtimeConfiguredBudgetMiB: configured }
+      const names = ['runtimeImageAtlas','runtimeImageMips','runtimeDriverManaged','runtimeLinearLight',
+        'runtimeHdr','runtimeDisplayMath','runtimeCaptureDisplay','runtimeFloatUpload','runtimeFloatAtlasUpload',
+        'runtimeFloatCompositing','runtimeColorManaged','runtimeCoherentSamples','runtimeReadback','runtimePresent','runtimeSoftwareRaster',
+        'runtimeCompactImageFields','runtimeImageAxesEnabled','runtimeImageAxesEligible','runtimeStreamImageFields']
+      names.forEach((name, index) => { fields[name] = bits >>> index & 1 })
+      this.runtimeConfiguration = Object.freeze(fields); this.runtimeConfigurationKey = key
+    }
+    this.activeRuntimeConfiguration = this.runtimeConfiguration
+    if (this.reportedRuntimeConfigurations.size < 16 && !this.reportedRuntimeConfigurations.has(key)) {
+      this.reportedRuntimeConfigurations.add(key)
+      // Logging failure must never change allocation/throw/recovery behavior.
+      try { recordGpuDiagnostic('runtime-config', this.runtimeConfiguration) } catch { /* diagnostics only */ }
+    }
   }
   lastBudgetFailure?: RenderBudgetDiagnostic
   private frameBudget = SURFACE_BUDGET_BYTES
@@ -625,23 +676,41 @@ export class GpuRenderer {
     this.driver.destroy(texture)
     this.bytes -= texture.bytes
   })
+  private failureOrigin<T>(error: T, origin: number, buildKind = 0): T {
+    markRenderFailure(error, { failureOriginCode: origin, failureBuildKind: buildKind })
+    if (gpuDiagnosticsEnabled()) try {
+      recordGpuDiagnostic('failure-origin', { ...this.activeRuntimeConfiguration, ...renderFailureFields(error),
+        failureOriginCode: origin, failureBuildKind: buildKind, failureBoundaryStage: origin === 5 ? 7 : 12,
+        failureThrownKind: renderFailureThrownKind(error),
+        failureMaterialFieldBuilds:this.fieldBuilds,failureMaterialFieldUploadBytes:this.fieldUploadBytes,
+        failureImageAxisFields:this.imageAxisFields,failureImageFieldBytes:this.imageFieldBytes })
+    } catch { /* diagnostic transport must not change the thrown value */ }
+    return error
+  }
+  private prepareWithFailureOrigin<T>(origin: number, work: () => T, buildKind = 0): T {
+    try { return work() } catch (error) { throw this.failureOrigin(error, origin, buildKind) }
+  }
   private materialField<T extends Float32Array | Uint8Array>(inputs: unknown[], r: Rect, build: () => T,
     upload: (values: T, width: number, height: number) => Texture,
     layout?: (values: T) => [number, number], admissionBytes = r.w * r.h * 16, allowCache = true): Surface {
+    // Only the private, code-controlled discriminator is inspected; no inputs are logged.
+    const fieldKind = gpuDiagnosticsEnabled() ? MATERIAL_FIELD_KINDS.get(inputs[0]) || 0 : 0
     const key = JSON.stringify(inputs, (_key, value) => Object.is(value, -0) ? '-0' : value)
     const bits = new Uint32Array(0)
     let texture = this.optimized && allowCache ? this.materialFields.get(key, bits) : undefined
     if (texture) this.fieldHits++
     else {
-      if (this.overBudget(admissionBytes, layout ? undefined : r.w, layout ? undefined : r.h)) throw this.budgetError('GPU 表面内存预算超限')
+      if (this.overBudget(admissionBytes, layout ? undefined : r.w, layout ? undefined : r.h)) throw this.budgetError('GPU 表面内存预算超限', 2, fieldKind)
       const start = performance.now()
-      const values = build()
+      let values: T
+      try { values = build() } catch (error) { throw this.failureOrigin(error, 6, fieldKind) }
       this.fieldBuildMs += performance.now() - start
       this.fieldBuilds++
       const [width,height] = layout?.(values) || [r.w,r.h]
       if (values.length !== width * height * 4) throw Error('无效的参数字段布局')
-      if (this.overBudget(values.byteLength, width, height)) throw this.budgetError('GPU 表面内存预算超限')
-      texture = upload.call(this.driver, values, width, height)
+      if (this.overBudget(values.byteLength, width, height)) throw this.budgetError('GPU 表面内存预算超限', 3, fieldKind)
+      try { texture = upload.call(this.driver, values, width, height) }
+      catch (error) { throw this.failureOrigin(error, 7, fieldKind) }
       this.fieldUploadBytes += values.byteLength
       this.bytes += texture.bytes
       this.peak = Math.max(this.peak, this.bytes)
@@ -697,7 +766,7 @@ export class GpuRenderer {
               binary:!!t.binaryCoverage,scalar:!!t.scalarCoverage,aliases:this.aliases.get(t)||1,...this.traceSurfaces.get(t) })),
             coordinates: this.coordinateMaps.size, stack: new Error().stack }))
         }
-        throw this.budgetError('GPU 表面内存预算超限')
+        throw this.budgetError('GPU 表面内存预算超限', 1)
       }
       texture = scalarCoverage ? this.driver.createScalarCoverage!(r.w,r.h) : binaryCoverage ? this.driver.createBinaryCoverage!(r.w, r.h) : this.driver.create(r.w, r.h)
       this.bytes += texture.bytes
@@ -824,10 +893,24 @@ export class GpuRenderer {
   }
   /** Consume at the immediate allocation rejection, before any recovery can
    * clear/reuse this renderer. Optional failed admissions own no error. */
-  private budgetError(message: string): Error {
+  private budgetError(message: string, allocationKind = 0, buildKind = 0): Error {
     const diagnostic = this.lastBudgetFailure
     this.lastBudgetFailure = undefined
-    return markRenderFailure(renderErrorWithBudget(message, undefined, diagnostic), { failureStage: 13, failureCategory: 3, failureCode: 200 })
+    const error = markRenderFailure(markRuntimeConfiguration(renderErrorWithBudget(message, undefined, diagnostic), this.activeRuntimeConfiguration),
+      { failureStage: 13, failureCategory: 3, failureCode: 200 })
+    if (gpuDiagnosticsEnabled()) try {
+      markFailureAllocation(error, { failureAllocationSnapshotVersion: 1, failureAllocationKind: allocationKind,
+        failureBuildKind: buildKind, failureLedgerTotalBytes: this.bytes,
+        failureMaterialFieldBuilds:this.fieldBuilds,failureMaterialFieldUploadBytes:this.fieldUploadBytes,
+        failureImageAxisFields:this.imageAxisFields,failureImageFieldBytes:this.imageFieldBytes,
+        failureLedgerInteractionBytes: this.interactionBytes, failureLedgerNestedPrefixBytes: this.nestedPrefixBytes,
+        failureLedgerDriverScratchBytes: this.driver.scratchBytes || 0, failureLedgerMaterialFieldBytes: this.materialFields.bytes,
+        failureLedgerCoverageBytes: this.coverage.bytes, failureLedgerKernelBytes: this.kernelCache.bytes,
+        failureLedgerBusyCount: this.busy.size, failureLedgerImageCount: this.images.size,
+        failureLedgerAtlasPageCount: this.atlasPages.length, failureLedgerRetiredUploadCount: this.retiredUploads.length,
+        failureLedgerCoordinateCount: this.coordinateMaps.size })
+    } catch { /* existing allocation failure remains authoritative */ }
+    return error
   }
   private release(...surfaces: (Surface | undefined)[]) {
     for (const s of new Set(surfaces)) {
@@ -1561,7 +1644,7 @@ export class GpuRenderer {
       const image = this.managedImageLoader(uri, false, level)
       // Images share the one surface ledger; pressure evicts older images
       // first instead of failing the frame.
-      if (this.overBudget(image.width * image.height * 16, image.width, image.height)) throw this.budgetError('GPU 浮点图片内存预算超限')
+      if (this.overBudget(image.width * image.height * 16, image.width, image.height)) throw this.budgetError('GPU 浮点图片内存预算超限', 4)
       if (intoAtlas && image.width <= ATLAS_MAX_IMAGE && image.height <= ATLAS_MAX_IMAGE)
         return this.writeAtlasSlot(uri, level, image.width, image.height, { floats: bakeFloats(image.pixels) }, adjust)
       const texture = this.driver.uploadLinear(bakeFloats(image.pixels), image.width, image.height)
@@ -1586,7 +1669,7 @@ export class GpuRenderer {
     // fidelity pixels as a successfully rendered native-density tile.
     if (level === 0 && image.width * image.height > 16_777_216)
       throw new Error('GPU 图片像素预算超限')
-    if (this.overBudget(image.bytes.length, image.width, image.height)) throw this.budgetError('GPU 图片总内存预算超限')
+    if (this.overBudget(image.bytes.length, image.width, image.height)) throw this.budgetError('GPU 图片总内存预算超限', 5)
     if (intoAtlas && image.width <= ATLAS_MAX_IMAGE && image.height <= ATLAS_MAX_IMAGE)
       return this.writeAtlasSlot(uri, level, image.width, image.height, { bytes: bake(image.bytes) }, adjust)
     const texture = this.driver.uploadRgba8(bake(image.bytes), image.width, image.height)
@@ -1628,7 +1711,7 @@ export class GpuRenderer {
       const texture = this.driver.create(ATLAS_SIDE, ATLAS_SIDE)
       if (this.overBudget(texture.bytes, texture.width, texture.height)) {
         this.driver.destroy(texture)
-        throw this.budgetError('GPU 图集页内存预算超限')
+        throw this.budgetError('GPU 图集页内存预算超限', 6)
       }
       this.bytes += texture.bytes
       this.peak = Math.max(this.peak, this.bytes)
@@ -1930,7 +2013,7 @@ export class GpuRenderer {
       (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin], n.rect, () => {
       let values = compact ? image_sampling_axes_placed(...arguments_) : new Float32Array()
       if (!values.length) {
-        if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16, n.rect.w, n.rect.h)) throw this.budgetError('GPU 表面内存预算超限')
+        if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16, n.rect.w, n.rect.h)) throw this.budgetError('GPU 表面内存预算超限', 7)
         values = this.driver.managed ? image_sampling_grid_placed(...arguments_) : image_byte_sampling_field_placed(...arguments_)
       }
       separated = this.driver.managed ? values[3] === -1 : values[3] === 1
@@ -3243,7 +3326,7 @@ export class GpuRenderer {
       this.checkFrameCurrent()
       const before = this.driver.scratchBytes || 0
       try {
-        if (this.overBudget(plan.bytes)) throw this.budgetError('GPU 表面内存预算超限')
+        if (this.overBudget(plan.bytes)) throw this.budgetError('GPU 表面内存预算超限', 8)
         if (!this.driver.encodeByteTentAlpha!(target.texture, source.texture,
           { radius: plan.radius, axis: plan.axis, source: plan.source, output: plan.output, scratchBudgetBytes: plan.bytes },
           this.frameBudget - this.workingBytes))
@@ -4119,7 +4202,7 @@ export class GpuRenderer {
       }
       const [width, height] = shape ? shape(values) : [values.length / 4, 1]
       const bytes = values.byteLength * (values instanceof Uint8Array && this.driver.managed ? 4 : 1)
-      if (this.overBudget(bytes, width, height)) throw this.budgetError('GPU 表面内存预算超限')
+      if (this.overBudget(bytes, width, height)) throw this.budgetError('GPU 表面内存预算超限', 9)
       if (values instanceof Float32Array) {
         if (!this.driver.uploadLinear) throw new Error('Backend cannot upload linear coefficients')
         texture = this.driver.uploadLinear(values, width, height)
@@ -4426,8 +4509,8 @@ export class GpuRenderer {
           import.meta.env.VITE_DESIGN_COHERENT_SPARSE_GLASS==='1')&&!this.scene.softwareRaster&&
           !n.captureReplay&&import.meta.env.VITE_DESIGN_SPARSE_GLASS!=='0') {
         const started=performance.now()
-        const plan=JSON.parse(glass_geometry_interior(JSON.stringify(region),JSON.stringify(fieldRegion),new Float64Array(n.matrix),
-          JSON.stringify(n.glassShape),JSON.stringify(fx),sample)) as {interior:Rect;value:number[]}|null
+        const plan=JSON.parse(this.prepareWithFailureOrigin(6, () => glass_geometry_interior(JSON.stringify(region),JSON.stringify(fieldRegion),new Float64Array(n.matrix),
+          JSON.stringify(n.glassShape),JSON.stringify(fx),sample), 9)) as {interior:Rect;value:number[]}|null
         this.fieldBuildMs+=performance.now()-started
         if(plan&&plan.interior.w*plan.interior.h>fieldRegion.w*fieldRegion.h*.5)
           return this.sparseGlass(backdrop,mask,n,fx,fieldRegion,plan,unmasked,sample)
@@ -4559,7 +4642,7 @@ export class GpuRenderer {
     const reusable = this.driver.uploadReplayParameters
     if (!reusable && !this.driver.uploadParameters) throw new Error('后端不支持纹理重放参数')
     const bytes = reusable ? (this.replayParameters ? 0 : 1024 * 1024 * 16) : r.w * r.h * 16
-    if (this.overBudget(bytes)) throw this.budgetError('GPU 表面内存预算超限')
+    if (this.overBudget(bytes)) throw this.budgetError('GPU 表面内存预算超限', 10)
     const values = texture_replay_field(
       JSON.stringify(n.textureReplay),
       JSON.stringify(viewport),
@@ -4587,7 +4670,7 @@ export class GpuRenderer {
     }
     if (!this.driver.uploadRgba8) throw new Error('后端不支持纹理裁剪数学表')
     const bytes = 1024 * 1024 * 4
-    if (this.overBudget(bytes)) throw this.budgetError('GPU 表面内存预算超限')
+    if (this.overBudget(bytes)) throw this.budgetError('GPU 表面内存预算超限', 11)
     const values = texture_clip_math_atlas()
     if (values.length !== bytes) throw new Error('纹理裁剪数学表长度不一致')
     this.textureMath = this.retainTextureData(
@@ -4619,7 +4702,7 @@ export class GpuRenderer {
       let lookup = this.textureLookups.get(key)
       if (!lookup) {
         if (!this.driver.uploadRgba8) throw new Error('后端不支持纹理渐变查找表')
-        if (this.overBudget(8192, 1024, 2)) throw this.budgetError('GPU 表面内存预算超限')
+        if (this.overBudget(8192, 1024, 2)) throw this.budgetError('GPU 表面内存预算超限', 12)
         const values = figma_gradient_lookup(key)
         if (values.length !== 8192) throw new Error('纹理渐变查找表长度不一致')
         lookup = this.retainTextureData(
@@ -5017,9 +5100,10 @@ export class GpuRenderer {
       console.debug('DESIGN_GPU_PREFIX_BUDGET_FALLBACK ' + JSON.stringify({ reserved, extent: scene.extent }))
       try { return await this.renderAttempt(scene, readback, present) }
       finally { this.prefixAllowed = true; this.nestedPrefixAllowed = true }
-    } finally { this.frameCurrent = undefined }
+    } finally { this.frameCurrent = undefined; this.activeRuntimeConfiguration = undefined }
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
+    this.activeRuntimeConfiguration = undefined
     if (this.painterStagesEnabled(scene)) {
       // Bind candidate coverage proofs and driver uploads to one private
       // snapshot before any pipeline preparation yields. Native JSON already
@@ -5079,6 +5163,8 @@ export class GpuRenderer {
       ?Object.values(scene.nodes).reduce((largest,n)=>n.effects.some(e=>e.visible&&(e.kind==='glass'||e.kind==='background-blur'))
         ?Math.max(largest,intersect(n.rect,scene.extent).w*intersect(n.rect,scene.extent).h):largest,0):0
     this.frameBudget = workingSetBudget(workingTarget.w, workingTarget.h, nativeDisplay, opticalPixels, this.gpuWorkingBudgetMiB)
+    try { this.recordRuntimeConfiguration(scene, readback, present) }
+    catch { this.activeRuntimeConfiguration = undefined /* diagnostics must not change rendering */ }
 
     if (!!(scene.floatCompositing || scene.colorManagement) !== !!this.driver.managed)
       throw new Error('GPU 纹理精度与文档色彩空间不一致')
@@ -5150,20 +5236,22 @@ export class GpuRenderer {
     const started = performance.now()
     // Scene policy is installed synchronously before its async pipeline work.
     // Filter programs and image uploads can then prepare independently.
-    const preparation = [this.driver.prepareScene?.(scene, !readback && present)]
+    const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present))]
     if (index.hasFilters)
-      preparation.push(this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized && this.driver.managed && scene.integratedBlur && index.hasPrefixFilter)))
+      preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized && this.driver.managed && scene.integratedBlur && index.hasPrefixFilter))))
     preparation.push(this.loadImages(scene))
     const prepared = await Promise.allSettled(preparation)
-    const prepareFailure = prepared.find(result => result.status === 'rejected')
-    if (prepareFailure?.status === 'rejected') throw prepareFailure.reason
+    const prepareFailureIndex = prepared.findIndex(result => result.status === 'rejected')
+    const prepareFailure = prepared[prepareFailureIndex]
+    if (prepareFailure?.status === 'rejected') throw this.failureOrigin(prepareFailure.reason,
+      prepareFailureIndex === 0 ? 1 : prepareFailureIndex === prepared.length - 1 ? 3 : 2)
     const vertices = scene.vertices instanceof Float32Array ? scene.vertices : new Float32Array(scene.vertices)
     this.meshBits = new Uint32Array(vertices.buffer, vertices.byteOffset, vertices.length)
     const curves = scene.curves instanceof Float32Array ? scene.curves : new Float32Array(scene.curves || [])
     this.curveBits = new Uint32Array(curves.buffer, curves.byteOffset, curves.length)
     this.hybridEffects = 0
     this.checkFrameCurrent()
-    this.driver.begin(vertices, curves)
+    this.prepareWithFailureOrigin(4, () => this.driver.begin(vertices, curves))
     this.masks.clear()
     this.independentSampleNodes.clear()
     this.maskOwners.clear()
@@ -5266,7 +5354,7 @@ export class GpuRenderer {
         scene.presentation,
         present,
         scene.output,
-      ) } catch (error) { throw markRenderFailure(error, { failureStage: 7 }) } finally {
+      ) } catch (error) { throw this.failureOrigin(markRenderFailure(error, { failureStage: 7 }), 5) } finally {
         // Driver finish may retire scratch before a later readback fails.
         this.bytes += (this.driver.scratchBytes || 0) - finishingScratch
       }
@@ -5333,7 +5421,7 @@ export class GpuRenderer {
         description: this.driver.description,
       }
     } catch (error) {
-      markRenderFailure(error, { failureStage: 12 })
+      this.failureOrigin(markRenderFailure(error, { failureStage: 12 }), 4)
       if (scene.sequentialDisplay || error instanceof Error && error.message === 'PREVIEW_CANCELLED') {
         // Never pool/destroy frame resources while submitted commands still
         // reference them. This leaves the separately owned presented frame alive.

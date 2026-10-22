@@ -57,7 +57,7 @@ test('provenance adds no events or per-frame work and remains on error and dropp
     sink: row => rows.push(row), now: () => 1, schedule: () => 1, cancel: () => {} })
   d.record('queue-start', { requestId: 1 }); d.record('tile', { requestId: 1 }); d.record('error', { requestId: 1, failureCode: 20 }); d.flush()
   assert.equal(rows.length, 3); assert.equal(rows[0].diagnosticProducerVersion, 1)
-  assert(!('producerIdentityStatus' in rows[1])); assert.equal(rows[2].failureDictionaryVersion, 1)
+  assert(!('producerIdentityStatus' in rows[1])); assert.equal(rows[2].failureDictionaryVersion, 2)
   rows.length = 0
   for (let i = 0; i < 2000; i++) d.record('tile', { requestId: 1 })
   d.flush(); assert.equal(rows.length, 513); assert.equal(rows.at(-1).dropped, 1488)
