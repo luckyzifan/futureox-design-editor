@@ -1,0 +1,41 @@
+{
+  "baseline": "09e6bce9917eef8104957eb67f23583e3a2f52e4",
+  "packagingTools": {
+    "python": "Python 3.12.14",
+    "git": "git version 2.52.0",
+    "node": "v24.19.0"
+  },
+  "testRuntime": {
+    "typescript": {
+      "installedVersion": "7.0.2",
+      "pathExists": true
+    },
+    "vitest": {
+      "installedVersion": "5.0.1",
+      "pathExists": true
+    },
+    "jsdom": {
+      "installedVersion": "26.1.0",
+      "pathExists": true
+    },
+    "react": {
+      "installedVersion": "19.3.1",
+      "pathExists": true
+    },
+    "react-dom": {
+      "installedVersion": "19.3.1",
+      "pathExists": true
+    },
+    "@webgpu/types": {
+      "installedVersion": "0.1.74",
+      "pathExists": true
+    }
+  },
+  "kernelSha256": "d0062466914e7e79f58375153a110077dd54374060918b04f9e370ae163c609c",
+  "rustSourceTrees": {
+    "design-studio": "2a29bd31444023a8d661f757c38fb67d7c9f17e0",
+    "vendor": "2d9a6036e6e5654dcccf8c065216417a65cc69bd"
+  },
+  "kernelQualification": "Existing dev opt1 WASM, accepted only with identical Rust/vendor trees; not release-performance evidence.",
+  "generatedBinariesBundled": false
+}

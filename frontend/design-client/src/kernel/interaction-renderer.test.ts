@@ -1,5 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { blank, node, effect } from '../model'
+import { PoseDiagnostics, createPoseDiagnostics } from './pose-diagnostics'
+import { sanitizeFields } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { InteractionRenderer } from './interaction-renderer'
 import { PageTranslation } from './page-translation'
 import type { InteractionProps } from './interaction-layers'
@@ -702,12 +704,12 @@ test('replaced shared capture retires its own requests without cancelling anothe
   one.dispose(); expect(latest.signal.aborted).toBe(true); expect(independent.signal.aborted).toBe(false)
 })
 
-function pendingRetainedFixture(active = true) {
+function pendingRetainedFixture(active = true, diagnostic?:PoseDiagnostics) {
   vi.stubEnv('VITE_DESIGN_RESIDENT_PENDING_POSE', '1')
   const doc = blank(), root = node('frame', 0, 0, 240, 180), child = node('rectangle', 40, 40, 24, 20)
   root.blend = 'normal'; root.clip = false; root.children = [child.id]
   doc.nodes[root.id] = root; doc.nodes[child.id] = child; doc.pages[0].children = [root.id]
-  const shared = new KernelClient(), owner = new InteractionRenderer(vi.fn(), shared); owners.push(owner)
+  const shared = new KernelClient(), owner = new InteractionRenderer(vi.fn(), shared, false, diagnostic); owners.push(owner)
   const props: InteractionProps = { document: doc, selection: [child.id], active, epoch: 1,
     control: { current: null }, onReady() {} }
   const view = { x: 0, y: 0, zoom: 1 }, size = { width: 240, height: 180 }
@@ -924,4 +926,113 @@ test('same-epoch document replacement cannot relabel an older accepted pose', as
   f.owner.acceptPresentedInput(2)
   expect(feedback).toHaveBeenCalledOnce()
   expect(feedback.mock.calls[0][0]).toMatchObject({ sequence: 2, document: f.doc, offset: { x: 12, y: 0 } })
+})
+
+
+test('actual renderer pose callbacks report owner/no-frame/sample/accepted/end and late ACK without content', async()=>{
+ let now=0; const rows:Record<string,number>[]=[]
+ const diagnostic=new PoseDiagnostics(row=>rows.push(sanitizeFields(row)),()=>now)
+ const f=pendingRetainedFixture(true,diagnostic), feedback=vi.fn();f.props.onPosePresented=feedback
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}})
+ expect(rows.some(r=>r.poseStage===1&&r.poseReady===0&&r.posePendingCount===1)).toBe(true)
+ f.owner.acceptPresentedInput(1,0,true,false)
+ f.owner.acceptPresentedInput(1,0,false,true)
+ expect(feedback).not.toHaveBeenCalled()
+ worker.jobs[0].resolve({gpuTile:940,residentInteraction:true});await f.flush()
+ f.owner.acceptResidentSample({slot:940,sequence:1,at:0})
+ expect(rows.some(r=>r.poseStage===2&&r.poseSequence===1)).toBe(true)
+ f.owner.acceptPresentedInput(1,0,true,true)
+ expect(feedback).toHaveBeenCalledOnce()
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(12)}})
+ now=1200;f.owner.control.end(f.doc)
+ expect(rows.some(r=>r.poseStage===5&&r.posePendingCount===1&&r.poseOldestAgeMs===1200)).toBe(true)
+ f.owner.acceptPresentedInput(2,0,true,true)
+ expect(rows.some(r=>r.poseStage===4&&r.poseReason===6)).toBe(true)
+ expect(rows.some(r=>r.poseStage===4&&r.poseReason===4)).toBe(true)
+ expect(rows.some(r=>r.poseStage===4&&r.poseReason===1)).toBe(true)
+ expect(JSON.stringify(rows)).not.toContain(f.child.id)
+})
+
+test('actual renderer diagnostic output stays bounded through 10000 pointer submissions and preserves end totals',()=>{
+ const rows:Record<string,number>[]=[];let now=0
+ const f=pendingRetainedFixture(true,new PoseDiagnostics(row=>rows.push(row),()=>now))
+ for(let i=1;i<=10000;i++){now=i*8;f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(i)}})}
+ f.owner.control.end(f.doc)
+ expect(rows.length).toBeLessThanOrEqual(35)
+ const end=rows.findLast(r=>r.poseStage===5)!
+ expect(end.poseSubmittedCount).toBe(10000)
+ expect(end.posePendingCount).toBe(180)
+ expect(end.poseEvictedCount).toBe(9820)
+ expect(end.posePendingCapped).toBe(1)
+ expect(end.poseOldestAgeMs).toBe(79992)
+ f.owner.acceptPresentedInput(10000)
+ expect(rows.some(r=>r.poseStage===4&&r.poseReason===6)).toBe(true)
+})
+
+test('actual renderer reports failed-preview fallback entry without rejecting the authored edit',async()=>{
+ const rows:Record<string,number>[]=[];const f=pendingRetainedFixture(true,new PoseDiagnostics(r=>rows.push(r)))
+ worker.jobs[0].resolve({gpuTile:941,residentInteraction:true});await f.flush()
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}})
+ // Non-translation scene changes force the actual live capture path to fail.
+ f.owner.acceptResidentSample({slot:941,sequence:1,at:0,needsRebase:true})
+ worker.jobs.at(-1).reject(new Error('sample budget failed'));await f.flush()
+ expect(f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(12)}})).toBeNull()
+ expect(rows.some(r=>r.poseStage===7&&r.poseReason===5)).toBe(true)
+ expect(f.doc.nodes[f.child.id].transform).toEqual(f.transform(0))
+})
+
+
+test('actual renderer reports document retirement, stale sequence, missing sequence and slot mismatch distinctly',async()=>{
+ const rows:Record<string,number>[]=[];const f=pendingRetainedFixture(true,new PoseDiagnostics(r=>rows.push(r)))
+ worker.jobs[0].resolve({gpuTile:942,residentInteraction:true});await f.flush()
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}})
+ f.owner.acceptPresentedInput(1);f.owner.acceptPresentedInput(1);f.owner.acceptPresentedInput(999)
+ f.owner.acceptResidentSample({slot:999,sequence:2,at:0})
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(12)}})
+ f.prepare({...f.props,document:{...f.doc,nodes:{...f.doc.nodes}}})
+ f.owner.acceptPresentedInput(2)
+ for(const reason of [2,3,7,9])expect(rows.some(r=>r.poseStage===4&&r.poseReason===reason)).toBe(true)
+})
+
+
+test.each([true,false])('desktop detail=%s emits the terminal gesture summary before late ACK aggregation',async detail=>{
+ vi.useFakeTimers();vi.stubGlobal('window',{coreDesktop:{renderDiagnostics:true,renderDiagnosticsDetail:detail}})
+ const output=vi.spyOn(console,'log').mockImplementation(()=>{})
+ let diagnosticTime=0;const clock=vi.spyOn(performance,'now').mockImplementation(()=>diagnosticTime)
+ try{
+  const f=pendingRetainedFixture(true,createPoseDiagnostics(777))
+  f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}})
+  f.owner.acceptPresentedInput(1,0,false,true)
+  for(let i=0;i<12;i++){diagnosticTime+=260;f.owner.acceptPresentedInput(1,0,false,true)}
+  f.owner.control.end(f.doc)
+  f.owner.acceptPresentedInput(1,0,true,true)
+  vi.advanceTimersByTime(1100)
+  const records=output.mock.calls.flatMap(args=>{const value=JSON.parse(String(args[0]).replace('[render-diag] ',''));return value.batch||[value]})
+  expect(records.some(r=>r.event==='pose-lifecycle'&&r.interactionOwner===777&&r.poseStage===1&&r.poseSubmittedCount===1)).toBe(true)
+  expect(records.some(r=>r.poseStage===4&&r.poseReason===1)).toBe(true)
+  expect(records.some(r=>r.poseStage===5&&r.posePendingCount===1)).toBe(true)
+  expect(JSON.stringify(records)).not.toContain(f.child.id)
+ }finally{clock.mockRestore();output.mockRestore();vi.unstubAllGlobals();vi.useRealTimers()}
+})
+
+test('throwing diagnostic output never changes apply, accepted feedback or end semantics',async()=>{
+ const f=pendingRetainedFixture(true,new PoseDiagnostics(()=>{throw Error('sink')})),feedback=vi.fn();f.props.onPosePresented=feedback
+ worker.jobs[0].resolve({gpuTile:943,residentInteraction:true});await f.flush()
+ expect(f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}})).toEqual({x:8,y:0})
+ f.owner.acceptPresentedInput(1)
+ expect(feedback).toHaveBeenCalledOnce()
+ expect(()=>f.owner.control.end(f.doc)).not.toThrow()
+})
+
+
+test.each(['dispose','epoch','selection'] as const)('renderer %s retires pending feedback with one final summary and no duplicate late-ACK end',kind=>{
+ const rows:Record<string,number>[]=[];const f=pendingRetainedFixture(true,new PoseDiagnostics(r=>rows.push(r)))
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}})
+ if(kind==='dispose')f.owner.dispose()
+ else if(kind==='epoch')f.prepare({...f.props,epoch:2})
+ else f.prepare({...f.props,selection:[f.root.id]})
+ expect(rows.filter(r=>r.poseStage===5)).toHaveLength(1)
+ expect(rows.find(r=>r.poseStage===5)?.posePendingCount).toBe(1)
+ f.owner.acceptPresentedInput(1)
+ expect(rows.filter(r=>r.poseStage===5)).toHaveLength(1)
 })

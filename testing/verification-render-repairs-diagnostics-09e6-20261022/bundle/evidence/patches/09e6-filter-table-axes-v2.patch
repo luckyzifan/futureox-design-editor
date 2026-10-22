@@ -1,0 +1,273 @@
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -678,10 +678,13 @@
+     this.driver.destroy(texture)
+     this.bytes -= texture.bytes
+   })
+-  private failureOrigin<T>(error: T, origin: number, buildKind = 0): T {
++  // Synchronous dynamic scope only; restored even when a primitive is thrown.
++  private activeImageFieldFailure?: () => Record<string, number>
++  private failureOrigin<T>(error: T, origin: number, buildKind = 0, imageFields?: Record<string, number>): T {
+     markRenderFailure(error, { failureOriginCode: origin, failureBuildKind: buildKind })
+     if (gpuDiagnosticsEnabled()) try {
+       recordGpuDiagnostic('failure-origin', { ...this.activeRuntimeConfiguration, ...renderFailureFields(error),
++        ...(imageFields ?? this.activeImageFieldFailure?.()),
+         failureOriginCode: origin, failureBuildKind: buildKind, failureBoundaryStage: origin === 5 ? 7 : 12,
+         failureThrownKind: renderFailureThrownKind(error),
+         failureMaterialFieldBuilds:this.fieldBuilds,failureMaterialFieldUploadBytes:this.fieldUploadBytes,
+@@ -1949,7 +1952,30 @@
+         throw new Error('后端缺少统一的图片解码器')
+     }
+   }
+-  private imageGrid(n: GpuNode, p: GpuPaint, image: Surface, level = 0, origin: [number, number] = [0, 0], preparedAxes?: Float32Array): Surface {
++  /** Numeric callsites: 1 ordinary compact probe, 2 ordinary region, 3 sync
++   * paint, 4 streamed leaf region, 5 filter resolve, 6 table, 7 table probe. */
++  private imageFieldDiagnostic(n: GpuNode, callsite: number, stage: number, outcome: number, axes: number, level: number) {
++    if (!gpuDiagnosticsEnabled()) return
++    try { recordGpuDiagnostic('filter', this.imageFieldSnapshot(n, callsite, stage, outcome, axes, level)) }
++    catch { /* diagnostics cannot replace the original error */ }
++  }
++  private imageFieldSnapshot(n: GpuNode, callsite: number, stage: number, outcome: number, axes: number, level: number): Record<string, number> {
++    const source = n.previewSource || n
++    return { imageFieldCallsite: callsite, imageFieldStage: stage,
++      imageFieldOutcome: outcome, imageFieldAxes: axes, imageFieldSample: this.sampleIndex ?? 4,
++      imageFieldLevel: level, imageFieldWidth: n.rect.w, imageFieldHeight: n.rect.h,
++      imageFieldSourceWidth: source.rect.w, imageFieldSourceHeight: source.rect.h,
++      imageFieldDenseBytes: n.rect.w * n.rect.h * 16 }
++  }
++  private imageGrid(n: GpuNode, p: GpuPaint, image: Surface, level = 0, origin: [number, number] = [0, 0], preparedAxes?: Float32Array, callsite = 0): Surface {
++    const trace = { stage: 1, axes: preparedAxes?.length ? 1 : 0 }
++    const previous = this.activeImageFieldFailure
++    if (gpuDiagnosticsEnabled()) this.activeImageFieldFailure = () => this.imageFieldSnapshot(n, callsite, trace.stage, 2, trace.axes, level)
++    try { return this.imageGridExact(n, p, image, level, origin, preparedAxes, trace) }
++    catch (error) { this.imageFieldDiagnostic(n, callsite, trace.stage, 2, trace.axes, level); throw error }
++    finally { this.activeImageFieldFailure = previous }
++  }
++  private imageGridExact(n: GpuNode, p: GpuPaint, image: Surface, level: number, origin: [number, number], preparedAxes: Float32Array | undefined, trace: {stage: number; axes: number}): Surface {
+     const sample = this.sampleIndex ?? 4
+     let grids = this.imageGrids.get(p)
+     const known = grids?.get(sample)
+@@ -2018,11 +2044,16 @@
+     let separated: boolean | undefined
+     const surface = this.materialField(['image-grid',this.driver.managed,compact,[n.rect.w,n.rect.h],(n.previewSource || n).rect,
+       (n.previewSource || n).matrix,n.size,baseDims,paintJson,sample,level,origin], n.rect, () => {
++      trace.stage = 2
+       let values = preparedAxes ?? (compact ? image_sampling_axes_placed(...arguments_) : new Float32Array())
++      trace.axes = values.length ? 1 : 2
+       if (!values.length) {
++        trace.stage = 3
+         if (this.driver.managed && this.overBudget(n.rect.w * n.rect.h * 16, n.rect.w, n.rect.h)) throw this.budgetError('GPU 表面内存预算超限', 7)
++        trace.stage = 4
+         values = this.driver.managed ? image_sampling_grid_placed(...arguments_) : image_byte_sampling_field_placed(...arguments_)
+       }
++      trace.stage = 5
+       separated = this.driver.managed ? values[3] === -1 : values[3] === 1
+       this.imageFieldBytes += values.byteLength
+       return values
+@@ -2100,16 +2131,18 @@
+   }
+   /** Probe one original phase only. A certified full compact field stays
+    * reusable across bands; only its dense fallback needs regional generation. */
+-  private prepareLargeImageAxes(n: GpuNode, p: GpuPaint, image: Surface, level: number): boolean {
++  private prepareLargeImageAxes(n: GpuNode, p: GpuPaint, image: Surface, level: number, callsite = 1): boolean {
+     if (this.imageGrids.get(p)?.has(this.sampleIndex ?? 4)) return true
+     if (this.scene.compactImageFields === false || import.meta.env.VITE_DESIGN_IMAGE_AXES === '0') return false
+     const source = n.previewSource || n
+-    const values = image_sampling_axes_placed(JSON.stringify(source.rect), new Float64Array(source.matrix),
++    let values: Float32Array
++    try { values = image_sampling_axes_placed(JSON.stringify(source.rect), new Float64Array(source.matrix),
+       new Float64Array(n.size), new Uint32Array(this.baseDims(p.image || '')),
+       JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile }),
+       this.sampleIndex ?? 4, level, new Int32Array([0, 0]))
+-    if (!values.length) return false
+-    this.imageGrid(n, p, image, level, [0, 0], values)
++    } catch (error) { throw this.failureOrigin(error, 6, 2, this.imageFieldSnapshot(n, callsite, 2, 2, 0, level)) }
++    if (!values.length) { this.imageFieldDiagnostic(n, callsite, 2, 3, 2, level); return false }
++    this.imageGrid(n, p, image, level, [0, 0], values, callsite)
+     return true
+   }
+   private async paintImageFieldRegions(n: GpuNode, p: GpuPaint, mask: Surface, image: Surface, level: number): Promise<Surface> {
+@@ -2137,7 +2170,7 @@
+           previewSource: { ...source, rect: rect(source.rect.x + x, source.rect.y + y, w, h) } }
+         let field: Surface | undefined
+         try {
+-          field = this.imageGrid(regionNode, regionPaint, image, level)
++          field = this.imageGrid(regionNode, regionPaint, image, level, [0, 0], undefined, 2)
+           regions++; fieldBytes += field.texture.bytes; maxFieldBytes = Math.max(maxFieldBytes, field.texture.bytes)
+           maxWidth = Math.max(maxWidth, w); maxHeight = Math.max(maxHeight, h)
+           const u = parameters(n.rect, mask.rect, image.rect, mask.rect)
+@@ -2182,7 +2215,7 @@
+     }
+     const inputs = image
+       ? this.driver.managed || (this.scene.coherentSamples && this.sampleIndex !== undefined)
+-        ? [mask, image, mask, this.imageGrid(n, p, image, imageLevel, imageOrigin)]
++        ? [mask, image, mask, this.imageGrid(n, p, image, imageLevel, imageOrigin, undefined, 3)]
+         : [mask, image]
+       : this.driver.managed &&
+           ['linear', 'radial', 'angular', 'diamond'].includes(p.kind)
+@@ -2848,7 +2881,7 @@
+                 this.driver.copyColorRegion(before.texture, dst.texture, { x: 0, y: row, w: band.w, h: band.h }, [0, 0])
+                 this.painterStageCopies++; this.painterStageCopyBytes += band.w * band.h * 16
+               }
+-              field = this.imageGrid(regionNode, regionPaint, image, level)
++              field = this.imageGrid(regionNode, regionPaint, image, level, [0, 0], undefined, 4)
+               fieldRegions++; fieldBytes += field.texture.bytes; maxFieldBytes = Math.max(maxFieldBytes, field.texture.bytes)
+               maxFieldWidth = Math.max(maxFieldWidth, band.w); maxFieldHeight = Math.max(maxFieldHeight, band.h)
+               source = this.acquire(band)
+@@ -3625,7 +3658,7 @@
+     try {
+       if (n.fill.count) this.driver.maskRegion!(n.fill, mask.texture, sample, region)
+       else this.driver.clear(mask.texture)
+-      const field = this.imageGrid(node, paint, image, level, origin)
++      const field = this.imageGrid(node, paint, image, level, origin, undefined, 5)
+       return this.run(IMAGE_RESOLVE_STEP_MODE, region, [mask, image, previous || mask, field], u => {
+         this.configurePaint(u, node, paint)
+         u[17] = sample
+@@ -3703,7 +3736,11 @@
+     try{
+       for(let sample=0;sample<4;sample++){
+         this.sampleIndex=sample
+-        const field=this.imageGrid(node,clone,image,0,[0,0])
++        // The table consumes separable axes only. Prove that representation
++        // before imageGrid can fall back to a full-support dense allocation.
++        // A nonseparable transform keeps the existing exact strip sampler.
++        if (!this.prepareLargeImageAxes(node, clone, image, 0, 7)) return
++        const field=this.imageGrid(node,clone,image,0,[0,0],undefined,6)
+         if(field.rect.x!==input.x || field.rect.y!==input.y || field.rect.w!==input.w || field.rect.h!==input.h)return
+         const values=this.driver.imageTableAxes(field.texture);if(!values)return
+         axes.push(values)
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/filter-table-nonseparable.test.ts
+@@ -0,0 +1,108 @@
++import {readFileSync} from 'node:fs'
++import {expect,test,vi,afterEach} from 'vitest'
++import { image_sampling_grid_placed } from '../../generated/design-kernel/design_kernel'
++import {setGpuDiagnosticSink,sanitizeFields,createRenderDiagnostics,sanitizeBatch,sanitizeRecord,recordGpuDiagnostic} from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
++afterEach(()=>setGpuDiagnosticSink(undefined))
++import {certifyExactImageRange} from './exact-image-x-table'
++import {GpuRenderer} from './renderer'
++import {inverse} from '../../geometry'
++import type {Driver,Texture} from './types'
++function fixture(width=2049,height=2048) {
++ const make=(w:number,h:number)=>({width:w,height:h,bytes:w*h*16,resource:{}} as Texture)
++ const fields:{width:number;height:number;bytes:number;head:number[];words:Uint32Array}[]=[],passes:any[]=[]
++ const driver={name:'webgpu',managed:true,linearLight:true,scratchBytes:0,create:vi.fn(make),clear:vi.fn(),destroy:vi.fn(),
++  uploadLinear:vi.fn((_values:Float32Array,w:number,h:number)=>make(w,h)),
++  uploadParameters:vi.fn((values:Float32Array,w:number,h:number)=>{fields.push({width:w,height:h,bytes:values.byteLength,words:new Uint32Array(values.buffer,values.byteOffset,values.length).slice(),head:Array.from(new Uint32Array(values.buffer,values.byteOffset,Math.min(values.length,32)))});return make(w,h)}),
++  pass:vi.fn((target:Texture,u:Float32Array,inputs:Texture[],region:any,_channels?:number,_filter?:unknown,clearOutside?:boolean)=>{passes.push({target,u:u.slice(),inputs:[...inputs],region,clearOutside})}),checkpoint:vi.fn(async()=>{})}
++ const loader=vi.fn(()=>({width:8,height:8,pixels:new Float32Array(8*8*4).fill(.5)}))
++ const r=new GpuRenderer(driver as unknown as Driver,true,false,loader as any,false,false,1024) as any
++ r.scene={floatCompositing:true,coherentSamples:true,nodes:{}};r.sampleIndex=0
++ const rect={x:-137,y:-59,w:width,h:height},matrix=[Math.cos(Math.PI/12),Math.sin(Math.PI/12),-Math.sin(Math.PI/12),Math.cos(Math.PI/12),0,0]
++ const p={kind:'image',image:'data:image/png;base64,AA==',color:'#ffffff',opacity:1,blend:'normal',visible:true,stops:[],angle:0,fit:'stretch'}
++ const n={id:'controlled-rotated-image',rect,size:[736,414],matrix,inverse:inverse(matrix as any),fills:[p],children:[],effects:[],strokes:[]}
++ const mask={texture:make(width,height),rect},dst={texture:make(width,height),rect};r.busy.add(mask.texture);r.busy.add(dst.texture);r.bytes=mask.texture.bytes+dst.texture.bytes
++ return {r,n,p,mask,dst,driver,fields,passes}
++}
++
++test('optional interpolation table declines nonseparable oversized support without constructing a dense field',async()=>{
++ const f=fixture(),input=f.n.rect,header=1+input.h*4,curves=new Float32Array((header+input.h*12)*4)
++ curves.set([3,1,input.w,input.h]);for(let row=0;row<input.h*4;row++){curves.set([header+row*3,1,0,0],4+row*4);curves.set([0,input.w,0,0],(header+row*3)*4)}
++ Object.assign(f.n,{fill:{rect:input,count:3,sampleCount:4,area:{first:0,count:curves.length/4}}});f.r.scene.curves=curves
++ Object.assign(f.driver,{prepareImageTable:vi.fn(),resolveImageTable:vi.fn(),imageTableRange:()=>({opaqueAlpha:true,nonnegativeRgb:true,maximum:[1,1,1,1]}),imageTableAxes:()=>undefined})
++ f.r.filterImageFields={rect:input,fields:new Map(),pinned:new Set()}
++ f.r.sampleIndex=2
++ await expect(f.r.prepareFilterImageTable(f.n,input)).resolves.toBeUndefined()
++ expect(f.r.sampleIndex).toBe(2);expect(f.driver.uploadParameters).not.toHaveBeenCalled();expect((f.driver as any).prepareImageTable).not.toHaveBeenCalled()
++})
++
++test('declined table retains exact bounded filter-source sampling for all four phases and support rows',async()=>{
++ const f=fixture(),input=f.n.rect
++ Object.assign(f.n,{fill:{count:1},blend:'normal',opacity:1});Object.assign(f.driver,{maskRegion:vi.fn()})
++ f.r.filterImageFields={rect:input,fields:new Map(),pinned:new Set()}
++ for(let sample=0;sample<4;sample++)for(const y of [input.y,input.y+64,input.y+input.h-64]){
++   const region={x:input.x,y,w:input.w,h:64},before=f.fields.length
++   const result=f.r.filterSource(f.n,region,sample)
++   expect(result.rect).toEqual(region);expect(f.fields.length).toBeGreaterThan(before)
++   const field=f.fields[before],expected=image_sampling_grid_placed(JSON.stringify(region),new Float64Array(f.n.matrix),new Float64Array(f.n.size),new Uint32Array([8,8]),JSON.stringify({kind:'image',color:f.p.color,fit:f.p.fit}),sample,0,new Int32Array([0,0]))
++   expect(field.bytes).toBe(region.w*region.h*16);expect(Buffer.from(field.words.buffer).equals(Buffer.from(expected.buffer,expected.byteOffset,expected.byteLength))).toBe(true)
++   f.r.release(result)
++ }
++ expect((f.driver as any).maskRegion).toHaveBeenCalledTimes(12)
++})
++test('field failure diagnostics preserve thrown primitive and emit only bounded scalar metadata',()=>{
++ const f=fixture(),events:any[]=[];setGpuDiagnosticSink((event:any,fields:any)=>events.push({event,fields:sanitizeFields(fields)}))
++ const image=f.r.imageFor(f.p.image,0,false)
++ let failure:unknown;try{f.r.imageGrid(f.n,f.p,image,0,[0,0],undefined,6)}catch(e){failure=e}
++ expect(failure).toBe('Sampling coordinate field exceeds 64 MiB')
++ expect(events.filter(e=>e.event==='filter')).toEqual([{event:'filter',fields:{imageFieldCallsite:6,imageFieldStage:4,imageFieldOutcome:2,imageFieldAxes:2,imageFieldSample:0,imageFieldLevel:0,imageFieldWidth:2049,imageFieldHeight:2048,imageFieldSourceWidth:2049,imageFieldSourceHeight:2048,imageFieldDenseBytes:2049*2048*16}}])
++ setGpuDiagnosticSink(()=>{throw Error('telemetry down')})
++ expect(()=>f.r.imageGrid(f.n,{...f.p},image,0,[0,0],undefined,6)).toThrow('Sampling coordinate field exceeds 64 MiB')
++})
++
++test('field diagnostic sanitizer rejects unknown content, out-of-range values and nonfinite values',()=>{
++ expect(sanitizeFields({imageFieldCallsite:99,imageFieldStage:NaN,imageFieldOutcome:-1,imageFieldWidth:'2049',imageFieldDenseBytes:Infinity,document:'secret',image:'data:secret',imageFieldAxes:2})).toEqual({imageFieldAxes:2})
++})
++
++test('actual compact axes remain eligible for the table and all original phases are restored',async()=>{
++ const f=fixture(32,16),input=f.n.rect,programs=new Map<Texture,Float32Array>()
++ input.x=8;input.y=4;f.n.size=[64,32]
++ f.n.matrix=[1,0,0,1,0,0];f.n.inverse=inverse(f.n.matrix as any)
++ const header=1+input.h*4,curves=new Float32Array((header+input.h*12)*4)
++ curves.set([3,1,input.w,input.h]);for(let row=0;row<input.h*4;row++){curves.set([header+row*3,1,0,0],4+row*4);curves.set([0,input.w,0,0],(header+row*3)*4)}
++ Object.assign(f.n,{fill:{rect:input,count:3,sampleCount:4,area:{first:0,count:curves.length/4}}});f.r.scene.curves=curves
++ const upload=f.driver.uploadParameters.getMockImplementation()!
++ f.driver.uploadParameters.mockImplementation((values,w,h)=>{const t=upload(values,w,h);programs.set(t,values.slice());return t})
++ const pixels=new Float32Array(8*8*4).fill(.5);for(let i=3;i<pixels.length;i+=4)pixels[i]=1
++ const range=certifyExactImageRange(pixels)
++ const table={bytes:256};Object.assign(f.driver,{prepareImageTable:vi.fn(async()=>table),resolveImageTable:vi.fn(),imageTableRange:()=>range,imageTableAxes:(t:Texture)=>programs.get(t)})
++ f.r.sampleIndex=3
++ await expect(f.r.prepareFilterImageTable(f.n,input)).resolves.toBe(table)
++ expect(f.r.sampleIndex).toBe(3);expect(f.r.pendingImageTableSources.size).toBe(0)
++ expect((f.driver as any).prepareImageTable).toHaveBeenCalledOnce()
++ expect(f.fields.every(field=>field.height===2)).toBe(true)
++})
++
++for(const detail of [false,true])test(`primitive failure crosses actual worker sink and terminal serialization with detail=${detail}`,()=>{
++ const worker=readFileSync(new URL('../render-worker.ts',import.meta.url),'utf8')
++ const install=worker.match(/setGpuDiagnosticSink\(\(event,fields\)=>terminalDiagnostics\.record\(event,\{requestId:diagnosticRequestId,\.\.\.fields as object\}\)\)/)?.[0]
++ expect(install).toBeDefined()
++ const wire:any[]=[],terminal:any[]=[]
++ const diagnostics=createRenderDiagnostics({enabled:true,detail,session:42,source:'worker',sink:row=>wire.push({renderDiagnostic:row}),batchSink:rows=>wire.push({renderDiagnostics:rows})})
++ // Execute the exact production binding, removing only the TypeScript cast.
++ new Function('setGpuDiagnosticSink','terminalDiagnostics','diagnosticRequestId',install!.replace(' as object',''))(setGpuDiagnosticSink,diagnostics,151)
++ // Overflow the ordinary eight-record fast path, then overwrite the filter aggregate.
++ for(let i=0;i<12;i++)recordGpuDiagnostic('filter',{imageFieldCallsite:1})
++ const f=fixture(),image=f.r.imageFor(f.p.image,0,false)
++ expect(()=>f.r.imageGrid(f.n,f.p,image,0,[0,0],undefined,6)).toThrow('Sampling coordinate field exceeds 64 MiB')
++ for(let i=0;i<12;i++)recordGpuDiagnostic('filter',{imageFieldCallsite:2})
++ diagnostics.flush();diagnostics.close()
++ // Host terminal uses these actual sanitizers after JSON transport.
++ for(const message of wire){const transported=JSON.parse(JSON.stringify(message));if(transported.renderDiagnostics)terminal.push(...sanitizeBatch(transported.renderDiagnostics));else{const row=sanitizeRecord(transported.renderDiagnostic);if(row)terminal.push(row)}}
++ const origin=terminal.find(row=>row.event==='failure-origin')
++ expect(origin).toMatchObject({requestId:151,session:42,source:'worker',failureOriginCode:6,failureBuildKind:2,failureCode:85,failureThrownKind:2,failureBoundaryStage:12,imageFieldCallsite:6,imageFieldStage:4,imageFieldAxes:2,imageFieldWidth:2049,imageFieldHeight:2048,imageFieldDenseBytes:67141632})
++ expect(JSON.stringify(terminal)).not.toMatch(/data:image|controlled-rotated-image|Sampling coordinate field/)
++ expect(f.r.activeImageFieldFailure).toBeUndefined()
++ const later:any[]=[];setGpuDiagnosticSink((event,fields)=>later.push({event,fields}))
++ f.r.failureOrigin('unrelated next error',6,1)
++ expect(later[0].fields.imageFieldCallsite).toBeUndefined()
++})
+--- a/frontend/design-client/src/kernel/gpu/image-table-lifetime.test.ts
++++ b/frontend/design-client/src/kernel/gpu/image-table-lifetime.test.ts
+@@ -270,6 +270,8 @@
+     ;(f.driver as any).textures.add(texture); (f.driver as any).imageAxisPrograms.set(texture, values)
+     return texture
+   })
++  // This fixture replaces coordinate generation; real qualification is covered separately.
++  renderer.prepareLargeImageAxes = () => true
+   renderer.imageGrid = () => ({ texture: fields[renderer.sampleIndex], rect: input })
+   renderer.reclaimScratch = vi.fn(async () => { renderer.evictImages(f.image.bytes, true) })
+   renderer.frameBudget = 256 * 1024 * 1024
+--- a/frontend/design-desktop/src/render-terminal-diagnostics.mjs
++++ b/frontend/design-desktop/src/render-terminal-diagnostics.mjs
+@@ -32,7 +32,9 @@
+ for (const key of Object.keys(failureLimits)) fields.add(key)
+ for (const key of Object.keys(deviceLimits)) fields.add(key)
+ for (const key of Object.keys(tileOrderLimits)) fields.add(key)
+-const imageFieldRegionLimits = {imageFieldRegionPath:2,imageFieldRegionOutcome:2,imageFieldRegionCount:1e9,
++const imageFieldRegionLimits = {imageFieldCallsite:7,imageFieldStage:5,imageFieldOutcome:3,imageFieldAxes:2,imageFieldSample:4,imageFieldLevel:32,
++ imageFieldWidth:1e9,imageFieldHeight:1e9,imageFieldSourceWidth:1e9,imageFieldSourceHeight:1e9,imageFieldDenseBytes:1e16,
++imageFieldRegionPath:2,imageFieldRegionOutcome:2,imageFieldRegionCount:1e9,
+  imageFieldRegionBytes:1e12,imageFieldRegionMaxBytes:67108864,imageFieldRegionMaxWidth:16384,imageFieldRegionMaxHeight:256,imageFieldRegionSample:4}
+ for (const key of Object.keys(imageFieldRegionLimits)) fields.add(key)
+ export function sanitizeFields(value) {

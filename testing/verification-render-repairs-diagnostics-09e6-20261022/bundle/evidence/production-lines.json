@@ -1,0 +1,188 @@
+{
+  "baseline": "09e6bce9917eef8104957eb67f23583e3a2f52e4",
+  "method": "git apply --numstat of the frozen combined patch; physical text lines, not a risk or speed score; tests and documentation counted separately",
+  "summary": {
+    "production": {
+      "files": 10,
+      "addedLines": 337,
+      "deletedLines": 69,
+      "netLines": 268
+    },
+    "test": {
+      "files": 7,
+      "addedLines": 656,
+      "deletedLines": 2,
+      "netLines": 654
+    },
+    "documentation": {
+      "files": 1,
+      "addedLines": 43,
+      "deletedLines": 0,
+      "netLines": 43
+    }
+  },
+  "files": [
+    {
+      "path": "docs/RENDER_SURFACE_BUDGET_SNAPSHOT_V1.md",
+      "role": "documentation",
+      "sha256": "a21b07ae9c8afa0cceb66b1bd50ee82dbbc9d841173b14f293e4d78084f8ce11",
+      "addedLines": 43,
+      "deletedLines": 0,
+      "beforeLines": 0,
+      "afterLines": 43
+    },
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "role": "production",
+      "sha256": "7f1801db2df92d0ecaf9ec9c2086d37d501d44ed2cc805042a7b8fdb6a516492",
+      "addedLines": 9,
+      "deletedLines": 4,
+      "beforeLines": 2784,
+      "afterLines": 2789
+    },
+    {
+      "path": "frontend/design-client/src/canvas-fallback-submission.test.tsx",
+      "role": "test",
+      "sha256": "790f5079f6f4631a8d4663d0fe3adaff93d56fe7f38f46f3621ea68e7d7d42ce",
+      "addedLines": 193,
+      "deletedLines": 0,
+      "beforeLines": 0,
+      "afterLines": 193
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ResidentCompositeSurface.tsx",
+      "role": "production",
+      "sha256": "66eceeb059964cdab200de9737737fb068e376367a76e1738e3a7ebd46c7f609",
+      "addedLines": 5,
+      "deletedLines": 2,
+      "beforeLines": 372,
+      "afterLines": 375
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/filter-table-nonseparable.test.ts",
+      "role": "test",
+      "sha256": "0caf72d3fc3fd35170a3acee16144d5cdb23819608348bf3ef4de26f448357a6",
+      "addedLines": 108,
+      "deletedLines": 0,
+      "beforeLines": 0,
+      "afterLines": 108
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-table-lifetime.test.ts",
+      "role": "test",
+      "sha256": "e74ac9a3aead738ecedd13cfd93b5345a58d571990aaeb98704980e8a8deba2e",
+      "addedLines": 2,
+      "deletedLines": 0,
+      "beforeLines": 320,
+      "afterLines": 322
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/maintenance-display-mode.test.ts",
+      "role": "test",
+      "sha256": "8c771952517c6c6da01661ef74ad49399e168acb6ec6e0d299b4358caa40c58c",
+      "addedLines": 101,
+      "deletedLines": 0,
+      "beforeLines": 0,
+      "afterLines": 101
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "role": "production",
+      "sha256": "495690d50b841f460dc61667e0c9de0c36998c31aef305d87bbee453726dec69",
+      "addedLines": 113,
+      "deletedLines": 46,
+      "beforeLines": 5677,
+      "afterLines": 5744
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/surface-budget-diagnostics.test.ts",
+      "role": "test",
+      "sha256": "76a8597725746d56e729a719f1e1f88befe74771267261f2e2026c222502ee7b",
+      "addedLines": 67,
+      "deletedLines": 0,
+      "beforeLines": 0,
+      "afterLines": 67
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.test.ts",
+      "role": "test",
+      "sha256": "160c00e3c3faabc9432a39aee4fab58db7c977d44c571d1461799a3c85c39375",
+      "addedLines": 113,
+      "deletedLines": 2,
+      "beforeLines": 927,
+      "afterLines": 1038
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.ts",
+      "role": "production",
+      "sha256": "7d11a36995c0f8f3e5dda6e5458b6be8b3f6e7a0eabad5eef5d2e4cc83654629",
+      "addedLines": 42,
+      "deletedLines": 12,
+      "beforeLines": 938,
+      "afterLines": 968
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-diagnostics.ts",
+      "role": "production",
+      "sha256": "b59afc657d1184eb2aa209c474c4abc1df3ad2008b72a4d5569cb1e9343960f2",
+      "addedLines": 40,
+      "deletedLines": 0,
+      "beforeLines": 0,
+      "afterLines": 40
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-feedback.ts",
+      "role": "production",
+      "sha256": "8ce31a6f8d765444a107745983f2d6a9454b7421a5758b9400d09f35954f148c",
+      "addedLines": 5,
+      "deletedLines": 0,
+      "beforeLines": 20,
+      "afterLines": 25
+    },
+    {
+      "path": "frontend/design-desktop/src/render-failure-allocation.mjs",
+      "role": "production",
+      "sha256": "7f6e15467da2033560707366e7974be25d4076803f1ac7a2f0a54b06a006d474",
+      "addedLines": 2,
+      "deletedLines": 1,
+      "beforeLines": 31,
+      "afterLines": 32
+    },
+    {
+      "path": "frontend/design-desktop/src/render-surface-ledger.d.mts",
+      "role": "production",
+      "sha256": "39ea044685a67aa921958c3301b23ed2e431cfad32a34aa7d8a52ee91fb2bc41",
+      "addedLines": 11,
+      "deletedLines": 0,
+      "beforeLines": 0,
+      "afterLines": 11
+    },
+    {
+      "path": "frontend/design-desktop/src/render-surface-ledger.mjs",
+      "role": "production",
+      "sha256": "a821e69d023c42f9dda9b0a43f04d846f44f6800f7a0fea58ab101f5bf7bdd74",
+      "addedLines": 102,
+      "deletedLines": 0,
+      "beforeLines": 0,
+      "afterLines": 102
+    },
+    {
+      "path": "frontend/design-desktop/src/render-terminal-diagnostics.mjs",
+      "role": "production",
+      "sha256": "5a62b782a7b5ddaed06a0fd34ec1b49a70bf5d62af94812168ab70df783f4d91",
+      "addedLines": 8,
+      "deletedLines": 4,
+      "beforeLines": 187,
+      "afterLines": 191
+    },
+    {
+      "path": "frontend/design-desktop/test/render-surface-ledger.test.mjs",
+      "role": "test",
+      "sha256": "6f5cd50bc538c6406ffca4d5eee91757189547234dc8d2afab31d2f7a121b97d",
+      "addedLines": 72,
+      "deletedLines": 0,
+      "beforeLines": 0,
+      "afterLines": 72
+    }
+  ]
+}

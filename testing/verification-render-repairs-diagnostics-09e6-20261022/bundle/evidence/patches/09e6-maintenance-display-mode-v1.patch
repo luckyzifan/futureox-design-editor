@@ -1,0 +1,143 @@
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -2578,14 +2578,23 @@
+       // Conflicting ownership must not fall through to either retirement path:
+       // forgetUpload cannot detach coordinate aliases or free-list references.
+       if (overlaps) throw new Error('GPU maintenance resource ownership overlaps')
++      // captureDisplay selects output presentation; it does not prove that
++      // this no-release maintenance decision needs synchronization. Deferring
++      // preserves every charge/handle and grants no resource completion.
++      const epochKnown = Number.isSafeInteger(this.driver.resourceEpoch) && this.driver.resourceEpoch! >= 0 &&
++        Number.isSafeInteger(this.driver.completedResourceEpoch) && this.driver.completedResourceEpoch! >= 0 &&
++        this.driver.completedResourceEpoch! <= this.driver.resourceEpoch!
++      const mandatoryReasonBits = Number(required !== 0) | Number(pressure) << 1 |
++        Number(imagesUnderPressure) << 2 | Number(!!retiredImageTableBytes) << 3 |
++        Number(!!retiredImageAssetBytes) << 4 | Number(!epochKnown) << 5
+       const reason = this.maintenanceResidency.decide(required,
+-        pressure || imagesUnderPressure || !!this.driver.captureDisplay ||
++        pressure || imagesUnderPressure ||
+           !!retiredImageTableBytes || !!retiredImageAssetBytes,
+         this.workingBytes, this.frameBudget, poolBytes, transientBytes,
+         this.driver.resourceEpoch, this.driver.completedResourceEpoch)
+       if (gpuDiagnosticsEnabled()) {
+         try { recordGpuDiagnostic('cache', { maintenanceDecision: reason,
+-          maintenanceDeferredCount: this.maintenanceResidency.count,
++          maintenanceDeferredCount: this.maintenanceResidency.count, mandatoryReasonBits,
+           maintenancePoolBytes: poolBytes, maintenanceTransientBytes: transientBytes,
+           maintenanceWorkingBytes: this.workingBytes, maintenanceBudgetBytes: this.frameBudget,
+           maintenanceRequiredBytes: required, resourceEpoch: this.driver.resourceEpoch,
+--- a/frontend/design-desktop/src/render-terminal-diagnostics.mjs
++++ b/frontend/design-desktop/src/render-terminal-diagnostics.mjs
+@@ -5,7 +5,7 @@
+ const tileCostLimits = {imageAxisFields:1e9,imageFieldBytes:1e12,displayImageSourcePasses:1e9,nestedPrefixHits:1e9,nestedPrefixBuilds:1e9,nestedPrefixBytes:67108864,staticImageBlurEligible:1e9,staticImageBlurHits:1e9,staticImageBlurPixels:1e12,staticImageBlurBytes:17825792,staticImageBlurEntries:1,wholeFilterAxes:1e9,opaqueTentPasses:1e9,imageXTableBuilds:1e6,imageXTablePixels:1e12,imageXTableBytes:41943040,tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
+ export const PREFIX = '[render-diag] '
+ // Maintenance residency decisions contain scalar accounting only, no document payload.
+-Object.assign(tileCostLimits, { maintenanceDecision:6, maintenanceDeferredCount:8, maintenanceRetiredBytes:17179869184, maintenanceRetiredCount:256,
++Object.assign(tileCostLimits, { maintenanceDecision:6, mandatoryReasonBits:63, maintenanceDeferredCount:8, maintenanceRetiredBytes:17179869184, maintenanceRetiredCount:256,
+  maintenancePoolBytes:17179869184, maintenanceTransientBytes:17179869184,
+  maintenanceWorkingBytes:17179869184, maintenanceBudgetBytes:17179869184,
+  maintenanceRequiredBytes:17179869184 })
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/maintenance-display-mode.test.ts
+@@ -0,0 +1,101 @@
++import { afterEach, expect, test, vi } from 'vitest'
++import { sanitizeFields, setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
++import { GpuRenderer } from './renderer'
++import type { Driver, Texture } from './types'
++const MiB=1024*1024
++afterEach(()=>{vi.unstubAllEnvs();setGpuDiagnosticSink(undefined)})
++function fixture(transientBytes=3*MiB) {
++  let boundary: Promise<void>=Promise.resolve()
++  const driver={name:'webgpu',managed:true,captureDisplay:true,scratchBytes:0,
++    resourceEpoch:12,completedResourceEpoch:11,
++    checkpoint:vi.fn(async()=>{await boundary}),destroy:vi.fn()}
++  const renderer=new GpuRenderer(driver as unknown as Driver) as any
++  renderer.scene={};renderer.bytes=400*MiB
++  const pool={width:1024,height:5120,bytes:80*MiB,resource:{}} as Texture
++  const coordinate={width:256,height:transientBytes/4096,bytes:transientBytes,resource:{}} as Texture
++  renderer.free.set('1024:5120',[pool]);renderer.coordinateMaps.add(coordinate)
++  return {renderer,driver,pool,coordinate,setBoundary:(p:Promise<void>)=>{boundary=p}}
++}
++function retained(f:ReturnType<typeof fixture>) {
++  expect(f.driver.destroy).not.toHaveBeenCalled()
++  expect(f.renderer.bytes).toBe(400*MiB)
++  expect(f.renderer.coordinateMaps.has(f.coordinate)).toBe(true)
++  expect(f.renderer.free.get('1024:5120')).toEqual([f.pool])
++  expect(f.driver.resourceEpoch).toBe(12);expect(f.driver.completedResourceEpoch).toBe(11)
++}
++test('native display mode defers eight small no-pressure maintenance calls without granting completion',async()=>{
++  const f=fixture()
++  for(let i=0;i<8;i++){await f.renderer.reclaimScratch();retained(f)}
++  expect(f.driver.checkpoint).not.toHaveBeenCalled()
++  expect(f.renderer.maintenanceResidency.count).toBe(8)
++})
++test('ninth eligible call waits before releasing transient ownership and resets only after completion',async()=>{
++  const f=fixture()
++  for(let i=0;i<8;i++)await f.renderer.reclaimScratch()
++  let complete!:()=>void;f.setBoundary(new Promise<void>(r=>complete=r))
++  const pending=f.renderer.reclaimScratch()
++  expect(f.driver.checkpoint).toHaveBeenCalledTimes(1);retained(f)
++  expect(f.renderer.maintenanceResidency.count).toBe(8)
++  complete();await pending
++  expect(f.driver.destroy).toHaveBeenCalledWith(f.coordinate)
++  expect(f.renderer.coordinateMaps.has(f.coordinate)).toBe(false)
++  expect(f.renderer.free.get('1024:5120')).toEqual([f.pool])
++  expect(f.renderer.maintenanceResidency.count).toBe(0)
++})
++test('failed ninth boundary preserves all charged resources and does not reset the deferral quota',async()=>{
++  const f=fixture();for(let i=0;i<8;i++)await f.renderer.reclaimScratch()
++  f.driver.checkpoint.mockImplementationOnce(async()=>{throw Error('device lost')})
++  await expect(f.renderer.reclaimScratch()).rejects.toThrow('device lost')
++  retained(f);expect(f.renderer.maintenanceResidency.count).toBe(8)
++})
++test.each([1,700*MiB])('requested allocation %s retains its real admission fence',async required=>{
++  const f=fixture();let complete!:()=>void
++  f.setBoundary(new Promise<void>(r=>complete=r))
++  const pending=f.renderer.reclaimScratch(required)
++  expect(f.driver.checkpoint).toHaveBeenCalledTimes(1);retained(f)
++  complete();await pending
++})
++test('large transient cohort still fences even in native display mode',async()=>{
++  const f=fixture(65*MiB);let complete!:()=>void
++  f.setBoundary(new Promise<void>(r=>complete=r))
++  const pending=f.renderer.reclaimScratch()
++  expect(f.driver.checkpoint).toHaveBeenCalledTimes(1);retained(f)
++  complete();await pending
++})
++test('uncompleted external capture/readback readers retain their coordinate and ancestor handles during deferral',async()=>{
++  const f=fixture(),ancestor={width:1,height:1,bytes:16,resource:{}} as Texture
++  f.renderer.busy.add(ancestor)
++  // Model pending consumers, not GPU pixels: a deferred maintenance call
++  // cannot release either source or certify that these reads completed.
++  let finishRead!:()=>void;const read=new Promise<void>(r=>finishRead=r)
++  const observed=read.then(()=>[f.renderer.coordinateMaps.has(f.coordinate),f.renderer.busy.has(ancestor)])
++  await f.renderer.reclaimScratch();retained(f)
++  expect(f.driver.checkpoint).not.toHaveBeenCalled();finishRead()
++  expect(await observed).toEqual([true,true])
++})
++test('unknown completion epoch remains conservative in display capture mode',async()=>{
++  const f=fixture();delete (f.driver as any).completedResourceEpoch
++  let complete!:()=>void;f.setBoundary(new Promise<void>(r=>complete=r))
++  const pending=f.renderer.reclaimScratch()
++  expect(f.driver.checkpoint).toHaveBeenCalledTimes(1)
++  expect(f.driver.destroy).not.toHaveBeenCalled();expect(f.renderer.bytes).toBe(400*MiB)
++  complete();await pending
++})
++test('cancellation before maintenance preserves resources without a new fence',async()=>{
++  const f=fixture();f.renderer.frameCurrent=()=>false
++  await expect(f.renderer.reclaimScratch()).rejects.toThrow('PREVIEW_CANCELLED')
++  retained(f);expect(f.driver.checkpoint).not.toHaveBeenCalled()
++})
++
++test.each([0,1,700*MiB])('maintenance reason bits distinguish required/pressure from display mode: %s',async required=>{
++  const events:any[]=[];setGpuDiagnosticSink((event:string,fields:any)=>{if(event==='cache')events.push(fields)})
++  const f=fixture();await f.renderer.reclaimScratch(required)
++  const decision=events.find(e=>e.maintenanceDecision!==undefined)
++  expect(decision.mandatoryReasonBits).toBe(required===0?0:required===1?1:3)
++  expect(sanitizeFields(decision).mandatoryReasonBits).toBe(decision.mandatoryReasonBits)
++})
++test('maintenance reason bits identify unknown epoch rather than display mode',async()=>{
++  const events:any[]=[];setGpuDiagnosticSink((event:string,fields:any)=>{if(event==='cache')events.push(fields)})
++  const f=fixture();delete (f.driver as any).resourceEpoch;await f.renderer.reclaimScratch()
++  expect(events.find(e=>e.maintenanceDecision!==undefined)).toMatchObject({maintenanceDecision:1,mandatoryReasonBits:32})
++})
