@@ -1,3 +1,4 @@
+import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
 import { recordCanvasGrid } from './kernel/grid-measurements'
 import { canvasActions, CanvasAction, ActionSource, ActionOutcome, ActionReason, modifierBits, type ActionReasonCode, type ActionOutcomeCode } from './canvas-action-diagnostics'
@@ -632,6 +633,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     [snapshots, currentScene, state.doc, state.page, editor, editor.sessionGeneration, geometryReady])
   const gpuInteraction = useMemo<InteractionProps>(() => ({ document: state.doc, selection: state.selection,
     active: editor.interactionActive, epoch: editor.sessionGeneration, control: gpuMove, onReady: interactionReady,
+    onPreviewFailed: failure => {
+      recoverInteractionPreview(failure, { editor, pending: () => pendingBoardMove.current,
+        gesture: () => drag.current as { kind: string; ids: string[]; duplicating?: boolean } | null,
+        sequence: () => gpuMove.current?.inputSequence?.() || 0,
+        clearPending: () => { pendingBoardMove.current = null },
+        restoreRetained: () => retainedMove.current?.restore(), end: () => gpuMove.current?.end(editor.state.doc),
+        restoreOverlays: restoreGpuOverlays })
+    },
     onPosePresented: pose => {
       const gesture = drag.current
       if (!pendingBoardMove.current || gesture?.kind !== 'move' ||

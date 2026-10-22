@@ -117,6 +117,9 @@ export class InteractionRenderer {
     return this.latestCandidate
   }
   private inlineDisabled = false
+  private recoverySerial = 0
+  private recoveryScope?: { serial: number; document: DesignDocument; epoch: number; pageId: string }
+  private retireRecovery() { this.recoverySerial++; this.recoveryScope = undefined }
   private liveAuthored?: DesignDocument
   private endedDocument?: DesignDocument
   /** Keep completed interaction pixels visible while the committed document
@@ -160,6 +163,9 @@ export class InteractionRenderer {
         this.handoff = undefined
         const transforms=Object.fromEntries(r.plan.ids.map(id=>[id,[...(patches[id]?.transform||document.nodes[id].transform)] as Matrix]))
         if (this.liveAuthored !== document) this.clearPoseFeedback(2)
+        if (!this.recoveryScope || this.recoveryScope.document !== document) {
+          this.recoveryScope = { serial: ++this.recoverySerial, document, epoch: this.props!.epoch, pageId: r.plan.pageId }
+        }
         this.liveAuthored=document
         this.latestPatch={document,patches:Object.fromEntries(r.plan.ids.map(id=>[id,{transform:transforms[id]}]))}
         this.latestCandidate=fast?undefined:interactionPatchedDocument(document,patches)
@@ -195,6 +201,7 @@ export class InteractionRenderer {
       inputSequence: () => this.lastInput.sequence,
       previewFailure: () => this.error ? 1 : 0,
       end: document => {
+        if (this.recoveryScope) this.retireRecovery()
         this.poseEvent(5)
         this.poseEndedThrough=this.lastInput.sequence
         this.poseFeedback.clear()
@@ -381,7 +388,7 @@ export class InteractionRenderer {
       this.liveRequested = undefined
     }
     if (this.props?.control !== props?.control && this.props?.control.current === this.control) this.props.control.current = null
-    if (this.props?.document !== props?.document) this.clearPoseFeedback(2)
+    if (this.props?.document !== props?.document) { this.clearPoseFeedback(2); this.retireRecovery() }
     this.props = props
     if (props) props.control.current = this.control
     if (this.disposed) return
@@ -715,9 +722,11 @@ export class InteractionRenderer {
     const token = this.generation, resident = this.resident!
     const signal = this.sharedClient ? this.captureAbort.signal : undefined
     const current = () => !this.disposed && token === this.generation && this.resident === resident
+    let captureSerial = this.recoverySerial, captureHadScope = !!this.recoveryScope
     void (async () => {
       try {
         while (current() && this.livePending) {
+          captureSerial = this.recoverySerial; captureHadScope = !!this.recoveryScope
           const started = performance.now()
           const viewportRevision = this.viewportRevision
           const document = this.livePending; this.livePending = undefined
@@ -924,6 +933,30 @@ export class InteractionRenderer {
             this.liveDeferred = true; this.liveRequested = undefined
           } else {
             this.error = String(error)
+            // apply() must return so Canvas can publish its latest pending patch.
+            // Native wrappers may throw synchronously before the first await.
+            queueMicrotask(() => {
+            if (!current()) return
+            const scope = this.recoveryScope, props = this.props
+            if (scope && props?.onPreviewFailed && resident.active && !resident.retainedFallback &&
+                scope.document === this.liveAuthored && scope.document === props.document && scope.epoch === props.epoch &&
+                scope.pageId === resident.plan.pageId && this.sameIds(props.selection) &&
+                (scope.serial === captureSerial || !captureHadScope && scope.serial === captureSerial + 1)) {
+              // Retire the failed native pose before handing the absolute edit to
+              // the editor. A reentrant callback cannot recover this scope twice.
+              const failure = { document: scope.document, epoch: scope.epoch, pageId: scope.pageId,
+                sequence: this.lastInput.sequence, ids: [...resident.plan.ids] }
+              this.poseEvent(7,5)
+              this.poseEvent(5,5)
+              this.poseEndedThrough=this.lastInput.sequence
+              this.retireRecovery()
+              if (resident.tiles[0]?.gpuTile) this.sharedClient?.stopResidentInteraction(resident.tiles[0].gpuTile)
+              resident.active = false; this.failedGesture = true; this.inlineDisabled = true
+              this.livePending = this.liveRequested = undefined; this.handoff = undefined
+              this.clearPoseFeedback(5); this.nextGeneration()
+              props.onPreviewFailed(failure)
+            }
+            })
             this.props?.onReady()
           }
           this.changed()
@@ -946,6 +979,7 @@ export class InteractionRenderer {
     this.client = null
   }
   private closeResidents() {
+    this.retireRecovery()
     this.poseEvent(5,this.disposed?6:9)
     this.cancelIdleWarmTimer(); this.idleWarmCapture = undefined
     this.idleWarmAttempt = this.idleWarmFailed = undefined
