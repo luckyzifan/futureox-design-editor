@@ -37,7 +37,7 @@ const FORBIDDEN = new Set(['__proto__', 'prototype', 'constructor'])
 const KINDS: Kind[] = ['slice', 'frame', 'section', 'group', 'rectangle', 'ellipse', 'polygon', 'star', 'line', 'vector', 'text']
 const stringSchema = { type: 'string', minLength: 1, maxLength: 128 }
 const idsSchema = { type: 'array', items: stringSchema, minItems: 1, maxItems: MAX_RESULTS, uniqueItems: true }
-const indexSchema = { type: 'integer', minimum: 0, maximum: 20000 }
+const indexSchema = { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER }
 const objectSchema = { type: 'object' }
 const numberSchema = { type: 'number', minimum: -1e7, maximum: 1e7 }
 function schema(properties: Record<string, unknown> = {}, required: string[] = []): Record<string, unknown> {
@@ -479,18 +479,17 @@ function knownIds(doc: DesignDocument): Set<string> {
     ...(doc.animations || []).map(clip => clip.id), ...(doc.reviews || []).map(review => review.id)])
 }
 const jsonBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
-/** Bound the complete historic result before the authoritative commit. Resource
- * IDs use their actual serialized lengths; only kernel-generated node IDs use
- * the native 20,000-node / UUID contract. No receipt can fail after commit. */
-function receiptResultBound(before: DesignDocument, candidate: DesignDocument, ctx: AutomationContext, results: unknown) {
+/** Bound actual materialized IDs, not an assumed global node ceiling. Called
+ * inside Editor's admission boundary after native resolution, before history.
+ * Selection includes both successful navigation and interrupted publication;
+ * the summary and receipt/completion metadata have independent bounded sizes. */
+function receiptResultBound(before: DesignDocument, resolved: DesignDocument, ctx: AutomationContext, results: unknown, previousSelection: readonly string[]) {
   const previousIds = knownIds(before)
-  const stagedCreated = [...knownIds(candidate)].filter(id => !previousIds.has(id))
-  const changedIds = [...new Set([...Object.keys(before.nodes), ...Object.keys(candidate.nodes)])]
-  // A derived node can be present in both changedIds and createdIds. JSON UUID
-  // plus quotes and comma is 39 bytes. Allow the full native limit in each list.
-  const materializedIds = 2 * 20000 * 39
-  return jsonBytes(results) + jsonBytes(changedIds) + jsonBytes(stagedCreated) + jsonBytes(ctx.selection) +
-    jsonBytes(candidate.pages.map(page => page.id)) + materializedIds + CHANGE_SUMMARY_LIMITS.maxBytes + 4096
+  const createdIds = [...knownIds(resolved)].filter(id => !previousIds.has(id))
+  const changedIds = [...new Set([...Object.keys(before.nodes), ...Object.keys(resolved.nodes)])]
+    .filter(id => !equalValue(before.nodes[id], resolved.nodes[id]))
+  return jsonBytes(results) + jsonBytes(changedIds) + jsonBytes(createdIds) + jsonBytes(ctx.selection) +
+    jsonBytes(previousSelection) + CHANGE_SUMMARY_LIMITS.maxBytes + 4096
 }
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
@@ -499,6 +498,7 @@ function canonicalJson(value: unknown): string {
 }
 type MutationIdentity = Pick<CommittedEditReceipt, 'documentId' | 'session' | 'revision'>
 type MutationExecution = { result: Record<string, unknown>; identity: MutationIdentity }
+type ReceiptReservation = { owner: string; bytes: number; mutationId: string; fingerprint: string }
 const receiptIdentity = ({ documentId, session, revision }: MutationIdentity): MutationIdentity => ({ documentId, revision, session })
 
 export class DesignAutomationApi {
@@ -508,6 +508,9 @@ export class DesignAutomationApi {
   private disposed = false
   private receiptOwner = ''
   private receiptBytes = 0
+  private reservedReceiptBytes = 0
+  private reservedReceiptCount = 0
+  private readonly pendingReceipts = new Map<string, ReceiptReservation>()
   private readonly receipts = new Map<string, { fingerprint: string; result: Record<string, unknown> }>()
   constructor(readonly editor: Editor, extensions: AutomationExtension[] = [],
     private readonly validators: ((document: DesignDocument) => void)[] = [], permissions?: AutomationPermissionPolicy) {
@@ -521,7 +524,7 @@ export class DesignAutomationApi {
     }
     for (const descriptor of specialMethods) this.descriptors.set(descriptor.name, descriptor)
   }
-  dispose(): void { this.disposed = true; this.receipts.clear(); this.receiptBytes = 0 }
+  dispose(): void { this.disposed = true; this.receiptOwner = ''; this.receipts.clear(); this.receiptBytes = 0; this.reservedReceiptBytes = 0; this.reservedReceiptCount = 0; this.pendingReceipts.clear() }
   private allowed(method: AutomationMethod | undefined): boolean {
     return !!method && (!this.permissions || this.permissions.allows(method, {
       documentId: this.editor.state.doc.id, session: this.editor.sessionGeneration,
@@ -668,11 +671,13 @@ export class DesignAutomationApi {
       noAuthoredChange: equalValue(before, candidate), pageId: ctx.pageId, selection: ctx.selection,
       supportedMethods: this.preflightMethods(), receiptConsumed: false }
   }
-  private mutate(request: AutomationRequest, operations: { method: string; params?: Record<string, unknown> }[], label: string, fingerprintBytes: number | undefined, originalOperations: { method: string }[], observeCommit: (receipt: CommittedEditReceipt) => void): MutationExecution {
+  private mutate(request: AutomationRequest, operations: { method: string; params?: Record<string, unknown> }[], label: string, fingerprintBytes: number | undefined, originalOperations: { method: string }[], observeCommit: (receipt: CommittedEditReceipt) => void, reserveReceipt: (bytes: number) => void): MutationExecution {
     const { before, candidate, ctx, results } = this.stage(operations)
     const version = this.editor.state.version
-    if (fingerprintBytes !== undefined && this.receiptBytes + fingerprintBytes + receiptResultBound(before, candidate, ctx, results) > RECEIPT_BYTES)
-      fail('receipt_limit', 'The complete mutation receipt cannot fit the document-session budget; no edit was committed')
+    const admit = (resolved: DesignDocument) => {
+      if (fingerprintBytes !== undefined)
+        reserveReceipt(fingerprintBytes + receiptResultBound(before, resolved, ctx, results, this.editor.state.selection))
+    }
     // Synchronous staging may invoke trusted extensions; re-check ownership and
     // pending input immediately before the one authoritative commit boundary.
     this.requireFence(request, true)
@@ -683,11 +688,15 @@ export class DesignAutomationApi {
       canUndo: this.editor.canUndo, canRedo: this.editor.canRedo }
     let committed = false, committedResult: unknown
     if (!equalValue(before, candidate)) {
+      let admissionError: unknown
       const changeResult = this.editor.change(label, draft => {
         if (draft.id !== candidate.id) fail('document_mismatch', 'Cannot replace the document identity')
         for (const key of Object.keys(draft)) if (!Object.hasOwn(candidate, key)) delete (draft as unknown as Record<string, unknown>)[key]
         Object.assign(draft, candidate)
-      }, undefined, undefined, 'automation')
+      }, undefined, undefined, 'automation', 'other', resolved => {
+        try { admit(resolved) } catch (error) { admissionError = error; throw error }
+      })
+      if (admissionError) throw admissionError
       if (changeResult?.status === 'rejected') fail('commit_failed', changeResult.message || this.editor.state.message)
       if (changeResult?.status === 'committed') {
         const receipt = this.editor.committedEditReceipt(changeResult)
@@ -695,7 +704,7 @@ export class DesignAutomationApi {
           { committed: true, retry: 'do-not-retry', ...receiptIdentity({ ...owner, revision: changeResult.revision }) })
         owner = receipt; committed = true; committedResult = changeResult; observeCommit(receipt)
       } else if (changeResult?.status !== 'unchanged') fail('commit_failed', 'The editor did not commit the automation edit')
-    }
+    } else admit(candidate)
     const publication = this.publishContext(ctx, owner), after = owner.document
     if (publication.applied && committed && ctx.duplicationResult)
       this.editor.rememberDuplication(committedResult, ctx.duplicationResult.roots, ctx.duplicationResult.reference, publication.pageId)
@@ -712,6 +721,27 @@ export class DesignAutomationApi {
   }
   execute(input: unknown): AutomationResponse {
     let request: AutomationRequest | undefined, resultIdentity: MutationIdentity | undefined, committedReceipt: CommittedEditReceipt | undefined
+    let reservation: ReceiptReservation | undefined
+    let fingerprint: string | undefined, mutationId: string | undefined
+    const releaseReservation = () => {
+      if (reservation?.owner === this.receiptOwner) {
+        this.reservedReceiptBytes -= reservation.bytes; this.reservedReceiptCount--
+        if (this.pendingReceipts.get(reservation.mutationId) === reservation) this.pendingReceipts.delete(reservation.mutationId)
+      }
+      reservation = undefined
+    }
+    const reserveReceipt = (bytes: number) => {
+      if (reservation) throw Error('Mutation receipt was reserved twice')
+      if (!mutationId || fingerprint === undefined) throw Error('Missing mutation receipt identity')
+      if (this.pendingReceipts.has(mutationId) || this.receipts.has(mutationId))
+        fail('mutation_conflict', 'mutationId is already reserved or committed')
+      if (this.receipts.size + this.reservedReceiptCount >= RECEIPT_LIMIT ||
+        this.receiptBytes + this.reservedReceiptBytes + bytes > RECEIPT_BYTES)
+        fail('receipt_limit', 'The complete mutation receipt cannot fit the document-session budget; no edit was committed')
+      reservation = { owner: this.receiptOwner, bytes, mutationId, fingerprint }
+      this.pendingReceipts.set(mutationId, reservation)
+      this.reservedReceiptBytes += bytes; this.reservedReceiptCount++
+    }
     const observeCommit = (receipt: CommittedEditReceipt) => { committedReceipt = receipt; resultIdentity = receiptIdentity(receipt) }
     const response = () => ({ ...(request?.id === undefined ? {} : { id: request.id }), method: request?.method || '',
       ...(resultIdentity ?? { documentId: this.editor.state.doc.id, revision: this.editor.state.version, session: this.editor.sessionGeneration }) })
@@ -746,8 +776,7 @@ export class DesignAutomationApi {
         : descriptor.mutates && !request.method.startsWith('history.') ? [{ method: request.method, params }] : undefined
       const operations = originalOperations ? this.expandOperations(originalOperations, request.method === 'batch.preflight') : undefined
       const owner = `${this.editor.state.doc.id}:${this.editor.sessionGeneration}`
-      if (owner !== this.receiptOwner) { this.receipts.clear(); this.receiptBytes = 0; this.receiptOwner = owner }
-      let fingerprint: string | undefined, mutationId: string | undefined
+      if (owner !== this.receiptOwner) { this.receipts.clear(); this.receiptBytes = 0; this.reservedReceiptBytes = 0; this.reservedReceiptCount = 0; this.pendingReceipts.clear(); this.receiptOwner = owner }
       if (request.method === 'batch.apply' && params.mutationId !== undefined) {
         mutationId = params.mutationId as string
         if (!/^[A-Za-z0-9_-]{1,128}$/.test(mutationId)) fail('invalid_params', 'mutationId must contain 1–128 ASCII letters, digits, underscores or hyphens')
@@ -755,6 +784,9 @@ export class DesignAutomationApi {
         // An exact successful retry may have a stale revision, but never a foreign document/session.
         this.requireFence({ ...request, expectedRevision: undefined }, false)
         fingerprint = canonicalJson({ method: request.method, params, documentId: request.documentId, session: request.session, expectedRevision: request.expectedRevision })
+        const pending = this.pendingReceipts.get(mutationId)
+        if (pending) fail(pending.fingerprint === fingerprint ? 'mutation_in_progress' : 'mutation_conflict',
+          'mutationId is reserved by a mutation whose result has not finished publishing; retry the exact request after it completes')
         const receipt = this.receipts.get(mutationId)
         if (receipt) {
           if (receipt.fingerprint !== fingerprint) fail('mutation_conflict', 'mutationId was already committed with different arguments or fences')
@@ -762,7 +794,7 @@ export class DesignAutomationApi {
           result.receipt = { ...result.receipt as Record<string, unknown>, replayed: true }
           return { ...response(), ok: true, result }
         }
-        if (this.receipts.size >= RECEIPT_LIMIT || this.receiptBytes + new TextEncoder().encode(fingerprint).byteLength > RECEIPT_BYTES)
+        if (this.receipts.size + this.reservedReceiptCount >= RECEIPT_LIMIT || this.receiptBytes + this.reservedReceiptBytes + new TextEncoder().encode(fingerprint).byteLength > RECEIPT_BYTES)
           fail('receipt_limit', 'The document-session receipt budget is full; read state and start a new document session before submitting another receipted mutation')
       }
       this.requireFence(request, descriptor.mutates || request.method === 'clipboard.export')
@@ -792,10 +824,10 @@ export class DesignAutomationApi {
           pageId: owner.pageId, selection: [...owner.selection], ...(completion ? { completion } : {}) }
       } else if (request.method === 'batch.preflight') result = this.preflight(operations!)
       else if (request.method === 'batch.apply') {
-        const execution = this.mutate(request, operations!, params.label === undefined ? 'AI design batch' : text(params.label, 'label', 200), fingerprint === undefined ? undefined : new TextEncoder().encode(fingerprint).byteLength, originalOperations!, observeCommit)
+        const execution = this.mutate(request, operations!, params.label === undefined ? 'AI design batch' : text(params.label, 'label', 200), fingerprint === undefined ? undefined : new TextEncoder().encode(fingerprint).byteLength, originalOperations!, observeCommit, reserveReceipt)
         result = execution.result; resultIdentity = execution.identity
       } else if (descriptor.mutates) {
-        const execution = this.mutate(request, operations!, `AI: ${request.method}`, undefined, originalOperations!, observeCommit)
+        const execution = this.mutate(request, operations!, `AI: ${request.method}`, undefined, originalOperations!, observeCommit, reserveReceipt)
         result = execution.result; resultIdentity = execution.identity
       }
       else {
@@ -807,10 +839,13 @@ export class DesignAutomationApi {
         result = { ...result as Record<string, unknown>, receipt: { mutationId, revision: resultIdentity?.revision ?? this.editor.state.version, replayed: false } }
         const saved = structuredClone(result as Record<string, unknown>)
         const bytes = new TextEncoder().encode(fingerprint).byteLength + new TextEncoder().encode(JSON.stringify(saved)).byteLength
-        // Reentrant subscribers may have opened another owner or stored another
-        // receipt. Never roll that cache back or exceed the precommit budgets.
+        // Other same-owner commits cannot consume this in-flight reservation.
+        // A deliberately closed/replaced session still cannot retain old receipts.
+        const reserved = reservation
+        releaseReservation()
         if (!this.disposed && this.receiptOwner === owner && `${this.editor.state.doc.id}:${this.editor.sessionGeneration}` === owner &&
-          !this.receipts.has(mutationId) && this.receipts.size < RECEIPT_LIMIT && this.receiptBytes + bytes <= RECEIPT_BYTES) {
+          !this.receipts.has(mutationId) && reserved?.owner === owner && bytes <= reserved.bytes &&
+          this.receipts.size + this.reservedReceiptCount < RECEIPT_LIMIT && this.receiptBytes + this.reservedReceiptBytes + bytes <= RECEIPT_BYTES) {
           this.receipts.set(mutationId, { fingerprint, result: saved }); this.receiptBytes += bytes
         } else (result as Record<string, unknown>).receipt = { ...(result as Record<string, unknown>).receipt as object, replayAvailable: false }
       }
@@ -822,7 +857,7 @@ export class DesignAutomationApi {
         committed: true, retry: 'do-not-retry', ...receiptIdentity(committedReceipt) }
       failure.message = failure.message.slice(0, 4096)
       return { ...response(), ok: false, error: failure }
-    }
+    } finally { releaseReservation() }
   }
 }
 export function createDesignAutomation(editor: Editor, extensions: AutomationExtension[] = [], validators: ((document: DesignDocument) => void)[] = [], permissions?: AutomationPermissionPolicy): DesignAutomationApi {

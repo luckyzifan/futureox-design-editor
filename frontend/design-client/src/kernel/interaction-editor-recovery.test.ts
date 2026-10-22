@@ -188,3 +188,21 @@ test.each(['commit','cancel','document','new-gesture'] as const)('queued fatal n
   queued.shift()!();expect(failure).not.toHaveBeenCalled()
  }finally{vi.unstubAllGlobals();owner.dispose();editor.dispose()}
 })
+
+
+test.each(['rotate','scale'] as const)('failed %s preview applies the latest full matrix to the existing transaction exactly once',kind=>{
+ const doc=blank(),child=node('rectangle',40,40,24,20);doc.nodes[child.id]=child;doc.pages[0].children=[child.id]
+ const editor=new Editor(doc),transform:Matrix=kind==='rotate'?[0,1,-1,0,60,40]:[1.5,0,0,1.5,30,30]
+ try{
+  editor.select([child.id]);editor.begin(kind)
+  let pending:Parameters<Editor['preview']>|null=[{[child.id]:{transform}}]
+  const failure={document:editor.state.doc,epoch:editor.sessionGeneration,pageId:editor.state.page,sequence:2,ids:[child.id]}
+  const context={editor,pending:()=>pending,gesture:()=>({kind,ids:[child.id]}),sequence:()=>2,
+   clearPending:()=>{pending=null},restoreRetained:vi.fn(),end:vi.fn(),restoreOverlays:vi.fn()}
+  expect(recoverInteractionPreview(failure,context)).toBe(true)
+  expect(editor.state.doc.nodes[child.id].transform).toEqual(transform)
+  expect(recoverInteractionPreview(failure,context)).toBe(false)
+  expect(context.end).toHaveBeenCalledOnce();expect(context.restoreOverlays).toHaveBeenCalledOnce()
+  editor.commit();editor.undo();expect(editor.state.doc.nodes[child.id].transform).toEqual(child.transform);expect(editor.canUndo).toBe(false)
+ }finally{editor.dispose()}
+})

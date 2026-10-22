@@ -63,7 +63,7 @@ integers. EOF drains accepted jobs and joins workers before exit. Diagnostics go
 
 ```json
 {"id":"request-1","method":"health","params":{}}
-{"id":"request-1","result":{"protocolVersion":1,"maxDocumentBytes":33554432,"maxFrameBytes":67108864,"maxRecoveries":16}}
+{"id":"request-1","result":{"protocolVersion":1,"documentTransferVersion":1,"documentCapacity":{"memoryBytes":1073741824},"maxDocumentBytes":67108864,"maxFrameBytes":67108864,"maxRecoveries":16}}
 ```
 
 Errors are `{"id":...,"error":{"code":"...","message":"..."}}`; an unparseable
@@ -158,8 +158,8 @@ dirty. A failed or disconnected write must not be displayed as successfully save
   placeholders and match the revision's foreign-key reference index. Expansion is
   bounded before materializing repeated strings. Unknown fields and arbitrary
   user text never become references, even when they look like a reference token.
-- The existing 32 MiB serialized-document/64 MiB IPC limits remain. The SQLite
-  main database has a 4 GiB page budget and at most 10,000 documents, including
+- Documents use trusted resource-aware admission; individual IPC frames remain 64 MiB with bounded multipart transport. The SQLite
+  main database uses SQLite/filesystem capacity rather than a 4 GiB product quota, and at most 10,000 indexed documents, including
   trash. These limits are not total RSS or WAL-size limits. History is paginated
   in pages of 1,000. Large identical font/image strings are stored once across
   documents and new revisions. Small values and old schema 1 snapshots remain
@@ -278,11 +278,11 @@ edit remains dirty even if an earlier save finishes successfully.
   validation is not a claim that every frontend authoring constraint is identical.
   The renderer can normalize data when editing, so it must not advertise universal
   unknown-field round-trip preservation based only on the backend behavior.
-- Input `.forma` files and serialized documents are limited to 32 MiB. This keeps
+- Native FD files and serialized documents use the pinned startup memory allowance. This keeps
   compatibility with larger embedded-font documents. RPC frames are limited to
   64 MiB, including JSON framing. The kernel's node/page/resource limits also apply.
 - Recovery envelopes may use 64 KiB beyond the document limit for metadata. Up to
-  16 snapshots are retained (roughly 513 MiB worst-case), with no automatic eviction.
+  16 snapshots are retained, each subject to the pinned resource allowance, with no automatic eviction.
   At capacity, an explicit restore/discard is required before a new session can
   be snapshotted. Rewriting an existing valid session remains allowed.
 
@@ -345,11 +345,11 @@ installer signing, or native IME/GPU acceptance. Those remain release gates.
 ## Tokio admission and lifecycle contract
 
 - There is one parsing job at a time, one executing blocking job, and an explicit
-  FIFO. Admission allows at most eight queued/running jobs and 64 MiB aggregate
+  FIFO. Admission allows at most eight queued/running jobs and a resource-aware aggregate
   admitted request wire bytes. `BUSY` means no operation started. It is not a
   request to blindly retry a write.
 - Input staging separately allows one channel frame and one parser/reader frame,
-  each at most 64 MiB. One response is bounded to 64 MiB before writing. These are
+  each at most the resource-aware complete-transfer allowance. One response uses bounded 1 MiB chunks when it exceeds a fixed frame. These are
   wire-byte bounds, not a claim of a 64 MiB total RSS cap: parsed JSON, kernel
   validation, file buffers and SQLite require additional bounded working memory.
 - Main configures two Tokio scheduler threads and at most three Tokio blocking
@@ -489,3 +489,7 @@ not remove prefix text as a substitute for filesystem checks: native identity
 handles, per-ancestor checks and reparse rejection remain. The Windows-gated
 `windows_plain_and_verbatim_directory_paths_share_grants_and_ids` regression must
 be run on an actual Windows host; adding it is not Windows acceptance evidence.
+
+## Resource-aware capacity update
+
+The [maintained capacity contract](../../../docs/DOCUMENT_CAPACITY_V1.md) supersedes historical 32 MiB document and 4 GiB workspace quotas. Its explicit staging/queue accounting is separate from per-frame limits and is not a total RSS guarantee. Workspace schema 6 atomically migrates asset/reference tables without discarding durable history or retry receipts.

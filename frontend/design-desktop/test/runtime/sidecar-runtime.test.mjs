@@ -1,3 +1,4 @@
+import { DOCUMENT_BYTE_LIMIT, DOCUMENT_MEMORY_BYTES } from '../../src/document-capacity.mjs'
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile, mkdir, rm, realpath } from 'node:fs/promises'
 import path from 'node:path'
@@ -34,7 +35,9 @@ try {
     sidecar = launch()
     const health = await sidecar.request('health')
     assert.equal(health.protocolVersion, 1)
-    assert.equal(health.maxDocumentBytes, 32 * 1024 * 1024)
+    assert.equal(health.maxDocumentBytes, DOCUMENT_BYTE_LIMIT)
+    assert.equal(health.documentCapacity.memoryBytes, DOCUMENT_MEMORY_BYTES)
+    assert.equal(health.documentTransferVersion, 1)
     const fresh = await sidecar.request('stat', { path: target })
     assert.equal(fresh.hash, null)
     const saved = await sidecar.request('save', {

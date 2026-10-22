@@ -21,7 +21,9 @@ use tokio::{
 };
 
 pub const MAX_PENDING: usize = 8;
-pub const MAX_PENDING_BYTES: usize = 64 * 1024 * 1024;
+pub fn max_pending_bytes() -> usize {
+    crate::document_transport::transfer_byte_limit().saturating_add(8 * 1024 * 1024)
+}
 struct Input {
     parsed: std::result::Result<Request, Response>,
     bytes: usize,
@@ -67,16 +69,32 @@ async fn read_frame(
     }
 }
 fn encode(response: Response) -> io::Result<Vec<u8>> {
-    let mut bytes = crate::bounded_json(&response, MAX_FRAME_BYTES, "FRAME_TOO_LARGE")
-        .map_err(io::Error::other)?;
-    bytes.push(b'\n');
+    let bytes = crate::bounded_json(
+        &response,
+        crate::document_transport::transfer_byte_limit(),
+        "FRAME_TOO_LARGE",
+    )
+    .map_err(io::Error::other)?;
     Ok(bytes)
+}
+async fn write_encoded(writer: &mut (impl AsyncWrite + Unpin), bytes: &[u8]) -> io::Result<()> {
+    if bytes.len() <= MAX_FRAME_BYTES {
+        writer.write_all(bytes).await?;
+        writer.write_all(b"\n").await?;
+    } else {
+        let id = crate::unique_id();
+        for offset in (0..bytes.len()).step_by(crate::document_transport::CHUNK_BYTES) {
+            writer
+                .write_all(&crate::document_transport::chunk(bytes, offset, &id)?)
+                .await?;
+        }
+    }
+    writer.flush().await
 }
 async fn reply(writer: &mut (impl AsyncWrite + Unpin), response: Response) -> io::Result<()> {
     // Control replies are small. Large document response serialization is inside
     // the single blocking worker, before its permit can be released.
-    writer.write_all(&encode(response)?).await?;
-    writer.flush().await
+    write_encoded(writer, &encode(response)?).await
 }
 fn failed(id: Value, code: &'static str, message: &str) -> Response {
     protocol::failed(id, BackendError::new(code, message))
@@ -93,7 +111,7 @@ where
         reader,
         writer,
         MAX_PENDING,
-        MAX_PENDING_BYTES,
+        max_pending_bytes(),
         Arc::new(move |request, cancel| protocol::handle_request(&worker_backend, request, cancel)),
     )
     .await
@@ -113,20 +131,69 @@ where
     W: AsyncWrite + Unpin,
 {
     // An input task may own one parsed frame and one frame in the channel. Thus
-    // input staging is at most 2*MAX_FRAME_BYTES in wire bytes, separately from
-    // MAX_PENDING_BYTES admitted work. JSON allocation overhead is not an RSS cap.
+    // input staging is at most 2*transfer_byte_limit() in complete payload bytes,
+    // separately from the resource-aware admitted-work queue. Individual chunks
+    // stay bounded; parsed JSON/model allocation overhead is not an RSS cap.
     let (sender, mut receiver) = mpsc::channel::<io::Result<Input>>(1);
     let (stop, mut stopped) = tokio::sync::watch::channel(false);
     let input = tokio::spawn(async move {
         let mut reader = BufReader::new(reader);
+        let mut assembler = crate::document_transport::Assembler::default();
         loop {
             let read = tokio::select! { biased; _=stopped.changed()=>break, read=read_frame(&mut reader)=>read };
             let frame = match read {
                 Ok(Some(frame)) => frame,
-                Ok(None) => break,
+                Ok(None) => {
+                    if assembler.incomplete() {
+                        let _ = sender
+                            .send(Err(io::Error::new(
+                                io::ErrorKind::UnexpectedEof,
+                                "Incomplete document transfer",
+                            )))
+                            .await;
+                    }
+                    break;
+                }
                 Err(e) => {
                     let _ = sender.send(Err(e)).await;
                     break;
+                }
+            };
+            let frame = if frame.1 {
+                if assembler.incomplete() {
+                    let _ = sender
+                        .send(Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "Oversized frame interrupted document transfer",
+                        )))
+                        .await;
+                    break;
+                }
+                frame
+            } else {
+                // Assembly/parsing work never blocks the Tokio executor. Only
+                // one transfer is staged; admission precedes each allocation.
+                let limit = crate::document_transport::transfer_byte_limit();
+                let (next, assembled) = match tokio::task::spawn_blocking(move || {
+                    let result = assembler.accept(frame.0, limit);
+                    (assembler, result)
+                })
+                .await
+                {
+                    Ok(result) => result,
+                    Err(e) => {
+                        let _ = sender.send(Err(io::Error::other(e))).await;
+                        break;
+                    }
+                };
+                assembler = next;
+                match assembled {
+                    Ok(Some(bytes)) => (bytes, false),
+                    Ok(None) => continue,
+                    Err(e) => {
+                        let _ = sender.send(Err(e)).await;
+                        break;
+                    }
                 }
             };
             let bytes = frame.0.len();
@@ -138,7 +205,9 @@ where
                 ))
             } else {
                 // Exactly one parser job is submitted and joined at a time.
-                match tokio::task::spawn_blocking(move || protocol::parse_frame(&frame.0)).await {
+                match tokio::task::spawn_blocking(move || protocol::parse_admitted_frame(&frame.0))
+                    .await
+                {
                     Ok(p) => p,
                     Err(e) => {
                         let _ = sender.send(Err(io::Error::other(e))).await;
@@ -186,7 +255,7 @@ where
             completed=async { (&mut running.as_mut().unwrap().join).await }, if running.is_some()=> {
                 let job=running.take().unwrap(); pending_bytes-=job.bytes;
                 match completed {
-                    Ok(Ok(bytes))=> { if failure.is_none() { if let Err(e)=writer.write_all(&bytes).await {failure=Some(e);} else if let Err(e)=writer.flush().await {failure=Some(e);} } }
+                    Ok(Ok(bytes))=> { if failure.is_none() { if let Err(e)=write_encoded(&mut writer,&bytes).await {failure=Some(e);} } }
                     Ok(Err(e))=>{failure=Some(e);}
                     Err(e)=>{failure=Some(io::Error::other(e));}
                 }
@@ -253,6 +322,57 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn async_multipart_failure_never_dispatches_and_releases_reader() {
+        use base64::Engine as _;
+        use tokio::io::AsyncReadExt;
+        let root = std::env::temp_dir().join(format!("forma-chunk-runtime-{}", crate::unique_id()));
+        let backend = Arc::new(Backend::new(&root).unwrap());
+        let payload = br#"{"id":1,"method":"save","params":{}}"#;
+        let split = 13;
+        let chunk = |id: &str, offset: usize, bytes: &[u8]| {
+            format!("{}\n", json!({"desktopChunk":{"version":1,"id":id,"total":payload.len(),"offset":offset,"data":base64::engine::general_purpose::STANDARD.encode(bytes)}})).into_bytes()
+        };
+        let first = chunk("one", 0, &payload[..split]);
+        let valid_tail = chunk("one", split, &payload[split..]);
+        for (tail, valid) in [
+            (Vec::new(), false),
+            (first.clone(), false),
+            (chunk("two", split, &payload[split..]), false),
+            (chunk("one", usize::MAX, &payload[split..]), false),
+            (valid_tail, true),
+        ] {
+            let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let seen = calls.clone();
+            let handler: Handler = Arc::new(move |request, _| {
+                seen.fetch_add(1, Ordering::SeqCst);
+                Response {
+                    id: request.id,
+                    result: Some(json!({"committed":true})),
+                    error: None,
+                }
+            });
+            let (mut input, read) = tokio::io::duplex(4096);
+            let (write, mut output) = tokio::io::duplex(4096);
+            let server = tokio::spawn(serve_impl(backend.clone(), read, write, 2, 512, handler));
+            input.write_all(&first).await.unwrap();
+            input.write_all(&tail).await.unwrap();
+            drop(input);
+            let mut response = Vec::new();
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                output.read_to_end(&mut response),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            let result = server.await.unwrap();
+            assert_eq!(result.is_ok(), valid);
+            assert_eq!(calls.load(Ordering::SeqCst), usize::from(valid));
+            assert_eq!(response.is_empty(), !valid);
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[tokio::test]
     async fn blocking_permit_survives_waiter_abort() {
         let slots = Arc::new(Semaphore::new(1));

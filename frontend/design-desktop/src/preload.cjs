@@ -13,6 +13,15 @@ if (gpuBudgetArguments.length) {
   gpuWorkingBudgetMiB = Number(raw)
   if (!Number.isSafeInteger(gpuWorkingBudgetMiB) || String(gpuWorkingBudgetMiB) !== raw || gpuWorkingBudgetMiB < 256 || gpuWorkingBudgetMiB > 4096) throw invalid()
 }
+const documentBudgetPrefix = '--core-document-memory-bytes='
+const documentBudgetArguments = process.argv.filter(value => value.startsWith(documentBudgetPrefix))
+let documentMemoryBytes
+if (documentBudgetArguments.length) {
+  const raw = documentBudgetArguments[0].slice(documentBudgetPrefix.length)
+  documentMemoryBytes = Number(raw)
+  if (documentBudgetArguments.length !== 1 || !/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(documentMemoryBytes) || documentMemoryBytes < 1024 * 1024 || documentMemoryBytes > 4 * 1024 ** 3)
+    throw new TypeError('Invalid trusted document memory policy')
+}
 const diagnosticListeners = new Set()
 const reportDiagnostic = code => { for (const listener of diagnosticListeners) { try { listener({code}) } catch {} } }
 const invoke = (name, value) => ipcRenderer.invoke(`design-desktop:${name}`, value).then(result => {
@@ -34,6 +43,7 @@ contextBridge.exposeInMainWorld(
   'coreDesktop',
   Object.freeze({
     version: 1,
+    ...(documentMemoryBytes === undefined ? {} : { documentCapacity: Object.freeze({ memoryBytes: documentMemoryBytes }) }),
     renderDiagnostics: process.argv.includes('--core-render-diagnostics'),
     renderDiagnosticsDetail: process.argv.includes('--core-render-diagnostics-detail'),
     petConfigure: mode => invoke('pet-configure', mode),
@@ -97,7 +107,7 @@ contextBridge.exposeInMainWorld(
     documentCodec: Object.freeze({
       // The persistent codec worker serializes plain admitted objects with JSON.stringify.
       encoding: 'json-stringify-v1',
-      // Versioned exact JSON.parse contract, including the native32MiB input bound.
+      // Versioned exact JSON.parse contract, including the trusted resource-aware input allowance.
       decoding: 'json-parse-v1',
       encode: value => ipcRenderer.invoke('native-document:encode', value),
       decode: value => ipcRenderer.invoke('native-document:decode', value),

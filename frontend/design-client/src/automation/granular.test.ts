@@ -5,6 +5,8 @@ import { Graph } from '../kernel/graph'
 import * as Picking from '../kernel/picking'
 import { createEditorDesignAutomation } from './index'
 import { createDesignAutomation } from './core'
+import { designSystemExtensions } from './design-system'
+import { stampKeys } from '../components'
 import { CHANGE_SUMMARY_LIMITS, summarizeChanges } from './change-summary'
 import type { AutomationResponse } from './types'
 
@@ -318,6 +320,83 @@ describe('bounded pure authored preflight and session-local batch receipts', () 
       expect(f.editor.state.version).toBe(revision)
     } finally { api.dispose() }
   })
+  it('reserves an in-flight mutation identity against synchronous same-ID retries', () => {
+    const f = fixture(), request = { method: 'batch.apply', ...f.fence(), params: { mutationId: 'in-flight',
+      operations: [op('node.patch', { ids: [f.rectangle.id], patch: { name: 'Outer commit' } })] } }
+    let exact: AutomationResponse | undefined, conflicting: AutomationResponse | undefined
+    const stop = f.editor.subscribeEdits(() => {
+      exact = f.api.execute(request)
+      conflicting = f.api.execute({ ...request, ...f.fence(), params: { ...request.params,
+        operations: [op('node.patch', { ids: [f.rectangle.id], patch: { name: 'Must not commit' } })] } })
+    })
+    const first = ok(f.api.execute(request)); stop()
+    expect(exact).toMatchObject({ ok: false, error: { code: 'mutation_in_progress' } })
+    expect(conflicting).toMatchObject({ ok: false, error: { code: 'mutation_conflict' } })
+    expect(f.editor.state.version).toBe(request.expectedRevision + 1)
+    expect(f.editor.state.doc.nodes[f.rectangle.id].name).toBe('Outer commit')
+    const replay = ok(f.api.execute(request))
+    expect(replay).toEqual({ ...first, receipt: { ...first.receipt, replayed: true } })
+  })
+  it('protects in-flight receipt bytes from a different-ID reentrant commit', () => {
+    const f = fixture(), api = createDesignAutomation(f.editor, [{ name: 'test.payload', description: 'Bounded receipt fixture', mutates: true,
+      inputSchema: { type: 'object', properties: { size: { type: 'integer' }, name: { type: 'string' } }, required: ['size', 'name'], additionalProperties: false },
+      execute(doc, params) { doc.name = params.name as string; return 'x'.repeat(params.size as number) },
+    }])
+    const request = (id: string, size: number) => ({ method: 'batch.apply', ...f.fence(), params: { mutationId: id,
+      operations: [op('test.payload', { size, name: id })] } })
+    try {
+      for (let i = 0; i < 4; i++) ok(api.execute(request(`seed-${i}`, 7 * 1024 ** 2)))
+      let nested: AutomationResponse | undefined
+      const stop = f.editor.subscribeEdits(() => { if (!nested) nested = api.execute(request('nested', 2 * 1024 ** 2)) })
+      const outerRequest = request('outer', 3 * 1024 ** 2), first = ok(api.execute(outerRequest)); stop()
+      expect(nested).toMatchObject({ ok: false, error: { code: 'receipt_limit' } })
+      expect(f.editor.state.version).toBe(outerRequest.expectedRevision + 1)
+      expect(f.editor.state.doc.name).toBe('outer')
+      expect(first.receipt.replayAvailable).toBeUndefined()
+      const replay = ok(api.execute(outerRequest))
+      expect(replay).toEqual({ ...first, receipt: { ...first.receipt, replayed: true } })
+    } finally { api.dispose() }
+  })
+  it('admits actual native materialized receipt IDs and rejects overflow before history or publication', () => {
+    const document = blank('Materialized receipt'), main = node('frame', 0, 0, 100, 100)
+    main.component = { properties: {}, variants: {} }
+    document.nodes[main.id] = main; document.pages[0].children.push(main.id)
+    for (let i = 0; i < 1100; i++) {
+      const child = node('rectangle', 0, 0, 1, 1)
+      document.nodes[child.id] = child; main.children.push(child.id)
+    }
+    stampKeys(document, main.id)
+    const f = fixture(document), api = createDesignAutomation(f.editor, [...designSystemExtensions, {
+      name: 'test.payload', description: 'Bounded receipt fixture', mutates: true,
+      inputSchema: { type: 'object', properties: { size: { type: 'integer' }, name: { type: 'string' } }, required: ['size', 'name'], additionalProperties: false },
+      execute(doc, params) { doc.name = params.name as string; return 'x'.repeat(params.size as number) },
+    }])
+    const seed = (i: number, size: number) => ({ method: 'batch.apply', ...f.fence(), params: { mutationId: `seed-${i}`,
+      operations: [op('test.payload', { size, name: `seed-${i}` })] } })
+    const instantiate = () => ({ method: 'batch.apply', ...f.fence(), params: { mutationId: 'materialized',
+      operations: [op('component.instantiate', { componentId: main.id, x: 200 })] } })
+    try {
+      const firstSeed = seed(0, 7 * 1024 ** 2)
+      for (let i = 0; i < 4; i++) ok(api.execute(i === 0 ? firstSeed : seed(i, 7 * 1024 ** 2)))
+      ok(api.execute(seed(4, Math.floor(3.9 * 1024 ** 2))))
+      const before = f.editor.state.doc, version = f.editor.state.version
+      const layout = vi.spyOn(Picking, 'kernelLayout'), ops = vi.spyOn(Graph.prototype, 'applyOps'), replace = vi.spyOn(Graph.prototype, 'replaceDocument')
+      rejected(api.execute(instantiate()), 'receipt_limit')
+      expect(layout).toHaveBeenCalledTimes(1)
+      const resolved = layout.mock.results[0].value as DesignDocument
+      expect(Object.keys(resolved.nodes).length - Object.keys(before.nodes).length).toBe(1101)
+      expect(ops).not.toHaveBeenCalled(); expect(replace).not.toHaveBeenCalled()
+      expect(f.editor.state.doc).toBe(before); expect(f.editor.state.version).toBe(version)
+      expect(ok(api.execute(firstSeed)).receipt.replayed).toBe(true)
+      // A fresh receipt session has room, and an exact lost-response retry must
+      // return all generated IDs without another instance or undo entry.
+      const request = instantiate(), first = ok(f.api.execute(request)), revision = f.editor.state.version
+      expect(first.createdIds).toHaveLength(1101)
+      const replay = ok(f.api.execute(request))
+      expect(replay).toEqual({ ...first, receipt: { ...first.receipt, replayed: true } })
+      expect(f.editor.state.version).toBe(revision)
+    } finally { api.dispose() }
+  }, 60_000)
   it('bounds changed paths and never emits full image/font bytes', () => {
     const before = blank(), after = structuredClone(before), n = node('rectangle')
     before.nodes[n.id] = structuredClone(n); after.nodes[n.id] = structuredClone(n)

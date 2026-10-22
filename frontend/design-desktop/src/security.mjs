@@ -1,8 +1,9 @@
 import path from 'node:path'
+import { DOCUMENT_BYTE_LIMIT } from './document-capacity.mjs'
 import { realpath } from 'node:fs/promises'
 
 export const APP_URL = 'design-app://app/index.html'
-export const MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
+export const MAX_DOCUMENT_BYTES = DOCUMENT_BYTE_LIMIT
 export const MAX_FRAME_BYTES = 64 * 1024 * 1024
 export const CSP = [
   "default-src 'none'",
@@ -77,7 +78,7 @@ export function record(value, keys) {
 
 export function documentFromString(value) {
   if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > MAX_DOCUMENT_BYTES) {
-    throw new Error('Document exceeds the 32 MiB limit')
+    throw new Error('Document exceeds the available document working-memory allowance')
   }
   const parsed = JSON.parse(value)
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
@@ -112,7 +113,9 @@ export function resultError(error) {
     BACKEND_TIMEOUT:
       'The local backend did not finish in time. Verify the file before trying again.',
     INVALID_DOCUMENT: 'The file is not a supported, valid futureox-desgin document.',
-    TOO_LARGE: 'The document exceeds the 32 MiB desktop limit.',
+    DOCUMENT_RESOURCE_LIMIT: 'This document needs more working memory than this session can safely admit. Stored bytes and the current canvas are preserved.',
+    DOCUMENT_TOO_LARGE: 'This document exceeds the current working-memory allowance. Stored bytes and the current canvas are preserved.',
+    TOO_LARGE: 'The document exceeds the available working-memory allowance. Close other documents or use a machine with more memory.',
     RECOVERY_LIMIT:
       'The recovery store is full. Recover and save an earlier snapshot to free space, or save this design manually.',
     BUSY: 'Another file operation is in progress. Please try again after it finishes.',

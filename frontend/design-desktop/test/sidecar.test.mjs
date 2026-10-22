@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { Sidecar } from '../src/sidecar.mjs'
+import { DOCUMENT_TRANSFER_BYTES } from '../src/document-capacity.mjs'
 
 function fake({ ignoreTerm = false, respond = true, malformed = false, failSpawn = false } = {}) {
   const process = new EventEmitter()
@@ -131,7 +132,7 @@ test('large-result reservations prevent small open requests multiplying response
   const fixture = fake({ respond: false })
   const client = new Sidecar('/trusted/backend', '/trusted/recovery', fixture)
   const pending = client.request('open', { path: '/trusted/document.fd' }).catch((error) => error)
-  assert.equal(client.pendingBytes, 64 * 1024 * 1024)
+  assert.equal(client.pendingBytes, DOCUMENT_TRANSFER_BYTES)
   await assert.rejects(client.request('open', { path: '/trusted/other.fd' }), { code: 'BUSY' })
   const health = client.request('health').catch((error) => error)
   assert.equal(client.pending.size, 2)
@@ -150,4 +151,48 @@ test('lost replies classify every native Sketch mutation as an uncertain outcome
     assert.equal((await pending).outcomeUnknown, true, name)
     await client.stop()
   }
+})
+
+test('large desktop requests and replies cross fixed frames through bounded chunks, retaining one reservation', async()=>{
+  const { DocumentFrameAssembler, documentFrames } = await import('../src/document-transport.mjs')
+  const { MAX_FRAME_BYTES } = await import('../src/security.mjs')
+  const fixture=fake({respond:false})
+  const client=new Sidecar('/trusted/backend','/trusted/recovery',fixture)
+  const assembler=new DocumentFrameAssembler(DOCUMENT_TRANSFER_BYTES)
+  let largest=0, requests=0
+  fixture.process.stdin.on('data',chunk=>{
+    largest=Math.max(largest,chunk.length)
+    const received=assembler.accept(chunk)
+    if(!received)return
+    const request=JSON.parse(received.toString('utf8'));requests++
+    const bytes=Buffer.from(JSON.stringify({id:request.id,result:{payload:request.params.payload}}))
+    setImmediate(async()=>{
+      for(const frame of documentFrames(bytes,'reply-large',MAX_FRAME_BYTES)){
+        fixture.process.stdout.write(frame)
+        await new Promise(resolve=>setImmediate(resolve))
+      }
+    })
+  })
+  const size=MAX_FRAME_BYTES+17
+  assert.ok(DOCUMENT_TRANSFER_BYTES>size,'test requires >64MiB admitted transfer allowance')
+  try {
+    const response=await client.request('save',{payload:'x'.repeat(size)})
+    assert.equal(response.payload.length,size);assert.equal(requests,1)
+    assert.ok(largest<2*1024*1024);assert.equal(client.pendingBytes,0)
+    assert.equal(client.admittedCount,0)
+  } finally {await client.stop()}
+})
+
+test('aggregate resource rejection occurs before JSON serialization allocation',async()=>{
+ const fixture=fake({respond:false})
+ const client=new Sidecar('/trusted/backend','/trusted/recovery',{...fixture,maxPendingBytes:1})
+ const stringify=JSON.stringify;let serialized=false,rejected
+ try{
+  JSON.stringify=()=>{serialized=true;throw Error('unexpected serialized allocation')}
+  rejected=client.request('save',{document:{name:'not admitted'}})
+ }finally{JSON.stringify=stringify}
+ try{
+  await assert.rejects(rejected,{code:'BUSY'})
+  assert.equal(serialized,false);assert.equal(client.pendingBytes,0);assert.equal(client.pending.size,0)
+ }finally{await client.stop()}
 })

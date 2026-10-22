@@ -1,13 +1,15 @@
 //! Private SQLite encoding. References live in a versioned envelope and are
 //! interpreted only at schema-known asset leaves, never in arbitrary user text.
-use crate::{BackendError, MAX_DOCUMENT_BYTES, Result, bounded_json};
+use crate::{BackendError, Result, bounded_json, document_byte_limit};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqliteConnection};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const MAX_SNAPSHOT_BYTES: usize = MAX_DOCUMENT_BYTES + 64 * 1024;
+pub fn snapshot_byte_limit() -> usize {
+    document_byte_limit().saturating_add(64 * 1024)
+}
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -231,7 +233,7 @@ pub fn encode(document: &Value) -> Result<Encoded> {
             kind,
         });
     }
-    let bytes = bounded_json(&envelope, MAX_SNAPSHOT_BYTES, "DOCUMENT_TOO_LARGE")?;
+    let bytes = bounded_json(&envelope, snapshot_byte_limit(), "DOCUMENT_TOO_LARGE")?;
     Ok(Encoded { bytes, assets })
 }
 pub async fn checked_asset(
@@ -240,12 +242,12 @@ pub async fn checked_asset(
     kind: Kind,
 ) -> Result<String> {
     // A corrupt length must not materialize an unbounded BLOB before checking it.
-    let row = sqlx::query("SELECT kind,byte_length,CASE WHEN length(value)<=33554432 THEN value ELSE NULL END AS value FROM assets WHERE hash=?")
-        .bind(digest).fetch_optional(connection).await.map_err(db)?.ok_or_else(||corrupt("Workspace resource is missing; snapshot retained"))?;
+    let row = sqlx::query("SELECT kind,byte_length,CASE WHEN length(value)<=? THEN value ELSE NULL END AS value FROM assets WHERE hash=?")
+        .bind(document_byte_limit() as i64).bind(digest).fetch_optional(connection).await.map_err(db)?.ok_or_else(||corrupt("Workspace resource is missing; snapshot retained"))?;
     let stored_kind: String = row.try_get("kind").map_err(db)?;
     let declared: i64 = row.try_get("byte_length").map_err(db)?;
     let bytes: Option<Vec<u8>> = row.try_get("value").map_err(db)?;
-    let bytes = bytes.ok_or_else(|| corrupt("Workspace resource exceeds its byte budget"))?;
+    let bytes = bytes.ok_or_else(|| BackendError::new("DOCUMENT_RESOURCE_LIMIT", "Workspace resource exceeds this session's working-memory allowance; stored bytes retained"))?;
     if stored_kind != kind.label()
         || declared != bytes.len() as i64
         || asset_hash(kind, &bytes) != digest
@@ -267,11 +269,11 @@ pub async fn decode(
     id: &str,
     revision: i64,
 ) -> Result<Value> {
-    if bytes.len() > MAX_SNAPSHOT_BYTES {
+    if bytes.len() > snapshot_byte_limit() {
         return Err(corrupt("Encoded snapshot exceeds its byte budget"));
     }
     if encoding == 1 {
-        if bytes.len() > MAX_DOCUMENT_BYTES {
+        if bytes.len() > document_byte_limit() {
             return Err(corrupt("Legacy snapshot exceeds its byte budget"));
         }
         return serde_json::from_slice(bytes)
@@ -288,8 +290,12 @@ pub async fn decode(
     let allowed = resource_paths(&envelope.document);
     let mut pointers = BTreeSet::new();
     let mut resources = BTreeMap::new();
-    let mut expanded =
-        bounded_json(&envelope.document, MAX_DOCUMENT_BYTES, "WORKSPACE_CORRUPT")?.len();
+    let mut expanded = bounded_json(
+        &envelope.document,
+        document_byte_limit(),
+        "WORKSPACE_CORRUPT",
+    )?
+    .len();
     for reference in &envelope.resources {
         if allowed.get(&reference.pointer) != Some(&reference.kind)
             || !pointers.insert(&reference.pointer)
@@ -313,7 +319,7 @@ pub async fn decode(
         // with a quoted string adds exactly value.len()-2 bytes.
         expanded = expanded
             .checked_add(value.len().saturating_sub(2))
-            .filter(|n| *n <= MAX_DOCUMENT_BYTES)
+            .filter(|n| *n <= document_byte_limit())
             .ok_or_else(|| corrupt("Expanded snapshot exceeds the document budget"))?;
     }
     let references = sqlx::query_scalar::<_, String>(

@@ -1,3 +1,4 @@
+import { documentCapacity } from '../document-capacity'
 import { markRenderFailure } from './render-failure-telemetry'
 import { HandledTileDeliveryError } from './tile-admission'
 import { FrameMeasurements } from './frame-measurements'
@@ -194,6 +195,8 @@ export type KernelOptions = {
   retainInteractionGraph?: boolean
   /** Recompile changed coverage at the real sample phase; retain exact sources only. */
   interactionNative?: boolean
+  /** Full-viewport native affine capture; never a cached-pixel warp. */
+  interactionAffine?: boolean
   /** Ancestors of a moving nested object must remain live compositions. */
   interactionSelection?: string[]
   /** Visible interior of a guarded transient capture, in capture pixels. */
@@ -403,7 +406,7 @@ export class KernelClient {
   private presentationAttached = false
   attachPresentation(canvas: OffscreenCanvas) {
     this.presentationAttached = true
-    this.worker!.postMessage({ command: 'display-attach', canvas, executionPolicy: renderExecutionPolicy }, [canvas])
+    this.worker!.postMessage({ command: 'display-attach', canvas, executionPolicy: renderExecutionPolicy, documentMemoryBytes: documentCapacity().memoryBytes }, [canvas])
   }
   presentationDiagnosticsEnabled() { return this.terminalDiagnostics.detail }
   present(frame: import('./gpu/resident-presenter').ResidentFrame) {
@@ -485,14 +488,14 @@ export class KernelClient {
       })
       this.closeNativePreparation = native.close
       this.serializeNative = native.serialize
-      worker.postMessage({ command: 'prepare-port', port: channel.port2 }, [channel.port2])
+      worker.postMessage({ command: 'prepare-port', port: channel.port2, documentMemoryBytes: documentCapacity().memoryBytes }, [channel.port2])
     } else if (allowsResidentSdr(renderExecutionPolicy) &&
       typeof navigator !== 'undefined' && !!navigator.gpu && import.meta.env.VITE_DESIGN_PREPARATION_WORKER !== '0') {
       const preparation = new Worker(new URL('./preparation-worker.ts', import.meta.url), { type: 'module' })
       this.preparationWorker = preparation
       const channel = new MessageChannel()
-      preparation.postMessage({ port: channel.port1 }, [channel.port1])
-      worker.postMessage({ command: 'prepare-port', port: channel.port2 }, [channel.port2])
+      preparation.postMessage({ port: channel.port1, memoryBytes: documentCapacity().memoryBytes }, [channel.port1])
+      worker.postMessage({ command: 'prepare-port', port: channel.port2, documentMemoryBytes: documentCapacity().memoryBytes }, [channel.port2])
       preparation.onerror = event => { if (this.preparationWorker === preparation) this.reset(new Error(event.message || 'CPU 准备线程失败')) }
     }
     worker.onmessage = (e) => {
@@ -1014,7 +1017,7 @@ export class KernelClient {
         if (this.navigationJournal.recording && options?.view) this.navigationJournal.record(1, {
           requestId: id, channel: (payload as {channel?:string}).channel === 'interaction' ? 1 : 0,
           x: options.view?.x, y: options.view?.y, zoom: options.view?.zoom, width: options.width, height: options.height })
-        this.worker!.postMessage({ id, ...payload, executionPolicy: renderExecutionPolicy },transfer)
+        this.worker!.postMessage({ id, ...payload, executionPolicy: renderExecutionPolicy, documentMemoryBytes: documentCapacity().memoryBytes },transfer)
       } catch (error) {
         rejectSubmission?.()
         this.reset(error instanceof Error ? error : new Error(String(error)))

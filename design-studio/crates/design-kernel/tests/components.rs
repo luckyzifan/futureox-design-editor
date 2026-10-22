@@ -283,12 +283,27 @@ fn generated_id_collisions_fail_without_modifying_the_input() {
 }
 #[test]
 fn exponential_instance_expansion_is_bounded() {
+    // Keep the hostile expansion test independent of host RAM and the removed
+    // 20k quota. Only this child owns a small trusted admission policy.
+    const CHILD: &str = "CORE_COMPONENT_EXPANSION_TEST_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "exponential_instance_expansion_is_bounded", "--nocapture"])
+            .env(CHILD, "1")
+            .env("CORE_DOCUMENT_MEMORY_BYTES", (64 * 1024 * 1024).to_string())
+            .output().unwrap();
+        assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        return;
+    }
     let mut nodes = vec![];
     let mut roots = vec![];
-    for depth in 0..15 {
+    // Fully materializing this graph would require tens of millions of nodes.
+    // Builder::insert charges each node before inserting it into staging.
+    let levels = 26;
+    for depth in 0..levels {
         let id = format!("c{depth}");
         roots.push(id.clone());
-        let children = if depth < 14 {
+        let children = if depth < levels - 1 {
             vec![format!("s{depth}a"), format!("s{depth}b")]
         } else {
             vec![]
@@ -304,7 +319,17 @@ fn exponential_instance_expansion_is_bounded() {
     nodes.push(instance("top", "c0"));
     roots.push("top".into());
     let mut d = doc(nodes, &roots.iter().map(String::as_str).collect::<Vec<_>>());
-    assert!(components::resolve(&mut d).is_err());
+    let before = d.clone();
+    assert!(serde_json::to_vec(&d).unwrap().len() < futureox_design_kernel::capacity::document_byte_limit());
+    d.validate().unwrap();
+    for _ in 0..2 {
+        let error = components::resolve(&mut d).unwrap_err();
+        assert!(error.contains("resource allowance"), "{error}");
+        assert_eq!(d, before, "failed expansion must not publish any derived nodes");
+    }
+    let mut valid = basic();
+    resolve(&mut valid);
+    assert!(!valid.nodes["i"].children.is_empty(), "a later valid resolution remains usable");
 }
 #[test]
 fn native_renderer_and_gpu_compiler_resolve_instances() {
@@ -351,7 +376,8 @@ fn expanded_text_payloads_have_a_byte_budget() {
     label["text"] = json!("x".repeat(300_000));
     let mut nodes = vec![main_node("main", &["label"]), label];
     let mut roots = vec!["main".to_owned()];
-    for i in 0..120 {
+    let instance_count = futureox_design_kernel::capacity::document_byte_limit() / 300_000 + 2;
+    for i in 0..instance_count {
         let id = format!("instance{i}");
         nodes.push(instance(&id, "main"));
         roots.push(id)
@@ -359,8 +385,8 @@ fn expanded_text_payloads_have_a_byte_budget() {
     let mut d = doc(nodes, &roots.iter().map(String::as_str).collect::<Vec<_>>());
     let before = d.clone();
     let error = components::resolve(&mut d).unwrap_err();
-    assert!(error.contains("32 MiB"));
-    assert_eq!(d.nodes.len(), 122);
+    assert!(error.contains("resource allowance"));
+    assert_eq!(d.nodes.len(), instance_count + 2);
     assert_eq!(d, before, "byte-budget failure cannot publish a partial expansion");
 }
 

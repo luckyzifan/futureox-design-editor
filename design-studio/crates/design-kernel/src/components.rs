@@ -13,7 +13,6 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub type Overrides = BTreeMap<String, BTreeMap<String, Value>>;
-const DOCUMENT_BYTES: usize = 32 * 1024 * 1024;
 fn encoded_len(value: &impl Serialize, limit: usize) -> Result<usize, String> {
     struct Counter {
         bytes: usize,
@@ -36,12 +35,12 @@ fn encoded_len(value: &impl Serialize, limit: usize) -> Result<usize, String> {
     }
     let mut counter = Counter { bytes: 0, limit };
     serde_json::to_writer(&mut counter, value)
-        .map_err(|_| "Expanded component document exceeds 32 MiB".to_owned())?;
+        .map_err(|_| "Expanded component document exceeds this session's resource allowance".to_owned())?;
     Ok(counter.bytes)
 }
 pub fn check_budget(doc: &Document) -> Result<(), String> {
     if has_components(doc) {
-        encoded_len(doc, DOCUMENT_BYTES)?;
+        encoded_len(doc, crate::capacity::document_byte_limit())?;
     }
     Ok(())
 }
@@ -651,7 +650,7 @@ impl Builder<'_> {
         self.remaining_bytes = self
             .remaining_bytes
             .checked_sub(bytes)
-            .ok_or("Expanded component document exceeds 32 MiB")?;
+            .ok_or("Expanded component document exceeds this session's resource allowance")?;
         if self.output.len() >= self.budget || self.output.insert(n.id.clone(), n.clone()).is_some()
         {
             return Err("Instance expansion exceeds budget or has duplicate layer keys".into());
@@ -881,7 +880,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
         .map(|n| n.id.clone())
         .collect();
     let inherited_modes = crate::design_system::node_mode_contexts(&source)?;
-    let mut bytes = encoded_len(source.as_ref(), DOCUMENT_BYTES)?;
+    let mut bytes = encoded_len(source.as_ref(), crate::capacity::document_byte_limit())?;
     // Builders always read the immutable source. The result owns only rebuilt
     // nodes, so unrelated images, paths, text and metadata are never deep-cloned.
     // Do not publish either removals or replacements until every check succeeds.
@@ -898,19 +897,19 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
         descendants(&result, &id, &mut removed);
         for child in removed {
             if let Some(n) = result.remove(&child) {
-                bytes = bytes.saturating_sub(encoded_len(&n, DOCUMENT_BYTES)? + child.len() + 4);
+                bytes = bytes.saturating_sub(encoded_len(&n, crate::capacity::document_byte_limit())? + child.len() + 4);
             }
         }
         let placement = &source.nodes[&id];
         bytes =
-            bytes.saturating_sub(encoded_len(&result[&id], DOCUMENT_BYTES)? + id.len() + 4);
+            bytes.saturating_sub(encoded_len(&result[&id], crate::capacity::document_byte_limit())? + id.len() + 4);
         let mut builder = Builder {
             source: &source,
             output: BTreeMap::new(),
             owner: id.clone(),
             stack: Vec::new(),
-            budget: 20001usize.saturating_sub(result.len()),
-            remaining_bytes: DOCUMENT_BYTES.saturating_sub(bytes),
+            budget: crate::capacity::node_limit().saturating_add(1).saturating_sub(result.len()),
+            remaining_bytes: crate::capacity::document_byte_limit().saturating_sub(bytes),
             slots: BTreeMap::new(),
         };
         builder.instance(
@@ -924,7 +923,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
                 modes: &inherited_modes[&id].inherited,
             },
         )?;
-        bytes = DOCUMENT_BYTES - builder.remaining_bytes;
+        bytes = crate::capacity::document_byte_limit() - builder.remaining_bytes;
         for (key, n) in builder.output {
             if key != id && result.contains_key(&key) {
                 return Err("Generated instance layer collides with an authored layer".into());
@@ -932,7 +931,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
             result.insert(key, Cow::Owned(n));
         }
     }
-    encoded_len(&ResolvedDocument { document: &source, nodes: &result }, DOCUMENT_BYTES)?;
+    encoded_len(&ResolvedDocument { document: &source, nodes: &result }, crate::capacity::document_byte_limit())?;
     let removed: Vec<_> = source.nodes.keys().filter(|id| !result.contains_key(*id)).cloned().collect();
     let replacements: Vec<_> = result.into_iter().filter_map(|(id, node)| match node {
         Cow::Owned(node) => Some((id, node)),
@@ -952,9 +951,7 @@ pub struct Changes {
     removed: Vec<String>,
 }
 pub fn changes(json: &str, fonts: &Fonts) -> Result<String, String> {
-    if json.len() > 32 * 1024 * 1024 {
-        return Err("Document exceeds 32 MB".into());
-    }
+    crate::capacity::check_document_bytes(json.len())?;
     let mut doc: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
     doc.validate()?;
     let before = doc.clone();

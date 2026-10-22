@@ -1,3 +1,4 @@
+import { documentCapacity } from './document-capacity'
 import { FIG_WARNING_LIMITS, FIG_WARNINGS_TRUNCATED } from './import-warnings'
 import type { ImportedDesign } from './import-svg'
 import { validateDocument, type DesignDocument } from './model'
@@ -74,7 +75,7 @@ function runFileWorker<T>(
       } catch (error) { finish(error) }
     }
     if (signal?.aborted) { abort(); return }
-    try { worker.postMessage(payload, transfer) }
+    try { worker.postMessage({ ...(payload as object), memoryBytes: documentCapacity().memoryBytes }, transfer) }
     catch (error) { finish(error) }
   })
 }

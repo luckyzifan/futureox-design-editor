@@ -258,9 +258,7 @@ impl Engine {
     /// Compatibility hook: normal display no longer memoises quality loss.
     pub fn clear_degraded_scopes(&mut self) {}
     pub fn load_document(&mut self, json: &str) -> Result<(), String> {
-        if json.len() > 32 * 1024 * 1024 {
-            return Err("Document exceeds 32 MB".into());
-        }
+        crate::capacity::check_document_bytes(json.len())?;
         let doc: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
         self.install_document(doc)
     }
@@ -437,7 +435,7 @@ impl Engine {
             bytes = bytes - crate::editing::serialized_size(&source.nodes[id].transform).map_err(|e| e.to_string())?
                 + crate::editing::serialized_size(&next.as_ref().unwrap().transform).map_err(|e| e.to_string())?;
         }
-        if bytes > 32 * 1024 * 1024 { return Err("Document exceeds 32 MB".into()); }
+        crate::capacity::check_document_bytes(bytes)?;
         for (id, transform) in transforms {
             self.source_doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = *transform;
             self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = *transform;
@@ -485,7 +483,7 @@ impl Engine {
             let new = crate::editing::serialized_size(&next.as_ref().unwrap().transform).map_err(|e| e.to_string())?;
             bytes = bytes - old + new;
         }
-        if bytes > 32 * 1024 * 1024 { return Err("Document exceeds 32 MB".into()); }
+        crate::capacity::check_document_bytes(bytes)?;
         let rect = |node: &crate::scene::Node| {
             let bounds = Rect::from_points([
                 Point::new(0., 0.), Point::new(node.width, 0.),
@@ -1705,7 +1703,7 @@ impl Engine {
     /// canonical authored representation, including float spelling/sign and
     /// array order. IDs, revisions and approximate hashes are not evidence.
     pub(crate) fn snapshot_static_worker_matching(&self, json: &str) -> Option<Engine> {
-        if json.len() > 32 * 1024 * 1024 { return None; }
+        if crate::capacity::check_document_bytes(json.len()).is_err() { return None; }
         let source = self.source_doc.as_ref()?;
         if !source.animations.is_empty() || self.animation_sample.is_some() { return None; }
         let candidate: Document = serde_json::from_str(json).ok()?;
@@ -1713,7 +1711,7 @@ impl Engine {
         struct BoundedBytes(Vec<u8>);
         impl std::io::Write for BoundedBytes {
             fn write(&mut self, chunk: &[u8]) -> std::io::Result<usize> {
-                if self.0.len().saturating_add(chunk.len()) > 32 * 1024 * 1024 {
+                if self.0.len().saturating_add(chunk.len()) > crate::capacity::document_byte_limit() {
                     return Err(std::io::Error::other("snapshot exceeds document byte budget"));
                 }
                 self.0.extend_from_slice(chunk);

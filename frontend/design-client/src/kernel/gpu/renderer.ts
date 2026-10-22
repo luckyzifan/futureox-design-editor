@@ -59,7 +59,7 @@ import { ImmutableKernelCache, immutableKernelKey } from './immutable-kernel-cac
 import { CoefficientByteCache } from './coefficient-byte-cache'
 import { ReverseIndexMap } from './reverse-index-map'
 import { solidRgba8 } from './rgba8'
-import { batchableSolid, solidInstances } from './solid-batch'
+import { batchableSolid, solidInstances, MAX_SOLID_INSTANCES } from './solid-batch'
 import { displayFilterWeights } from './display-filter'
 import {
   imageAdjustActive,
@@ -3056,10 +3056,17 @@ export class GpuRenderer {
         continue
       }
       if (this.replayTexture(n, targets, clip)) continue
-      if (this.optimized && this.allowSolidBatch && this.driver.solidBatch && batchableSolid(n)) {
+      // Instance upload storage is bounded independently of document capacity.
+      // Ask the actual driver, including all earlier runs in this frame. A
+      // missing/malformed capacity cannot authorize an optimization. Exhaustion
+      // retains the established exact ordinary-draw lane and painter order.
+      const solidRemaining = this.driver.solidBatchRemaining?.()
+      const solidLimit = Number.isSafeInteger(solidRemaining) && solidRemaining! >= 0
+        ? Math.min(MAX_SOLID_INSTANCES, solidRemaining!) : 0
+      if (this.optimized && this.allowSolidBatch && this.driver.solidBatch && solidLimit >= 8 && batchableSolid(n)) {
         const start = at
         const run: GpuNode[] = [n]
-        while (at + 1 < ids.length && batchableSolid(this.scene.nodes[ids[at + 1]]))
+        while (run.length < solidLimit && at + 1 < ids.length && batchableSolid(this.scene.nodes[ids[at + 1]]))
           run.push(this.scene.nodes[ids[++at]])
         if (run.length >= 8) {
           const data = solidInstances(run, targets[0].rect)

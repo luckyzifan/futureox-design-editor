@@ -1327,12 +1327,11 @@ impl Document {
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32
-            || self.pages.is_empty()
-            || self.pages.len() > 100
-            || self.nodes.len() > 20000
+
         {
             return Err("Document limits exceeded".into());
         }
+        crate::capacity::check_document_counts(self.nodes.len(), self.pages.len())?;
         if let Some(settings) = self.color_management {
             if self.schema_version < 3 {
                 return Err("Color management requires schema 3".into());

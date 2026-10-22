@@ -1,3 +1,4 @@
+import { assertDocumentStructure } from './document-capacity'
 import { cloneValue, produceDraft } from './draft'
 import { defaultSizing, node, uid, validateDocument, validateStructure, type DesignDocument, type DesignNode } from './model'
 import { allParents, apply, bounds, boxPoints, inverse, multiply, unionBounds, worldMatrix } from './geometry'
@@ -9,7 +10,7 @@ import { importClipboardDependencies, importDefinitions, insertInstance, remapRe
 import { remapDesignDependencies } from './design-system'
 import type { ShortcutProfile } from './shortcut-profiles'
 
-const MAX_BYTES = 32 * 1024 * 1024, MAX_NODES = 20_000, MAX_TARGETS = 64
+const MAX_BYTES = 32 * 1024 * 1024, MAX_TARGETS = 64
 /** Build the entire operation without touching an Editor, its history, clipboard,
  * transaction. Kernel preflight temporarily installs source/merged fonts, then
  * restores destination fonts even on rejection. Caller publishes once after stale checks.
@@ -43,7 +44,7 @@ function buildPlan(before: DesignDocument, pageId: string, selection: readonly s
   const visit = (id: string) => { copied.push(source.nodes[id]); source.nodes[id].children.forEach(visit) }
   roots.forEach(visit)
   // A lower bound before any target expansion, followed by exact validation below.
-  if (Object.keys(before.nodes).length + copied.length * targets.length > MAX_NODES) throw Error('覆盖粘贴会超过 20000 图层上限')
+  assertDocumentStructure(Object.keys(before.nodes).length + copied.length * targets.length, before.pages.length)
   const semantics = captureClipboardSemantics(source, copied, roots)
   const animated = new Set(semantics.animations.flatMap(clip => clip.tracks.map(track => track.nodeId)))
   const inserted: string[] = []
@@ -96,7 +97,7 @@ function buildPlan(before: DesignDocument, pageId: string, selection: readonly s
       const siblings = parent ? d.nodes[destination].children : page.children
       siblings.splice(siblings.indexOf(target) + 1, 0, ...output)
       inserted.push(...output)
-      if (Object.keys(d.nodes).length > MAX_NODES) throw Error('覆盖粘贴依赖展开超过 20000 图层上限')
+      assertDocumentStructure(Object.keys(d.nodes).length, d.pages.length)
     }
   }) as DesignDocument
   // Includes schema/resource/reference/depth validation before the first write.

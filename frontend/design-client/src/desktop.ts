@@ -111,6 +111,7 @@ export interface DesktopBridge {
   readonly workspace?: WorkspaceBridge
   readonly clipboard?: { read(): Promise<DesktopResult<DesktopClipboard>>; write(value: DesktopClipboard): Promise<DesktopResult> }
   readonly version: 1
+  readonly documentCapacity?: Readonly<{ memoryBytes: number }>
   readonly renderPolicy: Readonly<{ cpuOnly: boolean; gpuWorkingBudgetMiB?: number }>
   readonly nativeRender?: NativeRenderBridgeApi
   nativeRenderStats?(): Promise<string | null>

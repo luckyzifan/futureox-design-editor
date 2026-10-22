@@ -459,7 +459,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (moveFrame.current !== null) cancelAnimationFrame(moveFrame.current)
     moveFrame.current = null; queuedMove.current = null; queuedInputAt.current = 0
   }
-  useLayoutEffect(() => cancelQueuedMove, [editor, editor.sessionGeneration, state.page])
+  useLayoutEffect(() => {
+    const previous = drag.current
+    if (previous && (previous.session !== editor.sessionGeneration || previous.page !== state.page)) {
+      // The replacement document owns its own transaction. Retire only the
+      // obsolete pointer/preview owner, never cancel the new editor state.
+      cancelQueuedMove(); drag.current = null; pendingBoardMove.current = null
+      restoreGpuOverlays(); retainedMove.current?.restore(); setPanning(false); setRubber(null); setGuides({})
+      if (host.current?.hasPointerCapture(previous.pointerId)) host.current.releasePointerCapture(previous.pointerId)
+    }
+    return cancelQueuedMove
+  }, [editor, editor.sessionGeneration, state.page])
   const queuePointerMove = (event: React.PointerEvent) => {
     const active = drag.current
     const hover = !active && !pencil.current && !utility.active()
@@ -643,7 +653,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     },
     onPosePresented: pose => {
       const gesture = drag.current
-      if (!pendingBoardMove.current || gesture?.kind !== 'move' ||
+      if (!pendingBoardMove.current || !gesture || !['move', 'rotate', 'scale'].includes(gesture.kind) ||
           pose.epoch !== editor.sessionGeneration || pose.document !== editor.state.doc) return
       if (host.current) moveCanvasFeedback(host.current, gesture.ids, pose.offset, gpuMovedOverlays.current)
       if (gesture.actionToken) actionTrace.sample(gesture.actionToken, { posePresentedSequence: pose.sequence, poseLatencyMs: Math.round(pose.latencyMs) })
@@ -1814,7 +1824,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // Independent complete boards can follow the pointer on the compositor.
     // Keep one final authored mutation, using the same snapping/placement math.
     // Overlap, reparenting and Option-copy immediately use the regular path.
-    if (d.kind === 'move' && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey) {
+    if ((d.kind === 'move' && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey ||
+        d.kind === 'rotate' || d.kind === 'scale') && patches) {
       const offset = gpuMove.current?.apply(editor.state.doc, patches)
       if (offset) {
         if (!gpuMove.current?.feedbackPending?.() && host.current) moveCanvasFeedback(host.current, d.ids, offset, gpuMovedOverlays.current)
@@ -1865,7 +1876,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const d = drag.current
     if (!d) return
     if (e.pointerId !== d.pointerId) return
-    if (d.session !== editor.sessionGeneration || d.page !== editor.state.page) return
+    if (d.session !== editor.sessionGeneration || d.page !== editor.state.page) {
+      cancelQueuedMove(); drag.current = null; pendingBoardMove.current = null
+      restoreGpuOverlays(); retainedMove.current?.restore(); setPanning(false); setRubber(null); setGuides({})
+      if (host.current?.hasPointerCapture(e.pointerId)) host.current.releasePointerCapture(e.pointerId)
+      return
+    }
     cancelQueuedMove()
     // Every gesture must consume the release position when a final move was
     // coalesced or absent. A no-motion handle click must remain a no-op.
@@ -1953,6 +1969,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.kind === 'move' && d.duplicating && d.ids.every(id => editor.state.doc.nodes[id]))
         editor.rememberDuplication(commitResult, d.ids, new Map(d.ids.map(id => [id, d.matrices[id]])))
     }
+    gpuMove.current?.end(editor.state.doc)
+    restoreGpuOverlays()
     finishDragTrace(d, ['pan','zoom','pivot','marquee'].includes(d.kind) ? ActionOutcome.observed : d.kind === 'crop' ? ActionOutcome.unsupported : undefined, d.kind === 'crop' ? ActionReason.unobserved : ActionReason.none)
     setRubber(null)
     setGuides({})
@@ -2115,6 +2133,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       onPointerUp={end}
       onPointerCancel={(e) => {
         utility.cancel(e.pointerId)
+        // A late cancel from a retired pointer must not cancel a replacement
+        // editor transaction after session/page cleanup has dropped its drag.
+        if (!pencil.current && !drag.current) return
         if (pencil.current && e.pointerId !== pencil.current.input.pointerId) return
         if (drag.current && e.pointerId !== drag.current.pointerId) return
         desktopPet.stopNavigation()

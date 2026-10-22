@@ -1,11 +1,12 @@
+import type { InteractionPoseFeedback } from './interaction-layers'
 /** A submitted pose is not a displayed pose. Retain only small offsets, never
  * document snapshots or geometry; acknowledgement ownership is checked by the
  * resident presenter before it enters this ledger. */
 export class PoseFeedback {
-  private pending = new Map<number, { offset: { x: number; y: number }; owner?: object }>()
+  private pending = new Map<number, { offset: InteractionPoseFeedback; owner?: object }>()
   private accepted = 0
-  submit(sequence: number, offset: { x: number; y: number }, owner?: object) {
-    this.pending.set(sequence, { offset: { ...offset }, owner })
+  submit(sequence: number, offset: InteractionPoseFeedback, owner?: object) {
+    this.pending.set(sequence, { offset: { ...offset, ...(offset.matrix ? { matrix: [...offset.matrix] as typeof offset.matrix } : {}) }, owner })
     while (this.pending.size > 180) this.pending.delete(this.pending.keys().next().value!)
   }
   status(sequence:number,owner?:object) {

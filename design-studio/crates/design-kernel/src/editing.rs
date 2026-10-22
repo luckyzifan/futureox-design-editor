@@ -42,7 +42,7 @@ fn check_document_size(document: &Document) -> Result<(), EditError> {
     serialized_document_size(document).map(|_| ())
 }
 pub(crate) fn serialized_document_size(document: &Document) -> Result<usize, EditError> {
-    count_json_bytes(document, 32 * 1024 * 1024).map_err(|e| error("document_budget", e.to_string()))
+    count_json_bytes(document, crate::capacity::document_byte_limit()).map_err(|e| error("document_budget", e.to_string()))
 }
 /// Exact wire size without allocating a discarded JSON byte buffer.
 pub(crate) fn serialized_size(value: &impl Serialize) -> Result<usize, serde_json::Error> {
@@ -54,7 +54,7 @@ fn count_json_bytes(value: &impl Serialize, limit: usize) -> Result<usize, serde
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
             *self.0 = self.0.saturating_add(bytes.len());
             if *self.0 > self.1 {
-                return Err(std::io::Error::other("Document exceeds 32 MB"));
+                return Err(std::io::Error::other("DOCUMENT_RESOURCE_LIMIT: serialized document exceeds this session's resource allowance"));
             }
             Ok(bytes.len())
         }
@@ -322,14 +322,12 @@ impl DocumentEditor {
                 .map_err(|e| error("serialization", e.to_string()))?;
             size = size - old + new;
         }
-        if size > 32 * 1024 * 1024 {
-            return Err(error("document_budget", "Document exceeds 32 MB"));
-        }
+        crate::capacity::check_document_bytes(size).map_err(|e| error("document_budget", e))?;
         let bytes = serialized_size(&forward)
             .map_err(|e| error("serialization", e.to_string()))?
             + serialized_size(&inverse)
                 .map_err(|e| error("serialization", e.to_string()))?;
-        if bytes > 64 * 1024 * 1024 {
+        if bytes > crate::capacity::expanded_value_limit() {
             return Err(error("history_budget", "Edit exceeds undo budget"));
         }
         self.document
@@ -345,7 +343,7 @@ impl DocumentEditor {
         }
         self.retained_bytes -= self.redo.iter().map(|e| e.bytes).sum::<usize>();
         self.redo.clear();
-        while self.undo.len() >= 80 || self.retained_bytes + bytes > 64 * 1024 * 1024 {
+        while self.undo.len() >= 80 || self.retained_bytes + bytes > crate::capacity::expanded_value_limit() {
             self.retained_bytes -= self.undo.remove(0).bytes;
         }
         self.undo.push(Entry {
@@ -368,16 +366,16 @@ impl DocumentEditor {
             .map_err(|e| error("serialization", e.to_string()))?
             + serialized_size(&inverse)
                 .map_err(|e| error("serialization", e.to_string()))?;
-        const BUDGET: usize = 64 * 1024 * 1024;
-        if bytes > BUDGET {
+        let budget = crate::capacity::expanded_value_limit();
+        if bytes > budget {
             return Err(error(
                 "history_budget",
-                "This edit exceeds the 64 MB undo budget",
+                "This edit exceeds this session's working-memory undo budget",
             ));
         }
         self.retained_bytes -= self.redo.iter().map(|e| e.bytes).sum::<usize>();
         self.redo.clear();
-        while self.undo.len() >= 80 || self.retained_bytes + bytes > BUDGET {
+        while self.undo.len() >= 80 || self.retained_bytes + bytes > budget {
             self.retained_bytes -= self.undo.remove(0).bytes;
         }
         self.undo.push(Entry {

@@ -1860,6 +1860,11 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     else group = this.bindingCache.group([this.layout, uniform.buffer, this.curves!, ...textures], offset, create)
     return { group, offsets: this.dynamicUniformBindings ? [uniform.offset] : [] }
   }
+  solidBatchRemaining() {
+    // Four sample planes share one data object. Only unique uploads consume
+    // this frame arena; submission alone must not reopen or overwrite it.
+    return Math.max(0, Math.floor((this.solidData.length - this.solidOffset) / SOLID_INSTANCE_FLOATS))
+  }
   solidBatch(target: Texture, u: Float32Array, data: Float32Array, clip?: Texture) {
     this.invalidateTextureCertificates(target)
     if (clip === target) throw new Error('GPU texture feedback loop')

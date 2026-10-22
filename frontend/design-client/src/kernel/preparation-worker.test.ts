@@ -3,7 +3,7 @@ import { PreparationChannel } from './preparation-channel'
 import { blank, node } from '../model'
 
 const counts=vi.hoisted(()=>({engines:0,fonts:0,forks:0,loads:0}))
-vi.mock('../generated/design-kernel/design_kernel',()=>({default:async()=>{},VectorEngine:class {
+vi.mock('../generated/design-kernel/design_kernel',()=>({default:async()=>{},configure_document_capacity:()=>{},VectorEngine:class {
   doc=''; mips=false
   constructor(){counts.engines++}
   load_font(){counts.fonts++}
@@ -14,6 +14,7 @@ vi.mock('../generated/design-kernel/design_kernel',()=>({default:async()=>{},Vec
   fork_static_render_engine(){counts.forks++;const next=new (this.constructor as any)();next.doc=this.doc;next.mips=this.mips;return next}
   free(){}
 }}))
+vi.mock('./module',()=>({initializeKernelModule:async()=>{}}))
 vi.mock('./kernel-resources',()=>({loadKernelResources:async()=>new Uint8Array([1])}))
 vi.mock('./cpu-frame',()=>({renderCpuFrame:vi.fn()}))
 const cleanups:(()=>void)[]=[]

@@ -1,173 +1,120 @@
-import { describe, test, expect } from 'vitest'
+import { afterEach, describe, test, expect, vi } from 'vitest'
+import { StrokeGpuPipeline, type StrokeStyle } from './stroke-gpu-pipeline'
+import { parallelPrefixSumWGSL } from './parallel-prefix-sum.wgsl'
 
-// Type definitions for test
-type StrokeComputeResult = {
-  vertices: Float32Array
-  segments: Array<{ start: number; end: number }>
-  pathIndex: number
+// These execute production host orchestration against a command recorder.
+// No shader executes: zero-filled readback is deliberately NOT a geometry oracle.
+// Actual WGSL validation, joins/caps and pixels remain explicit TODOs below.
+type BufferRecord = {
+  size: number; usage: number; bytes: ArrayBuffer; destroyed: boolean
+  getMappedRange(): ArrayBuffer; unmap(): void; mapAsync(): Promise<void>; destroy(): void
 }
-
-describe('描边计算管线', () => {
-  test('简单路径的描边扩展', () => {
-    // 模拟一个简单矩形路径
-    const pathData = new Float32Array([
-      // 移动到 (0,0)
-      0, 0, 0,
-      // 直线到 (100,0)
-      100, 0, 1,
-      // 直线到 (100,100)
-      100, 100, 1,
-      // 直线到 (0,100)
-      0, 100, 1,
-      // 闭合
-      0, 0, 1
-    ])
-
-    const strokeWidth = 10
-
-    // 这里应该调用 GPU 计算管线
-    // const result = computeStroke(pathData, strokeWidth)
-
-    // 预期结果包含扩展后的顶点
-    // expect(result.vertices.length).toBeGreaterThan(pathData.length)
-
-    // 临时测试：验证输入格式
-    expect(pathData.length % 3).toBe(0) // 每个点 3 个浮点数
-    expect(strokeWidth).toBeGreaterThan(0)
-  })
-
-  test('多段贝塞尔曲线描边', () => {
-    // 模拟贝塞尔曲线路径
-    const pathData = new Float32Array([
-      0, 0, 0,        // 起点
-      50, 100, 2,     // 控制点1
-      100, 100, 2,    // 控制点2
-      150, 0, 3       // 结束点（三次贝塞尔）
-    ])
-
-    const strokeWidth = 5
-
-    // GPU 计算应该细分贝塞尔曲线并扩展
-    // const result = computeStroke(pathData, strokeWidth)
-
-    // 贝塞尔曲线应该被细分成多个段
-    // expect(result.segments.length).toBeGreaterThan(1)
-
-    expect(pathData.length).toBeGreaterThan(0)
-  })
-
-  test('端点样式影响顶点数量', () => {
-    const pathData = new Float32Array([0, 0, 0, 100, 0, 1])
-
-    // 不同端点样式生成不同顶点数
-    // const buttResult = computeStroke(pathData, 10, { cap: 'butt' })
-    // const roundResult = computeStroke(pathData, 10, { cap: 'round' })
-    // const squareResult = computeStroke(pathData, 10, { cap: 'square' })
-
-    // expect(roundResult.vertices.length).toBeGreaterThan(buttResult.vertices.length)
-    // expect(squareResult.vertices.length).toBeGreaterThan(buttResult.vertices.length)
-
-    expect(pathData).toBeDefined()
-  })
-
-  test('连接样式影响角点顶点', () => {
-    // L 形路径
-    const pathData = new Float32Array([
-      0, 0, 0,
-      100, 0, 1,
-      100, 100, 1
-    ])
-
-    // 不同连接样式
-    // const miterResult = computeStroke(pathData, 10, { join: 'miter' })
-    // const roundResult = computeStroke(pathData, 10, { join: 'round' })
-    // const bevelResult = computeStroke(pathData, 10, { join: 'bevel' })
-
-    // 圆角连接应该生成更多顶点
-    // expect(roundResult.vertices.length).toBeGreaterThan(miterResult.vertices.length)
-
-    expect(pathData).toBeDefined()
-  })
-
-  test('GPU 缓冲区分配与释放', () => {
-    // 模拟 GPU 资源生命周期
-    const allocations: Array<{ id: number; size: number; freed: boolean }> = []
-
-    function allocateBuffer(size: number) {
-      const id = allocations.length
-      allocations.push({ id, size, freed: false })
-      return id
-    }
-
-    function freeBuffer(id: number) {
-      if (id >= 0 && id < allocations.length) {
-        allocations[id].freed = true
+function recorder() {
+  const buffers: BufferRecord[] = [], modules: GPUShaderModuleDescriptor[] = []
+  const pipelines: GPUComputePipelineDescriptor[] = [], bindings: any[] = []
+  const dispatches: { entryPoint: string; groups: number }[] = []
+  const writes: { buffer: BufferRecord; offset: number; bytes: Uint8Array }[] = []
+  let submissions = 0
+  const device = {
+    createShaderModule(descriptor: GPUShaderModuleDescriptor) { modules.push(descriptor); return descriptor },
+    createComputePipeline(descriptor: GPUComputePipelineDescriptor) {
+      pipelines.push(descriptor)
+      return { ...descriptor, getBindGroupLayout: () => descriptor.compute.entryPoint }
+    },
+    createBuffer(descriptor: GPUBufferDescriptor) {
+      const record: BufferRecord = { size: descriptor.size, usage: descriptor.usage,
+        bytes: new ArrayBuffer(descriptor.size), destroyed: false,
+        getMappedRange() { return this.bytes }, unmap() {}, async mapAsync() {}, destroy() { this.destroyed = true } }
+      buffers.push(record); return record
+    },
+    createBindGroup(descriptor: any) { bindings.push(descriptor); return descriptor },
+    createCommandEncoder() {
+      let entryPoint = ''
+      return {
+        beginComputePass: () => ({ setPipeline(pipeline: any) { entryPoint = pipeline.compute.entryPoint },
+          setBindGroup() {}, dispatchWorkgroups(groups: number) { dispatches.push({ entryPoint, groups }) }, end() {} }),
+        copyBufferToBuffer(source: BufferRecord, sourceOffset: number, destination: BufferRecord, destinationOffset: number, bytes: number) {
+          new Uint8Array(destination.bytes, destinationOffset, bytes).set(new Uint8Array(source.bytes, sourceOffset, bytes))
+        }, finish: () => ({}),
       }
-    }
+    },
+    queue: {
+      submit() { submissions++ }, async onSubmittedWorkDone() {},
+      writeBuffer(buffer: BufferRecord, offset: number, input: ArrayBufferView) {
+        const bytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength).slice()
+        writes.push({ buffer, offset, bytes }); new Uint8Array(buffer.bytes, offset, bytes.length).set(bytes)
+      },
+    },
+  }
+  vi.stubGlobal('GPUBufferUsage', { STORAGE: 1, COPY_SRC: 2, COPY_DST: 4, UNIFORM: 8, MAP_READ: 16, INDEX: 32 })
+  vi.stubGlobal('GPUMapMode', { READ: 1 })
+  return { device: device as unknown as GPUDevice, buffers, modules, pipelines, bindings, dispatches, writes,
+    submissions: () => submissions }
+}
+const style: StrokeStyle = { width: 10, color: '#000000', align: 'center', cap: 'butt', join: 'miter', miterLimit: 4 }
+const path = new Float32Array([0, 0, 100, 0, 100, 100])
+afterEach(() => vi.unstubAllGlobals())
 
-    // 分配缓冲区
-    const buffer1 = allocateBuffer(1024)
-    const buffer2 = allocateBuffer(2048)
-
-    expect(allocations.length).toBe(2)
-    expect(allocations[0].freed).toBe(false)
-
-    // 释放缓冲区
-    freeBuffer(buffer1)
-    expect(allocations[0].freed).toBe(true)
-    expect(allocations[1].freed).toBe(false)
+describe('production stroke host contracts, recorded GPU commands only', () => {
+  test('uninitialized compute rejects before allocating or submitting any GPU work', async () => {
+    const r = recorder(), pipeline = new StrokeGpuPipeline(r.device)
+    await expect(pipeline.computeStroke(path, style)).rejects.toThrow('Pipeline not initialized')
+    expect(r.buffers).toHaveLength(0); expect(r.submissions()).toBe(0)
   })
-
-  test('批量描边处理', () => {
-    // 多个路径的批量处理
-    const paths = [
-      new Float32Array([0, 0, 0, 100, 0, 1]),
-      new Float32Array([0, 50, 0, 100, 50, 1]),
-      new Float32Array([0, 100, 0, 100, 100, 1])
-    ]
-
-    // 批量处理应该复用 GPU 资源
-    // const results = computeStrokeBatch(paths, 10)
-
-    // expect(results.length).toBe(paths.length)
-    // results.forEach((r, i) => {
-    //   expect(r.pathIndex).toBe(i)
-    // })
-
-    expect(paths.length).toBe(3)
+  test('initialization binds all four production modules to their actual shader entry points', async () => {
+    const r = recorder(), pipeline = new StrokeGpuPipeline(r.device)
+    await pipeline.initialize()
+    expect(r.modules).toHaveLength(4); expect(r.modules[0].code).toBe(parallelPrefixSumWGSL)
+    expect(r.pipelines.map(p => p.compute.entryPoint)).toEqual(['prefixSum', 'computeNormals', 'computeOffsets', 'computeJoints'])
+    for (const p of r.pipelines) expect((p.compute.module as unknown as GPUShaderModuleDescriptor).code).toContain(`fn ${p.compute.entryPoint}(`)
+    expect(r.buffers).toHaveLength(0)
+  })
+  test('513 vertices dispatch normals, offsets, joints and both prefix phases through the production pipeline', async () => {
+    const r = recorder(), pipeline = new StrokeGpuPipeline(r.device)
+    await pipeline.initialize(); await pipeline.computeStroke(new Float32Array(513 * 2), style)
+    expect(r.dispatches).toEqual([
+      { entryPoint: 'computeNormals', groups: 2 }, { entryPoint: 'computeOffsets', groups: 3 },
+      { entryPoint: 'computeJoints', groups: 3 }, { entryPoint: 'prefixSum', groups: 2 }, { entryPoint: 'prefixSum', groups: 2 },
+    ])
+    const phaseWrites = r.writes.filter(w => w.buffer === r.bindings.find(b => b.layout === 'prefixSum').entries[2].resource.buffer)
+    expect(phaseWrites.map(w => Array.from(new Uint32Array(w.bytes.buffer)))).toEqual([[513, 1, 0, 0], [513, 1, 1, 0]])
+    expect(r.submissions()).toBe(6) // five compute passes plus owned readback
+  })
+  test.each([['center', 5], ['outside', 10], ['inside', 0]] as const)('production %s alignment uploads the intended offset width', async (align, expected) => {
+    const r = recorder(), pipeline = new StrokeGpuPipeline(r.device)
+    await pipeline.initialize(); await pipeline.computeStroke(path, { ...style, align })
+    const params = r.bindings.find(b => b.layout === 'computeOffsets').entries[3].resource.buffer as BufferRecord
+    expect(new DataView(params.bytes).getFloat32(0, true)).toBe(expected)
+  })
+  test('successful computation reclaims temporary buffers and returns owned input/readback-independent buffers', async () => {
+    const r = recorder(), pipeline = new StrokeGpuPipeline(r.device), input = path.slice()
+    await pipeline.initialize(); const result = await pipeline.computeStroke(input, style)
+    expect(new Float32Array(r.buffers[0].bytes)).toEqual(path)
+    input.fill(999); expect(new Float32Array(r.buffers[0].bytes)).toEqual(path)
+    const retained = [result.gpuBuffers!.vertexBuffer, result.gpuBuffers!.indexBuffer]
+    expect(r.buffers.filter(b => !b.destroyed)).toEqual(retained)
+    expect(r.buffers.filter(b => b.destroyed)).toHaveLength(r.buffers.length - 2)
+    result.vertices.fill(999)
+    expect(new Float32Array((result.gpuBuffers!.vertexBuffer as unknown as BufferRecord).bytes).every(n => n === 0)).toBe(true)
+  })
+  test('offset buffer has room for all four vec2 values per input vertex written by production WGSL', async () => {
+    const r = recorder(), pipeline = new StrokeGpuPipeline(r.device)
+    await pipeline.initialize(); await pipeline.computeStroke(path, style)
+    const offsets = r.bindings.find(b => b.layout === 'computeOffsets').entries[2].resource.buffer as BufferRecord
+    expect(offsets.size).toBeGreaterThanOrEqual((path.length / 2) * 4 * 2 * Float32Array.BYTES_PER_ELEMENT)
+  })
+  test('joint uniform binding preserves the production WGSL field layout and miter-limit offset', async () => {
+    const r = recorder(), pipeline = new StrokeGpuPipeline(r.device)
+    await pipeline.initialize(); await pipeline.computeStroke(path, { ...style, join: 'bevel', miterLimit: 7.5 })
+    const params = r.bindings.find(b => b.layout === 'computeJoints').entries[3].resource.buffer as BufferRecord
+    // JointParams declares vertexCount, joinType, _pad0, _pad1, miterLimit, _pad2.
+    expect(params.size).toBeGreaterThanOrEqual(24)
+    const view = new DataView(params.bytes)
+    expect(view.getUint32(0, true)).toBe(3); expect(view.getUint32(4, true)).toBe(2)
+    expect(view.getFloat32(16, true)).toBe(7.5)
   })
 })
 
-describe('描边 shader 正确性', () => {
-  test('shader 能通过编译', async () => {
-    // 这需要真实的 WebGPU 上下文
-    // 在有 GPU 的环境中测试
-    const hasGPU = typeof navigator !== 'undefined' && 'gpu' in navigator
-
-    if (!hasGPU) {
-      // 跳过，因为没有 GPU
-      expect(true).toBe(true)
-      return
-    }
-
-    // const adapter = await navigator.gpu.requestAdapter()
-    // const device = await adapter?.requestDevice()
-
-    // if (!device) {
-    //   throw new Error('无法获取 GPU 设备')
-    // }
-
-    // 加载 shader
-    // const shaderModule = device.createShaderModule({
-    //   code: STROKE_COMPUTE_SHADER
-    // })
-
-    // 检查编译错误
-    // const compilationInfo = await shaderModule.getCompilationInfo()
-    // const errors = compilationInfo.messages.filter(m => m.type === 'error')
-
-    // expect(errors.length).toBe(0)
-
-    expect(hasGPU).toBeDefined()
-  })
-})
+test.todo('real WebGPU validates all production stroke shader modules and pipeline binding layouts')
+test.todo('real WebGPU stroke pixels and vertex counts match an independent CPU oracle for butt/round/square caps and miter/round/bevel joins')
+test.todo('real WebGPU multi-workgroup stroke prefix offsets agree with an independent scalar prefix oracle')

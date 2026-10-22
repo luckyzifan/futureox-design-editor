@@ -1,3 +1,4 @@
+import { assertDocumentJson } from './document-capacity'
 import { beginEditorAction } from './editor-action-route'
 import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
@@ -26,7 +27,6 @@ export type DesktopStatus = {
   revision?: number
 }
 type SessionEditor = Pick<Editor, 'state' | 'subscribe' | 'load' | 'notify'> & Partial<Pick<Editor, 'interactionActive' | 'sessionGeneration' | 'authoredDocument' | 'propertyPreviewActive' | 'settleOwnedPropertyPreview'>>
-const MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 // These backend responses prove this request was rejected, rather than leaving
 // an uncertain write. INVALID_REQUEST validation precedes commit/transaction
 // completion; timeout, transport, storage and invalid-ack failures stay pending.
@@ -614,10 +614,7 @@ export class DesktopSession {
       try {
         return documentStage(DocumentStage.prepare, () =>
           documentStage(DocumentStage.rawJsonPrepare, () => {
-            if (new TextEncoder().encode(json).byteLength > MAX_DOCUMENT_BYTES) {
-              rawSizeFailure = true
-              throw new Error('Invalid document JSON size')
-            }
+            try { assertDocumentJson(json) } catch (error) { rawSizeFailure = true; throw error }
             return prepareDocumentJson(json, syntaxFailureAttempt)
           }, json.length), json.length)
       } catch (error) {
@@ -632,8 +629,7 @@ export class DesktopSession {
     }
     const decoded = await documentStageAsync(DocumentStage.decode, async () => {
       if (this.bridge.documentCodec) return this.bridge.documentCodec.decode(json)
-      if (new TextEncoder().encode(json).byteLength > MAX_DOCUMENT_BYTES)
-        throw new Error('文件超过 32 MiB')
+      assertDocumentJson(json)
       return JSON.parse(json)
     }, json.length)
     return documentStage(DocumentStage.prepare, () => prepareDocument(decoded), json.length)

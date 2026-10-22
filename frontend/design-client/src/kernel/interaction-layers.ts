@@ -1,16 +1,17 @@
 import type { InteractionPreviewFailure } from './interaction-preview-recovery'
 import { effectsAreKnown } from './render-dependency'
 import type { Bounds, DesignDocument, Matrix } from '../model'
-import { scene, unionBounds } from '../geometry'
+import { scene, unionBounds, multiply, inverse } from '../geometry'
 import type { CanvasCamera } from '../canvas-camera'
 import type { RefObject } from 'react'
 import type { CanvasSceneBorrow } from '../canvas-scene-snapshots'
 
 export type InteractionLayer = { document: DesignDocument; bounds: Bounds; moving?: string }
 export type InteractionPlan = { document: DesignDocument; pageId: string; ids: string[]; layers: InteractionLayer[]; viewport?: Bounds }
+export type InteractionPoseFeedback = { x: number; y: number; matrix?: Matrix }
 export type GpuMoveControl = {
   isActive(): boolean
-  apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>): { x: number; y: number } | null
+  apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>): InteractionPoseFeedback | null
   covers(document: DesignDocument, ids: string[], view: CanvasCamera): boolean
   feedbackPending?(): boolean
   inputSequence?(): number
@@ -23,7 +24,7 @@ export type InteractionProps = {
   document: DesignDocument; selection: string[]; active: boolean; epoch: number; control: RefObject<GpuMoveControl | null>; onReady: () => void
   /** Optional Canvas-only published geometry. Other callers remain uncached. */
   onPreviewFailed?: (failure: InteractionPreviewFailure) => void
-  onPosePresented?: (pose: { sequence: number; offset: { x: number; y: number }; latencyMs: number; document: DesignDocument; epoch: number }) => void
+  onPosePresented?: (pose: { sequence: number; offset: InteractionPoseFeedback; latencyMs: number; document: DesignDocument; epoch: number }) => void
   scene?: CanvasSceneBorrow
 }
 
@@ -165,4 +166,60 @@ export function interactionPatchedOffsets(plan: InteractionPlan, document: Desig
     offsets.set(id, { x: after[4] - before[4], y: after[5] - before[5] })
   }
   return offsets
+}
+
+/** Validate absolute selected poses without weakening the retained-bitmap
+ * translation contract. Affine poses always go through a fresh kernel render. */
+export function interactionPatchedTransforms(plan: InteractionPlan, document: DesignDocument,
+  patches: Record<string, Partial<DesignDocument['nodes'][string]>>, validated = false): Record<string, Matrix> | null {
+  if (!validated && !interactionTransformsOnly(plan, document) ||
+      Object.keys(patches).some(id => !plan.ids.includes(id))) return null
+  const transforms: Record<string, Matrix> = {}
+  for (const id of plan.ids) {
+    const patch = patches[id], transform = patch?.transform || document.nodes[id]?.transform
+    if (patch && Object.keys(patch).some(key => key !== 'transform') || !transform ||
+        transform.length !== 6 || !transform.every(Number.isFinite)) return null
+    transforms[id] = [...transform] as Matrix
+  }
+  return transforms
+}
+
+/** World-space chrome correction from the authored overlay to one rendered
+ * absolute pose. Parent matrices are immutable for this transforms-only lease. */
+export function interactionPoseMatrices(before: Record<string, Matrix>, after: Record<string, Matrix>,
+  parents?: ReadonlyMap<string, Matrix>): Map<string, Matrix> | null {
+  const result = new Map<string, Matrix>()
+  for (const [id, transform] of Object.entries(after)) {
+    const source = before[id], parent = parents?.get(id) || [1, 0, 0, 1, 0, 0] as Matrix
+    if (!source) return null
+    const world = multiply(parent, source)
+    if (Math.abs(world[0] * world[3] - world[1] * world[2]) < 1e-12) return null
+    const delta = multiply(multiply(parent, transform), inverse(world))
+    if (!delta.every(Number.isFinite)) return null
+    result.set(id, delta)
+  }
+  return result
+}
+
+/** Conservative UI admission. Derived/layout-dependent affine edits continue
+ * through Editor.preview; native repeats its own authoritative proof. */
+export function interactionAffineEligible(plan: InteractionPlan): boolean {
+  const document = plan.document, nodes = Object.values(document.nodes)
+  if (document.animations?.length || nodes.some(node => node.repeat || node.connector)) return false
+  const parents = new Map<string, string>()
+  for (const node of nodes) for (const child of node.children) parents.set(child, node.id)
+  const selected = new Set(plan.ids)
+  for (const id of selected) {
+    let current: string | undefined = id
+    while (current) {
+      const node = document.nodes[current]
+      if (!node || node.instance || node.instanceOrigin || node.component || node.componentSet || node.componentKey ||
+          node.booleanOperation || Object.keys(node.bindings || {}).length || Object.keys(node.variableModes || {}).length ||
+          Object.keys(node.styleRefs || {}).length || node.constraints ||
+          current !== id && (selected.has(current) || node.layout && node.layout.mode !== 'none' ||
+            node.sizing?.width === 'hug' || node.sizing?.height === 'hug')) return false
+      current = parents.get(current)
+    }
+  }
+  return true
 }

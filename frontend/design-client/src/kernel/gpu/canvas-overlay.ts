@@ -1,5 +1,6 @@
 import type { CanvasCamera } from '../../canvas-camera'
 import type { Point, Matrix } from '../../model'
+import { apply, multiply } from '../../geometry'
 import { CanvasLabels, type CanvasLabel } from './canvas-labels'
 
 export type CanvasOverlay = { selection?: { corners: Point[]; handles: boolean; owners?: string[] }; pixelGrid: boolean
@@ -11,6 +12,20 @@ export function translateOverlay(overlay: CanvasOverlay, offsets: Map<string, Po
   const delta=offset(overlay.selection?.owners)
   return { ...overlay, selection:overlay.selection?{...overlay.selection,corners:overlay.selection.corners.map(p=>({x:p.x+delta.x,y:p.y+delta.y}))}:undefined,
     labels:overlay.labels?.map(label=>{const d=offset(label.owners);return{...label,anchor:{x:label.anchor.x+d.x,y:label.anchor.y+d.y}}}) }
+}
+
+/** Apply only chrome geometry to a completed native pose. Document textures
+ * are re-rasterized, never warped to imitate affine sample quality. */
+export function transformOverlay(overlay: CanvasOverlay, matrices: ReadonlyMap<string, Matrix>): CanvasOverlay {
+  const matrix = (owners?: string[]) => owners?.map(id => matrices.get(id)).find(Boolean)
+  const selection = matrix(overlay.selection?.owners)
+  return { ...overlay, selection: overlay.selection && selection ? { ...overlay.selection,
+    corners: overlay.selection.corners.map(point => apply(selection, point)) } : overlay.selection,
+    labels: overlay.labels?.map(label => {
+      const pose = matrix(label.owners)
+      return !pose ? label : { ...label, anchor: apply(pose, label.anchor),
+        ...(label.basis ? { basis: multiply(pose, [...label.basis, 0, 0]).slice(0, 4) as [number, number, number, number] } : {}) }
+    }) }
 }
 
 /** Chrome is projected with the exact camera used to composite document

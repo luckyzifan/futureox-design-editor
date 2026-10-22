@@ -1,3 +1,4 @@
+import { DOCUMENT_MEMORY_BYTES, DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile, mkdtemp, rm, mkdir, writeFile, rename, realpath } from 'node:fs/promises'
@@ -174,7 +175,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
       if (method === 'workspace.open') return { id: params.id }
       if (method === 'workspace.list') { if (state.workspaceFailure) throw Object.assign(new Error('Invalid workspace'), { code: state.workspaceFailure }); return { documents: [] } }
       if (method === 'catalog.list') return { projects: [], directories: [], files: [] }
-      if (method === 'health') return { protocolVersion: 1, maxDocumentBytes: 32 * 1024 * 1024 }
+      if (method === 'health') return { protocolVersion: 1, maxDocumentBytes: DOCUMENT_BYTE_LIMIT, documentTransferVersion: 1, documentCapacity: { memoryBytes: DOCUMENT_MEMORY_BYTES } }
       if (method === 'fonts.list') return { fonts: [{ id: 'font-1' }], truncated: false }
       if (method === 'fonts.read') {
         if (state.fontChanged) throw Object.assign(new Error('changed'), { code: 'FONT_CHANGED' })
@@ -240,6 +241,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   source = source.replace("from './pet/host.mjs'", `from ${JSON.stringify(new URL('../src/pet/host.mjs', import.meta.url).href)}`)
   source = source.replace("from './diagnostic-file.mjs'", `from ${JSON.stringify(new URL('../src/diagnostic-file.mjs', import.meta.url).href)}`)
   source = source.replace("from './workspace-roots.mjs'", `from ${JSON.stringify(new URL('../src/workspace-roots.mjs', import.meta.url).href)}`)
+  source = source.replace("from './document-capacity.mjs'", `from ${JSON.stringify(new URL('../src/document-capacity.mjs', import.meta.url).href)}`)
   source = source.replace("from './gpu-working-budget.mjs'", `from ${JSON.stringify(new URL('../src/gpu-working-budget.mjs', import.meta.url).href)}`)
   source = source.replace('process.env.CORE_GPU_WORKING_BUDGET_MIB', `globalThis[${JSON.stringify(key)}].gpuWorkingBudget`)
   source = source.replace("from './keyboard-shortcuts.mjs'", `from ${JSON.stringify(new URL('../src/keyboard-shortcuts.mjs', import.meta.url).href)}`)
