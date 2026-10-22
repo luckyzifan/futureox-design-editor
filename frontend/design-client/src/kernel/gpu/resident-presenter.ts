@@ -7,7 +7,7 @@ import type { CompositeItem } from './tile-compositor'
 import { presentationQuality } from './presentation-quality'
 import { compositeDrawPlan, compositeRasterQuad } from './composite-draw-plan'
 import { DISPLAY_TEXTURE_BUDGET } from './display-budget'
-import { CanvasOverlayRenderer, translateOverlay, type CanvasOverlay } from './canvas-overlay'
+import { CanvasOverlayRenderer, translateOverlay, transformOverlay, type CanvasOverlay } from './canvas-overlay'
 import { ResidentUniforms } from './resident-uniforms'
 import { physicalCoverage } from './physical-coverage'
 import { presentedFragmentQuality } from './presented-fragment-quality'
@@ -21,6 +21,7 @@ export type ResidentFrame = {
   overlay?: CanvasOverlay
   /** Worker-local placement from the completed resident pose, not input. */
   overlayPose?: Record<string, {x:number;y:number}>
+  overlayAffines?: Record<string, import('../../model').Matrix>
   terminalQuality?: TerminalQuality
   presentationId?: string
   items: ResidentItem[]
@@ -486,7 +487,7 @@ export class ResidentPresenter {
     encoder.copyTextureToTexture({ texture: this.backbuffer!.texture }, { texture: output }, [w, h])
     if (frame.overlay) {
       this.overlay ??= new CanvasOverlayRenderer(this.device, this.format)
-      const overlay=frame.overlayPose?translateOverlay(frame.overlay,new Map(Object.entries(frame.overlayPose))):frame.overlay
+      const overlay=frame.overlayAffines?transformOverlay(frame.overlay,new Map(Object.entries(frame.overlayAffines))):frame.overlayPose?translateOverlay(frame.overlay,new Map(Object.entries(frame.overlayPose))):frame.overlay
       this.overlay.draw(encoder, output, overlay, view, width, height, dpr)
     }
     this.device.queue.submit([encoder.finish()])

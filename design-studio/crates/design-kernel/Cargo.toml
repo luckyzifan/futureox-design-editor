@@ -18,6 +18,7 @@ moxcms.workspace = true
 base64.workspace = true
 ttf-parser.workspace = true
 rustybuzz.workspace = true
+ouroboros = "=0.18.5"
 unicode-bidi.workspace = true
 unicode-linebreak.workspace = true
 unicode-segmentation.workspace = true

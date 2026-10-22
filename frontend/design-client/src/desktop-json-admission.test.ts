@@ -1,3 +1,4 @@
+import { documentCapacity } from './document-capacity'
 import { afterEach, expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
@@ -79,7 +80,7 @@ test('invalid source, font and raw size failures do not publish; the next valid 
     expect(f.editor.state.doc).toBe(before); expect(f.editor.sessionGeneration).toBe(generation); expect(f.editor.canUndo).toBe(false)
   }
   f.decode.mockRejectedValueOnce(new Error('Invalid document JSON size'))
-  await expect((f.session as any).parse(' '.repeat(32 * 1024 * 1024 + 1))).rejects.toThrow('Invalid document JSON size')
+  await expect((f.session as any).parse(' '.repeat(documentCapacity().documentBytes + 1))).rejects.toThrow('Invalid document JSON size')
   f.setSource(JSON.stringify(f.target)); expect(await f.session.openWorkspace(f.target.id)).toBe(true)
 })
 

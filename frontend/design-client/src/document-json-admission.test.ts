@@ -1,3 +1,4 @@
+import { documentCapacity } from './document-capacity'
 import { expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { admitDocumentJsonSync, admitDocumentSync } from './document-admission'
@@ -107,10 +108,10 @@ for (const source of ['', '{', '[,]', '{"id":undefined}', '{"x":NaN}', 'null', '
     expect(outcome(() => admitDocumentJsonSync(source))).toEqual(outcome(() => admitDocumentSync(JSON.parse(source))))
   })
 
-test('UTF-8 canonical size rejection is unchanged, including multibyte unknown fields', () => {
-  const source = JSON.stringify({ ...blank(), extra: '界'.repeat(Math.ceil(32 * 1024 * 1024 / 3)) })
+test('UTF-8 resource rejection remains exact, including multibyte unknown fields', () => {
+  const source = JSON.stringify({ ...blank(), extra: '界'.repeat(Math.ceil(documentCapacity().documentBytes / 3)) })
   expect(outcome(() => admitDocumentJsonSync(source))).toEqual(outcome(() => admitDocumentSync(JSON.parse(source))))
-  expect(() => admitDocumentJsonSync(source)).toThrow('设计文件超过 32 MB')
+  expect(() => admitDocumentJsonSync(source)).toThrow('DOCUMENT_RESOURCE_LIMIT')
 })
 
 test('the raw source route shares exact component/layout/derived validation and failure isolation', () => {

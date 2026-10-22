@@ -1,3 +1,4 @@
+import { documentCapacity } from '../document-capacity'
 import { expect, test } from 'vitest'
 import { PreparationSnapshots } from './preparation-snapshot'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
@@ -124,7 +125,7 @@ test('bounded journal coalesces only existing replacements and preserves structu
 test('source size and unknown lanes cannot create unbounded certificates', () => {
   const snapshots = new PreparationSnapshots()
   snapshots.initialize('canvas', false); snapshots.initialize('interaction', false)
-  const oversized = ' '.repeat(32 * 1024 * 1024 + 1)
+  const oversized = ' '.repeat(documentCapacity().documentBytes + 1)
   snapshots.loaded('canvas', oversized)
   expect(snapshots.canFork('interaction', oversized)).toBe(false)
   snapshots.loaded('other', '{}'); snapshots.initialize('other', false)

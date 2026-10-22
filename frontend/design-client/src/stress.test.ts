@@ -21,7 +21,7 @@ test('copy preserves every node of a 40-level hierarchy and isolates subsequent 
   child.fills[0].color = '#000000'
   expect(Object.values(doc.nodes).some(n=>n.fills.some(p=>p.color==='#000000'))).toBe(false)
 })
-test('large copy, undo and redo preserve the graph; exceeding 20000 nodes is atomic', () => {
+test('large copy crosses the former 20000-node ceiling and preserves undo/redo', () => {
   const editor = new Editor(largeScene(5000))
   editor.select(editor.state.doc.pages[0].children)
   editor.duplicate()
@@ -36,9 +36,12 @@ test('large copy, undo and redo preserve the graph; exceeding 20000 nodes is ato
   expect(Object.keys(editor.state.doc.nodes)).toHaveLength(15003)
   const before = editor.state.doc
   editor.duplicate()
-  expect(editor.state.doc).toBe(before)
-  expect(editor.state.message).toContain('20000')
-}, 15000)
+  expect(Object.keys(editor.state.doc.nodes)).toHaveLength(20004)
+  const beyondLegacyLimit = editor.state.doc
+  editor.undo(); expect(editor.state.doc).toBe(before)
+  editor.redo(); expect(editor.state.doc).toBe(beyondLegacyLimit)
+  editor.dispose()
+}, 60000)
 test('grouping beyond the renderer depth budget leaves the previous scene intact', () => {
   const editor = new Editor(deepScene(64))
   editor.select(editor.state.doc.pages[0].children)

@@ -9,12 +9,13 @@ import { Canvas } from './Canvas'
 import { Editor } from './engine'
 import { blank, node, uid, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
-import { scene, worldMatrix } from './geometry'
+import { scene, worldMatrix, inverse, multiply } from './geometry'
 
-const recordedOverlay = vi.hoisted(() => ({ labels: [] as string[] }))
+const recordedOverlay = vi.hoisted(() => ({ labels: [] as string[], control: undefined as import('./kernel/interaction-layers').GpuMoveControl | undefined }))
 vi.mock('./kernel/Surface', async () => {
   const { useLayoutEffect } = await import('react')
   return { KernelSurface(props: import('./kernel/Surface').SurfaceProps) {
+    if(recordedOverlay.control && props.interaction) props.interaction.control.current = recordedOverlay.control
     recordedOverlay.labels = props.overlay?.commands.labels?.map(label => label.text) || []
     useLayoutEffect(() => {
       props.onPresentation?.({ ...props, epoch: props.presentationEpoch!, pixelRatio: 1, managed: false })
@@ -25,6 +26,7 @@ vi.mock('./kernel/Surface', async () => {
 let dom: any, root: Root, mount: HTMLDivElement, editor: Editor, errors: unknown[][]
 let frames: Map<number, FrameRequestCallback>, frameId: number
 beforeEach(() => {
+  recordedOverlay.control = undefined
   dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
   for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLCanvasElement', 'Element', 'Node', 'Event', 'MouseEvent', 'WheelEvent', 'KeyboardEvent', 'FocusEvent', 'localStorage'])
     vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
@@ -111,4 +113,48 @@ test('entered nested child drag edits only child; copied frame descendants get i
 test('Canvas SVG selected-size label preserves fractional dimensions after rotation without using world AABB',async()=>{
  const frame=node('frame',0,0,3000,3000),child=node('rectangle',20,20,1466.59,1049.02);frame.children=[child.id];frame.transform=[1,0,0,1,0,0];child.transform=[Math.SQRT1_2,Math.SQRT1_2,-Math.SQRT1_2,Math.SQRT1_2,20,20]
  await render([frame,child],[frame.id]);await act(async()=>editor.select([child.id]));expect([...mount.querySelectorAll('svg text')].map(n=>n.textContent)).toContain('1466.59 × 1049.02');expect(recordedOverlay.labels).toContain('1466.59 × 1049.02')
+})
+
+
+test('rotation uses affine pose preview and pointerup commits its final input before the render props catch up',async()=>{
+ const rectangle=node('rectangle',100,100,100,80)
+ const before=await render([rectangle]);await act(async()=>editor.select([rectangle.id]))
+ const apply=vi.fn((_document:typeof before,patches:Record<string,Partial<DesignNode>>)=>{
+   const matrix=multiply(patches[rectangle.id].transform!,inverse(before.nodes[rectangle.id].transform))
+   return {x:matrix[4],y:matrix[5],matrix}
+ }),end=vi.fn()
+ recordedOverlay.control={apply,end,isActive:()=>true,covers:()=>true,feedbackPending:()=>false}
+ await act(async()=>editor.set({snap:false}))
+ const handle=mount.querySelector<HTMLElement>('[data-testid="rotate-corner-0"]')!
+ const x=Number(handle.dataset.anchorX),y=Number(handle.dataset.anchorY)
+ await act(async()=>pointer('pointerdown',x,y,{},handle))
+ await act(async()=>{pointer('pointermove',220,140);const queued=[...frames.values()];frames.clear();queued.forEach(fn=>fn(performance.now()))})
+ expect(apply).toHaveBeenCalled();expect(editor.state.doc).toBe(before)
+ expect(mount.querySelector<HTMLElement>('[data-testid="canvas-selection-outline"]')!.style.transform).toContain('matrix(')
+ end.mockClear()
+ await act(async()=>pointer('pointerup',150,220))
+ expect(apply.mock.calls.length).toBeGreaterThanOrEqual(2)
+ expect(editor.state.doc.nodes[rectangle.id].transform).toEqual(apply.mock.calls.at(-1)![1][rectangle.id].transform)
+ expect(end).toHaveBeenCalledWith(editor.state.doc);expect(editor.interactionActive).toBe(false)
+ expect(mount.querySelector<HTMLElement>('[data-testid="canvas-selection-outline"]')!.style.transform).toBe('')
+ await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before);expect(editor.canUndo).toBe(false)
+})
+test('repeated camera changes and document replacement retire queued stale pointer ownership and permit the next edit',async()=>{
+ const rectangle=node('rectangle',100,100,100,80);const before=await render([rectangle])
+ await act(async()=>editor.select([rectangle.id]))
+ for(const zoom of [0.5,1.9,0.025,1,0.25,1])await act(async()=>editor.set({view:{x:0,y:0,zoom}}))
+ await act(async()=>pointer('pointerdown',150,140))
+ await act(async()=>pointer('pointermove',180,160))
+ const reopened=structuredClone(before);reopened.name='Replacement owner'
+ await act(async()=>{editor.load(reopened);editor.set({view:{x:0,y:0,zoom:1}});editor.select([rectangle.id])})
+ await act(async()=>editor.set({view:{x:0,y:0,zoom:1}})) // Session-open fit has completed.
+ await act(async()=>{editor.begin('Replacement transaction');pointer('pointercancel',180,160)})
+ expect(editor.interactionActive).toBe(true) // The retired pointer cannot cancel a replacement owner.
+ await act(async()=>editor.cancel())
+ await act(async()=>pointer('pointerup',180,160))
+ expect(editor.state.doc.nodes[rectangle.id].transform).toEqual(before.nodes[rectangle.id].transform)
+ await act(async()=>pointer('pointerdown',150,140,{},host(),8))
+ await act(async()=>pointer('pointerup',190,170,{},host(),8))
+ expect(editor.state.doc.nodes[rectangle.id].transform.slice(4)).toEqual([140,130])
+ expect(editor.interactionActive).toBe(false);expect(editor.canUndo).toBe(true)
 })

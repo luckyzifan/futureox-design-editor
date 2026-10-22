@@ -411,6 +411,9 @@ export interface Driver {
   /** channels is only used by exact separable filters; all other passes write RGBA. */
   pass(target: Texture, uniforms: Float32Array, inputs: Texture[], region?: Rect, channels?: number, filter?: {kind: 'tent'; radius: number}, clearOutside?: boolean): void
   over(target: Texture, uniforms: Float32Array, inputs: Texture[], region: Rect): void
+  /** Remaining unique instances in the driver's current upload arena.
+   * Absence declines batching; a command submission is not a capacity reset. */
+  solidBatchRemaining?(): number
   solidBatch?(
     target: Texture,
     uniforms: Float32Array,

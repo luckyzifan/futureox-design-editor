@@ -6,6 +6,7 @@ import { documentPatch } from '../document-patch'
 import { createRenderPolicy } from './render-policy'
 
 const state = vi.hoisted(() => ({
+  poseTiles: false, replacements: [] as number[],
   failAttach: false, failBudgetOnce: false, renders: [] as { readback: boolean; present: boolean; scene: any }[], transfers: [] as any[],
   keys: [] as { uri: string; variant: string; settings: string }[], reads: [] as string[],
   scenes: [] as any[], loads: [] as { uri: string; render: number; bytes?: Uint8Array; pixels: Float32Array }[],
@@ -35,7 +36,7 @@ vi.mock('./gpu/factory', async () => {
         bytes: data.byteLength, resource: { image: data.slice() } })
       const resources = new GpuRenderer({ scratchBytes: 0, uploadRgba8: upload, uploadLinear: upload,
         destroy() {}, dispose() {} } as any, true, true, loader) as any
-      return { driver: { name: backend, managed: floating, displayMath, lost: false, description: 'CPU test driver', attachPresenter: vi.fn(() => { if (state.failAttach) throw Error('Presenter attachment failed') }), abortFrameAndReleaseFilterScratch: async () => {} },
+      return { driver: { name: backend, managed: floating, displayMath, lost: false, description: 'CPU test driver', replacePresented: (slot: number) => { state.replacements.push(slot); return true }, attachPresenter: vi.fn(() => { if (state.failAttach) throw Error('Presenter attachment failed') }), abortFrameAndReleaseFilterScratch: async () => {} },
         dispose() { expect(state.disposed).not.toContain(identity); state.disposed.push(identity); resources.dispose() },
         abortFrameAndReleaseFilterScratch: async () => {},
         releaseFilterBatch() {},
@@ -58,6 +59,7 @@ vi.mock('./gpu/factory', async () => {
             state.bitmaps.push(bitmap)
             return { bitmap, drawCalls: 0, triangles: 0 }
           }
+          if(state.poseTiles) return { gpuTile: 77, drawCalls: 0, triangles: 0 }
           return { rgba: new Uint8Array((scene.presentation?.width ?? scene.resolve?.width ?? scene.width) *
             (scene.presentation?.height ?? scene.resolve?.height ?? scene.height) * 4), drawCalls: 0, triangles: 0 }
         },
@@ -85,10 +87,10 @@ function fixture(count = 1000) {
 }
 async function worker(desktopFullMath = false, withPreparation = false, desktopDisplay = false) {
   vi.resetModules()
-  Object.assign(state, { failAttach: false, failBudgetOnce: false, renders: [], transfers: [], keys: [], reads: [], scenes: [], loads: [], keyGate: undefined, readGate: undefined, renderGate: undefined, renderBlocked: false, bitmaps: [], disposed: [], createCount: 0, onPost: undefined })
+  Object.assign(state, { poseTiles: false, replacements: [], failAttach: false, failBudgetOnce: false, renders: [], transfers: [], keys: [], reads: [], scenes: [], loads: [], keyGate: undefined, readGate: undefined, renderGate: undefined, renderBlocked: false, bitmaps: [], disposed: [], createCount: 0, onPost: undefined })
   state.font = withPreparation ? new Uint8Array(readFileSync(new URL('../../public/fonts/NotoSansSC.ttf', import.meta.url))) : undefined
   const kernel = await import('../generated/design-kernel/design_kernel')
-  await kernel.default({ module_or_path: wasm })
+  await (await import('./module')).initializeKernelModule(wasm)
   let preparationPort: MessagePort | undefined
   if (withPreparation) {
     const preparationScope: any = {}
@@ -516,4 +518,59 @@ test('request-scoped cancellation applies its ordered patch but leaves independe
   expect((await w.finish(802)).backend).toBe('webgpu')
   expect((await w.finish(803)).backend).toBe('webgpu')
   expect(state.renders).toHaveLength(3)
+})
+
+// Real worker/native scene path; GPU transport deliberately mocked. These
+// assertions certify queue/pose ownership, not physical display or GPU pixels.
+async function affineWorker() {
+  const f = fixture(1), w = await worker(); state.poseTiles = true
+  const options = { ...f.options, renderIntent: 'preview', livePreview: true,
+    retainInteractionGraph: true, interactionNative: true, interactionAffine: true,
+    interactionSelection: ['image-0'], interactionWindowFixed: true,
+    interactionWindow: { x: 0, y: 0, w: 48, h: 16 } }
+  w.send({ id: 980, channel: 'interaction', document: JSON.stringify(f.doc), documentRevision: 1, options })
+  expect((await w.finish(980)).residentInteraction).toBe(true)
+  const pose = (sequence: number) => ({ command: 'interaction-pose', slot: 77, input: { owner: 9, sequence, at: 0 },
+    transforms: { 'image-0': [Math.cos(sequence / 10), Math.sin(sequence / 10), -Math.sin(sequence / 10), Math.cos(sequence / 10), 4, 2] } })
+  return { ...w, f, options, pose }
+}
+test('affine worker compiles the latest absolute pose and never acknowledges skipped queued inputs', async () => {
+  const w = await affineWorker()
+  w.send(w.pose(1)); w.send(w.pose(2)); w.send(w.pose(3))
+  await vi.waitFor(() => expect(w.messages.some(m => m.presentation?.residentSample?.sequence === 3)).toBe(true))
+  expect(w.messages.some(m => m.presentation?.residentSample?.sequence === 2)).toBe(false)
+  expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(w.pose(3).transforms['image-0'])
+  expect(state.replacements.length).toBeLessThanOrEqual(2)
+})
+test('native pose preparation failure retires the lease and leaves the next capture and input usable', async () => {
+  const w = await affineWorker(), warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const apply = vi.spyOn(w.kernel.VectorEngine.prototype, 'apply_interaction_transforms').mockImplementationOnce(() => { throw Error('simulated preparation failure') })
+  w.send(w.pose(1))
+  await vi.waitFor(() => expect(w.messages.some(m => m.presentation?.residentSample?.needsRebase && m.presentation.residentSample.sequence === 1)).toBe(true))
+  expect(w.messages.some(m => m.presentation?.residentSample?.sequence === 1 && !m.presentation.residentSample.needsRebase)).toBe(false)
+  apply.mockRestore()
+  w.send({ id: 981, channel: 'interaction', document: JSON.stringify(w.f.doc), documentRevision: 2, options: w.options })
+  expect((await w.finish(981)).error).toBeUndefined()
+  w.send(w.pose(2)); await vi.waitFor(() => expect(w.messages.some(m => m.presentation?.residentSample?.sequence === 2)).toBe(true))
+  expect(warn).toHaveBeenCalled()
+})
+test('stopping a pose during raster drops completion and queued inputs without replacing the visible slot', async () => {
+  const w = await affineWorker(); let release!: () => void
+  state.renderGate = new Promise(resolve => { release = resolve })
+  w.send(w.pose(1)); await vi.waitFor(() => expect(state.renderBlocked).toBe(true))
+  w.send(w.pose(2)); w.send({ command: 'interaction-pose-stop', slot: 77 }); release()
+  w.send({ id: 981, channel: 'interaction', document: JSON.stringify(w.f.doc), documentRevision: 2, options: w.options })
+  expect((await w.finish(981)).error).toBeUndefined()
+  expect(w.messages.some(m => m.presentation?.residentSample)).toBe(false); expect(state.replacements).toEqual([])
+})
+
+test('live capture document patches route pure affine transforms through native retention before compiling exact content',async()=>{
+ const w=await affineWorker(),transform=[0,1,-1,0,24,2] as [number,number,number,number,number,number]
+ const next={...w.f.doc,nodes:{...w.f.doc.nodes,'image-0':{...w.f.doc.nodes['image-0'],transform}}}
+ const apply=vi.spyOn(w.kernel.VectorEngine.prototype,'apply_interaction_transforms')
+ w.send({id:981,channel:'interaction',documentPatch:JSON.stringify(documentPatch(w.f.doc,next)),baseDocumentRevision:1,documentRevision:2,options:w.options})
+ expect((await w.finish(981)).error).toBeUndefined()
+ expect(apply).toHaveBeenCalled()
+ expect(w.messages.find(m=>m.id===981&&m.damage)?.damage.reason).toBe('native-interaction-pose')
+ expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(transform)
 })

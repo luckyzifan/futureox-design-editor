@@ -1,3 +1,4 @@
+import { assertDocumentJson } from './document-capacity'
 import { validateDocument, type DesignDocument } from './model'
 import { documentStage, DocumentStage } from './document-lifecycle-diagnostics'
 import { initializeKernelModule, validateKernelDocument } from './kernel/module'
@@ -5,8 +6,7 @@ import { initializeKernelModule, validateKernelDocument } from './kernel/module'
 function captureDocument(value: unknown) {
   validateDocument(value)
   const json = JSON.stringify(value)
-  if (new TextEncoder().encode(json).byteLength > 32 * 1024 * 1024)
-    throw new Error('设计文件超过 32 MB')
+  assertDocumentJson(json)
   // Use the exact serialized snapshot validated by Rust, never a caller-owned
   // object which can change while module initialization or storage is awaited.
   const document = validateDocument(JSON.parse(json))
@@ -62,6 +62,7 @@ export function consumeDocumentJsonSyntaxFailure(error: unknown, attempt: object
  * Avoid only the redundant snapshot clone for a private JSON-stable graph. */
 export function admitDocumentJsonSync(source: string, syntaxFailureAttempt?: object): DesignDocument {
   if (typeof source !== 'string') throw new TypeError('设计文档 JSON 必须为字符串')
+  assertDocumentJson(source)
   const parsed: unknown = documentStage(DocumentStage.decode, () => {
     try { return JSON.parse(source) }
     catch (error) {
@@ -76,8 +77,7 @@ export function admitDocumentJsonSync(source: string, syntaxFailureAttempt?: obj
         Object.getPrototypeOf(Array.prototype) !== Object.prototype) return admitDocumentSync(parsed)
     const document = validateDocument(parsed)
     const json = JSON.stringify(parsed)
-    if (new TextEncoder().encode(json).byteLength > 32 * 1024 * 1024)
-      throw new Error('设计文件超过 32 MB')
+    assertDocumentJson(json)
     const snapshot = isJsonRoundtripStable(parsed) ? document : validateDocument(JSON.parse(json))
     validateKernelDocument(json)
     return snapshot

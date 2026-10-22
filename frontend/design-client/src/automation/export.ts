@@ -1,3 +1,4 @@
+import { assertDocumentJson } from '../document-capacity'
 import { EMBEDDED_FONT_WARNING } from '../svg-font-embedding'
 import { hasLogic } from '../prototype-logic'
 import { EDITABLE_TEXT_WARNING } from '../svg-editable-text'
@@ -86,7 +87,9 @@ export function decodeNativeImportDocument(params: Record<string, unknown>): unk
     try { value = JSON.parse(encoded) } catch { throw new AutomationError('invalid_params', 'Import is not valid JSON') }
   }
   assertSafeImportTree(value)
-  if (new TextEncoder().encode(JSON.stringify(value)).byteLength > EXPORT_LIMITS.nativeBytes) throw new AutomationError('invalid_params', 'Expanded native document exceeds the 32 MiB budget')
+  // FD wire framing remains bounded; expanded authored data uses the same
+  // resource allowance as the editor, not the MCP packet byte ceiling.
+  assertDocumentJson(JSON.stringify(value))
   return value
 }
 /** Append through the existing importer; preserve identity and remap the graph. */

@@ -1,7 +1,7 @@
 import { effectsAreKnown } from './render-dependency'
 import { allowsReducedSampling } from './render-quality'
 import { pageBackdropPadding } from './interaction-layers'
-import type { Bounds, DesignDocument, DesignNode } from '../model'
+import type { Bounds, DesignDocument, DesignNode, Matrix } from '../model'
 import { unionBounds, type SceneEntry } from '../geometry'
 
 /** Keep the existing world-space effect/stroke envelope exactly. Grouping
@@ -38,6 +38,7 @@ export function interactionRootBounds(document: DesignDocument, pageId: string, 
 export type InteractionDependencyScope = {
   rootBounds: Map<string, Bounds>
   parentLinear: Map<string, number[]>
+  parentMatrices?: Map<string, Matrix>
   localizedBounds: Set<string>
   fixedBounds: Set<string>
   dependencyPadding: number
@@ -90,7 +91,7 @@ function finalForegroundBranch(document: DesignDocument, pageId: string,
 export function buildInteractionDependencyScope(document: DesignDocument, pageId: string,
   entries: readonly SceneEntry[], selection: readonly string[],
   { zoom, dpr, allowFixedBackdrop }: { zoom: number; dpr: number; allowFixedBackdrop: boolean }): InteractionDependencyScope {
-  const scope: InteractionDependencyScope = { rootBounds: new Map(), parentLinear: new Map(),
+  const scope: InteractionDependencyScope = { rootBounds: new Map(), parentLinear: new Map(), parentMatrices: new Map(),
     localizedBounds: new Set(), fixedBounds: new Set(), dependencyPadding: 0, finalForeground: false }
   // Bound propagation through all backdrop filters conservatively. This
   // is computed once per scene, not once per pointer sample.
@@ -101,6 +102,8 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
   // is an ordinary effect-free, mask-free container; other selections
   // retain the conservative viewport dependency path.
   const byId = new Map(entries.map(entry => [entry.id, entry]))
+  scope.parentMatrices = new Map(selection.map(id =>
+    [id, byId.get(byId.get(id)?.parent || '')?.matrix || [1, 0, 0, 1, 0, 0] as Matrix]))
   scope.parentLinear = new Map(selection.map(id =>
     [id, byId.get(byId.get(id)?.parent || '')?.matrix.slice(0, 4) || [1, 0, 0, 1]]))
   scope.localizedBounds = new Set()

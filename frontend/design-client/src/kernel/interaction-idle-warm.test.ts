@@ -64,9 +64,9 @@ test('waits for full canvas readiness and 150 ms of stable idle time, then warms
   expect(JSON.stringify(f.document)).toBe(original)
 })
 
-test.each(['permission', 'flag', 'profile', 'shared'] as const)('keeps idle warming disabled without its %s gate', async gate => {
+test.each(['permission', 'flag', 'unset', 'profile', 'shared'] as const)('keeps idle warming disabled without its %s gate', async gate => {
   const f = fixture(gate !== 'permission', gate !== 'shared')
-  if (gate === 'flag') vi.stubEnv('VITE_DESIGN_NESTED_IDLE_WARM', '0')
+  if (gate === 'flag' || gate === 'unset') vi.stubEnv('VITE_DESIGN_NESTED_IDLE_WARM', gate === 'flag' ? '0' : '')
   f.prepare(f.document, f.props, f.view, gate === 'profile' ? 'figma' : 'figmaSubpixel')
   await vi.advanceTimersByTimeAsync(1000)
   expect(transport.jobs).toHaveLength(0)

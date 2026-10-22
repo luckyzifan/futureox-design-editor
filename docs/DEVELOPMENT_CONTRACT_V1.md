@@ -142,3 +142,11 @@ Each source increment must include the repository-local skill, maintained Markdo
 The [2026-10-21 functional integration record](../testing/verification-functional-merge-20261021/README.md) records the cumulative package's exact affected hashes while preserving newer rendering files. Imported historical test results and current combined-source regression are separate evidence. Independent-copy import, actual browser Worker lifecycle, protocol fixtures, native SQLite, real sockets and desktop end-to-end behavior retain their own acceptance boundaries.
 
 The [2026-10-22 Electron cumulative integration record](../testing/verification-electron-cumulative-20261022/README.md) records the later localization, input/focus, command and regression-source merge. Its older exact package baseline was merged with current main; existing rendering and editor ownership protections remain in place. No tests, typecheck, build or actual application acceptance were run for that integration at the user's request; historical package results remain separately attributed.
+
+The 2026-10-22 resource-aware capacity candidate replaces the accumulated native
+32 MiB document and fixed 20k-node/100-page quotas with a trusted pinned memory
+policy; desktop transport frames and untrusted archive/MCP protections remain
+bounded independently. See [capacity policy and remaining physical ceilings](capacity/DOCUMENT_CAPACITY_2026-10-22.md).
+This is not an unlimited-memory, streaming-document-model or whole-app acceptance
+claim. Rebuild all native/WASM participants and verify real import/edit/save/reopen
+before citing its capacity behavior.

@@ -1,4 +1,4 @@
-use futureox_design_desktop_backend::{Backend, MAX_DOCUMENT_BYTES, MAX_RECOVERIES, protocol};
+use futureox_design_desktop_backend::{Backend, MAX_RECOVERIES, document_byte_limit, protocol};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -218,7 +218,7 @@ fn stat_captures_explicit_overwrite_baseline_without_parsing_destination() {
 fn rejects_oversized_files_before_read_and_oversized_save_before_replacement() {
     let f = Fixture::new();
     let file = fs::File::create(f.path()).unwrap();
-    file.set_len(MAX_DOCUMENT_BYTES as u64 + 1).unwrap();
+    file.set_len(document_byte_limit() as u64 + 1).unwrap();
     assert_eq!(
         f.backend.open(&f.path()).unwrap_err().code,
         "DOCUMENT_TOO_LARGE"
@@ -226,7 +226,7 @@ fn rejects_oversized_files_before_read_and_oversized_save_before_replacement() {
     fs::remove_file(f.path()).unwrap();
     let saved = f.backend.save(&f.path(), &document(), None).unwrap();
     let mut oversized = document();
-    oversized["extension"] = json!("x".repeat(MAX_DOCUMENT_BYTES));
+    oversized["extension"] = json!("x".repeat(document_byte_limit()));
     assert_eq!(
         f.backend
             .save(&f.path(), &oversized, Some(&saved.hash))
@@ -472,7 +472,7 @@ fn protocol_is_correlated_strict_and_recovers_after_invalid_requests() {
     assert_eq!(response.id, json!(2));
     assert_eq!(
         response.result.unwrap()["maxDocumentBytes"],
-        MAX_DOCUMENT_BYTES
+        document_byte_limit()
     );
     assert!(!f.path().exists());
 }
@@ -568,9 +568,41 @@ fn fd_extension_metadata_roundtrips_and_required_semantics_never_replace_origina
     assert_eq!(f.backend.open(&f.path()).unwrap().document, doc);
     let original = fs::read(f.path()).unwrap();
     doc["fdCompatibility"]["requiredCapabilities"] = json!(["org.example/render"]);
-    assert_eq!(f.backend.save(&f.path(), &doc, Some(&saved.hash)).unwrap_err().code, "INVALID_DOCUMENT");
+    assert_eq!(
+        f.backend
+            .save(&f.path(), &doc, Some(&saved.hash))
+            .unwrap_err()
+            .code,
+        "INVALID_DOCUMENT"
+    );
     assert_eq!(fs::read(f.path()).unwrap(), original);
     let incoming = f.root.join("unknown-required.fd");
     fs::write(&incoming, serde_json::to_vec(&doc).unwrap()).unwrap();
-    assert_eq!(f.backend.open(&incoming).unwrap_err().code, "INVALID_DOCUMENT");
+    assert_eq!(
+        f.backend.open(&incoming).unwrap_err().code,
+        "INVALID_DOCUMENT"
+    );
+}
+
+#[test]
+fn document_above_former_32_mib_cap_roundtrips_fd_and_recovery_without_losing_authored_bytes() {
+    let fixture = Fixture::new();
+    let mut large = document();
+    large["extensionData"] = json!({"payload":"x".repeat(33*1024*1024)});
+    let saved = fixture.backend.save(&fixture.path(), &large, None).unwrap();
+    assert_eq!(
+        fixture.backend.open(&fixture.path()).unwrap().document,
+        large
+    );
+    fixture
+        .backend
+        .recovery_write("large-document", &large, None, Some(&saved.hash))
+        .unwrap();
+    let restored = fixture.backend.recovery_read("large-document").unwrap();
+    assert_eq!(restored.document, large);
+    let next = fixture
+        .backend
+        .save(&fixture.path(), &large, Some(&saved.hash))
+        .unwrap();
+    assert_eq!(saved.hash, next.hash);
 }

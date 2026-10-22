@@ -1,14 +1,15 @@
 // Local document transport codec. The protocol exposes no filesystem or network operations.
 import { parentPort } from 'node:worker_threads'
-const LIMIT=32*1024*1024
+import { DOCUMENT_BYTE_LIMIT as LIMIT, assertDocumentSerialization } from './document-capacity.mjs'
 parentPort.on('message',message=>{
  if(message.stop){parentPort.close();return}
  try{
   if(message.args.length!==1)throw Error('Invalid document codec request')
   let value
   if(message.method==='serialize'){
+   assertDocumentSerialization(message.args[0])
    value=JSON.stringify(message.args[0])
-   if(typeof value!=='string'||Buffer.byteLength(value)>LIMIT)throw Error('Document exceeds 32 MiB')
+   if(typeof value!=='string'||Buffer.byteLength(value)>LIMIT)throw Error('Document exceeds the available working-memory allowance')
   }else if(message.method==='parse'){
    const text=message.args[0]
    if(typeof text!=='string'||Buffer.byteLength(text)>LIMIT)throw Error('Invalid document JSON size')

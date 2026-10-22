@@ -1,3 +1,4 @@
+import { assertDocumentJson, documentCapacity } from '../document-capacity'
 import { export_sketch_json, import_sketch_json } from '../generated/design-kernel/design_kernel'
 import { kernelModuleReady } from '../kernel/module'
 import { uid, validateDocument, type DesignDocument } from '../model'
@@ -12,7 +13,7 @@ import type { DesignAutomationWarning } from './context'
  * These are additional JSON transport/admission limits, not a second codec. */
 export const SKETCH_LIMITS = Object.freeze({
   transferBytes: 32 * 1024 * 1024 - 64 * 1024,
-  documentBytes: 32 * 1024 * 1024 - 64 * 1024,
+  get documentBytes() { return documentCapacity().documentBytes },
 })
 const encoder = new TextEncoder()
 const compatibility: DesignAutomationWarning = {
@@ -55,8 +56,7 @@ function readArchive(bytes: Uint8Array) {
   let json: string
   try { json = import_sketch_json(bytes) }
   catch (error) { throw new AutomationError('invalid_document', 'The shared Sketch codec rejected the archive', { reason: error instanceof Error ? error.message : String(error) }) }
-  if (encoder.encode(json).byteLength > SKETCH_LIMITS.documentBytes)
-    throw new AutomationError('response_limit', 'Expanded Sketch document exceeds the 32 MiB editable-document budget')
+  assertDocumentJson(json)
   return JSON.parse(json) as { document: DesignDocument; warnings: string[] }
 }
 function codecWarnings(messages: string[]): DesignAutomationWarning[] {
@@ -139,9 +139,9 @@ export function importSketchDocument(document: DesignDocument, params: Record<st
     message: 'Append keeps editable nodes, remapped component references and node-local source transform/font records. Other opaque Sketch archive metadata and source-layout signatures are not merged; preserve the original archive for native-source fidelity.',
   })
   // Bound the final destination too: multiple individually small imports must
-  // not evade the existing shared document admission budget.
-  if (encoder.encode(JSON.stringify(draft)).byteLength > SKETCH_LIMITS.documentBytes)
-    throw new AutomationError('response_limit', 'Destination document would exceed the 32 MiB editable-document budget')
+  // not evade the shared resource-aware document admission policy. The MCP
+  // frame remains bounded independently of accumulated destination size.
+  assertDocumentJson(JSON.stringify(draft))
   Object.assign(document, draft)
   context.createdIds.push(...stagedContext.createdIds)
   return { ...imported, sourceFormat: 'sketch', fidelity: 'compatibility', lossless: false, warnings, omittedSourceContainers }
@@ -154,8 +154,7 @@ export function exportSketchDocument(document: DesignDocument) {
   requireKernel()
   validateDocument(document)
   const json = JSON.stringify(document)
-  if (encoder.encode(json).byteLength > SKETCH_LIMITS.documentBytes)
-    throw new AutomationError('response_limit', 'Sketch export source exceeds the 32 MiB editable-document budget')
+  assertDocumentJson(json)
   let bytes: Uint8Array
   try { bytes = new Uint8Array(export_sketch_json(json)) }
   catch (error) { throw new AutomationError('unsupported_fidelity', 'The shared Sketch codec could not export this document', { reason: error instanceof Error ? error.message : String(error) }) }

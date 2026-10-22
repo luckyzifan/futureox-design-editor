@@ -1,4 +1,4 @@
-use crate::{Backend, BackendError, MAX_DOCUMENT_BYTES, MAX_FRAME_BYTES, MAX_RECOVERIES, Result};
+use crate::{Backend, BackendError, MAX_FRAME_BYTES, MAX_RECOVERIES, Result, document_byte_limit};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
@@ -55,6 +55,19 @@ pub(crate) fn parse_frame(frame: &[u8]) -> std::result::Result<Request, Response
         return Err(failed(
             Value::Null,
             BackendError::new("FRAME_TOO_LARGE", "IPC frame exceeds 64 MiB"),
+        ));
+    }
+    parse_admitted_frame(frame)
+}
+/// Called only after private desktop transport resource admission.
+pub(crate) fn parse_admitted_frame(frame: &[u8]) -> std::result::Result<Request, Response> {
+    if frame.len() > crate::document_transport::transfer_byte_limit() {
+        return Err(failed(
+            Value::Null,
+            BackendError::new(
+                "DOCUMENT_TOO_LARGE",
+                "Document transfer exceeds available working memory",
+            ),
         ));
     }
     let value: Value = serde_json::from_slice(frame).map_err(|e| {
@@ -247,7 +260,7 @@ fn dispatch(
         "health" => {
             parse_params::<Empty>(params)?;
             Ok(
-                json!({"protocolVersion":1,"maxDocumentBytes":MAX_DOCUMENT_BYTES,"maxFrameBytes":MAX_FRAME_BYTES,"maxRecoveries":MAX_RECOVERIES,"catalogVersion":1,"catalogAvailable":backend.catalog.is_some(),"catalogError":if backend.catalog.is_none(){Some(backend.catalog_unavailable())}else{None},"workspaceVersion":crate::workspace::SCHEMA_VERSION,"workspaceAvailable":backend.workspace.is_some(),"workspaceError":if backend.workspace.is_none(){Some(backend.workspace_unavailable())}else{None},"fileRecoveryAvailable":true,"maxPendingRequests":crate::runtime::MAX_PENDING,"maxPendingBytes":crate::runtime::MAX_PENDING_BYTES}),
+                json!({"protocolVersion":1,"documentTransferVersion":1,"documentCapacity":{"memoryBytes":futureox_design_kernel::capacity::memory_budget_bytes()},"maxDocumentBytes":document_byte_limit(),"maxFrameBytes":MAX_FRAME_BYTES,"maxRecoveries":MAX_RECOVERIES,"catalogVersion":1,"catalogAvailable":backend.catalog.is_some(),"catalogError":if backend.catalog.is_none(){Some(backend.catalog_unavailable())}else{None},"workspaceVersion":crate::workspace::SCHEMA_VERSION,"workspaceAvailable":backend.workspace.is_some(),"workspaceError":if backend.workspace.is_none(){Some(backend.workspace_unavailable())}else{None},"fileRecoveryAvailable":true,"maxPendingRequests":crate::runtime::MAX_PENDING,"maxPendingBytes":crate::runtime::max_pending_bytes()}),
             )
         }
         "open" | "stat" => {
@@ -602,18 +615,54 @@ pub fn serve(
     reader: &mut impl BufRead,
     writer: &mut impl Write,
 ) -> io::Result<()> {
+    let mut assembler = crate::document_transport::Assembler::default();
     while let Some((frame, oversized)) = read_frame(reader, MAX_FRAME_BYTES)? {
         let response = if oversized {
+            if assembler.incomplete() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Oversized frame interrupted document transfer",
+                ));
+            }
             failed(
                 Value::Null,
                 BackendError::new("FRAME_TOO_LARGE", "IPC frame exceeds 64 MiB"),
             )
         } else {
-            handle_frame(backend, &frame)
+            let Some(frame) =
+                assembler.accept(frame, crate::document_transport::transfer_byte_limit())?
+            else {
+                continue;
+            };
+            match parse_admitted_frame(&frame) {
+                Ok(request) => {
+                    handle_request(backend, request, &std::sync::atomic::AtomicBool::new(false))
+                }
+                Err(response) => response,
+            }
         };
-        serde_json::to_writer(&mut *writer, &response)?;
-        writer.write_all(b"\n")?;
+        let bytes = crate::bounded_json(
+            &response,
+            crate::document_transport::transfer_byte_limit(),
+            "FRAME_TOO_LARGE",
+        )
+        .map_err(io::Error::other)?;
+        if bytes.len() <= MAX_FRAME_BYTES {
+            writer.write_all(&bytes)?;
+            writer.write_all(b"\n")?;
+        } else {
+            let id = crate::unique_id();
+            for offset in (0..bytes.len()).step_by(crate::document_transport::CHUNK_BYTES) {
+                writer.write_all(&crate::document_transport::chunk(&bytes, offset, &id)?)?;
+            }
+        }
         writer.flush()?;
+    }
+    if assembler.incomplete() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "Incomplete document transfer",
+        ));
     }
     Ok(())
 }
@@ -635,5 +684,59 @@ mod tests {
             Some((b"last".to_vec(), false))
         );
         assert_eq!(read_frame(&mut reader, 4).unwrap(), None);
+    }
+}
+
+#[cfg(test)]
+mod multipart_tests {
+    use super::*;
+    #[test]
+    fn incomplete_replayed_and_interleaved_transfers_never_publish_a_file() {
+        let root =
+            std::env::temp_dir().join(format!("desktop-transfer-test-{}", crate::unique_id()));
+        std::fs::create_dir(&root).unwrap();
+        let backend = Backend::new(&root.join("recovery")).unwrap();
+        let path = root.join("test.fd");
+        let doc = json!({"schemaVersion":6,"id":"10000000-0000-0000-0000-000000000001","name":"chunked","pages":[{"id":"10000000-0000-0000-0000-000000000002","name":"Page","background":"#ffffff","children":[]}],"nodes":{},"extra":"x".repeat(crate::document_transport::CHUNK_BYTES)});
+        let payload=serde_json::to_vec(&json!({"id":"save","method":"save","params":{"path":path,"expectedHash":null,"document":doc}})).unwrap();
+        let first = crate::document_transport::chunk(&payload, 0, "one").unwrap();
+        for suffix in [
+            Vec::new(),
+            first.clone(),
+            crate::document_transport::chunk(
+                &payload,
+                crate::document_transport::CHUNK_BYTES,
+                "two",
+            )
+            .unwrap(),
+        ] {
+            let mut input = first.clone();
+            input.extend(suffix);
+            let mut output = Vec::new();
+            assert!(serve(&backend, &mut io::Cursor::new(input), &mut output).is_err());
+            assert!(!path.exists());
+            assert!(output.is_empty());
+        }
+        let mut input = first;
+        input.extend(
+            crate::document_transport::chunk(
+                &payload,
+                crate::document_transport::CHUNK_BYTES,
+                "one",
+            )
+            .unwrap(),
+        );
+        let mut output = Vec::new();
+        serve(&backend, &mut io::Cursor::new(input), &mut output).unwrap();
+        assert!(
+            serde_json::from_slice::<Value>(&output)
+                .unwrap()
+                .get("error")
+                .is_none(),
+            "{}",
+            String::from_utf8_lossy(&output)
+        );
+        assert_eq!(backend.open(&path).unwrap().document, doc);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

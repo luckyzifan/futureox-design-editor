@@ -667,6 +667,7 @@ dependencies = [
  "lz4_flex",
  "miniz_oxide 0.8.9",
  "moxcms",
+ "ouroboros",
  "png",
  "rustybuzz",
  "ruzstd",

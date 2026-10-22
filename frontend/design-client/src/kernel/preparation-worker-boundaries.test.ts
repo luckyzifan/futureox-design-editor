@@ -9,7 +9,7 @@ test('actual WASM worker control flow emits start/finish without content or reso
  const self:any={},rows:any[]=[]
  class Engine { load_font(){} set_image_mips(){} color_settings(){return 'null'} free(){} compile_gpu_packet(value:string){if(value==='throw')throw Error('private exception');return new Uint8Array([70,71])} }
  class Snapshots {imageMips(){return false}canFork(){return false}initialize(){}invalidate(){}loaded(){}}
- new Function('initialize','VectorEngine','renderCpuFrame','loadKernelResources','PreparationSnapshots','PreparationStates','self','MessagePort','env',js)(async()=>{},Engine,()=>{},async()=>new Uint8Array(),Snapshots,PreparationStates,self,MessagePort,{DEV:false,VITE_DESIGN_DOCUMENT_FORK:'0'})
+ new Function('initializeKernelModule','VectorEngine','renderCpuFrame','loadKernelResources','PreparationSnapshots','PreparationStates','self','MessagePort','env',js)(async()=>{},Engine,()=>{},async()=>new Uint8Array(),Snapshots,PreparationStates,self,MessagePort,{DEV:false,VITE_DESIGN_DOCUMENT_FORK:'0'})
  const pair=new MessageChannel(),channel=new PreparationChannel(pair.port2,{enabled:()=>true,owner:()=>954,record:(_e,r)=>rows.push(r)})
  self.onmessage({data:{port:pair.port1}})
  try{

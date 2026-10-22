@@ -25,6 +25,7 @@ import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { navigationPreviewDensity } from './navigation-zoom'
+import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
 import { panPrefetch } from './pan-prefetch'
@@ -381,6 +382,9 @@ export function ProgressiveSurfaceImpl(
   const rasterOwner = useRef<object | null>(null)
   const fillOwner = useRef<{ contract: object; key: string } | null>(null)
   const previousFillView = useRef<SurfaceProps['view'] | undefined>(undefined)
+  const coverageDirection = useRef<{ contract?: object; zoomOut: boolean }>({ zoomOut: false })
+  const coverageGeneration = useRef(0)
+  const coverageFlight = useRef<NavigationCoverageFlight<PaintedTile> | null>(null)
   const previewAdmission = useRef<{ contract?: object; key?: string; active: boolean }>({ active: false })
   const [navigationIntentOwner] = useState(() => new NavigationIntentOwner())
   const [nativeNavigationHandoff] = useState(() => new NativeNavigationHandoff())
@@ -814,12 +818,13 @@ export function ProgressiveSurfaceImpl(
   // A camera sample replaces only waiting work. Cancelling an already running
   // same-content capture at each sample can starve continuous navigation when
   // rendering takes longer than the sampling interval. Content/owner, extent,
-  // visibility still invalidate its pixel ownership. Only the opted-in native
-  // lane may finish across quiet/release, retaining its original camera.
-  const navigationScopeActive = !nativeNavigation && navigationZoom.active
+  // visibility still invalidate its pixel ownership. Running captures retain
+  // their original camera across quiet/release; they never become exact ACKs.
   useEffect(() => {
     const c = client.current
     return () => {
+      coverageGeneration.current++
+      coverageFlight.current = null
       if (c && client.current === c) navigationIntentOwner.reset(c)
       nativeNavigationHandoff.invalidate()
       sequentialPending.current?.cancel()
@@ -828,7 +833,7 @@ export function ProgressiveSurfaceImpl(
       if (previewAdmission.current.contract === contract && previewAdmission.current.active)
         previewAdmission.current.key = undefined
     }
-  }, [contract, doc, width, height, dpr, navigationScopeActive, navigationZoom.suspended,
+  }, [contract, doc, width, height, dpr, navigationZoom.suspended,
     props.paused, props.visible, nativeNavigation, navigationIntentOwner, nativeNavigationHandoff])
   useLayoutEffect(() => {
     const old = pageOwner.current
@@ -870,6 +875,10 @@ export function ProgressiveSurfaceImpl(
     coverageRetention.current.trim(contract.revision, displayBudget)
     const previousView = previousFillView.current
     previousFillView.current = view
+    if (coverageDirection.current.contract !== contract) coverageDirection.current = { contract, zoomOut: false }
+    if (previousView && previousView.zoom !== view.zoom) coverageDirection.current.zoomOut = view.zoom < previousView.zoom
+    const zoomOutCoverage = coverageDirection.current.zoomOut
+    const generation = coverageGeneration.current
     let cancelOverview: (() => void) | undefined
     // Panning within a density does not invalidate world pixels. Finish the
     // running batch; discard queued old plans and admit the latest view.
@@ -894,7 +903,7 @@ export function ProgressiveSurfaceImpl(
     const retainNavigation = nativeNavigation && runningNavigation?.identity.client === c &&
       runningNavigation.identity.document === doc && runningNavigation.identity.revision === contract.revision
     if (previewAdmission.current.active && !navigationZoom.active) {
-      if (retainNavigation) mailbox.discardSuperseded()
+      if (retainNavigation || coverageFlight.current?.contract === contract) mailbox.discardSuperseded()
       else c.cancelPreview()
     }
     previewAdmission.current.active = navigationZoom.active
@@ -922,6 +931,17 @@ export function ProgressiveSurfaceImpl(
       latestContext.current.presentationEpoch === props.presentationEpoch &&
       latestContext.current.backend === backend
     const current = () => sameContent() && navigation.current === token
+    const validCoverage = () => navigationCoverageTiles(tileRef.current.values(), ready.current, {
+      document: doc, revision: contract.revision, resident: residentDisplay, client: c,
+      device: previewDevice.current.client === c ? previewDevice.current.key : undefined,
+    })
+    const hasReadyCoverage = () => navigationHasCoverage(validCoverage(), requestedView, width, height)
+    const pendingCoverage = () => {
+      const flight = coverageFlight.current, tile = flight?.tile
+      // Avoid duplicating an import already in flight, without marking it ready.
+      return !!flight && flight.contract === contract && flight.generation === coverageGeneration.current && !!tile &&
+        tileRef.current.get(tile.key) === tile && navigationHasCoverage([tile], requestedView, width, height)
+    }
     const repairCurrent = () => {
       const repair = sequentialRepair.current, latest = sequentialContext.current
       return !!repair && repair.contract === contract && sameContent() && latestContext.current.visible !== false &&
@@ -984,7 +1004,14 @@ export function ProgressiveSurfaceImpl(
         tile.key === viewportPreviewKey(capture.identity) &&
         Object.is(capture.identity.view.x, liveView.x * dpr) && Object.is(capture.identity.view.y, liveView.y * dpr) &&
         Object.is(capture.identity.view.zoom, liveView.zoom * dpr)
-      const foreground = (current() || !!awaitedNative) && !tile.prefetch && (desired.current.includes(tile.key) || !!tile.viewportPreview)
+      const awaitedCoverage = tile.viewportPreview && coverageFlight.current?.contract === contract &&
+        coverageFlight.current.generation === coverageGeneration.current &&
+        navigationHasCoverage([tile], liveView, width, height)
+      // Quiet/release changed the effect token, not the usefulness of a running
+      // capture covering the latest target. Only that covering same-owner
+      // result may borrow replacement headroom; a narrow old crop may not.
+      const foreground = (current() || !!awaitedNative || !!awaitedCoverage) && !tile.prefetch &&
+        (desired.current.includes(tile.key) || !!tile.viewportPreview)
       const allowance = replacementTileBudget(cacheBudget, cacheResidencyBudget,
         { width, height, dpr, bytesPerPixel: residentDisplay ? 4 : hdrCompositing && !!doc.colorManagement ? 28 : 8 }, foreground)
       const heldSources = [...(cacheDisplayed?.residents.values() || []), ...(heldDisplay.current?.residents.values() || [])]
@@ -1261,6 +1288,8 @@ export function ProgressiveSurfaceImpl(
     const failed = (error: unknown) => {
       if (!current()) return
       if (/device lost|GPU device|has been lost|设备已丢失|上下文已丢失|worker.*(?:failed|error)/i.test(String(error))) {
+        coverageGeneration.current++
+        coverageFlight.current = null
         previewDevice.current = { client: c }
         pageResidency.clear()
         setTiles(new Map(tileRef.current))
@@ -1282,6 +1311,7 @@ export function ProgressiveSurfaceImpl(
     const run = async () => {
       let navigationAdmission: typeof previewAdmission.current | undefined
       let navigationCapture: NativeNavigationCapture | undefined
+      let runningCoverage: NavigationCoverageFlight<PaintedTile> | undefined
       try {
         if (navigationZoom.active) {
           const sample = navigationZoom.sample
@@ -1332,8 +1362,7 @@ export function ProgressiveSurfaceImpl(
           // Skip expensive filtered captures only when retained pixels cover
           // the viewport at the sampling density this sample would produce.
           // Keep low-density pixels visible while that bounded refresh runs.
-          const retained = filteredContent && !nativeNavigation ? [...tileRef.current.values()].filter(tile =>
-            tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key)) : []
+          const retained = filteredContent && !nativeNavigation ? validCoverage() : []
           if (retained.length && tilesCoverBounds(retained, viewport, scale)) {
             if (previewAdmission.current.key !== 'covered-navigation') c.cancelPreview()
             previewAdmission.current = { contract, key: 'covered-navigation', active: true }
@@ -1351,10 +1380,10 @@ export function ProgressiveSurfaceImpl(
           const ownsScope = () => sameContent() && latestContext.current.visible !== false &&
             (nativeNavigation ? latestNativeNavigation.current && (!navigationCapture?.device ||
               previewDevice.current.client === c && previewDevice.current.key === navigationCapture.device) :
-              latestNavigationZoom.current.active) && !latestNavigationZoom.current.suspended &&
+              coverageGeneration.current === generation) && !latestNavigationZoom.current.suspended &&
             sequentialContext.current.width === width && sequentialContext.current.height === height &&
             sequentialContext.current.dpr === dpr
-          const requested = () => ownsScope() && latestNavigationZoom.current.sample?.sequence === sample.sequence &&
+          const requested = () => ownsScope() && latestNavigationZoom.current.active && latestNavigationZoom.current.sample?.sequence === sample.sequence &&
             previewAdmission.current === admission
           activePlan.current = {
             key: frameKey, revision: contract.revision, document: doc, view: { ...sample.view }, dpr, width, height,
@@ -1376,6 +1405,8 @@ export function ProgressiveSurfaceImpl(
           // it merely by joining the mailbox. Settle before the mailbox starts
           // its successor, while retaining this completion's own camera below.
           const result = await mailbox.run(requested, async () => {
+            runningCoverage = navigationCoverageFlight<PaintedTile>(contract, generation)
+            coverageFlight.current = runningCoverage
             const intent = navigationIntentOwner.begin(c, { sequence: sample.sequence }, options)!
             if (nativeNavigation) navigationCapture = nativeNavigationHandoff.start(identity,
               previewDevice.current.client === c ? previewDevice.current.key : undefined)
@@ -1405,6 +1436,7 @@ export function ProgressiveSurfaceImpl(
             ...(navigationCapture?.device && result.backend === 'webgpu' ? { nativeNavigationDevice: navigationCapture.device } : {}),
             bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile, backend: result.backend,
             description: result.description || '', milliseconds: result.milliseconds, cached: false })
+          if (runningCoverage && delivered) runningCoverage.tile = delivered
           if (navigationCapture) nativeNavigationHandoff.finish(navigationCapture, !!delivered && result.backend === 'webgpu')
           return
         }
@@ -1627,7 +1659,12 @@ export function ProgressiveSurfaceImpl(
           }
           commitRef.current()
         }
-        if (needsStartupPreview) {
+        const finishingCoverage = coverageFlight.current
+        if (finishingCoverage?.contract === contract && finishingCoverage.generation === generation) {
+          await finishingCoverage.done
+          if (!current()) return
+        }
+        if (needsStartupPreview && !pendingCoverage()) {
           startupPreviewAttempt.current = contract
           const ratio = navigationPreviewDensity(dpr, width, height), scale = view.zoom * ratio
           const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
@@ -1651,48 +1688,50 @@ export function ProgressiveSurfaceImpl(
           }
           if (!current()) return
         }
-        // Existing same-revision pixels already follow the camera. Spend the
-        // serialized render queue on native detail instead of a second blurry
-        // full-screen sample; the overview below still supplies uncovered areas.
-        const hasVisibleResidents = [...tileRef.current.values()].some(tile => tile.document === doc &&
-          tile.revision === contract.revision && ready.current.has(tile.key) &&
-          tileIntersectsView(tile, requestedView, { width, height }))
-        // Partial coverage still requests native tiles, with uncovered areas
-        // first. A second full-scene preview must not delay that repair.
-        if(!needsStartupPreview&&allowsReducedSampling(view.zoom)&&motionPreview&&!hasVisibleResidents&&!plan.every(tile=>tileRef.current.has(tile.key)&&ready.current.has(tile.key))){
-          // This is a screen-space, full-viewport preview, not the page's
-          // fixed-size overview. It remains transient until exact tiles land.
-          const density=Math.min(dpr,1.5,Math.sqrt(2_097_152/Math.max(1,width*height)),4096/Math.max(width,height))
-          const key=`motion:${contract.revision}:${JSON.stringify([view,width,height,density])}`
-          const stillRequested=()=>{
-            const next=latestContext.current.requestedView||latestContext.current.view
-            return sameContent()&&next.x===view.x&&next.y===view.y&&next.zoom===view.zoom
+        // A tiny intersecting high-zoom crop cannot cover a newly exposed
+        // zoom-out viewport. Admit one bounded continuity capture at any zoom,
+        // distinct from low-zoom LOD and final/native sampling policy. No retry
+        // ladder progressively degrades it; exact repair follows immediately.
+        const continuityAllowed = !sharpNavigation && !gestureHeadroom && !nativeNavigation && singleCanvas &&
+          !hdrCompositing && !props.grid && !props.checkerboard && !props.pixelPreview && !props.interaction?.active
+        if (!needsStartupPreview && continuityAllowed && (zoomOutCoverage || allowsReducedSampling(view.zoom) && motionPreview) &&
+            !hasReadyCoverage() && !pendingCoverage() && !plan.every(tile => tileRef.current.has(tile.key) && ready.current.has(tile.key))) {
+          const target = { ...requestedView }, ratio = navigationPreviewDensity(dpr, width, height)
+          const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
+          const stillRequested = () => {
+            const next = latestContext.current.requestedView || latestContext.current.view
+            return current() && next.x === target.x && next.y === target.y && next.zoom === target.zoom
           }
-          for(const factor of tileRef.current.has(key)&&ready.current.has(key) ? [] : [1,.8,.5,.25]){
-            const ratio=density*factor,scale=view.zoom*ratio,w=Math.max(1,Math.ceil(width*ratio)),h=Math.max(1,Math.ceil(height*ratio))
-            try{
-              const result=await mailbox.run(stillRequested,()=>c.render(doc,{pageId,width:w,height:h,
-                view:{x:view.x*ratio,y:view.y*ratio,zoom:scale},transparent:false,grid:false,rasterProfile,
-                livePreview:true,renderIntent:'preview'},false,backend,false))
-              receive({key,x:-view.x*ratio,y:-view.y*ratio,width:w,height:h,zoom:scale,gutter:0,viewportPreview:true,
-                bytes:result.bytes,bitmap:result.bitmap,gpuTile:result.gpuTile,backend:result.backend,
-                description:result.description||'',milliseconds:result.milliseconds,cached:false})
-              break
-            }catch(error){
-              if(String(error).includes('PREVIEW_CANCELLED'))return
-              if(!/PREVIEW_BUDGET|GPU.*(?:budget|预算)/i.test(String(error)))throw error
-              if(!stillRequested())return
+          try {
+            const result = await mailbox.run(stillRequested, () => {
+              runningCoverage = navigationCoverageFlight<PaintedTile>(contract, generation)
+              coverageFlight.current = runningCoverage
+              return c.render(doc, { pageId, width: w, height: h,
+              view: { x: target.x * ratio, y: target.y * ratio, zoom: target.zoom * ratio },
+              transparent: false, grid: false, rasterProfile, livePreview: true, renderIntent: 'preview',
+            }, false, backend, false)
+            })
+            if (!sameContent() || coverageGeneration.current !== generation) {
+              result.bitmap?.close(); if (result.gpuTile) c.releasePresented([result.gpuTile]); return
             }
+            const delivered = receive({ key: `coverage-preview:${contract.revision}:${serial.current + 1}`, x: -target.x * ratio, y: -target.y * ratio,
+              width: w, height: h, zoom: target.zoom * ratio, gutter: 0, viewportPreview: true,
+              bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile, backend: result.backend,
+              description: result.description || '', milliseconds: result.milliseconds, cached: false })
+            if (runningCoverage && delivered) runningCoverage.tile = delivered
+            runningCoverage?.finish()
+          } catch (error) {
+            runningCoverage?.finish()
+            if (String(error).includes('PREVIEW_CANCELLED')) return
+            if (/device lost|GPU device|has been lost|设备已丢失|recovery failed/i.test(String(error)) ||
+                !isRecoverablePreviewBudget(error) && !isDisplayBudgetError(error) &&
+                !/PREVIEW_BUDGET|GPU.*(?:budget|预算)/i.test(String(error))) throw error
           }
-          // A covering preview never replaces exact work. Continue into the
-          // native tile plan in the same request instead of waiting for the
-          // gesture's next React effect to start refinement.
         }
         // A bounded page overview covers large zoom-outs and previously unseen
         // portions of a board. It owns real world pixels, not a viewport crop.
         // Preserve it through cache pressure until its content is invalidated.
-        const currentCoverage = () => tilesCoverBounds([...tileRef.current.values()].filter(tile =>
-          tile.document === doc && ready.current.has(tile.key)), viewport)
+        const currentCoverage = () => hasReadyCoverage() || pendingCoverage()
         // A committed drag keeps its kernel-rendered interaction layer above
         // the previous complete page until exact tiles take over. That is
         // already a covering preview; don't queue an overview and another LOD
@@ -1886,6 +1925,8 @@ export function ProgressiveSurfaceImpl(
         // same plan a bounded number of times before leaving the error up.
         if (current() && /device lost|GPU device|设备已丢失|上下文已丢失|worker.*(?:failed|error)/i.test(String(error)) && runAttempts++ < 2)
           setTimeout(() => { if (current()) void run() }, 500)
+      } finally {
+        runningCoverage?.finish()
       }
     }
     // Figma mP defers density changes by two observed frames. Translation
@@ -2176,7 +2217,11 @@ export function ProgressiveSurfaceImpl(
             if (deviceKey && device?.client === c) {
               const previousDevice = previewDevice.current
               if (previousDevice.client === c && previousDevice.key && previousDevice.key !== deviceKey) {
+                coverageGeneration.current++
+                coverageFlight.current = null
+                previewAdmission.current.key = undefined
                 navigationIntentOwner.reset(c!)
+                setDisplayRetry(value => value + 1)
                 const capture = nativeNavigationHandoff.current
                 if (capture) nativeNavigationHandoff.finish(capture, false)
                 nativeNavigationHandoff.invalidate()

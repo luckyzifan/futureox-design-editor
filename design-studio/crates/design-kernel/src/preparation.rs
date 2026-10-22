@@ -93,7 +93,7 @@ impl Preparation {
         let previous = if mutation { self.lanes[index].receipt.take() } else { None };
         let string = |index: usize| -> Result<&str,String> {
             let value = args.get(index).and_then(Value::as_str).ok_or("Expected string argument")?;
-            if value.len() > 32*1024*1024 { return Err("Preparation argument exceeds 32 MiB".into()); }
+            crate::capacity::check_document_bytes(value.len())?;
             Ok(value)
         };
         let mut fork = false;
