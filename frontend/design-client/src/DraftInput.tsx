@@ -1,3 +1,4 @@
+import { usePropertyText } from './property-interface-messages'
 import { createInputDiagnostics, InputFamily, InputPhase } from './input-diagnostics'
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes } from 'react'
 import type { Editor } from './engine'
@@ -14,11 +15,15 @@ export function DraftInput({ value, onCommit, validate = () => true, normalize =
   editor?: Editor
   diagnosticFamily?: number
 }) {
+  const { tr } = usePropertyText()
   const inherited = useContext(PendingEditContext), editor = explicitEditor || inherited
   const diagnostic = useMemo(() => createInputDiagnostics(editor, diagnosticFamily), [editor, diagnosticFamily])
   useEffect(() => () => diagnostic.dispose(), [diagnostic])
   const [draft, setDraft] = useState(value)
   const input = useRef<HTMLInputElement>(null), latest = useRef(value), original = useRef(value)
+  useEffect(() => {
+    if (input.current?.validity.customError) input.current.setCustomValidity(tr('输入无效或属性已变化；输入已保留，请修正或按 Esc 取消'))
+  }, [tr])
   const composing = useRef(false), session = useRef(editor?.sessionGeneration)
   const dirty = useCallback(() => composing.current || latest.current !== original.current, [])
   const changed = () => { if (editor) pendingEditsChanged(editor) }
@@ -29,7 +34,7 @@ export function DraftInput({ value, onCommit, validate = () => true, normalize =
     const next = normalize(latest.current)
     if (!validate(next) || value !== original.current || (editor && session.current !== editor.sessionGeneration)) {
       diagnostic.valid(false)
-      input.current?.setCustomValidity('输入无效或属性已变化；输入已保留，请修正或按 Esc 取消')
+      input.current?.setCustomValidity(tr('输入无效或属性已变化；输入已保留，请修正或按 Esc 取消'))
       input.current?.reportValidity()
       return false
     }

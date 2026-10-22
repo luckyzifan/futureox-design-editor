@@ -49,10 +49,6 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
     tools.set('set-tool-eyedropper', platform === 'mac' ? 'Ctrl+C' : 'Shift+I')
     tools.set('set-tool-section', undefined)
     bindings.push({ command: 'auto-layout', combo: 'Shift+S' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+S' })
-    for (const [key, dimension, direction] of [['ArrowRight', 'width', 'increase'], ['ArrowLeft', 'width', 'decrease'], ['ArrowDown', 'height', 'increase'], ['ArrowUp', 'height', 'decrease']] as const) {
-      bindings.push({ command: `resize-${dimension}-${direction}`, combo: `Mod+${key}`, repeat: true },
-        { command: `resize-${dimension}-${direction}-large`, combo: `Mod+Shift+${key}`, repeat: true })
-    }
     if (desktop) bindings.unshift({ command: 'new-page', combo: 'Mod+Shift+N' }, { command: 'zoom-100', combo: 'Mod+0' }, { command: 'zoom-fit', combo: 'Mod+1' }, { command: 'zoom-selection', combo: 'Mod+2' }, { command: 'center-selection', combo: 'Mod+3' }, { command: 'frame-selection', combo: 'Mod+F' })
   } else {
     bindings.push({ command: 'auto-layout', combo: 'Shift+A' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+A' })
@@ -63,6 +59,15 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
     }
     bindings.unshift({ command: 'bring-to-front', combo: ']' }, { command: 'send-to-back', combo: '[' })
     if (desktop) bindings.push({ command: 'zoom-100', combo: 'Mod+0' })
+  }
+  // Actual macOS Figma dimension chords share the existing resize commands.
+  // Keep Sketch's established non-Mac mapping; no new Figma non-Mac mapping is
+  // inferred from the observed macOS keyboard behavior.
+  if (profile === 'sketch-like' || platform === 'mac') {
+    for (const [key, dimension, direction] of [['ArrowRight', 'width', 'increase'], ['ArrowLeft', 'width', 'decrease'], ['ArrowDown', 'height', 'increase'], ['ArrowUp', 'height', 'decrease']] as const) {
+      bindings.push({ command: `resize-${dimension}-${direction}`, combo: `Mod+${key}`, repeat: true },
+        { command: `resize-${dimension}-${direction}-large`, combo: `Mod+Shift+${key}`, repeat: true })
+    }
   }
   if (desktop) bindings.push({ command: 'ungroup', combo: 'Mod+Backspace' }, { command: 'ungroup', combo: 'Mod+Delete' })
   if (desktop) bindings.unshift({ command: 'rename', combo: 'Mod+R' }, { command: 'paste-to-replace', combo: 'Mod+Shift+R' })

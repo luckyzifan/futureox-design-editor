@@ -94,3 +94,73 @@ test('remember viewport is opt-in, persists via mounted setting and resets with 
   await act(async () => interfacePreference.reset())
   expect(remember.checked).toBe(false)
 })
+
+test('capped panel drag starts from visible geometry, not the saved large-screen width', async () => {
+  interfacePreference.set({ leftWidth: 480 })
+  await render(<Shell />)
+  const handle = document.querySelector<HTMLElement>('[role=separator]')!
+  vi.spyOn(handle.parentElement!, 'getBoundingClientRect').mockReturnValue({ width: 260 } as DOMRect)
+  await pointer(handle, 'pointerdown', 260); await pointer(handle, 'pointermove', 248); await pointer(handle, 'pointerup', 248)
+  expect(interfacePreference.getSnapshot().leftWidth).toBe(248)
+})
+test('capped panel keyboard resize starts from visible geometry and keeps cancelled preference', async () => {
+  interfacePreference.set({ leftWidth: 480 }); await render(<Shell />)
+  const handle = document.querySelector<HTMLElement>('[role=separator]')!
+  vi.spyOn(handle.parentElement!, 'getBoundingClientRect').mockReturnValue({ width: 260 } as DOMRect)
+  await key(handle, 'ArrowLeft'); expect(interfacePreference.getSnapshot().leftWidth).toBe(252)
+  await act(async () => interfacePreference.set({ leftWidth: 480 }))
+  await pointer(handle, 'pointerdown', 260); await pointer(handle, 'pointermove', 230); await pointer(handle, 'pointercancel', 230)
+  expect(interfacePreference.getSnapshot().leftWidth).toBe(480)
+})
+test('compact simultaneous panels have separate vertical slots without hiding either descendant', () => {
+  const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')
+  expect(css).toContain('.editor-shell:not(.chrome-hide-layers):not(.chrome-hide-inspector) .adaptive-layers-shell')
+  expect(css).toContain('height: calc((100% - 8px) / 2)')
+  expect(css).toContain('.editor-shell:not(.chrome-hide-layers):not(.chrome-hide-inspector) .properties-workspace')
+})
+
+test('right panel resize uses its capped edge in the reversed drag direction', async () => {
+  interfacePreference.set({ rightWidth: 480 }); await render(<div className="properties-workspace"><PanelResizeHandle side="right" /></div>)
+  const handle = document.querySelector<HTMLElement>('[role=separator]')!
+  vi.spyOn(handle.parentElement!, 'getBoundingClientRect').mockReturnValue({ width: 312 } as DOMRect)
+  await pointer(handle, 'pointerdown', 500); await pointer(handle, 'pointermove', 512); await pointer(handle, 'pointerup', 512)
+  expect(interfacePreference.getSnapshot().rightWidth).toBe(300)
+})
+test('compact open/close/restore matrix preserves both mounted drafts and keyboard focus owners', async () => {
+  function Pair() {
+    const panels = useAdaptivePanels()
+    return <div className={`editor-shell ${panels.leftOpen ? '' : 'chrome-hide-layers'} ${panels.rightOpen ? '' : 'chrome-hide-inspector'}`} style={panels.style}>
+      <button id="toggle-left" onClick={() => panels.setLeftOpen(value => !value)}>left</button>
+      <button id="toggle-right" onClick={() => panels.setRightOpen(value => !value)}>right</button>
+      <div className="adaptive-layers-shell"><input id="left-draft" defaultValue="left 12." /></div>
+      <div className="properties-workspace"><input id="right-draft" defaultValue="right 34." /></div>
+    </div>
+  }
+  await render(<Pair />)
+  const left = document.getElementById('left-draft') as HTMLInputElement, right = document.getElementById('right-draft') as HTMLInputElement
+  const desktop = interfacePreference.getSnapshot()
+  for (const viewport of [800, 560]) {
+    await act(async () => { Object.defineProperty(window, 'innerWidth', { value: viewport, configurable: true }); window.dispatchEvent(new Event('resize')) })
+    const shell = document.querySelector('.editor-shell')!
+    if (shell.classList.contains('chrome-hide-layers')) await act(async () => document.getElementById('toggle-left')!.click())
+    if (shell.classList.contains('chrome-hide-inspector')) await act(async () => document.getElementById('toggle-right')!.click())
+    expect(shell.classList.contains('chrome-hide-layers')).toBe(false); expect(shell.classList.contains('chrome-hide-inspector')).toBe(false)
+    left.focus(); expect(document.activeElement).toBe(left); right.focus(); expect(document.activeElement).toBe(right)
+    expect(document.getElementById('left-draft')).toBe(left); expect(document.getElementById('right-draft')).toBe(right)
+    expect([left.value, right.value]).toEqual(['left 12.', 'right 34.'])
+    await act(async () => document.getElementById('toggle-left')!.click()); expect(document.activeElement).toBe(right)
+    await act(async () => document.getElementById('toggle-left')!.click()); expect(document.activeElement).toBe(right)
+  }
+  await act(async () => { Object.defineProperty(window, 'innerWidth', { value: 1500, configurable: true }); window.dispatchEvent(new Event('resize')) })
+  expect(interfacePreference.getSnapshot()).toEqual(desktop)
+  expect(document.getElementById('left-draft')).toBe(left); expect(document.getElementById('right-draft')).toBe(right)
+  // Arithmetic + CSS contract only; jsdom cannot prove visible scrolling/focus.
+  for (const availableHeight of [40, 180, 400]) {
+    const slot = (availableHeight - 8) / 2
+    expect(slot).toBeGreaterThan(0); expect(slot * 2 + 8).toBe(availableHeight)
+  }
+  const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')
+  expect(css).toContain('height: calc((100% - 8px) / 2); min-height: 0; overflow: auto;')
+  expect(css).toContain('.adaptive-layers-shell > .layers-panel { min-height: 240px; }')
+  expect(css).toContain('.properties-workspace > .properties-content { min-height: 160px; flex-shrink: 0; }')
+})

@@ -1,3 +1,4 @@
+import type { InterfaceLocale } from './interface-preference'
 /** Tool routes shared by command dispatch and the Rust-backed shortcut table.
  * A mapping proves dispatch only;
  * behavior, persistence and fidelity require the per-tool desktop tests. */
@@ -70,13 +71,53 @@ export function toolForCommand(commandId: string): string | null {
 }
 
 /** Why a decoded command has no tool yet; surfaces stay explicit, never inert. */
-export function unavailableReason(commandId: string): string | null {
+export function unavailableReason(commandId: string, locale: InterfaceLocale = 'zh-CN'): string | null {
   const entry = TOOL_COMMANDS.find((c) => c.id === commandId)
   if (!entry || entry.tool) return null
+  if (locale === 'en') {
+    if (entry.id === 'set-tool-multiselect') return 'Multi-select is available with Shift-click and marquee selection'
+    if (entry.id === 'set-tool-annotate') return 'Annotation collaboration is not connected yet'
+    if (entry.id === 'set-tool-sites-responsive-set') return 'Responsive sets require site publishing, which is not connected yet'
+    if (entry.category === 'vector') return 'The required vector editing capability is not implemented yet'
+    if (entry.category === 'figjam' || entry.category === 'whiteboard') return 'FigJam / whiteboard infrastructure is not connected'
+    return 'This command is not implemented yet'
+  }
   if (entry.id === 'set-tool-multiselect') return '多选已通过 Shift 点击与框选提供'
   if (entry.id === 'set-tool-annotate') return '标注需要评论协作设施，暂未接入'
   if (entry.id === 'set-tool-sites-responsive-set') return '响应式套件需要站点发布设施，暂未接入'
   if (entry.category === 'vector') return '需要对应的矢量编辑内核能力，暂未实现'
   if (entry.category === 'figjam' || entry.category === 'whiteboard') return 'FigJam / 白板设施未接入本产品'
   return '该命令尚未实现'
+}
+
+/** Explicit presentation lookup, independent of command/shortcut dispatch and authored node names. */
+const englishToolLabels: Readonly<Record<string, string>> = {
+  'set-tool-default': 'Move', 'set-tool-hand': 'Hand', 'set-tool-zoom': 'Zoom area', 'set-tool-frame': 'Frame',
+  'set-tool-section': 'Section', 'set-tool-rectangle': 'Rectangle', 'set-tool-ellipse': 'Ellipse',
+  'set-tool-regular-polygon': 'Polygon', 'set-tool-star': 'Star', 'set-tool-line': 'Line', 'set-tool-arrow': 'Arrow',
+  'set-tool-text': 'Text', 'set-tool-pen': 'Pen', 'set-tool-pencil': 'Pencil', 'set-tool-brush': 'Brush',
+  'set-tool-marker': 'Marker', 'set-tool-eraser': 'Eraser', 'set-tool-scale': 'Scale', 'set-tool-slice': 'Slice',
+  'set-tool-comments': 'Comments', 'set-tool-measure': 'Measure', 'set-tool-annotate': 'Annotate',
+  'set-tool-multiselect': 'Multi-select', 'set-tool-paint-bucket': 'Paint bucket', 'set-tool-eyedropper': 'Eyedropper',
+  'set-tool-cut': 'Cut', 'set-tool-type': 'Type', 'set-tool-sticky': 'Sticky note', 'set-tool-table': 'Table',
+  'set-tool-code-block': 'Code block', 'set-tool-connector-straight': 'Straight connector',
+  'set-tool-connector-elbowed': 'Elbow connector', 'set-tool-washi-tape': 'Washi tape',
+  'set-tool-shape-whiteboard-square': 'Whiteboard rectangle', 'set-tool-shape-whiteboard-ellipse': 'Whiteboard ellipse',
+  'set-tool-shape-whiteboard-rounded-rectangle': 'Whiteboard rounded rectangle',
+  'set-tool-shape-whiteboard-triangle-up': 'Whiteboard up triangle', 'set-tool-shape-whiteboard-triangle-down': 'Whiteboard down triangle',
+  'set-tool-shape-whiteboard-diamond': 'Whiteboard diamond', 'set-tool-vector-lasso': 'Lasso',
+  'set-tool-offset-path': 'Offset path', 'set-tool-bend': 'Bend', 'set-tool-text-path': 'Text on path',
+  'set-tool-sites-responsive-set': 'Responsive set',
+}
+export function localizedToolCommands(locale: InterfaceLocale): ToolCommand[] {
+  return TOOL_COMMANDS.map(entry => ({ ...entry, label: locale === 'en'
+    ? (englishToolLabels[entry.id] ?? entry.id) + (entry.category === 'figjam' && ['set-tool-default', 'set-tool-annotate'].includes(entry.id) ? ' (FigJam)' : '')
+    : entry.label }))
+}
+export function localizedToolLabel(tool: string, locale: InterfaceLocale, fallback?: string): string {
+  const entry = TOOL_COMMANDS.find(command => command.tool === tool)
+  // Crop is an editor utility, not a registered set-tool command. Do not invent one.
+  if (tool === 'crop') return locale === 'en' ? 'Crop' : fallback ?? '裁切'
+  if (locale === 'zh-CN') return fallback ?? entry?.label ?? tool
+  return entry ? englishToolLabels[entry.id] ?? tool : tool
 }

@@ -20,7 +20,10 @@ export function createInterfacePreference(storage: () => Pick<Storage, 'getItem'
   }
   const read = () => { initialized = true; try { const target = storage(); snapshot = sanitize(JSON.parse(target?.getItem(INTERFACE_PREFERENCE_KEY) || '{}')); persisted = !!target } catch { persisted = false } }
   const getSnapshot = () => { if (!initialized) read(); return snapshot }
-  const external = (event: StorageEvent) => { if (event.key === INTERFACE_PREFERENCE_KEY || event.key === null) { read(); listeners.forEach(listener => listener()) } }
+  const external = (event: StorageEvent) => {
+    // A sessionStorage event must not replace an unsaved local preference.
+    try { if (event.storageArea && event.storageArea !== storage()) return } catch { return }
+    if (event.key === INTERFACE_PREFERENCE_KEY || event.key === null) { read(); listeners.forEach(listener => listener()) } }
   return {
     getSnapshot,
     getPersistenceSnapshot: () => { getSnapshot(); return persisted },

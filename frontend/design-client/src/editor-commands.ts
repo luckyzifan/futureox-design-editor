@@ -26,6 +26,12 @@ import { toolForCommand, unavailableReason, TOOL_COMMANDS } from './tool-registr
 export type SetToolCommand = `set-tool-${string}`
 export type EditorCommand = DimensionNudgeCommand | 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'new-page' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'create-component' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'center-selection' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'convert-vector'
 export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','convert-vector','new-page']
+/** Normalize the native menu/accelerator bridge at one renderer boundary.
+ * Focus ownership remains in dispatchEditorCommand, not in the native host. */
+export function resolveDesktopEditorCommand(name: string): EditorCommand | undefined {
+  const canonical = name === 'zoomIn' ? 'zoom-in' : name === 'zoomOut' ? 'zoom-out' : name === 'zoom100' ? 'zoom-100' : name
+  return editorCommands.includes(canonical as EditorCommand) ? canonical as EditorCommand : undefined
+}
 const copiedPackets = new WeakMap<Editor, string>()
 function packet(document: DesignDocument) { return JSON.stringify({ format:'forma-nodes', version:1, document, roots:document.pages[0].children }) }
 export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: { worldPoint?: Point; pageId?: string; zoomAnchor?: Point; shortcutProfile?: ShortcutProfile; actionSource?: ActionSourceCode } = {}): Promise<void> {
@@ -69,12 +75,13 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       const entry = TOOL_COMMANDS.find((c) => c.id === command)
       editor.notify(
         entry ? `「${entry.label}」工具不可用：${unavailableReason(command)}` : `未知工具命令 ${command}`,
+        { key: entry ? 'toolUnavailable' : 'unknownToolCommand', commandId: command },
       )
     }
     return
   }
   if (editor.state.busy) { action.result(ActionOutcome.blocked, ActionReason.busy); return }
-  if (editor.interactionActive) { action.result(ActionOutcome.blocked, ActionReason.wrongOwner); editor.notify('请先结束拖动，或按 Esc 取消'); return }
+  if (editor.interactionActive) { action.result(ActionOutcome.blocked, ActionReason.wrongOwner); editor.notify('请先结束拖动，或按 Esc 取消', { key: 'finishOrCancelDrag' }); return }
   if (!commitPendingEdits(editor)) { action.result(ActionOutcome.blocked, ActionReason.validation); return }
   const before = editor.state.doc, epoch = editor.sessionGeneration, version = editor.state.version, page = editor.state.page, selection = editor.state.selection.join('\n')
   const matches = () => editor.state.doc === before && !editor.state.busy && editor.sessionGeneration === epoch && editor.state.version === version && editor.state.page === page &&
@@ -103,7 +110,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       if(native){const result=await native.write({text});if(result.status!=='ok')throw Error(result.status==='cancelled'?'复制已取消':result.message)}
       else if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(text)
       else throw Error('系统剪贴板不可用')
-      action.result(ActionOutcome.observed);editor.notify('已复制属性');return
+      action.result(ActionOutcome.observed);editor.notify('已复制属性', { key: 'propertiesCopied' });return
     }
     if(command==='paste-properties'){
       const content=await readClipboard();if(!current())throw Error('读取剪贴板期间设计已变化，请重新粘贴')
@@ -248,6 +255,12 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'select-all': editor.select(selectAllCanvasIds(editor.state.doc, editor.state.page, editor.state.selection, options.shortcutProfile ?? shortcutPreference.getSnapshot())); break
     }
   } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); editor.notify(error instanceof Error ? error.message : String(error)) }
-  finally { stopFence() }
+  finally {
+    stopFence()
+    // Clipboard parsing/layout may temporarily install another document's fonts.
+    // Restore the *current* document, including after asynchronous cancellation
+    // or a successful paste which adopted additional embedded fonts.
+    if (command === 'copy' || command === 'cut' || command.startsWith('paste')) activateDocumentFonts(editor.state.doc)
+  }
   } finally { action.finish() }
 }

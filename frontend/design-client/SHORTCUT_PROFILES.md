@@ -15,7 +15,7 @@
 | 切片 | S | E |
 | 评论 | C | N |
 | 添加 / 移除自动布局 | Shift+A / Alt+Shift+A | Shift+S / Alt+Shift+S |
-| 键盘尺寸微调 | 无本批对应绑定 | Mod+方向键 1；Mod+Shift+方向键 10 |
+| 键盘尺寸微调 | macOS：Cmd+方向键 1；Cmd+Shift+方向键 10；Windows/Linux 本批未增加绑定 | Mod+方向键 1；Mod+Shift+方向键 10 |
 | 覆盖粘贴（保留目标） | Shift+Mod+V，单目标 | Shift+Mod+V，每个目标一份 |
 | 选区居中，保持倍率 | 菜单 | 桌面 Mod+3；浏览器用菜单 |
 | 原始大小 / 适合全部 / 适合选择 | Shift+0 / 1 / 2 | 桌面 Cmd+0 / 1 / 2；浏览器 Shift+0 / 1 / 2 |
@@ -53,7 +53,7 @@ Sketch 文档已改为 F=Frame；不是旧版 Artboard 的 A。Windows/Linux 用
 本次审计仍有以下明确差距，未扩张为无关大改：
 
 1. Figma 文档中的“工具激活后 Enter 插入新对象”和键盘框选不是当前 Canvas 的行为；现有 Enter 分支用于结束钢笔、深入选择或进入编辑模式。
-2. Sketch-like 新增 Mod+方向键尺寸微调（Shift 为 10，默认 1），复用 Inspector 尺寸函数，跳过隐藏/锁定路径；支持 undo/redo。它按每个图层调整尺寸，未实现自定义步长、仅改容器不改内容的 Mod+Alt 变体。按住 X 强制框选、Option 世界 AABB 完全包含、Shift 异或、Sketch Escape 父级导航已补齐并经实际 Canvas 测试；tap-X 持续模式、符号 Y 与完整 stack/矢量点操作仍有缺口。
+2. Sketch-like 的 Mod+方向键尺寸微调（Shift 为 10，默认 1）与 macOS Figma-like 共用既有尺寸命令，复用 Inspector 尺寸函数，跳过隐藏/锁定路径；支持 undo/redo。Figma-like 在 Windows/Linux 上本批未增加尺寸键绑定，Sketch-like 的既有平台映射不变。它按每个图层调整尺寸，未实现自定义步长、仅改容器不改内容的 Mod+Alt 变体。按住 X 强制框选、Option 世界 AABB 完全包含、Shift 异或、Sketch Escape 父级导航已补齐并经实际 Canvas 测试；tap-X 持续模式、符号 Y 与完整 stack/矢量点操作仍有缺口。
 3. 没有任意自定义按键、第三方插件快捷键或逐语言键盘布局配置；相应操作仍可从现有菜单访问。
 4. 右键多级菜单的位置、窄屏滚动、平台真实 ContextMenu 键和原生 IME 仍需实际桌面验证，不能以 jsdom 的零尺寸布局代替。
 
@@ -66,3 +66,7 @@ Sketch 文档已改为 F=Frame；不是旧版 Artboard 的 A。Windows/Linux 用
 - 小地图/缩略导航已依用户要求移除，不属于待补兼容功能。
 - 第一批 6 套件 89/89 的历史记录保留于 testing/verification-canvas-workflows/。新增综合影响测试 11 套件 169/169 与 tsc 通过，见 testing/verification-paste-over-selection/；真实 Canvas 29/29 包含于该客户端影响集；原生模块 66/66 是单独的 Node 测试运行（又包含于其 desktop-contracts 157/157）。真实浏览器、Windows/macOS 键盘与 GPU 未运行。
 - 逐操作官方来源、代码和差距见 [本地画布流程逐项对照](../../docs/LOCAL_CANVAS_WORKFLOW_COMPARISON.zh-CN.md)。
+
+### macOS 尺寸键对照范围
+
+真实 Figma UI 对照为 macOS Generic 键盘、画布聚焦、15° 父框内的单矩形，初始 60×60。顺序操作 Cmd Right/Left/Down/Up 得到 61×60、60×60、60×61、60×60；Cmd Shift Right/Left/Down/Up 得到 70×60、60×60、60×70、60×60，每次结果均由 AX 读取。只有初始 before 独立读取，其后 before 依操作顺序推导。此次实操未记录 x/y、每步焦点或 Undo，不据此声称位置锚点、多选、撤销或其他平台已与 Figma 全面对齐。自动回归的历史、重复键、IME 与锁隐藏检查是本实现的独立内部合同。

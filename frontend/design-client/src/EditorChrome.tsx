@@ -1,3 +1,5 @@
+import { useInterfacePreferences } from './interface-preference'
+import { canvasText } from './canvas-interface-messages'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, FolderOpen, Layers, Shapes, SlidersHorizontal, Variable } from 'lucide-react'
@@ -5,6 +7,7 @@ import { ChevronDown, FolderOpen, Layers, Shapes, SlidersHorizontal, Variable } 
 /** Canvas and toolbelt form a two-region F6 cycle. Text fields, open menus,
  * modal dialogs and active gestures retain ownership of their own input. */
 export function DesignToolbar({ children, disabled = false }: { children: ReactNode; disabled?: boolean }) {
+  const { locale } = useInterfacePreferences(), text = canvasText[locale]
   const host = useRef<HTMLDivElement>(null), tooltip = useRef<HTMLDivElement>(null), blocked = useRef(disabled)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), candidate = useRef<HTMLButtonElement | null>(null)
   const id = useId(), [hint, setHint] = useState<{ button: HTMLButtonElement; text: string } | null>(null)
@@ -67,7 +70,11 @@ export function DesignToolbar({ children, disabled = false }: { children: ReactN
       if (remaining.length) button.setAttribute('aria-describedby', remaining.join(' ')); else button.removeAttribute('aria-describedby')
     }
   }, [hint, id])
-  return <div ref={host} className="toolbar floating-toolbar" role="toolbar" aria-label="设计工具"
+  useLayoutEffect(() => {
+    if (hint?.button.isConnected && hint.button.dataset.tooltip && hint.text !== hint.button.dataset.tooltip)
+      setHint({ button: hint.button, text: hint.button.dataset.tooltip })
+  }, [locale, hint])
+  return <div ref={host} className="toolbar floating-toolbar" role="toolbar" aria-label={text.designTools}
     onPointerOver={event => {
       const button = (event.target as Element).closest<HTMLButtonElement>('button[data-tooltip]')
       if (button) show(button, false)
@@ -116,13 +123,14 @@ export function WorkspaceRail({ section, onSection, onFiles, onTools, onVariable
   onVariables: () => void
   toolsOpen: boolean
 }) {
-  return <nav className="workspace-rail" aria-label="工作区导航">
-    <button type="button" onClick={onFiles} title="本机设计文件"><FolderOpen size={19} aria-hidden="true" /><span>文件</span></button>
+  const { locale } = useInterfacePreferences(), text = canvasText[locale]
+  return <nav className="workspace-rail" aria-label={text.workspaceNavigation}>
+    <button type="button" onClick={onFiles} title={text.localDesignFiles}><FolderOpen size={19} aria-hidden="true" /><span>{text.files}</span></button>
     <div className="workspace-rail-divider" role="separator" />
-    <button type="button" title="页面与图层" aria-pressed={section === 'layers'} onClick={() => onSection('layers')}><Layers size={19} aria-hidden="true" /><span>图层</span></button>
-    <button type="button" title="组件与资源" aria-pressed={section === 'assets'} onClick={() => onSection('assets')}><Shapes size={19} aria-hidden="true" /><span>资源</span></button>
-    <button type="button" title="设计工具" aria-pressed={toolsOpen} onClick={onTools}><SlidersHorizontal size={19} aria-hidden="true" /><span>工具</span></button>
-    <button type="button" title="本地设计变量" onClick={onVariables}><Variable size={19} aria-hidden="true" /><span>变量</span></button>
+    <button type="button" title={text.pagesAndLayers} aria-pressed={section === 'layers'} onClick={() => onSection('layers')}><Layers size={19} aria-hidden="true" /><span>{text.layers}</span></button>
+    <button type="button" title={text.componentsAndAssets} aria-pressed={section === 'assets'} onClick={() => onSection('assets')}><Shapes size={19} aria-hidden="true" /><span>{text.assets}</span></button>
+    <button type="button" title={text.designTools} aria-pressed={toolsOpen} onClick={onTools}><SlidersHorizontal size={19} aria-hidden="true" /><span>{text.tools}</span></button>
+    <button type="button" title={text.localDesignVariables} onClick={onVariables}><Variable size={19} aria-hidden="true" /><span>{text.variables}</span></button>
   </nav>
 }
 

@@ -14,7 +14,7 @@ import type { StartupPreview as StartupPixels, PreviewPixels } from './startup-p
 import { CanvasEditPreview, type RetainedMoveControl } from './CanvasEditPreview'
 import { CanvasScrollbars } from './CanvasScrollbars'
 import { supportsEditPreview } from './edit-preview'
-import { resizedNode } from './selection-properties'
+import { resizedNode, resizeGestureAxes } from './selection-properties'
 import {cancelToolActivation} from './tool-activation'
 import {selectionHandles, selectionRotation} from './selection-handles'
 import {selectionScaleFrame} from './selection-scale'
@@ -104,6 +104,7 @@ import { moveCanvasFeedback } from './canvas-move-feedback'
 import { interactivePath } from './selection-hierarchy'
 import { presentedPenVertex, remapPointerAnchor } from './canvas-published-input'
 import { canvasLayerFeedback } from './canvas-layer-feedback'
+type TextEditEntry = { id: string; session: number; page: string; token: number }
 type Drag = {
   actionSamples?: number
   actionToken?: number
@@ -370,10 +371,29 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }, 600)
     return () => { cancelled = true; clearTimeout(timer) }
   }, [loading, onCapturePreview, exactCurrent, state.doc, state.version, state.page, state.view, state.grid, state.checkerboard, state.pixelPreview, size.width, size.height, editor])
-  const [textEdit, setTextEdit] = useState<string | null>(null)
+  const [textEntry, setTextEntry] = useState<TextEditEntry | null>(null)
+  const textEntryOwner = useRef<TextEditEntry | null>(null), textEntrySequence = useRef(0)
+  function ownsTextEntry(entry: TextEditEntry | null) {
+    return !!entry && textEntryOwner.current === entry &&
+      entry.session === editor.sessionGeneration && entry.page === editor.state.page
+  }
+  function setTextEdit(id: string | null) {
+    // A bubbled double-click on the active rich-text surface re-enters the same
+    // node. Keep its draft/DOM; a closed or different entry still gets a token.
+    if (id && textEntryOwner.current?.id === id && ownsTextEntry(textEntryOwner.current)) return
+    const entry = id ? { id, session: editor.sessionGeneration, page: editor.state.page, token: ++textEntrySequence.current } : null
+    textEntryOwner.current = entry
+    setTextEntry(entry)
+  }
+  // Reject a stale entry during render, before its textarea can mount/autofocus
+  // in a replacement document. Passive cleanup alone is too late.
+  const textEdit = ownsTextEntry(textEntry) ? textEntry!.id : null
   const [textPreview,setTextPreview]=useState<DesignNode|null>(null)
   const textAction = useRef<{ token: number; revision: number } | null>(null)
-  useEffect(() => setTextEdit(null), [editor.sessionGeneration, state.page])
+  useEffect(() => {
+    const entry = textEntryOwner.current
+    if (entry && !ownsTextEntry(entry)) setTextEdit(null)
+  }, [editor.sessionGeneration, state.page])
   const [geometryReady, setGeometryReady] = useState(false)
   useEffect(() => {
     let alive = true
@@ -527,6 +547,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   useEffect(() => setCropRect(null), [state.page, state.doc.id, state.tool])
   const [rubber, setRubber] = useState<typeof emptyBox | null>(null)
   const [guides, setGuides] = useState<{ x?: SmartGuideSegment; y?: SmartGuideSegment }>({})
+  function restoreCancelledMarqueeSelection(draft: Drag | null) {
+    // Marquee has no document transaction: pointerdown may already have cleared
+    // the selection, so Editor.cancel() alone cannot restore it. Never publish
+    // the old selection into a replacement session or a different page.
+    if (draft?.kind !== 'marquee' || draft.session !== editor.sessionGeneration ||
+        draft.page !== editor.state.page) return
+    const doc = editor.state.doc, parents = editor.parentMap(doc)
+    editor.select(draft.originSelection.filter(id => {
+      if (!doc.nodes[id]) return false
+      let parent = parents.get(id)
+      while (parent && doc.nodes[parent]) parent = parents.get(parent)
+      return parent === draft.page
+    }))
+  }
   useLayoutEffect(() => {
     const previous = drag.current
     if (!previous || (previous.session === editor.sessionGeneration && previous.page === state.page)) return
@@ -916,8 +950,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         cancelPencil()
         setShapePreview(null)
         if(drag.current?.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
+        const cancelledDraft = drag.current
         editor.cancel()
-        finishDragTrace(drag.current, ActionOutcome.cancelled, ActionReason.escape)
+        finishDragTrace(cancelledDraft, ActionOutcome.cancelled, ActionReason.escape)
         drag.current = null
         setPanning(false)
         setRubber(null)
@@ -928,6 +963,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (!cancelOnly && !(shortcutContext.profile === 'sketch-like' &&
             !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && editor.selectParent())) editor.clearSelection()
         editor.hoverLayer(null, 'canvas')
+        // Restore last: select() publishes synchronously and may adopt a new
+        // session or gesture. No old-owner cleanup may follow that notification.
+        restoreCancelledMarqueeSelection(cancelledDraft)
         return
       }
       if (e.key === 'Enter') {
@@ -1407,7 +1445,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         // nested content without requiring an additional deep-select chord.
         marqueeIgnoreId: kind === 'marquee' ? displayedHit(p, true) : null,
       } : {}),
-      originSelection: s.selection,
+      originSelection: [...s.selection],
       clickSelection, moved: false,
       lastScreen: screen,
       lastModifiers: { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey },
@@ -1740,7 +1778,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       patches[id] = { transform: multiply(inverse(parent), multiply(transform, d.matrices[id])) }
       if (d.kind === 'resize') {
         const original = d.sourceDocument?.nodes[id]
-        if (original) patches[id] = resizedNode(original, patches[id].transform!)
+        if (original) {
+          const proportional = !e.ctrlKey && (e.shiftKey || !!d.basis && !!original.constrainProportions)
+          const axes = resizeGestureAxes(d.handle ?? 0, proportional, d.basis ? undefined : d.matrices[id])
+          patches[id] = resizedNode(original, patches[id].transform!, axes)
+        }
       }
     }
     if (d.actionToken && d.actionBefore) {
@@ -2052,11 +2094,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         flushView()
         cancelPencil()
         setShapePreview(null)
+        const cancelledDraft = drag.current
         editor.cancel()
-        finishDragTrace(drag.current, ActionOutcome.cancelled, ActionReason.pointerCancel)
+        finishDragTrace(cancelledDraft, ActionOutcome.cancelled, ActionReason.pointerCancel)
         drag.current = null
         setPanning(false)
         setRubber(null)
+        restoreCancelledMarqueeSelection(cancelledDraft)
       }}
       onLostPointerCapture={(e) => {
         if(utility.active())utility.cancel(e.pointerId)
@@ -2066,7 +2110,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           cancelQueuedMove()
           if(drag.current.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
           flushView()
-          editor.cancel(); finishDragTrace(drag.current, ActionOutcome.cancelled, ActionReason.lostCapture); drag.current = null; setPanning(false); setShapePreview(null); setRubber(null); setGuides({})
+          const cancelledDraft = drag.current
+          editor.cancel(); finishDragTrace(cancelledDraft, ActionOutcome.cancelled, ActionReason.lostCapture); drag.current = null; setPanning(false); setShapePreview(null); setRubber(null); setGuides({})
+          restoreCancelledMarqueeSelection(cancelledDraft)
         }
       }}
       onDragOver={(e) => e.preventDefault()}
@@ -2134,7 +2180,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         <CanvasTextEditor
           viewport={size}
           onPreview={setTextPreview}
-          key={`${editor.sessionGeneration}:${state.doc.id}:${textEdit}`}
+          key={`${textEntry!.session}:${textEntry!.token}:${textEdit}`}
+          isCurrent={() => ownsTextEntry(textEntry)}
           document={state.doc}
           node={state.doc.nodes[textEdit]}
           editor={editor}
@@ -2142,7 +2189,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             [displayView.zoom, 0, 0, displayView.zoom, displayView.x, displayView.y],
             worldMatrix(state.doc, textEdit),
           )}
-          onClose={() => setTextEdit(null)}
+          onClose={(restoreCanvasFocus = false) => {
+            // Pending commits and external blur must not steal another field's
+            // focus. An old text session also cannot close/focus a replacement.
+            if (!ownsTextEntry(textEntry)) return
+            const ownsFocus = host.current?.querySelector('.rich-text-editor')?.contains(document.activeElement)
+            setTextEdit(null)
+            if (restoreCanvasFocus && ownsFocus) host.current?.focus({ preventScroll: true })
+          }}
         />
       )}
       <CanvasLayoutHandles editor={editor} view={displayView} size={size} visible={exactOverlayMatches}/>

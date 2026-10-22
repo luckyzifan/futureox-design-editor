@@ -1794,6 +1794,16 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
   .editor-shell .editor-header .header-right { grid-column: 3; justify-self: end; width: auto; margin: 8px; border-radius: 8px; }
   .editor-shell .header-right .save-status { display: none; }
   .editor-shell .panel-resize-handle { display: none; }
+  /* Keep both mounted drafts reachable: dual compact panels occupy separate
+     scrollable vertical slots rather than covering one another horizontally. */
+  .editor-shell:not(.chrome-hide-layers):not(.chrome-hide-inspector) .adaptive-layers-shell,
+  .editor-shell:not(.chrome-hide-layers):not(.chrome-hide-inspector) .properties-workspace {
+    height: calc((100% - 8px) / 2); min-height: 0; overflow: auto; overscroll-behavior: contain;
+  }
+  .editor-shell:not(.chrome-hide-layers):not(.chrome-hide-inspector) .adaptive-layers-shell { align-self: start; }
+  .editor-shell:not(.chrome-hide-layers):not(.chrome-hide-inspector) .properties-workspace { align-self: end; }
+  .editor-shell:not(.chrome-hide-layers):not(.chrome-hide-inspector) .adaptive-layers-shell > .layers-panel { min-height: 240px; }
+  .editor-shell:not(.chrome-hide-layers):not(.chrome-hide-inspector) .properties-workspace > .properties-content { min-height: 160px; flex-shrink: 0; }
 }
 @media (max-width: 560px) {
   .editor-shell .floating-toolbar { bottom: 10px; height: auto; min-height: 44px; padding: 4px; border-radius: 12px; }
@@ -1840,6 +1850,12 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
 .properties-content .number-field:not(:has(input:disabled)):hover { border-color: var(--workspace-border); }
 .properties-content .number-field:focus-within, .properties-content .number-field:focus-within:hover { border-color: var(--workspace-accent); }
 .properties-content .number-field input { font-variant-numeric: tabular-nums; }
+/* Localized labels may be longer than half of the narrow inspector. Shrink
+   the label, never the editable value; the complete label remains in its
+   accessible name and title. Keep other NumberField hosts unchanged. */
+.properties-content .field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.properties-content .number-field > span { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.properties-content .number-field input { width: 0; min-width: 48px; flex: 1 0 48px; }
 .properties-content .inspector h3 { font-size: 12px; font-weight: 600; line-height: 1.5; }
 .editor-workspace .layer-heading b { font-weight: 600; line-height: 1.5; }
 .properties-tabs button, .workspace-rail button { transition: background-color 120ms ease, color 120ms ease; }

@@ -87,6 +87,8 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     }
     setDocumentEdited() {}
     getNormalBounds() { return this.bounds }
+    getMinimumSize() { return this.minimum || [this.options.minWidth, this.options.minHeight] }
+    setMinimumSize(width, height) { this.minimum = [width, height] }
     setBounds(value) { this.bounds = value }
     isMaximized() { return !!this.maximized }
     maximize() { this.maximized = true }
@@ -244,6 +246,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   source = source.replace("import { registerAutomationBridge } from './automation-bridge.mjs'",
     `import { registerAutomationBridge as registerRealAutomationBridge } from ${JSON.stringify(new URL('../src/automation-bridge.mjs', import.meta.url).href)}; const registerAutomationBridge = options => { globalThis[${JSON.stringify(key)}].automationOptions = options; return registerRealAutomationBridge(options) }`)
 
+  source = source.replace("from './native-locale.mjs'", `from ${JSON.stringify(new URL('../src/native-locale.mjs', import.meta.url).href)}`)
   source = source.replace("from './clipboard.mjs'", `from ${JSON.stringify(new URL('../src/clipboard.mjs', import.meta.url).href)}`)
   source = source.replace("import { spawn } from 'node:child_process'", `const { spawn } = globalThis[${JSON.stringify(key)}]`)
   source = source.replaceAll('process.platform' , `globalThis[${JSON.stringify(key)}].platform`)
@@ -647,6 +650,7 @@ for (const response of [0, 1, 2]) {
   test(`mixed corrupt recovery remains visible with valid snapshot choice ${response}`, async () => {
     const state = await host()
     try {
+      assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
       state.recoveryIssues.push({ message: 'Corrupt snapshot' })
       state.recoveries.set('valid', {
         recoveryId: 'valid',
@@ -931,6 +935,7 @@ test('font listing is shared across repeated requests and invalidated by a chang
 test('native commands after last-window close wait for the new renderer handshake', async () => {
   const state = await host()
   try {
+      assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
     state.window.close()
     await state.invoke('close-response', { requestId: state.sent.at(-1)[1].requestId, allow: true })
     state.finishClose()
@@ -957,6 +962,7 @@ test('native commands after last-window close wait for the new renderer handshak
 test('native Open while no window uses its own file dialog and the same acceptance queue', async () => {
   const state = await host()
   try {
+      assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
     state.window.close()
     await state.invoke('close-response', { requestId: state.sent.at(-1)[1].requestId, allow: true })
     state.finishClose()
@@ -1049,6 +1055,7 @@ for (const platform of ['darwin', 'win32', 'linux']) {
   test(`${platform}: native paste-over-selection menu is distinct from paste-in-place and replacement`, async () => {
     const state = await host({ platform })
     try {
+      assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
       const edit = state.menu.find(item => item.label === 'Edit').submenu
       const over = edit.find(item => item.label === 'Paste Over Selection')
       const inPlace = edit.find(item => item.label === 'Paste in Place')
@@ -1290,19 +1297,105 @@ for (const platform of ['darwin', 'win32', 'linux']) {
   test(`${platform}: New Page menu has no profile-blind accelerator and Shift+Mod+N reaches renderer`, async () => {
     const state = await host({ platform })
     try {
-      const file = state.menu.find(item => item.label === 'File').submenu
-      const page = file.find(item => item.label === 'New Page')
-      assert.ok(page)
-      assert.equal(page.accelerator, undefined)
-      assert.equal(file.find(item => item.label === 'New').accelerator, 'CmdOrCtrl+N')
-      state.sent = []; page.click()
-      assert.deepEqual(state.sent, [['design-desktop:command', 'new-page']])
-      state.sent = []; let prevented = false
-      const mod = platform === 'darwin' ? { meta: true, control: false } : { meta: false, control: true }
-      state.window.webContents.emit('before-input-event', { preventDefault() { prevented = true } }, {
-        type: 'keyDown', key: 'N', code: 'KeyN', alt: false, shift: true, ...mod,
-      })
-      assert.deepEqual(state.sent, []); assert.equal(prevented, false)
+      for (const locale of ['zh-CN', 'en']) {
+        assert.equal((await state.invoke('set-interface-locale', locale)).status, 'ok')
+        const chinese = locale === 'zh-CN'
+        const file = state.menu.find(item => item.label === (chinese ? '文件' : 'File')).submenu
+        const page = file.find(item => item.label === (chinese ? '新建页面' : 'New Page'))
+        assert.ok(page)
+        assert.equal(page.accelerator, undefined)
+        assert.equal(file.find(item => item.label === (chinese ? '新建' : 'New')).accelerator, 'CmdOrCtrl+N')
+        state.sent = []; page.click()
+        assert.deepEqual(state.sent, [['design-desktop:command', 'new-page']])
+        state.sent = []; let prevented = false
+        const mod = platform === 'darwin' ? { meta: true, control: false } : { meta: false, control: true }
+        state.window.webContents.emit('before-input-event', { preventDefault() { prevented = true } }, {
+          type: 'keyDown', key: 'N', code: 'KeyN', alt: false, shift: true, ...mod,
+        })
+        assert.deepEqual(state.sent, []); assert.equal(prevented, false)
+      }
+    } finally { await state.dispose() }
+  })
+  test(`${platform}: actual main locale switching retains menu commands, shortcuts and document authority`, async () => {
+    const state = await host({ platform })
+    try {
+      assert.ok(state.menu.find(item => item.label === '文件'), 'Default locale matches renderer Chinese default')
+      const beforeRequests = state.requests.length
+      const beforePrompts = state.prompts.length
+      for (const locale of ['en', 'zh-CN', 'en']) {
+        assert.deepEqual(await state.invoke('set-interface-locale', locale), { status: 'ok' })
+        const chinese = locale === 'zh-CN'
+        const file = state.menu.find(item => item.label === (chinese ? '文件' : 'File'))
+        const edit = state.menu.find(item => item.label === (chinese ? '编辑' : 'Edit'))
+        const save = file.submenu.find(item => item.label === (chinese ? '保存' : 'Save'))
+        const paste = edit.submenu.find(item => item.label === (chinese ? '粘贴到所选图层上方' : 'Paste Over Selection'))
+        const settings = edit.submenu.find(item => item.label === (chinese ? '设置…' : 'Settings…'))
+        assert.equal(save.accelerator, 'CmdOrCtrl+S')
+        assert.equal(paste.accelerator, 'CmdOrCtrl+Shift+V')
+        assert.equal(settings.accelerator, 'CmdOrCtrl+,')
+        assert.equal(file.submenu.find(item => item.role === 'close').role, 'close')
+        state.sent = []; save.click(); paste.click(); settings.click()
+        assert.deepEqual(state.sent, ['save', 'paste-over-selection', 'settings'].map(command => ['design-desktop:command', command]))
+        assert.equal(state.pageZoom, 1)
+      }
+      assert.equal(state.requests.length, beforeRequests, 'Locale and menu dispatch do not create sidecar document mutations')
+      assert.equal(state.prompts.length, beforePrompts)
     } finally { await state.dispose() }
   })
 }
+
+test('actual main rejects unsupported locale and forged sender without changing menus or issuing IO', async () => {
+  const state = await host()
+  try {
+    const before = state.requests.length, menu = state.menu
+    for (const value of ['de', '', 'en-US', null, undefined, { locale: 'en' }, ['en']]) {
+      assert.equal((await state.invoke('set-interface-locale', value)).status, 'error')
+      assert.equal(state.menu, menu)
+    }
+    for (const event of [
+      { sender: state.window.webContents, senderFrame: { url: 'design-app://app/index.html' } },
+      { sender: {}, senderFrame: state.window.webContents.mainFrame },
+    ]) {
+      await assert.rejects(state.invoke('set-interface-locale', 'en', event), /Untrusted desktop IPC sender/)
+      assert.equal(state.menu, menu)
+    }
+    assert.equal(state.requests.length, before)
+    assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
+    assert.ok(state.menu.find(item => item.label === 'File'))
+  } finally { await state.dispose() }
+})
+
+test('native filter display names follow locale while extensions, defaults and cancellation authority remain unchanged', async () => {
+  const state = await host()
+  try {
+    const openOptions = [], saveOptions = []
+    state.electron.dialog.showOpenDialog = async (...args) => { openOptions.push(args.at(-1)); return { canceled: true, filePaths: [] } }
+    state.electron.dialog.showSaveDialog = async (...args) => { saveOptions.push(args.at(-1)); return { canceled: true } }
+    const before = state.requests.length
+    for (const locale of ['en', 'zh-CN', 'en']) {
+      await state.invoke('set-interface-locale', locale)
+      const chinese = locale === 'zh-CN'
+      assert.equal((await state.invoke('open')).status, 'cancelled')
+      assert.deepEqual(openOptions.at(-1).filters, [{ name: chinese ? 'futureox-desgin 设计文件' : 'futureox-desgin design', extensions: ['fd'] }])
+      assert.deepEqual(openOptions.at(-1).properties, ['openFile'])
+      assert.equal((await state.invoke('sketch-inspect')).status, 'cancelled')
+      assert.deepEqual(openOptions.at(-1).filters, [{ name: chinese ? 'Sketch 原生文档' : 'Sketch native document', extensions: ['sketch'] }])
+      assert.equal((await state.invoke('save', { documentJson: '{"name":"用户名称"}', saveAs: true })).status, 'cancelled')
+      assert.deepEqual(saveOptions.at(-1).filters, [{ name: chinese ? 'futureox-desgin 设计文件' : 'futureox-desgin design', extensions: ['fd'] }])
+      assert.equal(saveOptions.at(-1).defaultPath, 'Untitled.fd')
+      assert.deepEqual(saveOptions.at(-1).properties, ['showOverwriteConfirmation', 'createDirectory'])
+      let options, blocked = 0
+      const item = Object.assign(new EventEmitter(), {
+        getFilename: () => '用户名称.svg', getURL: () => 'blob:design-app://app/1234-abcd',
+        getReceivedBytes: () => 1024, getTotalBytes: () => 1024, getInitiatorOrigin: () => 'design-app://app',
+        setSaveDialogOptions: value => { options = value }, cancel() {},
+      })
+      state.session.emit('will-download', { preventDefault() { blocked++ } }, item, state.window.webContents)
+      assert.equal(blocked, 0)
+      assert.deepEqual(options.filters, [{ name: chinese ? '设计导出文件' : 'Design export', extensions: ['svg'] }])
+      assert.equal(options.defaultPath, '用户名称.svg')
+      assert.deepEqual(options.properties, ['showOverwriteConfirmation'])
+    }
+    assert.equal(state.requests.length, before, 'Cancelled native dialogs and export configuration perform no sidecar IO')
+  } finally { await state.dispose() }
+})

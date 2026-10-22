@@ -23,6 +23,19 @@ export function fitWindowState(saved, displays, primary) {
     maximized: valid && saved.maximized === true, fullscreen: valid && saved.fullscreen === true }
 }
 
+/** Apply live display/DPI constraints without overwriting maximized/fullscreen
+ * normal bounds. Call again on restore, when changing bounds is safe. */
+export function constrainWindowToDisplays(window, displays, primary, { fitBounds = true } = {}) {
+  if (!window || window.isDestroyed()) return
+  const maximized = window.isMaximized(), fullscreen = window.isFullScreen()
+  const fitted = fitWindowState({ version: 1, bounds: window.getNormalBounds(), maximized, fullscreen }, displays, primary)
+  const [width, height] = window.getMinimumSize()
+  // Lower old minimums before fitting to a smaller DIP work area.
+  if (width !== fitted.minWidth || height !== fitted.minHeight) window.setMinimumSize(fitted.minWidth, fitted.minHeight)
+  if (fitBounds && !maximized && !fullscreen && JSON.stringify(window.getNormalBounds()) !== JSON.stringify(fitted.bounds)) window.setBounds(fitted.bounds)
+  return fitted
+}
+
 export async function readWindowState(filename) {
   let file
   try {
