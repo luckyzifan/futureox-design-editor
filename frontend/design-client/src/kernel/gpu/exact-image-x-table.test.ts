@@ -18,7 +18,7 @@ test('admission keeps all four exact sample phases and only the source rows they
   const f = fixture(), plan = planExactImageXTable(f)!
   expect(plan.rowMin).toBe(2); expect(plan.rowCount).toBe(4)
   expect(plan.tableBytes).toBe(4 * 4 * 4 * 3 * 12)
-  expect([...plan.uniform]).toEqual([4, 3, 2, 4, 8, 8, 3, 1, 127, 127, 127, 127, 0, 0, 4, 3])
+  expect([...plan.uniform]).toEqual([4, 3, 2, 4, 8, 8, 3, 1, 127, 127, 127, 127, 0, 0, 4, 3, 0, 1, 2, 3])
   expect([...plan.x.slice(0, 4)]).toEqual([1, 1, 3, 0])
   expect([...plan.x.slice(4 * 4, 4 * 4 + 4)]).toEqual([1, 1, 2, 0])
   expect([...plan.y.slice(0, 4)]).toEqual([0, 1, 3, 0])
@@ -37,6 +37,50 @@ test('signed zeros and one retain their exact endpoint metadata', () => {
   const p = planExactImageXTable(f)!
   expect([...p.x.slice(0, 8)]).toEqual([1, 0, 0, 0, 2, 1, 0, 0])
 })
+test('identical complete X programs share storage while all four independent Y phases survive', () => {
+  const f = fixture()
+  f.axes[2].set(f.axes[0].subarray(0, f.width * 4))
+  f.axes[3].set(f.axes[1].subarray(0, f.width * 4))
+  const compact = planExactImageXTable(f)!, original = planExactImageXTable({ ...f, reuseIdenticalX: false })!
+  expect(compact.xSampleCount).toBe(2); expect(original.xSampleCount).toBe(4)
+  expect(compact.uniform.slice(16)).toEqual(new Uint32Array([0, 1, 0, 1]))
+  expect(compact.tableBytes).toBe(original.tableBytes / 2)
+  expect(compact.x.byteLength).toBe(original.x.byteLength / 2)
+  expect(compact.y).toEqual(original.y)
+  expect(compact.y.slice(0, f.height * 4)).not.toEqual(compact.y.slice(2 * f.height * 4, 3 * f.height * 4))
+  expect(compact.uniform.slice(0, 16)).toEqual(original.uniform.slice(0, 16))
+  expect(imageXTablePlanRange(compact)).toBe(f.range)
+})
+test('program sharing honors nonadjacent and all-identical sample groups without guessing standard phase order', () => {
+  const groups = [[0, 0, 0, 0], [0, 0, 1, 1], [0, 1, 1, 0], [0, 1, 0, 1], [0, 1, 2, 0], [0, 1, 2, 3]]
+  for (const mapping of groups) {
+    const f = fixture(), originals = f.axes.map(a => a.slice())
+    for (let sample = 0; sample < 4; sample++) f.axes[sample].set(originals[mapping[sample]].subarray(0, f.width * 4))
+    const p = planExactImageXTable(f)!
+    expect([...p.uniform.slice(16)]).toEqual(mapping)
+    expect(p.xSampleCount).toBe(new Set(mapping).size)
+    for (let sample = 0; sample < 4; sample++) {
+      const group = p.uniform[16 + sample]
+      for (let x = 0; x < f.width; x++) {
+        const at = (group * f.width + x) * 4
+        expect(p.x[at]).toBe(f.axes[sample][x * 4])
+        expect(p.x[at + 1] / 2 ** p.x[at + 2]).toBe(f.axes[sample][x * 4 + 1])
+      }
+    }
+  }
+})
+test.each(['last cell', 'last fraction ULP', 'endpoint'] as const)(
+  'an X difference at the final pixel prevents sharing: %s', kind => {
+    const f = fixture()
+    for (let sample = 1; sample < 4; sample++) f.axes[sample].set(f.axes[0].subarray(0, f.width * 4))
+    const at = (f.width - 1) * 4
+    if (kind === 'last cell') f.axes[3][at] += 1
+    else if (kind === 'endpoint') f.axes[3][at + 1] = 1
+    else new Uint32Array(f.axes[3].buffer)[at + 1] += 1
+    const p = planExactImageXTable(f)!
+    expect([...p.uniform.slice(16)]).toEqual([0, 0, 0, 1])
+    expect(p.xSampleCount).toBe(2)
+  })
 test('range certificate includes subnormals and signed HDR and excludes zero from exponent span', () => {
   const bits = new Uint32Array([1, 0x80000001, 0x7f7fffff, 0, 0, 0x80000000, 0xff7fffff, 0x80000000])
   const range = certifyExactImageRange(new Float32Array(bits.buffer))!
@@ -336,8 +380,13 @@ test('random signed finite HDR neighborhoods match the exact oracle including ca
   expect(checked).toBeGreaterThan(850)
 })
 
-test.each([false, true])('production compact H stores/loads cover each word once and preserve exact samples, opaque=%s', opaque => {
+test.each([false, true].flatMap(opaque => [false, true].map(repeatedX => ({ opaque, repeatedX }))))(
+  'production compact H stores/loads preserve all samples, opaque=$opaque, repeatedX=$repeatedX', ({ opaque, repeatedX }) => {
   const f = fixture(), pixelBits = new Uint32Array(f.pixels.buffer)
+  if (repeatedX) {
+    f.axes[2].set(f.axes[0].subarray(0, f.width * 4))
+    f.axes[3].set(f.axes[1].subarray(0, f.width * 4))
+  }
   for (let pixel = 0; pixel < f.pixels.length / 4; pixel++) for (let c = 0; c < 4; c++)
     pixelBits[pixel * 4 + c] = c === 3 ? opaque ? 0x3f800000 : [0, 0x3f000000, 0x3fc00000, 0xbe800000][pixel % 4]
       : (((112 + (pixel + c) % 9) << 23) | ((pixel * 32771 + c * 65539) & 0x7fffff) | (pixel % 3 === c ? 0x80000000 : 0)) >>> 0
@@ -363,8 +412,8 @@ test.each([false, true])('production compact H stores/loads cover each word once
   const readBody = exactImageXTableSampleWgsl.slice(readOpen + 1, readEnd).replace(/\b(\d+)u\b/g, '$1').replace('vec4<u32>', 'vec4u')
   const read = new Function('xiTable', 'xiSigned96', 'vec4u', `return function(at){${readBody}}`)(compact,
     (w: Words): Words => [w[0], w[1], w[2], w[2] & 0x80000000 ? 0xffffffff : 0], (...w: number[]) => w) as (at: number) => Words
-  const padded = new Uint32Array(4 * f.width * plan.rowCount * 4 * 4)
-  for (let sample = 0; sample < 4; sample++) for (let row = 0; row < plan.rowCount; row++)
+  const padded = new Uint32Array(plan.xSampleCount * f.width * plan.rowCount * 4 * 4)
+  for (let sample = 0; sample < plan.xSampleCount; sample++) for (let row = 0; row < plan.rowCount; row++)
     for (let x = 0; x < f.width; x++) for (let c = 0; c < channels; c++) {
       const xm = (sample * f.width + x) * 4, qx = plan.x[xm], source = ((plan.rowMin + row) * f.imageWidth + qx) * 4 + c
       const a = decode(pixelBits[source], plan.uniform[8 + c]), b = decode(pixelBits[source + 4], plan.uniform[8 + c])
@@ -377,20 +426,27 @@ test.each([false, true])('production compact H stores/loads cover each word once
       expect(recovered.slice(0, 3)).toEqual([...padded.slice((index * 4 + c) * 4, (index * 4 + c) * 4 + 3)])
     }
   expect(visits.every(count => count === 1)).toBe(true)
-  const atStart = exactImageXTableSampleWgsl.indexOf('let at=((sample*rows+y.x)*width+pixel.x)*channels*3u;')
+  const atStart = exactImageXTableSampleWgsl.indexOf('let at=((group*rows+y.x)*width+pixel.x)*channels*3u;')
   expect(atStart).toBeGreaterThan(0)
   const atBody = exactImageXTableSampleWgsl.slice(atStart, exactImageXTableSampleWgsl.indexOf(';', atStart) + 1).replace(/\b(\d+)u\b/g, '$1')
-  const sampleAddress = new Function('sample', 'rows', 'y', 'width', 'pixel', 'channels', `${atBody};return at;`) as
+  const sampleAddress = new Function('group', 'rows', 'y', 'width', 'pixel', 'channels', `${atBody};return at;`) as
     (sample: number, rows: number, y: { x: number }, width: number, pixel: { x: number }, channels: number) => number
   for (let sample = 0; sample < 4; sample++) for (let y = 0; y < f.height; y++) for (let x = 0; x < f.width; x++) {
-    const xm = (sample * f.width + x) * 4, ym = (sample * f.height + y) * 4
-    const at = sampleAddress(sample, plan.rowCount, { x: plan.y[ym] }, f.width, { x }, channels)
+    const group = plan.uniform[16 + sample], xm = (group * f.width + x) * 4, ym = (sample * f.height + y) * 4
+    const at = sampleAddress(group, plan.rowCount, { x: plan.y[ym] }, f.width, { x }, channels)
     const stride = f.width * channels * 3
     expect(at + stride + channels * 3).toBeLessThanOrEqual(compact.length)
     for (let c = 0; c < 4; c++) {
       const minimum = plan.uniform[8 + c], ku = plan.x[xm + 2], kv = plan.y[ym + 2]
       const u = BigInt(plan.x[xm + 1]), v = BigInt(plan.y[ym + 1]), dx = 1n << BigInt(ku), dy = 1n << BigInt(kv)
-      const qx = plan.x[xm], qy = plan.rowMin + plan.y[ym]
+      const original = f.axes[sample], span = Math.max(f.width, f.height)
+      const originalBits = new Uint32Array(original.buffer)
+      // The oracle reads the original sample's X/Y inputs, independently of
+      // the shared program index used by the production table addressing.
+      const qx = original[x * 4], qy = original[(span + y) * 4]
+      expect(Number(u) / Number(dx)).toBe(original[x * 4 + 1])
+      expect(Number(v) / Number(dy)).toBe(original[(span + y) * 4 + 1])
+      expect(originalBits[x * 4 + 2]).toBe(0x3f800000)
       const source = (qy * f.imageWidth + qx) * 4 + c
       const inputs = [source, source + 4, source + f.imageWidth * 4, source + f.imageWidth * 4 + 4].map(i => {
         const [m, e] = dyadic(pixelBits[i]); return m << BigInt(e - (minimum - 150))

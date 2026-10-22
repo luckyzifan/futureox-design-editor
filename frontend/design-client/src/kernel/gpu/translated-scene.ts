@@ -54,11 +54,11 @@ export function previewTranslationDelta(scene: GpuScene, id: string, transform: 
  * Clipped geometry, replay recipes, derived mutations and camera changes also
  * retain ordinary kernel compilation. */
 export function translatePreviewScene(scene: GpuScene, before: DesignDocument, after: DesignDocument): GpuScene | null {
-  if (scene.softwareRaster || before.animations?.length || after.id !== before.id ||
+  if (scene.softwareRaster || scene.rootInputBox || before.animations?.length || after.id !== before.id ||
       Object.keys(before).length !== Object.keys(after).length ||
       Object.keys(before.nodes).length !== Object.keys(after.nodes).length ||
       Object.keys(after).some(k => k !== 'nodes' && !equalValue(after[k as keyof DesignDocument], before[k as keyof DesignDocument])) ||
-      Object.values(scene.nodes).some(n => n.captureReplay || n.textureReplay)) return null
+      Object.values(scene.nodes).some(n => n.captureReplay || n.textureReplay || n.backdropOutputBox || n.shadowOutputBox || n.childrenInputBox || n.postCompositeBox)) return null
   const offsets = new Map<string, [number, number]>()
   const parents = sceneIndex(scene).parents
   const changed = new Set<string>(), affectedParents = new Set<string>(), nested = new Set<string>()
@@ -108,6 +108,9 @@ export function translatePreviewScene(scene: GpuScene, before: DesignDocument, a
  * reference use exactly the same clipping, rounding and gradient operations. */
 export function translatePreviewOffsets(scene: GpuScene, offsets: Map<string, [number, number]>,
   affectedParents: Set<string>, nested: Set<string>, targetNodes?: GpuScene['nodes']): GpuScene | null {
+  // Moving one prefix can change a stationary downstream backdrop's consumed
+  // region. Only a fresh native compile can reissue its painter certificate.
+  if (scene.rootInputBox || Object.values(scene.nodes).some(node => node.backdropOutputBox || node.shadowOutputBox || node.childrenInputBox || node.postCompositeBox)) return null
   // Validate the whole batch before writing a reusable node table. Do not
   // round a fractional pointer delta: the fallback recompiles its real pose.
   // Also reject a fractional phase inherited from an older preview source.

@@ -10,6 +10,7 @@ import samplingShader from '../../../../../design-studio/crates/design-kernel/sh
 import { exactFilterWgsl, rationalStubWgsl } from './exact-filter'
 import { compositorModes } from './compositor-modes'
 import { TexturePrefix, PREFIX_SCRATCH_BYTES } from './texture-prefix'
+import { ByteTentPrefix, type ByteTentPrefixLease, planByteTentPrefix, type ByteTentOptions } from './byte-tent-prefix'
 import { prefixModule } from './prefix-module'
 import { PREFIX_MIN_RADIUS } from './prefix-band'
 import { certifyPrefixRationalBound, prefixRationalBoundBits, type PrefixRationalBoundCertificate } from './prefix-preflight'
@@ -28,6 +29,8 @@ import { ResidentPresenter, type ResidentFrame } from './resident-presenter'
 import { isDisplayBudgetError } from './display-budget'
 import byteSamplingShader from '../../../../../design-studio/crates/design-kernel/shaders/byte-sampling.wgsl?raw'
 import { areaShaderWgsl } from './area-shader'
+import { sampleOnlyAreaShaderWgsl } from './sample-only-area-shader'
+import { SampleOnlyAreaPrograms } from './sample-only-area-programs'
 import type { Driver, Texture, PathMesh, Rect, GpuScene, GpuAdmissionDiagnostic } from './types'
 import { parameters, previewUniforms, type PreviewPresentation } from './types'
 import { MAX_SOLID_INSTANCES, SOLID_INSTANCE_FLOATS } from './solid-batch'
@@ -98,6 +101,20 @@ export class WebGpuDriver implements Driver {
   private programArenaActive = false
   private programHits = 0
   private programHitBytes = 0
+  private readonly sampleOnlyCoverageEnabled = import.meta.env.VITE_DESIGN_SAMPLE_ONLY_COVERAGE === '1'
+  private sampleOnlyRequested = false
+  private sampleOnlyPrograms = new SampleOnlyAreaPrograms()
+  private sampleOnlyPreparing?: Promise<void>
+  private sampleOnlyUnavailable = false
+  private sampleOnlyColorPipeline?: GPURenderPipeline
+  private sampleOnlyBytePipeline?: GPURenderPipeline
+  private sampleOnlyScalarPipeline?: GPURenderPipeline
+  private sampleOnlyDispatch?: { target: Texture; uniform: Float32Array; buffer: GPUBuffer; epoch: number }
+  private sampleOnlyCoveragePasses = 0
+  private sampleOnlyCoveragePixels = 0
+  private sampleOnlyCoverageLifetimePasses = 0
+  private sampleOnlyCoverageLifetimePixels = 0
+  private sampleOnlyCoverageEligibleScenes = 0
   captureDisplay = false
   private presenter?: ResidentPresenter
   private lifecycleFields() {
@@ -163,8 +180,16 @@ export class WebGpuDriver implements Driver {
   private interactionPresentation = false
   private nativeInteractionPresentation = false
   private prefix?: TexturePrefix
+  private byteTent?: ByteTentPrefix
+  private byteTentPreparing?: Promise<boolean>
+  private byteTentLeases = new Map<ByteTentPrefixLease, { encoder: GPUCommandEncoder; submitted: boolean }>()
+  private byteTentTextures = new WeakMap<Texture, { resource: GPUTexture; width: number; height: number; format: GPUTextureFormat }>()
+  private byteTentRecordingFailed = false
+  byteTentAlphaPasses = 0
   private prefixEnabled = false
   private frameScopeOpen = false
+  private submittedBoundaryReady = false
+  private submittedBoundaryGeneration = 0
   frameScratchBytes = 0
   /** Peak transient bytes the finish path itself allocated (presentation copy,
    * readback target and MAP_READ staging coexist at this peak). Frame-scoped:
@@ -191,7 +216,8 @@ export class WebGpuDriver implements Driver {
       resource.height === upload.height && resource.format === 'rgba32float' && range.nonnegativeRgb &&
       range.opaqueAlpha && range.maximum.every(value => value <= 127)
   }
-  get scratchBytes(){ return (this.prefix?.scratchBytes || 0) + [...(this.imageTables?.keys() || [])].reduce((sum,table)=>sum+table.bytes,0) }
+  get scratchBytes(){ return (this.prefix?.scratchBytes || 0) + [...(this.imageTables?.keys() || [])].reduce((sum,table)=>sum+table.bytes,0) +
+    [...(this.byteTentLeases?.keys() || [])].reduce((sum,lease)=>sum+lease.bytes,0) }
   get retiredImageTableBytes() {
     let bytes = 0
     for (const [table, entry] of this.imageTables) if (entry.retired) bytes += table.bytes
@@ -230,7 +256,7 @@ export class WebGpuDriver implements Driver {
     const range=this.imageTableRange(image)
     const bytes=256+plan.tableBytes+plan.x.byteLength+plan.y.byteLength
     if(import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE === '0' || !this.managed || this.displayMath ||
-        !range || imageXTablePlanRange(plan)!==range || plan.uniform.length!==16 ||
+        !range || imageXTablePlanRange(plan)!==range || plan.uniform.length!==20 ||
         plan.uniform[4]!==image.width || plan.uniform[5]!==image.height ||
         plan.uniform[7]!==Number(range.opaqueAlpha) ||
         range.minimum.some((value,index)=>plan.uniform[8+index]!==value) ||
@@ -249,7 +275,8 @@ export class WebGpuDriver implements Driver {
     this.imageTables.set(handle,{storage,pipeline,image,opaqueAlpha:range.opaqueAlpha,retired:false})
     this.frameScratchBytes=Math.max(this.frameScratchBytes,this.scratchBytes)
     this.closeOver()
-    pipeline.encodeBuild(this.encoder,image.resource as GPUTexture,storage)
+    pipeline.encodeBuild(this.encoder,image.resource as GPUTexture,storage,this.timingQueries ?
+      this.timestampWrites({ stage:'image-x-table-build', mode:51, radius:0, width:storage.width, height:captured.rowCount, channel:captured.xSampleCount }) : undefined)
     return handle
     } finally {
       const remaining=(this.preparingImageTables.get(image)||1)-1
@@ -269,7 +296,8 @@ export class WebGpuDriver implements Driver {
     const words=new Uint32Array(256);words.set(entry.storage.config)
     words.set([offsetX,offsetY,target.width,target.height],12)
     const binding=this.uniformWords(words)
-    entry.pipeline.encodeResolve(this.encoder,target.resource as GPUTexture,entry.storage,binding)
+    entry.pipeline.encodeResolve(this.encoder,target.resource as GPUTexture,entry.storage,binding,this.timingQueries ?
+      this.timestampWrites({ stage:'image-x-table-resolve', mode:51, radius:0, width:target.width, height:target.height }) : undefined)
     this.drawCalls++
     if(entry.opaqueAlpha)target.opaqueAlpha=true
   }
@@ -393,6 +421,8 @@ export class WebGpuDriver implements Driver {
       await parked.settled
     } catch (error) {
       console.debug(`DESIGN_GPU_PARK ${JSON.stringify({ event: 'park-cleanup-failed', error: String(error) })}`)
+      parked.driver.destroyDeviceNow()
+      return undefined
     }
     if (parked.driver.lost || parked.key !== key) {
       const configBits=(value:string)=>{try{return (JSON.parse(value) as boolean[]).reduce((bits,v,i)=>bits|(v?1<<i:0),0)}catch{return -1}}
@@ -446,6 +476,7 @@ export class WebGpuDriver implements Driver {
         return
       }
       this.lost = true
+      this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
       if (this.disposed) {
         recordDeviceCallback(this, diagnosticIdentity, deviceLifecyclePhase.callbackDiscarded, { ...fields, deviceCallbackDisposition: 3 })
         return
@@ -760,11 +791,19 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.encoder = this.device.createCommandEncoder()
     this.blank = this.create(1, 1)
     this.clear(this.blank)
-    this.queueWaitStats.submit(() => this.device.queue.submit([this.encoder.finish()]))
+    this.submitEncoder()
     await this.waitForQueue('initialization')
     this.initialized = true
+    this.submittedBoundaryReady = true
   }
-  async prepareScene(scene: GpuScene) {
+  async prepareScene(scene: GpuScene, displayOnly = false) {
+    this.sampleOnlyPrograms.resetFrame()
+    // Bitmap-assembly display leaves intentionally set captureDisplay=false.
+    // Transport is independent of the real render(readback,present) contract;
+    // callers omitting its explicit display intent retain the original area.
+    this.sampleOnlyRequested = this.sampleOnlyCoverageEnabled && displayOnly === true &&
+      (this.managed === true || this.managed === false) && !this.hdr &&
+      scene.coherentSamples === true && !scene.softwareRaster && !scene.resolve && !scene.presentation && !scene.grid && !scene.checkerboard
     const displayImageRequested = scene.displayImageSource === true && this.managed && !this.displayMath && !this.hdr && !this.displayImageUnavailable
     this.displayImageRequested = displayImageRequested
     this.interactionPresentation = scene.interactionRetained === true
@@ -788,6 +827,10 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (!this.managed) for (const path of paths)
       if (path.count && !path.area && !path.analytic) required.add(`mask:${path.rule}`)
     await this.pipelines.prepare(required)
+    if (this.sampleOnlyRequested && required.has('area')) {
+      await this.prepareSampleOnlyCoverage()
+      if (this.sampleOnlyScalarPipeline) this.sampleOnlyCoverageEligibleScenes++
+    }
     if (!this.managed) return
     const modes = compositorModes(scene)
     const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
@@ -805,6 +848,45 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     }
     await this.pipelines.prepare(pending)
     if (displayImageRequested) await this.prepareDisplayImagePipeline()
+  }
+  /** Independent exact sample-only program; the original area pipeline remains
+   * prepared. Tests may force the private enable bit off after preparing both,
+   * without changing scene/program/buffer/uniforms or exposing a request flag. */
+  private async prepareSampleOnlyCoverage() {
+    if (!this.sampleOnlyCoverageEnabled || this.sampleOnlyUnavailable || this.sampleOnlyScalarPipeline) return
+    if (!this.sampleOnlyPreparing) this.sampleOnlyPreparing = (async () => {
+      try {
+        const validated = async <T>(create: () => T | Promise<T>): Promise<T> => {
+          this.device.pushErrorScope('validation')
+          let pending: Promise<T>
+          try { pending = Promise.resolve(create()) }
+          catch (error) { await this.device.popErrorScope().catch(() => undefined); throw error }
+          // Pair push/pop synchronously before yielding, so this optional
+          // candidate cannot absorb a concurrent exact/filter preparation error.
+          const validation = this.device.popErrorScope()
+          const [value, checked] = await Promise.allSettled([pending, validation])
+          if (value.status === 'rejected') throw value.reason
+          if (checked.status === 'rejected') throw checked.reason
+          if (checked.value) throw Error(checked.value.message)
+          return value.value
+        }
+        const module = await validated(() => this.device.createShaderModule({ code: sampleOnlyAreaShaderWgsl, label: 'Sample-only exact area coverage' }))
+        const errors = (await module.getCompilationInfo()).messages.filter(message => message.type === 'error')
+        if (errors.length) throw Error(errors.map(message => `${message.lineNum}:${message.message}`).join('\n'))
+        const layout = await validated(() => this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] }))
+        const results = await Promise.allSettled((['rgba32float', 'rgba8unorm', 'r32float'] as GPUTextureFormat[]).map(format =>
+          validated(() => this.device.createRenderPipelineAsync({ layout, vertex: { module, entryPoint: 'areaQuad' },
+            fragment: { module, entryPoint: 'areaSampleFragment', targets: [{ format }] }, primitive: { topology: 'triangle-list' } }))))
+        const failure = results.find(result => result.status === 'rejected')
+        if (failure?.status === 'rejected') throw failure.reason
+        const pipelines = results.map(result => (result as PromiseFulfilledResult<GPURenderPipeline>).value)
+        ;[this.sampleOnlyColorPipeline, this.sampleOnlyBytePipeline, this.sampleOnlyScalarPipeline] = pipelines
+      } catch (error) {
+        this.sampleOnlyUnavailable = true
+        console.warn('Sample-only coverage unavailable; retaining the original area pipeline', error)
+      }
+    })()
+    await this.sampleOnlyPreparing
   }
   private prepareDisplayImagePipeline(): Promise<void> {
     if (this.displayImagePipeline || this.displayImageUnavailable) return Promise.resolve()
@@ -919,6 +1001,110 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         this.timingQueries ? (stage, width, height, radius, channel) =>
           this.timestampWrites({ stage, mode: 22, width, height, radius, channel }) : undefined)
   }
+  private byteTentEnabled() {
+    return import.meta.env.VITE_DESIGN_BYTE_TENT_PREFIX === '1' &&
+      import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' && !this.managed && !this.disposed && !this.lost
+  }
+  /** Pipeline-only preparation. Scratch is admitted synchronously per encode. */
+  async prepareByteTent(): Promise<boolean> {
+    if (!this.byteTentEnabled() || !this.device) return false
+    if (this.byteTent) return true
+    if (!this.byteTentPreparing) {
+      const device = this.device
+      const pending = ByteTentPrefix.create(device).then(candidate => {
+        if (!this.byteTentEnabled() || this.device !== device) return false
+        this.byteTent = candidate
+        return true
+      })
+      this.byteTentPreparing = pending
+      // Keep a rejected preparation retryable without turning it into success.
+      void pending.then(() => { if (this.byteTentPreparing === pending) this.byteTentPreparing = undefined },
+        () => { if (this.byteTentPreparing === pending) this.byteTentPreparing = undefined })
+    }
+    return this.byteTentPreparing
+  }
+  /** Alpha-only exact byte tent: RGB is zero. False has no side effects;
+   * exceptions abandon the complete encoder and must not be scalar-fallbacked. */
+  encodeByteTentAlpha(target: Texture, source: Texture, options: ByteTentOptions, availableBytes: number): boolean {
+    if (this.byteTentRecordingFailed) throw Error('Byte tent encoder abandoned; restart the frame')
+    if (!this.byteTentEnabled() || !this.byteTent || !this.encoder) return false
+    const plan = planByteTentPrefix(options)
+    const owned = (texture: Texture, width: number, height: number) => {
+      const proof = this.byteTentTextures?.get(texture), resource = texture.resource as GPUTexture
+      return !!proof && this.textures.has(texture) && proof.resource === resource && proof.format === 'rgba8unorm' &&
+        texture.width === width && texture.height === height && texture.bytes === width * height * 4 &&
+        proof.width === width && proof.height === height && resource.width === width && resource.height === height &&
+        resource.format === 'rgba8unorm' && resource.dimension === '2d' && resource.depthOrArrayLayers === 1 && resource.sampleCount === 1
+    }
+    if (!plan || !Number.isSafeInteger(availableBytes) || availableBytes < plan.bytes ||
+        source === target || source.resource === target.resource ||
+        !owned(source, plan.source.w, plan.source.h) || !owned(target, plan.output.w, plan.output.h) ||
+        !((source.resource as GPUTexture).usage & GPUTextureUsage.TEXTURE_BINDING) ||
+        !((target.resource as GPUTexture).usage & GPUTextureUsage.RENDER_ATTACHMENT)) return false
+    this.closeOver()
+    try {
+      const lease = this.byteTent.encode(this.encoder, source.resource as GPUTexture, target.resource as GPUTexture,
+        { radius: plan.radius, axis: plan.axis, source: plan.source, output: plan.output, scratchBudgetBytes: plan.bytes }, availableBytes)
+      if (!lease) throw Error('Validated byte tent recording unexpectedly declined')
+      this.byteTentLeases.set(lease, { encoder: this.encoder, submitted: false })
+      this.invalidateTextureCertificates(target)
+      delete target.uniformColor; delete target.transparentZero
+      this.frameScratchBytes = Math.max(this.frameScratchBytes, this.scratchBytes)
+      this.byteTentAlphaPasses++
+      this.drawCalls += lease.plan.bands
+      return true
+    } catch (error) {
+      this.byteTentRecordingFailed = true
+      this.abandonByteTentEncoder()
+      throw error
+    }
+  }
+  private byteTentSnapshot() {
+    return [...(this.byteTentLeases || [])].filter(([, entry]) => entry.submitted).map(([lease]) => lease)
+  }
+  private async retireByteTentSnapshot(snapshot: ByteTentPrefixLease[], coveredCompletion: Promise<unknown>) {
+    await Promise.all(snapshot.map(async lease => {
+      if (!this.byteTentLeases.has(lease)) return
+      await lease.retireAfter(coveredCompletion)
+      this.byteTentLeases.delete(lease)
+    }))
+  }
+  /** Never called for submitted leases. Their real queue boundary stays owned. */
+  private discardByteTentEncoder(encoder: GPUCommandEncoder) {
+    for (const [lease, entry] of this.byteTentLeases || []) if (entry.encoder === encoder && !entry.submitted) {
+      lease.discardUnsubmitted()
+      this.byteTentLeases.delete(lease)
+    }
+  }
+  private abandonByteTentEncoder() {
+    this.discardByteTentEncoder(this.encoder)
+    this.encoder = this.device.createCommandEncoder()
+    this.offset = 0; this.uploadedOffset = 0
+  }
+  /** Every current-encoder submit, including finish(), shares lease ownership.
+   * A thrown queue.submit is uncertain: retain bytes until a real boundary. */
+  private submitEncoder() {
+    if (this.byteTentRecordingFailed) throw Error('Byte tent encoder abandoned; restart the frame')
+    const encoder = this.encoder
+    const ownsByteScratch = [...(this.byteTentLeases?.values() || [])].some(entry => entry.encoder === encoder && !entry.submitted)
+    let command: GPUCommandBuffer
+    try { command = encoder.finish() }
+    catch (error) {
+      if (ownsByteScratch) { this.byteTentRecordingFailed = true; this.abandonByteTentEncoder() }
+      throw error
+    }
+    try { this.queueWaitStats.submit(() => this.device.queue.submit([command])) }
+    catch (error) { if (ownsByteScratch) this.byteTentRecordingFailed = true; throw error }
+    finally {
+      for (const [lease, entry] of this.byteTentLeases || []) if (entry.encoder === encoder && !entry.submitted) {
+        lease.markSubmitted(); entry.submitted = true
+      }
+    }
+  }
+  private disposeByteTentLeases() {
+    for (const lease of this.byteTentLeases?.keys() || []) lease.disposeAfterDeviceLoss()
+    this.byteTentLeases?.clear()
+  }
   private prefixPolicy(u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}, kernel?: Texture) {
     // Actual operator measurements: alpha-only remains faster on the old path;
     // eligible RGBA lines can use 4 MiB bands from the measured crossover.
@@ -946,12 +1132,18 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.frameScratchBytes = Math.max(this.frameScratchBytes, this.prefix!.scratchBytes)
   }
   async abortFrameAndReleaseFilterScratch(reason: 'admission' | 'cancel' = 'admission') {
+    this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
+    this.sampleOnlyPrograms.resetFrame(); this.sampleOnlyDispatch = undefined
     this.closeOver()
     // Abandon recorded commands; already submitted commands retain their
     // resources until this explicit completion boundary.
-    this.encoder = this.device.createCommandEncoder()
+    this.abandonByteTentEncoder()
+    const byteTentSnapshot = this.byteTentSnapshot()
     const epoch = this.resourceEpoch
-    await this.waitForQueue(reason)
+    const coveredCompletion = this.waitForQueue(reason)
+    await coveredCompletion
+    if (this.lost) throw new Error('GPU 设备已丢失')
+    await this.retireByteTentSnapshot(byteTentSnapshot, coveredCompletion)
     if (!this.lost) this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
     if (this.frameScopeOpen) {
       const error = await this.device.popErrorScope(); this.frameScopeOpen = false
@@ -963,8 +1155,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.transientTargets = []
     for (const texture of this.transient) texture.destroy()
     this.transient = []; this.msaa.clear(); this.transientBytes = 0
+    this.submittedBoundaryReady = true
   }
   begin(vertices: Float32Array, curves = new Float32Array(0)) {
+    this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
+    this.sampleOnlyPrograms.resetFrame(); this.sampleOnlyDispatch = undefined
+    this.sampleOnlyCoveragePasses = this.sampleOnlyCoveragePixels = 0
+    this.discardByteTentEncoder(this.encoder)
     this.geometryUploadBytes = 0
     this.bindingCache.begin()
     this.pairedFilterPasses = 0
@@ -974,6 +1171,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.drawCalls = 0
     this.opaqueTentPasses = 0
     this.displayImageSourcePasses = 0
+    this.byteTentAlphaPasses = 0
     this.mergedExactFilterPasses = 0
     this.finishTransientBytes = 0
     this.frameScratchBytes = this.scratchBytes
@@ -1020,7 +1218,11 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       :this.curveMirror.update(curves.byteLength ? curves : new Float32Array(4))
     if(curveUpdate){this.device.queue.writeBuffer(this.curves,curveUpdate.offset,curveUpdate.data);this.geometryUploadBytes+=curveUpdate.data.byteLength}
     if(programs)this.programGpuValid=true
+    if (this.sampleOnlyRequested && this.sampleOnlyCoverageEnabled && this.sampleOnlyScalarPipeline && programs && this.curves)
+      this.sampleOnlyPrograms.bind(programs.words, programs.offsets, this.scenePrograms!, this.curves, this.resourceEpoch)
+    else this.sampleOnlyPrograms.reset()
     this.encoder = this.device.createCommandEncoder()
+    this.byteTentRecordingFailed = false
     this.prefix?.resetCounters(this.encoder)
     this.trackCapacityDemand(vertices.byteLength, this.vertexCapacity, this.vertexShrink, 256)
     if (vertices.byteLength > this.vertexCapacity) {
@@ -1133,6 +1335,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       bytes,
     }
     this.textures.add(t)
+    this.byteTentTextures?.set(t, { resource, width, height, format })
     return t
   }
   private invalidateTextureCertificates(texture: Texture) {
@@ -1144,6 +1347,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   }
   destroy(t: Texture) {
     this.invalidateTextureCertificates(t)
+    this.byteTentTextures?.delete(t)
     this.replayParameterTextures.delete(t)
     if (this.textures.delete(t)) (t.resource as GPUTexture).destroy()
   }
@@ -1330,7 +1534,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   private submitCommands() {
     this.closeOver()
     this.uploadUniforms()
-    this.queueWaitStats.submit(() => this.device.queue.submit([this.encoder.finish()]))
+    this.submitEncoder()
     this.commandSubmissions++
     this.encoder = this.device.createCommandEncoder()
     // Queue writes and submissions execute in order. Reuse this bounded arena
@@ -1378,25 +1582,67 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       [sourceRegion.w, sourceRegion.h],
     )
   }
+  copyColorRegion(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]) {
+    const from=source.resource as GPUTexture,to=target.resource as GPUTexture
+    if(!this.textures.has(source)||!this.textures.has(target)||from===to||
+        !['rgba8unorm','rgba32float'].includes(from.format)||to.format!==from.format||
+        source.binaryCoverage||source.scalarCoverage||target.binaryCoverage||target.scalarCoverage||
+        source.width!==from.width||source.height!==from.height||target.width!==to.width||target.height!==to.height||
+        ![sourceRegion.x,sourceRegion.y,sourceRegion.w,sourceRegion.h,...targetOrigin].every(Number.isSafeInteger)||
+        sourceRegion.x<0||sourceRegion.y<0||sourceRegion.w<1||sourceRegion.h<1||
+        sourceRegion.x+sourceRegion.w>source.width||sourceRegion.y+sourceRegion.h>source.height||
+        targetOrigin.length!==2||targetOrigin[0]<0||targetOrigin[1]<0||
+        targetOrigin[0]+sourceRegion.w>target.width||targetOrigin[1]+sourceRegion.h>target.height)
+      throw Error('Invalid native painter color copy')
+    this.closeOver();this.invalidateTextureCertificates(target)
+    delete target.uniformColor;delete target.transparentZero
+    this.encoder.copyTextureToTexture({texture:from,origin:[sourceRegion.x,sourceRegion.y]},
+      {texture:to,origin:targetOrigin},[sourceRegion.w,sourceRegion.h])
+  }
   async checkpoint(reason: QueueWaitReason = 'checkpoint', admission?: GpuAdmissionDiagnostic, completedPoolEpoch?: number) {
     const retiredTables = this.retiredImageTableSnapshot()
     this.submitCommands()
+    const byteTentSnapshot = this.byteTentSnapshot()
     // Do not advance completion here: the newly submitted commands may still
     // be running. This certificate covers only old, no-longer-used pool entries.
     if (reason === 'admission' && !this.lost && Number.isSafeInteger(completedPoolEpoch) && completedPoolEpoch! > 0 &&
         completedPoolEpoch! < this.resourceEpoch && completedPoolEpoch! <= this.completedResourceEpoch) return
     const epoch = this.resourceEpoch
-    await this.waitForQueue(reason, admission)
+    const coveredCompletion = this.waitForQueue(reason, admission)
+    await coveredCompletion
     if (this.lost) throw new Error('GPU 设备已丢失')
+    await this.retireByteTentSnapshot(byteTentSnapshot, coveredCompletion)
     // The current frame may encode more reads after this checkpoint. Only
     // earlier frames are eligible for immutable-resource eviction.
     this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch - 1)
     this.collectRetiredImageTables(retiredTables)
   }
+  /** A completed frame's encoder is already consumed by finish(). Asset
+   * scope preparation runs before begin(), so it must never finish it again. */
+  async waitForSubmittedWork() {
+    const ready = () => !this.disposed && !this.lost && this.initialized && this.submittedBoundaryReady &&
+      !this.frameScopeOpen && !this.activeOver
+    if (!ready()) throw Error('Submitted GPU boundary requires an ended frame')
+    const generation = this.submittedBoundaryGeneration, device = this.device
+    const valid = () => ready() && this.submittedBoundaryGeneration === generation && this.device === device
+    const retiredTables = this.retiredImageTableSnapshot(), byteTent = this.byteTentSnapshot()
+    try {
+      const completion = this.waitForQueue('admission')
+      await completion
+      if (!valid()) throw Error('Submitted GPU boundary owner changed')
+      if (this.errors.length) throw Error(this.errors.join('\n'))
+      await this.retireByteTentSnapshot(byteTent, completion)
+      if (!valid()) throw Error('Submitted GPU boundary owner changed')
+      this.collectRetiredImageTables(retiredTables)
+    } catch (error) {
+      if (this.submittedBoundaryGeneration === generation && this.device === device) this.submittedBoundaryReady = false
+      throw error
+    }
+  }
   submitPending() {
     // Reuse exactly the uniform-arena overflow submission contract. No
     // transient/scratch lifetime ends here and no readback is introduced.
-    if (this.offset > 0) this.submitCommands()
+    if (this.offset > 0 || [...(this.byteTentLeases?.values() || [])].some(entry => entry.encoder === this.encoder && !entry.submitted)) this.submitCommands()
   }
   private flush() {
     this.submitCommands()
@@ -1480,7 +1726,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       u[36] = first??path.area.first
       u[38] = sampleIndex === undefined ? 0 : sampleIndex + 1
       u.set([region.x - path.rect.x, region.y - path.rect.y, path.rect.w, path.rect.h], 40)
-      this.pass(target, u, [])
+      const previous = this.sampleOnlyDispatch
+      this.sampleOnlyDispatch = this.sampleOnlyRequested && this.sampleOnlyCoverageEnabled && this.curves &&
+        target.width === region.w && target.height === region.h &&
+        this.sampleOnlyPrograms.accepts(path, sampleIndex, region, first, this.curves, this.resourceEpoch)
+        ? { target, uniform: u, buffer: this.curves, epoch: this.resourceEpoch } : undefined
+      try { this.pass(target, u, []) }
+      finally { this.sampleOnlyDispatch = previous }
       this.triangles++
       return
     }
@@ -1729,10 +1981,26 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // Mode 6 composites a shadow from source + blurred alpha. The standalone
     // SDF/chrome shaders have different uniforms and cannot share this mode;
     // spare uniform lanes must never select them or require optional samplers.
-    const pipelines = target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?this.scalarAreaPipeline!:this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
-      ? [u[16] === 31 ? this.binaryAreaPipeline! : this.binaryPipelines.get(u[16])!]
+    const sampleDispatch = this.sampleOnlyDispatch, resource = target.resource as GPUTexture
+    const sampleFormat: GPUTextureFormat | undefined = this.managed === true
+      ? target.scalarCoverage ? 'r32float' : target.binaryCoverage ? 'rgba8unorm' : 'rgba32float'
+      : this.managed === false && !target.scalarCoverage && !target.binaryCoverage ? 'rgba8unorm' : undefined
+    // Reuse createFormat's private resource/format record. Normal byte masks
+    // share the RGBA8 sample shader with binary masks, never the RGBA32 one.
+    const sampleCreation = this.byteTentTextures?.get(target)
+    const sampleFlagsKnown = [target.scalarCoverage, target.binaryCoverage].every(value => value === undefined || value === true) &&
+      !(target.scalarCoverage && target.binaryCoverage)
+    const sampleOnly = this.sampleOnlyCoverageEnabled && this.sampleOnlyRequested && u[16] === 31 &&
+      sampleDispatch?.target === target && sampleDispatch.uniform === u && sampleDispatch.buffer === this.curves &&
+      sampleDispatch.epoch === this.resourceEpoch && this.textures.has(target) &&
+      sampleFlagsKnown && sampleFormat !== undefined && !!sampleCreation && sampleCreation.resource === resource &&
+      sampleCreation.format === sampleFormat && sampleCreation.width === target.width && sampleCreation.height === target.height &&
+      target.bytes === target.width * target.height * (sampleFormat === 'rgba32float' ? 16 : 4) &&
+      resource.format === sampleFormat && resource.width === target.width && resource.height === target.height
+    const pipelines = target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
+      ? [u[16] === 31 ? (sampleOnly?this.sampleOnlyBytePipeline!:this.binaryAreaPipeline!) : this.binaryPipelines.get(u[16])!]
       : this.managed && u[16] === 22 ? this.filterPipelines : [
-      u[16] === IMAGE_RESOLVE_STEP_MODE ? (displayImage ? this.displayImagePipeline! : this.imageResolveStepPipeline!) : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? this.areaPipeline! : this.managed && u[16] === 3 && u[17] === 0
+      u[16] === IMAGE_RESOLVE_STEP_MODE ? (displayImage ? this.displayImagePipeline! : this.imageResolveStepPipeline!) : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? (sampleOnly?(this.managed===true?this.sampleOnlyColorPipeline!:this.sampleOnlyBytePipeline!):this.areaPipeline!) : this.managed && u[16] === 3 && u[17] === 0
         ? (integerCentres ? this.normalCornerPipeline! : this.normalPipeline!) :
       this.managed && u[16] === 0 ? (integerCentres ? this.copyCornerPipeline! : this.copyPipeline!) :
       this.managed ? this.modePipelines.get(u[16])! : this.paintPipeline]
@@ -1783,6 +2051,10 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     pass.end()
     drawn = true
     this.drawCalls++
+    if (sampleOnly) {
+      this.sampleOnlyCoveragePasses++; this.sampleOnlyCoveragePixels += target.width * target.height
+      this.sampleOnlyCoverageLifetimePasses++; this.sampleOnlyCoverageLifetimePixels += target.width * target.height
+    }
     if (displayFilter && this.displayFilterRadiusLimit !== undefined) this.boundedDisplayFilterPasses++
     if (displayImage) {
       this.displayImageSourcePasses++
@@ -1922,6 +2194,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // Keep the existing interaction/periodic backpressure. Only per-tile waits
     // whose purpose was scratch destruction or diagnostic counters disappear.
     const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' :
+      this.byteTentLeases?.size ? 'prefix-scratch' :
       !retainFilterScratch && this.prefix?.scratchBytes ? 'prefix-scratch' :
       !retainFilterScratch && this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation &&
         (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') ? 'interaction' :
@@ -1932,16 +2205,19 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const readPrefixCounters = !!this.prefix?.scratchBytes && !!waitReason
     if (readPrefixCounters) this.prefix!.encodeCountersReadback(this.encoder)
     this.uploadUniforms()
-    this.queueWaitStats.submit(() => this.device.queue.submit([this.encoder.finish()]))
+    this.submitEncoder()
     this.commandSubmissions++
+    const byteTentSnapshot = this.byteTentSnapshot()
     // Presentation-only tiles stay on the GPU timeline. Submitted commands
     // retain their resources; subsequent uploads are ordered by the queue.
     // Readbacks/probes still fence before reading or reusing mapped storage.
     if (waitReason) {
       const epoch = this.resourceEpoch
-      await this.waitForQueue(waitReason)
+      const coveredCompletion = this.waitForQueue(waitReason)
+      await coveredCompletion
       if (!this.lost) this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
       if (this.lost) throw new Error('GPU 设备已丢失')
+      await this.retireByteTentSnapshot(byteTentSnapshot, coveredCompletion)
       this.collectRetiredImageTables(retiredTables)
       this.presentationSubmissions = 0
     }
@@ -2009,6 +2285,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const bitmap = present && !captured ? withRenderFailureStage(10, () => this.canvas.transferToImageBitmap()) : undefined
     if (bitmap) this.crossDeviceBitmaps++
     if (captured) this.residentCaptures++
+    this.submittedBoundaryReady = true
     return { gpuTile: captured?.id, bitmap, rgba, linear, straightRgba }
     } catch (error) {
       if (captured) this.presenter?.release([captured.id])
@@ -2055,6 +2332,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       mergedExactFilterPasses: this.mergedExactFilterPasses,
       displayImageSourcePasses: this.displayImageSourcePasses,
       boundedDisplayFilterPasses: this.boundedDisplayFilterPasses,
+      byteTentAlphaPasses: this.byteTentAlphaPasses,
+      sampleOnlyCoveragePasses: this.sampleOnlyCoveragePasses,
+      sampleOnlyCoveragePixels: this.sampleOnlyCoveragePixels,
+      sampleOnlyCoverageLifetimePasses: this.sampleOnlyCoverageLifetimePasses,
+      sampleOnlyCoverageLifetimePixels: this.sampleOnlyCoverageLifetimePixels,
+      sampleOnlyCoverageEligibleScenes: this.sampleOnlyCoverageEligibleScenes,
+      byteTentScratchBytes: [...(this.byteTentLeases?.keys() || [])].reduce((sum, lease) => sum + lease.bytes, 0),
     }
   }
   async loseDeviceForTesting() {
@@ -2064,6 +2348,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (!this.lost) throw new Error('WebGPU device loss was not observed')
   }
   dispose() {
+    this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
     this.bindingCache.clear()
     if (this.disposed) return
     this.disposed = true
@@ -2086,6 +2371,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       this.parkedForReuse = true
       recordDeviceLifecycle(this, deviceLifecyclePhase.parked, this.lifecycleFields())
       const settled = this.reclaimForPark()
+      // Observe immediately without replacing the rejected promise: revive
+      // must still reject uncertain cleanup instead of inheriting its ledger.
+      void settled.catch(() => {})
       const reaper = setTimeout(() => {
         if (WebGpuDriver.parkedDriver?.driver === this) {
           WebGpuDriver.parkedDriver = undefined
@@ -2104,24 +2392,27 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.presenter?.dispose(); this.presenter = undefined
     this.parkedForReuse = false
     this.closeOver()
-    this.releaseFrameResources()
+    // Explicit device destruction, unlike an ordinary rejected queue fence,
+    // retires every submitted command and its byte-prefix lease.
+    this.device?.destroy()
+    this.disposeByteTentLeases()
+    this.releaseFrameResources(false)
     this.prefix?.destroy()
     this.prefix = undefined
     this.timingQueries?.destroy()
     this.timingQueries = undefined
     this.uniforms?.destroy()
-    this.device?.destroy()
   }
   /** Fence submitted commands, then reclaim frame resources while keeping the
    * device, pipelines and uniform arena for a matching future create. */
   private reclaimForPark(): Promise<void> {
     return (async () => {
-      try {
-        await this.waitForQueue('park')
-      } catch {
-        /* A device lost mid-fence reclaims itself; nothing left to do. */
-      }
+      this.abandonByteTentEncoder()
+      const byteTentSnapshot = this.byteTentSnapshot()
+      const coveredCompletion = this.waitForQueue('park')
+      await coveredCompletion
       if (!this.parkedForReuse || this.lost) return
+      await this.retireByteTentSnapshot(byteTentSnapshot, coveredCompletion)
       this.releaseFrameResources()
       // A failed frame can leave its validation scope open. Its error was
       // already thrown to the caller; pop the scope so a revived driver's
@@ -2142,21 +2433,27 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   /** Restore a parked driver to its post-initialize state; only valid after
    * the park cleanup settled. */
   private async revive() {
+    this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
     this.disposed = false
     this.parkedForReuse = false
     this.errors = []
     this.encoder = this.device.createCommandEncoder()
     this.blank = this.create(1, 1)
     this.clear(this.blank)
-    this.queueWaitStats.submit(() => this.device.queue.submit([this.encoder.finish()]))
+    this.byteTentRecordingFailed = false
+    this.submitEncoder()
     this.commandSubmissions = 1
     await this.waitForQueue('initialization')
+    this.submittedBoundaryReady = true
   }
   /** Reclaim frame-scoped resources: textures, MSAA/transient scratch, geometry
    * and solid buffers, and per-frame counters. Call only after submitted
    * commands completed (park path) or after device loss (every destroy is then
    * a safe no-op). */
-  private releaseFrameResources() {
+  private releaseFrameResources(recreateEncoder = true) {
+    this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
+    this.sampleOnlyPrograms.reset(); this.sampleOnlyDispatch = undefined; this.sampleOnlyRequested = false
+    this.discardByteTentEncoder(this.encoder)
     this.displayImageRequested = false
     this.prefix?.releaseScratch()
     this.releaseImageTables()
@@ -2191,7 +2488,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.timingRows = []
     this.softwareRaster = false
     this.activeTarget = undefined
-    if (this.device && !this.lost) this.encoder = this.device.createCommandEncoder()
+    if (recreateEncoder && this.device && !this.lost) this.encoder = this.device.createCommandEncoder()
   }
   /** device.lost handler body: reclaim immediately instead of waiting for the
    * next request to dispose. */
@@ -2200,6 +2497,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     console.debug(
       `DESIGN_GPU_LOST ${JSON.stringify({ event: 'immediate-cleanup', textures: this.textures.size })}`,
     )
+    this.disposeByteTentLeases()
     this.releaseFrameResources()
   }
 }

@@ -11,6 +11,13 @@ type SnapshotKey = {
   geometryEpoch: object
 }
 
+/** A borrow of Canvas's existing published-snapshot slots, not another cache.
+ * Reading never builds geometry or retains an evicted scene. Only Canvas's
+ * immutable Editor publication path may issue this capability. */
+export type CanvasSceneBorrow = {
+  entriesFor(document: DesignDocument, pageId: string, epoch: number): readonly SceneEntry[] | undefined
+}
+
 function key(document: DesignDocument, pageId: string): SnapshotKey {
   return { document, nodes: document.nodes, pages: document.pages, fonts: document.fonts,
     pageId, geometryEpoch: pickingGeometryEpoch() }
@@ -54,12 +61,14 @@ export class CanvasSceneSnapshots {
   private session?: number
   private pageId?: string
   private ready?: boolean
+  private borrowScope: object = {}
   private current?: CanvasSceneSnapshot
   private displayed?: CanvasSceneSnapshot
   private refine?: { key: SnapshotKey; overview: Bounds }
 
   begin(owner: object, session: number, pageId: string, ready: boolean) {
     if (owner !== this.owner || session !== this.session || pageId !== this.pageId || ready !== this.ready) {
+      this.borrowScope = {}
       this.current = this.displayed = undefined
       this.refine = undefined
       this.owner = owner; this.session = session; this.pageId = pageId; this.ready = ready
@@ -76,6 +85,22 @@ export class CanvasSceneSnapshots {
     // Publish only a completely built scene. A throwing build leaves no partial
     // scene or index available to another owner.
     return this.current = this.find(next) ?? new CanvasSceneSnapshot(next)
+  }
+
+  /** Borrow only a scene already built for this published current document.
+   * Keep the key and scope token, never the snapshot/entries: a later read
+   * succeeds only while the same scene is still in one of the original slots.
+   * Session/page/readiness ABA and font installation revoke old borrows. */
+  borrowCurrentScene(document: DesignDocument, pageId: string, epoch: number): CanvasSceneBorrow | undefined {
+    if (!this.ready || this.session !== epoch || this.pageId !== pageId) return
+    const expected = key(document, pageId)
+    if (!this.current || !matches(this.current.key, expected)) return
+    const scope = this.borrowScope
+    return { entriesFor: (nextDocument, nextPageId, nextEpoch) => {
+      if (this.borrowScope !== scope || !this.ready || this.session !== epoch || nextEpoch !== epoch ||
+          this.pageId !== pageId || nextPageId !== pageId || !matches(expected, key(nextDocument, nextPageId))) return
+      return this.find(expected)?.entries
+    } }
   }
 
   displayedScene(document: DesignDocument | undefined, pageId: string | undefined) {

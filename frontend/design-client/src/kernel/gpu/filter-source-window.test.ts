@@ -150,8 +150,10 @@ test('prefix and both scalar reducers map only after their unchanged logical bou
     expect(body.indexOf('p=clamp')).toBeLessThan(body.indexOf('filterSourcePixel(q)'))
     expect(body.indexOf('q>=vec2<i32>(u(1).zw)')).toBeLessThan(body.indexOf('filterSourcePixel(q)'))
   }
-  expect(prefixShader).toContain('return filterSourcePixel(vec2<i32>(i32(x),i32(line)))')
-  expect(prefixShader).toContain('return filterSourcePixel(vec2<i32>(i32(line),i32(x)))')
+  expect(prefixShader).toContain('var along=i32(x)')
+  expect(prefixShader).toContain('return filterSourcePixel(vec2<i32>(along,i32(line)))')
+  expect(prefixShader).toContain('return filterSourcePixel(vec2<i32>(i32(line),along))')
+  expect(prefixShader.indexOf('along=clamp')).toBeLessThan(prefixShader.indexOf('return filterSourcePixel'))
   vi.stubEnv('VITE_DESIGN_FILTER_SOURCE_WINDOW','0')
   expect(exactFilterWgsl(true)).toContain('const FILTER_SOURCE_WINDOWS:bool=false;')
 })

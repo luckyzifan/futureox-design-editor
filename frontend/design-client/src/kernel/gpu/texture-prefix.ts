@@ -1,5 +1,6 @@
 import { PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES, prefixBandSize, prefixRgbBandSize } from './prefix-band'
 import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSourceWindow } from './filter-source-window'
+import { prefixSamplingGeometry } from './prefix-sampling-geometry'
 import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 /// <reference types="@webgpu/types" />
 /** Exact tent filtering, including fractional radii and cropped outputs,
@@ -186,6 +187,8 @@ export class TexturePrefix {
     maxBandLines = 255,
     sourceWindow?: FilterSourceWindow,
   ): boolean {
+    const extended = import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1'
+    const geometry = prefixSamplingGeometry(base, originalRadius, extended)
     const window = sourceWindow === undefined ? undefined : snapshotFilterSourceWindow(inputs[0], base, sourceWindow)
     if (sourceWindow !== undefined && (import.meta.env.VITE_DESIGN_FILTER_SOURCE_WINDOW !== '1' || !window)) return false
     if (
@@ -195,14 +198,15 @@ export class TexturePrefix {
       originalRadius > 2048 ||
       base[36] !== Math.fround(originalRadius) ||
       (!Number.isInteger(originalRadius) && originalRadius < 3) ||
-      base[38] !== 0 ||
+      !geometry ||
       base[242] !== 0 ||
       inputs.length < 3 ||
       !(channels & 15)
     )
       return false
     if (
-      ![rect.x, rect.y, rect.w, rect.h].every(Number.isInteger) ||
+      ![rect.x, rect.y].every(v => Number.isFinite(v) && (extended || Number.isInteger(v))) ||
+      ![rect.w, rect.h].every(Number.isInteger) ||
       Math.abs(rect.x) > 1048576 ||
       Math.abs(rect.y) > 1048576 ||
       rect.w < 1 ||
@@ -216,9 +220,8 @@ export class TexturePrefix {
       base[1] !== rect.y ||
       base[2] !== rect.w ||
       base[3] !== rect.h ||
-      !base.subarray(4, 8).every(Number.isSafeInteger) ||
-      rect.x < base[4] || rect.y < base[5] ||
-      rect.x + rect.w > base[4] + base[6] || rect.y + rect.h > base[5] + base[7]
+      !base.subarray(4, 6).every(v => Number.isFinite(v) && (extended || Number.isSafeInteger(v))) ||
+      !base.subarray(6, 8).every(Number.isSafeInteger)
     )
       return false
     if (
@@ -233,7 +236,7 @@ export class TexturePrefix {
       return false
     const axis = base[37]
     if (axis !== 0 && axis !== 1) return false
-    const length = axis === 0 ? base[6] : base[7],
+    const length = geometry.length,
       lineCount = axis === 0 ? rect.h : rect.w
     const bandSize = prefixBandSize(length, maxBandLines)
     if (!Number.isInteger(bandSize) || bandSize < 1) return false
@@ -272,12 +275,13 @@ export class TexturePrefix {
     if (import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0' && opaqueAlpha && channels === 7 &&
         this.solveRgb && this.resolveRgb)
       return this.encodeOpaqueRgb(getEncoder, target, inputs, base, originalRadius, rect, maxBandLines, boundBits)
+    const geometry = prefixSamplingGeometry(base, originalRadius, import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1')!
     const axis = base[37],
-      length = axis === 0 ? base[6] : base[7],
+      length = geometry.length,
       lineCount = axis === 0 ? rect.h : rect.w
     const outputLength = axis === 0 ? rect.w : rect.h
-    const offset = axis === 0 ? rect.x - base[4] : rect.y - base[5]
-    const crossOffset = axis === 0 ? rect.y - base[5] : rect.x - base[4]
+    const offset = geometry.offset
+    const crossOffset = geometry.crossOffset
     const rational = !Number.isInteger(originalRadius) || originalRadius > 512
     const bandSize = prefixBandSize(length, maxBandLines)
     let drawn = false
@@ -288,7 +292,7 @@ export class TexturePrefix {
         const u = base.slice()
         u.set([length, first, count, axis], 192)
         u.set([channel, rational ? Math.floor(originalRadius) - 1 : originalRadius, rational ? 1 : 0, boundBits], 196)
-        u.set([offset, outputLength, crossOffset, 0], 200)
+        u.set([offset, outputLength, crossOffset, geometry.padding], 200)
         const group = this.device.createBindGroup({
           layout: this.sourceLayout,
           entries: [
@@ -347,12 +351,13 @@ export class TexturePrefix {
    * encoder between channels; always reacquire it after creating the group. */
   private encodeOpaqueRgb(getEncoder: () => GPUCommandEncoder, target: GPUTexture, inputs: GPUTexture[],
     base: Float32Array, radius: number, rect: Rectangle, maxBandLines: number, rationalBoundBits: number): boolean {
-    const axis = base[37], length = axis === 0 ? base[6] : base[7]
+    const geometry = prefixSamplingGeometry(base, radius, import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1')!
+    const axis = base[37], length = geometry.length
     const outputLength = axis === 0 ? rect.w : rect.h, lineCount = axis === 0 ? rect.h : rect.w
     const bandSize = prefixRgbBandSize(length, outputLength, maxBandLines)
     if (!bandSize) return false
-    const offset = axis === 0 ? rect.x - base[4] : rect.y - base[5]
-    const crossOffset = axis === 0 ? rect.y - base[5] : rect.x - base[4]
+    const offset = geometry.offset
+    const crossOffset = geometry.crossOffset
     const rational = !Number.isInteger(radius) || radius > 512
     let drawn = false
     for (let first = 0; first < lineCount; first += bandSize) {
@@ -362,7 +367,7 @@ export class TexturePrefix {
         const u = base.slice()
         u.set([length, first, count, axis], 192)
         u.set([channel, rational ? Math.floor(radius) - 1 : radius, rational ? 1 : 0, rationalBoundBits], 196)
-        u.set([offset, outputLength, crossOffset, 0], 200)
+        u.set([offset, outputLength, crossOffset, geometry.padding], 200)
         lastGroup = this.device.createBindGroup({ layout: this.sourceLayout, entries: [
           { binding: 0, resource: this.uniform(u) },
           ...[0, 1, 2].map(i => ({ binding: i + 1, resource: (inputs[i] || inputs[0]).createView() })),

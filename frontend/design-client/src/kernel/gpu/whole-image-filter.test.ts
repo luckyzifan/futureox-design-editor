@@ -150,6 +150,35 @@ test('whole H/V uses the original exact axis dispatcher, one table resolve and n
   expect(reference.resolves.length).toBeGreaterThan(1); expect(reference.events).toContain('blit')
   expect(actual).toEqual(expected)
 })
+test.each(['identical', 'different-target', 'clip', 'same-clip', 'clip-phase', 'coverage-gap'] as const)(
+  'resolved foreground samples share only a fully covered identical destination: %s', async variant => {
+    const f = fixture(true), { renderer, node, output } = f
+    const header = 1 + output.h * 4, curves = new Float32Array((header + output.h * 4 * 3) * 4)
+    curves.set([3, 1, output.w, output.h])
+    for (let row = 0; row < output.h * 4; row++) {
+      curves.set([header + row * 3, 1, 0, 0], 4 + row * 4)
+      curves.set([variant === 'coverage-gap' ? 1 : 0, output.w, 0, 0], (header + row * 3) * 4)
+    }
+    node.fill = { count: 3, rect: output, first: 0, rule: 'nonzero', sampleCount: 4, area: { first: 0, count: curves.length / 4 } }
+    f.scene.curves = curves
+    const initial = renderer.acquire(output), targets = [initial, renderer.retain(initial), renderer.retain(initial), renderer.retain(initial)]
+    if (variant === 'different-target') { renderer.release(targets[3]); targets[3] = renderer.acquire(output) }
+    const merge = renderer.merge = vi.fn(renderer.merge)
+    const mask = variant === 'same-clip' || variant === 'clip-phase' ? renderer.acquire(output) : undefined
+    const masks = variant === 'clip' ? Array.from({ length: 4 }, () => renderer.acquire(output)) :
+      mask ? [mask, renderer.retain(mask), renderer.retain(mask), renderer.retain(mask)] : undefined
+    if (variant === 'clip-phase') masks![3].rect = { ...output, x: output.x + 1 }
+    const result = await renderer.streamIsolatedFilter(node, targets, masks)
+    expect(merge).toHaveBeenCalledTimes(variant === 'identical' || variant === 'same-clip' ? 1 :
+      variant === 'different-target' || variant === 'clip-phase' ? 2 : 4)
+    if (variant === 'identical') {
+      expect(result.every((surface: Surface) => surface.texture === result[0].texture)).toBe(true)
+      expect(renderer.aliases.get(result[0].texture)).toBe(4)
+      expect(renderer.busy.has(initial.texture)).toBe(false)
+    }
+    renderer.release(...result, ...(masks || []))
+    expect(renderer.busy.size).toBe(0)
+  })
 test('insufficient whole-source headroom falls back to the original bounded strips', async () => {
   const f = fixture(true, { rejectBudget: true }), actual = await f.run()
   expect(f.renderer.wholeFilterAxes).toBe(0)

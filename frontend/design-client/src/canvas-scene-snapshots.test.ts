@@ -237,3 +237,80 @@ test('changed documents, sessions and top-level resources keep separate lazy sce
   store.begin(e, e.sessionGeneration + 1, e.state.page, true)
   expect(store.currentScene(e.state.doc, e.state.page).entries).not.toBe(after.entries)
 })
+
+
+test('interaction borrow shares existing geometry without builds and stays within the two existing slots', () => {
+  const { doc, a } = fixture(), e = makeEditor(doc), store = new CanvasSceneSnapshots(), before = frozen(e.state.doc)
+  const epoch = e.sessionGeneration, page = e.state.page
+  store.begin(e, epoch, page, true)
+  const first = store.currentScene(before, page), borrow = store.borrowCurrentScene(before, page, epoch)!
+  expect(work.scenes).toBe(1); expect(work.indexes).toBe(0)
+  for (let i = 0; i < 200; i++) {
+    expect(borrow.entriesFor(before, page, epoch)).toBe(first.entries)
+    expect(borrow.entriesFor({ ...before }, page, epoch)).toBeUndefined()
+    expect(borrow.entriesFor(before, page, epoch + 1)).toBeUndefined()
+    expect(borrow.entriesFor(before, 'other-page', epoch)).toBeUndefined()
+  }
+  expect(work.scenes).toBe(1); expect(work.indexes).toBe(0)
+  store.displayedScene(before, page)
+  e.update([a.id], { width: a.width + 1 })
+  const next = store.currentScene(e.state.doc, page)
+  expect(next).not.toBe(first)
+  expect(borrow.entriesFor(before, page, epoch)).toBe(first.entries)
+  expect(borrow.entriesFor(e.state.doc, page, epoch)).toBeUndefined()
+  expect(store.borrowCurrentScene(before, page, epoch)).toBeUndefined()
+  store.displayedScene(undefined, undefined)
+  expect(borrow.entriesFor(before, page, epoch)).toBeUndefined()
+  expect(work.scenes).toBe(2); expect(work.indexes).toBe(0)
+  const editedDocument = e.state.doc, editedBorrow = store.borrowCurrentScene(editedDocument, page, epoch)!
+  e.undo()
+  const undone = store.currentScene(e.state.doc, page), undoBorrow = store.borrowCurrentScene(e.state.doc, page, epoch)!
+  expect(editedBorrow.entriesFor(e.state.doc, page, epoch)).toBeUndefined()
+  exact(undoBorrow.entriesFor(e.state.doc, page, epoch), actual.scene(e.state.doc, page))
+  e.redo()
+  const redone = store.currentScene(e.state.doc, page), redoBorrow = store.borrowCurrentScene(e.state.doc, page, epoch)!
+  expect(undoBorrow.entriesFor(e.state.doc, page, epoch)).toBeUndefined()
+  exact(redoBorrow.entriesFor(e.state.doc, page, epoch), actual.scene(e.state.doc, page))
+  expect(redone.entries).not.toBe(undone.entries)
+})
+
+test('interaction borrows revoke on scope ABA, readiness, changed containers and geometry epochs', () => {
+  const { doc } = fixture(), e = makeEditor(doc), store = new CanvasSceneSnapshots(), page = e.state.page
+  const epoch = e.sessionGeneration
+  const issue = () => {
+    store.begin(e, epoch, page, true); store.currentScene(e.state.doc, page)
+    return store.borrowCurrentScene(e.state.doc, page, epoch)!
+  }
+  for (const [owner, session, selectedPage, ready] of [
+    [{}, epoch, page, true], [e, epoch + 1, page, true],
+    [e, epoch, 'other-page', true], [e, epoch, page, false],
+  ] as const) {
+    const borrow = issue()
+    store.begin(owner, session, selectedPage, ready)
+    store.begin(e, epoch, page, true); store.currentScene(e.state.doc, page)
+    expect(borrow.entriesFor(e.state.doc, page, epoch)).toBeUndefined()
+  }
+  const mutableTop = { ...e.state.doc }, borrowFor = (document: DesignDocument) => {
+    store.currentScene(document, page); return store.borrowCurrentScene(document, page, epoch)!
+  }
+  for (const replace of [
+    () => { mutableTop.nodes = { ...mutableTop.nodes } },
+    () => { mutableTop.pages = [...mutableTop.pages] },
+    () => { mutableTop.fonts = {} },
+  ]) {
+    const borrow = borrowFor(mutableTop); replace()
+    expect(borrow.entriesFor(mutableTop, page, epoch)).toBeUndefined()
+  }
+  // Existing scene caches also require immutable nodes below these containers;
+  // this capability deliberately does not claim arbitrary mutable-draft safety.
+  const fontDocument = { ...e.state.doc, fonts: { subset: {
+    family: 'Subset', data: fontTestBytes('noto-latin').toString('base64'),
+  } } }
+  activateDocumentFonts(fontDocument)
+  const fontBorrow = borrowFor(fontDocument)
+  expect(fontBorrow.entriesFor(fontDocument, page, epoch)).toBeDefined()
+  activateDocumentFonts({ ...fontDocument, fonts: undefined })
+  expect(fontBorrow.entriesFor(fontDocument, page, epoch)).toBeUndefined()
+  store.begin(e, epoch, page, false); store.currentScene(e.state.doc, page)
+  expect(store.borrowCurrentScene(e.state.doc, page, epoch)).toBeUndefined()
+})

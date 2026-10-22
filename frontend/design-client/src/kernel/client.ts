@@ -169,6 +169,10 @@ export type GpuMemorySnapshot = {
   deviceLost: boolean
 }
 export type KernelOptions = {
+  /** Overwritten by the worker's strict host experiment policy. */
+  gpuPainterSupport?: boolean
+  /** Separately gated captured-source optimization; never document state. */
+  gpuPainterCaptureReads?: boolean
   /** A separate document/geometry lane on the same display GPU worker. */
   interactionChannel?: boolean
   /** Numeric capture identity for diagnostics only, never a document certificate. */

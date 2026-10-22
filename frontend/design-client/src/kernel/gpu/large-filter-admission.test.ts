@@ -1,10 +1,11 @@
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { TexturePrefix } from './texture-prefix'
 import { parameters } from './types'
 import { sceneIndex } from './scene-index'
 
 const prefix = Object.create(TexturePrefix.prototype) as TexturePrefix
 const texture = (width: number, height: number) => ({ width, height, format: 'rgba32float' }) as GPUTexture
+afterEach(()=>vi.unstubAllEnvs())
 
 test('fractional high-zoom filters admit an exact crop inside their full source support', () => {
   const source = { x: -1200, y: 37, w: 3072, h: 64 }
@@ -35,4 +36,14 @@ test('a fractional large blur prepares its accelerated filter before drawing', (
   expect(sceneIndex({ roots: ['blur'], nodes: { blur: node } } as any).hasPrefixFilter).toBe(true)
   const shadow = { ...node, effects: [{ ...node.effects[0], kind: 'shadow', radius: 15 }] }
   expect(sceneIndex({ roots: ['blur'], nodes: { blur: shadow } } as any).hasPrefixFilter).toBe(true)
+})
+test('the exact clamp candidate prepares background prefix only under its explicit gate', () => {
+  const makeScene=()=>({roots:['background'],nodes:{background:{id:'background',matrix:[64,0,0,64,0,0],children:[],fills:[],strokes:[],
+    effects:[{kind:'background-blur',visible:true,radius:18.39398193359375}]}}} as any)
+  for(const value of [undefined,'0','true']){
+    vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX',value)
+    expect(sceneIndex(makeScene()).hasPrefixFilter).toBe(false)
+  }
+  vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX','1')
+  expect(sceneIndex(makeScene()).hasPrefixFilter).toBe(true)
 })

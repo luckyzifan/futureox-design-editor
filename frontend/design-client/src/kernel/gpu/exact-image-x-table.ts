@@ -53,11 +53,14 @@ function fraction(raw: number): [number, number] | undefined {
   return [numerator, denominator]
 }
 export type ExactImageXTablePlan = {
-  /** X: qx,U,ku,0. Y: qy-rowMin,V,kv,0. Four sample-major arrays. */
+  /** X: qx,U,ku,0, unique program-major. Y: qy-rowMin,V,kv,0,
+   * still four sample-major arrays. No Y phase or sample sum is shared. */
   x: Uint32Array; y: Uint32Array
   /** shape=(w,h,rowMin,rowCount), image=(iw,ih,storedChannels,opaqueAlpha), minimum exponents,
    * output=(stripOffsetX,stripOffsetY,outputWidth,outputHeight). */
   uniform: Uint32Array
+  /** Number of bit-identical complete X programs retained (1..4). */
+  xSampleCount: number
   rowMin: number; rowCount: number; tableBytes: number
   maxKx: number; maxKy: number
 }
@@ -71,26 +74,28 @@ export function imageXTablePlanRange(plan: ExactImageXTablePlan): ExactImageRang
   const original = known.snapshot
   if (!sameWords(plan.x, original.x) || !sameWords(plan.y, original.y) || !sameWords(plan.uniform, original.uniform) ||
       plan.rowMin !== original.rowMin || plan.rowCount !== original.rowCount || plan.tableBytes !== original.tableBytes ||
-      plan.maxKx !== original.maxKx || plan.maxKy !== original.maxKy) return
+      plan.maxKx !== original.maxKx || plan.maxKy !== original.maxKy || plan.xSampleCount !== original.xSampleCount) return
   return known.range
 }
 export function planExactImageXTable(input: {
   axes: readonly Float32Array[]; width: number; height: number
   imageWidth: number; imageHeight: number; range: ExactImageRange
   maxTableBytes?: number
+  /** Exact negative control. False retains four independent X tables. */
+  reuseIdenticalX?: boolean
 }): ExactImageXTablePlan | undefined {
   const { axes, width, height, imageWidth, imageHeight, range } = input
   if (!range || !ranges.has(range) || axes.length !== 4 ||
       ![width, height, imageWidth, imageHeight].every(v => Number.isSafeInteger(v) && v > 0 && v <= 8192) ||
       imageWidth < 2 || imageHeight < 2 || range.pixels !== imageWidth * imageHeight) return
-  const span = Math.max(width, height), x = new Uint32Array(width * 4 * 4), y = new Uint32Array(height * 4 * 4)
+  const span = Math.max(width, height), allX = new Uint32Array(width * 4 * 4), y = new Uint32Array(height * 4 * 4)
   let rowMin = imageHeight, rowMax = 0, maxKx = 0, maxKy = 0
   for (let sample = 0; sample < 4; sample++) {
     const field = axes[sample]
     if (!(field instanceof Float32Array) || !(field.buffer instanceof ArrayBuffer) || field.length !== span * 8 || field[3] !== -1) return
     const fieldBits = new Uint32Array(field.buffer, field.byteOffset, field.length)
     for (let axis = 0; axis < 2; axis++) {
-      const length = axis ? height : width, target = axis ? y : x, limit = axis ? imageHeight : imageWidth
+      const length = axis ? height : width, target = axis ? y : allX, limit = axis ? imageHeight : imageWidth
       for (let i = 0; i < length; i++) {
         const at = (axis * span + i) * 4, cell = field[at], part = fraction(fieldBits[at + 1])
         // This candidate has no contain-margin, border or nonfinite branch.
@@ -103,6 +108,23 @@ export function planExactImageXTable(input: {
       }
     }
   }
+  // Four correlated samples commonly have two complete X programs and four
+  // distinct Y programs. Share only a byte-identical admitted X program: the
+  // source texels, dyadic numerator and exponent must all match at every X.
+  // This removes duplicate integer interpolation work, not any sample phase.
+  const representatives: number[] = [], sampleGroups: number[] = []
+  const xWords = width * 4
+  for (let sample = 0; sample < 4; sample++) {
+    const group = input.reuseIdenticalX === false ? -1 : representatives.findIndex(previous => {
+      for (let word = 0; word < xWords; word++)
+        if (allX[sample * xWords + word] !== allX[previous * xWords + word]) return false
+      return true
+    })
+    if (group >= 0) sampleGroups.push(group)
+    else { sampleGroups.push(representatives.length); representatives.push(sample) }
+  }
+  const xSampleCount = representatives.length, x = new Uint32Array(xWords * xSampleCount)
+  representatives.forEach((sample, group) => x.set(allX.subarray(sample * xWords, (sample + 1) * xWords), group * xWords))
   for (let c = 0; c < 4; c++) {
     const p = 24 + range.maximum[c] - range.minimum[c]
     // |H| < 2^(p+kx), stored signed96. The delta form's two signed
@@ -113,12 +135,12 @@ export function planExactImageXTable(input: {
   // Three exact u32 limbs per signed96 value. Opaque alpha is proved to be
   // one and needs no stored slot; this changes layout, never arithmetic.
   const channels = range.opaqueAlpha ? 3 : 4
-  const tableBytes = 4 * width * rowCount * channels * 12
+  const tableBytes = xSampleCount * width * rowCount * channels * 12
   const budget = input.maxTableBytes ?? 16 * 1024 * 1024
   if (!Number.isSafeInteger(budget) || budget < 0 || !Number.isSafeInteger(tableBytes) || tableBytes > budget) return
   for (let at = 0; at < y.length; at += 4) y[at] -= rowMin
-  const plan = { x, y, rowMin, rowCount, tableBytes, maxKx, maxKy,
-    uniform: new Uint32Array([width, height, rowMin, rowCount, imageWidth, imageHeight, channels, Number(range.opaqueAlpha), ...range.minimum, 0, 0, width, height]) }
+  const plan = { x, y, rowMin, rowCount, tableBytes, maxKx, maxKy, xSampleCount,
+    uniform: new Uint32Array([width, height, rowMin, rowCount, imageWidth, imageHeight, channels, Number(range.opaqueAlpha), ...range.minimum, 0, 0, width, height, ...sampleGroups]) }
   // A WeakMap identity alone does not certify mutable TypedArray contents.
   // Keep an exact private witness; admission rejects later edits before it
   // snapshots GPU inputs. No digest or caller-provided bound grants authority.
@@ -190,7 +212,7 @@ fn xiRound(value:vec4<u32>,quantum:i32)->u32{
  if(rawExponent>=255u){return sign|0x7f800000u;}
  return sign|(rawExponent<<23u)|(mantissa&0x7fffffu);
 }
-struct XiConfig{shape:vec4<u32>,image:vec4<u32>,minimum:vec4<u32>,output:vec4<u32>}
+struct XiConfig{shape:vec4<u32>,image:vec4<u32>,minimum:vec4<u32>,output:vec4<u32>,sampleGroups:vec4<u32>}
 `
 
 /** Build layout: uniform, immutable image, X metadata, writable H table. */
@@ -201,7 +223,7 @@ export const exactImageXTableBuildWgsl = exactImageXTableMathWgsl + `
 @group(0) @binding(3) var<storage,read_write> xiTable:array<u32>;
 @compute @workgroup_size(64) fn buildExactImageXTable(@builtin(global_invocation_id) invocation:vec3<u32>){
  let width=xiConfig.shape.x;let rows=xiConfig.shape.w;let index=invocation.x;
- if(index>=width*rows*4u){return;}
+ if(index>=arrayLength(&xiX)*rows){return;}
  let x=index%width;let row=(index/width)%rows;let sample=index/(width*rows);
  let phase=xiX[sample*width+x];let q=vec2<i32>(i32(phase.x),i32(xiConfig.shape.z+row));
  let a=bitcast<vec4<u32>>(textureLoad(xiImage,q,0));let b=bitcast<vec4<u32>>(textureLoad(xiImage,q+vec2<i32>(1,0),0));
@@ -229,9 +251,10 @@ fn xiTableSigned96(at:u32)->vec4<u32>{
 fn exactImageXTableSample(localPixel:vec2<u32>,sample:u32)->vec4<f32>{
  let pixel=localPixel+xiConfig.output.xy;
  let width=xiConfig.shape.x;let rows=xiConfig.shape.w;
- let x=xiX[sample*width+pixel.x];let y=xiY[sample*xiConfig.shape.y+pixel.y];
+ let group=xiConfig.sampleGroups[sample];
+ let x=xiX[group*width+pixel.x];let y=xiY[sample*xiConfig.shape.y+pixel.y];
  let channels=xiConfig.image.z;let rowStride=width*channels*3u;
- let at=((sample*rows+y.x)*width+pixel.x)*channels*3u;var result=vec4<u32>(0u,0u,0u,0x3f800000u);
+ let at=((group*rows+y.x)*width+pixel.x)*channels*3u;var result=vec4<u32>(0u,0u,0u,0x3f800000u);
  for(var c=0u;c<channels;c=c+1u){
   let a=xiTableSigned96(at+c*3u);let b=xiTableSigned96(at+rowStride+c*3u);
   let value=xiAdd(xiShift(a,y.z),xiTimesWord(xiSub(b,a),y.y));

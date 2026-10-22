@@ -226,9 +226,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const gpuMove = useRef<GpuMoveControl | null>(null)
   const [, gpuReadyChanged] = useState(0)
   const interactionReady = useMemo(() => () => gpuReadyChanged(value => value + 1), [])
-  const gpuInteraction = useMemo<InteractionProps>(() => ({ document: state.doc, selection: state.selection,
-    active: editor.interactionActive, epoch: editor.sessionGeneration, control: gpuMove, onReady: interactionReady }),
-    [state.doc, state.selection, editor.interactionActive, editor.sessionGeneration, interactionReady])
   const gpuMovedOverlays = useRef(new Map<SVGElement, string>())
   const restoreGpuOverlays = () => {
     for (const [element, transform] of gpuMovedOverlays.current) element.style.transform = transform
@@ -597,6 +594,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   snapshots.begin(editor, editor.sessionGeneration, state.page, geometryReady)
   const currentScene = snapshots.currentScene(state.doc, state.page)
   const entries = currentScene.entries
+  const interactionScene = useMemo(() => snapshots.borrowCurrentScene(state.doc, state.page, editor.sessionGeneration),
+    [snapshots, currentScene, state.doc, state.page, editor, editor.sessionGeneration, geometryReady])
+  const gpuInteraction = useMemo<InteractionProps>(() => ({ document: state.doc, selection: state.selection,
+    active: editor.interactionActive, epoch: editor.sessionGeneration, control: gpuMove, onReady: interactionReady,
+    scene: interactionScene }),
+    [state.doc, state.selection, editor.interactionActive, editor.sessionGeneration, interactionReady, interactionScene])
   const sliceEntries = useMemo(() => entries.filter(entry => state.doc.nodes[entry.id].kind === 'slice'),
     [entries, state.doc])
   const lastOpenedSession = useRef(editor.sessionGeneration)

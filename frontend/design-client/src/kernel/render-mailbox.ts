@@ -14,9 +14,13 @@ export class RenderMailbox {
   private queued: RasterJob[] = []
   private running = false
 
+  /** Revoke waiting goals at a known quiet/scope boundary without cancelling
+   * useful work which has already entered the renderer. */
+  discardSuperseded() { this.queued = this.queued.filter(job => this.admit(job)) }
+
   run<T>(current: () => boolean, work: () => Promise<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      this.queued = this.queued.filter(job => this.admit(job))
+      this.discardSuperseded()
       this.queued.push({ current, work, resolve: value => resolve(value as T), reject })
       if (!this.running) {
         this.running = true

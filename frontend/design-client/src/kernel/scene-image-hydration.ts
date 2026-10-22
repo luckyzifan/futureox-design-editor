@@ -16,15 +16,52 @@ export type ImageDecoder = {
   image_linear(uri: string): Float32Array
   image_linear_at_level(uri: string, level: number): Float32Array
 }
-export type ImageContext = { kernel: ImageDecoder; scope: string; settings: string; current?: () => boolean }
+export type ImageContext = { kernel: ImageDecoder; scope: string; settings: string; current?: () => boolean;
+  /** Worker-owned document/resource/kernel fence, independent of one request. */
+  ownerCurrent?: () => boolean }
+
+declare const imageResidencyOwner: unique symbol
+export type ImageResidencyOwner = { readonly [imageResidencyOwner]: true }
+const residencyOwners = new WeakMap<ImageResidencyOwner, { current: () => boolean; revoked: boolean }>()
+const loaderResidency = new WeakMap<object, () => ImageResidencyOwner | undefined>()
+export function imageResidencyOwnerCurrent(owner: ImageResidencyOwner): boolean {
+  const entry = residencyOwners.get(owner)
+  if (!entry || entry.revoked) return false
+  try { if (entry.current()) return true } catch { /* Fail closed on unknown ownership. */ }
+  entry.revoked = true
+  return false
+}
+function revokeOwner(owner: ImageResidencyOwner | undefined) {
+  const entry = owner && residencyOwners.get(owner)
+  if (entry) entry.revoked = true
+}
+/** Only loaders made here can grant this private capability. No scene field,
+ * public function property, URI or mutable typed-array identity is a proof. */
+export function imageLoaderResidencyOwner(loader: unknown): ImageResidencyOwner | undefined {
+  return typeof loader === 'function' ? loaderResidency.get(loader)?.() : undefined
+}
 
 /** The renderer is shared between document lanes. Resolve its decoder from the
  * explicitly bound render context, never from the lane that created the GPU. */
 export function managedSceneImageLoader(cache: DecodedImageCache, context: () => ImageContext,
   persistence: ImagePersistence) {
-  return (uri: string, byte = false, level = 0) => {
-    const { kernel, scope, settings, current } = context()
-    if (current && !current()) throw Error('PREVIEW_CANCELLED')
+  let retained: { owner: ImageResidencyOwner; kernel: ImageDecoder; scope: string; settings: string } | undefined
+  const revokedRequests = new WeakSet<ImageContext>()
+  const checkRequest = (next: ImageContext) => {
+    const current = !next.current || next.current()
+    if (next.ownerCurrent && (revokedRequests.has(next) || !current)) {
+      revokedRequests.add(next)
+      throw Error('PREVIEW_CANCELLED')
+    }
+    if (!current) throw Error('PREVIEW_CANCELLED')
+  }
+  const load = (uri: string, byte = false, level = 0) => {
+    const next = context()
+    checkRequest(next)
+    if (next.ownerCurrent && !next.ownerCurrent()) {
+      revokeOwner(retained?.owner); retained = undefined; throw Error('PREVIEW_CANCELLED')
+    }
+    const { kernel, scope, settings } = next
     cache.begin(scope)
     const key = `${byte ? 'b' : 'f'}:${uri}`
     if (level === 0) {
@@ -49,6 +86,33 @@ export function managedSceneImageLoader(cache: DecodedImageCache, context: () =>
     return byte ? { width, height, pixels: new Float32Array(0), bytes: data as Uint8Array }
       : { width, height, pixels: data as Float32Array }
   }
+  loaderResidency.set(load, () => {
+    let next: ImageContext
+    try {
+      next = context()
+      if (!next.ownerCurrent ||
+          typeof next.scope !== 'string' || !next.scope || typeof next.settings !== 'string') {
+        revokeOwner(retained?.owner); retained = undefined; return
+      }
+      if (!next.ownerCurrent()) {
+        revokeOwner(retained?.owner); retained = undefined; throw Error('PREVIEW_CANCELLED')
+      }
+    } catch (error) { revokeOwner(retained?.owner); retained = undefined; throw error }
+    // An obsolete request cannot borrow pixels, but does not revoke its still
+    // synchronized document owner. The next request gets a fresh context.
+    checkRequest(next)
+    if (retained && (!imageResidencyOwnerCurrent(retained.owner) || retained.kernel !== next.kernel ||
+        retained.scope !== next.scope || retained.settings !== next.settings)) {
+      revokeOwner(retained.owner); retained = undefined
+    }
+    if (!retained) {
+      const owner = Object.freeze({}) as ImageResidencyOwner
+      residencyOwners.set(owner, { current: next.ownerCurrent!, revoked: false })
+      retained = { owner, kernel: next.kernel, scope: next.scope, settings: next.settings }
+    }
+    return retained.owner
+  })
+  return load
 }
 
 /** One request's optional persistent reads. The exact compiler owns dependency

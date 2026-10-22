@@ -27,7 +27,8 @@ export function sceneIndex(scene: GpuScene): SceneIndex {
     hasReplay ||= !!n.textureReplay
     for (const effect of n.effects) if (effect.visible) {
       hasFilters ||= ['blur','shadow','inner-shadow','background-blur','glass'].includes(effect.kind)
-      if (effect.kind==='blur'||effect.kind==='shadow'||effect.kind==='glass') {
+      if (effect.kind==='blur'||effect.kind==='shadow'||effect.kind==='glass'||
+          effect.kind==='background-blur'&&import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX==='1') {
         const radius=(effect.kind==='glass'&&effect.glass?Math.max(1,effect.radius):effect.radius)*sceneScale(n.matrix)
         hasPrefixFilter ||= radius>=PREFIX_MIN_RADIUS&&radius<=2048
       }
