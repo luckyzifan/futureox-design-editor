@@ -5,6 +5,8 @@ import { PageTranslation } from './page-translation'
 import type { InteractionProps } from './interaction-layers'
 import {KernelClient} from './client'
 import * as geometry from '../geometry'
+import { CanvasSceneSnapshots } from '../canvas-scene-snapshots'
+import { buildInteractionDependencyScope } from './interaction-scene-bounds'
 
 const worker = vi.hoisted(() => ({ jobs: [] as any[], poses:[] as any[],stops:[] as number[],released:[] as number[],disposed: 0 }))
 vi.mock('./client', () => ({ KernelClient: class {
@@ -806,4 +808,65 @@ test('a transferred pending pose outside the worker capture guard still rebuilds
   expect(worker.jobs).toHaveLength(2)
   expect(worker.jobs[1].document.nodes[f.child.id].transform).toEqual(f.transform(60))
   expect(f.doc.nodes[f.child.id].transform).toEqual(f.transform(0))
+})
+
+
+test('navigation restoration borrows the published Canvas scene while recomputing camera-dependent scope', () => {
+  vi.stubEnv('VITE_DESIGN_LOCAL_BACKDROP', '1')
+  const doc = blank(), root = node('frame', 0, 0, 240, 180), child = node('rectangle', 40, 40, 24, 20)
+  root.blend = 'normal'; root.clip = true; root.effects = [effect('background-blur')]; root.children = [child.id]
+  doc.nodes[root.id] = root; doc.nodes[child.id] = child; doc.pages[0].children = [root.id]
+  const pageId = doc.pages[0].id, epoch = 1, store = new CanvasSceneSnapshots()
+  store.begin({}, epoch, pageId, true)
+  const snapshot = store.currentScene(doc, pageId), borrowed = store.borrowCurrentScene(doc, pageId, epoch)!
+  const owner = new InteractionRenderer(vi.fn()); owners.push(owner)
+  const props: InteractionProps = { document: doc, selection: [child.id], active: false, epoch,
+    control: { current: null }, onReady: vi.fn(), scene: borrowed }
+  const before = JSON.stringify(snapshot.entries), lookup = vi.spyOn(geometry, 'scene')
+  try {
+    for (const [zoom, dpr] of [[.25, 1], [32, 2], [1, 2], [32, 1]] as const) {
+      const view = { x: zoom * 3.25, y: -zoom * 2.5, zoom }
+      owner.prepare(undefined, pageId, view, dpr, 'analytic', 'cpu')
+      owner.prepare(props, pageId, view, dpr, 'analytic', 'cpu', doc, { width: 640, height: 480 })
+      const expected = buildInteractionDependencyScope(doc, pageId, snapshot.entries, props.selection,
+        { zoom, dpr, allowFixedBackdrop: true })
+      const actual = (owner as any).resident
+      for (const field of ['rootBounds', 'parentLinear', 'localizedBounds', 'fixedBounds', 'dependencyPadding', 'finalForeground'] as const)
+        expect(actual[field]).toEqual(expected[field])
+      expect(props.control.current).toBe(owner.control)
+    }
+    expect(lookup).not.toHaveBeenCalled()
+    expect(JSON.stringify(snapshot.entries)).toBe(before)
+    expect(props.onReady).toHaveBeenCalledTimes(8)
+    expect(worker.jobs).toHaveLength(0)
+  } finally { lookup.mockRestore() }
+})
+
+test('missing or stale Canvas borrow falls back to fresh geometry, including standalone mutable inputs', () => {
+  const doc = blank(), root = node('frame', 0, 0, 240, 180), child = node('rectangle', 40, 40, 24, 20)
+  root.blend = 'normal'; root.children = [child.id]
+  doc.nodes[root.id] = root; doc.nodes[child.id] = child; doc.pages[0].children = [root.id]
+  const pageId = doc.pages[0].id, epoch = 1, store = new CanvasSceneSnapshots()
+  store.begin({}, epoch, pageId, true); store.currentScene(doc, pageId)
+  const borrowed = store.borrowCurrentScene(doc, pageId, epoch)!
+  const owner = new InteractionRenderer(vi.fn()); owners.push(owner)
+  const props: InteractionProps = { document: doc, selection: [child.id], active: false, epoch,
+    control: { current: null }, onReady() {} }
+  const view = { x: 0, y: 0, zoom: 1 }, lookup = vi.spyOn(geometry, 'scene')
+  try {
+    owner.prepare(props, pageId, view, 1, 'analytic', 'cpu', doc, { width: 640, height: 480 })
+    expect(lookup).toHaveBeenCalledTimes(1)
+    owner.prepare(undefined, pageId, view, 1, 'analytic', 'cpu')
+    // Ordinary standalone callers supply no immutable publication capability.
+    child.width = 100
+    owner.prepare(props, pageId, view, 1, 'analytic', 'cpu', doc, { width: 640, height: 480 })
+    expect(lookup).toHaveBeenCalledTimes(2)
+    expect((owner as any).resident.rootBounds.get(child.id).width).toBe(100)
+    owner.prepare(undefined, pageId, view, 1, 'analytic', 'cpu')
+    const changed = { ...doc, nodes: { ...doc.nodes, [child.id]: { ...child, width: 120 } } }
+    owner.prepare({ ...props, document: changed, scene: borrowed }, pageId, view, 1, 'analytic', 'cpu', changed,
+      { width: 640, height: 480 })
+    expect(lookup).toHaveBeenCalledTimes(3)
+    expect((owner as any).resident.rootBounds.get(child.id).width).toBe(120)
+  } finally { lookup.mockRestore() }
 })

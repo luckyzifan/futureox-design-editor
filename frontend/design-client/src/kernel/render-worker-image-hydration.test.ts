@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   keys: [] as { uri: string; variant: string; settings: string }[], reads: [] as string[],
   scenes: [] as any[], loads: [] as { uri: string; render: number; bytes?: Uint8Array; pixels: Float32Array }[],
   readGate: undefined as undefined | Promise<unknown>, keyGate: undefined as undefined | Promise<void>,
+  renderGate: undefined as undefined | Promise<void>, renderBlocked: false, bitmaps: [] as any[],
   font: undefined as Uint8Array | undefined,
   disposed: [] as number[], createCount: 0, onPost: undefined as undefined | ((value: any) => void),
 }))
@@ -49,10 +50,14 @@ vi.mock('./gpu/factory', async () => {
               pixels: image instanceof Float32Array ? image : new Float32Array(),
               bytes: image instanceof Uint8Array ? image : undefined })
           }
+          if (state.renderGate) { state.renderBlocked = true; await state.renderGate }
           // Mock transport only. Pixel/texture equivalence is separately tested
           // with the real WASM and production GpuRenderer upload path.
-          if (!readback && present && (globalThis as any).__mockBitmapPreview)
-            return { bitmap: { width: scene.width, height: scene.height, close: vi.fn() }, drawCalls: 0, triangles: 0 }
+          if (!readback && present && (globalThis as any).__mockBitmapPreview) {
+            const bitmap = { width: scene.width, height: scene.height, close: vi.fn() }
+            state.bitmaps.push(bitmap)
+            return { bitmap, drawCalls: 0, triangles: 0 }
+          }
           return { rgba: new Uint8Array((scene.presentation?.width ?? scene.resolve?.width ?? scene.width) *
             (scene.presentation?.height ?? scene.resolve?.height ?? scene.height) * 4), drawCalls: 0, triangles: 0 }
         },
@@ -63,7 +68,7 @@ vi.mock('./gpu/factory', async () => {
 const channels: MessageChannel[] = []
 const NativeMessageChannel = MessageChannel
 const wasm = new Uint8Array(readFileSync(new URL('../../public/kernel/design_kernel_bg.wasm', import.meta.url)))
-afterEach(() => { channels.splice(0).forEach(pair => { pair.port1.close(); pair.port2.close() }); vi.unstubAllGlobals() })
+afterEach(() => { channels.splice(0).forEach(pair => { pair.port1.close(); pair.port2.close() }); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 function fixture(count = 1000) {
   const doc = blank('Worker hydration fixture'); doc.id = 'worker-image-document'; doc.pages[0].id = 'visible'
   doc.pages.push({ ...doc.pages[0], id: 'other', name: 'Other page', children: [] })
@@ -78,9 +83,9 @@ function fixture(count = 1000) {
   const options = { pageId: 'visible', width: 48, height: 16, view: { x: 0, y: 0, zoom: 1 }, rasterProfile: 'analytic', renderIntent: 'canvas' }
   return { doc, images, options }
 }
-async function worker(desktopFullMath = false, withPreparation = false) {
+async function worker(desktopFullMath = false, withPreparation = false, desktopDisplay = false) {
   vi.resetModules()
-  Object.assign(state, { failAttach: false, failBudgetOnce: false, renders: [], transfers: [], keys: [], reads: [], scenes: [], loads: [], keyGate: undefined, readGate: undefined, disposed: [], createCount: 0, onPost: undefined })
+  Object.assign(state, { failAttach: false, failBudgetOnce: false, renders: [], transfers: [], keys: [], reads: [], scenes: [], loads: [], keyGate: undefined, readGate: undefined, renderGate: undefined, renderBlocked: false, bitmaps: [], disposed: [], createCount: 0, onPost: undefined })
   state.font = withPreparation ? new Uint8Array(readFileSync(new URL('../../public/fonts/NotoSansSC.ttf', import.meta.url))) : undefined
   const kernel = await import('../generated/design-kernel/design_kernel')
   await kernel.default({ module_or_path: wasm })
@@ -99,7 +104,7 @@ async function worker(desktopFullMath = false, withPreparation = false) {
   })
   await import('./render-worker')
   if (preparationPort) scope.onmessage({ data: { command: 'prepare-port', port: preparationPort } })
-  const executionPolicy = createRenderPolicy(false, false, false, false, desktopFullMath)
+  const executionPolicy = createRenderPolicy(false, false, false, false, desktopFullMath, desktopDisplay)
   const send = (request: any) => scope.onmessage({ data: { executionPolicy, backend: 'auto', ...request } })
   const finish = async (id: number) => {
     await vi.waitFor(() => expect(messages.some(value => value.id === id && (value.backend || value.error))).toBe(true))
@@ -354,6 +359,76 @@ for (const desktopFullMath of [false, true]) test(`regional preview recovery pre
   expect(next.bitmap).toBeDefined()
   expect(state.renders.slice(count).every(r => !r.readback && r.present && r.scene.displayFilters === !desktopFullMath)).toBe(true)
   expect(state.createCount).toBe(1)
+})
+
+function nativePreviewHost() {
+  vi.stubEnv('VITE_DESIGN_NATIVE_PREVIEW_TILES', '1')
+  vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION', '1')
+  vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
+  vi.stubGlobal('__mockBitmapPreview', true)
+  const publish = vi.fn(function (this: { width: number; height: number }) {
+    return { width: this.width, height: this.height, close: vi.fn() }
+  })
+  vi.stubGlobal('OffscreenCanvas', class {
+    constructor(public width: number, public height: number) {}
+    getContext() { return { drawImage: vi.fn(), imageSmoothingEnabled: false } }
+    transferToImageBitmap = publish
+  })
+  return publish
+}
+
+test.each(['large', 'small', 'flag-off', 'fallback-off'] as const)('native preview tiles %s uses the actual worker route before any whole GPU graph', async variant => {
+  const publish = nativePreviewHost(), f = fixture(4), w = await worker(true, false, true)
+  const compile = vi.spyOn(w.kernel.VectorEngine.prototype, 'compile_gpu_packet')
+  if (variant === 'flag-off') vi.stubEnv('VITE_DESIGN_NATIVE_PREVIEW_TILES', '0')
+  const large = variant !== 'small', selected = variant === 'large'
+  const options = { ...f.options, width: large ? 1050 : 1024, height: large ? 1000 : 1024,
+    transparent: false, rasterProfile: 'figmaSubpixel', view: { x: -.25, y: .75, zoom: 32 },
+    livePreview: true, previewTileFallback: variant !== 'fallback-off', renderIntent: 'preview' }
+  w.send({ command: 'display-attach', canvas: {} })
+  w.send({ id: 301, backend: 'webgpu', document: JSON.stringify(f.doc), documentRevision: 1, options })
+  const result = await w.finish(301)
+  expect(result.error).toBeUndefined(); expect(result.bitmap).toBeDefined()
+  expect(result.bitmap.width).toBe(options.width); expect(result.bitmap.height).toBe(options.height)
+  expect(state.renders.every(render => !render.readback && render.present && render.scene.displayFilters === false)).toBe(true)
+  expect(state.renders.every(render => JSON.stringify(render.scene.view) === JSON.stringify(options.view))).toBe(true)
+  if (selected) {
+    expect(result.previewLane).toBe('regional-fallback'); expect(state.renders.length).toBeGreaterThan(1)
+    expect(state.renders.every(render => render.scene.output && render.scene.output.w <= 256 && render.scene.output.h <= 256)).toBe(true)
+    expect(compile.mock.calls.length).toBeGreaterThan(1)
+    expect(compile.mock.calls.every(([wire]) => {
+      const options = JSON.parse(wire)
+      return options.gpuViewport && options.gpuViewport.w <= 256 && options.gpuViewport.h <= 256
+    })).toBe(true)
+    expect(publish).toHaveBeenCalledOnce(); expect(state.bitmaps.every(bitmap => bitmap.close.mock.calls.length === 1)).toBe(true)
+  } else {
+    expect(result.previewLane).toBe('whole-scene'); expect(state.renders).toHaveLength(1)
+    expect(state.renders[0].scene.output).toBeUndefined(); expect(publish).not.toHaveBeenCalled()
+    expect(compile).toHaveBeenCalledOnce(); expect(JSON.parse(compile.mock.calls[0][0]).gpuViewport).toBeUndefined()
+  }
+  expect(state.createCount).toBe(1); expect(state.disposed).toEqual([])
+})
+
+test('native preview tiles cancellation closes its leaf and never publishes a partial assembly or compiles the next region', async () => {
+  const publish = nativePreviewHost(), f = fixture(4), w = await worker(true, false, true)
+  const compile = vi.spyOn(w.kernel.VectorEngine.prototype, 'compile_gpu_packet')
+  let resume!: () => void
+  state.renderGate = new Promise<void>(resolve => { resume = resolve })
+  w.send({ command: 'display-attach', canvas: {} })
+  w.send({ id: 302, backend: 'webgpu', document: JSON.stringify(f.doc), documentRevision: 1,
+    options: { ...f.options, width: 1050, height: 1000, transparent: false, rasterProfile: 'figmaSubpixel',
+      livePreview: true, previewTileFallback: true, renderIntent: 'preview' } })
+  await vi.waitFor(() => expect(state.renderBlocked).toBe(true))
+  expect(state.renders).toHaveLength(1)
+  expect(state.renders[0].scene.output).toBeDefined()
+  expect(w.messages.some(value => value.id === 302 && (value.backend || value.error))).toBe(false)
+  w.send({ command: 'cancel-request', requestId: 302 })
+  resume()
+  const result = await w.finish(302)
+  expect(result.error).toContain('PREVIEW_CANCELLED'); expect(state.renders).toHaveLength(1)
+  expect(compile).toHaveBeenCalledOnce(); expect(JSON.parse(compile.mock.calls[0][0]).gpuViewport).toBeDefined()
+  expect(publish).not.toHaveBeenCalled(); expect(state.bitmaps).toHaveLength(1)
+  expect(state.bitmaps[0].close).toHaveBeenCalledOnce()
 })
 
 for (const mode of ['readback', 'webgl2', 'transparent'] as const) test(`regional ${mode} preview keeps byte transport`, async () => {

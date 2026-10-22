@@ -1,6 +1,18 @@
 import { validGpuWorkingBudgetMiB } from '../render-policy'
 
 const MiB = 1024 * 1024
+/** The launch flag and actual render-call output are trusted host inputs.
+ * Scene display hints and captureDisplay do not grant this new admission.
+ * Bitmap assembly is also a real SDR presentation, so it keeps the same
+ * working policy as the resident four-phase producer. Sampling is unchanged. */
+export function usesNativeNavigationWorkingBudget(flag: unknown, boundary: {
+  driverName?: unknown; managed?: unknown; hdr?: unknown;
+  readback?: unknown; present?: unknown; softwareRaster?: unknown
+}) {
+  return flag === '1' && boundary.driverName === 'webgpu' && boundary.managed === true && boundary.hdr === false &&
+    boundary.readback === false && boundary.present === true &&
+    (boundary.softwareRaster === undefined || boundary.softwareRaster === false)
+}
 /** Admission policy, not a claim about free VRAM. WebGPU exposes per-resource
  * limits but no reliable remaining-memory query. Grow for the actual physical
  * render target; never lower sampling density to meet this policy. */

@@ -65,13 +65,13 @@ export class ImageXTablePipeline {
       if(errors.length)throw Error(errors.map(message=>message.lineNum+':'+message.message).join('\n'))
     }
     const buildLayout=device.createBindGroupLayout({entries:[
-      {binding:0,visibility:GPUShaderStage.COMPUTE,buffer:{type:'uniform',minBindingSize:64}},
+      {binding:0,visibility:GPUShaderStage.COMPUTE,buffer:{type:'uniform',minBindingSize:80}},
       {binding:1,visibility:GPUShaderStage.COMPUTE,texture:{sampleType:'unfilterable-float'}},
       {binding:2,visibility:GPUShaderStage.COMPUTE,buffer:{type:'read-only-storage'}},
       {binding:3,visibility:GPUShaderStage.COMPUTE,buffer:{type:'storage'}},
     ]})
     const drawLayout=device.createBindGroupLayout({entries:[
-      {binding:0,visibility:GPUShaderStage.FRAGMENT,buffer:{type:'uniform',minBindingSize:64}},
+      {binding:0,visibility:GPUShaderStage.FRAGMENT,buffer:{type:'uniform',minBindingSize:80}},
       ...[1,2,3].map(binding=>({binding,visibility:GPUShaderStage.FRAGMENT,buffer:{type:'read-only-storage' as const}})),
     ]})
     const build=await device.createComputePipelineAsync({layout:device.createPipelineLayout({bindGroupLayouts:[buildLayout]}),
@@ -81,20 +81,20 @@ export class ImageXTablePipeline {
       primitive:{topology:'triangle-list'}})
     return new ImageXTablePipeline(device,buildLayout,drawLayout,build,draw)
   }
-  encodeBuild(encoder:GPUCommandEncoder,image:GPUTexture,storage:ImageXTableStorage){
+  encodeBuild(encoder:GPUCommandEncoder,image:GPUTexture,storage:ImageXTableStorage,timestampWrites?:GPUComputePassTimestampWrites){
     const group=this.device.createBindGroup({layout:this.buildLayout,entries:[
-      {binding:0,resource:{buffer:storage.uniform,size:64}},{binding:1,resource:image.createView()},
+      {binding:0,resource:{buffer:storage.uniform,size:80}},{binding:1,resource:image.createView()},
       {binding:2,resource:{buffer:storage.x}},{binding:3,resource:{buffer:storage.table}},
     ]})
-    const pass=encoder.beginComputePass();pass.setPipeline(this.build);pass.setBindGroup(0,group)
-    pass.dispatchWorkgroups(Math.ceil(storage.width*storage.plan.rowCount*4/64));pass.end()
+    const pass=encoder.beginComputePass(timestampWrites?{timestampWrites}:undefined);pass.setPipeline(this.build);pass.setBindGroup(0,group)
+    pass.dispatchWorkgroups(Math.ceil(storage.width*storage.plan.rowCount*storage.plan.xSampleCount/64));pass.end()
   }
-  encodeResolve(encoder:GPUCommandEncoder,target:GPUTexture,storage:ImageXTableStorage,uniform:GPUBufferBinding){
+  encodeResolve(encoder:GPUCommandEncoder,target:GPUTexture,storage:ImageXTableStorage,uniform:GPUBufferBinding,timestampWrites?:GPURenderPassTimestampWrites){
     const group=this.device.createBindGroup({layout:this.drawLayout,entries:[
       {binding:0,resource:uniform},{binding:1,resource:{buffer:storage.x}},
       {binding:2,resource:{buffer:storage.y}},{binding:3,resource:{buffer:storage.table}},
     ]})
-    const pass=encoder.beginRenderPass({colorAttachments:[{view:target.createView(),loadOp:'clear',storeOp:'store',clearValue:[0,0,0,0]}]})
+    const pass=encoder.beginRenderPass({...(timestampWrites?{timestampWrites}:{}),colorAttachments:[{view:target.createView(),loadOp:'clear',storeOp:'store',clearValue:[0,0,0,0]}]})
     pass.setPipeline(this.draw);pass.setBindGroup(0,group);pass.draw(3);pass.end()
   }
 }

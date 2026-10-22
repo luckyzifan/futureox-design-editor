@@ -6,6 +6,9 @@ import { boundedPatchWire, supportsAcknowledgedPropertyPatch } from './authored-
 import type { PreparationStateReceiptV1 } from './preparation-state'
 import { samePreparationReceipt } from './authored-preparation-binding'
 import { renderQualityContract } from './render-quality'
+import { usesPainterCaptureReads, usesPainterSupport } from './painter-support-policy'
+import { stampDisplayTentRadius, usesDisplayTentRadiusIntent } from './display-tent-radius-intent'
+import { usesNativePreviewTiles } from './native-preview-tiles-policy'
 import { createRenderDiagnostics, snapshotResourceFields, setGpuDiagnosticSink, setGpuDiagnosticsDetail } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { renderFailureEnvelope, renderErrorWithBudget } from './render-diagnostics'
@@ -263,11 +266,12 @@ const managedImageLoader = managedSceneImageLoader(diskImageCache, () => {
 function sceneImageHydration(kernel: RenderKernel, current: () => boolean) {
   const lane = activeLane, generation = laneState.documentGeneration, resources = laneState.resourceGeneration, promise = laneState.enginePromise
   const owner = laneState.decodedImageOwner
-  const context = { kernel, settings: kernel.color_settings(),
+  const context: ImageContext = { kernel, settings: kernel.color_settings(),
     scope: decodedImageScope(owner, kernel.color_settings()) }
   const ownerCurrent = () => activeLane === lane && laneState.documentGeneration === generation &&
     laneState.resourceGeneration === resources && laneState.enginePromise === promise && laneState.decodedImageOwner === owner &&
     kernel.color_settings() === context.settings
+  context.ownerCurrent = ownerCurrent
   const hydration = new SceneImageHydration(diskImageCache, context, imagePersistence, ownerCurrent, current)
   return async (scene: GpuScene, isCurrent = current) => {
     const hydrationStarted=terminalDiagnostics.enabled?performance.now():0
@@ -376,7 +380,8 @@ function schedulePose(){
             floatCompositing:session.scene.floatCompositing,pairedDisplayFilters:session.scene.pairedDisplayFilters,
             compactImageFields:session.scene.compactImageFields,displayFilters:session.scene.displayFilters,
             displayFilterRadiusLimit:session.scene.displayFilterRadiusLimit,
-            displayImageSource:session.scene.displayImageSource,displayMaterialSource:session.scene.displayMaterialSource}
+            displayImageSource:session.scene.displayImageSource,displayMaterialSource:session.scene.displayMaterialSource,
+            displayTentRadius:session.scene.displayTentRadius}
           next=reuseExactSceneSources(session.scene,next,session.patch?.changedNodes)
         }else next=session.patch?session.patch.prepare(session.scene,pose.transforms,window):
           translatePreviewScene({...session.scene,interactionWindow:window},session.document,document!)
@@ -411,6 +416,7 @@ function schedulePose(){
             geometryUploadBytes:gpu.driver.stats?.().geometryUploadBytes,
             residentProgramHits:gpu.driver.stats?.().residentProgramHits,residentProgramHitBytes:gpu.driver.stats?.().residentProgramHitBytes,
             graphMs:result.graphMs,finishMs:result.finishMs,groupHits:result.retainedGroupHits,
+            displayTentRadiusPasses:result.displayTentRadiusPasses,displayTentRadiusPixels:result.displayTentRadiusPixels,
             posePrepareMs,documentMs,translationMs,patchSession:!!session.patch,affectedNodes:session.patch?.affectedNodes,
             passTimings:gpu.driver.stats?.().passTimings,
             groupBytes:result.retainedGroupBytes,prefixHits:result.retainedPrefixHits,fieldHits:result.materialFieldHits,checkpointMs:result.checkpointMs,fieldMs:result.materialFieldBuildMs,
@@ -635,6 +641,15 @@ self.onmessage = (e) => {
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
         tilePrepareViewport: requestedPrepareViewport, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
+      // Never accept display arithmetic authority from caller or document fields.
+      delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
+      renderOptions.gpuPainterSupport = usesPainterSupport(import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX,
+        { backend, renderIntent, livePreview, tileViewport, png: request.png, exportFormat,
+          exportRegion: renderOptions.exportRegion, pixelPreview: renderOptions.pixelPreview,
+          rasterProfile: renderOptions.rasterProfile, interaction: channel === 'interaction' || retainInteraction,
+          grid: renderOptions.grid, checkerboard: renderOptions.checkerboard })
+      renderOptions.gpuPainterCaptureReads = usesPainterCaptureReads(import.meta.env.VITE_DESIGN_PAINTER_CAPTURE_READS,
+        renderOptions.gpuPainterSupport)
       if(terminalDiagnostics.enabled && renderIntent==='canvas')gridMeasurements.record({gridKind:1,gridVisible:Number(!!renderOptions.grid&&!renderOptions.transparent&&renderOptions.view.zoom>0.13),gridSpacingClass:3,gridRedrawReason:2})
       const previewCurrent = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
         (!tileViewport || channel !== 'canvas' || fillGeneration === tileFillGeneration)
@@ -667,6 +682,10 @@ self.onmessage = (e) => {
           pixelPreview: renderOptions.pixelPreview })
       const canvasImageSource = import.meta.env.VITE_DESIGN_DESKTOP_IMAGE_SOURCE === '1' &&
         usesDesktopDisplay(executionPolicy, { renderIntent, rasterProfile: renderOptions.rasterProfile,
+          png: request.png, readback: request.readback, exportFormat, exportRegion: renderOptions.exportRegion,
+          pixelPreview: renderOptions.pixelPreview })
+      const canvasTentRadius = usesDisplayTentRadiusIntent(import.meta.env.VITE_DESIGN_DISPLAY_TENT_RADIUS,
+        import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX, executionPolicy, { renderIntent, rasterProfile: renderOptions.rasterProfile,
           png: request.png, readback: request.readback, exportFormat, exportRegion: renderOptions.exportRegion,
           pixelPreview: renderOptions.pixelPreview })
       const canvasMaterialSource = import.meta.env.VITE_DESIGN_DISPLAY_MATERIAL_SOURCE === '1' &&
@@ -985,7 +1004,7 @@ self.onmessage = (e) => {
               canvasDisplayFilters,
               boundedDisplayLimit,
               canvasMath,
-              canvasImageSource, canvasMaterialSource,
+              canvasImageSource, canvasMaterialSource, canvasTentRadius,
               renderOptions.grid,
               renderOptions.checkerboard,
               renderOptions.pixelPreview,
@@ -1007,7 +1026,8 @@ self.onmessage = (e) => {
               milliseconds = 0, tileCompileMs = 0, tileGraphMs = 0, tileFinishMs = 0, tileCheckpointMs = 0,
               tileFieldMs = 0, tileFieldBytes = 0, tileFieldBuilds = 0,
               tilePeakTextureBytes = 0, tileFinishTransientBytes = 0, tileWorkingTextureBytes = 0, tileDrawCalls = 0, tileTriangles = 0,
-              tileLeaves = 0, tileBitmapLeaves = 0, tileBudgetInjections = 0
+              tileLeaves = 0, tileBitmapLeaves = 0, tileBudgetInjections = 0,
+              tileDisplayTentRadiusPasses = 0, tileDisplayTentRadiusPixels = 0
             const cameraDependent = tileComputationDependsOnCamera(renderOptions, !!color)
             const requestPreference: BackendPreference | undefined = preference
             const batchStarted = performance.now(), packetHitsBefore = kernel.packetCacheHits
@@ -1128,7 +1148,7 @@ self.onmessage = (e) => {
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
                   prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
                   () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
-                    tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource)
+                    tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius)
                 undelivered = result
                 if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
@@ -1155,6 +1175,8 @@ self.onmessage = (e) => {
                 tilePeakTextureBytes = Math.max(tilePeakTextureBytes, result.peakTextureBytes)
                 tileFinishTransientBytes = Math.max(tileFinishTransientBytes, result.finishTransientBytes ?? 0)
                 tileWorkingTextureBytes = Math.max(tileWorkingTextureBytes, result.workingTextureBytes)
+                tileDisplayTentRadiusPasses += 'displayTentRadiusPasses' in result ? result.displayTentRadiusPasses : 0
+                tileDisplayTentRadiusPixels += 'displayTentRadiusPixels' in result ? result.displayTentRadiusPixels : 0
                 tileDrawCalls += result.drawCalls
                 tileTriangles += result.triangles
               }
@@ -1221,6 +1243,8 @@ self.onmessage = (e) => {
                     materialFieldBuilds: result.materialFieldBuilds,
                     materialFieldBuildMs: result.materialFieldBuildMs,
                     materialFieldUploadBytes: result.materialFieldUploadBytes,
+                    displayTentRadiusPasses: 'displayTentRadiusPasses' in result ? result.displayTentRadiusPasses : 0,
+                    displayTentRadiusPixels: 'displayTentRadiusPixels' in result ? result.displayTentRadiusPixels : 0,
                     ...('imageXTableBuilds' in result ? {wholeFilterAxes:result.wholeFilterAxes,opaqueTentPasses:result.opaqueTentPasses,imageXTableBuilds:result.imageXTableBuilds,imageXTablePixels:result.imageXTablePixels,imageXTableBytes:result.imageXTableBytes} : {}),
                     ...('staticImageBlurHits' in result ? {staticImageBlurEligible:result.staticImageBlurEligible,staticImageBlurHits:result.staticImageBlurHits,
                       staticImageBlurPixels:result.staticImageBlurPixels,staticImageBlurBytes:result.staticImageBlurBytes,staticImageBlurEntries:result.staticImageBlurEntries} : {}),
@@ -1294,6 +1318,8 @@ self.onmessage = (e) => {
               tileCacheBytes: tileCaches.bytes,
               tileCacheEvictions: tileCaches.evictions,
               drawCalls: tileDrawCalls,
+              displayTentRadiusPasses: tileDisplayTentRadiusPasses,
+              displayTentRadiusPixels: tileDisplayTentRadiusPixels,
               triangles: tileTriangles,
               peakTextureBytes: tilePeakTextureBytes,
               finishTransientBytes: tileFinishTransientBytes,
@@ -1307,7 +1333,14 @@ self.onmessage = (e) => {
           }
           if (
             livePreview && !canvasViewportCapture &&
-            (tiledPreviewMode || (import.meta.env.DEV && request.debug?.forcePreviewTiles))
+            (tiledPreviewMode || (import.meta.env.DEV && request.debug?.forcePreviewTiles) ||
+              usesNativePreviewTiles({ tiles: import.meta.env.VITE_DESIGN_NATIVE_PREVIEW_TILES,
+                navigation: import.meta.env.VITE_DESIGN_NATIVE_NAVIGATION,
+                exactClamp: import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX }, executionPolicy, {
+                ...renderOptions, backend, renderIntent, livePreview, previewTileFallback, tileViewport,
+                interaction: channel === 'interaction' || retainInteraction || !!_retainInteractionGraph || !!_interactionChannel,
+                png: request.png, readback: request.readback, exportFormat,
+              }))
           ) {
             await synchronizeDeferred()
             const result = await renderTiledPreview(
@@ -1316,7 +1349,7 @@ self.onmessage = (e) => {
               backend,
               color,
               settingsJson,
-              256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit, canvasMaterialSource,
+              256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
             )
             self.postMessage(
               { id: request.id, ...result, loadMs, previewLane: 'regional-fallback', previewReadback: !result.bitmap && !result.gpuTile, residentAttached: !!displayCanvas },
@@ -1372,6 +1405,7 @@ self.onmessage = (e) => {
           scene!.displayFilterRadiusLimit = boundedDisplayLimit
           scene!.displayImageSource = canvasImageSource
           scene!.displayMaterialSource = canvasMaterialSource
+          stampDisplayTentRadius(scene!, canvasTentRadius, backend)
           scene!.sequentialDisplay = canvasSequentialDisplay && backend === 'webgpu'
           if (canvasViewportCapture && backend !== 'webgpu') throw Error('SEQUENTIAL_DISPLAY_UNSUPPORTED')
           const floating = scene!.floatCompositing
@@ -1502,6 +1536,8 @@ self.onmessage = (e) => {
               compileCacheHit,
               retainedGroupHits: result.retainedGroupHits,
               pairedFilterPasses: result.pairedFilterPasses,
+              displayTentRadiusPasses: result.displayTentRadiusPasses,
+              displayTentRadiusPixels: result.displayTentRadiusPixels,
               displayMath: gpu.driver.displayMath === true,
               imageAxisFields: result.imageAxisFields,
               imageFieldBytes: result.imageFieldBytes,
@@ -1609,7 +1645,7 @@ self.onmessage = (e) => {
                 backend,
                 color,
                 settingsJson,
-                256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit, canvasMaterialSource,
+                256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
               )
               self.postMessage(
                 { id: request.id, ...result, loadMs, previewLane: 'regional-fallback', previewReadback: !result.bitmap && !result.gpuTile, residentAttached: !!displayCanvas },
@@ -1726,6 +1762,7 @@ async function renderTiledPreview(
   canvasImageSource = false,
   boundedDisplayLimit?: number,
   canvasMaterialSource = false,
+  canvasTentRadius = false,
 ) {
   const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
   const checkCurrent = () => {
@@ -1742,12 +1779,13 @@ async function renderTiledPreview(
   const { createGpu, straightAlpha } = await import('./gpu/factory')
   const { renderPreviewTiles, renderBitmapPreviewTiles } = await import('./preview-tiles')
   let hybridEffects = 0, materialFieldHits = 0, materialFieldBuilds = 0, materialFieldBuildMs = 0, materialFieldUploadBytes = 0
+  let displayTentRadiusPasses = 0, displayTentRadiusPixels = 0
   let wholeFilterAxes = 0, opaqueTentPasses = 0, imageXTableBuilds = 0, imageXTablePixels = 0, imageXTableBytes = 0
   let staticImageBlurEligible = 0, staticImageBlurHits = 0, staticImageBlurPixels = 0, staticImageBlurBytes = 0, staticImageBlurEntries = 0
   let horizontalFilterHits = 0, horizontalFilterPixels = 0, horizontalFilterRows = 0
   const managedOutput = !!(executionPolicy?.hdrCompositing && color)
   const admissionKey=JSON.stringify(activeLane) + "/" + JSON.stringify([laneState.documentGeneration,laneState.resourceGeneration,options.pageId,options.view.zoom,
-    options.rasterProfile,options.interactiveEffects,backend,managedOutput,canvasDisplayFilters,boundedDisplayLimit,canvasMaterialSource,canvasMath,referenceGpu])
+    options.rasterProfile,options.interactiveEffects,backend,managedOutput,canvasDisplayFilters,boundedDisplayLimit,canvasMaterialSource,canvasMath,canvasTentRadius,referenceGpu])
   let admission=regionAdmissions.get(admissionKey)
   if(!admission){
     admission=new PreviewAdmission();regionAdmissions.set(admissionKey,admission)
@@ -1792,6 +1830,7 @@ async function renderTiledPreview(
     scene.displayFilterRadiusLimit = boundedDisplayLimit
     scene.displayImageSource = canvasImageSource
     scene.displayMaterialSource = canvasMaterialSource
+    stampDisplayTentRadius(scene, canvasTentRadius, backend)
     {
       try {
         if (gpu && (gpu.driver.lost || gpu.driver.name !== backend || !!gpu.driver.managed !== scene.floatCompositing || !!gpu.driver.displayMath !== displayMath)) {
@@ -1841,6 +1880,8 @@ async function renderTiledPreview(
         horizontalFilterHits += result.horizontalFilterHits
         horizontalFilterPixels += result.horizontalFilterPixels
         horizontalFilterRows += result.horizontalFilterRows
+        displayTentRadiusPasses += result.displayTentRadiusPasses ?? 0
+        displayTentRadiusPixels += result.displayTentRadiusPixels ?? 0
         wholeFilterAxes += result.wholeFilterAxes
         opaqueTentPasses += result.opaqueTentPasses
         imageXTableBuilds += result.imageXTableBuilds
@@ -1915,6 +1956,7 @@ async function renderTiledPreview(
         scene.displayFilterRadiusLimit = boundedDisplayLimit
         scene.displayImageSource = canvasImageSource
         scene.displayMaterialSource = canvasMaterialSource
+        stampDisplayTentRadius(scene, canvasTentRadius, backend)
         const floating = scene.floatCompositing
         const displayMath = canvasMath && backend === 'webgpu' && floating && !scene.softwareRaster
         floatingFrame ||= floating
@@ -1968,6 +2010,8 @@ async function renderTiledPreview(
         horizontalFilterHits += result.horizontalFilterHits
         horizontalFilterPixels += result.horizontalFilterPixels
         horizontalFilterRows += result.horizontalFilterRows
+        displayTentRadiusPasses += result.displayTentRadiusPasses ?? 0
+        displayTentRadiusPixels += result.displayTentRadiusPixels ?? 0
         wholeFilterAxes += result.wholeFilterAxes
         opaqueTentPasses += result.opaqueTentPasses
         imageXTableBuilds += result.imageXTableBuilds
@@ -2052,6 +2096,7 @@ async function renderTiledPreview(
       description,
       hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
       wholeFilterAxes, opaqueTentPasses, imageXTableBuilds, imageXTablePixels, imageXTableBytes,
+      displayTentRadiusPasses, displayTentRadiusPixels,
       staticImageBlurEligible, staticImageBlurHits, staticImageBlurPixels, staticImageBlurBytes, staticImageBlurEntries,
       horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
       compileMs,
@@ -2095,6 +2140,7 @@ async function renderTiledPreview(
     description,
     hybridEffects, materialFieldHits, materialFieldBuilds, materialFieldBuildMs, materialFieldUploadBytes,
     wholeFilterAxes, opaqueTentPasses, imageXTableBuilds, imageXTablePixels, imageXTableBytes,
+    displayTentRadiusPasses, displayTentRadiusPixels,
     staticImageBlurEligible, staticImageBlurHits, staticImageBlurPixels, staticImageBlurBytes, staticImageBlurEntries,
     horizontalFilterHits, horizontalFilterPixels, horizontalFilterRows,
     compileMs,

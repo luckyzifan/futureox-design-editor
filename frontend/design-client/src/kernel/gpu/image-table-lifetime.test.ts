@@ -221,6 +221,7 @@ const corruptions: [string, (plan: ExactImageXTablePlan) => void][] = [
   ['shape', plan => { plan.uniform[0] += 1 }], ['row count', plan => { plan.rowCount += 1 }],
   ['packed channel stride', plan => { plan.uniform[6] = 4 }], ['packed alpha proof', plan => { plan.uniform[7] = 0 }],
   ['storage size', plan => { plan.tableBytes = 16 }], ['limb bound', plan => { plan.maxKx = 127 }],
+  ['X group count', plan => { plan.xSampleCount = 1 }], ['X sample mapping', plan => { plan.uniform[18] = 0 }],
   ['shared metadata', plan => { const data = new Uint32Array(new SharedArrayBuffer(plan.x.byteLength)); data.set(plan.x); plan.x = data }],
 ]
 test.each(corruptions)('a mutated legitimate plan cannot retain admission: %s', async (_name, mutate) => {

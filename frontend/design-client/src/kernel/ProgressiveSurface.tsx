@@ -1,4 +1,5 @@
 import { NavigationIntentOwner } from './navigation-intent-owner'
+import { NativeNavigationHandoff, reusableNativeNavigationPreview, type NativeNavigationCapture } from './native-navigation-handoff'
 import { NavigationBudgetLatch } from './navigation-budget-latch'
 import { initializeKernelModule } from './module'
 import { shouldUseExactCpuFallback } from './cpu-fallback'
@@ -69,6 +70,8 @@ type PaintedTile = TileResult & {
   lod?: boolean
   overview?: boolean
   viewportCache?: ViewportPreviewCacheEntry
+  /** Native navigation may hand off only to the presenter known at capture. */
+  nativeNavigationDevice?: string
   /** Stamped only for ready handles named by an actual presenter ACK. */
   residentDevice?: Readonly<{ client: object; key: string }>
 }
@@ -380,6 +383,7 @@ export function ProgressiveSurfaceImpl(
   const previousFillView = useRef<SurfaceProps['view'] | undefined>(undefined)
   const previewAdmission = useRef<{ contract?: object; key?: string; active: boolean }>({ active: false })
   const [navigationIntentOwner] = useState(() => new NavigationIntentOwner())
+  const [nativeNavigationHandoff] = useState(() => new NativeNavigationHandoff())
   const [navigationBudgetLatch] = useState(() => new NavigationBudgetLatch())
   const startupPreviewAttempt = useRef<object | null>(null)
   const [owner] = useState(displayOwner)
@@ -528,9 +532,15 @@ export function ProgressiveSurfaceImpl(
   const gestureHeadroom = import.meta.env.VITE_DESIGN_GESTURE_DENSITY_HEADROOM === '1' && residentDisplay && !cameraDependent &&
     !props.grid && !props.checkerboard && usesDesktopDisplay(renderExecutionPolicy,
       { renderIntent: 'canvas', rasterProfile, pixelPreview: props.pixelPreview })
+  const nativeNavigation = import.meta.env.VITE_DESIGN_NATIVE_NAVIGATION === '1' &&
+    import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' && residentDisplay && !sharpNavigation && !gestureHeadroom &&
+    !props.interaction?.active && !props.grid && !props.checkerboard && usesDesktopDisplay(renderExecutionPolicy,
+      { renderIntent: 'canvas', rasterProfile, pixelPreview: props.pixelPreview })
+  const latestNativeNavigation = useRef(nativeNavigation)
+  latestNativeNavigation.current = nativeNavigation
   const navigationZoom = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
     !sharpNavigation && !gestureHeadroom && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing,
-    residentDisplay && filteredContent, props.panGestureActive === true)
+    residentDisplay && filteredContent, props.panGestureActive === true, nativeNavigation)
   const latestNavigationZoom = useRef(navigationZoom)
   latestNavigationZoom.current = navigationZoom
   const frameZooming=useZoomActivity(view.zoom,identity)
@@ -707,6 +717,9 @@ export function ProgressiveSurfaceImpl(
   const goneHandler = useRef((id: string, serial: number) => {
     if (tileRef.current.get(id)?.serial !== serial) return
     ready.current.delete(id)
+    const capture = nativeNavigationHandoff.current
+    if (capture?.state === 'delivered' && viewportPreviewKey(capture.identity) === id)
+      nativeNavigationHandoff.finish(capture, false)
     if (desired.current.includes(id)) setStats((s) => ({ ...s, complete: false }))
   }).current
   const publishLod = useRef((revision: number, key: string, canvas: HTMLCanvasElement) => {
@@ -733,6 +746,8 @@ export function ProgressiveSurfaceImpl(
     // subsequent request for the same camera. Unrelated old work cannot label
     // a newer completed frame as failed.
     dropTiles((_key, tile) => tile.key === id)
+    const capture = nativeNavigationHandoff.current
+    if (capture && viewportPreviewKey(capture.identity) === id) nativeNavigationHandoff.finish(capture, false)
     if (desired.current.includes(id)) {
       // A missing display tile cannot certify a complete frame. Retain the
       // published residents and report the failure without publishing a hole.
@@ -778,6 +793,7 @@ export function ProgressiveSurfaceImpl(
     client.current.onDamage = damageHandler
     return () => {
       clearTimeout(displayRetries.current.timer)
+      nativeNavigationHandoff.invalidate()
       navigationIntentOwner.reset({})
       client.current?.dispose()
       client.current = null
@@ -790,27 +806,30 @@ export function ProgressiveSurfaceImpl(
       heldDisplay.current = null
       pageResidency.clear()
     }
-  }, [owner, lodSnapshots, damageHandler, navigationIntentOwner])
+  }, [owner, lodSnapshots, damageHandler, navigationIntentOwner, nativeNavigationHandoff])
   useEffect(() => {
     if (rasterClient && props.navigationInputOwner && !props.paused && props.visible !== false)
       return rasterClient.bindNavigationInput(props.navigationInputOwner)
   }, [rasterClient, props.navigationInputOwner, props.paused, props.visible])
-  // Optional presentation belongs to a sampled navigation intent, not each
-  // raw-camera effect run. Pan events may retain the same bounded sample.
+  // A camera sample replaces only waiting work. Cancelling an already running
+  // same-content capture at each sample can starve continuous navigation when
+  // rendering takes longer than the sampling interval. Content/owner, extent,
+  // visibility still invalidate its pixel ownership. Only the opted-in native
+  // lane may finish across quiet/release, retaining its original camera.
+  const navigationScopeActive = !nativeNavigation && navigationZoom.active
   useEffect(() => {
     const c = client.current
-    const key = navigationZoom.active && navigationZoom.sample
-      ? JSON.stringify([navigationZoom.sample.sequence, width, height, dpr]) : undefined
     return () => {
       if (c && client.current === c) navigationIntentOwner.reset(c)
+      nativeNavigationHandoff.invalidate()
       sequentialPending.current?.cancel()
       sequentialPending.current = null
       sequentialRepair.current = null
-      if (key && previewAdmission.current.contract === contract && previewAdmission.current.key === key)
+      if (previewAdmission.current.contract === contract && previewAdmission.current.active)
         previewAdmission.current.key = undefined
     }
-  }, [contract, width, height, dpr, navigationZoom.active, navigationZoom.sample?.sequence, navigationZoom.suspended,
-    props.paused, props.visible, navigationIntentOwner])
+  }, [contract, doc, width, height, dpr, navigationScopeActive, navigationZoom.suspended,
+    props.paused, props.visible, nativeNavigation, navigationIntentOwner, nativeNavigationHandoff])
   useLayoutEffect(() => {
     const old = pageOwner.current
     const invalidated = pageResidency.synchronize(doc, pageScope)
@@ -847,6 +866,7 @@ export function ProgressiveSurfaceImpl(
     const c = client.current
     if (!c || width <= 0 || height <= 0) return
     const token = ++navigation.current
+    nativeNavigationHandoff.stopWaiting()
     coverageRetention.current.trim(contract.revision, displayBudget)
     const previousView = previousFillView.current
     previousFillView.current = view
@@ -870,7 +890,13 @@ export function ProgressiveSurfaceImpl(
       c.cancelPreview()
       rasterOwner.current = contract
     }
-    if (previewAdmission.current.active && !navigationZoom.active) c.cancelPreview()
+    const runningNavigation = nativeNavigationHandoff.current
+    const retainNavigation = nativeNavigation && runningNavigation?.identity.client === c &&
+      runningNavigation.identity.document === doc && runningNavigation.identity.revision === contract.revision
+    if (previewAdmission.current.active && !navigationZoom.active) {
+      if (retainNavigation) mailbox.discardSuperseded()
+      else c.cancelPreview()
+    }
     previewAdmission.current.active = navigationZoom.active
     desired.current = []
     if (!navigationZoom.active) activePlan.current = null
@@ -909,7 +935,7 @@ export function ProgressiveSurfaceImpl(
       ![...tileRef.current.values()].some(tile => tile.document === doc && tile.revision === contract.revision &&
         ready.current.has(tile.key) && tileIntersectsView(tile, requestedView, { width, height }))
     const render = (...args: Parameters<KernelClient['render']>) => mailbox.run(current, () => c.render(...args))
-    const receive = (tile: TileResult & { viewportCache?: ViewportPreviewCacheEntry }) => {
+    const receive = (tile: TileResult & { viewportCache?: ViewportPreviewCacheEntry; nativeNavigationDevice?: string }) => {
       if (!sameContent()) {
         try { retireRejectedTile(tile, [...tileRef.current.values(), ...pageResidency.values(),
           ...(heldDisplay.current?.residents.values() || [])], bitmapRetirement, ids => c.releasePresented(ids)) }
@@ -952,7 +978,13 @@ export function ProgressiveSurfaceImpl(
       const cacheBudget = cacheContext?.displayBudget ?? displayBudget
       const cacheResidencyBudget = cacheContext?.residencyBudget ?? residencyBudget
       const used = compositeCacheUse()
-      const foreground = current() && !tile.prefetch && (desired.current.includes(tile.key) || !!tile.viewportPreview)
+      const capture = nativeNavigationHandoff.current
+      const liveView = latestContext.current.requestedView || latestContext.current.view
+      const awaitedNative = nativeNavigation && capture && nativeNavigationHandoff.waitingFor(capture) &&
+        tile.key === viewportPreviewKey(capture.identity) &&
+        Object.is(capture.identity.view.x, liveView.x * dpr) && Object.is(capture.identity.view.y, liveView.y * dpr) &&
+        Object.is(capture.identity.view.zoom, liveView.zoom * dpr)
+      const foreground = (current() || !!awaitedNative) && !tile.prefetch && (desired.current.includes(tile.key) || !!tile.viewportPreview)
       const allowance = replacementTileBudget(cacheBudget, cacheResidencyBudget,
         { width, height, dpr, bytesPerPixel: residentDisplay ? 4 : hdrCompositing && !!doc.colorManagement ? 28 : 8 }, foreground)
       const heldSources = [...(cacheDisplayed?.residents.values() || []), ...(heldDisplay.current?.residents.values() || [])]
@@ -1015,6 +1047,7 @@ export function ProgressiveSurfaceImpl(
       catch (error) { completionErrors.push(error) }
       if (completionErrors.length) throw new HandledTileDeliveryError(completionErrors[0],
         completionErrors.length > 1 ? new AggregateError(completionErrors.slice(1), 'Additional tile retirement failures') : undefined)
+      return map.get(entry.key) === entry ? entry : undefined
     }
     const previewIdentity = (lane: ViewportPreviewIdentity['lane'], camera: SurfaceProps['view'], w: number, h: number): ViewportPreviewIdentity => ({
       lane, client: c, document: doc, revision: contract.revision, pageId, sessionEpoch: props.presentationEpoch || 0,
@@ -1248,11 +1281,12 @@ export function ProgressiveSurfaceImpl(
     let navigationIntent: string | undefined
     const run = async () => {
       let navigationAdmission: typeof previewAdmission.current | undefined
+      let navigationCapture: NativeNavigationCapture | undefined
       try {
         if (navigationZoom.active) {
           const sample = navigationZoom.sample
           if (!sample) return
-          const ratio = navigationPreviewDensity(dpr, width, height), scale = sample.view.zoom * ratio
+          const ratio = navigationPreviewDensity(dpr, width, height, nativeNavigation), scale = sample.view.zoom * ratio
           const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
           const camera = { x: sample.view.x * ratio, y: sample.view.y * ratio, zoom: scale }
           const identity = previewIdentity('navigation-preview', camera, w, h), cached = cachedPreview(identity)
@@ -1272,6 +1306,10 @@ export function ProgressiveSurfaceImpl(
             touchPreviews([cached])
             return
           }
+          // A same-camera restart must not queue a second copy of the capture
+          // which was allowed to finish over pointer release/quiet.
+          const pendingNative = nativeNavigation ? nativeNavigationHandoff.forIdentity(identity) : undefined
+          if (pendingNative && (pendingNative.state === 'running' || tileRef.current.has(viewportPreviewKey(identity)))) return
           const currentDevice = previewDevice.current
           const nativeResidents = residentDisplay && currentDevice.client === c && currentDevice.key
             ? [...tileRef.current.values()].filter(tile =>
@@ -1294,7 +1332,7 @@ export function ProgressiveSurfaceImpl(
           // Skip expensive filtered captures only when retained pixels cover
           // the viewport at the sampling density this sample would produce.
           // Keep low-density pixels visible while that bounded refresh runs.
-          const retained = filteredContent ? [...tileRef.current.values()].filter(tile =>
+          const retained = filteredContent && !nativeNavigation ? [...tileRef.current.values()].filter(tile =>
             tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key)) : []
           if (retained.length && tilesCoverBounds(retained, viewport, scale)) {
             if (previewAdmission.current.key !== 'covered-navigation') c.cancelPreview()
@@ -1310,8 +1348,13 @@ export function ProgressiveSurfaceImpl(
           const admission = { contract, key: navigationRequest, active: true }
           navigationAdmission = admission
           previewAdmission.current = admission
-          const requested = () => sameContent() && latestNavigationZoom.current.active &&
-            latestNavigationZoom.current.sample?.sequence === sample.sequence &&
+          const ownsScope = () => sameContent() && latestContext.current.visible !== false &&
+            (nativeNavigation ? latestNativeNavigation.current && (!navigationCapture?.device ||
+              previewDevice.current.client === c && previewDevice.current.key === navigationCapture.device) :
+              latestNavigationZoom.current.active) && !latestNavigationZoom.current.suspended &&
+            sequentialContext.current.width === width && sequentialContext.current.height === height &&
+            sequentialContext.current.dpr === dpr
+          const requested = () => ownsScope() && latestNavigationZoom.current.sample?.sequence === sample.sequence &&
             previewAdmission.current === admission
           activePlan.current = {
             key: frameKey, revision: contract.revision, document: doc, view: { ...sample.view }, dpr, width, height,
@@ -1324,26 +1367,79 @@ export function ProgressiveSurfaceImpl(
             pageId, width: w, height: h,
             view: camera,
             transparent: false, grid: false, rasterProfile, livePreview: true, renderIntent: 'preview' as const,
+            // Keep the same physical camera when a whole-frame halo cannot
+            // fit: the worker already assembles bounded regions privately.
+            ...(nativeNavigation ? { previewTileFallback: true } : {}),
           }
-          const intent = navigationIntentOwner.begin(c, { sequence: sample.sequence }, options)!
-          try {
-            const result = await mailbox.run(() => requested() && intent.current(),
-              () => c.render(doc, options, false, backend, false, false, undefined, undefined, intent.signal))
-            if (!intent.current() || !requested()) {
-              result.bitmap?.close(); if (result.gpuTile) c.releasePresented([result.gpuTile]); return
+          // Begin ownership only when the latest queued goal actually starts.
+          // An intermediate sample must not abort the useful capture ahead of
+          // it merely by joining the mailbox. Settle before the mailbox starts
+          // its successor, while retaining this completion's own camera below.
+          const result = await mailbox.run(requested, async () => {
+            const intent = navigationIntentOwner.begin(c, { sequence: sample.sequence }, options)!
+            if (nativeNavigation) navigationCapture = nativeNavigationHandoff.start(identity,
+              previewDevice.current.client === c ? previewDevice.current.key : undefined)
+            try {
+              const result = await c.render(doc, options, false, backend, false, false, undefined, undefined, intent.signal)
+              if (!intent.current()) {
+                result.bitmap?.close(); if (result.gpuTile) c.releasePresented([result.gpuTile])
+                throw Error('PREVIEW_CANCELLED')
+              }
+              return result
             }
-            syncedDoc.current = doc
-            // Every sampled viewport owns distinct pixels and an independent upload.
-            // Do not replace the last acknowledged preview while the new one is
-            // importing: provisional previews are not held by displayed.residents.
-            // The ordinary byte-budgeted LRU bounds this compatible history.
-            receive({ key: residentDisplay ? viewportPreviewKey(identity) : `navigation-preview:${contract.revision}:${serial.current + 1}`, x: -sample.view.x * ratio,
-              y: -sample.view.y * ratio, width: w, height: h, zoom: scale, gutter: 0, viewportPreview: true,
-              ...(residentDisplay ? { viewportCache: captureViewportPreview(identity) } : {}),
-              bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile, backend: result.backend,
-              description: result.description || '', milliseconds: result.milliseconds, cached: false })
+            finally { intent.settle() }
+          })
+          if (!ownsScope()) {
+            if (navigationCapture) nativeNavigationHandoff.finish(navigationCapture, false)
+            result.bitmap?.close(); if (result.gpuTile) c.releasePresented([result.gpuTile]); return
+          }
+          syncedDoc.current = doc
+          // A completed older sample remains real same-content cache history,
+          // with its own sampling camera/density. It never takes ownership of
+          // the latest active plan or certifies its native-phase readiness.
+          // Keep the last acknowledged preview while the new one imports; the
+          // ordinary byte-budgeted LRU bounds this compatible history.
+          const delivered = receive({ key: residentDisplay ? viewportPreviewKey(identity) : `navigation-preview:${contract.revision}:${serial.current + 1}`, x: -sample.view.x * ratio,
+            y: -sample.view.y * ratio, width: w, height: h, zoom: scale, gutter: 0, viewportPreview: true,
+            ...(residentDisplay ? { viewportCache: captureViewportPreview(identity) } : {}),
+            ...(navigationCapture?.device && result.backend === 'webgpu' ? { nativeNavigationDevice: navigationCapture.device } : {}),
+            bytes: result.bytes, bitmap: result.bitmap, gpuTile: result.gpuTile, backend: result.backend,
+            description: result.description || '', milliseconds: result.milliseconds, cached: false })
+          if (navigationCapture) nativeNavigationHandoff.finish(navigationCapture, !!delivered && result.backend === 'webgpu')
+          return
+        }
+        if (nativeNavigation && phaseExact && renderScale === detailLevel &&
+            Object.is(view.x, requestedView.x) && Object.is(view.y, requestedView.y) && Object.is(view.zoom, requestedView.zoom)) {
+          const camera = { x: view.x * dpr, y: view.y * dpr, zoom: detailLevel }
+          const identity = previewIdentity('navigation-preview', camera, Math.ceil(width * dpr), Math.ceil(height * dpr))
+          const device = previewDevice.current.client === c ? previewDevice.current.key : undefined
+          const tile = cachedPreview(identity)
+          if (tile && reusableNativeNavigationPreview(tile, identity, ready.current.has(tile.key), device)) {
+            // This is the very same physical camera, sample phase and actual
+            // presenter owner, not a density/coverage approximation. Keep the
+            // original payload/key and native sampling mode through the ACK.
+            desired.current = [tile.key]
+            protectedKeys.current = new Set(desired.current)
+            activePlan.current = { key: frameKey, revision: contract.revision, document: doc, view: { ...view },
+              dpr, width, height, rasterScale: detailLevel, samplingDensity: dpr, samplingMode: 'native', pageId,
+              epoch: props.presentationEpoch || 0, grid: false, pixelPreview: props.pixelPreview,
+              rasterProfile: props.rasterProfile, managed: false, displayCapability, computeBackend: backend,
+              ids: new Set(desired.current), residents: new Map() }
+            touchPreviews([tile])
+            commitRef.current()
             return
-          } finally { intent.settle() }
+          }
+          const pending = nativeNavigationHandoff.matching(identity, device)
+          if (pending && (pending.state === 'running' || tileRef.current.has(viewportPreviewKey(identity)))) {
+            // Only an exact current-camera job may defer a duplicate native
+            // fill. Different cameras continue the normal serialized plan.
+            nativeNavigationHandoff.wait(pending, () => {
+              const latest = latestContext.current.requestedView || latestContext.current.view
+              if (current() && Object.is(view.x, latest.x) && Object.is(view.y, latest.y) && Object.is(view.zoom, latest.zoom))
+                setDisplayRetry(value => value + 1)
+            })
+            return
+          }
         }
         let sequentialCapture: { ratio: number; w: number; h: number; x: number; y: number; key: string;
           camera: SurfaceProps['view']; identity: ViewportPreviewIdentity } | undefined
@@ -1744,6 +1840,7 @@ export function ProgressiveSurfaceImpl(
           }))
         }
       } catch (error) {
+        if (navigationCapture) nativeNavigationHandoff.finish(navigationCapture, false)
         const headroomFailure = renderFailureFields(error)
         const speculativeLimit = headroomFailure.failureCategory === 2 &&
           [40, 41, 42].includes(headroomFailure.failureCode)
@@ -1821,6 +1918,7 @@ export function ProgressiveSurfaceImpl(
     props.interaction?.active,
     props.interaction?.selection.join(','),
     motionPreview,
+    nativeNavigation,
     sharpNavigation,
     zooming,
     cameraMoving,
@@ -1839,6 +1937,7 @@ export function ProgressiveSurfaceImpl(
     navigationZoom.suspended,
     mailbox,
     navigationIntentOwner,
+    nativeNavigationHandoff,
     props.overview?.x,
     props.overview?.y,
     props.overview?.width,
@@ -2020,6 +2119,7 @@ export function ProgressiveSurfaceImpl(
         data-camera-moving={String(cameraMoving)}
         data-navigation-pending-age-ms={navigationZoom.pendingAgeMs}
         data-navigation-zoom-active={String(navigationZoom.active)}
+        data-native-navigation={String(nativeNavigation)}
         data-navigation-zoom-sequence={navigationZoom.sample?.sequence || 0}
         data-viewport-preview-tiles={visible.filter(tile=>tile.viewportPreview&&cachedPreviewTile(tile)).length}
         data-native-capture-tiles={visible.filter(tile=>tile.nativeCapture&&ready.current.has(tile.key)).length}
@@ -2074,6 +2174,13 @@ export function ProgressiveSurfaceImpl(
           onPresented={(frame,source,device?: ViewportPreviewDevice)=>{
             const deviceKey = viewportPreviewDeviceKey(device), c = client.current
             if (deviceKey && device?.client === c) {
+              const previousDevice = previewDevice.current
+              if (previousDevice.client === c && previousDevice.key && previousDevice.key !== deviceKey) {
+                navigationIntentOwner.reset(c!)
+                const capture = nativeNavigationHandoff.current
+                if (capture) nativeNavigationHandoff.finish(capture, false)
+                nativeNavigationHandoff.invalidate()
+              }
               const ids = new Set(frame.ids)
               let changed = false
               for (const tile of tileRef.current.values()) if (tile.gpuTile !== undefined &&
@@ -2091,6 +2198,13 @@ export function ProgressiveSurfaceImpl(
               // cached captures, never unacknowledged incoming replacements.
               dropTiles((_key, tile) => tile.residentDevice?.client === c && tile.residentDevice.key !== deviceKey)
               if (changed) setTiles(new Map(tileRef.current))
+              const capture = nativeNavigationHandoff.current
+              if (capture?.state === 'delivered') {
+                const tile = tileRef.current.get(viewportPreviewKey(capture.identity))
+                if (!tile) nativeNavigationHandoff.finish(capture, false)
+                else if (reusableNativeNavigationPreview(tile, capture.identity, ready.current.has(tile.key), deviceKey))
+                  nativeNavigationHandoff.wake(capture)
+              }
             }
             if (renderDiagnostics.recording) {
               const ids = new Set(frame.ids)
@@ -2108,6 +2222,12 @@ export function ProgressiveSurfaceImpl(
           }}
           onReady={readyHandler} onGone={goneHandler} onError={errorHandler}
           onFailure={message => {
+            const capture = nativeNavigationHandoff.current
+            if (capture) {
+              nativeNavigationHandoff.finish(capture, false)
+              nativeNavigationHandoff.invalidate()
+              if (client.current) navigationIntentOwner.reset(client.current)
+            }
             previewDevice.current = { client: client.current }
             const errorCode = renderDiagnosticError(message)
             recordRenderDiagnostic({ kind: 'error', zoom: requestedView.zoom, dpr,

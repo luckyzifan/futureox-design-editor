@@ -495,6 +495,10 @@ fn visit(
             opaque_coverage: false,
             passthrough: false,
             backdrop_box: [0.; 4],
+            backdrop_output_box: None,
+            shadow_output_box: None,
+            children_input_box: None,
+            post_composite_box: None,
             id,
             rect,
             matrix,
@@ -559,6 +563,7 @@ pub fn compile_preview(session: &Session, request: &PreviewRequest) -> Result<Pr
     let mut scene = GpuScene {
         software_raster: false,
         output: None,
+        root_input_box: None,
         float_compositing: true,
         color_management: Some(ColorSettings::default()),
         colors: BTreeMap::new(),

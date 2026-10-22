@@ -191,7 +191,17 @@ fn foreground_halo_stays_on_its_branch_and_backdrop_keeps_global_support() {
     d["nodes"]["child"]["fills"][0]["opacity"] = json!(0.5);
     engine.load_document(&d.to_string()).unwrap();
     let scene = engine.compile_gpu_region(&options, crop, None).unwrap();
-    assert!(scene.extent.w > crop.w + 200);
+    assert!(scene.extent.w > crop.w + 200, "public native region keeps its established default");
+    assert!(scene.nodes["child"].backdrop_output_box.is_none());
+    let mut request = serde_json::to_value(&options).unwrap();
+    request["gpuViewport"] = serde_json::to_value(crop).unwrap();
+    request["gpuPainterSupport"] = json!(true);
+    let candidate = engine.compile_gpu_request(&request.to_string()).unwrap();
+    // The opt-in managed tent keeps all real taps while excluding the stale
+    // inner-shadow spread field from a background-blur allocation.
+    assert!(candidate.extent.w >= crop.w + 2*83);
+    assert!(candidate.nodes["child"].effects.iter().any(|e|e.kind=="background-blur"));
+    assert!(candidate.nodes["child"].backdrop_output_box.is_some());
 }
 
 #[test]

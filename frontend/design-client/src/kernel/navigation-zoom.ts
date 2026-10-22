@@ -18,7 +18,7 @@ const CADENCE_REQUIRED_INTERVALS = CADENCE_INTERVALS
 const CADENCE_QUIET_MULTIPLIER = 3
 /** Experimental only: the normal React hook deliberately uses conservative
  * settling until hardware-backed input/display measurements justify a change. */
-export type NavigationZoomOptions = { adaptiveQuiet?: boolean; includeTranslation?: boolean }
+export type NavigationZoomOptions = { adaptiveQuiet?: boolean; includeTranslation?: boolean; sampleOnFrame?: boolean }
 export type NavigationZoomSample = { active: boolean; view: CanvasCamera; sequence: number }
 export class NavigationZoom {
   private target: CanvasCamera
@@ -72,7 +72,8 @@ export class NavigationZoom {
       this.changedAt = now; this.stableFrames = 0
       if (!this.active) return this.publish(true, now)
     }
-    if (this.active && this.hasUnsampledView() && now - this.sampledAt >= NAVIGATION_ZOOM_SAMPLE_MS) return this.publish(true, now)
+    if (!this.options.sampleOnFrame && this.active && this.hasUnsampledView() &&
+        now - this.sampledAt >= NAVIGATION_ZOOM_SAMPLE_MS) return this.publish(true, now)
     return this.sample
   }
   frame(now: number): NavigationZoomSample {
@@ -84,7 +85,7 @@ export class NavigationZoom {
       Math.min(NAVIGATION_ZOOM_QUIET_MS,
         Math.max(NAVIGATION_ZOOM_DENSE_QUIET_MS, ...this.intervals.map(interval => interval * CADENCE_QUIET_MULTIPLIER)))
     if (!this.held && this.stableFrames >= 2 && now - this.changedAt >= quiet) return this.publish(false, now)
-    if (now - this.sampledAt >= NAVIGATION_ZOOM_SAMPLE_MS && this.hasUnsampledView())
+    if ((this.options.sampleOnFrame || now - this.sampledAt >= NAVIGATION_ZOOM_SAMPLE_MS) && this.hasUnsampledView())
       return this.publish(true, now)
     return this.sample
   }
@@ -98,8 +99,12 @@ export class NavigationZoom {
   }
 }
 
-/** Fixed output-density cap for temporary zoom previews. Final tiles use the
- * exact zoom*DPR lattice; this never changes document/export sampling rules. */
-export function navigationPreviewDensity(dpr: number, width: number, height: number) {
+/** Normal temporary previews retain their cap; a separately admitted native
+ * navigation candidate uses real DPR. Final/document/export rules are unchanged. */
+export function navigationPreviewDensity(dpr: number, width: number, height: number, native = false) {
+  // Strict opt-in screen navigation keeps the actual physical sampling rate.
+  // Normal viewport/device/working-set admission still runs in the existing
+  // client/kernel/driver; a rejected native request is never relabelled 1x.
+  if (native) return dpr
   return Math.min(dpr, 1, Math.sqrt(1_048_576 / Math.max(1, width * height)), 2048 / Math.max(1, width, height))
 }

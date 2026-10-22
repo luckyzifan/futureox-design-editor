@@ -6,6 +6,8 @@ import { KernelClient } from './client'
 import { BitmapRetirement } from './bitmap-retirement'
 import { PageResidencyCache } from './page-residency-cache'
 import { PresentationOwnership } from './presentation-ownership'
+import { NativeNavigationHandoff } from './native-navigation-handoff'
+import { viewportPreviewKey, type ViewportPreviewIdentity } from './viewport-preview-cache'
 import { estimatedTileResidencyBytes } from './page-memory-policy'
 import { isTileAdmissionBudgetError, planTileAdmission, retireRejectedTile, HandledTileDeliveryError,
   replacementTileBudget, tileAdmissionDiagnostic } from './tile-admission'
@@ -19,7 +21,8 @@ const bindings = ['sameContent', 'recordRenderDiagnostic', 'view', 'dpr', 'rende
   'residencyBudget', 'compositeCacheUse', 'tileRef', 'protectedKeys', 'coverageRetention', 'pageResidency',
   'heldDisplay', 'bitmapRetirement', 'c', 'ready', 'failedTiles', 'presentationOwnership', 'setTiles',
   'planTileAdmission', 'retireRejectedTile', 'HandledTileDeliveryError', 'estimatedTileResidencyBytes',
-  'current', 'desired', 'width', 'height', 'residentDisplay', 'replacementTileBudget', 'tileAdmissionDiagnostic', 'cacheAdmission']
+  'current', 'desired', 'width', 'height', 'residentDisplay', 'replacementTileBudget', 'tileAdmissionDiagnostic', 'cacheAdmission',
+  'nativeNavigation', 'nativeNavigationHandoff', 'viewportPreviewKey', 'latestContext']
 const receiveFactory = new Function('context', `const {${bindings.join(',')}} = context;
   ${stripTypeScriptTypes(receiveSource.replaceAll('import.meta.env.DEV', 'false'))}; return receive`)
 function tile(key: string, gpuTile: number, side = 2) {
@@ -46,6 +49,8 @@ function harness() {
     planTileAdmission, retireRejectedTile, HandledTileDeliveryError, estimatedTileResidencyBytes,
     current: () => true, desired: { current: ['A', 'B', 'C', 'D'] }, width: 100, height: 100, residentDisplay: true,
     replacementTileBudget, tileAdmissionDiagnostic,
+    nativeNavigation: false, nativeNavigationHandoff: new NativeNavigationHandoff(), viewportPreviewKey,
+    latestContext: { current: { view: { x: 0, y: 0, zoom: 1 } } },
     cacheAdmission: { current: { reserveBytes: 0, admissionBudget: 0, activeHighWater: 0, totalHighWater: 0 } } }
   return { a, b, cold, inactive, context, receive: receiveFactory(context) as (incoming: ReturnType<typeof tile>) => void }
 }
@@ -64,6 +69,33 @@ test('failed same-key admission preserves live map, ready keys and every earlier
   expect(c.pageResidency.values()).toEqual([h.inactive]); expect(c.pageResidency.evictions).toBe(0)
   expect(c.setTiles).not.toHaveBeenCalled(); expect(c.presentationOwnership.current.size).toBe(0)
   expect(close).toHaveBeenCalledOnce(); expect(c.c.releasePresented).toHaveBeenCalledExactlyOnceWith([5])
+})
+
+test('only the current exact-camera native waiter may borrow the existing bounded replacement reserve', () => {
+  const h = harness(), c = h.context
+  c.nativeNavigation = true; c.current = () => false; c.desired.current = []
+  const identity: ViewportPreviewIdentity = { lane: 'navigation-preview', client: c.c, document: c.doc,
+    revision: 1, pageId: 'p', sessionEpoch: 1, dpr: 1, backend: 'webgpu', profile: 'figma', precision: 'four-phase',
+    capability: undefined, width: 100, height: 100, view: { x: 0, y: 0, zoom: 1 } }
+  const capture = c.nativeNavigationHandoff.start(identity, '1/2/3')
+  c.nativeNavigationHandoff.wait(capture, vi.fn())
+  const incoming = { ...tile(viewportPreviewKey(identity), 5), viewportPreview: true }
+  expect(() => receiveFactory(c)(incoming)).not.toThrow()
+  expect(c.cacheAdmission.current.reserveBytes).toBe(16)
+  expect(c.cacheAdmission.current.admissionBudget).toBe(64)
+  c.nativeNavigationHandoff.stopWaiting()
+  expect(() => receiveFactory(c)({ ...tile(viewportPreviewKey(identity), 6, 4), viewportPreview: true })).not.toThrow()
+  expect(c.cacheAdmission.current.reserveBytes).toBe(0)
+  expect(c.cacheAdmission.current.admissionBudget).toBe(48)
+})
+
+test('an incoming optional capture evicted by bounded admission is not reported as a delivered handoff', () => {
+  const h = harness(), c = h.context
+  c.displayBudget = 32; c.residencyBudget = 32; c.current = () => false; c.desired.current = []
+  const incoming = { ...tile('optional-history', 5), viewportPreview: true }, close = incoming.bitmap!.close
+  expect(receiveFactory(c)(incoming)).toBeUndefined()
+  expect(c.tileRef.current.has(incoming.key)).toBe(false)
+  expect(close).toHaveBeenCalledOnce()
 })
 
 test('a later rejected delivery keeps a previously admitted and acknowledged new tile', () => {

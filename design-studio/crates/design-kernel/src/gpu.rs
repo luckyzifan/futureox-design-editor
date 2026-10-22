@@ -387,6 +387,20 @@ pub struct GpuNode {
     pub opaque_coverage: bool,
     pub passthrough: bool,
     pub backdrop_box: [f64; 4],
+    /// Complete painter-dependency output demand, not merely the visible crop.
+    /// Present only when the regional support certificate was adopted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backdrop_output_box: Option<[f64; 4]>,
+    /// Single outer-shadow output demand; absent outside its narrow proof.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shadow_output_box: Option<[f64; 4]>,
+    /// Initial domain of this node's isolated child painter prefix.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children_input_box: Option<[f64; 4]>,
+    /// Complete parent target demand after this node has been composited.
+    /// Includes demanded pixels outside this node's visible output bounds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_composite_box: Option<[f64; 4]>,
     pub id: String,
     pub rect: Rect,
     pub matrix: Transform,
@@ -422,6 +436,9 @@ pub struct GpuScene {
     /// matrices or change intermediate binary32 rounding.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<Rect>,
+    /// Initial root target domain; independent leaf sources may be wider.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root_input_box: Option<[f64; 4]>,
     /// Numeric storage is independent of colour encoding: analytic SDR uses
     /// floating sRGB components, while managed scenes use linear-light floats.
     pub float_compositing: bool,
@@ -740,6 +757,600 @@ fn foreground_region_supported(
     n.render_children().iter().all(|child| foreground_region_supported(doc, child, source, prepared, coherent))
 }
 
+/// A bounded dependency certificate for managed, ordinary tent filters and
+/// isolated integer-offset outer shadows in coherent integrated profiles.
+///
+/// The tree's maximum halo is not a dependency graph: a backdrop consumes the
+/// *preceding* siblings, which may themselves be blurred. Walk painter order
+/// backwards, propagating a backdrop's input rectangle to that earlier prefix.
+/// Foreground isolation instead expands its own source rectangle without
+/// making unrelated earlier siblings provide that source. All demanded source
+/// rectangles contribute to the shared allocation; no filter, tap, sample or
+/// authored value is changed.
+///
+/// Unsupported materials/masks retain the conservative compiler. Prepared
+/// geometry can have been culled outside its guard, so the complete dependency
+/// rectangle must remain inside that guard before this proof may be used.
+struct PainterSupport {
+    extent: Rect,
+    backdrop_outputs: HashMap<String, Rect>,
+    shadow_outputs: HashMap<String, Rect>,
+    stages: Option<PainterStages>,
+}
+struct PainterStages {
+    root_input: Rect,
+    node_regions: HashMap<String, Rect>,
+    children_inputs: HashMap<String, Rect>,
+    post_composites: HashMap<String, Rect>,
+    backdrop_inputs: HashMap<String, Rect>,
+}
+fn device_box(r: Rect) -> [f64; 4] {
+    [f64::from(r.x), f64::from(r.y), f64::from(r.w), f64::from(r.h)]
+}
+
+/// Every mode26 capture pixel samples four integer neighbours, even when one
+/// bilinear weight is zero. In the separately checked exact phase domain,
+/// p=o+i+.5 and q=(p-S)-.5 give global loads floor(o)+i and floor(o)+i+1.
+/// Preserve the logical capture box; only narrow the earlier painter demand.
+fn backdrop_capture_reads(previous_prefix: Rect, capture: [f64; 4]) -> Option<Rect> {
+    if previous_prefix.empty() || [previous_prefix.x,previous_prefix.y,previous_prefix.right(),previous_prefix.bottom()].iter()
+        .any(|v| i64::from(*v).abs() > 1_048_576) { return None; }
+    for axis in 0..2 {
+        if !capture[axis].is_finite() || capture[axis].abs() > 1_048_576. ||
+            !capture[axis+2].is_finite() || capture[axis+2].fract() != 0. ||
+            !(1. ..=8192.).contains(&capture[axis+2]) { return None; }
+    }
+    let reads = Rect::new(capture[0].floor() as i32,capture[1].floor() as i32,
+        capture[2] as u32+1,capture[3] as u32+1).expand(2);
+    if [reads.x,reads.y,reads.right(),reads.bottom()].iter()
+        .any(|v| i64::from(*v).abs() > 1_048_576) { return None; }
+    Some(previous_prefix.intersect(reads))
+}
+
+#[cfg(test)]
+mod painter_capture_read_tests {
+    use super::*;
+
+    #[test]
+    fn real_117_logical_box_is_not_charged_as_the_complete_read_domain() {
+        let logical = Rect::new(-1182,-222,2428,2428);
+        let capture = [-1182.8828125,964.162109375,2429.,1242.];
+        let reads = backdrop_capture_reads(logical,capture).unwrap();
+        assert_eq!(reads,Rect::new(-1182,962,2428,1244));
+        assert_eq!(Rect::new(-2,958,68,68).union(reads),Rect::new(-1182,958,2428,1248));
+        assert!(reads.pixels() < logical.pixels());
+    }
+
+    #[test]
+    fn every_old_bilinear_load_including_zero_weight_neighbours_stays_available() {
+        let logical = Rect::new(-14,-11,45,39);
+        let demand = Rect::new(-18,3,60,12);
+        let old = logical.union(demand);
+        for x in [-16.,-13.875,-13.+1./512.,0.,17.5] {
+            for y in [-14.,-10.75,-9.+1./512.,3.5,21.] {
+                let capture = [x,y,19.,13.];
+                let tight = demand.union(backdrop_capture_reads(logical,capture).unwrap());
+                for j in 0..13 { for i in 0..19 {
+                    // Literal mode26/smp binary32 addressing at a sample
+                    // centre. Integer phases still read base+1 at weight 0.
+                    let px = x as f32+(i as f32+0.5);
+                    let py = y as f32+(j as f32+0.5);
+                    let bx = ((px-old.x as f32)-0.5).floor() as i32+old.x;
+                    let by = ((py-old.y as f32)-0.5).floor() as i32+old.y;
+                    for dy in [0,1] { for dx in [0,1] {
+                        if old.index(bx+dx,by+dy).is_some() {
+                            assert!(tight.index(bx+dx,by+dy).is_some(),"capture={capture:?}, load={:?}",(bx+dx,by+dy));
+                        }
+                    }}
+                }}
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_metadata_never_creates_a_read_certificate() {
+        let logical = Rect::new(-16,-16,64,64);
+        for capture in [[f64::NAN,0.,4.,4.],[0.,f64::INFINITY,4.,4.],
+            [0.,0.,0.,4.],[0.,0.,4.25,4.],[0.,0.,8193.,4.],
+            [1048575.,0.,4.,4.],[-1048576.,0.,4.,4.]] {
+            assert!(backdrop_capture_reads(logical,capture).is_none(),"{capture:?}");
+        }
+        assert!(backdrop_capture_reads(Rect::default(),[0.,0.,4.,4.]).is_none());
+        assert!(backdrop_capture_reads(logical,[100.,100.,4.,4.]).unwrap().empty());
+    }
+
+    #[test]
+    fn a_later_consumer_cannot_revoke_the_original_prefixs_edge_neighbours() {
+        let logical = Rect::new(0,0,10,8);
+        let previous_post = Rect::new(-5,0,25,8);
+        let current_demand = Rect::new(5,0,1,8);
+        let capture = [-0.125,0.125,10.,6.];
+        let previous_prefix = previous_post.union(logical);
+        let reads = backdrop_capture_reads(previous_prefix,capture).unwrap();
+        let next_prefix = current_demand.union(reads);
+        assert!(previous_prefix.index(-1,0).is_some());
+        assert!(next_prefix.index(-1,0).is_some());
+        let incomplete = current_demand.union(backdrop_capture_reads(logical,capture).unwrap());
+        assert!(incomplete.index(-1,0).is_none(),"a BI-only proof is not a general multi-consumer domain proof");
+    }
+
+    #[test]
+    fn original_two_dimensional_hull_corners_are_part_of_the_capture_source_domain() {
+        let logical = Rect::new(0,0,10,10);
+        let previous_post = Rect::new(-5,-5,25,25);
+        let current_demand = Rect::new(5,5,1,1);
+        let capture = [-0.125,8.5,2.,2.];
+        let previous_prefix = previous_post.union(logical);
+        let next_prefix = current_demand.union(backdrop_capture_reads(previous_prefix,capture).unwrap());
+        // Domain model, not a claim that this exact rectangle plan occurs in
+        // an authored leaf: the proof no longer needs that hidden premise.
+        assert!(previous_prefix.index(-1,10).is_some());
+        assert!(next_prefix.index(-1,10).is_some());
+        assert!(current_demand.union(backdrop_capture_reads(logical,capture).unwrap()).index(-1,10).is_none());
+    }
+
+    #[test]
+    fn zero_weight_neighbours_with_nonfinite_values_cannot_be_omitted() {
+        let previous_prefix = Rect::new(-2,-2,8,8);
+        let capture = [0.,0.,1.,1.];
+        let reads = backdrop_capture_reads(previous_prefix,capture).unwrap();
+        let mut values = vec![1_f32;previous_prefix.pixels()];
+        values[previous_prefix.index(1,0).unwrap()] = f32::INFINITY;
+        assert!((values[previous_prefix.index(1,0).unwrap()]*0.).is_nan());
+        assert!(reads.index(1,0).is_some(),"base+1 is an actual textureLoad even at zero bilinear weight");
+        assert!(reads.index(1,1).is_some());
+    }
+}
+
+/// Sufficient binary32 addressing domain for a cropped ordinary backdrop.
+/// This is deliberately narrower than the general coordinate budget. Having
+/// equal mathematical fractional origins is insufficient: q=p-origin can
+/// cross a binary32 exponent boundary and change its bilinear fraction.
+fn backdrop_phase_fraction_bits(origin: f64) -> Option<u32> {
+    if !origin.is_finite() { return None; }
+    let single = origin as f32;
+    if f64::from(single).to_bits() != origin.to_bits() { return None; }
+    let bits = single.to_bits() & 0x7fff_ffff;
+    if bits == 0 { return Some(0); }
+    let exponent = ((bits >> 23) & 255) as i32;
+    if exponent == 255 { return None; }
+    let significand = (bits & 0x7f_ffff) | if exponent == 0 { 0 } else { 0x80_0000 };
+    let power = if exponent == 0 { -149 } else { exponent - 150 };
+    // origin = significand * 2^power. Cancelling its integer low bits gives
+    // the exact dyadic fractional grid, without scaling a float or rounding
+    // a purported integer. Subnormal phases may be arbitrarily fine and will
+    // fail the finite local-domain bound below.
+    Some((-power - significand.trailing_zeros() as i32).max(0) as u32)
+}
+
+fn backdrop_sample_phase_supported(
+    legacy_capture: [f64; 4],
+    planned_capture: [f64; 4],
+    legacy_extent: Rect,
+    planned_extent: Rect,
+    radius: f64,
+) -> bool {
+    if !radius.is_finite() || !(0. ..=16384.).contains(&radius) { return false; }
+    // Retain the old 1/512, |value|<2^15 admission as the widest baseline.
+    // A finer exact origin needs a correspondingly smaller domain: every
+    // integer multiple of 2^-k with |value|<2^(24-k) is exactly binary32.
+    // The common grid includes half-pixel centres (k>=9 already includes .5).
+    let mut fraction_bits = 9_u32;
+    for capture in [legacy_capture, planned_capture] {
+        for origin in &capture[..2] {
+            let Some(bits) = backdrop_phase_fraction_bits(*origin) else { return false; };
+            fraction_bits = fraction_bits.max(bits);
+        }
+    }
+    let Some(domain_bits) = 24_u32.checked_sub(fraction_bits) else { return false; };
+    let limit = f64::from(1_u32 << domain_bits);
+    for r in [legacy_extent, planned_extent] {
+        if r.empty() || r.w > 8192 || r.h > 8192 ||
+            [r.x,r.y,r.right(),r.bottom()].iter().any(|v| i64::from(*v).abs() > 1_048_576) {
+            return false;
+        }
+    }
+    let reach = if radius == 0. { 0. } else {
+        radius.next_up().max(f64::from((radius as f32).next_up())).ceil()
+    };
+    // Integer source/target rectangles lie in these allocation bounds. All
+    // relevant local q, its tent taps and bilinear neighbours then stay inside
+    // the chosen exact grid domain. Coarse phases never gain a wider budget.
+    let joined = legacy_extent.union(planned_extent);
+    if f64::from(joined.w.max(joined.h)) + 2.*reach + 4. >= limit { return false; }
+    for axis in 0..2 {
+        let old = legacy_capture[axis];
+        let new = planned_capture[axis];
+        if !(new-old).is_finite() || (new-old).fract() != 0. { return false; }
+        for capture in [legacy_capture, planned_capture] {
+            let origin = capture[axis];
+            let size = capture[axis+2];
+            if !size.is_finite() || size.fract() != 0. || !(1. ..=8192.).contains(&size) {
+                return false;
+            }
+            // Include global capture generation, p +/- integer tent taps,
+            // clamp endpoints, and base+1. Every intermediate is on the same
+            // 2^-k grid and strictly below 2^(24-k), so these additions and
+            // subtractions are exact f32 rather than different rounded phases.
+            let first = origin-reach-2.;
+            let last = origin+size+reach+2.;
+            let source_ends = if axis == 0 { [joined.x,joined.right()] } else { [joined.y,joined.bottom()] };
+            // Do not assume a container's own fill/capture lies inside its
+            // child source union. Bound each local subtraction explicitly,
+            // including q-.5 and the neighbouring address reconstruction.
+            if [first,last].iter().any(|point| source_ends.iter()
+                .any(|source| (*point-f64::from(*source)).abs()+2. >= limit)) { return false; }
+            if first <= -limit || last >= limit ||
+                [origin,origin+size,origin+0.5,origin+size-0.5].iter()
+                    .any(|value| f64::from(*value as f32).to_bits() != value.to_bits()) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn painter_backdrop_phases_supported(
+    doc: &Document,
+    prepared: &HashMap<String, crate::geometry_snapshot::Prepared>,
+    legacy_extent: Rect,
+    support: &PainterSupport,
+) -> bool {
+    // Integer-offset outer shadows have no fractional backdrop sampler. Do
+    // not impose the separate 32K backdrop domain on their existing proof.
+    support.backdrop_outputs.keys().all(|id| {
+        let Some(n) = doc.nodes.get(id) else { return false; };
+        let Some(p) = prepared.get(id) else { return false; };
+        let Some(bounds) = p.fill_bounds else { return false; };
+        let Some(fx) = n.backdrop_effect() else { return false; };
+        if fx.kind != "background-blur" { return false; }
+        let planned = support.stages.as_ref().and_then(|s|s.backdrop_inputs.get(id))
+            .copied().unwrap_or(support.extent);
+        backdrop_sample_phase_supported(
+            crate::coverage::backdrop_box(Some(bounds),legacy_extent),
+            crate::coverage::backdrop_box(Some(bounds),planned),
+            legacy_extent,support.extent,fx.backdrop_radius()*p.matrix.max_scale(),
+        )
+    })
+}
+
+#[cfg(test)]
+mod painter_backdrop_phase_tests {
+    use super::*;
+    fn ordinary() -> ([f64;4],[f64;4],Rect,Rect) {
+        ([0.125,0.25,128.,128.],[31.125,31.25,97.,97.],
+            Rect::new(-10,-10,180,180),Rect::new(0,0,150,150))
+    }
+    #[test]
+    fn real_117_coarse_capture_phase_keeps_both_complete_tent_supports() {
+        assert!(backdrop_sample_phase_supported(
+            [-2355.8828125,964.162109375,4775.,2415.],
+            [-1182.8828125,964.162109375,2429.,1242.],
+            Rect::new(-2355,-1395,4774,4774),Rect::new(-1797,-837,3658,3658),
+            18.39398384094238*64.,
+        ));
+    }
+    #[test]
+    fn exact_binary32_phase_bits_do_not_round_or_scale_authored_origins() {
+        for (origin,bits) in [(0.,0),(-0.,0),(-17.,0),(0.5,1),(1./512.,9),
+            (1./1024.,10),(978.0810546875,10),(-1178.44140625,8),(1./65536.,16)] {
+            assert_eq!(backdrop_phase_fraction_bits(origin),Some(bits));
+        }
+        assert_eq!(backdrop_phase_fraction_bits(f64::from(f32::from_bits(1))),Some(149));
+        for origin in [0.1,f64::NAN,f64::INFINITY,f64::NEG_INFINITY] {
+            assert!(backdrop_phase_fraction_bits(origin).is_none());
+        }
+    }
+    #[test]
+    fn real_117_zoom32_phase_uses_a_stricter_1024_grid_domain() {
+        let old: [f64;4] = [-1178.44140625,978.0810546875,2421.,1216.];
+        let new: [f64;4] = [-592.44140625,978.0810546875,1249.,630.];
+        assert_ne!((old[1]*512.).fract(),0.);
+        assert_eq!((old[1]*1024.).fract(),0.);
+        assert!(backdrop_sample_phase_supported(old,new,
+            Rect::new(-1178,-218,2420,2420),Rect::new(-920,40,1904,1904),
+            18.39398384094238*32.));
+    }
+    #[test]
+    fn finer_grids_tighten_global_taps_clamps_and_source_local_ranges() {
+        for bits in [10,11,12,16] {
+            let limit = f64::from(1_u32 << (24-bits));
+            let fraction = 1. / f64::from(1_u32 << bits);
+            let origin = limit-18.+fraction;
+            let a = Rect::new(limit as i32-30,0,20,32);
+            let b = Rect::new(limit as i32-29,0,19,32);
+            assert!(backdrop_sample_phase_supported([origin,0.,10.,16.],[origin+1.,0.,9.,16.],a,b,4.25));
+            assert!(!backdrop_sample_phase_supported([origin,0.,10.,16.],[origin+1.,0.,9.,16.],a,b,5.));
+            let negative = -limit+7.+fraction;
+            let a = Rect::new(-limit as i32+1,0,20,32);
+            let b = Rect::new(-limit as i32+2,0,19,32);
+            assert!(backdrop_sample_phase_supported([negative,0.,10.,16.],[negative+1.,0.,9.,16.],a,b,4.25));
+            assert!(!backdrop_sample_phase_supported([negative,0.,10.,16.],[negative+1.,0.,9.,16.],a,b,5.));
+            let source = Rect::new(-limit as i32,0,32,32);
+            assert!(!backdrop_sample_phase_supported([fraction,0.,16.,16.],[fraction+1.,0.,15.,16.],source,b,3.25),
+                "an exact global origin does not prove a distant source subtraction");
+        }
+        assert!(!backdrop_sample_phase_supported([1./2048.,0.,128.,64.],[31.+1./2048.,0.,97.,64.],
+            Rect::new(0,0,10000,64),Rect::new(0,0,150,64),3.25));
+        assert!(!backdrop_sample_phase_supported([f64::from(f32::from_bits(1)),0.,16.,16.],
+            [f64::from(f32::from_bits(1)),0.,16.,16.],Rect::new(0,0,32,32),Rect::new(0,0,32,32),1.));
+    }
+    #[test]
+    fn finer_admitted_phases_preserve_literal_binary32_bilinear_addresses() {
+        for bits in [10,11,12] {
+            let fraction = 1. / f64::from(1_u32 << bits);
+            for origin in [-127,-31,0,64,1024] {
+                let old = f64::from(origin)+fraction;
+                let new = old+31.;
+                assert!(backdrop_sample_phase_supported([old,old,128.,128.],[new,new,97.,97.],
+                    Rect::new(origin-10,origin-10,180,180),Rect::new(origin,origin,150,150),3.25));
+                for pixel in origin+40..origin+90 {
+                    let p = pixel as f32+0.5;
+                    let a = (p-old as f32)-0.5; let b = (p-new as f32)-0.5;
+                    assert_eq!((a-a.floor()).to_bits(),(b-b.floor()).to_bits());
+                    assert_eq!((a.floor()+old as f32+0.5).to_bits(),(b.floor()+new as f32+0.5).to_bits());
+                }
+                for pixel in 0..64 {
+                    let a = old as f32+(pixel as f32+31.5); let b = new as f32+(pixel as f32+0.5);
+                    assert_eq!(a.to_bits(),b.to_bits());
+                    let qa = (a-(origin-10) as f32)-0.5; let qb = (b-origin as f32)-0.5;
+                    assert_eq!((qa-qa.floor()).to_bits(),(qb-qb.floor()).to_bits());
+                }
+            }
+        }
+    }
+    #[test]
+    fn a_512_grid_alone_does_not_authorize_crossing_global_f32_exponents() {
+        let raw = 65535.00390625_f64;
+        let cropped = raw+5.;
+        assert_eq!((raw*512.).fract(),0.);
+        assert_eq!((cropped*512.).fract(),0.);
+        assert_eq!(f64::from(raw as f32),raw);
+        assert_ne!(f64::from(cropped as f32),cropped);
+        assert!(!backdrop_sample_phase_supported(
+            [raw,0.,64.,64.],[cropped,0.,59.,64.],
+            Rect::new(65530,0,100,100),Rect::new(65540,0,90,90),1.,
+        ));
+        let (old,mut new,a,b) = ordinary();
+        new[0] = 31.+1./1024.;
+        assert!(!backdrop_sample_phase_supported(old,new,a,b,4.25));
+    }
+    #[test]
+    fn complete_outer_taps_and_bilinear_neighbours_stay_inside_the_exact_grid_domain() {
+        let a = Rect::new(32740,0,20,64);
+        let b = Rect::new(32741,0,19,64);
+        let old = [32750.,0.,10.,64.];
+        let new = [32751.,0.,9.,64.];
+        assert!(backdrop_sample_phase_supported(old,new,a,b,4.25));
+        // Outward loop-bound conversion at radius five reserves its next tap;
+        // the right neighbour then reaches 2^15 and must reject.
+        assert!(!backdrop_sample_phase_supported(old,new,a,b,5.));
+        assert!(!backdrop_sample_phase_supported(old,new,a,b,5.000000000000001));
+        assert!(backdrop_sample_phase_supported([-32760.,0.,10.,64.],[-32759.,0.,9.,64.],
+            Rect::new(-32760,0,20,64),Rect::new(-32759,0,19,64),4.25));
+        assert!(!backdrop_sample_phase_supported([-32760.,0.,10.,64.],[-32759.,0.,9.,64.],
+            Rect::new(-32760,0,20,64),Rect::new(-32759,0,19,64),5.));
+    }
+    #[test]
+    fn source_dimensions_union_and_invalid_metadata_do_not_escape_the_phase_domain() {
+        let (old,new,a,b) = ordinary();
+        assert!(backdrop_sample_phase_supported(old,new,Rect::new(0,0,8192,64),b,4.25));
+        assert!(!backdrop_sample_phase_supported(old,new,Rect::new(0,0,8193,64),b,4.25));
+        assert!(!backdrop_sample_phase_supported([0.,0.,8193.,64.],new,a,b,4.25));
+        assert!(!backdrop_sample_phase_supported(old,new,Rect::new(-16000,0,8192,64),
+            Rect::new(16000,0,8192,64),4.25));
+        assert!(!backdrop_sample_phase_supported(old,new,Rect::new(-1_000_000,0,180,180),
+            Rect::new(-999969,0,150,150),4.25),
+            "small source span does not bound a distant capture's local q");
+        for radius in [f64::NAN,f64::INFINITY,-1.] {
+            assert!(!backdrop_sample_phase_supported(old,new,a,b,radius));
+        }
+        let mut invalid = new;invalid[2]=63.5;
+        assert!(!backdrop_sample_phase_supported(old,invalid,a,b,4.25));
+    }
+    #[test]
+    fn fine_rotated_phase_changes_the_same_global_bilinear_weight_after_integer_crop() {
+        let old = -9.189306259155273_f32;
+        let new = 26.810693740844727_f32;
+        let q_old = (47.5_f32-old)-0.5;
+        let q_new = (47.5_f32-new)-0.5;
+        assert_ne!((q_old-q_old.floor()).to_bits(),(q_new-q_new.floor()).to_bits());
+        assert!(!backdrop_sample_phase_supported(
+            [f64::from(old),11.749897003173828,190.,158.],
+            [f64::from(new),18.749897003173828,105.,98.],
+            Rect::new(-32,-32,232,209),Rect::new(15,7,128,121),15.640625,
+        ));
+    }
+    #[test]
+    fn admitted_coarse_phases_preserve_capture_and_expand_addressing() {
+        for origin in [-16000, -127, 0, 1024, 16000] {
+            for fraction in [0.,1./512.,0.1171875,0.162109375,0.5] {
+                let old = f64::from(origin)+fraction;
+                let new = old+31.;
+                assert!(backdrop_sample_phase_supported([old,old,128.,128.],[new,new,97.,97.],
+                    Rect::new(origin-10,origin-10,180,180),Rect::new(origin,origin,150,150),3.25));
+                for pixel in origin+40..origin+90 {
+                    let p = pixel as f32+0.5;
+                    let a = (p-old as f32)-0.5;
+                    let b = (p-new as f32)-0.5;
+                    assert_eq!((a-a.floor()).to_bits(),(b-b.floor()).to_bits());
+                    assert_eq!((a.floor()+old as f32+0.5).to_bits(),(b.floor()+new as f32+0.5).to_bits());
+                }
+                for pixel in 0..64 {
+                    let a = old as f32+(pixel as f32+31.5);
+                    let b = new as f32+(pixel as f32+0.5);
+                    assert_eq!(a.to_bits(),b.to_bits());
+                    let qa = (a-(origin-10) as f32)-0.5;
+                    let qb = (b-origin as f32)-0.5;
+                    assert_eq!((qa-qa.floor()).to_bits(),(qb-qb.floor()).to_bits());
+                }
+            }
+        }
+    }
+}
+
+fn painter_support_extent(
+    doc: &Document,
+    roots: &[String],
+    output: Rect,
+    prepared: &HashMap<String, crate::geometry_snapshot::Prepared>,
+    prepare_guard: Rect,
+    coherent: bool,
+    capture_stages: Option<&PainterStages>,
+) -> Option<PainterSupport> {
+    fn bounded(r: Rect) -> bool {
+        !r.empty() && [r.x, r.y, r.right(), r.bottom()].iter()
+            .all(|v| i64::from(*v).abs() <= 1_048_576)
+    }
+    fn contains(outer: Rect, inner: Rect) -> bool {
+        outer.intersect(inner) == inner
+    }
+    fn reach(radius: f64) -> Option<i32> {
+        if !radius.is_finite() || radius < 0. || radius > 16_384. { return None; }
+        if radius == 0. { return Some(0); }
+        // The rational kernel uses binary64 while the shader's loop bound is
+        // binary32. Preserve both outer fractional taps and the fractional
+        // backdrop-box capture's two bilinear neighbours.
+        Some(radius.next_up().max(f64::from((radius as f32).next_up())).ceil() as i32 + 2)
+    }
+    struct Walk<'a> {
+        doc: &'a Document,
+        prepared: &'a HashMap<String, crate::geometry_snapshot::Prepared>,
+        extent: Rect,
+        backdrop_outputs: HashMap<String, Rect>,
+        shadow_outputs: HashMap<String, Rect>,
+        managed: bool,
+        stage_safe: bool,
+        node_regions: HashMap<String, Rect>,
+        children_inputs: HashMap<String, Rect>,
+        post_composites: HashMap<String, Rect>,
+        backdrop_inputs: HashMap<String, Rect>,
+        capture_stages: Option<&'a PainterStages>,
+    }
+    impl Walk<'_> {
+        fn include(&mut self, r: Rect) -> Option<()> {
+            if !bounded(r) { return None; }
+            self.extent = self.extent.union(r);
+            Some(())
+        }
+        fn bundle(&mut self, ids: &[String], mut demand: Rect) -> Option<Rect> {
+            for id in ids.iter().rev() {
+                let n = &self.doc.nodes[id];
+                if !n.visible || n.opacity <= 0. { continue; }
+                // Missing entries are allowed only for invisible nodes. An
+                // incomplete camera cache cannot establish non-contribution.
+                let p = self.prepared.get(id)?;
+                let relevant = backdrop_output_bounds(n, p).intersect(demand);
+                if relevant.empty() { continue; }
+                if n.mask || self.doc.mask_child(n).is_some() || n.blend != "normal"
+                    || n.fills.iter().any(|paint| paint.visible &&
+                        (paint.blend != "normal" || !matches!(paint.kind.as_str(), "solid" | "image")))
+                    || n.strokes.iter().any(|stroke| stroke.visible && stroke.width > 0. &&
+                        (stroke.paint.blend != "normal" || !matches!(stroke.paint.kind.as_str(), "solid" | "image")))
+                    || n.effects.iter().any(|e| e.visible &&
+                        (e.gradient_blur.is_some() || !matches!(e.kind.as_str(), "blur" | "background-blur" | "shadow") ||
+                            !self.managed && e.kind != "shadow")) {
+                    return None;
+                }
+                // These rectangles describe the complete painter prefix and
+                // suffix, not just this node's intersection with the suffix.
+                self.post_composites.insert(id.clone(), demand);
+                // An effect-bearing container also needs its own pre-effect
+                // paint domain. Retain phase-one allocation until that third
+                // stage and its material phases have a separate proof.
+                if !n.render_children().is_empty() && n.effects.iter().any(|e| e.visible) {
+                    self.stage_safe = false;
+                }
+                let scale = p.matrix.max_scale();
+                if !scale.is_finite() || !(1. / 65536. ..=65536.).contains(&scale) { return None; }
+                if let Some(shadow) = n.effects.iter().find(|e| e.visible && e.kind == "shadow") {
+                    // A zero-spread, isolated outer shadow only reads source
+                    // alpha. Outside the leaf's unfiltered geometry it is
+                    // exactly zero. Keep the shifted blurred-alpha samples
+                    // as well as every nonzero contributing source pixel;
+                    // avoid a symmetric halo that also allocates known-zero
+                    // rows beyond a large source's edge.
+                    if !n.render_children().is_empty() || n.clip || shadow.spread != 0.
+                        || n.effects.iter().filter(|e| e.visible).count() != 1 { return None; }
+                    let m = p.matrix.0;
+                    let dx = m[0]*shadow.x + m[2]*shadow.y;
+                    let dy = m[1]*shadow.x + m[3]*shadow.y;
+                    if [dx,dy].iter().any(|v| !v.is_finite() || v.fract() != 0.
+                        || f64::from(*v as f32) != *v || v.abs() > 1_048_576.) { return None; }
+                    let shifted = Rect::new(relevant.x-dx as i32,relevant.y-dy as i32,relevant.w,relevant.h).expand(2);
+                    self.include(shifted)?;
+                    let source = shifted.expand(reach(shadow.radius*scale)?).intersect(p.bounds.expand(-p.halo));
+                    if !source.empty() { self.include(source)?; }
+                    self.shadow_outputs.insert(id.clone(), relevant);
+                    self.node_regions.insert(id.clone(), if source.empty() {
+                        relevant.union(shifted)
+                    } else { relevant.union(shifted).union(source) });
+                    continue;
+                }
+                let mut source = relevant;
+                // Foreground effects run after the node's fills/children and
+                // backdrop. Sum their supports before walking that content.
+                for fx in n.effects.iter().rev().filter(|e| e.visible && e.kind == "blur") {
+                    source = source.expand(reach(fx.blur_radius() * scale)?);
+                    self.include(source)?;
+                }
+                let content = self.bundle(n.render_children(), source)?;
+                self.include(content)?;
+                self.node_regions.insert(id.clone(), content);
+                if !n.render_children().is_empty() {
+                    self.children_inputs.insert(id.clone(), content);
+                }
+                if let Some(fx) = n.backdrop_effect() {
+                    // The renderer captures the current target before fills
+                    // and children. A later child backdrop can require this
+                    // base throughout its own enlarged prefix rectangle.
+                    // Phase four freezes phase three's logical capture limit.
+                    // A later backdrop may narrow this node's new demand, but
+                    // must not thereby move/re-size this earlier capture.
+                    let backdrop = match self.capture_stages {
+                        Some(stages) => *stages.backdrop_inputs.get(id)?,
+                        None => content.expand(reach(fx.backdrop_radius() * scale)?),
+                    };
+                    self.backdrop_outputs.insert(id.clone(), content);
+                    self.backdrop_inputs.insert(id.clone(), backdrop);
+                    let reads = if let Some(stages) = self.capture_stages {
+                        // Freeze the old physical RECTANGULAR prefix, not a
+                        // set union of logical demands. Later backdrops may
+                        // have narrowed this walk's current demand; the old
+                        // post domain can still own real edge/corner loads.
+                        let previous_prefix = stages.post_composites.get(id)?.union(backdrop);
+                        backdrop_capture_reads(previous_prefix,crate::coverage::backdrop_box(p.fill_bounds,backdrop))?
+                    } else { backdrop };
+                    if !reads.empty() { self.include(reads)?; }
+                    // Retain every previous consumer, including neighbours
+                    // outside this logical box but inside the old demand.
+                    demand = demand.union(reads);
+                }
+            }
+            Some(demand)
+        }
+    }
+    let managed = doc.color_management.is_some();
+    // Unmanaged analytic rendering uses three Gaussian boxes. Its support
+    // differs from the integrated tent, so this certificate cannot apply.
+    if !managed && !coherent || !bounded(output) { return None; }
+    let guarded = output.expand(2);
+    if !bounded(guarded) { return None; }
+    let mut walk = Walk { doc, prepared, extent: guarded,
+        backdrop_outputs: HashMap::new(), shadow_outputs: HashMap::new(), managed,
+        stage_safe: true, node_regions: HashMap::new(), children_inputs: HashMap::new(),
+        post_composites: HashMap::new(), backdrop_inputs: HashMap::new(), capture_stages };
+    let prefix = walk.bundle(roots, guarded)?;
+    walk.include(prefix)?;
+    if capture_stages.is_some() && !walk.stage_safe { return None; }
+    contains(prepare_guard, walk.extent).then_some(PainterSupport {
+        extent: walk.extent, backdrop_outputs: walk.backdrop_outputs, shadow_outputs: walk.shadow_outputs,
+        stages: walk.stage_safe.then_some(PainterStages { root_input: prefix,
+            node_regions: walk.node_regions, children_inputs: walk.children_inputs,
+            post_composites: walk.post_composites, backdrop_inputs: walk.backdrop_inputs }),
+    })
+}
+
 struct Compiler<'a> {
     doc: &'a Document,
     fonts: &'a Fonts,
@@ -751,6 +1362,9 @@ struct Compiler<'a> {
     interactive_effects: bool,
     large_packet: bool,
     prune_backdrop_output: bool,
+    backdrop_outputs: HashMap<String, Rect>,
+    shadow_outputs: HashMap<String, Rect>,
+    stages: Option<PainterStages>,
     curves: Vec<f32>,
     area_paths: HashMap<ProgramIdentity, AreaPath>,
     programs: ProgramCache,
@@ -831,6 +1445,14 @@ impl Compiler<'_> {
         if !n.visible {
             return Ok(Rect::default());
         }
+        let staged_region = if let Some(stages) = &self.stages {
+            let Some(region) = stages.node_regions.get(id) else {
+                // The reverse painter proof did not demand this node in any
+                // prefix. Wider independent leaf allocations must not revive it.
+                return Ok(Rect::default());
+            };
+            Some(*region)
+        } else { None };
         // Keep the immutable owner alive independently of the mutable compiler.
         // Borrowing one entry avoids cloning both per-node stroke vectors.
         let prepared_owner = Arc::clone(&self.prepared);
@@ -883,7 +1505,7 @@ impl Compiler<'_> {
                 .fold(0_i32, i32::saturating_add)
         } else { halo(n, matrix) };
         let source_region = requested.map(|r| r.expand(own_halo.saturating_add(2)));
-        let extent = source_region.unwrap_or(self.extent);
+        let extent = staged_region.unwrap_or_else(|| source_region.unwrap_or(self.extent));
         // Preparation already includes this leaf's strokes and effect support.
         // Reuse its exact final rejection before rereading paths/control bounds
         // and recomputing the same margins for every offscreen tile candidate.
@@ -1001,8 +1623,16 @@ impl Compiler<'_> {
                 passthrough: n.passes_backdrop(),
                 backdrop_box: crate::coverage::backdrop_box(
                     crate::bounds::path_bounds(fill_path, matrix),
-                    extent,
+                    self.stages.as_ref().and_then(|s| s.backdrop_inputs.get(id)).copied().unwrap_or(extent),
                 ),
+                backdrop_output_box: self.backdrop_outputs.get(id).map(|r| r.intersect(rect))
+                    .filter(|r| !r.empty())
+                    .map(|r| [f64::from(r.x), f64::from(r.y), f64::from(r.w), f64::from(r.h)]),
+                shadow_output_box: self.shadow_outputs.get(id).map(|r| r.intersect(rect))
+                    .filter(|r| !r.empty())
+                    .map(|r| [f64::from(r.x), f64::from(r.y), f64::from(r.w), f64::from(r.h)]),
+                children_input_box: self.stages.as_ref().and_then(|s| s.children_inputs.get(id)).copied().map(device_box),
+                post_composite_box: self.stages.as_ref().and_then(|s| s.post_composites.get(id)).copied().map(device_box),
                 id: id.into(),
                 rect,
                 matrix,
@@ -1088,6 +1718,21 @@ impl Engine {
     pub fn compile_gpu_request(&mut self, request: &str) -> Result<GpuScene, String> {
         let mut value: serde_json::Value = serde_json::from_str(request).map_err(|e| e.to_string())?;
         let object = value.as_object_mut().ok_or("Render options must be an object")?;
+        // Allocation changes remain opt-in until the independent GPU/whole-app
+        // gates pass. This is a trusted request policy, never document state.
+        let painter_support = match object.remove("gpuPainterSupport") {
+            None => false,
+            Some(serde_json::Value::Bool(value)) => value,
+            Some(_) => return Err("Invalid GPU painter support policy".into()),
+        };
+        let capture_reads = match object.remove("gpuPainterCaptureReads") {
+            None => false,
+            Some(serde_json::Value::Bool(value)) => value,
+            Some(_) => return Err("Invalid GPU painter capture-read policy".into()),
+        };
+        if capture_reads && !painter_support {
+            return Err("GPU painter capture reads require painter support".into());
+        }
         let region = object.remove("gpuViewport").map(serde_json::from_value::<Rect>)
             .transpose().map_err(|e| format!("Invalid GPU viewport: {e}"))?;
         let capture = object.remove("captureViewport").map(serde_json::from_value::<Rect>)
@@ -1101,12 +1746,15 @@ impl Engine {
             return Err("Invalid prepare viewport bounds".into());
         }
         let options = self.parse_options(value)?;
+        // This stricter allocation candidate has no authority over exports,
+        // pixel preview or the ordinary whole-document compile API.
+        let capture_reads = capture_reads && !options.raster_profile.is_export() && options.pixel_preview.is_none();
         if let Some(capture) = capture {
             if options.pixel_preview.is_some() || options.raster_profile.is_export() { return Err("Native capture is a canvas operation".into()); }
-            return self.compile_gpu_region_impl(&options, capture, prepare.or(Some(capture)), true);
+            return self.compile_gpu_region_impl(&options, capture, prepare.or(Some(capture)), true, painter_support, capture_reads);
         }
         match region {
-            Some(region) => self.compile_gpu_region(&options, region, prepare.or(Some(region))),
+            Some(region) => self.compile_gpu_region_impl(&options, region, prepare.or(Some(region)), false, painter_support, capture_reads),
             None => self.compile_gpu(&options),
         }
     }
@@ -1121,7 +1769,7 @@ impl Engine {
         }
         if options.raster_profile.is_export() {
             let source = crate::fidelity::source(options, 0, 0, options.width, options.height)?;
-            let mut scene = self.compile_gpu_scene(&source, None, None)?;
+            let mut scene = self.compile_gpu_scene(&source, None, None, false, false)?;
             scene.resolve = Some(crate::preview::Presentation {
                 width: options.width,
                 height: options.height,
@@ -1139,7 +1787,7 @@ impl Engine {
             }
             return Ok(scene);
         }
-        self.compile_gpu_scene(options, None, None)
+        self.compile_gpu_scene(options, None, None, false, false)
     }
     /// Compile a bounded crop in the original camera's device coordinate system.
     /// Only integer allocation/coverage limits change; authored transforms,
@@ -1153,9 +1801,9 @@ impl Engine {
         region: Rect,
         prepare: Option<Rect>,
     ) -> Result<GpuScene, String> {
-        self.compile_gpu_region_impl(options, region, prepare, false)
+        self.compile_gpu_region_impl(options, region, prepare, false, false, false)
     }
-    fn compile_gpu_region_impl(&mut self, options: &RenderOptions, region: Rect, prepare: Option<Rect>, capture: bool) -> Result<GpuScene, String> {
+    fn compile_gpu_region_impl(&mut self, options: &RenderOptions, region: Rect, prepare: Option<Rect>, capture: bool, painter_support: bool, capture_reads: bool) -> Result<GpuScene, String> {
         // The production gutter tile is TILE_SIZE + 2 pixels wide.
         if region.empty()
             || region.w > if capture {8192} else {crate::tile_stack::TILE_SIZE as u32 + 2}
@@ -1177,7 +1825,7 @@ impl Engine {
             let source = crate::fidelity::source(&cropped, 0, 0, region.w, region.h)?;
             let source_region = Rect::new(region.x * 2, region.y * 2, region.w * 2, region.h * 2);
             let source_prepare = prepare.map(|r| Rect::new(r.x * 2, r.y * 2, r.w * 2, r.h * 2));
-            let mut scene = self.compile_gpu_scene(&source, Some(source_region), source_prepare)?;
+            let mut scene = self.compile_gpu_scene(&source, Some(source_region), source_prepare, painter_support, capture_reads)?;
             scene.resolve = Some(crate::preview::Presentation {
                 width: region.w,
                 height: region.h,
@@ -1187,7 +1835,7 @@ impl Engine {
             });
             scene
         } else {
-            self.compile_gpu_scene(&cropped, Some(region), prepare)?
+            self.compile_gpu_scene(&cropped, Some(region), prepare, painter_support, capture_reads)?
         };
         scene.output = Some(region);
         // Version 8 adds a global output rectangle. Older consumers must reject
@@ -1206,6 +1854,8 @@ impl Engine {
         options: &RenderOptions,
         viewport: Option<Rect>,
         prepare_viewport: Option<Rect>,
+        painter_support: bool,
+        capture_reads: bool,
     ) -> Result<GpuScene, String> {
         self.resolve_layout()?;
         if options.width == 0
@@ -1499,12 +2149,46 @@ impl Engine {
                 viewport.expand(halo)
             }
         };
+        let painter_support = if painter_support && has_region && !regional_foreground {
+            // A retained camera entry can own a wider, complete geometry
+            // window than this request. Use that window only when it owns the
+            // exact prepared map consumed below. Otherwise keep this request's
+            // proven preparation guard; do not infer missing geometry.
+            let support_guard = self.camera_prepare.as_ref()
+                .filter(|cache| !cache.incomplete && Arc::ptr_eq(&cache.prepared, &prepared))
+                .map(|cache| { let (x,y,w,h) = cache.key.3; Rect::new(x,y,w,h) })
+                .unwrap_or(prepare_guard);
+            // A complete sibling chain can require MORE than the legacy tree
+            // maximum. Adopting only smaller certificates would silently keep
+            // the old under-supported crop. The unchanged surface cap below
+            // still applies to every admitted complete certificate.
+            let coherent = options.raster_profile != crate::fidelity::RasterProfile::Analytic;
+            let phase_three = painter_support_extent(doc, &page.children, viewport, &prepared, support_guard,
+                coherent, None)
+                .filter(|support| painter_backdrop_phases_supported(doc, &prepared, extent, support));
+            phase_three.map(|previous| {
+                if !capture_reads { return previous; }
+                let Some(stages) = previous.stages.as_ref() else { return previous; };
+                // The frozen logical limits own capture origins/dimensions.
+                // A failed stage/geometry/phase proof keeps the already proven
+                // phase-three certificate, never a mixture of the two plans.
+                painter_support_extent(doc, &page.children, viewport, &prepared, support_guard,
+                    coherent, Some(stages))
+                    .filter(|support| support.stages.is_some() &&
+                        painter_backdrop_phases_supported(doc, &prepared, extent, support))
+                    .unwrap_or(previous)
+            })
+        } else { None };
+        let extent = painter_support.as_ref().map_or(extent, |support| support.extent);
         if extent.pixels() > 16_777_216 {
             return Err("GPU surface budget exceeded".into());
         }
         let programs = if cache_key.is_some() {
             self.camera_prepare.as_mut().map(|cache|std::mem::take(&mut cache.programs)).unwrap_or_default()
         } else { ProgramCache::default() };
+        let PainterSupport { backdrop_outputs, shadow_outputs, stages, .. } = painter_support.unwrap_or_else(||
+            PainterSupport { extent, backdrop_outputs: HashMap::new(), shadow_outputs: HashMap::new(), stages: None });
+        let root_input_box = stages.as_ref().map(|s| device_box(s.root_input));
         let mut compiler = Compiler {
             doc,
             fonts: &self.fonts,
@@ -1516,6 +2200,9 @@ impl Engine {
             interactive_effects: options.interactive_effects,
             large_packet,
             prune_backdrop_output: backdrop_chain,
+            backdrop_outputs,
+            shadow_outputs,
+            stages,
             curves: Vec::new(),
             area_paths: HashMap::new(),
             programs,
@@ -1568,6 +2255,7 @@ impl Engine {
         Ok(GpuScene {
             software_raster: options.raster_profile.is_software() && doc.color_management.is_none(),
             output: None,
+            root_input_box,
             float_compositing: doc.color_management.is_some()
                 || options.raster_profile == crate::fidelity::RasterProfile::Analytic,
             color_management: doc.color_management,
