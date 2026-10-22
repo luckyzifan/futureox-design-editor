@@ -1,8 +1,9 @@
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { GpuRenderer } from './renderer'
 import type { Driver, Texture } from './types'
 
 const MiB = 1024 * 1024
+afterEach(() => vi.unstubAllEnvs())
 function fixture(poolBytes = 128 * 1024) {
   let complete!: () => void, fail!: (reason: Error) => void, finished = false
   const active = new Set<Texture>()
@@ -75,6 +76,56 @@ test('a failed pressure fence destroys no resource or pool entry', async () => {
   f.fail(); await expect(pending).rejects.toThrow('lost fence')
   expect(f.driver.destroy).not.toHaveBeenCalled()
   expect(f.renderer.bytes).toBe(203 * MiB); expect(f.renderer.free.get('128:64')).toEqual([f.pooled])
+})
+
+test('candidate maintenance retains a used immutable image without an unnecessary allocation or completion wait', async () => {
+  vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
+  const f = fixture(), image = { width: 1024, height: 1024, bytes: 16 * MiB, resource: {} } as Texture
+  f.renderer.images.set('source', { texture: image }); f.renderer.used.add(image)
+  for (let i = 0; i < 80; i++) await f.renderer.reclaimScratch()
+  expect(f.driver.checkpoint).not.toHaveBeenCalled(); expect(f.driver.destroy).not.toHaveBeenCalled()
+  expect(f.renderer.images.get('source').texture).toBe(image); expect(f.renderer.bytes).toBe(203 * MiB)
+})
+
+test('candidate allocation pressure consumes the covered current-frame pool before evicting its immutable upload', async () => {
+  vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
+  const f = fixture(80 * MiB), image = { width: 512, height: 512, bytes: 4 * MiB, resource: {} } as Texture
+  f.renderer.bytes = 250 * MiB; f.renderer.images.set('source', { texture: image }); f.renderer.used.add(image)
+  f.pooled.width = 1024; f.pooled.height = 5120; f.renderer.free.clear(); f.renderer.free.set('1024:5120', [f.pooled])
+  Object.assign(f.driver, { resourceEpoch: 4, completedResourceEpoch: 3 })
+  f.renderer.poolReleaseEpoch.set(f.pooled, 4); f.renderer.used.add(f.pooled)
+  // The bounded first batch reaches its resource-count limit before touching
+  // the large pool. Its real checkpoint nevertheless covers that exact pool.
+  for (let i = 0; i < 4096; i++) f.renderer.retiredUploads.push({ width: 1, height: 1, bytes: 16, resource: {} } as Texture)
+  const pending = f.renderer.reclaimScratch(64 * MiB)
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce(); expect(f.driver.destroy).not.toHaveBeenCalled()
+  f.complete(); await pending
+  expect(f.driver.destroy).toHaveBeenCalledWith(f.pooled); expect(f.driver.destroy).not.toHaveBeenCalledWith(image)
+  expect(f.renderer.images.get('source').texture).toBe(image)
+  expect(f.renderer.overBudget(64 * MiB)).toBe(false)
+  expect((f.driver as typeof f.driver & { completedResourceEpoch: number }).completedResourceEpoch).toBe(3)
+  expect(f.renderer.frameBudget).toBe(256 * MiB)
+})
+
+test('candidate pressure can still evict an unpinned image when no covered pool can satisfy the actual allocation', async () => {
+  vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
+  const f = fixture(), image = { width: 2048, height: 2048, bytes: 64 * MiB, resource: {} } as Texture
+  f.renderer.bytes = 250 * MiB; f.renderer.free.clear(); f.renderer.images.set('source', { texture: image }); f.renderer.used.add(image)
+  const pending = f.renderer.reclaimScratch(32 * MiB)
+  expect(f.driver.destroy).not.toHaveBeenCalled(); f.complete(); await pending
+  expect(f.driver.destroy).toHaveBeenCalledExactlyOnceWith(image)
+  expect(f.renderer.images.has('source')).toBe(false); expect(f.renderer.overBudget(32 * MiB)).toBe(false)
+})
+
+test('candidate pressure preserves both current-frame pool and image after an uncertain completion', async () => {
+  vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
+  const f = fixture(80 * MiB), image = { width: 512, height: 512, bytes: 4 * MiB, resource: {} } as Texture
+  f.renderer.bytes = 250 * MiB; f.renderer.images.set('source', { texture: image }); f.renderer.used.add(image)
+  f.pooled.width = 1024; f.pooled.height = 5120; f.renderer.free.clear(); f.renderer.free.set('1024:5120', [f.pooled])
+  const pending = f.renderer.reclaimScratch(64 * MiB)
+  f.fail(); await expect(pending).rejects.toThrow('lost fence')
+  expect(f.driver.destroy).not.toHaveBeenCalled(); expect(f.renderer.images.get('source').texture).toBe(image)
+  expect(f.renderer.free.get('1024:5120')).toEqual([f.pooled])
 })
 
 function sequential(poolBytes = 48 * MiB, bytes = 160 * MiB) {

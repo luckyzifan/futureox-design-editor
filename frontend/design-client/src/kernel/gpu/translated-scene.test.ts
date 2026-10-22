@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import { VectorEngine } from '../../generated/design-kernel/design_kernel'
 import { blank, node, paint, effect } from '../../model'
 import { decodeScenePacket } from './scene-packet'
-import { preparePreviewSelection, translatePreviewScene } from './translated-scene'
+import { preparePreviewSelection, translatePreviewOffsets, translatePreviewScene } from './translated-scene'
 import { sceneIndex } from './scene-index'
 
 function fixture() {
@@ -66,6 +66,18 @@ test('subpixel root movement regenerates coverage instead of filtering an old ma
       expect(source.nodes[a.id].previewSource).toBeUndefined()
     }
   } finally { kernel.free() }
+})
+test.each(['backdropOutputBox','shadowOutputBox'] as const)('native painter %s is reissued after movement, never translated as geometry', field=>{
+  const{doc,a,kernel,compile}=fixture()
+  try{
+    const source=compile(doc),box:[number,number,number,number]=[20,20,30,30]
+    source.nodes[a.id][field]=box
+    const next={...doc,nodes:{...doc.nodes,[a.id]:{...a,transform:[1,0,0,1,25,24] as typeof a.transform}}}
+    expect(translatePreviewScene(source,doc,next)).toBeNull()
+    expect(translatePreviewOffsets(source,new Map([[a.id,[5,4]]]),new Set(),new Set())).toBeNull()
+    expect(source.nodes[a.id][field]).toBe(box)
+    expect(source.nodes[a.id].matrix[4]).toBe(20)
+  }finally{kernel.free()}
 })
 
 test('guarded viewport permits clipped geometry motion but bounds cumulative travel', () => {

@@ -60,6 +60,33 @@ to the rendered snapshot and owner, never merely the latest received sequence.
 
 VITE_DESIGN_DYNAMIC_UNIFORMS and VITE_DESIGN_KERNEL_CACHE remain default-off (enabled only by the explicit value 1) pending a separate actual-device gate. Their implementation gates are in frontend/design-client/src/kernel/gpu/webgpu.ts and renderer.ts respectively. Before enabling, verify pixel parity on difficult materials, real memory/resource lifetime, device loss/cancellation, interaction smoothness and supported platforms. CPU mocks or source contracts cannot discharge this gate. Ordinary established GPU rendering is a separate path, not disabled by this requirement.
 
+The regional painter, capture-read, native-navigation and byte-alpha prefix
+candidates (`VITE_DESIGN_EXACT_CLAMP_PREFIX`, `VITE_DESIGN_PAINTER_CAPTURE_READS`,
+`VITE_DESIGN_NATIVE_NAVIGATION`, `VITE_DESIGN_BYTE_TENT_PREFIX`) are separate strict
+opt-ins, pending whole-editor acceptance. Native dependency bounds must retain
+the original backdrop capture origin, dimensions, clamp and every sampled
+neighbour, including zero-weight nonfinite neighbours. A compact physical color
+window must retain its complete logical target domain for later siblings.
+Four coverage phases may share a mask only after proving their actual discrete
+coverage equal against the frame's private uploaded program; similar span
+metadata is insufficient. Finite individual HDR paints do not prove finite
+accumulated output. Byte-alpha integer prefix does not authorize general RGBA
+filters, fractional-radius substitution or a higher legacy shader guard.
+Keep a rejected queue completion distinct from resource retirement. See the
+[2026-10-22 diagnostic and gate record](../testing/verification-complex-navigation-20261021/DEEP-GPU-20261022.md).
+
+`VITE_DESIGN_DISPLAY_TENT_RADIUS=1` additionally requires
+`VITE_DESIGN_EXACT_CLAMP_PREFIX=1`. It is a separate default-off SDR display
+approximation: explicitly scoped normal blur/backdrop axes may round radii
+1..2048 to f32 only when the original native tap halo cannot grow. Both
+kernel packets and the GPU filter contract must use that selected radius.
+The worker must overwrite document/request intent, isolate every cache policy,
+and report actual changed axes. Readback, export, HDR, software, other backends,
+glass, gradient blur, byte shadows and unknown callers retain the original
+radius. This flag does not extend the legacy whole-filter 512 guard or fix the
+unsupported nested-interaction fallback. See
+[display-radius evidence](../testing/verification-complex-navigation-20261021/DISPLAY-TENT-RADIUS-20261022.md).
+
 An explicit desktop launch may choose `CORE_GPU_WORKING_BUDGET_MIB=256..4096`.
 Missing configuration or `auto` preserves the existing automatic policy. The
 host validates and freezes this optional working-set admission ceiling through

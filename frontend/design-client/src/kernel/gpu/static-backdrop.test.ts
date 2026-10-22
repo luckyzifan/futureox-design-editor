@@ -58,3 +58,13 @@ test('native recompiles may share only the same proven transform lease and sampl
   renderer.scene={...scene,nodes:{...scene.nodes},interactionLease:{}}
   renderer.release(renderer.interactionBackdrop(root,backdrop,5));expect(renderer.blur).toHaveBeenCalledTimes(3)
 })
+test('both stationary and moving backdrop caches separate display-radius intent and normalize the exact lane',()=>{
+  const {scene,root}=fixture()
+  const staticExact=staticBackdropKey(scene,root)
+  expect(staticBackdropKey({...scene,displayTentRadius:false},root)).toBe(staticExact)
+  expect(staticBackdropKey({...scene,displayTentRadius:true},root)).not.toBe(staticExact)
+  const moving={...scene,nativeInteraction:true,interactionLease:{},interactionSelection:['root']}
+  const movingExact=movingBackdropKey(moving,root)
+  expect(movingBackdropKey({...moving,displayTentRadius:false},root)).toBe(movingExact)
+  expect(movingBackdropKey({...moving,displayTentRadius:true},root)).not.toBe(movingExact)
+})

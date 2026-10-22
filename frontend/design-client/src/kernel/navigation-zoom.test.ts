@@ -428,3 +428,35 @@ test('pending-age diagnostics do not sample or settle navigation', () => {
   owner.frame(170)
   expect(owner.pendingAge(170)).toBe(0)
 })
+
+test('opt-in frame sampling publishes first input immediately, then only the latest target once per frame', () => {
+  const owner = new NavigationZoom(camera(1), { sampleOnFrame: true })
+  const first = owner.update(camera(2), 0)
+  expect(first.active).toBe(true); expect(first.view).toEqual(camera(2))
+  for (let i = 1; i <= 200; i++) expect(owner.update(camera(2 + i, i, -i), i / 100)).toBe(first)
+  const frame = owner.frame(8)
+  expect(frame.sequence).toBe(first.sequence + 1); expect(frame.view).toEqual(camera(202, 200, -200))
+  expect(owner.frame(16)).toBe(frame) // no identical old pixel submissions.
+  expect(owner.frame(161).active).toBe(true)
+  const final = owner.frame(162)
+  expect(final.active).toBe(false); expect(final.view).toEqual(frame.view)
+})
+
+test('native frame policy retains flushed pointer release and conservative quiet ownership', () => {
+  const owner = new NavigationZoom(camera(4), { sampleOnFrame: true, includeTranslation: true })
+  owner.update(camera(4, .125, -.375), 0, true)
+  owner.update(camera(4, 20.125, -.375), 1, true)
+  expect(owner.frame(8).view).toEqual(camera(4, 20.125, -.375))
+  const release = owner.update(camera(4, 21.25, -.625), 9, false)
+  expect(release.active).toBe(false); expect(release.view).toEqual(camera(4, 21.25, -.625))
+  expect(owner.frame(1000)).toBe(release)
+})
+
+test.each([1, 1.25, 2, 3])('native navigation keeps real DPR %s without changing the default or startup density', dpr => {
+  const width = 855, height = 888
+  expect(navigationPreviewDensity(dpr, width, height, true)).toBe(dpr)
+  expect(navigationPreviewDensity(dpr, width, height)).toBe(Math.min(dpr, 1))
+  // Native output is not silently lowered to evade the ordinary size gate.
+  expect(navigationPreviewDensity(dpr, 9000, 9000, true)).toBe(dpr)
+  expect(navigationPreviewDensity(dpr, 9000, 9000)).toBeLessThan(1)
+})

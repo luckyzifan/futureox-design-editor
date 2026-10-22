@@ -10,10 +10,15 @@ struct PrefixMetadata {
 @group(1) @binding(2) var<storage,read_write> prefixResults:array<vec2<u32>>;
 // Mode22 uniform contract: u48=(length,first,count,axis),
 // u49=(channel,integer-radius or linear-interior reach,rational flag,CPU bound bits).
-// u50=(output offset along source axis,output length,cross-axis offset,0).
+// u50=(output offset along source axis,output length,cross-axis offset,clamp padding).
 fn prefixPixel(x:u32,line:u32)->vec2<i32>{
- if(u(48u).w<0.5){return filterSourcePixel(vec2<i32>(i32(x),i32(line)));}
- return filterSourcePixel(vec2<i32>(i32(line),i32(x)));
+ var along=i32(x);let padding=i32(u(50u).w);
+ if(padding>0){
+  let sourceLength=select(i32(u(1u).w),i32(u(1u).z),u(48u).w<0.5);
+  along=clamp(along-padding,0,sourceLength-1);
+ }
+ if(u(48u).w<0.5){return filterSourcePixel(vec2<i32>(along,i32(line)));}
+ return filterSourcePixel(vec2<i32>(i32(line),along));
 }
 fn prefixDecline(line:u32,reason:u32){prefixMetadata.lines[line]=vec4<u32>(0u,0u,0u,reason);atomicAdd(&prefixMetadata.declined,1u);}
 fn prefixCoefficient(distance:u32)->PrefixInt {

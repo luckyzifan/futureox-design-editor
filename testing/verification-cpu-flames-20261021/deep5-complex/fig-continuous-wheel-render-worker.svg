@@ -1,0 +1,1179 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="432" viewBox="0 0 1600 432" style="font-family:monospace"><title>fig · continuous-wheel · render-worker — timeDeltas weighted active CPU stacks; not a timeline</title><g><title>fig · continuous-wheel · render-worker — 4774.303 ms cumulative active samples
+
+</title><rect x="0.000" y="414" width="1599.700" height="17" fill="hsl(52 80% 72%)"/><text x="2.000" y="426" font-size="10">fig · continuous-wheel · render-worker</text></g><g><title>$u.port1.onmessage — 1782.135 ms cumulative active samples
+../../src/kernel/render-worker.ts:122:19
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:16248</title><rect x="0.000" y="396" width="596.942" height="17" fill="hsl(27 80% 72%)"/><text x="2.000" y="408" font-size="10">$u.port1.onmessage</text></g><g><title>draw — 1771.918 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:331:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:2757:7310</title><rect x="0.000" y="378" width="593.518" height="17" fill="hsl(38 80% 72%)"/><text x="2.000" y="390" font-size="10">draw</text></g><g><title>compositeDrawPlan — 362.099 ms cumulative active samples
+../../src/kernel/gpu/composite-draw-plan.ts:61:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:100014</title><rect x="0.000" y="360" width="121.049" height="17" fill="hsl(50 80% 72%)"/><text x="2.000" y="372" font-size="10">compositeDrawPlan</text></g><g><title>(anonymous) — 11.510 ms cumulative active samples
+../../src/kernel/gpu/composite-draw-plan.ts:71:5
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:100067</title><rect x="0.000" y="342" width="3.557" height="17" fill="hsl(30 80% 72%)"/><text x="2.000" y="354" font-size="10"></text></g><g><title>draw — 361.423 ms cumulative active samples
+../../src/kernel/gpu/canvas-overlay.ts:85:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:2740:820</title><rect x="121.349" y="360" width="120.823" height="17" fill="hsl(38 80% 72%)"/><text x="123.349" y="372" font-size="10">draw</text></g><g><title>overlayVertices — 225.504 ms cumulative active samples
+../../src/kernel/gpu/canvas-overlay.ts:18:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:2731:3025</title><rect x="121.349" y="342" width="75.273" height="17" fill="hsl(45 80% 72%)"/><text x="123.349" y="354" font-size="10">overlayVert</text></g><g><title>line — 136.836 ms cumulative active samples
+../../src/kernel/gpu/canvas-overlay.ts:24:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:2731:3160</title><rect x="121.349" y="324" width="45.558" height="17" fill="hsl(52 80% 72%)"/><text x="123.349" y="336" font-size="10">line</text></g><g><title>quad — 96.002 ms cumulative active samples
+../../src/kernel/gpu/canvas-overlay.ts:20:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:2731:3046</title><rect x="121.349" y="306" width="31.873" height="17" fill="hsl(35 80% 72%)"/><text x="123.349" y="318" font-size="10">quad</text></g><g><title>quad — 6.427 ms cumulative active samples
+../../src/kernel/gpu/canvas-overlay.ts:20:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:2731:3046</title><rect x="167.207" y="324" width="1.854" height="17" fill="hsl(35 80% 72%)"/><text x="169.207" y="336" font-size="10"></text></g><g><title>l — 4.647 ms cumulative active samples
+../../src/kernel/gpu/canvas-overlay.ts:45:22
+design-app://app/assets/render-worker-Czsk_KUZ.js:2731:4010</title><rect x="169.361" y="324" width="1.257" height="17" fill="hsl(16 80% 72%)"/><text x="171.361" y="336" font-size="10"></text></g><g><title>draw — 82.534 ms cumulative active samples
+../../src/kernel/gpu/canvas-labels.ts:87:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:2731:1583</title><rect x="196.922" y="342" width="27.359" height="17" fill="hsl(38 80% 72%)"/><text x="198.922" y="354" font-size="10">dra</text></g><g><title>entry — 4.992 ms cumulative active samples
+../../src/kernel/gpu/canvas-labels.ts:67:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:2731:434</title><rect x="196.922" y="324" width="1.373" height="17" fill="hsl(20 80% 72%)"/><text x="198.922" y="336" font-size="10"></text></g><g><title>createView — 18.002 ms cumulative active samples
+
+:0:0</title><rect x="224.581" y="342" width="5.733" height="17" fill="hsl(47 80% 72%)"/><text x="226.581" y="354" font-size="10"></text></g><g><title>writeBuffer — 12.637 ms cumulative active samples
+
+:0:0</title><rect x="230.614" y="342" width="3.935" height="17" fill="hsl(55 80% 72%)"/><text x="232.614" y="354" font-size="10"></text></g><g><title>setPipeline — 5.129 ms cumulative active samples
+
+:0:0</title><rect x="234.849" y="342" width="1.419" height="17" fill="hsl(12 80% 72%)"/><text x="236.849" y="354" font-size="10"></text></g><g><title>beginRenderPass — 3.836 ms cumulative active samples
+
+:0:0</title><rect x="236.568" y="342" width="0.986" height="17" fill="hsl(50 80% 72%)"/><text x="238.568" y="354" font-size="10"></text></g><g><title>setVertexBuffer — 2.540 ms cumulative active samples
+
+:0:0</title><rect x="237.854" y="342" width="0.551" height="17" fill="hsl(10 80% 72%)"/><text x="239.854" y="354" font-size="10"></text></g><g><title>ad — 264.410 ms cumulative active samples
+../../src/kernel/render-worker.ts:131:23
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:16365</title><rect x="242.472" y="360" width="88.311" height="17" fill="hsl(15 80% 72%)"/><text x="244.472" y="372" font-size="10">ad</text></g><g><title>record — 213.135 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="242.472" y="342" width="71.127" height="17" fill="hsl(57 80% 72%)"/><text x="244.472" y="354" font-size="10">record</text></g><g><title>sanitizeRecord — 84.623 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="242.472" y="324" width="28.059" height="17" fill="hsl(36 80% 72%)"/><text x="244.472" y="336" font-size="10">sani</text></g><g><title>sanitizeFields — 52.411 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="242.472" y="306" width="17.264" height="17" fill="hsl(38 80% 72%)"/><text x="244.472" y="318" font-size="10">sa</text></g><g><title>(anonymous) — 2.537 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:88:36
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5014</title><rect x="260.036" y="306" width="0.550" height="17" fill="hsl(30 80% 72%)"/><text x="262.036" y="318" font-size="10"></text></g><g><title>sanitizeFields — 69.802 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="270.832" y="324" width="23.093" height="17" fill="hsl(38 80% 72%)"/><text x="272.832" y="336" font-size="10">san</text></g><g><title>postMessage — 13.739 ms cumulative active samples
+
+:0:0</title><rect x="313.899" y="342" width="4.304" height="17" fill="hsl(21 80% 72%)"/><text x="315.899" y="354" font-size="10"></text></g><g><title>record — 6.152 ms cumulative active samples
+../../src/kernel/grid-measurements.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:17915</title><rect x="318.504" y="342" width="1.762" height="17" fill="hsl(57 80% 72%)"/><text x="320.504" y="354" font-size="10"></text></g><g><title>(anonymous) — 64.266 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:453:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:2757:10168</title><rect x="331.083" y="360" width="21.237" height="17" fill="hsl(30 80% 72%)"/><text x="333.083" y="372" font-size="10">(a</text></g><g><title>setBindGroup — 41.332 ms cumulative active samples
+
+:0:0</title><rect x="331.083" y="342" width="13.551" height="17" fill="hsl(56 80% 72%)"/><text x="333.083" y="354" font-size="10">s</text></g><g><title>setScissorRect — 4.046 ms cumulative active samples
+
+:0:0</title><rect x="344.935" y="342" width="1.056" height="17" fill="hsl(40 80% 72%)"/><text x="346.935" y="354" font-size="10"></text></g><g><title>draw — 2.544 ms cumulative active samples
+
+:0:0</title><rect x="346.291" y="342" width="0.553" height="17" fill="hsl(38 80% 72%)"/><text x="348.291" y="354" font-size="10"></text></g><g><title>setPipeline — 2.502 ms cumulative active samples
+
+:0:0</title><rect x="347.143" y="342" width="0.538" height="17" fill="hsl(12 80% 72%)"/><text x="349.143" y="354" font-size="10"></text></g><g><title>getCurrentTexture — 37.866 ms cumulative active samples
+
+:0:0</title><rect x="352.620" y="360" width="12.390" height="17" fill="hsl(30 80% 72%)"/><text x="354.620" y="372" font-size="10">g</text></g><g><title>presentationQuality — 37.282 ms cumulative active samples
+../../src/kernel/gpu/presentation-quality.ts:8:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:2721:4198</title><rect x="365.310" y="360" width="12.194" height="17" fill="hsl(11 80% 72%)"/><text x="367.310" y="372" font-size="10">p</text></g><g><title>submit — 25.614 ms cumulative active samples
+
+:0:0</title><rect x="377.805" y="360" width="8.284" height="17" fill="hsl(18 80% 72%)"/><text x="379.805" y="372" font-size="10"></text></g><g><title>writeBuffer — 23.318 ms cumulative active samples
+
+:0:0</title><rect x="386.389" y="360" width="7.515" height="17" fill="hsl(55 80% 72%)"/><text x="388.389" y="372" font-size="10"></text></g><g><title>compositeRasterQuad — 19.751 ms cumulative active samples
+../../src/kernel/gpu/composite-draw-plan.ts:9:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:99439</title><rect x="394.203" y="360" width="6.319" height="17" fill="hsl(47 80% 72%)"/><text x="396.203" y="372" font-size="10"></text></g><g><title>(anonymous) — 19.704 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:352:41
+design-app://app/assets/render-worker-Czsk_KUZ.js:2757:7650</title><rect x="400.822" y="360" width="6.303" height="17" fill="hsl(30 80% 72%)"/><text x="402.822" y="372" font-size="10"></text></g><g><title>finish — 18.184 ms cumulative active samples
+
+:0:0</title><rect x="407.426" y="360" width="5.794" height="17" fill="hsl(49 80% 72%)"/><text x="409.426" y="372" font-size="10"></text></g><g><title>beginRenderPass — 15.104 ms cumulative active samples
+
+:0:0</title><rect x="413.519" y="360" width="4.762" height="17" fill="hsl(50 80% 72%)"/><text x="415.519" y="372" font-size="10"></text></g><g><title>physicalCoverage — 8.819 ms cumulative active samples
+../../src/kernel/gpu/physical-coverage.ts:4:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:2740:2174</title><rect x="418.581" y="360" width="2.655" height="17" fill="hsl(51 80% 72%)"/><text x="420.581" y="372" font-size="10"></text></g><g><title>tilesCoverBounds — 8.819 ms cumulative active samples
+../../src/kernel/tile-cache.ts:218:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:67217</title><rect x="418.581" y="342" width="2.655" height="17" fill="hsl(33 80% 72%)"/><text x="420.581" y="354" font-size="10"></text></g><g><title>(anonymous) — 8.472 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:526:19
+design-app://app/assets/render-worker-Czsk_KUZ.js:2757:11940</title><rect x="421.537" y="360" width="2.539" height="17" fill="hsl(30 80% 72%)"/><text x="423.537" y="372" font-size="10"></text></g><g><title>createCommandEncoder — 7.962 ms cumulative active samples
+
+:0:0</title><rect x="424.376" y="360" width="2.368" height="17" fill="hsl(43 80% 72%)"/><text x="426.376" y="372" font-size="10"></text></g><g><title>(anonymous) — 7.538 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:425:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:2757:9626</title><rect x="427.044" y="360" width="2.226" height="17" fill="hsl(30 80% 72%)"/><text x="429.044" y="372" font-size="10"></text></g><g><title>copyTextureToTexture — 6.269 ms cumulative active samples
+
+:0:0</title><rect x="429.570" y="360" width="1.801" height="17" fill="hsl(52 80% 72%)"/><text x="431.570" y="372" font-size="10"></text></g><g><title>createView — 4.840 ms cumulative active samples
+
+:0:0</title><rect x="431.671" y="360" width="1.322" height="17" fill="hsl(47 80% 72%)"/><text x="433.671" y="372" font-size="10"></text></g><g><title>draw — 3.774 ms cumulative active samples
+../../src/kernel/gpu/canvas-labels.ts:87:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:2731:1583</title><rect x="433.293" y="360" width="0.965" height="17" fill="hsl(38 80% 72%)"/><text x="435.293" y="372" font-size="10"></text></g><g><title>changed — 3.407 ms cumulative active samples
+../../src/kernel/gpu/resident-uniforms.ts:19:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:2740:2049</title><rect x="434.558" y="360" width="0.842" height="17" fill="hsl(42 80% 72%)"/><text x="436.558" y="372" font-size="10"></text></g><g><title>(anonymous) — 2.553 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:357:25
+design-app://app/assets/render-worker-Czsk_KUZ.js:2757:7705</title><rect x="435.700" y="360" width="0.556" height="17" fill="hsl(30 80% 72%)"/><text x="437.700" y="372" font-size="10"></text></g><g><title>now — 1.724 ms cumulative active samples
+
+:0:0</title><rect x="436.555" y="360" width="0.278" height="17" fill="hsl(28 80% 72%)"/><text x="438.555" y="372" font-size="10"></text></g><g><title>(anonymous) — 1.628 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:534:39
+design-app://app/assets/render-worker-Czsk_KUZ.js:2757:12090</title><rect x="437.133" y="360" width="0.246" height="17" fill="hsl(30 80% 72%)"/><text x="439.133" y="372" font-size="10"></text></g><g><title>compositeRasterQuad — 2.395 ms cumulative active samples
+../../src/kernel/gpu/composite-draw-plan.ts:9:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:99439</title><rect x="593.818" y="378" width="0.503" height="17" fill="hsl(47 80% 72%)"/><text x="595.818" y="390" font-size="10"></text></g><g><title>renderAttempt — 492.521 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:5022:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:129805</title><rect x="597.242" y="396" width="164.757" height="17" fill="hsl(43 80% 72%)"/><text x="599.242" y="408" font-size="10">renderAttempt</text></g><g><title>begin — 153.975 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1159:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:359</title><rect x="597.242" y="378" width="51.301" height="17" fill="hsl(55 80% 72%)"/><text x="599.242" y="390" font-size="10">begin</text></g><g><title>plan — 118.900 ms cumulative active samples
+../../src/kernel/gpu/resident-programs.ts:17:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:4355</title><rect x="597.242" y="360" width="39.547" height="17" fill="hsl(55 80% 72%)"/><text x="599.242" y="372" font-size="10">plan</text></g><g><title>(anonymous) — 68.359 ms cumulative active samples
+../../src/kernel/gpu/resident-programs.ts:37:29
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:5102</title><rect x="597.242" y="342" width="22.609" height="17" fill="hsl(30 80% 72%)"/><text x="599.242" y="354" font-size="10">(an</text></g><g><title>(anonymous) — 62.173 ms cumulative active samples
+../../src/kernel/gpu/resident-programs.ts:37:63
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:5134</title><rect x="597.242" y="324" width="20.536" height="17" fill="hsl(30 80% 72%)"/><text x="599.242" y="336" font-size="10">(a</text></g><g><title>equal — 60.891 ms cumulative active samples
+../../src/kernel/gpu/resident-programs.ts:32:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:4989</title><rect x="597.242" y="306" width="20.106" height="17" fill="hsl(14 80% 72%)"/><text x="599.242" y="318" font-size="10">eq</text></g><g><title>writeBuffer — 25.059 ms cumulative active samples
+
+:0:0</title><rect x="637.089" y="360" width="8.098" height="17" fill="hsl(55 80% 72%)"/><text x="639.089" y="372" font-size="10"></text></g><g><title>createCommandEncoder — 3.776 ms cumulative active samples
+
+:0:0</title><rect x="645.487" y="360" width="0.965" height="17" fill="hsl(43 80% 72%)"/><text x="647.487" y="372" font-size="10"></text></g><g><title>drawList — 115.492 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2132:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:55729</title><rect x="648.844" y="378" width="38.405" height="17" fill="hsl(40 80% 72%)"/><text x="650.844" y="390" font-size="10">drawL</text></g><g><title>drawNode — 111.751 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2172:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:56527</title><rect x="648.844" y="360" width="37.151" height="17" fill="hsl(8 80% 72%)"/><text x="650.844" y="372" font-size="10">drawN</text></g><g><title>nodeSource — 110.485 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2246:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:58602</title><rect x="648.844" y="342" width="36.727" height="17" fill="hsl(35 80% 72%)"/><text x="650.844" y="354" font-size="10">nodeS</text></g><g><title>node — 105.083 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4838:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:125559</title><rect x="648.844" y="324" width="34.916" height="17" fill="hsl(40 80% 72%)"/><text x="650.844" y="336" font-size="10">node</text></g><g><title>merge — 27.477 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1463:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:39422</title><rect x="648.844" y="306" width="8.908" height="17" fill="hsl(36 80% 72%)"/><text x="650.844" y="318" font-size="10"></text></g><g><title>compose — 23.615 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1178:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:32063</title><rect x="648.844" y="288" width="7.614" height="17" fill="hsl(56 80% 72%)"/><text x="650.844" y="300" font-size="10"></text></g><g><title>run — 21.089 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="648.844" y="270" width="6.768" height="17" fill="hsl(49 80% 72%)"/><text x="650.844" y="282" font-size="10"></text></g><g><title>encodePass — 18.567 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="648.844" y="252" width="5.922" height="17" fill="hsl(17 80% 72%)"/><text x="650.844" y="264" font-size="10"></text></g><g><title>bind — 9.120 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="648.844" y="234" width="2.756" height="17" fill="hsl(41 80% 72%)"/><text x="650.844" y="246" font-size="10"></text></g><g><title>group — 6.716 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="648.844" y="216" width="1.951" height="17" fill="hsl(55 80% 72%)"/><text x="650.844" y="228" font-size="10"></text></g><g><title>create — 5.157 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1846:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4667</title><rect x="648.844" y="198" width="1.428" height="17" fill="hsl(56 80% 72%)"/><text x="650.844" y="210" font-size="10"></text></g><g><title>createBindGroup — 3.839 ms cumulative active samples
+
+:0:0</title><rect x="648.844" y="180" width="0.987" height="17" fill="hsl(12 80% 72%)"/><text x="650.844" y="192" font-size="10"></text></g><g><title>beginRenderPass — 2.389 ms cumulative active samples
+
+:0:0</title><rect x="651.900" y="234" width="0.501" height="17" fill="hsl(50 80% 72%)"/><text x="653.900" y="246" font-size="10"></text></g><g><title>exactBlendLattice — 3.862 ms cumulative active samples
+../../src/kernel/gpu/effect-region.ts:6:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:91895</title><rect x="656.758" y="288" width="0.994" height="17" fill="hsl(36 80% 72%)"/><text x="658.758" y="300" font-size="10"></text></g><g><title>(anonymous) — 3.862 ms cumulative active samples
+../../src/kernel/gpu/effect-region.ts:7:21
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:91914</title><rect x="656.758" y="270" width="0.994" height="17" fill="hsl(30 80% 72%)"/><text x="658.758" y="282" font-size="10"></text></g><g><title>paint — 24.423 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1997:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:52926</title><rect x="658.052" y="306" width="7.885" height="17" fill="hsl(18 80% 72%)"/><text x="660.052" y="318" font-size="10"></text></g><g><title>run — 23.155 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="658.052" y="288" width="7.460" height="17" fill="hsl(49 80% 72%)"/><text x="660.052" y="300" font-size="10"></text></g><g><title>encodePass — 13.005 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="658.052" y="270" width="4.058" height="17" fill="hsl(17 80% 72%)"/><text x="660.052" y="282" font-size="10"></text></g><g><title>bind — 4.178 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="658.052" y="252" width="1.100" height="17" fill="hsl(41 80% 72%)"/><text x="660.052" y="264" font-size="10"></text></g><g><title>(anonymous) — 1.754 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1838:38
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4387</title><rect x="658.052" y="234" width="0.288" height="17" fill="hsl(30 80% 72%)"/><text x="660.052" y="246" font-size="10"></text></g><g><title>beginRenderPass — 3.781 ms cumulative active samples
+
+:0:0</title><rect x="659.452" y="252" width="0.967" height="17" fill="hsl(50 80% 72%)"/><text x="661.452" y="264" font-size="10"></text></g><g><title>(anonymous) — 10.150 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2023:45
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:53475</title><rect x="662.410" y="270" width="3.102" height="17" fill="hsl(30 80% 72%)"/><text x="664.410" y="282" font-size="10"></text></g><g><title>configurePaint — 10.150 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2044:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:54084</title><rect x="662.410" y="252" width="3.102" height="17" fill="hsl(38 80% 72%)"/><text x="664.410" y="264" font-size="10"></text></g><g><title>(anonymous) — 3.803 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2094:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:55101</title><rect x="662.410" y="234" width="0.974" height="17" fill="hsl(30 80% 72%)"/><text x="664.410" y="246" font-size="10"></text></g><g><title>mask — 14.876 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1077:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:28971</title><rect x="666.237" y="306" width="4.685" height="17" fill="hsl(16 80% 72%)"/><text x="668.237" y="318" font-size="10"></text></g><g><title>acquire — 7.193 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:676:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:17194</title><rect x="666.237" y="288" width="2.111" height="17" fill="hsl(24 80% 72%)"/><text x="668.237" y="300" font-size="10"></text></g><g><title>createFormat — 7.193 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1311:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:5148</title><rect x="666.237" y="270" width="2.111" height="17" fill="hsl(43 80% 72%)"/><text x="668.237" y="282" font-size="10"></text></g><g><title>createTexture — 5.670 ms cumulative active samples
+
+:0:0</title><rect x="666.237" y="252" width="1.600" height="17" fill="hsl(39 80% 72%)"/><text x="668.237" y="264" font-size="10"></text></g><g><title>get — 3.601 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:26:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:5294</title><rect x="668.647" y="288" width="0.907" height="17" fill="hsl(38 80% 72%)"/><text x="670.647" y="300" font-size="10"></text></g><g><title>(anonymous) — 2.570 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:28:49
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:5374</title><rect x="668.647" y="270" width="0.561" height="17" fill="hsl(30 80% 72%)"/><text x="670.647" y="282" font-size="10"></text></g><g><title>set — 1.639 ms cumulative active samples
+../../src/kernel/gpu/reverse-index-map.ts:8:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:9109</title><rect x="669.854" y="288" width="0.249" height="17" fill="hsl(20 80% 72%)"/><text x="671.854" y="300" font-size="10"></text></g><g><title>drawList — 12.306 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2132:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:55729</title><rect x="671.222" y="306" width="3.824" height="17" fill="hsl(40 80% 72%)"/><text x="673.222" y="318" font-size="10"></text></g><g><title>drawNode — 9.893 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2172:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:56527</title><rect x="671.222" y="288" width="3.015" height="17" fill="hsl(8 80% 72%)"/><text x="673.222" y="300" font-size="10"></text></g><g><title>nodeSource — 9.893 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2246:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:58602</title><rect x="671.222" y="270" width="3.015" height="17" fill="hsl(35 80% 72%)"/><text x="673.222" y="282" font-size="10"></text></g><g><title>node — 9.893 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4838:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:125559</title><rect x="671.222" y="252" width="3.015" height="17" fill="hsl(40 80% 72%)"/><text x="673.222" y="264" font-size="10"></text></g><g><title>drawList — 5.084 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2132:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:55729</title><rect x="671.222" y="234" width="1.404" height="17" fill="hsl(40 80% 72%)"/><text x="673.222" y="246" font-size="10"></text></g><g><title>drawNode — 2.513 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2172:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:56527</title><rect x="671.222" y="216" width="0.542" height="17" fill="hsl(8 80% 72%)"/><text x="673.222" y="228" font-size="10"></text></g><g><title>mask — 4.809 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1077:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:28971</title><rect x="672.926" y="234" width="1.312" height="17" fill="hsl(16 80% 72%)"/><text x="674.926" y="246" font-size="10"></text></g><g><title>trackMask — 2.385 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1044:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:28081</title><rect x="672.926" y="216" width="0.499" height="17" fill="hsl(17 80% 72%)"/><text x="674.926" y="228" font-size="10"></text></g><g><title>set — 2.385 ms cumulative active samples
+../../src/kernel/gpu/reverse-index-map.ts:8:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:9109</title><rect x="672.926" y="198" width="0.499" height="17" fill="hsl(20 80% 72%)"/><text x="674.926" y="210" font-size="10"></text></g><g><title>empty — 9.931 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:858:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:21992</title><rect x="675.346" y="306" width="3.028" height="17" fill="hsl(47 80% 72%)"/><text x="677.346" y="318" font-size="10"></text></g><g><title>clear — 7.398 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1503:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:8486</title><rect x="675.346" y="288" width="2.179" height="17" fill="hsl(47 80% 72%)"/><text x="677.346" y="300" font-size="10"></text></g><g><title>beginRenderPass — 3.586 ms cumulative active samples
+
+:0:0</title><rect x="675.346" y="270" width="0.902" height="17" fill="hsl(50 80% 72%)"/><text x="677.346" y="282" font-size="10"></text></g><g><title>release — 7.490 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:832:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:21254</title><rect x="678.674" y="306" width="2.210" height="17" fill="hsl(35 80% 72%)"/><text x="680.674" y="318" font-size="10"></text></g><g><title>merge — 2.851 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1463:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:39422</title><rect x="684.060" y="324" width="0.655" height="17" fill="hsl(36 80% 72%)"/><text x="686.060" y="336" font-size="10"></text></g><g><title>yieldEncoding — 2.450 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:163:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:3748</title><rect x="686.294" y="360" width="0.521" height="17" fill="hsl(30 80% 72%)"/><text x="688.294" y="372" font-size="10"></text></g><g><title>checkpoint — 2.450 ms cumulative active samples
+../../src/kernel/gpu/encode-yield.ts:8:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:4608</title><rect x="686.294" y="342" width="0.521" height="17" fill="hsl(22 80% 72%)"/><text x="688.294" y="354" font-size="10"></text></g><g><title>finish — 76.988 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:2091:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:12109</title><rect x="687.548" y="378" width="25.501" height="17" fill="hsl(49 80% 72%)"/><text x="689.548" y="390" font-size="10">fin</text></g><g><title>withRenderFailureStage — 16.556 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:61:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:19619</title><rect x="687.548" y="360" width="5.248" height="17" fill="hsl(22 80% 72%)"/><text x="689.548" y="372" font-size="10"></text></g><g><title>(anonymous) — 11.346 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:2136:84
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:12877</title><rect x="687.548" y="342" width="3.502" height="17" fill="hsl(30 80% 72%)"/><text x="689.548" y="354" font-size="10"></text></g><g><title>getCurrentTexture — 11.346 ms cumulative active samples
+
+:0:0</title><rect x="687.548" y="324" width="3.502" height="17" fill="hsl(30 80% 72%)"/><text x="689.548" y="336" font-size="10"></text></g><g><title>(anonymous) — 3.966 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:2109:107
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:12271</title><rect x="691.351" y="342" width="1.029" height="17" fill="hsl(30 80% 72%)"/><text x="693.351" y="354" font-size="10"></text></g><g><title>submitEncoder — 15.977 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1085:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4135:3329</title><rect x="693.097" y="360" width="5.054" height="17" fill="hsl(42 80% 72%)"/><text x="695.097" y="372" font-size="10"></text></g><g><title>submit — 12.063 ms cumulative active samples
+../../src/kernel/gpu/queue-wait-stats.ts:16:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:142908</title><rect x="693.097" y="342" width="3.743" height="17" fill="hsl(18 80% 72%)"/><text x="695.097" y="354" font-size="10"></text></g><g><title>(anonymous) — 12.063 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1095:30
+design-app://app/assets/render-worker-Czsk_KUZ.js:4135:3657</title><rect x="693.097" y="324" width="3.743" height="17" fill="hsl(30 80% 72%)"/><text x="695.097" y="336" font-size="10"></text></g><g><title>submit — 12.063 ms cumulative active samples
+
+:0:0</title><rect x="693.097" y="306" width="3.743" height="17" fill="hsl(18 80% 72%)"/><text x="695.097" y="318" font-size="10"></text></g><g><title>uploadUniforms — 7.631 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1655:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:605</title><rect x="698.451" y="360" width="2.257" height="17" fill="hsl(24 80% 72%)"/><text x="700.451" y="372" font-size="10"></text></g><g><title>writeBuffer — 7.631 ms cumulative active samples
+
+:0:0</title><rect x="698.451" y="342" width="2.257" height="17" fill="hsl(55 80% 72%)"/><text x="700.451" y="354" font-size="10"></text></g><g><title>bind — 6.146 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="701.008" y="360" width="1.760" height="17" fill="hsl(41 80% 72%)"/><text x="703.008" y="372" font-size="10"></text></g><g><title>group — 4.874 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="701.008" y="342" width="1.333" height="17" fill="hsl(55 80% 72%)"/><text x="703.008" y="354" font-size="10"></text></g><g><title>create — 2.566 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1846:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4667</title><rect x="701.008" y="324" width="0.560" height="17" fill="hsl(56 80% 72%)"/><text x="703.008" y="336" font-size="10"></text></g><g><title>waitForQueue — 5.072 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:76:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4067:183</title><rect x="703.068" y="360" width="1.400" height="17" fill="hsl(17 80% 72%)"/><text x="705.068" y="372" font-size="10"></text></g><g><title>wait — 2.529 ms cumulative active samples
+../../src/kernel/gpu/queue-wait-stats.ts:19:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:143005</title><rect x="703.068" y="342" width="0.548" height="17" fill="hsl(25 80% 72%)"/><text x="705.068" y="354" font-size="10"></text></g><g><title>popErrorScope — 2.532 ms cumulative active samples
+
+:0:0</title><rect x="704.768" y="360" width="0.549" height="17" fill="hsl(21 80% 72%)"/><text x="706.768" y="372" font-size="10"></text></g><g><title>parameters — 2.352 ms cumulative active samples
+../../src/kernel/gpu/types.ts:470:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:91496</title><rect x="705.616" y="360" width="0.488" height="17" fill="hsl(44 80% 72%)"/><text x="707.616" y="372" font-size="10"></text></g><g><title>view — 2.300 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:16:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2886</title><rect x="706.404" y="360" width="0.471" height="17" fill="hsl(51 80% 72%)"/><text x="708.404" y="372" font-size="10"></text></g><g><title>run — 45.478 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="713.349" y="378" width="14.941" height="17" fill="hsl(49 80% 72%)"/><text x="715.349" y="390" font-size="10">r</text></g><g><title>encodePass — 30.423 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="713.349" y="360" width="9.896" height="17" fill="hsl(17 80% 72%)"/><text x="715.349" y="372" font-size="10">e</text></g><g><title>beginRenderPass — 10.185 ms cumulative active samples
+
+:0:0</title><rect x="713.349" y="342" width="3.113" height="17" fill="hsl(50 80% 72%)"/><text x="715.349" y="354" font-size="10"></text></g><g><title>bind — 8.847 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="716.762" y="342" width="2.665" height="17" fill="hsl(41 80% 72%)"/><text x="718.762" y="354" font-size="10"></text></g><g><title>group — 2.528 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="716.762" y="324" width="0.547" height="17" fill="hsl(55 80% 72%)"/><text x="718.762" y="336" font-size="10"></text></g><g><title>setPipeline — 3.904 ms cumulative active samples
+
+:0:0</title><rect x="719.727" y="342" width="1.008" height="17" fill="hsl(12 80% 72%)"/><text x="721.727" y="354" font-size="10"></text></g><g><title>(anonymous) — 3.810 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:5189:85
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:135329</title><rect x="723.545" y="360" width="0.977" height="17" fill="hsl(30 80% 72%)"/><text x="725.545" y="372" font-size="10"></text></g><g><title>color — 2.535 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:670:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:17087</title><rect x="723.545" y="342" width="0.550" height="17" fill="hsl(31 80% 72%)"/><text x="725.545" y="354" font-size="10"></text></g><g><title>stats — 15.475 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:2287:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4138:1840</title><rect x="728.590" y="378" width="4.886" height="17" fill="hsl(57 80% 72%)"/><text x="730.590" y="390" font-size="10"></text></g><g><title>snapshot — 6.499 ms cumulative active samples
+../../src/kernel/gpu/queue-wait-stats.ts:44:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:143634</title><rect x="728.590" y="360" width="1.878" height="17" fill="hsl(48 80% 72%)"/><text x="730.590" y="372" font-size="10"></text></g><g><title>(anonymous) — 2.678 ms cumulative active samples
+../../src/kernel/gpu/queue-wait-stats.ts:50:55
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:143926</title><rect x="728.590" y="342" width="0.597" height="17" fill="hsl(30 80% 72%)"/><text x="730.590" y="354" font-size="10"></text></g><g><title>release — 9.050 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:832:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:21254</title><rect x="733.776" y="378" width="2.733" height="17" fill="hsl(35 80% 72%)"/><text x="735.776" y="390" font-size="10"></text></g><g><title>has — 8.027 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:23:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:5259</title><rect x="736.809" y="378" width="2.390" height="17" fill="hsl(24 80% 72%)"/><text x="738.809" y="390" font-size="10"></text></g><g><title>clear — 2.667 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:100:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:6699</title><rect x="739.499" y="378" width="0.594" height="17" fill="hsl(47 80% 72%)"/><text x="741.499" y="390" font-size="10"></text></g><g><title>removeEntry — 2.667 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:88:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:6416</title><rect x="739.499" y="360" width="0.594" height="17" fill="hsl(32 80% 72%)"/><text x="741.499" y="372" font-size="10"></text></g><g><title>self.onmessage — 423.551 ms cumulative active samples
+../../src/kernel/render-worker.ts:429:18
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:24934</title><rect x="762.300" y="396" width="141.644" height="17" fill="hsl(32 80% 72%)"/><text x="764.300" y="408" font-size="10">self.onmessage</text></g><g><title>record — 21.798 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="762.300" y="378" width="7.005" height="17" fill="hsl(57 80% 72%)"/><text x="764.300" y="390" font-size="10"></text></g><g><title>sanitizeFields — 8.618 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="762.300" y="360" width="2.588" height="17" fill="hsl(38 80% 72%)"/><text x="764.300" y="372" font-size="10"></text></g><g><title>sanitizeRecord — 8.101 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="765.188" y="360" width="2.415" height="17" fill="hsl(36 80% 72%)"/><text x="767.188" y="372" font-size="10"></text></g><g><title>sanitizeFields — 6.851 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="765.188" y="342" width="1.996" height="17" fill="hsl(38 80% 72%)"/><text x="767.188" y="354" font-size="10"></text></g><g><title>postMessage — 15.444 ms cumulative active samples
+
+:0:0</title><rect x="769.605" y="378" width="4.876" height="17" fill="hsl(21 80% 72%)"/><text x="771.605" y="390" font-size="10"></text></g><g><title>run — 7.163 ms cumulative active samples
+../../src/kernel/render-work-queue.ts:15:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:97686</title><rect x="774.780" y="378" width="2.101" height="17" fill="hsl(49 80% 72%)"/><text x="776.780" y="390" font-size="10"></text></g><g><title>drain — 7.163 ms cumulative active samples
+../../src/kernel/render-work-queue.ts:38:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:98085</title><rect x="774.780" y="360" width="2.101" height="17" fill="hsl(14 80% 72%)"/><text x="776.780" y="372" font-size="10"></text></g><g><title>(anonymous) — 5.834 ms cumulative active samples
+../../src/kernel/render-worker.ts:558:17
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:28953</title><rect x="774.780" y="342" width="1.655" height="17" fill="hsl(30 80% 72%)"/><text x="776.780" y="354" font-size="10"></text></g><g><title>record — 5.834 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="774.780" y="324" width="1.655" height="17" fill="hsl(57 80% 72%)"/><text x="776.780" y="336" font-size="10"></text></g><g><title>sanitizeRecord — 2.656 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="774.780" y="306" width="0.590" height="17" fill="hsl(36 80% 72%)"/><text x="776.780" y="318" font-size="10"></text></g><g><title>sanitizeFields — 1.787 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="775.671" y="306" width="0.299" height="17" fill="hsl(38 80% 72%)"/><text x="777.671" y="318" font-size="10"></text></g><g><title>releasePresented — 1.549 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:129:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4067:1874</title><rect x="777.181" y="378" width="0.219" height="17" fill="hsl(43 80% 72%)"/><text x="779.181" y="390" font-size="10"></text></g><g><title>release — 1.549 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:229:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:2757:3880</title><rect x="777.181" y="360" width="0.219" height="17" fill="hsl(35 80% 72%)"/><text x="779.181" y="372" font-size="10"></text></g><g><title>destroy — 1.549 ms cumulative active samples
+
+:0:0</title><rect x="777.181" y="342" width="0.219" height="17" fill="hsl(46 80% 72%)"/><text x="779.181" y="354" font-size="10"></text></g><g><title>t.onmessage — 333.111 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:49:21
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:103511</title><rect x="904.243" y="396" width="111.335" height="17" fill="hsl(22 80% 72%)"/><text x="906.243" y="408" font-size="10">t.onmessage</text></g><g><title>trace — 286.649 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="904.243" y="378" width="95.764" height="17" fill="hsl(55 80% 72%)"/><text x="906.243" y="390" font-size="10">trace</text></g><g><title>record — 272.931 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="904.243" y="360" width="91.167" height="17" fill="hsl(57 80% 72%)"/><text x="906.243" y="372" font-size="10">record</text></g><g><title>sanitizeRecord — 128.270 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="904.243" y="342" width="42.687" height="17" fill="hsl(36 80% 72%)"/><text x="906.243" y="354" font-size="10">saniti</text></g><g><title>sanitizeFields — 68.801 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="904.243" y="324" width="22.757" height="17" fill="hsl(38 80% 72%)"/><text x="906.243" y="336" font-size="10">san</text></g><g><title>sanitizeFields — 70.998 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="947.230" y="342" width="23.493" height="17" fill="hsl(38 80% 72%)"/><text x="949.230" y="354" font-size="10">san</text></g><g><title>clearTimeout — 3.816 ms cumulative active samples
+
+:0:0</title><rect x="1000.307" y="378" width="0.979" height="17" fill="hsl(40 80% 72%)"/><text x="1002.307" y="390" font-size="10"></text></g><g><title>(garbage collector) — 309.285 ms cumulative active samples
+
+:0:0</title><rect x="1015.878" y="396" width="103.350" height="17" fill="#be92d0"/><text x="1017.878" y="408" font-size="10">(garbage collect</text></g><g><title>drawList — 210.338 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2132:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:55729</title><rect x="1119.528" y="396" width="70.190" height="17" fill="hsl(40 80% 72%)"/><text x="1121.528" y="408" font-size="10">drawList</text></g><g><title>drawNode — 166.542 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2172:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:56527</title><rect x="1119.528" y="378" width="55.513" height="17" fill="hsl(8 80% 72%)"/><text x="1121.528" y="390" font-size="10">drawNode</text></g><g><title>nodeSource — 100.664 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2246:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:58602</title><rect x="1119.528" y="360" width="33.435" height="17" fill="hsl(35 80% 72%)"/><text x="1121.528" y="372" font-size="10">node</text></g><g><title>node — 99.388 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4838:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:125559</title><rect x="1119.528" y="342" width="33.008" height="17" fill="hsl(40 80% 72%)"/><text x="1121.528" y="354" font-size="10">node</text></g><g><title>mask — 59.848 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1077:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:28971</title><rect x="1119.528" y="324" width="19.757" height="17" fill="hsl(16 80% 72%)"/><text x="1121.528" y="336" font-size="10">ma</text></g><g><title>get — 44.488 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:26:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:5294</title><rect x="1119.528" y="306" width="14.609" height="17" fill="hsl(38 80% 72%)"/><text x="1121.528" y="318" font-size="10">g</text></g><g><title>(anonymous) — 20.133 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:28:49
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:5374</title><rect x="1119.528" y="288" width="6.447" height="17" fill="hsl(30 80% 72%)"/><text x="1121.528" y="300" font-size="10"></text></g><g><title>put — 9.725 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:36:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:5478</title><rect x="1134.437" y="306" width="2.959" height="17" fill="hsl(33 80% 72%)"/><text x="1136.437" y="318" font-size="10"></text></g><g><title>mask — 4.380 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1717:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:1819</title><rect x="1137.696" y="306" width="1.168" height="17" fill="hsl(16 80% 72%)"/><text x="1139.696" y="318" font-size="10"></text></g><g><title>encodePass — 4.380 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1137.696" y="288" width="1.168" height="17" fill="hsl(17 80% 72%)"/><text x="1139.696" y="300" font-size="10"></text></g><g><title>setBindGroup — 2.045 ms cumulative active samples
+
+:0:0</title><rect x="1137.696" y="270" width="0.385" height="17" fill="hsl(56 80% 72%)"/><text x="1139.696" y="282" font-size="10"></text></g><g><title>drawList — 20.305 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2132:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:55729</title><rect x="1139.584" y="324" width="6.505" height="17" fill="hsl(40 80% 72%)"/><text x="1141.584" y="336" font-size="10"></text></g><g><title>drawNode — 16.451 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2172:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:56527</title><rect x="1139.584" y="306" width="5.213" height="17" fill="hsl(8 80% 72%)"/><text x="1141.584" y="318" font-size="10"></text></g><g><title>nodeSource — 7.115 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2246:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:58602</title><rect x="1139.584" y="288" width="2.084" height="17" fill="hsl(35 80% 72%)"/><text x="1141.584" y="300" font-size="10"></text></g><g><title>node — 7.115 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4838:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:125559</title><rect x="1139.584" y="270" width="2.084" height="17" fill="hsl(40 80% 72%)"/><text x="1141.584" y="282" font-size="10"></text></g><g><title>mask — 4.577 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1077:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:28971</title><rect x="1139.584" y="252" width="1.234" height="17" fill="hsl(16 80% 72%)"/><text x="1141.584" y="264" font-size="10"></text></g><g><title>acquire — 2.580 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:676:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:17194</title><rect x="1139.584" y="234" width="0.565" height="17" fill="hsl(24 80% 72%)"/><text x="1141.584" y="246" font-size="10"></text></g><g><title>createFormat — 2.580 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1311:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:5148</title><rect x="1139.584" y="216" width="0.565" height="17" fill="hsl(43 80% 72%)"/><text x="1141.584" y="228" font-size="10"></text></g><g><title>put — 1.997 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:36:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:5478</title><rect x="1140.449" y="234" width="0.369" height="17" fill="hsl(33 80% 72%)"/><text x="1142.449" y="246" font-size="10"></text></g><g><title>nodeMask — 5.062 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1151:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:31058</title><rect x="1141.969" y="288" width="1.396" height="17" fill="hsl(26 80% 72%)"/><text x="1143.969" y="300" font-size="10"></text></g><g><title>mask — 3.795 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1077:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:28971</title><rect x="1141.969" y="270" width="0.972" height="17" fill="hsl(16 80% 72%)"/><text x="1143.969" y="282" font-size="10"></text></g><g><title>put — 2.526 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:36:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:5478</title><rect x="1141.969" y="252" width="0.547" height="17" fill="hsl(33 80% 72%)"/><text x="1143.969" y="264" font-size="10"></text></g><g><title>paintOver — 3.042 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1358:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:37324</title><rect x="1143.665" y="288" width="0.719" height="17" fill="hsl(50 80% 72%)"/><text x="1145.665" y="300" font-size="10"></text></g><g><title>yieldEncoding — 2.575 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:163:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:3748</title><rect x="1145.098" y="306" width="0.563" height="17" fill="hsl(30 80% 72%)"/><text x="1147.098" y="318" font-size="10"></text></g><g><title>checkFrameCurrent — 2.575 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:160:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:3656</title><rect x="1145.098" y="288" width="0.563" height="17" fill="hsl(38 80% 72%)"/><text x="1147.098" y="300" font-size="10"></text></g><g><title>paint — 9.814 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1997:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:52926</title><rect x="1146.389" y="324" width="2.989" height="17" fill="hsl(18 80% 72%)"/><text x="1148.389" y="336" font-size="10"></text></g><g><title>run — 9.814 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="1146.389" y="306" width="2.989" height="17" fill="hsl(49 80% 72%)"/><text x="1148.389" y="318" font-size="10"></text></g><g><title>encodePass — 3.415 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1146.389" y="288" width="0.844" height="17" fill="hsl(17 80% 72%)"/><text x="1148.389" y="300" font-size="10"></text></g><g><title>bind — 2.162 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="1146.389" y="270" width="0.425" height="17" fill="hsl(41 80% 72%)"/><text x="1148.389" y="282" font-size="10"></text></g><g><title>group — 2.162 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="1146.389" y="252" width="0.425" height="17" fill="hsl(55 80% 72%)"/><text x="1148.389" y="264" font-size="10"></text></g><g><title>acquire — 2.532 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:676:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:17194</title><rect x="1147.534" y="288" width="0.549" height="17" fill="hsl(24 80% 72%)"/><text x="1149.534" y="300" font-size="10"></text></g><g><title>empty — 4.428 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:858:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:21992</title><rect x="1149.678" y="324" width="1.184" height="17" fill="hsl(47 80% 72%)"/><text x="1151.678" y="336" font-size="10"></text></g><g><title>clear — 2.145 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1503:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:8486</title><rect x="1149.678" y="306" width="0.419" height="17" fill="hsl(47 80% 72%)"/><text x="1151.678" y="318" font-size="10"></text></g><g><title>beginRenderPass — 2.145 ms cumulative active samples
+
+:0:0</title><rect x="1149.678" y="288" width="0.419" height="17" fill="hsl(50 80% 72%)"/><text x="1151.678" y="300" font-size="10"></text></g><g><title>merge — 3.735 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1463:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:39422</title><rect x="1151.162" y="324" width="0.952" height="17" fill="hsl(36 80% 72%)"/><text x="1153.162" y="336" font-size="10"></text></g><g><title>compose — 2.470 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1178:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:32063</title><rect x="1151.162" y="306" width="0.528" height="17" fill="hsl(56 80% 72%)"/><text x="1153.162" y="318" font-size="10"></text></g><g><title>run — 2.470 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="1151.162" y="288" width="0.528" height="17" fill="hsl(49 80% 72%)"/><text x="1153.162" y="300" font-size="10"></text></g><g><title>encodePass — 2.470 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1151.162" y="270" width="0.528" height="17" fill="hsl(17 80% 72%)"/><text x="1153.162" y="282" font-size="10"></text></g><g><title>paintOver — 31.033 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1358:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:37324</title><rect x="1153.263" y="360" width="10.100" height="17" fill="hsl(50 80% 72%)"/><text x="1155.263" y="372" font-size="10">p</text></g><g><title>run — 16.092 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="1153.263" y="342" width="5.093" height="17" fill="hsl(49 80% 72%)"/><text x="1155.263" y="354" font-size="10"></text></g><g><title>encodePass — 10.123 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1153.263" y="324" width="3.092" height="17" fill="hsl(17 80% 72%)"/><text x="1155.263" y="336" font-size="10"></text></g><g><title>bind — 6.347 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="1153.263" y="306" width="1.827" height="17" fill="hsl(41 80% 72%)"/><text x="1155.263" y="318" font-size="10"></text></g><g><title>group — 3.794 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="1153.263" y="288" width="0.971" height="17" fill="hsl(55 80% 72%)"/><text x="1155.263" y="300" font-size="10"></text></g><g><title>create — 2.534 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1846:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4667</title><rect x="1153.263" y="270" width="0.549" height="17" fill="hsl(56 80% 72%)"/><text x="1155.263" y="282" font-size="10"></text></g><g><title>beginRenderPass — 2.533 ms cumulative active samples
+
+:0:0</title><rect x="1155.390" y="306" width="0.549" height="17" fill="hsl(50 80% 72%)"/><text x="1157.390" y="318" font-size="10"></text></g><g><title>a — 3.549 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1392:25
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:38106</title><rect x="1156.656" y="324" width="0.889" height="17" fill="hsl(55 80% 72%)"/><text x="1158.656" y="336" font-size="10"></text></g><g><title>configurePaint — 2.271 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2044:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:54084</title><rect x="1156.656" y="306" width="0.461" height="17" fill="hsl(38 80% 72%)"/><text x="1158.656" y="318" font-size="10"></text></g><g><title>color — 2.271 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:670:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:17087</title><rect x="1156.656" y="288" width="0.461" height="17" fill="hsl(31 80% 72%)"/><text x="1158.656" y="300" font-size="10"></text></g><g><title>(anonymous) — 2.271 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:129:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:3422</title><rect x="1156.656" y="270" width="0.461" height="17" fill="hsl(30 80% 72%)"/><text x="1158.656" y="282" font-size="10"></text></g><g><title>parameters — 2.420 ms cumulative active samples
+../../src/kernel/gpu/types.ts:470:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:91496</title><rect x="1157.845" y="324" width="0.511" height="17" fill="hsl(44 80% 72%)"/><text x="1159.845" y="336" font-size="10"></text></g><g><title>regionalOver — 11.315 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1202:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:32632</title><rect x="1158.656" y="342" width="3.492" height="17" fill="hsl(39 80% 72%)"/><text x="1160.656" y="354" font-size="10"></text></g><g><title>regionalOverPlan — 6.269 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1191:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:32230</title><rect x="1158.656" y="324" width="1.801" height="17" fill="hsl(44 80% 72%)"/><text x="1160.656" y="336" font-size="10"></text></g><g><title>(anonymous) — 2.108 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1194:61
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:32386</title><rect x="1158.656" y="306" width="0.406" height="17" fill="hsl(30 80% 72%)"/><text x="1160.656" y="318" font-size="10"></text></g><g><title>run — 3.796 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="1160.757" y="324" width="0.972" height="17" fill="hsl(49 80% 72%)"/><text x="1162.757" y="336" font-size="10"></text></g><g><title>encodePass — 2.541 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1160.757" y="306" width="0.552" height="17" fill="hsl(17 80% 72%)"/><text x="1162.757" y="318" font-size="10"></text></g><g><title>bind — 2.541 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="1160.757" y="288" width="0.552" height="17" fill="hsl(41 80% 72%)"/><text x="1162.757" y="300" font-size="10"></text></g><g><title>group — 2.541 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="1160.757" y="270" width="0.552" height="17" fill="hsl(55 80% 72%)"/><text x="1162.757" y="282" font-size="10"></text></g><g><title>nodeMask — 28.531 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1151:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:31058</title><rect x="1163.663" y="360" width="9.262" height="17" fill="hsl(26 80% 72%)"/><text x="1165.663" y="372" font-size="10"></text></g><g><title>mask — 11.387 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1077:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:28971</title><rect x="1163.663" y="342" width="3.516" height="17" fill="hsl(16 80% 72%)"/><text x="1165.663" y="354" font-size="10"></text></g><g><title>put — 7.586 ms cumulative active samples
+../../src/kernel/gpu/coverage-cache.ts:36:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:5478</title><rect x="1163.663" y="324" width="2.242" height="17" fill="hsl(33 80% 72%)"/><text x="1165.663" y="336" font-size="10"></text></g><g><title>pass — 8.922 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1901:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6058</title><rect x="1167.479" y="342" width="2.690" height="17" fill="hsl(47 80% 72%)"/><text x="1169.479" y="354" font-size="10"></text></g><g><title>encodePass — 7.647 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1167.479" y="324" width="2.263" height="17" fill="hsl(17 80% 72%)"/><text x="1169.479" y="336" font-size="10"></text></g><g><title>bind — 2.597 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="1167.479" y="306" width="0.570" height="17" fill="hsl(41 80% 72%)"/><text x="1169.479" y="318" font-size="10"></text></g><g><title>group — 2.597 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="1167.479" y="288" width="0.570" height="17" fill="hsl(55 80% 72%)"/><text x="1169.479" y="300" font-size="10"></text></g><g><title>beginRenderPass — 2.545 ms cumulative active samples
+
+:0:0</title><rect x="1168.349" y="306" width="0.553" height="17" fill="hsl(50 80% 72%)"/><text x="1170.349" y="318" font-size="10"></text></g><g><title>acquire — 4.901 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:676:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:17194</title><rect x="1170.469" y="342" width="1.342" height="17" fill="hsl(24 80% 72%)"/><text x="1172.469" y="354" font-size="10"></text></g><g><title>createBinaryCoverage — 2.457 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1303:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:4964</title><rect x="1170.469" y="324" width="0.523" height="17" fill="hsl(41 80% 72%)"/><text x="1172.469" y="336" font-size="10"></text></g><g><title>createFormat — 2.457 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1311:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:5148</title><rect x="1170.469" y="306" width="0.523" height="17" fill="hsl(43 80% 72%)"/><text x="1172.469" y="318" font-size="10"></text></g><g><title>reclaimForPaintOver — 3.811 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1308:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:36002</title><rect x="1173.225" y="360" width="0.977" height="17" fill="hsl(16 80% 72%)"/><text x="1175.225" y="372" font-size="10"></text></g><g><title>checkFrameCurrent — 2.300 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:160:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:3656</title><rect x="1173.225" y="342" width="0.471" height="17" fill="hsl(38 80% 72%)"/><text x="1175.225" y="354" font-size="10"></text></g><g><title>reportRasterProgress — 2.300 ms cumulative active samples
+../../src/kernel/render-worker.ts:1148:88
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:43938</title><rect x="1173.225" y="324" width="0.471" height="17" fill="hsl(24 80% 72%)"/><text x="1175.225" y="336" font-size="10"></text></g><g><title>(anonymous) — 2.300 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:37:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:120265</title><rect x="1173.225" y="306" width="0.471" height="17" fill="hsl(30 80% 72%)"/><text x="1175.225" y="318" font-size="10"></text></g><g><title>preparedTileCanFill — 2.300 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:8:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:119421</title><rect x="1173.225" y="288" width="0.471" height="17" fill="hsl(12 80% 72%)"/><text x="1175.225" y="300" font-size="10"></text></g><g><title>yieldEncoding — 16.132 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:163:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:3748</title><rect x="1175.341" y="378" width="5.106" height="17" fill="hsl(30 80% 72%)"/><text x="1177.341" y="390" font-size="10"></text></g><g><title>checkFrameCurrent — 13.599 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:160:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:3656</title><rect x="1175.341" y="360" width="4.257" height="17" fill="hsl(38 80% 72%)"/><text x="1177.341" y="372" font-size="10"></text></g><g><title>reportRasterProgress — 12.489 ms cumulative active samples
+../../src/kernel/render-worker.ts:1148:88
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:43938</title><rect x="1175.341" y="342" width="3.885" height="17" fill="hsl(24 80% 72%)"/><text x="1177.341" y="354" font-size="10"></text></g><g><title>(anonymous) — 12.489 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:37:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:120265</title><rect x="1175.341" y="324" width="3.885" height="17" fill="hsl(30 80% 72%)"/><text x="1177.341" y="336" font-size="10"></text></g><g><title>preparedTileCanFill — 12.489 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:8:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:119421</title><rect x="1175.341" y="306" width="3.885" height="17" fill="hsl(12 80% 72%)"/><text x="1177.341" y="318" font-size="10"></text></g><g><title>tilesCoverBounds — 8.595 ms cumulative active samples
+../../src/kernel/tile-cache.ts:218:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:67217</title><rect x="1175.341" y="288" width="2.580" height="17" fill="hsl(33 80% 72%)"/><text x="1177.341" y="300" font-size="10"></text></g><g><title>(anonymous) — 2.496 ms cumulative active samples
+../../src/kernel/tile-cache.ts:225:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:67260</title><rect x="1175.341" y="270" width="0.536" height="17" fill="hsl(30 80% 72%)"/><text x="1177.341" y="282" font-size="10"></text></g><g><title>(anonymous) — 2.525 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:26:109
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:120118</title><rect x="1178.221" y="288" width="0.546" height="17" fill="hsl(30 80% 72%)"/><text x="1180.221" y="300" font-size="10"></text></g><g><title>checkpoint — 2.533 ms cumulative active samples
+../../src/kernel/gpu/encode-yield.ts:8:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:4608</title><rect x="1179.898" y="360" width="0.549" height="17" fill="hsl(22 80% 72%)"/><text x="1181.898" y="372" font-size="10"></text></g><g><title>reclaimScratch — 11.038 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2349:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:61552</title><rect x="1180.747" y="378" width="3.399" height="17" fill="hsl(53 80% 72%)"/><text x="1182.747" y="390" font-size="10"></text></g><g><title>checkFrameCurrent — 9.788 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:160:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:3656</title><rect x="1180.747" y="360" width="2.980" height="17" fill="hsl(38 80% 72%)"/><text x="1182.747" y="372" font-size="10"></text></g><g><title>reportRasterProgress — 9.788 ms cumulative active samples
+../../src/kernel/render-worker.ts:1148:88
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:43938</title><rect x="1180.747" y="342" width="2.980" height="17" fill="hsl(24 80% 72%)"/><text x="1182.747" y="354" font-size="10"></text></g><g><title>(anonymous) — 9.788 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:37:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:120265</title><rect x="1180.747" y="324" width="2.980" height="17" fill="hsl(30 80% 72%)"/><text x="1182.747" y="336" font-size="10"></text></g><g><title>preparedTileCanFill — 9.788 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:8:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:119421</title><rect x="1180.747" y="306" width="2.980" height="17" fill="hsl(12 80% 72%)"/><text x="1182.747" y="318" font-size="10"></text></g><g><title>tilesCoverBounds — 7.502 ms cumulative active samples
+../../src/kernel/tile-cache.ts:218:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:67217</title><rect x="1180.747" y="288" width="2.214" height="17" fill="hsl(33 80% 72%)"/><text x="1182.747" y="300" font-size="10"></text></g><g><title>Ie — 202.694 ms cumulative active samples
+../../src/kernel/render-worker.ts:1911:20
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:60314</title><rect x="1190.018" y="396" width="67.628" height="17" fill="hsl(22 80% 72%)"/><text x="1192.018" y="408" font-size="10">Ie</text></g><g><title>failureAttempt — 56.454 ms cumulative active samples
+../../src/kernel/render-worker.ts:77:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:15469</title><rect x="1190.018" y="378" width="18.619" height="17" fill="hsl(57 80% 72%)"/><text x="1192.018" y="390" font-size="10">fa</text></g><g><title>run — 56.454 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:75:1
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:21658</title><rect x="1190.018" y="360" width="18.619" height="17" fill="hsl(49 80% 72%)"/><text x="1192.018" y="372" font-size="10">ru</text></g><g><title>(anonymous) — 56.454 ms cumulative active samples
+../../src/kernel/render-worker.ts:1991:44
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:61504</title><rect x="1190.018" y="342" width="18.619" height="17" fill="hsl(30 80% 72%)"/><text x="1192.018" y="354" font-size="10">(a</text></g><g><title>render — 55.188 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:5000:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:128963</title><rect x="1190.018" y="324" width="18.195" height="17" fill="hsl(48 80% 72%)"/><text x="1192.018" y="336" font-size="10">re</text></g><g><title>renderAttempt — 52.605 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:5022:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:129805</title><rect x="1190.018" y="306" width="17.329" height="17" fill="hsl(43 80% 72%)"/><text x="1192.018" y="318" font-size="10">re</text></g><g><title>prepareScene — 15.017 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:799:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:4131:5172</title><rect x="1190.018" y="288" width="4.733" height="17" fill="hsl(33 80% 72%)"/><text x="1192.018" y="300" font-size="10"></text></g><g><title>prepare — 5.950 ms cumulative active samples
+../../src/kernel/gpu/pipeline-registry.ts:13:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:6441</title><rect x="1190.018" y="270" width="1.694" height="17" fill="hsl(9 80% 72%)"/><text x="1192.018" y="282" font-size="10"></text></g><g><title>(anonymous) — 2.559 ms cumulative active samples
+../../src/kernel/gpu/pipeline-registry.ts:14:40
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:6471</title><rect x="1190.018" y="252" width="0.558" height="17" fill="hsl(30 80% 72%)"/><text x="1192.018" y="264" font-size="10"></text></g><g><title>beginKernelFrame — 8.004 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4089:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:105875</title><rect x="1195.050" y="288" width="2.382" height="17" fill="hsl(25 80% 72%)"/><text x="1197.050" y="300" font-size="10"></text></g><g><title>forgetUpload — 2.693 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2308:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:60486</title><rect x="1195.050" y="270" width="0.602" height="17" fill="hsl(48 80% 72%)"/><text x="1197.050" y="282" font-size="10"></text></g><g><title>destroy — 2.693 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1347:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:5902</title><rect x="1195.050" y="252" width="0.602" height="17" fill="hsl(46 80% 72%)"/><text x="1197.050" y="264" font-size="10"></text></g><g><title>loadImages — 7.529 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1794:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:47426</title><rect x="1197.733" y="288" width="2.223" height="17" fill="hsl(12 80% 72%)"/><text x="1199.733" y="300" font-size="10"></text></g><g><title>currentImageResidency — 5.001 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1733:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:45536</title><rect x="1197.733" y="270" width="1.376" height="17" fill="hsl(26 80% 72%)"/><text x="1199.733" y="282" font-size="10"></text></g><g><title>imageLoaderResidencyOwner — 2.541 ms cumulative active samples
+../../src/kernel/scene-image-hydration.ts:40:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:74653</title><rect x="1197.733" y="252" width="0.552" height="17" fill="hsl(29 80% 72%)"/><text x="1199.733" y="264" font-size="10"></text></g><g><title>load — 2.541 ms cumulative active samples
+../../src/kernel/scene-image-hydration.ts:89:22
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:75699</title><rect x="1197.733" y="234" width="0.552" height="17" fill="hsl(14 80% 72%)"/><text x="1199.733" y="246" font-size="10"></text></g><g><title>begin — 2.364 ms cumulative active samples
+../../src/kernel/gpu/encode-yield.ts:7:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:4561</title><rect x="1200.256" y="288" width="0.492" height="17" fill="hsl(55 80% 72%)"/><text x="1202.256" y="300" font-size="10"></text></g><g><title>decodeScenePacket — 56.244 ms cumulative active samples
+../../src/kernel/gpu/scene-packet.ts:5:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:66447</title><rect x="1208.937" y="378" width="18.549" height="17" fill="hsl(14 80% 72%)"/><text x="1210.937" y="390" font-size="10">de</text></g><g><title>decode — 9.173 ms cumulative active samples
+
+:0:0</title><rect x="1208.937" y="360" width="2.774" height="17" fill="hsl(10 80% 72%)"/><text x="1210.937" y="372" font-size="10"></text></g><g><title>TextDecoder — 2.519 ms cumulative active samples
+
+:0:0</title><rect x="1212.011" y="360" width="0.544" height="17" fill="hsl(43 80% 72%)"/><text x="1214.011" y="372" font-size="10"></text></g><g><title>(anonymous) — 54.376 ms cumulative active samples
+../../src/kernel/render-worker.ts:275:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:19667</title><rect x="1227.786" y="378" width="17.923" height="17" fill="hsl(30 80% 72%)"/><text x="1229.786" y="390" font-size="10">(a</text></g><g><title>record — 48.076 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1227.786" y="360" width="15.812" height="17" fill="hsl(57 80% 72%)"/><text x="1229.786" y="372" font-size="10">re</text></g><g><title>sanitizeRecord — 28.388 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1227.786" y="342" width="9.214" height="17" fill="hsl(36 80% 72%)"/><text x="1229.786" y="354" font-size="10"></text></g><g><title>sanitizeFields — 17.275 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1227.786" y="324" width="5.489" height="17" fill="hsl(38 80% 72%)"/><text x="1229.786" y="336" font-size="10"></text></g><g><title>sanitizeFields — 9.846 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1237.300" y="342" width="3.000" height="17" fill="hsl(38 80% 72%)"/><text x="1239.300" y="354" font-size="10"></text></g><g><title>checkCurrent — 13.183 ms cumulative active samples
+../../src/kernel/render-worker.ts:1760:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:57267</title><rect x="1246.009" y="378" width="4.118" height="17" fill="hsl(37 80% 72%)"/><text x="1248.009" y="390" font-size="10"></text></g><g><title>previewCurrent — 3.694 ms cumulative active samples
+../../src/kernel/render-worker.ts:653:12
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:31773</title><rect x="1246.009" y="360" width="0.938" height="17" fill="hsl(57 80% 72%)"/><text x="1248.009" y="372" font-size="10"></text></g><g><title>observe — 4.888 ms cumulative active samples
+../../src/kernel/tile-cost-diagnostics.ts:27:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:1372</title><rect x="1250.427" y="378" width="1.338" height="17" fill="hsl(16 80% 72%)"/><text x="1252.427" y="390" font-size="10"></text></g><g><title>add — 4.888 ms cumulative active samples
+../../src/kernel/tile-cost-diagnostics.ts:20:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:1143</title><rect x="1250.427" y="360" width="1.338" height="17" fill="hsl(25 80% 72%)"/><text x="1252.427" y="372" font-size="10"></text></g><g><title>(anonymous) — 202.298 ms cumulative active samples
+../../src/kernel/render-worker.ts:558:17
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:28953</title><rect x="1257.946" y="396" width="67.496" height="17" fill="hsl(30 80% 72%)"/><text x="1259.946" y="408" font-size="10">(anonymous</text></g><g><title>record — 50.773 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1257.946" y="378" width="16.715" height="17" fill="hsl(57 80% 72%)"/><text x="1259.946" y="390" font-size="10">re</text></g><g><title>sanitizeRecord — 27.617 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1257.946" y="360" width="8.955" height="17" fill="hsl(36 80% 72%)"/><text x="1259.946" y="372" font-size="10"></text></g><g><title>sanitizeFields — 23.547 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1257.946" y="342" width="7.591" height="17" fill="hsl(38 80% 72%)"/><text x="1259.946" y="354" font-size="10"></text></g><g><title>sanitizeFields — 17.029 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1267.201" y="360" width="5.407" height="17" fill="hsl(38 80% 72%)"/><text x="1269.201" y="372" font-size="10"></text></g><g><title>setTimeout — 2.511 ms cumulative active samples
+
+:0:0</title><rect x="1272.908" y="360" width="0.542" height="17" fill="hsl(43 80% 72%)"/><text x="1274.908" y="372" font-size="10"></text></g><g><title>De — 17.323 ms cumulative active samples
+../../src/kernel/render-worker.ts:1056:32
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:41796</title><rect x="1274.962" y="378" width="5.505" height="17" fill="hsl(17 80% 72%)"/><text x="1276.962" y="390" font-size="10"></text></g><g><title>compilePacket — 16.064 ms cumulative active samples
+../../src/kernel/render-worker.ts:165:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17513</title><rect x="1274.962" y="360" width="5.083" height="17" fill="hsl(23 80% 72%)"/><text x="1276.962" y="372" font-size="10"></text></g><g><title>journalCompile — 16.064 ms cumulative active samples
+../../src/kernel/render-worker.ts:153:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17171</title><rect x="1274.962" y="342" width="5.083" height="17" fill="hsl(14 80% 72%)"/><text x="1276.962" y="354" font-size="10"></text></g><g><title>e — 13.543 ms cumulative active samples
+../../src/kernel/render-worker.ts:158:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17286</title><rect x="1274.962" y="324" width="4.239" height="17" fill="hsl(9 80% 72%)"/><text x="1276.962" y="336" font-size="10"></text></g><g><title>e — 13.543 ms cumulative active samples
+../../src/kernel/render-worker.ts:154:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17188</title><rect x="1274.962" y="306" width="4.239" height="17" fill="hsl(9 80% 72%)"/><text x="1276.962" y="318" font-size="10"></text></g><g><title>failureAttempt — 9.274 ms cumulative active samples
+../../src/kernel/render-worker.ts:77:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:15469</title><rect x="1274.962" y="288" width="2.808" height="17" fill="hsl(57 80% 72%)"/><text x="1276.962" y="300" font-size="10"></text></g><g><title>run — 9.274 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:75:1
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:21658</title><rect x="1274.962" y="270" width="2.808" height="17" fill="hsl(49 80% 72%)"/><text x="1276.962" y="282" font-size="10"></text></g><g><title>(anonymous) — 9.274 ms cumulative active samples
+../../src/kernel/render-worker.ts:166:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17531</title><rect x="1274.962" y="252" width="2.808" height="17" fill="hsl(30 80% 72%)"/><text x="1276.962" y="264" font-size="10"></text></g><g><title>prepare_gpu_packet — 9.274 ms cumulative active samples
+../../src/kernel/render-kernel.ts:138:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:116885</title><rect x="1274.962" y="234" width="2.808" height="17" fill="hsl(53 80% 72%)"/><text x="1276.962" y="246" font-size="10"></text></g><g><title>compile_gpu_packet — 9.274 ms cumulative active samples
+../../src/kernel/render-kernel.ts:103:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:115922</title><rect x="1274.962" y="216" width="2.808" height="17" fill="hsl(37 80% 72%)"/><text x="1276.962" y="228" font-size="10"></text></g><g><title>call — 7.990 ms cumulative active samples
+../../src/kernel/render-kernel.ts:57:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:114092</title><rect x="1274.962" y="198" width="2.378" height="17" fill="hsl(40 80% 72%)"/><text x="1276.962" y="210" font-size="10"></text></g><g><title>request — 7.990 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:84:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:104761</title><rect x="1274.962" y="180" width="2.378" height="17" fill="hsl(55 80% 72%)"/><text x="1276.962" y="192" font-size="10"></text></g><g><title>(anonymous) — 6.720 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:89:15
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105150</title><rect x="1274.962" y="162" width="1.952" height="17" fill="hsl(30 80% 72%)"/><text x="1276.962" y="174" font-size="10"></text></g><g><title>trace — 4.228 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="1274.962" y="144" width="1.117" height="17" fill="hsl(55 80% 72%)"/><text x="1276.962" y="156" font-size="10"></text></g><g><title>record — 4.228 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1274.962" y="126" width="1.117" height="17" fill="hsl(57 80% 72%)"/><text x="1276.962" y="138" font-size="10"></text></g><g><title>sanitizeRecord — 2.527 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1274.962" y="108" width="0.547" height="17" fill="hsl(36 80% 72%)"/><text x="1276.962" y="120" font-size="10"></text></g><g><title>sanitizeFields — 1.701 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1275.808" y="108" width="0.270" height="17" fill="hsl(38 80% 72%)"/><text x="1277.808" y="120" font-size="10"></text></g><g><title>dispatch — 2.492 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:126:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:106386</title><rect x="1276.378" y="144" width="0.535" height="17" fill="hsl(56 80% 72%)"/><text x="1278.378" y="156" font-size="10"></text></g><g><title>trace — 2.492 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="1276.378" y="126" width="0.535" height="17" fill="hsl(55 80% 72%)"/><text x="1278.378" y="138" font-size="10"></text></g><g><title>record — 2.492 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1276.378" y="108" width="0.535" height="17" fill="hsl(57 80% 72%)"/><text x="1278.378" y="120" font-size="10"></text></g><g><title>run — 4.269 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:75:1
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:21658</title><rect x="1278.070" y="288" width="1.131" height="17" fill="hsl(49 80% 72%)"/><text x="1280.070" y="300" font-size="10"></text></g><g><title>(anonymous) — 4.269 ms cumulative active samples
+../../src/kernel/render-worker.ts:166:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17531</title><rect x="1278.070" y="270" width="1.131" height="17" fill="hsl(30 80% 72%)"/><text x="1280.070" y="282" font-size="10"></text></g><g><title>prepare_gpu_packet — 4.269 ms cumulative active samples
+../../src/kernel/render-kernel.ts:138:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:116885</title><rect x="1278.070" y="252" width="1.131" height="17" fill="hsl(53 80% 72%)"/><text x="1280.070" y="264" font-size="10"></text></g><g><title>compile_gpu_packet — 4.269 ms cumulative active samples
+../../src/kernel/render-kernel.ts:103:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:115922</title><rect x="1278.070" y="234" width="1.131" height="17" fill="hsl(37 80% 72%)"/><text x="1280.070" y="246" font-size="10"></text></g><g><title>call — 4.269 ms cumulative active samples
+../../src/kernel/render-kernel.ts:57:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:114092</title><rect x="1278.070" y="216" width="1.131" height="17" fill="hsl(40 80% 72%)"/><text x="1280.070" y="228" font-size="10"></text></g><g><title>request — 4.269 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:84:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:104761</title><rect x="1278.070" y="198" width="1.131" height="17" fill="hsl(55 80% 72%)"/><text x="1280.070" y="210" font-size="10"></text></g><g><title>(anonymous) — 4.269 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:89:15
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105150</title><rect x="1278.070" y="180" width="1.131" height="17" fill="hsl(30 80% 72%)"/><text x="1280.070" y="192" font-size="10"></text></g><g><title>trace — 3.007 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="1278.070" y="162" width="0.708" height="17" fill="hsl(55 80% 72%)"/><text x="1280.070" y="174" font-size="10"></text></g><g><title>record — 3.007 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1278.070" y="144" width="0.708" height="17" fill="hsl(57 80% 72%)"/><text x="1280.070" y="156" font-size="10"></text></g><g><title>sanitizeRecord — 3.007 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1278.070" y="126" width="0.708" height="17" fill="hsl(36 80% 72%)"/><text x="1280.070" y="138" font-size="10"></text></g><g><title>sanitizeFields — 3.007 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1278.070" y="108" width="0.708" height="17" fill="hsl(38 80% 72%)"/><text x="1280.070" y="120" font-size="10"></text></g><g><title>record — 2.521 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1279.500" y="324" width="0.545" height="17" fill="hsl(57 80% 72%)"/><text x="1281.500" y="336" font-size="10"></text></g><g><title>sanitizeRecord — 2.521 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1279.500" y="306" width="0.545" height="17" fill="hsl(36 80% 72%)"/><text x="1281.500" y="318" font-size="10"></text></g><g><title>sanitizeFields — 2.521 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1279.500" y="288" width="0.545" height="17" fill="hsl(38 80% 72%)"/><text x="1281.500" y="300" font-size="10"></text></g><g><title>certified — 13.702 ms cumulative active samples
+../../src/kernel/owner-tile-cache.ts:25:18
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:80298</title><rect x="1280.767" y="378" width="4.292" height="17" fill="hsl(51 80% 72%)"/><text x="1282.767" y="390" font-size="10"></text></g><g><title>report — 13.702 ms cumulative active samples
+../../src/kernel/exact-tile-cache.ts:35:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:78541</title><rect x="1280.767" y="360" width="4.292" height="17" fill="hsl(56 80% 72%)"/><text x="1282.767" y="372" font-size="10"></text></g><g><title>record — 13.702 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1280.767" y="342" width="4.292" height="17" fill="hsl(57 80% 72%)"/><text x="1282.767" y="354" font-size="10"></text></g><g><title>sanitizeFields — 6.143 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1280.767" y="324" width="1.759" height="17" fill="hsl(38 80% 72%)"/><text x="1282.767" y="336" font-size="10"></text></g><g><title>sanitizeRecord — 5.048 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1282.826" y="324" width="1.392" height="17" fill="hsl(36 80% 72%)"/><text x="1284.826" y="336" font-size="10"></text></g><g><title>sanitizeFields — 3.707 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1282.826" y="306" width="0.942" height="17" fill="hsl(38 80% 72%)"/><text x="1284.826" y="318" font-size="10"></text></g><g><title>stats — 13.091 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:2287:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4138:1840</title><rect x="1285.359" y="378" width="4.087" height="17" fill="hsl(57 80% 72%)"/><text x="1287.359" y="390" font-size="10"></text></g><g><title>loadStage — 12.654 ms cumulative active samples
+../../src/kernel/render-worker.ts:722:12
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:33621</title><rect x="1289.746" y="378" width="3.941" height="17" fill="hsl(24 80% 72%)"/><text x="1291.746" y="390" font-size="10"></text></g><g><title>record — 12.654 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1289.746" y="360" width="3.941" height="17" fill="hsl(57 80% 72%)"/><text x="1291.746" y="372" font-size="10"></text></g><g><title>sanitizeFields — 10.065 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1289.746" y="342" width="3.073" height="17" fill="hsl(38 80% 72%)"/><text x="1291.746" y="354" font-size="10"></text></g><g><title>sanitizeRecord — 2.589 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1293.119" y="342" width="0.568" height="17" fill="hsl(36 80% 72%)"/><text x="1295.119" y="354" font-size="10"></text></g><g><title>sanitizeFields — 2.589 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1293.119" y="324" width="0.568" height="17" fill="hsl(38 80% 72%)"/><text x="1295.119" y="336" font-size="10"></text></g><g><title>decodeScenePacket — 7.680 ms cumulative active samples
+../../src/kernel/gpu/scene-packet.ts:5:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:66447</title><rect x="1293.987" y="378" width="2.274" height="17" fill="hsl(14 80% 72%)"/><text x="1295.987" y="390" font-size="10"></text></g><g><title>decode — 2.535 ms cumulative active samples
+
+:0:0</title><rect x="1293.987" y="360" width="0.550" height="17" fill="hsl(10 80% 72%)"/><text x="1295.987" y="372" font-size="10"></text></g><g><title>flush — 5.100 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:122:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:6104</title><rect x="1296.561" y="378" width="1.409" height="17" fill="hsl(34 80% 72%)"/><text x="1298.561" y="390" font-size="10"></text></g><g><title>flush — 5.100 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:96:11
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5484</title><rect x="1296.561" y="360" width="1.409" height="17" fill="hsl(34 80% 72%)"/><text x="1298.561" y="372" font-size="10"></text></g><g><title>batchSink — 5.100 ms cumulative active samples
+../../src/kernel/render-worker.ts:443:103
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:25330</title><rect x="1296.561" y="342" width="1.409" height="17" fill="hsl(47 80% 72%)"/><text x="1298.561" y="354" font-size="10"></text></g><g><title>F — 5.057 ms cumulative active samples
+../../src/kernel/render-worker.ts:1053:26
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:41686</title><rect x="1298.270" y="378" width="1.395" height="17" fill="hsl(28 80% 72%)"/><text x="1300.270" y="390" font-size="10"></text></g><g><title>coordinateSlot — 5.057 ms cumulative active samples
+../../src/kernel/exact-tile-cache.ts:15:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:78003</title><rect x="1298.270" y="360" width="1.395" height="17" fill="hsl(50 80% 72%)"/><text x="1300.270" y="372" font-size="10"></text></g><g><title>preparedTileCanFill — 3.469 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:8:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:119421</title><rect x="1299.964" y="378" width="0.863" height="17" fill="hsl(12 80% 72%)"/><text x="1301.964" y="390" font-size="10"></text></g><g><title>tilesCoverBounds — 2.186 ms cumulative active samples
+../../src/kernel/tile-cache.ts:218:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:67217</title><rect x="1299.964" y="360" width="0.433" height="17" fill="hsl(33 80% 72%)"/><text x="1301.964" y="372" font-size="10"></text></g><g><title>renderTiledPreview — 2.834 ms cumulative active samples
+../../src/kernel/render-worker.ts:1736:15
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:57159</title><rect x="1301.127" y="378" width="0.650" height="17" fill="hsl(24 80% 72%)"/><text x="1303.127" y="390" font-size="10"></text></g><g><title>checkCurrent — 2.834 ms cumulative active samples
+../../src/kernel/render-worker.ts:1760:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:57267</title><rect x="1301.127" y="360" width="0.650" height="17" fill="hsl(37 80% 72%)"/><text x="1303.127" y="372" font-size="10"></text></g><g><title>reportRasterProgress — 2.834 ms cumulative active samples
+../../src/kernel/render-worker.ts:1148:88
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:43938</title><rect x="1301.127" y="342" width="0.650" height="17" fill="hsl(24 80% 72%)"/><text x="1303.127" y="354" font-size="10"></text></g><g><title>(anonymous) — 2.564 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:37:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:120265</title><rect x="1301.127" y="324" width="0.559" height="17" fill="hsl(30 80% 72%)"/><text x="1303.127" y="336" font-size="10"></text></g><g><title>preparedTileCanFill — 2.564 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:8:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:119421</title><rect x="1301.127" y="306" width="0.559" height="17" fill="hsl(12 80% 72%)"/><text x="1303.127" y="318" font-size="10"></text></g><g><title>tilesCoverBounds — 2.564 ms cumulative active samples
+../../src/kernel/tile-cache.ts:218:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:67217</title><rect x="1301.127" y="288" width="0.559" height="17" fill="hsl(33 80% 72%)"/><text x="1303.127" y="300" font-size="10"></text></g><g><title>get — 2.314 ms cumulative active samples
+../../src/kernel/owner-tile-cache.ts:24:6
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:80258</title><rect x="1302.077" y="378" width="0.475" height="17" fill="hsl(38 80% 72%)"/><text x="1304.077" y="390" font-size="10"></text></g><g><title>get — 2.314 ms cumulative active samples
+../../src/kernel/exact-tile-cache.ts:36:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:78592</title><rect x="1302.077" y="360" width="0.475" height="17" fill="hsl(38 80% 72%)"/><text x="1304.077" y="372" font-size="10"></text></g><g><title>report — 2.314 ms cumulative active samples
+../../src/kernel/exact-tile-cache.ts:35:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:78541</title><rect x="1302.077" y="342" width="0.475" height="17" fill="hsl(56 80% 72%)"/><text x="1304.077" y="354" font-size="10"></text></g><g><title>record — 2.314 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1302.077" y="324" width="0.475" height="17" fill="hsl(57 80% 72%)"/><text x="1304.077" y="336" font-size="10"></text></g><g><title>draw — 201.986 ms cumulative active samples
+../../src/kernel/preview-tiles.ts:47:17
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:82585</title><rect x="1325.742" y="396" width="67.391" height="17" fill="hsl(38 80% 72%)"/><text x="1327.742" y="408" font-size="10">draw</text></g><g><title>(anonymous) — 199.596 ms cumulative active samples
+../../src/kernel/preview-tiles.ts:110:64
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:83805</title><rect x="1325.742" y="378" width="66.590" height="17" fill="hsl(30 80% 72%)"/><text x="1327.742" y="390" font-size="10">(anonymous</text></g><g><title>(anonymous) — 199.596 ms cumulative active samples
+../../src/kernel/render-worker.ts:2068:67
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:62862</title><rect x="1325.742" y="360" width="66.590" height="17" fill="hsl(30 80% 72%)"/><text x="1327.742" y="372" font-size="10">(anonymous</text></g><g><title>Ie — 198.368 ms cumulative active samples
+../../src/kernel/render-worker.ts:1911:20
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:60314</title><rect x="1325.742" y="342" width="66.179" height="17" fill="hsl(22 80% 72%)"/><text x="1327.742" y="354" font-size="10">Ie</text></g><g><title>compilePacket — 193.260 ms cumulative active samples
+../../src/kernel/render-worker.ts:165:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17513</title><rect x="1325.742" y="324" width="64.467" height="17" fill="hsl(23 80% 72%)"/><text x="1327.742" y="336" font-size="10">compilePac</text></g><g><title>journalCompile — 190.380 ms cumulative active samples
+../../src/kernel/render-worker.ts:153:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17171</title><rect x="1325.742" y="306" width="63.502" height="17" fill="hsl(14 80% 72%)"/><text x="1327.742" y="318" font-size="10">journalCo</text></g><g><title>e — 166.341 ms cumulative active samples
+../../src/kernel/render-worker.ts:158:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17286</title><rect x="1325.742" y="288" width="55.445" height="17" fill="hsl(9 80% 72%)"/><text x="1327.742" y="300" font-size="10">e</text></g><g><title>e — 159.937 ms cumulative active samples
+../../src/kernel/render-worker.ts:154:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17188</title><rect x="1325.742" y="270" width="53.299" height="17" fill="hsl(9 80% 72%)"/><text x="1327.742" y="282" font-size="10">e</text></g><g><title>failureAttempt — 123.032 ms cumulative active samples
+../../src/kernel/render-worker.ts:77:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:15469</title><rect x="1325.742" y="252" width="40.931" height="17" fill="hsl(57 80% 72%)"/><text x="1327.742" y="264" font-size="10">failur</text></g><g><title>run — 123.032 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:75:1
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:21658</title><rect x="1325.742" y="234" width="40.931" height="17" fill="hsl(49 80% 72%)"/><text x="1327.742" y="246" font-size="10">run</text></g><g><title>(anonymous) — 119.351 ms cumulative active samples
+../../src/kernel/render-worker.ts:166:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17531</title><rect x="1325.742" y="216" width="39.698" height="17" fill="hsl(30 80% 72%)"/><text x="1327.742" y="228" font-size="10">(anon</text></g><g><title>prepare_gpu_packet — 119.351 ms cumulative active samples
+../../src/kernel/render-kernel.ts:138:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:116885</title><rect x="1325.742" y="198" width="39.698" height="17" fill="hsl(53 80% 72%)"/><text x="1327.742" y="210" font-size="10">prepa</text></g><g><title>compile_gpu_packet — 107.761 ms cumulative active samples
+../../src/kernel/render-kernel.ts:103:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:115922</title><rect x="1325.742" y="180" width="35.814" height="17" fill="hsl(37 80% 72%)"/><text x="1327.742" y="192" font-size="10">compi</text></g><g><title>call — 106.535 ms cumulative active samples
+../../src/kernel/render-kernel.ts:57:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:114092</title><rect x="1325.742" y="162" width="35.403" height="17" fill="hsl(40 80% 72%)"/><text x="1327.742" y="174" font-size="10">call</text></g><g><title>request — 106.535 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:84:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:104761</title><rect x="1325.742" y="144" width="35.403" height="17" fill="hsl(55 80% 72%)"/><text x="1327.742" y="156" font-size="10">reque</text></g><g><title>(anonymous) — 105.282 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:89:15
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105150</title><rect x="1325.742" y="126" width="34.983" height="17" fill="hsl(30 80% 72%)"/><text x="1327.742" y="138" font-size="10">(anon</text></g><g><title>dispatch — 55.742 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:126:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:106386</title><rect x="1325.742" y="108" width="18.381" height="17" fill="hsl(56 80% 72%)"/><text x="1327.742" y="120" font-size="10">di</text></g><g><title>trace — 38.984 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="1325.742" y="90" width="12.765" height="17" fill="hsl(55 80% 72%)"/><text x="1327.742" y="102" font-size="10">t</text></g><g><title>record — 37.863 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1325.742" y="72" width="12.389" height="17" fill="hsl(57 80% 72%)"/><text x="1327.742" y="84" font-size="10">r</text></g><g><title>sanitizeRecord — 18.860 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1325.742" y="54" width="6.021" height="17" fill="hsl(36 80% 72%)"/><text x="1327.742" y="66" font-size="10"></text></g><g><title>sanitizeFields — 9.932 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1325.742" y="36" width="3.028" height="17" fill="hsl(38 80% 72%)"/><text x="1327.742" y="48" font-size="10"></text></g><g><title>sanitizeFields — 15.147 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1332.062" y="54" width="4.776" height="17" fill="hsl(38 80% 72%)"/><text x="1334.062" y="66" font-size="10"></text></g><g><title>watch — 6.455 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:117:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:106119</title><rect x="1338.806" y="90" width="1.863" height="17" fill="hsl(33 80% 72%)"/><text x="1340.806" y="102" font-size="10"></text></g><g><title>setTimeout — 6.455 ms cumulative active samples
+
+:0:0</title><rect x="1338.806" y="72" width="1.863" height="17" fill="hsl(43 80% 72%)"/><text x="1340.806" y="84" font-size="10"></text></g><g><title>postMessage — 5.265 ms cumulative active samples
+
+:0:0</title><rect x="1340.970" y="90" width="1.464" height="17" fill="hsl(21 80% 72%)"/><text x="1342.970" y="102" font-size="10"></text></g><g><title>trace — 48.265 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="1344.422" y="108" width="15.875" height="17" fill="hsl(55 80% 72%)"/><text x="1346.422" y="120" font-size="10">tr</text></g><g><title>record — 48.265 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1344.422" y="90" width="15.875" height="17" fill="hsl(57 80% 72%)"/><text x="1346.422" y="102" font-size="10">re</text></g><g><title>sanitizeRecord — 23.995 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1344.422" y="72" width="7.741" height="17" fill="hsl(36 80% 72%)"/><text x="1346.422" y="84" font-size="10"></text></g><g><title>sanitizeFields — 17.004 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1344.422" y="54" width="5.399" height="17" fill="hsl(38 80% 72%)"/><text x="1346.422" y="66" font-size="10"></text></g><g><title>sanitizeFields — 13.957 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1352.464" y="72" width="4.377" height="17" fill="hsl(38 80% 72%)"/><text x="1354.464" y="84" font-size="10"></text></g><g><title>run — 36.905 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:75:1
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:21658</title><rect x="1366.973" y="252" width="12.068" height="17" fill="hsl(49 80% 72%)"/><text x="1368.973" y="264" font-size="10">r</text></g><g><title>(anonymous) — 36.905 ms cumulative active samples
+../../src/kernel/render-worker.ts:166:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17531</title><rect x="1366.973" y="234" width="12.068" height="17" fill="hsl(30 80% 72%)"/><text x="1368.973" y="246" font-size="10">(</text></g><g><title>prepare_gpu_packet — 36.905 ms cumulative active samples
+../../src/kernel/render-kernel.ts:138:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:116885</title><rect x="1366.973" y="216" width="12.068" height="17" fill="hsl(53 80% 72%)"/><text x="1368.973" y="228" font-size="10">p</text></g><g><title>compile_gpu_packet — 36.905 ms cumulative active samples
+../../src/kernel/render-kernel.ts:103:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:115922</title><rect x="1366.973" y="198" width="12.068" height="17" fill="hsl(37 80% 72%)"/><text x="1368.973" y="210" font-size="10">c</text></g><g><title>call — 34.364 ms cumulative active samples
+../../src/kernel/render-kernel.ts:57:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:114092</title><rect x="1366.973" y="180" width="11.216" height="17" fill="hsl(40 80% 72%)"/><text x="1368.973" y="192" font-size="10">c</text></g><g><title>request — 34.364 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:84:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:104761</title><rect x="1366.973" y="162" width="11.216" height="17" fill="hsl(55 80% 72%)"/><text x="1368.973" y="174" font-size="10">r</text></g><g><title>(anonymous) — 34.364 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:89:15
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105150</title><rect x="1366.973" y="144" width="11.216" height="17" fill="hsl(30 80% 72%)"/><text x="1368.973" y="156" font-size="10">(</text></g><g><title>dispatch — 16.034 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:126:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:106386</title><rect x="1366.973" y="126" width="5.073" height="17" fill="hsl(56 80% 72%)"/><text x="1368.973" y="138" font-size="10"></text></g><g><title>trace — 6.706 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="1366.973" y="108" width="1.947" height="17" fill="hsl(55 80% 72%)"/><text x="1368.973" y="120" font-size="10"></text></g><g><title>record — 6.706 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1366.973" y="90" width="1.947" height="17" fill="hsl(57 80% 72%)"/><text x="1368.973" y="102" font-size="10"></text></g><g><title>sanitizeRecord — 2.942 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1366.973" y="72" width="0.686" height="17" fill="hsl(36 80% 72%)"/><text x="1368.973" y="84" font-size="10"></text></g><g><title>sanitizeFields — 2.942 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1366.973" y="54" width="0.686" height="17" fill="hsl(38 80% 72%)"/><text x="1368.973" y="66" font-size="10"></text></g><g><title>postMessage — 2.679 ms cumulative active samples
+
+:0:0</title><rect x="1369.221" y="108" width="0.598" height="17" fill="hsl(21 80% 72%)"/><text x="1371.221" y="120" font-size="10"></text></g><g><title>watch — 2.516 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:117:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:106119</title><rect x="1370.118" y="108" width="0.543" height="17" fill="hsl(33 80% 72%)"/><text x="1372.118" y="120" font-size="10"></text></g><g><title>setTimeout — 2.516 ms cumulative active samples
+
+:0:0</title><rect x="1370.118" y="90" width="0.543" height="17" fill="hsl(43 80% 72%)"/><text x="1372.118" y="102" font-size="10"></text></g><g><title>trace — 14.904 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="1372.347" y="126" width="4.695" height="17" fill="hsl(55 80% 72%)"/><text x="1374.347" y="138" font-size="10"></text></g><g><title>record — 14.904 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1372.347" y="108" width="4.695" height="17" fill="hsl(57 80% 72%)"/><text x="1374.347" y="120" font-size="10"></text></g><g><title>sanitizeRecord — 8.888 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1372.347" y="90" width="2.679" height="17" fill="hsl(36 80% 72%)"/><text x="1374.347" y="102" font-size="10"></text></g><g><title>sanitizeFields — 4.936 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1372.347" y="72" width="1.354" height="17" fill="hsl(38 80% 72%)"/><text x="1374.347" y="84" font-size="10"></text></g><g><title>sanitizeFields — 5.029 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1375.325" y="90" width="1.385" height="17" fill="hsl(38 80% 72%)"/><text x="1377.325" y="102" font-size="10"></text></g><g><title>run — 5.328 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:75:1
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:21658</title><rect x="1379.341" y="270" width="1.486" height="17" fill="hsl(49 80% 72%)"/><text x="1381.341" y="282" font-size="10"></text></g><g><title>(anonymous) — 5.328 ms cumulative active samples
+../../src/kernel/render-worker.ts:166:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17531</title><rect x="1379.341" y="252" width="1.486" height="17" fill="hsl(30 80% 72%)"/><text x="1381.341" y="264" font-size="10"></text></g><g><title>prepare_gpu_packet — 5.328 ms cumulative active samples
+../../src/kernel/render-kernel.ts:138:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:116885</title><rect x="1379.341" y="234" width="1.486" height="17" fill="hsl(53 80% 72%)"/><text x="1381.341" y="246" font-size="10"></text></g><g><title>compile_gpu_packet — 5.328 ms cumulative active samples
+../../src/kernel/render-kernel.ts:103:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:115922</title><rect x="1379.341" y="216" width="1.486" height="17" fill="hsl(37 80% 72%)"/><text x="1381.341" y="228" font-size="10"></text></g><g><title>call — 5.328 ms cumulative active samples
+../../src/kernel/render-kernel.ts:57:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:114092</title><rect x="1379.341" y="198" width="1.486" height="17" fill="hsl(40 80% 72%)"/><text x="1381.341" y="210" font-size="10"></text></g><g><title>request — 5.328 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:84:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:104761</title><rect x="1379.341" y="180" width="1.486" height="17" fill="hsl(55 80% 72%)"/><text x="1381.341" y="192" font-size="10"></text></g><g><title>(anonymous) — 5.328 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:89:15
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105150</title><rect x="1379.341" y="162" width="1.486" height="17" fill="hsl(30 80% 72%)"/><text x="1381.341" y="174" font-size="10"></text></g><g><title>trace — 2.610 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="1379.341" y="144" width="0.575" height="17" fill="hsl(55 80% 72%)"/><text x="1381.341" y="156" font-size="10"></text></g><g><title>record — 2.610 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1379.341" y="126" width="0.575" height="17" fill="hsl(57 80% 72%)"/><text x="1381.341" y="138" font-size="10"></text></g><g><title>record — 21.341 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1381.487" y="288" width="6.852" height="17" fill="hsl(57 80% 72%)"/><text x="1383.487" y="300" font-size="10"></text></g><g><title>sanitizeRecord — 8.686 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1381.487" y="270" width="2.611" height="17" fill="hsl(36 80% 72%)"/><text x="1383.487" y="282" font-size="10"></text></g><g><title>sanitizeFields — 3.740 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1384.398" y="270" width="0.953" height="17" fill="hsl(38 80% 72%)"/><text x="1386.398" y="282" font-size="10"></text></g><g><title>shouldSplit — 2.390 ms cumulative active samples
+../../src/kernel/preview-tiles.ts:9:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:84260</title><rect x="1392.632" y="378" width="0.501" height="17" fill="hsl(37 80% 72%)"/><text x="1394.632" y="390" font-size="10"></text></g><g><title>node — 129.862 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4838:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:125559</title><rect x="1393.433" y="396" width="43.220" height="17" fill="hsl(40 80% 72%)"/><text x="1395.433" y="408" font-size="10">node</text></g><g><title>blur — 116.855 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4308:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:113651</title><rect x="1393.433" y="378" width="38.861" height="17" fill="hsl(55 80% 72%)"/><text x="1395.433" y="390" font-size="10">blur</text></g><g><title>certifiedKernel — 53.941 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4142:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:107596</title><rect x="1393.433" y="360" width="17.777" height="17" fill="hsl(10 80% 72%)"/><text x="1395.433" y="372" font-size="10">ce</text></g><g><title>filterKernel — 53.941 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4100:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:106260</title><rect x="1393.433" y="342" width="17.777" height="17" fill="hsl(13 80% 72%)"/><text x="1395.433" y="354" font-size="10">fi</text></g><g><title>radius — 45.023 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4144:71
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:107698</title><rect x="1393.433" y="324" width="14.788" height="17" fill="hsl(56 80% 72%)"/><text x="1395.433" y="336" font-size="10">r</text></g><g><title>certified_box_kernel_rgba — 45.023 ms cumulative active samples
+../../src/generated/design-kernel/design_kernel.js:1809:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:34332</title><rect x="1393.433" y="306" width="14.788" height="17" fill="hsl(48 80% 72%)"/><text x="1395.433" y="318" font-size="10">c</text></g><g><title>js-to-wasm:: — 44.078 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:1</title><rect x="1393.433" y="288" width="14.472" height="17" fill="hsl(52 80% 72%)"/><text x="1395.433" y="300" font-size="10">j</text></g><g><title>wasm-function[5746] — 44.078 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:6682768</title><rect x="1393.433" y="270" width="14.472" height="17" fill="#e98476"/><text x="1395.433" y="282" font-size="10">w</text></g><g><title>wasm-function[3243] — 44.078 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:6254732</title><rect x="1393.433" y="252" width="14.472" height="17" fill="#e98476"/><text x="1395.433" y="264" font-size="10">w</text></g><g><title>wasm-function[1251] — 42.805 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:4928783</title><rect x="1393.433" y="234" width="14.045" height="17" fill="#e98476"/><text x="1395.433" y="246" font-size="10">w</text></g><g><title>wasm-function[1168] — 41.508 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:4816652</title><rect x="1393.433" y="216" width="13.610" height="17" fill="#e98476"/><text x="1395.433" y="228" font-size="10">w</text></g><g><title>uploadRgba8 — 8.918 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1401:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:7172</title><rect x="1408.521" y="324" width="2.689" height="17" fill="hsl(19 80% 72%)"/><text x="1410.521" y="336" font-size="10"></text></g><g><title>uploadLinear — 5.084 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1362:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:6248</title><rect x="1408.521" y="306" width="1.404" height="17" fill="hsl(56 80% 72%)"/><text x="1410.521" y="318" font-size="10"></text></g><g><title>certifyExactImageRange — 2.548 ms cumulative active samples
+../../src/kernel/gpu/exact-image-x-table.ts:15:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:27:11646</title><rect x="1408.521" y="288" width="0.554" height="17" fill="hsl(53 80% 72%)"/><text x="1410.521" y="300" font-size="10"></text></g><g><title>createFormat — 2.536 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1311:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:5148</title><rect x="1409.375" y="288" width="0.550" height="17" fill="hsl(43 80% 72%)"/><text x="1411.375" y="300" font-size="10"></text></g><g><title>run — 31.139 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="1411.510" y="360" width="10.136" height="17" fill="hsl(49 80% 72%)"/><text x="1413.510" y="372" font-size="10">r</text></g><g><title>encodePass — 24.072 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1411.510" y="342" width="7.767" height="17" fill="hsl(17 80% 72%)"/><text x="1413.510" y="354" font-size="10"></text></g><g><title>bind — 15.470 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="1411.510" y="324" width="4.884" height="17" fill="hsl(41 80% 72%)"/><text x="1413.510" y="336" font-size="10"></text></g><g><title>group — 12.951 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="1411.510" y="306" width="4.040" height="17" fill="hsl(55 80% 72%)"/><text x="1413.510" y="318" font-size="10"></text></g><g><title>create — 3.911 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1846:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4667</title><rect x="1411.510" y="288" width="1.011" height="17" fill="hsl(56 80% 72%)"/><text x="1413.510" y="300" font-size="10"></text></g><g><title>(anonymous) — 2.510 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1850:29
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4782</title><rect x="1411.510" y="270" width="0.541" height="17" fill="hsl(30 80% 72%)"/><text x="1413.510" y="282" font-size="10"></text></g><g><title>view — 2.510 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:16:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2886</title><rect x="1411.510" y="252" width="0.541" height="17" fill="hsl(51 80% 72%)"/><text x="1413.510" y="264" font-size="10"></text></g><g><title>createView — 2.510 ms cumulative active samples
+
+:0:0</title><rect x="1411.510" y="234" width="0.541" height="17" fill="hsl(47 80% 72%)"/><text x="1413.510" y="246" font-size="10"></text></g><g><title>parameters — 2.115 ms cumulative active samples
+../../src/kernel/gpu/types.ts:470:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:91496</title><rect x="1419.577" y="342" width="0.409" height="17" fill="hsl(44 80% 72%)"/><text x="1421.577" y="354" font-size="10"></text></g><g><title>filterKernel — 21.900 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4100:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:106260</title><rect x="1421.945" y="360" width="7.039" height="17" fill="hsl(13 80% 72%)"/><text x="1423.945" y="372" font-size="10"></text></g><g><title>uploadRgba8 — 15.726 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1401:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:7172</title><rect x="1421.945" y="342" width="4.970" height="17" fill="hsl(19 80% 72%)"/><text x="1423.945" y="354" font-size="10"></text></g><g><title>uploadLinear — 13.216 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1362:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:6248</title><rect x="1421.945" y="324" width="4.129" height="17" fill="hsl(56 80% 72%)"/><text x="1423.945" y="336" font-size="10"></text></g><g><title>writeTexture — 6.942 ms cumulative active samples
+
+:0:0</title><rect x="1421.945" y="306" width="2.026" height="17" fill="hsl(36 80% 72%)"/><text x="1423.945" y="318" font-size="10"></text></g><g><title>createFormat — 2.512 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1311:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:5148</title><rect x="1424.272" y="306" width="0.542" height="17" fill="hsl(43 80% 72%)"/><text x="1426.272" y="318" font-size="10"></text></g><g><title>createTexture — 2.512 ms cumulative active samples
+
+:0:0</title><rect x="1424.272" y="288" width="0.542" height="17" fill="hsl(39 80% 72%)"/><text x="1426.272" y="300" font-size="10"></text></g><g><title>r — 4.882 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:4366:55
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:115373</title><rect x="1427.216" y="342" width="1.336" height="17" fill="hsl(22 80% 72%)"/><text x="1429.216" y="354" font-size="10"></text></g><g><title>rational_box_kernel_rgba — 4.882 ms cumulative active samples
+../../src/generated/design-kernel/design_kernel.js:2997:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:39983</title><rect x="1427.216" y="324" width="1.336" height="17" fill="hsl(13 80% 72%)"/><text x="1429.216" y="336" font-size="10"></text></g><g><title>js-to-wasm:: — 4.882 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:1</title><rect x="1427.216" y="306" width="1.336" height="17" fill="hsl(52 80% 72%)"/><text x="1429.216" y="318" font-size="10"></text></g><g><title>wasm-function[5747] — 4.882 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:6682816</title><rect x="1427.216" y="288" width="1.336" height="17" fill="#e98476"/><text x="1429.216" y="300" font-size="10"></text></g><g><title>wasm-function[3245] — 4.882 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:6255422</title><rect x="1427.216" y="270" width="1.336" height="17" fill="#e98476"/><text x="1429.216" y="282" font-size="10"></text></g><g><title>wasm-function[2041] — 3.580 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:5662295</title><rect x="1427.216" y="252" width="0.900" height="17" fill="#e98476"/><text x="1429.216" y="264" font-size="10"></text></g><g><title>wasm-function[4283] — 2.538 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:6522393</title><rect x="1427.216" y="234" width="0.551" height="17" fill="#e98476"/><text x="1429.216" y="246" font-size="10"></text></g><g><title>gaussianRadii — 7.570 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:136:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:2512</title><rect x="1429.285" y="360" width="2.237" height="17" fill="hsl(26 80% 72%)"/><text x="1431.285" y="372" font-size="10"></text></g><g><title>gaussian_box_radii — 5.041 ms cumulative active samples
+../../src/generated/design-kernel/design_kernel.js:2161:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:36144</title><rect x="1429.285" y="342" width="1.389" height="17" fill="hsl(47 80% 72%)"/><text x="1431.285" y="354" font-size="10"></text></g><g><title>js-to-wasm:: — 3.823 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:1</title><rect x="1429.285" y="324" width="0.981" height="17" fill="hsl(52 80% 72%)"/><text x="1431.285" y="336" font-size="10"></text></g><g><title>wasm-function[5742] — 2.548 ms cumulative active samples
+
+design-app://app/kernel/design_kernel_bg.wasm:1:6682576</title><rect x="1429.285" y="306" width="0.554" height="17" fill="#e98476"/><text x="1431.285" y="318" font-size="10"></text></g><g><title>run — 5.108 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="1432.594" y="378" width="1.412" height="17" fill="hsl(49 80% 72%)"/><text x="1434.594" y="390" font-size="10"></text></g><g><title>encodePass — 3.841 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1432.594" y="360" width="0.987" height="17" fill="hsl(17 80% 72%)"/><text x="1434.594" y="372" font-size="10"></text></g><g><title>bind — 3.841 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="1432.594" y="342" width="0.987" height="17" fill="hsl(41 80% 72%)"/><text x="1434.594" y="354" font-size="10"></text></g><g><title>group — 3.841 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="1432.594" y="324" width="0.987" height="17" fill="hsl(55 80% 72%)"/><text x="1434.594" y="336" font-size="10"></text></g><g><title>create — 3.841 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1846:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4667</title><rect x="1432.594" y="306" width="0.987" height="17" fill="hsl(56 80% 72%)"/><text x="1434.594" y="318" font-size="10"></text></g><g><title>createBindGroup — 2.567 ms cumulative active samples
+
+:0:0</title><rect x="1432.594" y="288" width="0.560" height="17" fill="hsl(12 80% 72%)"/><text x="1434.594" y="300" font-size="10"></text></g><g><title>compose — 4.082 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1178:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:32063</title><rect x="1434.306" y="378" width="1.068" height="17" fill="hsl(56 80% 72%)"/><text x="1436.306" y="390" font-size="10"></text></g><g><title>run — 4.082 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="1434.306" y="360" width="1.068" height="17" fill="hsl(49 80% 72%)"/><text x="1436.306" y="372" font-size="10"></text></g><g><title>encodePass — 2.891 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1434.306" y="342" width="0.669" height="17" fill="hsl(17 80% 72%)"/><text x="1436.306" y="354" font-size="10"></text></g><g><title>bind — 1.609 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="1434.306" y="324" width="0.239" height="17" fill="hsl(41 80% 72%)"/><text x="1436.306" y="336" font-size="10"></text></g><g><title>group — 1.609 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="1434.306" y="306" width="0.239" height="17" fill="hsl(55 80% 72%)"/><text x="1436.306" y="318" font-size="10"></text></g><g><title>create — 1.609 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1846:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4667</title><rect x="1434.306" y="288" width="0.239" height="17" fill="hsl(56 80% 72%)"/><text x="1436.306" y="300" font-size="10"></text></g><g><title>sceneScale — 2.554 ms cumulative active samples
+../../src/kernel/gpu/scene-index.ts:10:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:73093</title><rect x="1435.674" y="378" width="0.556" height="17" fill="hsl(22 80% 72%)"/><text x="1437.674" y="390" font-size="10"></text></g><g><title>compile_gpu_packet — 72.480 ms cumulative active samples
+../../src/kernel/render-kernel.ts:103:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:115922</title><rect x="1436.953" y="396" width="23.990" height="17" fill="hsl(37 80% 72%)"/><text x="1438.953" y="408" font-size="10">com</text></g><g><title>put — 58.498 ms cumulative active samples
+../../src/kernel/compiled-packet-cache.ts:22:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:108138</title><rect x="1436.953" y="378" width="19.304" height="17" fill="hsl(33 80% 72%)"/><text x="1438.953" y="390" font-size="10">pu</text></g><g><title>drawNode — 65.125 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:2172:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:56527</title><rect x="1461.243" y="396" width="21.525" height="17" fill="hsl(8 80% 72%)"/><text x="1463.243" y="408" font-size="10">dr</text></g><g><title>merge — 60.313 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1463:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:39422</title><rect x="1461.243" y="378" width="19.913" height="17" fill="hsl(36 80% 72%)"/><text x="1463.243" y="390" font-size="10">me</text></g><g><title>compose — 50.155 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1178:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:32063</title><rect x="1461.243" y="360" width="16.508" height="17" fill="hsl(56 80% 72%)"/><text x="1463.243" y="372" font-size="10">co</text></g><g><title>run — 50.155 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="1461.243" y="342" width="16.508" height="17" fill="hsl(49 80% 72%)"/><text x="1463.243" y="354" font-size="10">ru</text></g><g><title>encodePass — 31.912 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1461.243" y="324" width="10.395" height="17" fill="hsl(17 80% 72%)"/><text x="1463.243" y="336" font-size="10">e</text></g><g><title>bind — 18.926 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1837:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4365</title><rect x="1461.243" y="306" width="6.043" height="17" fill="hsl(41 80% 72%)"/><text x="1463.243" y="318" font-size="10"></text></g><g><title>group — 12.754 ms cumulative active samples
+../../src/kernel/gpu/binding-cache.ts:21:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4064:2989</title><rect x="1461.243" y="288" width="3.974" height="17" fill="hsl(55 80% 72%)"/><text x="1463.243" y="300" font-size="10"></text></g><g><title>create — 7.951 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1846:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:4667</title><rect x="1461.243" y="270" width="2.365" height="17" fill="hsl(56 80% 72%)"/><text x="1463.243" y="282" font-size="10"></text></g><g><title>createBindGroup — 4.165 ms cumulative active samples
+
+:0:0</title><rect x="1461.243" y="252" width="1.096" height="17" fill="hsl(12 80% 72%)"/><text x="1463.243" y="264" font-size="10"></text></g><g><title>beginRenderPass — 9.145 ms cumulative active samples
+
+:0:0</title><rect x="1467.586" y="306" width="2.765" height="17" fill="hsl(50 80% 72%)"/><text x="1469.586" y="318" font-size="10"></text></g><g><title>parameters — 10.145 ms cumulative active samples
+../../src/kernel/gpu/types.ts:470:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:91496</title><rect x="1471.938" y="324" width="3.100" height="17" fill="hsl(44 80% 72%)"/><text x="1473.938" y="336" font-size="10"></text></g><g><title>acquire — 4.477 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:676:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:17194</title><rect x="1475.338" y="324" width="1.200" height="17" fill="hsl(24 80% 72%)"/><text x="1477.338" y="336" font-size="10"></text></g><g><title>createFormat — 1.943 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1311:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:5148</title><rect x="1475.338" y="306" width="0.351" height="17" fill="hsl(43 80% 72%)"/><text x="1477.338" y="318" font-size="10"></text></g><g><title>createTexture — 1.943 ms cumulative active samples
+
+:0:0</title><rect x="1475.338" y="288" width="0.351" height="17" fill="hsl(39 80% 72%)"/><text x="1477.338" y="300" font-size="10"></text></g><g><title>copy — 3.810 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:1034:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:27912</title><rect x="1478.051" y="360" width="0.977" height="17" fill="hsl(31 80% 72%)"/><text x="1480.051" y="372" font-size="10"></text></g><g><title>run — 3.810 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:987:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:25585</title><rect x="1478.051" y="342" width="0.977" height="17" fill="hsl(49 80% 72%)"/><text x="1480.051" y="354" font-size="10"></text></g><g><title>encodePass — 2.577 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1930:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:6162</title><rect x="1478.051" y="324" width="0.564" height="17" fill="hsl(17 80% 72%)"/><text x="1480.051" y="336" font-size="10"></text></g><g><title>exactBlendLattice — 3.787 ms cumulative active samples
+../../src/kernel/gpu/effect-region.ts:6:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:91895</title><rect x="1479.328" y="360" width="0.969" height="17" fill="hsl(36 80% 72%)"/><text x="1481.328" y="372" font-size="10"></text></g><g><title>(anonymous) — 3.787 ms cumulative active samples
+../../src/kernel/gpu/effect-region.ts:7:21
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:91914</title><rect x="1479.328" y="342" width="0.969" height="17" fill="hsl(30 80% 72%)"/><text x="1481.328" y="354" font-size="10"></text></g><g><title>(anonymous) — 64.572 ms cumulative active samples
+../../src/kernel/render-worker.ts:158:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17302</title><rect x="1483.068" y="396" width="21.340" height="17" fill="hsl(30 80% 72%)"/><text x="1485.068" y="408" font-size="10">(a</text></g><g><title>record — 62.043 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1483.068" y="378" width="20.492" height="17" fill="hsl(57 80% 72%)"/><text x="1485.068" y="390" font-size="10">re</text></g><g><title>sanitizeFields — 31.831 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1483.068" y="360" width="10.367" height="17" fill="hsl(38 80% 72%)"/><text x="1485.068" y="372" font-size="10">s</text></g><g><title>sanitizeRecord — 26.428 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1493.736" y="360" width="8.557" height="17" fill="hsl(36 80% 72%)"/><text x="1495.736" y="372" font-size="10"></text></g><g><title>sanitizeFields — 15.251 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1493.736" y="342" width="4.811" height="17" fill="hsl(38 80% 72%)"/><text x="1495.736" y="354" font-size="10"></text></g><g><title>(anonymous) — 42.213 ms cumulative active samples
+../../src/kernel/preview-tiles.ts:110:64
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:83805</title><rect x="1504.708" y="396" width="13.847" height="17" fill="hsl(30 80% 72%)"/><text x="1506.708" y="408" font-size="10">(</text></g><g><title>drawImage — 25.747 ms cumulative active samples
+
+:0:0</title><rect x="1504.708" y="378" width="8.329" height="17" fill="hsl(51 80% 72%)"/><text x="1506.708" y="390" font-size="10"></text></g><g><title>getContext — 13.790 ms cumulative active samples
+
+:0:0</title><rect x="1513.337" y="378" width="4.321" height="17" fill="hsl(39 80% 72%)"/><text x="1515.337" y="390" font-size="10"></text></g><g><title>renderTiledPreview — 34.006 ms cumulative active samples
+../../src/kernel/render-worker.ts:1736:15
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:57159</title><rect x="1518.855" y="396" width="11.096" height="17" fill="hsl(24 80% 72%)"/><text x="1520.855" y="408" font-size="10">r</text></g><g><title>failureAttempt — 12.004 ms cumulative active samples
+../../src/kernel/render-worker.ts:77:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:15469</title><rect x="1518.855" y="378" width="3.723" height="17" fill="hsl(57 80% 72%)"/><text x="1520.855" y="390" font-size="10"></text></g><g><title>run — 12.004 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:75:1
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:21658</title><rect x="1518.855" y="360" width="3.723" height="17" fill="hsl(49 80% 72%)"/><text x="1520.855" y="372" font-size="10"></text></g><g><title>(anonymous) — 12.004 ms cumulative active samples
+../../src/kernel/render-worker.ts:1858:44
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:58897</title><rect x="1518.855" y="342" width="3.723" height="17" fill="hsl(30 80% 72%)"/><text x="1520.855" y="354" font-size="10"></text></g><g><title>render — 10.770 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:5000:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:128963</title><rect x="1518.855" y="324" width="3.309" height="17" fill="hsl(48 80% 72%)"/><text x="1520.855" y="336" font-size="10"></text></g><g><title>renderAttempt — 8.837 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:5022:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:129805</title><rect x="1518.855" y="306" width="2.662" height="17" fill="hsl(43 80% 72%)"/><text x="1520.855" y="318" font-size="10"></text></g><g><title>begin — 2.523 ms cumulative active samples
+../../src/kernel/gpu/encode-yield.ts:7:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:131:4561</title><rect x="1518.855" y="288" width="0.546" height="17" fill="hsl(55 80% 72%)"/><text x="1520.855" y="300" font-size="10"></text></g><g><title>checkFrameCurrent — 1.933 ms cumulative active samples
+../../src/kernel/gpu/renderer.ts:160:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:3656</title><rect x="1521.816" y="306" width="0.348" height="17" fill="hsl(38 80% 72%)"/><text x="1523.816" y="318" font-size="10"></text></g><g><title>reportRasterProgress — 1.933 ms cumulative active samples
+../../src/kernel/render-worker.ts:1148:88
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:43938</title><rect x="1521.816" y="288" width="0.348" height="17" fill="hsl(24 80% 72%)"/><text x="1523.816" y="300" font-size="10"></text></g><g><title>(anonymous) — 1.933 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:37:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:120265</title><rect x="1521.816" y="270" width="0.348" height="17" fill="hsl(30 80% 72%)"/><text x="1523.816" y="282" font-size="10"></text></g><g><title>preparedTileCanFill — 1.933 ms cumulative active samples
+../../src/kernel/prepared-tile-fallback.ts:8:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:119421</title><rect x="1521.816" y="252" width="0.348" height="17" fill="hsl(12 80% 72%)"/><text x="1523.816" y="264" font-size="10"></text></g><g><title>tilesCoverBounds — 1.933 ms cumulative active samples
+../../src/kernel/tile-cache.ts:218:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:67217</title><rect x="1521.816" y="234" width="0.348" height="17" fill="hsl(33 80% 72%)"/><text x="1523.816" y="246" font-size="10"></text></g><g><title>(anonymous) — 8.696 ms cumulative active samples
+../../src/kernel/render-worker.ts:275:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:19667</title><rect x="1522.878" y="378" width="2.614" height="17" fill="hsl(30 80% 72%)"/><text x="1524.878" y="390" font-size="10"></text></g><g><title>record — 8.696 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1522.878" y="360" width="2.614" height="17" fill="hsl(57 80% 72%)"/><text x="1524.878" y="372" font-size="10"></text></g><g><title>sanitizeFields — 6.166 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1522.878" y="342" width="1.766" height="17" fill="hsl(38 80% 72%)"/><text x="1524.878" y="354" font-size="10"></text></g><g><title>sanitizeRecord — 2.530 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1524.944" y="342" width="0.548" height="17" fill="hsl(36 80% 72%)"/><text x="1526.944" y="354" font-size="10"></text></g><g><title>sanitizeFields — 2.530 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1524.944" y="324" width="0.548" height="17" fill="hsl(38 80% 72%)"/><text x="1526.944" y="336" font-size="10"></text></g><g><title>observe — 3.750 ms cumulative active samples
+../../src/kernel/tile-cost-diagnostics.ts:27:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:1372</title><rect x="1525.792" y="378" width="0.957" height="17" fill="hsl(16 80% 72%)"/><text x="1527.792" y="390" font-size="10"></text></g><g><title>add — 2.489 ms cumulative active samples
+../../src/kernel/tile-cost-diagnostics.ts:20:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:1143</title><rect x="1525.792" y="360" width="0.534" height="17" fill="hsl(25 80% 72%)"/><text x="1527.792" y="372" font-size="10"></text></g><g><title>(anonymous) — 31.462 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:81:19
+design-app://app/assets/render-worker-Czsk_KUZ.js:4067:458</title><rect x="1530.251" y="396" width="10.244" height="17" fill="hsl(30 80% 72%)"/><text x="1532.251" y="408" font-size="10">(</text></g><g><title>recordDeviceDiagnostic — 30.199 ms cumulative active samples
+../../src/kernel/gpu/device-lifecycle-diagnostics.ts:43:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:16679</title><rect x="1530.251" y="378" width="9.821" height="17" fill="hsl(8 80% 72%)"/><text x="1532.251" y="390" font-size="10">r</text></g><g><title>recordGpuDiagnostic — 28.887 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:128:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:6214</title><rect x="1530.251" y="360" width="9.381" height="17" fill="hsl(16 80% 72%)"/><text x="1532.251" y="372" font-size="10"></text></g><g><title>setGpuDiagnosticSink — 28.887 ms cumulative active samples
+../../src/kernel/render-worker.ts:445:6
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:25475</title><rect x="1530.251" y="342" width="9.381" height="17" fill="hsl(44 80% 72%)"/><text x="1532.251" y="354" font-size="10"></text></g><g><title>record — 27.691 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1530.251" y="324" width="8.980" height="17" fill="hsl(57 80% 72%)"/><text x="1532.251" y="336" font-size="10"></text></g><g><title>sanitizeFields — 12.950 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1530.251" y="306" width="4.040" height="17" fill="hsl(38 80% 72%)"/><text x="1532.251" y="318" font-size="10"></text></g><g><title>sanitizeRecord — 9.704 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1534.591" y="306" width="2.952" height="17" fill="hsl(36 80% 72%)"/><text x="1536.591" y="318" font-size="10"></text></g><g><title>sanitizeFields — 9.704 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1534.591" y="288" width="2.952" height="17" fill="hsl(38 80% 72%)"/><text x="1536.591" y="300" font-size="10"></text></g><g><title>(anonymous) — 30.881 ms cumulative active samples
+../../src/kernel/scene-image-hydration.ts:135:30
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:76725</title><rect x="1540.795" y="396" width="10.049" height="17" fill="hsl(30 80% 72%)"/><text x="1542.795" y="408" font-size="10">(</text></g><g><title>run — 29.734 ms cumulative active samples
+../../src/kernel/scene-image-hydration.ts:139:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:76791</title><rect x="1540.795" y="378" width="9.665" height="17" fill="hsl(49 80% 72%)"/><text x="1542.795" y="390" font-size="10"></text></g><g><title>sceneIndex — 24.234 ms cumulative active samples
+../../src/kernel/gpu/scene-index.ts:17:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:73208</title><rect x="1540.795" y="360" width="7.821" height="17" fill="hsl(48 80% 72%)"/><text x="1542.795" y="372" font-size="10"></text></g><g><title>check — 2.487 ms cumulative active samples
+../../src/kernel/scene-image-hydration.ts:140:10
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:76803</title><rect x="1548.917" y="360" width="0.533" height="17" fill="hsl(38 80% 72%)"/><text x="1550.917" y="372" font-size="10"></text></g><g><title>(anonymous) — 21.737 ms cumulative active samples
+../../src/kernel/render-worker.ts:275:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:19667</title><rect x="1551.144" y="396" width="6.985" height="17" fill="hsl(30 80% 72%)"/><text x="1553.144" y="408" font-size="10"></text></g><g><title>record — 20.440 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1551.144" y="378" width="6.550" height="17" fill="hsl(57 80% 72%)"/><text x="1553.144" y="390" font-size="10"></text></g><g><title>sanitizeRecord — 15.299 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1551.144" y="360" width="4.827" height="17" fill="hsl(36 80% 72%)"/><text x="1553.144" y="372" font-size="10"></text></g><g><title>sanitizeFields — 3.867 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1556.271" y="360" width="0.996" height="17" fill="hsl(38 80% 72%)"/><text x="1558.271" y="372" font-size="10"></text></g><g><title>finish — 19.413 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:2091:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:4137:12109</title><rect x="1558.429" y="396" width="6.206" height="17" fill="hsl(49 80% 72%)"/><text x="1560.429" y="408" font-size="10"></text></g><g><title>withRenderFailureStage — 11.954 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:61:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:19619</title><rect x="1558.429" y="378" width="3.706" height="17" fill="hsl(22 80% 72%)"/><text x="1560.429" y="390" font-size="10"></text></g><g><title>(anonymous) — 10.674 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:2274:65
+design-app://app/assets/render-worker-Czsk_KUZ.js:4138:1530</title><rect x="1558.429" y="360" width="3.277" height="17" fill="hsl(30 80% 72%)"/><text x="1560.429" y="372" font-size="10"></text></g><g><title>transferToImageBitmap — 9.303 ms cumulative active samples
+
+:0:0</title><rect x="1558.429" y="342" width="2.818" height="17" fill="hsl(30 80% 72%)"/><text x="1560.429" y="354" font-size="10"></text></g><g><title>retireByteTentSnapshot — 3.538 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1064:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:4135:2890</title><rect x="1562.435" y="378" width="0.886" height="17" fill="hsl(52 80% 72%)"/><text x="1564.435" y="390" font-size="10"></text></g><g><title>nextIndex — 17.813 ms cumulative active samples
+../../src/kernel/render-worker.ts:1141:30
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:43835</title><rect x="1564.935" y="396" width="5.670" height="17" fill="hsl(9 80% 72%)"/><text x="1566.935" y="408" font-size="10"></text></g><g><title>De — 17.813 ms cumulative active samples
+../../src/kernel/render-worker.ts:1056:32
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:41796</title><rect x="1564.935" y="378" width="5.670" height="17" fill="hsl(17 80% 72%)"/><text x="1566.935" y="390" font-size="10"></text></g><g><title>compilePacket — 15.237 ms cumulative active samples
+../../src/kernel/render-worker.ts:165:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17513</title><rect x="1564.935" y="360" width="4.806" height="17" fill="hsl(23 80% 72%)"/><text x="1566.935" y="372" font-size="10"></text></g><g><title>journalCompile — 15.237 ms cumulative active samples
+../../src/kernel/render-worker.ts:153:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17171</title><rect x="1564.935" y="342" width="4.806" height="17" fill="hsl(14 80% 72%)"/><text x="1566.935" y="354" font-size="10"></text></g><g><title>e — 10.228 ms cumulative active samples
+../../src/kernel/render-worker.ts:158:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17286</title><rect x="1564.935" y="324" width="3.128" height="17" fill="hsl(9 80% 72%)"/><text x="1566.935" y="336" font-size="10"></text></g><g><title>e — 10.228 ms cumulative active samples
+../../src/kernel/render-worker.ts:154:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17188</title><rect x="1564.935" y="306" width="3.128" height="17" fill="hsl(9 80% 72%)"/><text x="1566.935" y="318" font-size="10"></text></g><g><title>failureAttempt — 8.964 ms cumulative active samples
+../../src/kernel/render-worker.ts:77:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:15469</title><rect x="1564.935" y="288" width="2.704" height="17" fill="hsl(57 80% 72%)"/><text x="1566.935" y="300" font-size="10"></text></g><g><title>run — 8.964 ms cumulative active samples
+../../src/kernel/render-failure-telemetry.ts:75:1
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:21658</title><rect x="1564.935" y="270" width="2.704" height="17" fill="hsl(49 80% 72%)"/><text x="1566.935" y="282" font-size="10"></text></g><g><title>(anonymous) — 8.964 ms cumulative active samples
+../../src/kernel/render-worker.ts:166:24
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:17531</title><rect x="1564.935" y="252" width="2.704" height="17" fill="hsl(30 80% 72%)"/><text x="1566.935" y="264" font-size="10"></text></g><g><title>prepare_gpu_packet — 8.964 ms cumulative active samples
+../../src/kernel/render-kernel.ts:138:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:116885</title><rect x="1564.935" y="234" width="2.704" height="17" fill="hsl(53 80% 72%)"/><text x="1566.935" y="246" font-size="10"></text></g><g><title>compile_gpu_packet — 8.964 ms cumulative active samples
+../../src/kernel/render-kernel.ts:103:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:115922</title><rect x="1564.935" y="216" width="2.704" height="17" fill="hsl(37 80% 72%)"/><text x="1566.935" y="228" font-size="10"></text></g><g><title>call — 8.964 ms cumulative active samples
+../../src/kernel/render-kernel.ts:57:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:114092</title><rect x="1564.935" y="198" width="2.704" height="17" fill="hsl(40 80% 72%)"/><text x="1566.935" y="210" font-size="10"></text></g><g><title>request — 8.964 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:84:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:104761</title><rect x="1564.935" y="180" width="2.704" height="17" fill="hsl(55 80% 72%)"/><text x="1566.935" y="192" font-size="10"></text></g><g><title>(anonymous) — 8.964 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:89:15
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105150</title><rect x="1564.935" y="162" width="2.704" height="17" fill="hsl(30 80% 72%)"/><text x="1566.935" y="174" font-size="10"></text></g><g><title>dispatch — 5.104 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:126:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:106386</title><rect x="1564.935" y="144" width="1.410" height="17" fill="hsl(56 80% 72%)"/><text x="1566.935" y="156" font-size="10"></text></g><g><title>trace — 3.816 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="1564.935" y="126" width="0.979" height="17" fill="hsl(55 80% 72%)"/><text x="1566.935" y="138" font-size="10"></text></g><g><title>record — 3.816 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1564.935" y="108" width="0.979" height="17" fill="hsl(57 80% 72%)"/><text x="1566.935" y="120" font-size="10"></text></g><g><title>trace — 3.860 ms cumulative active samples
+../../src/kernel/preparation-channel.ts:113:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:105718</title><rect x="1566.645" y="144" width="0.994" height="17" fill="hsl(55 80% 72%)"/><text x="1568.645" y="156" font-size="10"></text></g><g><title>record — 3.860 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1566.645" y="126" width="0.994" height="17" fill="hsl(57 80% 72%)"/><text x="1568.645" y="138" font-size="10"></text></g><g><title>sanitizeRecord — 2.592 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1566.645" y="108" width="0.569" height="17" fill="hsl(36 80% 72%)"/><text x="1568.645" y="120" font-size="10"></text></g><g><title>sanitizeFields — 2.592 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1566.645" y="90" width="0.569" height="17" fill="hsl(38 80% 72%)"/><text x="1568.645" y="102" font-size="10"></text></g><g><title>record — 3.735 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1568.362" y="324" width="0.952" height="17" fill="hsl(57 80% 72%)"/><text x="1570.362" y="336" font-size="10"></text></g><g><title>sanitizeFields — 2.494 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1568.362" y="306" width="0.536" height="17" fill="hsl(38 80% 72%)"/><text x="1570.362" y="318" font-size="10"></text></g><g><title>prepareScene — 15.992 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:799:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:4131:5172</title><rect x="1570.904" y="396" width="5.059" height="17" fill="hsl(33 80% 72%)"/><text x="1572.904" y="408" font-size="10"></text></g><g><title>createPipelineLayout — 9.084 ms cumulative active samples
+
+:0:0</title><rect x="1570.904" y="378" width="2.744" height="17" fill="hsl(26 80% 72%)"/><text x="1572.904" y="390" font-size="10"></text></g><g><title>drain — 14.282 ms cumulative active samples
+../../src/kernel/render-work-queue.ts:38:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:98085</title><rect x="1576.264" y="396" width="4.486" height="17" fill="hsl(14 80% 72%)"/><text x="1578.264" y="408" font-size="10"></text></g><g><title>(anonymous) — 14.282 ms cumulative active samples
+../../src/kernel/render-worker.ts:558:17
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:28953</title><rect x="1576.264" y="378" width="4.486" height="17" fill="hsl(30 80% 72%)"/><text x="1578.264" y="390" font-size="10"></text></g><g><title>record — 14.282 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1576.264" y="360" width="4.486" height="17" fill="hsl(57 80% 72%)"/><text x="1578.264" y="372" font-size="10"></text></g><g><title>sanitizeFields — 11.718 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1576.264" y="342" width="3.627" height="17" fill="hsl(38 80% 72%)"/><text x="1578.264" y="354" font-size="10"></text></g><g><title>sanitizeRecord — 2.564 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:86:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:4898</title><rect x="1580.191" y="342" width="0.559" height="17" fill="hsl(36 80% 72%)"/><text x="1582.191" y="354" font-size="10"></text></g><g><title>sanitizeFields — 2.564 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:26:16
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:3163</title><rect x="1580.191" y="324" width="0.559" height="17" fill="hsl(38 80% 72%)"/><text x="1582.191" y="336" font-size="10"></text></g><g><title>renderBitmapPreviewTiles — 9.123 ms cumulative active samples
+../../src/kernel/preview-tiles.ts:106:22
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:83751</title><rect x="1581.050" y="396" width="2.757" height="17" fill="hsl(54 80% 72%)"/><text x="1583.050" y="408" font-size="10"></text></g><g><title>prepare_gpu_packet — 6.378 ms cumulative active samples
+../../src/kernel/render-kernel.ts:138:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:116885</title><rect x="1584.107" y="396" width="1.837" height="17" fill="hsl(53 80% 72%)"/><text x="1586.107" y="408" font-size="10"></text></g><g><title>ia — 2.548 ms cumulative active samples
+../../src/kernel/prepared-packet.ts:20:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:112239</title><rect x="1584.107" y="378" width="0.554" height="17" fill="hsl(10 80% 72%)"/><text x="1586.107" y="390" font-size="10"></text></g><g><title>(anonymous) — 5.379 ms cumulative active samples
+../../src/kernel/grid-measurements.ts:27:41
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:18299</title><rect x="1586.245" y="396" width="1.503" height="17" fill="hsl(30 80% 72%)"/><text x="1588.245" y="408" font-size="10"></text></g><g><title>flush — 5.379 ms cumulative active samples
+../../src/kernel/grid-measurements.ts:29:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:18327</title><rect x="1586.245" y="378" width="1.503" height="17" fill="hsl(34 80% 72%)"/><text x="1588.245" y="390" font-size="10"></text></g><g><title>GridMeasurements — 4.098 ms cumulative active samples
+../../src/kernel/render-worker.ts:105:29
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:16017</title><rect x="1586.245" y="360" width="1.073" height="17" fill="hsl(41 80% 72%)"/><text x="1588.245" y="372" font-size="10"></text></g><g><title>record — 4.098 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:109:4
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5837</title><rect x="1586.245" y="342" width="1.073" height="17" fill="hsl(57 80% 72%)"/><text x="1588.245" y="354" font-size="10"></text></g><g><title>renderPreviewRegions — 3.793 ms cumulative active samples
+../../src/kernel/preview-tiles.ts:26:22
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:82371</title><rect x="1588.047" y="396" width="0.971" height="17" fill="hsl(43 80% 72%)"/><text x="1590.047" y="408" font-size="10"></text></g><g><title>draw — 3.793 ms cumulative active samples
+../../src/kernel/preview-tiles.ts:47:17
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:82585</title><rect x="1588.047" y="378" width="0.971" height="17" fill="hsl(38 80% 72%)"/><text x="1590.047" y="390" font-size="10"></text></g><g><title>Hd.w — 3.793 ms cumulative active samples
+../../src/kernel/render-worker.ts:1763:33
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:57321</title><rect x="1588.047" y="360" width="0.971" height="17" fill="hsl(55 80% 72%)"/><text x="1590.047" y="372" font-size="10"></text></g><g><title>yieldPreviewTask — 2.524 ms cumulative active samples
+../../src/kernel/render-worker.ts:296:9
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:19978</title><rect x="1588.047" y="342" width="0.546" height="17" fill="hsl(14 80% 72%)"/><text x="1590.047" y="354" font-size="10"></text></g><g><title>(anonymous) — 2.524 ms cumulative active samples
+../../src/kernel/render-worker.ts:297:28
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:20000</title><rect x="1588.047" y="324" width="0.546" height="17" fill="hsl(30 80% 72%)"/><text x="1590.047" y="336" font-size="10"></text></g><g><title>finish — 2.941 ms cumulative active samples
+../../src/kernel/gpu/static-image-blur-cache.ts:121:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:27:3190</title><rect x="1589.318" y="396" width="0.686" height="17" fill="hsl(49 80% 72%)"/><text x="1591.318" y="408" font-size="10"></text></g><g><title>wait — 2.610 ms cumulative active samples
+../../src/kernel/gpu/queue-wait-stats.ts:19:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:143005</title><rect x="1590.304" y="396" width="0.575" height="17" fill="hsl(25 80% 72%)"/><text x="1592.304" y="408" font-size="10"></text></g><g><title>t — 2.610 ms cumulative active samples
+../../src/kernel/gpu/queue-wait-stats.ts:15:46
+design-app://app/assets/render-worker-Czsk_KUZ.js:188:142847</title><rect x="1590.304" y="378" width="0.575" height="17" fill="hsl(24 80% 72%)"/><text x="1592.304" y="390" font-size="10"></text></g><g><title>flush — 2.574 ms cumulative active samples
+../../../design-desktop/src/render-terminal-diagnostics.mjs:96:11
+design-app://app/assets/render-worker-Czsk_KUZ.js:1:5484</title><rect x="1591.179" y="396" width="0.563" height="17" fill="hsl(34 80% 72%)"/><text x="1593.179" y="408" font-size="10"></text></g><g><title>batchSink — 2.574 ms cumulative active samples
+../../src/kernel/render-worker.ts:443:103
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:25330</title><rect x="1591.179" y="378" width="0.563" height="17" fill="hsl(47 80% 72%)"/><text x="1593.179" y="390" font-size="10"></text></g><g><title>De — 2.517 ms cumulative active samples
+../../src/kernel/render-worker.ts:1056:32
+design-app://app/assets/render-worker-Czsk_KUZ.js:4148:41796</title><rect x="1592.041" y="396" width="0.544" height="17" fill="hsl(17 80% 72%)"/><text x="1594.041" y="408" font-size="10"></text></g><g><title>shrinkCapacities — 2.420 ms cumulative active samples
+../../src/kernel/gpu/webgpu.ts:1269:2
+design-app://app/assets/render-worker-Czsk_KUZ.js:4136:3896</title><rect x="1592.885" y="396" width="0.511" height="17" fill="hsl(37 80% 72%)"/><text x="1594.885" y="408" font-size="10"></text></g><g><title>captureContentBitmap — 2.260 ms cumulative active samples
+../../src/kernel/gpu/resident-presenter.ts:302:8
+design-app://app/assets/render-worker-Czsk_KUZ.js:2757:6273</title><rect x="1593.696" y="396" width="0.457" height="17" fill="hsl(10 80% 72%)"/><text x="1595.696" y="408" font-size="10"></text></g></svg>

@@ -98,6 +98,18 @@ export type GpuNode = {
   opaqueCoverage?: boolean
   passthrough?: boolean
   backdropBox?: [number, number, number, number]
+  /** Native painter-dependency certificate, emitted only for the adopted
+   * bounded scene. Includes downstream effect consumers; not a viewport hint. */
+  backdropOutputBox?: [number, number, number, number]
+  /** Native single outer-shadow consumption certificate; its filter output
+   * is sampled after the unchanged authored shadow offset. */
+  shadowOutputBox?: [number, number, number, number]
+  /** Initial isolated child-bundle domain, certified by the native painter
+   * walk. Leaf source/filter geometry remains in its own rect. */
+  childrenInputBox?: [number, number, number, number]
+  /** Entire parent suffix after this child, including old pixels outside its
+   * shape. Never intersect this rectangle with the child's own geometry. */
+  postCompositeBox?: [number, number, number, number]
   id: string
   rect: Rect
   matrix: Matrix
@@ -148,6 +160,8 @@ export type GpuScene = {
   /** Screen-only request for sequential sample accumulation, never exact output. */
   sequentialDisplay?: boolean
   displayImageSource?: boolean
+  /** Worker-selected SDR display approximation; exact outputs overwrite it. */
+  displayTentRadius?: boolean
   softwareRaster?: boolean
   output?: Rect
   floatCompositing?: boolean
@@ -163,6 +177,9 @@ export type GpuScene = {
   width: number
   height: number
   extent: Rect
+  /** Initial root painter prefix. The global extent also includes independent
+   * source/filter support and must not determine the root target allocation. */
+  rootInputBox?: [number, number, number, number]
   background: string
   transparent: boolean
   grid: boolean
@@ -302,10 +319,19 @@ export interface Driver {
     bindGroupHits?: number
     bindGroupCacheSize?: number
     dynamicUniformBindings?: boolean
+    byteTentAlphaPasses?: number
+    byteTentScratchBytes?: number
     queueWaits?: import('./queue-wait-stats').QueueWaitSnapshot
     deviceLost: boolean
   }
   prepareFilterPass?(target: Texture, uniforms: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number): void
+  /** Strict opt-in unmanaged RGBA8 shadow-alpha pipeline; preparation owns no scratch. */
+  prepareByteTent?(): Promise<boolean>
+  /** RGB-zero exact alpha tent. False allocates/records nothing. Throws abandon
+   * the complete frame encoder; callers must abort/restart, never scalar-fallback.
+   * Every successful job remains included in scratchBytes until covered completion. */
+  encodeByteTentAlpha?(target: Texture, source: Texture, options: import('./byte-tent-prefix-plan').ByteTentOptions,
+    availableBytes: number): boolean
   /** Opt-in bounded physical subrect for exact mode22 only. The logical source
    * remains uniforms[4..7]. False encodes nothing; callers retain their normal
    * small-texture path. No content/alpha proof or lifetime lease is granted. */
@@ -324,7 +350,8 @@ export interface Driver {
   drawCalls: number
   triangles: number
   commandSubmissions?: number
-  prepareScene?(scene: GpuScene): Promise<void>
+  /** Render-call intent, never a document/scene capability. Omission is exact. */
+  prepareScene?(scene: GpuScene, displayOnly?: boolean): Promise<void>
   prepareFilters?(prefixUseful?: boolean): Promise<void>
   begin(vertices: Float32Array, curves?: Float32Array): void
   /** Complete prior commands before reclaiming frame-local scratch textures. */
@@ -332,11 +359,17 @@ export interface Driver {
    * for a renderer-proven free-pool-only destruction batch entirely released
    * in already-completed prior frames; unknown/current epochs must wait. */
   checkpoint?(reason?: import('./queue-wait-stats').QueueWaitReason, admission?: GpuAdmissionDiagnostic, completedPoolEpoch?: number): Promise<void>
+  /** Between frames only: wait for already-submitted work without finishing
+   * or submitting the previous encoder. Does not grant a global frame epoch. */
+  waitForSubmittedWork?(): Promise<void>
   /** Raw premultiplied storage; used by exact Rust f64 effect composition. */
   readSurface?(source: Texture): Promise<Float32Array>
   /** Bit-preserving physical RGBA32F copy. Coordinates are texture-local;
    * this enqueues a copy, without proving GPU completion. */
   copyRegion?(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]): void
+  /** Bit-preserving owned RGBA8/RGBA32F color crop for a certified painter
+   * stage. No sampler, arithmetic conversion or completion claim. */
+  copyColorRegion?(target: Texture, source: Texture, sourceRegion: Rect, targetOrigin: [number, number]): void
   create(width: number, height: number): Texture
   createBinaryCoverage?(width: number, height: number): Texture
   createScalarCoverage?(width: number, height: number): Texture

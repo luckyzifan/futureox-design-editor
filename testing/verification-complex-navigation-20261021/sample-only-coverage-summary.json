@@ -1,0 +1,376 @@
+{
+  "schemaVersion": 1,
+  "candidate": "sample-only exact four-phase area coverage",
+  "defaultEnabled": false,
+  "flag": "VITE_DESIGN_SAMPLE_ONLY_COVERAGE=1",
+  "arithmeticChanged": false,
+  "scope": "Standalone owned-driver actual GPU mask operator; explicit test-only display policy without ResidentPresenter/Electron attachment. Whole-editor acceptance remains pending.",
+  "wasmSha256": "20b6c2b8388ccf91641e8c363375b3b4439b87f98d5e9cb60314a31fbb94aebb",
+  "cpuFocused": {
+    "suites": 2,
+    "tests": 38,
+    "passed": 38,
+    "scope": "Recording-device dispatch/ownership and exact source/helper CPU tests, not WGSL execution"
+  },
+  "rawR32V1": [
+    {
+      "fixture": "117",
+      "status": "passed",
+      "errors": 0,
+      "resultSha256": "bb9a98fb90aa0f127977f68eaa24a2ad4899d23685f2ba7708bc5e2d71dac18c",
+      "gpuResultSha256": "a1d2a2c9ae231949d59d87d11cd5136e2637858814cd38371c019f0431827429",
+      "fixturesSha256": "9b4e80920b73261d73c931ec932c720f7298641c4abad43677685fe80f884664",
+      "inputHashesStable": true,
+      "inputFileCount": 1162,
+      "identityHashSetSha256": "48e8567f0236389c9493cc44c2962006ff0ac50787c60bee2f18874184e64c2f",
+      "scriptSha256": "09e03b34487ed93bbb41bcbf26d7acba9edd5f2d6639e5d7f0c2108e7411c04c",
+      "sourceHashes": {
+        "src/kernel/gpu/webgpu.ts": "624eeec3ceca23a147c6f73f3568cb87416d45d60fd6943c6dca059b9077404e",
+        "src/kernel/gpu/sample-only-area-shader.ts": "1b4011b451d444eded65b5af169446fcb7ad032bca243ebdaf6ed246bf34160c",
+        "src/kernel/gpu/sample-only-area-programs.ts": "b723950215a29e866f223f1bdb04fd958d30aa1debb46e19d2d9ea74b7ccf3f2"
+      },
+      "inputHashes": {
+        "documentSha256": "a0d0df3b24ea187dfd5723c9d41ab17908ce22afebb0bf64592f749d6fac3677",
+        "requestsSha256": "f38710da2551f6a338b009e77a6edb6ce18b050537f56137de7f40460976ca6a",
+        "executionRequestSha256": "8e570ccff850e88615477f71d72ad197774a566ede5fc6d7095fa421aaab5db1",
+        "wasmSha256": "20b6c2b8388ccf91641e8c363375b3b4439b87f98d5e9cb60314a31fbb94aebb",
+        "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+        "nativeSceneSha256": "e214874eb5a02a810441128ec34044bba7e116081a2ba01a09c6bcecd3f6b941"
+      },
+      "pathDimensions": [
+        {
+          "width": 3658,
+          "height": 2478,
+          "header": 3,
+          "programWords": 158596
+        },
+        {
+          "width": 2428,
+          "height": 1248,
+          "header": 4,
+          "programWords": 28
+        },
+        {
+          "width": 2428,
+          "height": 1248,
+          "header": 4,
+          "programWords": 28
+        }
+      ],
+      "reportedAdapter": "metal-3",
+      "nonFallbackExplicitlyAsserted": false,
+      "comparedRawR32Words": 60500520,
+      "differentWords": 0,
+      "samplePhases": 4,
+      "regionsPerCandidatePhase": 3,
+      "scope": "Original full mask per phase vs candidate full/top-left/bottom-right, raw R32 words.",
+      "actualCandidatePipelineHits": 36,
+      "actualOriginalCandidatePipelineHits": 0,
+      "warmMaskBatches": {
+        "blocks": 3,
+        "orderPerBlock": [
+          "original",
+          "candidate",
+          "candidate",
+          "original"
+        ],
+        "drawsPerTrial": 8,
+        "warmupBeforeTrials": true,
+        "unit": "ms",
+        "scope": "CPU encode plus actual queue completion; no exclusive GPU or whole-app claim",
+        "original": {
+          "trials": 6,
+          "draws": 48,
+          "encodeMedianMs": 0.1,
+          "encodeAndQueueCompletionMedianMs": 23.1,
+          "actualCandidatePipelineHits": 0
+        },
+        "candidate": {
+          "trials": 6,
+          "draws": 48,
+          "encodeMedianMs": 0.1,
+          "encodeAndQueueCompletionMedianMs": 9.25,
+          "actualCandidatePipelineHits": 48
+        }
+      }
+    },
+    {
+      "fixture": "fig",
+      "status": "passed",
+      "errors": 0,
+      "resultSha256": "41a6d98dcb6ec855d5412fe03f93882272039753fd70d7e4c68a3e95c5807532",
+      "gpuResultSha256": "8f78e0184085e2d0caf5c6b0af292add817ec5e80be2eaf95b0801f967b58c82",
+      "fixturesSha256": "8292146f1851f56a7c40423b0c54f143fb12c18363ead2c73de792c3f3df920e",
+      "inputHashesStable": true,
+      "inputFileCount": 1162,
+      "identityHashSetSha256": "f2f8cb38c6874bb955a3421857a1f53ffd06f429d1f170d0ba1ac9de029b2879",
+      "scriptSha256": "09e03b34487ed93bbb41bcbf26d7acba9edd5f2d6639e5d7f0c2108e7411c04c",
+      "sourceHashes": {
+        "src/kernel/gpu/webgpu.ts": "624eeec3ceca23a147c6f73f3568cb87416d45d60fd6943c6dca059b9077404e",
+        "src/kernel/gpu/sample-only-area-shader.ts": "1b4011b451d444eded65b5af169446fcb7ad032bca243ebdaf6ed246bf34160c",
+        "src/kernel/gpu/sample-only-area-programs.ts": "b723950215a29e866f223f1bdb04fd958d30aa1debb46e19d2d9ea74b7ccf3f2"
+      },
+      "inputHashes": {
+        "documentSha256": "10588b256dbf297a1e3d2363d5e01d23b66a58405bb8ab6e6c60fa8691e9bc95",
+        "requestsSha256": "45d1cb14d5e978b409f780e710451a1ea2cec165dd64a12e9cd127fe5fdd1699",
+        "executionRequestSha256": "c3bfc80f535275f85fe67f6696e0d650c7c07212a0815a217b826e4053603a8a",
+        "wasmSha256": "20b6c2b8388ccf91641e8c363375b3b4439b87f98d5e9cb60314a31fbb94aebb",
+        "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+        "nativeSceneSha256": "dd98eb6aca0815d198d6bbd78c5285c66b83775744a48fd99173212a16f9d0cf"
+      },
+      "pathDimensions": [
+        {
+          "width": 3918,
+          "height": 2571,
+          "header": 3,
+          "programWords": 164500
+        },
+        {
+          "width": 68,
+          "height": 68,
+          "header": 4,
+          "programWords": 28
+        }
+      ],
+      "reportedAdapter": "metal-3",
+      "nonFallbackExplicitlyAsserted": false,
+      "comparedRawR32Words": 40312056,
+      "differentWords": 0,
+      "samplePhases": 4,
+      "regionsPerCandidatePhase": 3,
+      "scope": "Original full mask per phase vs candidate full/top-left/bottom-right, raw R32 words.",
+      "actualCandidatePipelineHits": 24,
+      "actualOriginalCandidatePipelineHits": 0,
+      "warmMaskBatches": {
+        "blocks": 3,
+        "orderPerBlock": [
+          "original",
+          "candidate",
+          "candidate",
+          "original"
+        ],
+        "drawsPerTrial": 8,
+        "warmupBeforeTrials": true,
+        "unit": "ms",
+        "scope": "CPU encode plus actual queue completion; no exclusive GPU or whole-app claim",
+        "original": {
+          "trials": 6,
+          "draws": 48,
+          "encodeMedianMs": 0.1,
+          "encodeAndQueueCompletionMedianMs": 25.2,
+          "actualCandidatePipelineHits": 0
+        },
+        "candidate": {
+          "trials": 6,
+          "draws": 48,
+          "encodeMedianMs": 0.1,
+          "encodeAndQueueCompletionMedianMs": 10.55,
+          "actualCandidatePipelineHits": 48
+        }
+      }
+    }
+  ],
+  "threeFormatsV2": [
+    {
+      "fixture": "117",
+      "status": "passed",
+      "errors": 0,
+      "resultSha256": "2a63464b0b3abfa0acd696ccebadf7dc20c68e06fb5884901a593e41e83ea9ca",
+      "gpuResultSha256": "29be570f292cf1832476fbeefd1574040a7e30972c2969089e89b12914ab4c8b",
+      "fixturesSha256": "51bf03f1cc46b1b744f904933e1b41b7be8c3e58ea3eb2a58b760b93eb824f04",
+      "inputHashesStable": true,
+      "inputFileCount": 1162,
+      "identityHashSetSha256": "35254e5c776f9166bf657b0e0cafa72fa9cc57b48218f90c6908b40eed62460a",
+      "scriptSha256": "cb070d63bb8af6081d35ae8eb20c2b0844a718a8d4f36a510bd19841c407e2d2",
+      "sourceHashes": {
+        "src/kernel/gpu/webgpu.ts": "624eeec3ceca23a147c6f73f3568cb87416d45d60fd6943c6dca059b9077404e",
+        "src/kernel/gpu/sample-only-area-shader.ts": "1b4011b451d444eded65b5af169446fcb7ad032bca243ebdaf6ed246bf34160c",
+        "src/kernel/gpu/sample-only-area-programs.ts": "b723950215a29e866f223f1bdb04fd958d30aa1debb46e19d2d9ea74b7ccf3f2"
+      },
+      "inputHashes": {
+        "documentSha256": "a0d0df3b24ea187dfd5723c9d41ab17908ce22afebb0bf64592f749d6fac3677",
+        "requestsSha256": "f38710da2551f6a338b009e77a6edb6ce18b050537f56137de7f40460976ca6a",
+        "executionRequestSha256": "8e570ccff850e88615477f71d72ad197774a566ede5fc6d7095fa421aaab5db1",
+        "wasmSha256": "20b6c2b8388ccf91641e8c363375b3b4439b87f98d5e9cb60314a31fbb94aebb",
+        "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+        "nativeSceneSha256": "e214874eb5a02a810441128ec34044bba7e116081a2ba01a09c6bcecd3f6b941"
+      },
+      "pathDimensions": [
+        {
+          "width": 3658,
+          "height": 2478,
+          "header": 3,
+          "programWords": 158596
+        },
+        {
+          "width": 2428,
+          "height": 1248,
+          "header": 4,
+          "programWords": 28
+        },
+        {
+          "width": 2428,
+          "height": 1248,
+          "header": 4,
+          "programWords": 28
+        }
+      ],
+      "reportedAdapter": "metal-3",
+      "formatProbeOnly": true,
+      "nonFallbackAdapterVerified": true,
+      "samplePhases": 4,
+      "regionsPerPhase": 2,
+      "regionPhysicalDimensions": {
+        "width": 17,
+        "height": 7
+      },
+      "regions": [
+        "top-left origin offset (-2,-2), including outside transparent edge",
+        "center"
+      ],
+      "bothZeroAndOneRequiredForEachPath": true,
+      "comparedComponents": 25704,
+      "differentComponents": 0,
+      "formatBreakdown": [
+        {
+          "format": "r32float",
+          "cases": 24,
+          "comparedComponents": 2856,
+          "differentComponents": 0,
+          "actualCandidatePipelineHits": 24,
+          "readbackUnit": "Raw R32 uint32 words"
+        },
+        {
+          "format": "rgba8unorm",
+          "cases": 24,
+          "comparedComponents": 11424,
+          "differentComponents": 0,
+          "actualCandidatePipelineHits": 24,
+          "readbackUnit": "Actual RGBA8 bytes decoded by existing readSurface to f32; binary 0/255 required, decoded words compared to original and R32"
+        },
+        {
+          "format": "rgba32float",
+          "cases": 24,
+          "comparedComponents": 11424,
+          "differentComponents": 0,
+          "actualCandidatePipelineHits": 24,
+          "readbackUnit": "Raw RGBA32F component uint32 words"
+        }
+      ]
+    },
+    {
+      "fixture": "fig",
+      "status": "passed",
+      "errors": 0,
+      "resultSha256": "6265fe56e1c89a5b247cba931e232c4a8a3ca361a9fbeb0ec9969293417f77a6",
+      "gpuResultSha256": "baa51ae38479133cae4427bfe3d0d4e7aa0a2c2229abc6e07f78b824ebc1f3c8",
+      "fixturesSha256": "2fc2488c94b2222817f327764e1c2df4eeda944a4033a186aab74801750c4193",
+      "inputHashesStable": true,
+      "inputFileCount": 1162,
+      "identityHashSetSha256": "03924054876811721067175fdbf548cb614df33d20f8788719207b3895905525",
+      "scriptSha256": "cb070d63bb8af6081d35ae8eb20c2b0844a718a8d4f36a510bd19841c407e2d2",
+      "sourceHashes": {
+        "src/kernel/gpu/webgpu.ts": "624eeec3ceca23a147c6f73f3568cb87416d45d60fd6943c6dca059b9077404e",
+        "src/kernel/gpu/sample-only-area-shader.ts": "1b4011b451d444eded65b5af169446fcb7ad032bca243ebdaf6ed246bf34160c",
+        "src/kernel/gpu/sample-only-area-programs.ts": "b723950215a29e866f223f1bdb04fd958d30aa1debb46e19d2d9ea74b7ccf3f2"
+      },
+      "inputHashes": {
+        "documentSha256": "10588b256dbf297a1e3d2363d5e01d23b66a58405bb8ab6e6c60fa8691e9bc95",
+        "requestsSha256": "45d1cb14d5e978b409f780e710451a1ea2cec165dd64a12e9cd127fe5fdd1699",
+        "executionRequestSha256": "c3bfc80f535275f85fe67f6696e0d650c7c07212a0815a217b826e4053603a8a",
+        "wasmSha256": "20b6c2b8388ccf91641e8c363375b3b4439b87f98d5e9cb60314a31fbb94aebb",
+        "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+        "nativeSceneSha256": "dd98eb6aca0815d198d6bbd78c5285c66b83775744a48fd99173212a16f9d0cf"
+      },
+      "pathDimensions": [
+        {
+          "width": 3918,
+          "height": 2571,
+          "header": 3,
+          "programWords": 164500
+        },
+        {
+          "width": 68,
+          "height": 68,
+          "header": 4,
+          "programWords": 28
+        }
+      ],
+      "reportedAdapter": "metal-3",
+      "formatProbeOnly": true,
+      "nonFallbackAdapterVerified": true,
+      "samplePhases": 4,
+      "regionsPerPhase": 2,
+      "regionPhysicalDimensions": {
+        "width": 17,
+        "height": 7
+      },
+      "regions": [
+        "top-left origin offset (-2,-2), including outside transparent edge",
+        "center"
+      ],
+      "bothZeroAndOneRequiredForEachPath": true,
+      "comparedComponents": 17136,
+      "differentComponents": 0,
+      "formatBreakdown": [
+        {
+          "format": "r32float",
+          "cases": 16,
+          "comparedComponents": 1904,
+          "differentComponents": 0,
+          "actualCandidatePipelineHits": 16,
+          "readbackUnit": "Raw R32 uint32 words"
+        },
+        {
+          "format": "rgba8unorm",
+          "cases": 16,
+          "comparedComponents": 7616,
+          "differentComponents": 0,
+          "actualCandidatePipelineHits": 16,
+          "readbackUnit": "Actual RGBA8 bytes decoded by existing readSurface to f32; binary 0/255 required, decoded words compared to original and R32"
+        },
+        {
+          "format": "rgba32float",
+          "cases": 16,
+          "comparedComponents": 7616,
+          "differentComponents": 0,
+          "actualCandidatePipelineHits": 16,
+          "readbackUnit": "Raw RGBA32F component uint32 words"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "V1 adapter only reported metal-3; v1 did not explicitly assert isFallbackAdapter=false. V2 explicitly required and verified a non-fallback adapter.",
+    "Fresh native scenes were compiled by Node WASM from bound document/request/font inputs. Browser verified WASM bytes, but did not freshly recompile the scene. No browser fresh-compile equality is claimed.",
+    "ABBA timings include CPU encoding, driver overhead and real queue completion. They are not exclusive shader/GPU time, FPS or whole-app input latency.",
+    "V1 full/corner raw R32 comparisons and v2 format regional probes have distinct scopes; v2 was FORMAT_PROBE_ONLY and did not repeat full-domain timing.",
+    "Standalone pixel/candidate-hit gates do not establish continuous-motion clarity, no white blocks, resident attachment, editing, undo or export acceptance. Deep4 actual host gates are pending."
+  ],
+  "displayIntentIntegration": {
+    "status": "source frozen; CPU contracts passed; actual updated GPU/Electron pending",
+    "defaultDisplayOnlyArgument": false,
+    "rendererIntent": "!readback && present",
+    "captureDisplayUnchanged": true,
+    "scopeIndependentOfDisplayTentRadius": true,
+    "sceneRequestAuthorityAdded": false,
+    "focusedSuites": 3,
+    "focusedTests": 43,
+    "passed": 43,
+    "durationSeconds": 2.93,
+    "mergedTypecheckPassed": true,
+    "sourceHashes": {
+      "frontend/design-client/src/kernel/gpu/renderer.ts": "92434e63e7bb44e32d3a024d3f5c06993e66a2e2f8a5d0886854a6f5c8ea0326",
+      "frontend/design-client/src/kernel/gpu/webgpu.ts": "350ac25e98ddabd7b5f8743a4e572931b338a20199c7138ae7624f987eddcff7",
+      "frontend/design-client/src/kernel/gpu/types.ts": "bef4c181665c8637f363be99d78b8fb6a6ffb2c783824d66a6e20779ab30b812",
+      "frontend/design-client/src/kernel/gpu/sample-only-area-dispatch.test.ts": "01bf9381287ce8cc8ff3f4c903c71cfa799d614b122597eea1591eb95d333cfe",
+      "frontend/design-client/src/kernel/gpu/sample-only-display-intent.test.ts": "0ab135fd07a72dddd241f1075259c5d7cc3de473dcf7d31aee3f345244a287f7"
+    },
+    "lifetimeTelemetry": {
+      "sampleOnlyCoverageLifetimePasses": "actual encoded draws, not reset by begin",
+      "sampleOnlyCoverageLifetimePixels": "actual encoded target texels, not content pixels or components",
+      "sampleOnlyCoverageEligibleScenes": "pipeline-ready display preparations; not mask hits"
+    },
+    "historicalGpuSourcesPreserved": true
+  }
+}

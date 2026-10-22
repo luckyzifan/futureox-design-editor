@@ -157,6 +157,24 @@ it('canceling a partial byte assembly never publishes it or starts the next regi
   expect(rasterized).toBe(1)
 })
 
+it('canceling a partial display assembly keeps every unfinished region private', async () => {
+  const publish = vi.fn(), close = vi.fn(), draw = vi.fn()
+  let current = true, attempted = 0
+  vi.stubGlobal('OffscreenCanvas', class {
+    constructor(public width: number, public height: number) {}
+    getContext() { return { drawImage: draw, imageSmoothingEnabled: false } }
+    transferToImageBitmap = publish
+  })
+  await expect(renderBitmapPreviewTiles(1710, 1776, async tile => {
+    attempted++; current = false
+    return { width: tile.width, height: tile.height, close } as ImageBitmap
+  }, 256, undefined, async () => {
+    if (!current) throw Error('PREVIEW_CANCELLED')
+  })).rejects.toThrow('PREVIEW_CANCELLED')
+  expect(attempted).toBe(1); expect(draw).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledOnce()
+  expect(publish).not.toHaveBeenCalled()
+})
+
 it('current subdivided work still assembles every exact pixel with checkpoints', async () => {
   let checkpoints = 0
   const result = await renderPreviewTiles(256, 128, async tile => {

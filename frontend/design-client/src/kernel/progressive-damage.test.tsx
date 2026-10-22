@@ -12,14 +12,16 @@ import { tileBatchPrepareViewport } from './tile-prepare-viewport'
 
 const worker = vi.hoisted(() => ({ clients: [] as any[], calls: [] as any[], maintenance: [] as any[],
   plannedScales: [] as number[], plannedPhases: [] as { x: number; y: number }[],
-  navigationEnabled: [] as boolean[], dpr: 1, dynamicPlan: false,
+  navigationEnabled: [] as boolean[], navigationFrameSampling: [] as boolean[], dpr: 1, dynamicPlan: false,
   policy: { cpuOnly: false, hdrCompositing: false, imageMips: false, imageAtlas: false,
     desktopFullMath: false, desktopDisplay: false },
   plan: undefined as RasterTile[] | undefined,
   zooming: false, cameraMoving: undefined as boolean | undefined, forceLod: false,
   navigation: { active: false, suspended: false, sample: undefined as any } }))
-vi.mock('./use-navigation-zoom', () => ({ useNavigationZoom: (_view: unknown, _identity: unknown, enabled: boolean) => {
+vi.mock('./use-navigation-zoom', () => ({ useNavigationZoom: (_view: unknown, _identity: unknown, enabled: boolean,
+  _translation: boolean, _held: boolean, frame: boolean) => {
   worker.navigationEnabled.push(enabled)
+  worker.navigationFrameSampling.push(frame === true)
   return enabled ? worker.navigation : { ...worker.navigation, active: false, sample: undefined, panEnabled: false }
 } }))
 vi.mock('./use-zoom-activity', () => ({ useZoomActivity: () => worker.zooming,
@@ -161,6 +163,7 @@ afterEach(() => {
   worker.navigation = { active: false, suspended: false, sample: undefined }
   worker.forceLod = false; worker.maintenance.length = 0
   worker.navigationEnabled.length = 0; worker.dpr = 1; worker.dynamicPlan = false
+  worker.navigationFrameSampling.length = 0
   Object.assign(worker.policy, { cpuOnly: false, hdrCompositing: false, imageMips: false, imageAtlas: false,
     desktopFullMath: false, desktopDisplay: false })
   vi.unstubAllEnvs()
@@ -950,7 +953,7 @@ test('reversed zoom with optional budget pressure retains the previous whole vie
     sample: { active: true, sequence: 1, view: { x: 0, y: 0, zoom: 32 } } }
   h.render({ ...options, view: worker.navigation.sample.view })
   await vi.waitFor(() => expect(worker.calls).toHaveLength(1)); worker.calls[0].resolve()
-  await Promise.resolve(); await Promise.resolve()
+  await settleRejected()
   let { wrapper, compositor } = surfaceParts(h.render({ ...options, view: worker.navigation.sample.view }))
   const preview = compositor.props.items.find((item: any) => item.tile.viewportPreview).tile
   compositor.props.onReady(preview.key, preview.serial, false)
@@ -1268,28 +1271,280 @@ test('real Editor page switching drives Surface reuse without new raster work or
 
 
 
-test('pending optional preview survives raw pan within its sample and cancels on next sample', async () => {
+test.each(['webgl2', 'webgpu'] as const)('pending %s preview survives raw pan and later samples, then starts only the latest waiting camera', async backend => {
   vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
   const h = harness(false), first = { x: 0, y: 0, zoom: 32 }
   worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: first } }
-  h.render({ backend: 'webgl2', view: first }); await settleRejected()
+  h.render({ backend, view: first }); await settleRejected()
   expect(worker.calls).toHaveLength(1)
   const signal = worker.calls[0].signal as AbortSignal
   expect(signal.aborted).toBe(false)
-  h.render({ backend: 'webgl2', view: { ...first, x: 10 } }); await settleRejected()
+  h.render({ backend, view: { ...first, x: 10 } }); await settleRejected()
   expect(signal.aborted).toBe(false)
   expect(worker.calls).toHaveLength(1)
-  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 2, view: { ...first, x: 10 } } }
-  h.render({ backend: 'webgl2', view: { ...first, x: 10 } }); await settleRejected()
-  expect(signal.aborted).toBe(true)
-  worker.calls[0].resolve(); await settleRejected()
+  let latest = first
+  for (let sequence = 2; sequence <= 200; sequence++) {
+    latest = { x: sequence, y: -sequence / 2, zoom: sequence % 2 ? 16 : 32 }
+    worker.navigation = { active: true, suspended: false, sample: { active: true, sequence, view: latest } }
+    h.render({ backend, view: latest }); await settleRejected()
+    expect(signal.aborted).toBe(false)
+    expect(worker.calls).toHaveLength(1)
+  }
+  worker.calls[0].resolve({ gpuTile: 818 }); await settleRejected()
   expect(worker.calls).toHaveLength(2)
+  expect(worker.calls[1].options.view).toEqual(latest)
   expect(worker.calls[1].signal.aborted).toBe(false)
+  const output = surfaceParts(h.render({ backend, view: latest }))
+  const previous = output.compositor.props.items.find((item: any) => item.tile.gpuTile === 818).tile
+  expect({ x: previous.x, y: previous.y, zoom: previous.zoom }).toEqual({ x: -first.x, y: -first.y, zoom: first.zoom })
+  if (backend === 'webgpu') expect(previous.viewportCache.identity.view).toEqual(first)
+  expect(output.compositor.props.view).toEqual(latest)
+  expect(output.compositor.props.settledDocument).toBeUndefined()
+  expect(output.wrapper.props['data-detail-ready']).toBe('false')
+  expect(worker.clients[0].releasePresented).not.toHaveBeenCalledWith([818])
+  worker.calls[1].resolve({ gpuTile: 819 }); await settleRejected()
+  h.render({ backend, view: latest }); await settleRejected()
+  expect(worker.calls).toHaveLength(2)
+})
+
+test.each(['edit', 'undo', 'fonts', 'page', 'epoch', 'dpr', 'extent', 'pause', 'hidden', 'suspended', 'release'] as const)(
+  'a running and queued navigation capture lose ownership on %s, releasing a late result exactly once', async change => {
+    vi.stubGlobal('WebGL2RenderingContext', class {})
+    const h = harness(false), first = { x: -.25, y: .75, zoom: 2 }, next = { ...first, x: -20 }
+    const base = { backend: 'webgl2', view: first }
+    worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: first } }
+    h.render(base); await settleRejected()
+    const pending = worker.calls[0]
+    worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 2, view: next } }
+    h.render({ ...base, view: next }); await settleRejected()
+    expect(pending.signal.aborted).toBe(false)
+    let override: Record<string, unknown> = {}
+    if (change === 'edit' || change === 'undo') override = { document: { ...h.doc, nodes: { ...h.doc.nodes } } }
+    if (change === 'fonts') override = { document: { ...h.doc, fonts: { ...h.doc.fonts } } }
+    if (change === 'page') override = { pageId: 'replacement-page' }
+    if (change === 'epoch') override = { presentationEpoch: 1 }
+    if (change === 'dpr') worker.dpr = 2
+    if (change === 'extent') override = { width: 500 }
+    if (change === 'pause') override = { paused: true }
+    if (change === 'hidden') override = { visible: false }
+    if (change === 'suspended') worker.navigation = { active: false, suspended: true, sample: undefined }
+    if (change === 'release') worker.navigation = { active: false, suspended: false, sample: undefined }
+    h.render({ ...base, view: next, ...override }); await settleRejected()
+    expect(pending.signal.aborted).toBe(true)
+    const close = vi.fn()
+    pending.resolve({ bitmap: { close }, gpuTile: 820 }); await settleRejected()
+    const output = surfaceParts(h.render({ ...base, view: next, ...override }))
+    expect(output.compositor.props.items.some((item: any) => item.tile.gpuTile === 820)).toBe(false)
+    expect(close).toHaveBeenCalledOnce()
+    expect(worker.clients[0].releasePresented.mock.calls.flatMap((args: any[]) => args[0]).filter((id: number) => id === 820))
+      .toHaveLength(1)
+  })
+
+test('a changed acknowledged GPU owner cancels the running navigation capture before its late texture can publish', async () => {
+  const { h, second } = await navigationReturnFixture()
+  const latest = { ...second, view: { ...second.view, zoom: 32 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 3, view: latest.view } }
+  h.render(latest); await settleRejected()
+  const pending = worker.calls[2]
+  expect(pending.signal.aborted).toBe(false)
+  const compositor = surfaceParts(h.render(latest)).compositor
+  compositor.props.onPresented({ view: latest.view, width: latest.width, height: latest.height,
+    dpr: worker.dpr, interaction: false, ids: [] }, undefined,
+    { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 2, deviceOwner: 2 })
+  expect(pending.signal.aborted).toBe(true)
+  const close = vi.fn()
+  pending.resolve({ bitmap: { close }, gpuTile: 821 }); await settleRejected()
+  const output = surfaceParts(h.render(latest))
+  expect(output.compositor.props.items.some((item: any) => item.tile.gpuTile === 821)).toBe(false)
+  expect(close).toHaveBeenCalledOnce()
+  expect(worker.clients[0].releasePresented.mock.calls.flatMap((args: any[]) => args[0]).filter((id: number) => id === 821))
+    .toHaveLength(1)
+})
+
+test('a completed old-camera capture under cache pressure cannot evict the held frame or borrow the latest foreground reserve', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
+  // Real admission arithmetic, without allocating fake 128 MiB pixels. The
+  // transport double supplies only handles; these two held sources consume
+  // almost all of the production 128 MiB steady viewport allowance.
+  const h = harness([
+    { key: '4:0:0:0:0', x: -1, y: -1, width: 5760, height: 5760, zoom: 4 },
+    { key: '4:0:0:1:0', x: 511, y: -1, width: 514, height: 514, zoom: 4 },
+  ])
+  const base = { backend: 'webgl2', view: { x: 0, y: 0, zoom: 4 } }, onFallback = vi.fn()
+  h.render({ ...base, onFallback }); await flushRasterWork(); await settleRejected()
+  const held = surfaceParts(h.render({ ...base, onFallback })).compositor.props.items.map((item: any) => item.tile)
+  expect(surfaceParts(h.render({ ...base, onFallback })).wrapper.props['data-frame-publication']).toBe('complete')
+  const first = { x: -100, y: 20, zoom: 32 }, latest = { x: -200, y: 40, zoom: 16 }
+  const initialCalls = worker.calls.length
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: first } }
+  h.render({ ...base, view: first, onFallback }); await settleRejected()
+  const running = worker.calls[initialCalls]
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 2, view: latest } }
+  h.render({ ...base, view: latest, onFallback }); await settleRejected()
+  expect(running.signal.aborted).toBe(false)
+  const close = vi.fn()
+  running.resolve({ gpuTile: 822, bitmap: { close } }); await settleRejected()
+  let current = surfaceParts(h.render({ ...base, view: latest, onFallback }))
+  expect(current.compositor.props.items.some((item: any) => item.tile.gpuTile === 822)).toBe(false)
+  expect(held.every((source: any) => current.compositor.props.items.some((item: any) => item.tile === source))).toBe(true)
+  expect(close).toHaveBeenCalledOnce()
+  expect(worker.calls).toHaveLength(initialCalls + 2)
+  worker.calls.at(-1).resolve({ gpuTile: 823 }); await settleRejected()
+  current = surfaceParts(h.render({ ...base, view: latest, onFallback }))
+  expect(current.compositor.props.items.some((item: any) => item.tile.gpuTile === 823)).toBe(true)
+  expect(held.every((source: any) => current.compositor.props.items.some((item: any) => item.tile === source))).toBe(true)
+  expect(onFallback).not.toHaveBeenCalled()
+  expect(worker.clients[0].releasePresented.mock.calls.flatMap((args: any[]) => args[0]).filter((id: number) => id === 822))
+    .toHaveLength(1)
 })
 
 /** Use the real parent hook graph, mailbox, density helpers and tile geometry.
  * Raster transport and child presentation remain controlled doubles: these
  * assertions prove work admission, not actual wheel timing or sharp pixels. */
+function nativeNavigationHost() {
+  vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION', '1'); vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
+  vi.stubGlobal('WebGL2RenderingContext', class {}); vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
+  Object.assign(worker.policy, { desktopFullMath: true, desktopDisplay: true }); worker.dpr = 2
+}
+
+test.each([['0', '0', false], ['1', '0', false], ['0', '1', false], ['true', '1', false],
+  ['1', 'true', false], ['1', '1', true]] as const)('native navigation requires strict flags %s/%s and retains physical DPR', async (native, clamp, expected) => {
+  nativeNavigationHost(); vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION', native); vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', clamp)
+  const h = harness(false), view = { x: -.125, y: .375, zoom: 32 }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view } }
+  const output = surfaceParts(h.render({ width: 855, height: 888, view, rasterProfile: 'figmaSubpixel' }))
+  await settleRejected()
+  expect(output.wrapper.props['data-native-navigation']).toBe(String(expected))
+  expect(worker.navigationFrameSampling.at(-1)).toBe(expected)
+  expect(worker.calls).toHaveLength(1)
+  const ratio = expected ? 2 : 1
+  expect(worker.calls[0].options.width).toBe(855 * ratio); expect(worker.calls[0].options.height).toBe(888 * ratio)
+  expect(worker.calls[0].options.view).toEqual({ x: view.x * ratio, y: view.y * ratio, zoom: view.zoom * ratio })
+  expect(worker.calls[0].options.tileViewport).toBeUndefined()
+  expect(worker.calls[0].options.renderIntent).toBe('preview')
+  expect(worker.calls[0].options.previewTileFallback).toBe(expected ? true : undefined)
+})
+
+test.each(['cpu', 'webgl2', 'hdr', 'grid', 'checkerboard', 'pixelPreview', 'figmaSoftware', 'object-edit',
+  'desktop-display-disabled', 'desktop-math-disabled'] as const)('native navigation does not cross the %s quality boundary', async boundary => {
+  nativeNavigationHost()
+  const h = harness(false), view = { x: 0, y: 0, zoom: 32 }
+  const options: any = { view, rasterProfile: 'figmaSubpixel' }
+  if (boundary === 'cpu' || boundary === 'webgl2') options.backend = boundary
+  if (boundary === 'hdr') worker.policy.hdrCompositing = true
+  if (boundary === 'grid') options.grid = true
+  if (boundary === 'checkerboard') options.checkerboard = true
+  if (boundary === 'pixelPreview') options.pixelPreview = 1
+  if (boundary === 'figmaSoftware') options.rasterProfile = 'figmaSoftware'
+  if (boundary === 'object-edit') options.interaction = { document: h.doc, selection: [], active: true,
+    epoch: 0, control: { current: null }, onReady() {} }
+  if (boundary === 'desktop-display-disabled') worker.policy.desktopDisplay = false
+  if (boundary === 'desktop-math-disabled') worker.policy.desktopFullMath = false
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view } }
+  const output = surfaceParts(h.render(options)); await settleRejected()
+  expect(output.wrapper.props['data-native-navigation']).toBe('false')
+  expect(worker.navigationFrameSampling.at(-1)).toBe(false)
+  expect(worker.calls.every(call => call.options.previewTileFallback === undefined)).toBe(true)
+})
+
+test('native regional fallback keeps the complete held image until its replacement upload is ready', async () => {
+  nativeNavigationHost()
+  const h = harness(false), first = { x: -.125, y: .375, zoom: 32 }, next = { x: -17.25, y: 12.125, zoom: 16 }
+  const options = { width: 855, height: 888, rasterProfile: 'figmaSubpixel' }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: first } }
+  h.render({ ...options, view: first }); await settleRejected()
+  const firstBitmap = { close: vi.fn() }
+  worker.calls[0].resolve({ bitmap: firstBitmap, previewLane: 'regional-fallback' }); await settleRejected()
+  let compositor = surfaceParts(h.render({ ...options, view: first })).compositor
+  const held = compositor.props.items.find((item: any) => item.tile.bitmap === firstBitmap).tile
+  compositor.props.onReady(held.key, held.serial, false)
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 2, view: next } }
+  compositor = surfaceParts(h.render({ ...options, view: next })).compositor; await settleRejected()
+  expect(worker.calls[1].options.previewTileFallback).toBe(true)
+  expect(worker.calls[1].options.view).toEqual({ x: next.x * 2, y: next.y * 2, zoom: next.zoom * 2 })
+  expect(compositor.props.items.find((item: any) => item.tile === held)?.active).toBe(true)
+  expect(firstBitmap.close).not.toHaveBeenCalled()
+  // Transport resolves only after the worker's complete private assembly;
+  // this surface still withholds it while the child imports the bitmap.
+  const completeBitmap = { close: vi.fn() }
+  worker.calls[1].resolve({ bitmap: completeBitmap, previewLane: 'regional-fallback' }); await settleRejected()
+  compositor = surfaceParts(h.render({ ...options, view: next })).compositor
+  const replacement = compositor.props.items.find((item: any) => item.tile.bitmap === completeBitmap).tile
+  expect(compositor.props.items.find((item: any) => item.tile === replacement)?.active).toBe(false)
+  expect(compositor.props.items.find((item: any) => item.tile === held)?.active).toBe(true)
+  compositor.props.onReady(replacement.key, replacement.serial, false)
+  compositor = surfaceParts(h.render({ ...options, view: next })).compositor
+  expect(compositor.props.items.find((item: any) => item.tile === replacement)?.active).toBe(true)
+  expect(replacement.viewportCache.identity.view).toEqual(worker.calls[1].options.view)
+  expect(replacement.width).toBe(1710); expect(replacement.height).toBe(1776)
+})
+
+test('native regional fallback preserves one running job and only the latest waiting camera', async () => {
+  nativeNavigationHost()
+  const h = harness(false), first = { x: -.125, y: .375, zoom: 32 }
+  const options = { width: 855, height: 888, rasterProfile: 'figmaSubpixel' }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: first } }
+  h.render({ ...options, view: first }); await settleRejected()
+  const running = worker.calls[0]
+  let latest = first
+  for (let sequence = 2; sequence <= 6; sequence++) {
+    latest = { x: sequence / 8, y: -sequence / 4, zoom: sequence % 2 ? 16 : 32 }
+    worker.navigation = { active: true, suspended: false, sample: { active: true, sequence, view: latest } }
+    h.render({ ...options, view: latest }); await settleRejected()
+  }
+  expect(worker.calls).toHaveLength(1); expect(running.signal.aborted).toBe(false)
+  const oldBitmap = { close: vi.fn() }
+  running.resolve({ bitmap: oldBitmap, previewLane: 'regional-fallback' }); await settleRejected()
+  expect(worker.calls).toHaveLength(2)
+  expect(worker.calls[1].options.previewTileFallback).toBe(true)
+  expect(worker.calls[1].options.view).toEqual({ x: latest.x * 2, y: latest.y * 2, zoom: latest.zoom * 2 })
+  const output = surfaceParts(h.render({ ...options, view: latest }))
+  const old = output.compositor.props.items.find((item: any) => item.tile.bitmap === oldBitmap).tile
+  expect(old.viewportCache.identity.view).toEqual(running.options.view)
+  expect({ x: old.x, y: old.y, zoom: old.zoom }).toEqual({ x: -first.x * 2, y: -first.y * 2, zoom: first.zoom * 2 })
+  expect(output.compositor.props.view).toEqual(latest)
+  expect(output.wrapper.props['data-detail-ready']).toBe('false')
+  expect(oldBitmap.close).not.toHaveBeenCalled()
+})
+
+test.each(['page', 'epoch'] as const)('native regional fallback cannot publish after its %s owner changes', async change => {
+  nativeNavigationHost()
+  const h = harness(false), view = { x: -.125, y: .375, zoom: 32 }
+  const options = { width: 855, height: 888, view, rasterProfile: 'figmaSubpixel' }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view } }
+  h.render(options); await settleRejected()
+  const running = worker.calls[0]
+  const changed = change === 'page' ? { pageId: 'another-page' } : { presentationEpoch: 1 }
+  h.render({ ...options, ...changed }); await settleRejected()
+  expect(running.signal.aborted).toBe(true)
+  const bitmap = { close: vi.fn() }
+  running.resolve({ bitmap, previewLane: 'regional-fallback' }); await settleRejected()
+  const output = surfaceParts(h.render({ ...options, ...changed }))
+  expect(output.compositor.props.items.some((item: any) => item.tile.bitmap === bitmap)).toBe(false)
+  expect(bitmap.close).toHaveBeenCalledOnce()
+})
+
+test('native navigation budget rejection cannot resubmit a lower-density preview', async () => {
+  nativeNavigationHost()
+  const h = harness(false), view = { x: -.125, y: .375, zoom: 32 }, onFallback = vi.fn()
+  const options = { width: 855, height: 888, view, rasterProfile: 'figmaSubpixel', onFallback }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view } }
+  h.render(options); await settleRejected()
+  expect(worker.calls[0].options.width).toBe(1710)
+  worker.calls[0].reject(compileBudget()); await settleRejected()
+  const output = surfaceParts(h.render(options)); await settleRejected()
+  expect(worker.calls).toHaveLength(1)
+  expect(output.wrapper.props['data-detail-ready']).toBe('false'); expect(onFallback).not.toHaveBeenCalled()
+  const next = { ...options, view: { ...view, x: -10 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 2, view: next.view } }
+  h.render(next); await settleRejected()
+  expect(worker.calls).toHaveLength(2); expect(worker.calls[1].options.width).toBe(1710)
+})
+
 function sharpSurfaceHost() {
   vi.stubEnv('VITE_DESIGN_SHARP_ZOOM', '1')
   vi.stubGlobal('WebGL2RenderingContext', class {})

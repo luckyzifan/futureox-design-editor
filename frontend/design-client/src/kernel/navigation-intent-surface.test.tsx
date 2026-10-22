@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { blank } from '../model'
 const state=vi.hoisted(()=>({sequence:1,composites:[] as any[]}))
 vi.mock('./use-navigation-zoom',()=>({useNavigationZoom:(view:any,_identity:string,enabled:boolean)=>({active:enabled,suspended:false,sample:enabled?{sequence:state.sequence,view}:undefined})}))
@@ -9,8 +9,9 @@ vi.mock('./TileCompositeSurface',()=>({TileCompositeSurface:(props:any)=>{state.
 vi.mock('./ResidentCompositeSurface',()=>({ResidentCompositeSurface:()=>null}))
 vi.mock('./use-zoom-activity',()=>({useZoomActivity:()=>true,useCameraActivity:()=>true}))
 vi.mock('./presentation',async original=>({...await original<any>(),useDevicePixelRatio:()=>1,useDisplayCapability:()=>undefined}))
-afterEach(()=>{vi.unstubAllGlobals();vi.resetModules();state.composites=[];state.sequence=1})
-test('mounted navigation sends request-specific cancellation and keeps newest output ownership',async()=>{
+beforeEach(()=>vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION','0'))
+afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();vi.resetModules();state.composites=[];state.sequence=1})
+test('mounted navigation finishes running same-content work under its own camera and replaces queued goals',async()=>{
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
   vi.stubGlobal('WebGL2RenderingContext',function(){})
   Object.defineProperty(window,'coreDesktop',{configurable:true,value:{version:1,renderPolicy:{cpuOnly:true},preparation:{open:async()=> 'owned',close:async()=>{},request:async(_id:any,r:any)=>({id:1,value:JSON.stringify(r.args[0])})}}})
@@ -28,25 +29,37 @@ test('mounted navigation sends request-specific cancellation and keeps newest ou
     await act(async()=>{root.render(<ProgressiveSurface {...props}/> )})
     const worker=WorkerStub.instances[0]
     await vi.waitFor(()=>expect(worker.requests()).toHaveLength(1));const first=worker.requests()[0]
-    // Accepted synchronization remains pending while the presentation intent changes.
+    // Accepted synchronization and its running camera remain owned. A newer
+    // camera replaces only waiting work rather than starving this capture.
     state.sequence=2
     await act(async()=>{root.render(<ProgressiveSurface {...props} view={{x:10,y:0,zoom:2}}/>)})
-    expect(worker.messages.filter(m=>m.command==='cancel-request').map(m=>m.requestId)).toEqual([first.id])
+    expect(worker.messages.filter(m=>m.command==='cancel-request')).toEqual([])
     expect(worker.requests()).toHaveLength(1)
     await act(async()=>{worker.reply({id:first.id,documentSynchronized:true,stateReceipt:null})})
+    const firstPixels={width:100,height:100,close:vi.fn()}
+    await act(async()=>{worker.reply({id:first.id,bitmap:firstPixels,buffer:new ArrayBuffer(0),width:100,height:100,backend:'cpu',milliseconds:1,stats:{nodes:0}})})
     await vi.waitFor(()=>expect(worker.requests()).toHaveLength(2));const second=worker.requests()[1]
+    const historyA=state.composites.at(-1).items.find((item:any)=>item.tile.bitmap===firstPixels)?.tile
+    expect(historyA?.zoom).toBe(1);expect(historyA?.x).toBe(-0)
+    expect(firstPixels.close).not.toHaveBeenCalled()
+    // A duplicate response is a new unowned payload, not the retained A bitmap.
     const late={width:100,height:100,close:vi.fn()}
     await act(async()=>{worker.reply({id:first.id,bitmap:late,buffer:new ArrayBuffer(0),width:100,height:100,backend:'cpu',milliseconds:1,stats:{nodes:0}})})
     expect(late.close).toHaveBeenCalledOnce()
     expect(props.onFallback).not.toHaveBeenCalled()
-    // A → B → A is a new ownership token, not coordinate equality.
+    // A → B → A queues a new goal while B is allowed to finish at camera B.
     state.sequence=3
     await act(async()=>{root.render(<ProgressiveSurface {...props}/>)})
+    expect(worker.requests()).toHaveLength(2)
+    await act(async()=>{worker.reply({id:second.id,documentSynchronized:true,stateReceipt:null})})
+    const pixelsB={width:100,height:100,close:vi.fn()}
+    await act(async()=>{worker.reply({id:second.id,bitmap:pixelsB,buffer:new ArrayBuffer(0),backend:'cpu',milliseconds:1,stats:{nodes:0}})})
     await vi.waitFor(()=>expect(worker.requests()).toHaveLength(3));const third=worker.requests()[2]
-    const staleB={width:100,height:100,close:vi.fn()}
-    await act(async()=>{worker.reply({id:second.id,bitmap:staleB,buffer:new ArrayBuffer(0),backend:'cpu',milliseconds:1,stats:{nodes:0}})})
-    expect(staleB.close).toHaveBeenCalledOnce()
+    const historyB=state.composites.at(-1).items.find((item:any)=>item.tile.bitmap===pixelsB)?.tile
+    expect(historyB?.zoom).toBe(2);expect(historyB?.x).toBe(-10)
+    expect(pixelsB.close).not.toHaveBeenCalled()
     const complete={width:100,height:100,close:vi.fn()}
+    await act(async()=>{worker.reply({id:third.id,documentSynchronized:true,stateReceipt:null})})
     await act(async()=>{worker.reply({id:third.id,bitmap:complete,buffer:new ArrayBuffer(0),backend:'cpu',milliseconds:1,stats:{nodes:0}})})
     expect(state.composites.at(-1).items.some((item:any)=>item.tile.bitmap===complete)).toBe(true)
     state.sequence=4
@@ -56,7 +69,7 @@ test('mounted navigation sends request-specific cancellation and keeps newest ou
     expect(state.composites.at(-1).items.some((item:any)=>item.tile.bitmap===complete)).toBe(true)
     // Unmount cancels only the still-owned optional request.
     await act(async()=>root.unmount())
-    expect(worker.messages.filter(m=>m.command==='cancel-request').map(m=>m.requestId)).toEqual([first.id,second.id,fourth.id])
+    expect(worker.messages.filter(m=>m.command==='cancel-request').map(m=>m.requestId)).toEqual([fourth.id])
   }finally{await act(async()=>root.unmount());delete (window as any).coreDesktop}
 })
 

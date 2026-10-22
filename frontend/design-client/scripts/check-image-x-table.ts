@@ -41,10 +41,20 @@ function fixture(name:string,pattern:number,fractionKind=0):Fixture {
   return {name,width,height,imageWidth,imageHeight,imageBits:bits(pixels),axesBits:axes.map(bits),
     windows:[{name:'full',x:0,y:0,w:width,h:height},{name:'offset',x:3,y:7,w:31,h:29}]}
 }
+function correlatedFixture(name:string,pattern:number,mapping:readonly number[],opaque=false,lastUlp=false):Fixture {
+  const f=fixture(name,pattern),originals=f.axesBits.map(a=>a.slice())
+  for(let sample=0;sample<4;sample++)f.axesBits[sample].splice(0,f.width*4,...originals[mapping[sample]].slice(0,f.width*4))
+  if(opaque)for(let i=3;i<f.imageBits.length;i+=4)f.imageBits[i]=0x3f800000
+  if(lastUlp)f.axesBits[3][(f.width-1)*4+1]+=1
+  return f
+}
 
 await runProof('futureox-image-x-table',[scenePath,documentPath],async proof=>{
   const fixtures=[fixture('ordinary',0),fixture('signed-hdr-span24',1),fixture('subnormal',2),fixture('zero-alpha-hdr',3),
-    fixture('max-finite',4),fixture('hdr-alpha',5),fixture('corner-zero-one',0,1),fixture('ku36-kv35',0,2),fixture('signed-hdr-ku36-kv35',1,2),fixture('signed-hdr-Y96-boundary',1,3)]
+    fixture('max-finite',4),fixture('hdr-alpha',5),fixture('corner-zero-one',0,1),fixture('ku36-kv35',0,2),fixture('signed-hdr-ku36-kv35',1,2),fixture('signed-hdr-Y96-boundary',1,3),
+    correlatedFixture('correlated-X-signed-HDR',1,[0,1,0,1]),correlatedFixture('correlated-X-opaque',0,[0,1,0,1],true),
+    correlatedFixture('all-X-identical-subnormal',2,[0,0,0,0]),correlatedFixture('nonadjacent-X-endpoints',0,[0,1,1,0]),
+    correlatedFixture('last-X-fraction-ULP',0,[0,1,0,1],false,true)]
   const sceneBytes=await readFile(scenePath),documentBytes=await readFile(documentPath)
   const scene=JSON.parse(sceneBytes.toString('utf8')),document=JSON.parse(documentBytes.toString('utf8'))
   const nodeId='1AB99304-455A-4A9E-9473-8923A1330FA4',n=scene.nodes[nodeId]
@@ -63,12 +73,14 @@ await runProof('futureox-image-x-table',[scenePath,documentPath],async proof=>{
     if(!plan)throw Error('Real117 native fields unexpectedly reject X-table admission during CPU preparation')
     realSummary={imageWidth,imageHeight,imageSha256:sha256(new Uint8Array(pixels.buffer,pixels.byteOffset,pixels.byteLength)),
       axesSha256:axes.map(a=>sha256(new Uint8Array(a.buffer,a.byteOffset,a.byteLength))),tableBytes:plan.tableBytes,
+      xSampleCount:plan.xSampleCount,sampleGroups:[...plan.uniform.slice(16)],
       rowMin:plan.rowMin,rowCount:plan.rowCount,maxKx:plan.maxKx,maxKy:plan.maxKy}
   }finally{engine.free()}
   const prepared=fixtures.map(f=>{
     const range=certifyExactImageRange(floats(f.imageBits)),plan=range&&planExactImageXTable({...f,axes:f.axesBits.map(floats),range})
     if(!plan)throw Error(`Accepted synthetic fixture ${f.name} was accidentally unsupported`)
     return {name:f.name,width:f.width,height:f.height,windows:f.windows,tableBytes:plan.tableBytes,
+      xSampleCount:plan.xSampleCount,sampleGroups:[...plan.uniform.slice(16)],
       maxKx:plan.maxKx,maxKy:plan.maxKy,range:range}
   })
   await proof.write('fixtures.json',{synthetic:prepared,real:realSummary,sceneSha256:sha256(sceneBytes),documentSha256:sha256(documentBytes),wasmSha256:sha256(wasm)})
@@ -119,6 +131,7 @@ await runProof('futureox-image-x-table',[scenePath,documentPath],async proof=>{
             const table=await driver.prepareImageTable(image,plan,256*1024*1024-driver.stats().textureBytes-driver.scratchBytes)
             if(!table||table.bytes!==required||driver.scratchBytes-before!==required)throw Error(`Candidate table was not actually created: ${f.name}`)
             caseRecords.push({name:f.name,tableBytes:plan.tableBytes,allocatedBytes:table.bytes,rowMin:plan.rowMin,rowCount:plan.rowCount,
+              xSampleCount:plan.xSampleCount,sampleGroups:[...plan.uniform.slice(16)],
               maxKx:plan.maxKx,maxKy:plan.maxKy,rangeMinimum:range.minimum,rangeMaximum:range.maximum})
             for(const window of f.windows){
               const origin=f.name==='actual-117-full-support'?{x:input.x,y:input.y}:{x:-19,y:23}

@@ -15,7 +15,7 @@ export function staticBackdropKey(scene: GpuScene, n: GpuNode): string | undefin
   // root box. Such dynamic ancestors cannot certify a stationary background.
   if(prefix.some(node=>node?.previewDynamic))return
   return JSON.stringify([prefix.map(node=>node?[node.id,node.rect,node.matrix]:null),n.id,n.rect,n.matrix,n.effects,scene.view,scene.extent,scene.background,scene.transparent,
-    scene.grid,scene.checkerboard,scene.colorManagement,scene.integratedBlur,scene.floatCompositing],
+    scene.grid,scene.checkerboard,scene.colorManagement,scene.integratedBlur,scene.floatCompositing,!!scene.displayTentRadius],
     (_key,value)=>Object.is(value,-0)?'-0':value)
 }
 
@@ -31,6 +31,6 @@ export function movingBackdropKey(scene: GpuScene, n: GpuNode): string | undefin
   if(prefix.some(node=>node?.previewDynamic))return
   return JSON.stringify([prefix.map(node=>node?[node.id,node.rect,node.matrix]:null),n.id,n.effects,
     scene.view,scene.extent,scene.background,scene.transparent,scene.grid,scene.checkerboard,
-    scene.colorManagement,scene.integratedBlur,scene.floatCompositing,scene.displayFilters],
+    scene.colorManagement,scene.integratedBlur,scene.floatCompositing,scene.displayFilters,!!scene.displayTentRadius],
     (_key,value)=>Object.is(value,-0)?'-0':value)
 }

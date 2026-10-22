@@ -66,3 +66,28 @@ test('pointer translations do not enumerate an unchanged document and reject non
   const edited = { ...doc, nodes: { ...doc.nodes, [root.id]: { ...root, opacity: .5 } } }
   expect(interactionPatchedOffsets(plan, edited, { [root.id]: { transform: [1, 0, 0, 1, 20, 20] } })).toBeNull()
 })
+
+test('camera preparation reads only selected ids for its exact source snapshot, but validates every replacement snapshot', () => {
+  const doc = blank(), selected = node('frame', 10, 20, 100, 100), child = node('rectangle', 5, 5, 10, 10)
+  selected.blend = 'normal'; selected.children = [child.id]
+  doc.nodes[selected.id] = selected; doc.nodes[child.id] = child
+  doc.pages[0].children = [selected.id]
+  const plan = planInteractionLayers(doc, doc.pages[0].id, [selected.id])!
+  let scans = 0
+  doc.nodes = new Proxy(doc.nodes, { ownKeys(target) { scans++; return Reflect.ownKeys(target) } })
+  for (let camera = 0; camera < 100; camera++)
+    expect(interactionOffsets(plan, doc)).toEqual(new Map([[selected.id, { x: 0, y: 0 }]]))
+  expect(scans).toBe(0)
+
+  const moved = interactionPatchedDocument(doc, { [selected.id]: { transform: [1, 0, 0, 1, 23, -9] } })
+  expect(interactionOffsets(plan, moved)?.get(selected.id)).toEqual({ x: 13, y: -29 })
+  expect(scans).toBeGreaterThan(0)
+  expect(interactionOffsets(plan, { ...moved, nodes: { ...moved.nodes,
+    [child.id]: { ...child, opacity: .75 } } })).toBeNull()
+  expect(interactionOffsets(plan, { ...moved, pages: [...moved.pages] })).toBeNull()
+
+  // The general validator reports only own, reachable node keys and de-duplicates
+  // selections. The snapshot shortcut retains that behavior for invalid plans.
+  expect(interactionOffsets({ ...plan, ids: [selected.id, selected.id, 'missing', 'toString'] }, doc))
+    .toEqual(new Map([[selected.id, { x: 0, y: 0 }]]))
+})

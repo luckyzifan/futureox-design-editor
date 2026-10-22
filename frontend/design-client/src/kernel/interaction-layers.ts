@@ -3,6 +3,7 @@ import type { Bounds, DesignDocument, Matrix } from '../model'
 import { scene, unionBounds } from '../geometry'
 import type { CanvasCamera } from '../canvas-camera'
 import type { RefObject } from 'react'
+import type { CanvasSceneBorrow } from '../canvas-scene-snapshots'
 
 export type InteractionLayer = { document: DesignDocument; bounds: Bounds; moving?: string }
 export type InteractionPlan = { document: DesignDocument; pageId: string; ids: string[]; layers: InteractionLayer[]; viewport?: Bounds }
@@ -14,6 +15,8 @@ export type GpuMoveControl = {
 }
 export type InteractionProps = {
   document: DesignDocument; selection: string[]; active: boolean; epoch: number; control: RefObject<GpuMoveControl | null>; onReady: () => void
+  /** Optional Canvas-only published geometry. Other callers remain uncached. */
+  scene?: CanvasSceneBorrow
 }
 
 /** Only backdrop reads outside an isolated root propagate damage between
@@ -95,6 +98,13 @@ export function planInteractionLayers(document: DesignDocument, pageId: string, 
  * ancestry revokes the plan even if the document id stayed the same. */
 export function interactionOffsets(plan: InteractionPlan, current: DesignDocument): Map<string, { x: number; y: number }> | null {
   const source = plan.document
+  // The plan captures this exact snapshot. A camera/ACK layout pass may build
+  // a new plan without changing authored content; enumerating every node to
+  // discover zero movement blocks the same thread that accepts the next input.
+  // Do not cache arbitrary document objects here: a different snapshot still
+  // needs the complete content/ancestry validation below.
+  if (current === source) return new Map(plan.ids.filter(id => Object.hasOwn(source.nodes, id))
+    .map(id => [id, { x: 0, y: 0 }]))
   if (Object.keys(current).some(key => key !== 'nodes' && current[key as keyof DesignDocument] !== source[key as keyof DesignDocument]) ||
       Object.keys(current.nodes).length !== Object.keys(source.nodes).length) return null
   const moved = new Set(plan.ids), offsets = new Map<string, { x: number; y: number }>()

@@ -12,6 +12,7 @@ import { ImmutableKernelCache } from './immutable-kernel-cache'
 import { parameters, type GpuScene, type Texture } from './types'
 import { displayFilterWeights } from './display-filter'
 import { rational_tent_kernel_rgba } from '../../generated/design-kernel/design_kernel'
+import { paint } from '../../model'
 
 afterEach(() => { setDeviceDiagnosticRequestContext(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 const frozenBaseline = process.env.GPU_RESOURCE_BASELINE === '1'
@@ -69,6 +70,10 @@ function deviceBoundary() {
     createCommandEncoder() {
       const operations: any[] = [], resources = new Set<Resource>()
       return {
+        copyTextureToTexture(from: any, to: any, size: number[]) {
+          resources.add(from.texture); resources.add(to.texture)
+          operations.push({ kind: 'copy', from, to, size })
+        },
         beginRenderPass({ colorAttachments }: any) {
           passCreates++
           const attachment = colorAttachments[0], target = attachment.view.texture
@@ -114,6 +119,10 @@ function deviceBoundary() {
         for (const command of commands) {
           for (const value of command.resources) { expect(value.destroyed).toBe(false); pending.add(value) }
           for (const draw of command.operations) {
+            if (draw.kind === 'copy') {
+              draw.to.texture.trace = digest({ copied: draw.from.texture.trace, from: draw.from.origin, to: draw.to.origin, size: draw.size })
+              continue
+            }
             if (draw.kind === 'load') {
               if (draw.loadOp === 'clear') draw.target.trace = digest({ clear: draw.clearValue, width: draw.target.width, height: draw.target.height, format: draw.target.format })
               continue
@@ -176,6 +185,43 @@ async function createDriver(dynamic: boolean, managed = true, certified = false)
 const empty: GpuScene = { version: 8, width: 8, height: 8, output: { x: 0, y: 0, w: 8, h: 8 },
   extent: { x: 0, y: 0, w: 8, h: 8 }, floatCompositing: true, coherentSamples: false, integratedBlur: true,
   background: '#ffffff', transparent: false, grid: false, view: { x: 0, y: 0, zoom: 1 }, roots: [], nodes: {}, vertices: [] }
+
+test('the unmanaged byte-shadow stream prepares and uses the ordinary area31 path for its real source and sharp masks', async () => {
+  vi.stubEnv('VITE_DESIGN_BYTE_TENT_PREFIX', '1'); vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
+  const { boundary, driver } = await createDriver(false, false), raw = driver as any
+  const r = empty.extent, height = r.h, header = 1 + height * 4, curves = new Float32Array((header + height * 4 * 3) * 4)
+  curves.set([3, 1, r.w, height])
+  for (let row = 0; row < height * 4; row++) {
+    curves.set([header + row * 3, 1, 0, 0], 4 + row * 4)
+    curves.set([0, r.w, 0, 0], (header + row * 3) * 4)
+  }
+  const node = { id: 'byte-shadow', rect: r, matrix: [1, 0, 0, 1, 0, 0], inverse: [1, 0, 0, 1, 0, 0], size: [r.w, height],
+    fill: { first: 0, count: 3, sampleCount: 4, rect: r, rule: 'nonzero', area: { first: 0, count: curves.length / 4 } },
+    fills: [paint('#ffffff')], strokes: [], children: [], opacity: 1, blend: 'normal',
+    shadowOutputBox: [2, 2, 4, 4], effects: [{ kind: 'shadow', visible: true, radius: 3, x: 0, y: 0, spread: 0, color: '#123456', opacity: 1 }] }
+  const scene = { ...empty, floatCompositing: false, coherentSamples: true, integratedBlur: true,
+    curves, nodes: { 'byte-shadow': node }, roots: ['byte-shadow'], rootInputBox: [2, 2, 4, 4] } as unknown as GpuScene
+  await driver.prepareScene(scene)
+  expect(raw.areaPipeline).toBeDefined(); expect(raw.binaryAreaPipeline).toBeUndefined()
+  driver.begin(new Float32Array(0), curves)
+  // Only the separately GPU-proved byte operator is replaced here. Source
+  // rasterization, maskRegion, pass dispatch and pipeline selection are real
+  // production methods. This instrumented device executes no WGSL.
+  raw.prepareByteTent = vi.fn(async () => true)
+  raw.encodeByteTentAlpha = vi.fn(() => true)
+  const renderer = new GpuRenderer(driver) as any; renderer.scene = scene
+  const output = { x: 2, y: 2, w: 4, h: 4 }, targets = Array.from({ length: 4 }, () => renderer.empty(output))
+  const result = await renderer.streamByteShadow(node, targets)
+  expect(result).toBe(targets); expect(raw.encodeByteTentAlpha).toHaveBeenCalledTimes(2)
+  await driver.checkpoint()
+  const masks = boundary.records.map((record, i) => ({ record, command: boundary.normalized[i] as any }))
+    .filter(({ record }) => record.mode === 31)
+  expect(masks).toHaveLength(8)
+  expect(masks.every(({ command }) => command.fragment.entryPoint === 'areaFragment' &&
+    command.fragment.targets[0].format === 'rgba8unorm')).toBe(true)
+  expect(raw.binaryAreaPipeline).toBeUndefined()
+  renderer.dispose()
+})
 
 test('production dynamic descriptors reuse across offsets and arena wrap with identical submitted uniform words', async () => {
   const results: { counts: ReturnType<ReturnType<typeof deviceBoundary>['counts']>; records: object[]; normalized: object[] }[] = []

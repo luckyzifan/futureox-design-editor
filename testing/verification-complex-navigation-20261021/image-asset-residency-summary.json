@@ -1,0 +1,455 @@
+{
+  "scope": "Anonymized numeric/source identity evidence for private-owner GPU source-image residency. This is separate from completed GUI tile/result reuse, motion clarity, complete-editor latency and editing/undo/export acceptance.",
+  "defaultEnabled": false,
+  "policy": "Strict EXACT_CLAMP_PREFIX=1 plus WebGPU and an actual private managedSceneImageLoader owner capability; raw/custom loaders retain legacy pruning. Original hard working and presenter budgets remain unchanged.",
+  "cpuFocused": {
+    "suites": 3,
+    "acceptedExecutedPasses": 104,
+    "assetResidencyTests": 25,
+    "failed": 0,
+    "typecheck": "passed",
+    "gpuExecuted": false,
+    "scope": "CPU/mock resource lifecycle, private hydration ownership, cancellation/ABA, variant identity, hard admission, retired-cohort coverage and production checkpoint e-1 semantics. Separate from GPU evidence."
+  },
+  "diagnostic1024MiB": {
+    "status": "passed",
+    "proofDirectory": "deep-117-image-residency-1024-v2",
+    "workingBudgetMiB": 1024,
+    "idleMs": 5000,
+    "inputManifestStable": true,
+    "inputManifestEntries": 1162,
+    "fixtureSha256": "a0d0df3b24ea187dfd5723c9d41ab17908ce22afebb0bf64592f749d6fac3677",
+    "requestsSha256": "cfcc62e1ce423313fa2e5b0f573887f64fd1b947c63d7e62289074c91f79eb88",
+    "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+    "portableWasmSha256": "20b6c2b8388ccf91641e8c363375b3b4439b87f98d5e9cb60314a31fbb94aebb",
+    "boundSourceSha256": {
+      "src/kernel/gpu/renderer.ts": "5be85fe1dfc35410cd6f3d15534a332b7b0c0fbde427bbeb6910d3e5f075f8e2",
+      "src/kernel/scene-image-hydration.ts": "9f54a2ae7cbe6484133012c86732cbfe4c612dbf08779c2b2a4f24e9585e7b04",
+      "src/kernel/render-worker.ts": "b0459f402b549815fb0e7a9e131e15cc9e3e550ad873369b52f478b0221def9b",
+      "frontend/design-client/scripts/check-image-residency.ts": "2ed7d923f4510e7553a863b022963fc8caf60c48f408fc21e8149f017d597b9b",
+      "public/kernel/design_kernel_bg.wasm": "20b6c2b8388ccf91641e8c363375b3b4439b87f98d5e9cb60314a31fbb94aebb"
+    },
+    "artifactSha256": {
+      "fixtures.json": "3f8ddafda17ba990a17929709e768956806d363618a5df93a9a10e11a38ea50f",
+      "gpu-result.json": "c5f2066ee5bc72c810579eb0a7b745d2a51fb6bc943ef6c04feb3d7089ee8282",
+      "inputs-before.json": "6fd7067c358410379bc370d0c75527f174c738d73e519e8e6ecd07c9526c3610",
+      "inputs-after.json": "6fd7067c358410379bc370d0c75527f174c738d73e519e8e6ecd07c9526c3610",
+      "results.json": "c6f8c55c4b5d2ce787d87109dad9d7d36f5d0bae047748f278199c16e84c3a18"
+    },
+    "runs": [
+      {
+        "lane": "legacy-no-private-owner-capability",
+        "completed": true,
+        "records": [
+          {
+            "step": 0,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 2235.600000023842,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 2,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 0
+            },
+            "residentImageTextures": 2,
+            "peakTextureBytes": 420496644
+          },
+          {
+            "step": 1,
+            "region": "image-free-region-B",
+            "referencedImages": 0,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "0fbba07a833d4dcfc7024eaf313661a0ba8f80a05c6d29b8801c612e10e60dee",
+            "differentBytes": 0,
+            "diagnosticWallMs": 2.299999952316284,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 2,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 2,
+              "pressureEvictions": 0
+            },
+            "residentImageTextures": 0,
+            "peakTextureBytes": 420496644
+          },
+          {
+            "step": 2,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 1441.800000011921,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 4,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 2,
+              "pressureEvictions": 0
+            },
+            "residentImageTextures": 2,
+            "peakTextureBytes": 420496644
+          },
+          {
+            "step": 3,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 1639.3999999761581,
+            "assetCounters": {
+              "hits": 2,
+              "uploads": 4,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 2,
+              "pressureEvictions": 0
+            },
+            "residentImageTextures": 2,
+            "peakTextureBytes": 420496644
+          }
+        ]
+      },
+      {
+        "lane": "candidate-private-owner",
+        "completed": true,
+        "records": [
+          {
+            "step": 0,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 1933.199999988079,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 2,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 0
+            },
+            "residentImageTextures": 2,
+            "peakTextureBytes": 420496644
+          },
+          {
+            "step": 1,
+            "region": "image-free-region-B",
+            "referencedImages": 0,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "0fbba07a833d4dcfc7024eaf313661a0ba8f80a05c6d29b8801c612e10e60dee",
+            "differentBytes": 0,
+            "diagnosticWallMs": 2,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 2,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 0
+            },
+            "residentImageTextures": 2,
+            "peakTextureBytes": 420496644
+          },
+          {
+            "step": 2,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 1424.699999988079,
+            "assetCounters": {
+              "hits": 2,
+              "uploads": 2,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 0
+            },
+            "residentImageTextures": 2,
+            "peakTextureBytes": 420496644
+          },
+          {
+            "step": 3,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 1574.300000011921,
+            "assetCounters": {
+              "hits": 4,
+              "uploads": 2,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 0
+            },
+            "residentImageTextures": 2,
+            "peakTextureBytes": 420496644
+          }
+        ]
+      }
+    ],
+    "timingInterpretation": "Single ordered cold/warm diagnostic requests including compilation/pipeline/preparation and GPU presentation capture. Not a clean latency benchmark; no latency improvement is established.",
+    "acceptedScope": "Same-device private-owner image-asset residency across image-region A -> image-free B -> A ->5s idle -> A, at an explicit1GiB diagnostic working budget.",
+    "mechanismControls": {
+      "genuineLegacyPrunes": 2,
+      "legacyUploadsAtA": [
+        2,
+        4,
+        4
+      ],
+      "candidateUploadsAtA": [
+        2,
+        2,
+        2
+      ],
+      "candidateHitsAtA": [
+        0,
+        2,
+        4
+      ],
+      "candidateResidentImagesAcrossAllFourSteps": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "pressureEvictionsBothLanes": 0,
+      "sameAOutputHashAcrossBothLanesAndRevisits": true,
+      "scopeRetirementsExercised": false,
+      "ownerChangeRetirementGpuVerified": false
+    }
+  },
+  "historicalPressure256MiB": {
+    "status": "failed",
+    "proofDirectory": "deep-117-image-residency-256-v1",
+    "workingBudgetMiB": 256,
+    "idleMs": 5000,
+    "inputManifestStable": true,
+    "inputManifestEntries": 1158,
+    "fixtureSha256": "a0d0df3b24ea187dfd5723c9d41ab17908ce22afebb0bf64592f749d6fac3677",
+    "requestsSha256": "cfcc62e1ce423313fa2e5b0f573887f64fd1b947c63d7e62289074c91f79eb88",
+    "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+    "portableWasmSha256": "40748786a93f9bdf2775b210904d787fa9b069fa46e565035cd980bcab36fe1f",
+    "boundSourceSha256": {
+      "src/kernel/gpu/renderer.ts": "8ee544b4058ba3db55b115b114bc594f41adebe27929934b2110c814945c7591",
+      "src/kernel/scene-image-hydration.ts": "9f54a2ae7cbe6484133012c86732cbfe4c612dbf08779c2b2a4f24e9585e7b04",
+      "src/kernel/render-worker.ts": "b0459f402b549815fb0e7a9e131e15cc9e3e550ad873369b52f478b0221def9b",
+      "frontend/design-client/scripts/check-image-residency.ts": "28645f6bdd95c35bc0eff62241c25d1c23930d6e21e296f9feb17289d3347402",
+      "public/kernel/design_kernel_bg.wasm": "40748786a93f9bdf2775b210904d787fa9b069fa46e565035cd980bcab36fe1f"
+    },
+    "artifactSha256": {
+      "fixtures.json": "f6801e7443a7b1b43ea0319939caddc2551e37acc240a5ab2f474a7ff55ace3f",
+      "gpu-result.json": "ccb9a939490f495b5d2f71ef19a10198a5f6c456b5ea5cfccd82510ddbc4b658",
+      "inputs-before.json": "2ecd8e2b379d5b240e8a1da13bbaa428214e49336d9d3629ecefba1ddd91e510",
+      "failure.json": "c8a8e0235c167c8e6db4df93c7766da038613c3e123e7cc90c42dd321a9102db"
+    },
+    "runs": [
+      {
+        "lane": "legacy-no-private-owner-capability",
+        "completed": true,
+        "records": [
+          {
+            "step": 0,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 2278.699999988079,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 2,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 2
+            },
+            "residentImageTextures": 0,
+            "peakTextureBytes": 267702164
+          },
+          {
+            "step": 1,
+            "region": "image-free-region-B",
+            "referencedImages": 0,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "0fbba07a833d4dcfc7024eaf313661a0ba8f80a05c6d29b8801c612e10e60dee",
+            "differentBytes": 0,
+            "diagnosticWallMs": 2.300000011920929,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 2,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 2
+            },
+            "residentImageTextures": 0,
+            "peakTextureBytes": 267702164
+          },
+          {
+            "step": 2,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 1422.800000011921,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 4,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 4
+            },
+            "residentImageTextures": 0,
+            "peakTextureBytes": 268009236
+          },
+          {
+            "step": 3,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 1633,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 6,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 6
+            },
+            "residentImageTextures": 0,
+            "peakTextureBytes": 268009236
+          }
+        ]
+      },
+      {
+        "lane": "candidate-private-owner",
+        "completed": false,
+        "records": [
+          {
+            "step": 0,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 1921.0999999642372,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 2,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 2
+            },
+            "residentImageTextures": 0,
+            "peakTextureBytes": 267702164
+          },
+          {
+            "step": 1,
+            "region": "image-free-region-B",
+            "referencedImages": 0,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "0fbba07a833d4dcfc7024eaf313661a0ba8f80a05c6d29b8801c612e10e60dee",
+            "differentBytes": 0,
+            "diagnosticWallMs": 7,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 2,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 2
+            },
+            "residentImageTextures": 0,
+            "peakTextureBytes": 267702164
+          },
+          {
+            "step": 2,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 1459.9000000357628,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 4,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 4
+            },
+            "residentImageTextures": 0,
+            "peakTextureBytes": 268009236
+          },
+          {
+            "step": 3,
+            "region": "image-region-A",
+            "referencedImages": 2,
+            "presentedRgba8Bytes": 16384,
+            "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550",
+            "differentBytes": 0,
+            "diagnosticWallMs": 1560.8999999761581,
+            "assetCounters": {
+              "hits": 0,
+              "uploads": 6,
+              "scopeRetiredTextures": 0,
+              "legacyPrunes": 0,
+              "pressureEvictions": 6
+            },
+            "residentImageTextures": 0,
+            "peakTextureBytes": 268009236
+          }
+        ]
+      }
+    ],
+    "timingInterpretation": "Single ordered cold/warm diagnostic requests including compilation/pipeline/preparation and GPU presentation capture. Not a clean latency benchmark; no latency improvement is established.",
+    "acceptedScope": "No cache acceptance. Images were already evicted by actual working pressure inside each A request; no remaining image reached the B region-prune control.",
+    "mechanismControls": {
+      "legacyUploadsAtA": [
+        2,
+        4,
+        6
+      ],
+      "candidateUploadsAtA": [
+        2,
+        4,
+        6
+      ],
+      "candidatePressureEvictionsAtA": [
+        2,
+        4,
+        6
+      ],
+      "candidateResidentImagesAcrossAllFourSteps": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "legacyRegionPrunes": 0,
+      "sameAOutputHashAcrossBothLanesAndRevisits": true,
+      "scopeMechanismPositiveControlEstablished": false
+    }
+  },
+  "crossBudgetCohortsMatched": false,
+  "crossBudgetNote": "The 256MiB and1024MiB runs bind different renderer/script and P4/P5 WASM identities. They are separate stages, not a matched performance or budget A/B.",
+  "acceptance": {
+    "sameOwnerSourceResidencyAt1024MiBDiagnostic": true,
+    "productBudget256MiBCacheGatePassed": false,
+    "wholeGuiTileCachePassed": false,
+    "ownerChangeRetirementGpuVerified": false,
+    "latencyImprovementEstablished": false,
+    "wholeAppAccepted": false
+  },
+  "remaining": [
+    "Actual final-build256MiB source/result residency under real working pressure",
+    "Whole GUI same-camera idle/revisit and complete content quality",
+    "GPU scope-change/retirement completion path as a separate gate",
+    "Complex117/FIG rapid zoom/pan, editing, undo and original precise export"
+  ]
+}

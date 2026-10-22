@@ -10,20 +10,30 @@ import visualClassifier from './visual-omission.cjs';
 
 const argv = process.argv.slice(2);
 if (argv.includes('--help')) {
-  console.log('node testing/verification-electron-display-tier-20261021/run-sharp-zoom.mjs FIXTURE OUT [--expected-sharp] [--visual-audit] [--profile] [--stress] [--cycles=3] [--interval-ms=16] [--reference-budget-mib=1024]');
+  console.log('node testing/verification-electron-display-tier-20261021/run-sharp-zoom.mjs FIXTURE OUT [--expected-sharp] [--visual-audit] [--profile] [--stress] [--content-anchors] [--cycles=3] [--interval-ms=16] [--reference-budget-mib=1024] [--diagnostics=off|detail]');
+  console.log('--content-anchors requires --stress --visual-audit: select three actual 100% content pixels before profiling and require at least one high-zoom content reference; omission/sharpness thresholds remain unchanged.');
   console.log('--reference-budget-mib requires --visual-audit and changes only the independent after-trace reference Worker GPU working budget (integer 256..4096 MiB). The actual app policy is unchanged.');
+  console.log('--diagnostics=off disables terminal diagnostics for a separate timing/profile run; visual and expected-sharp gates require the default detail mode.');
   process.exit(0);
 }
 const [fixtureArg, outputArg, ...flags] = argv;
-if (!fixtureArg || !outputArg || flags.some(flag => !['--expected-sharp', '--visual-audit', '--profile', '--stress'].includes(flag) && !/^--(?:interval-ms=\d+(\.\d+)?|cycles=[1-6]|reference-budget-mib=\d+)$/.test(flag)))
+if (!fixtureArg || !outputArg || flags.some(flag => !['--expected-sharp', '--visual-audit', '--profile', '--stress', '--content-anchors'].includes(flag) && !/^--(?:interval-ms=\d+(\.\d+)?|cycles=[1-6]|reference-budget-mib=\d+|diagnostics=(?:off|detail))$/.test(flag)))
   throw Error('Expected FIXTURE OUT and documented flags; use --help');
 const root = process.cwd(), fixture = path.resolve(fixtureArg), out = path.resolve(outputArg);
 const desktop = path.resolve(process.env.DESIGN_DESKTOP_ROOT || path.join(root, 'frontend/design-desktop'));
 const require = createRequire(path.join(root, 'frontend/design-client/package.json'));
 const { _electron, expect } = require('@playwright/test');
 const expectedSharp = flags.includes('--expected-sharp'), visualAudit = flags.includes('--visual-audit'), profile = flags.includes('--profile');
+const diagnosticFlags = flags.filter(flag => flag.startsWith('--diagnostics='));
+if (diagnosticFlags.length > 1) throw Error('Supply at most one --diagnostics flag');
+const diagnostics = diagnosticFlags[0]?.split('=')[1] || 'detail';
+if (diagnostics === 'off' && (visualAudit || expectedSharp)) throw Error('Visual and expected-sharp acceptance require detail diagnostics');
 const stress = flags.includes('--stress'), cycles = Number(flags.find(flag => flag.startsWith('--cycles='))?.split('=')[1] || 3);
 if (!stress && flags.some(flag => flag.startsWith('--cycles='))) throw Error('--cycles requires --stress');
+const contentAnchors = flags.includes('--content-anchors');
+if (contentAnchors && (!stress || !visualAudit)) throw Error('--content-anchors requires --stress and --visual-audit');
+const contentCoverageThresholds = Object.freeze({ opaqueMinAlpha: 240, backgroundContrast: 32, edgeContrast: 32,
+  coloredPixels: 256, contrastPixels: 64, highZoom: 31, minimumSeedSpacing: .04 });
 const referenceBudgetFlags = flags.filter(flag => flag.startsWith('--reference-budget-mib='));
 if (referenceBudgetFlags.length > 1 || referenceBudgetFlags.length && !visualAudit)
   throw Error('A single --reference-budget-mib requires --visual-audit');
@@ -37,10 +47,63 @@ const visualThresholds = Object.freeze({ nearWhiteMin: 250, transparentMaxAlpha:
 const intervalMs = Number(flags.find(flag => flag.startsWith('--interval-ms='))?.split('=')[1] || 16);
 if (!(intervalMs >= 1 && intervalMs <= 1000)) throw Error('Input interval must be 1..1000 ms');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+// Read-only CPU helpers installed in this owned renderer. No model geometry,
+// approximate reference, or document mutation participates in seed selection.
+function installContentPixelHelpers({ thresholds }) {
+  const colored = (pixels, offset, background) => pixels[offset + 3] >= thresholds.opaqueMinAlpha &&
+    Math.max(Math.abs(pixels[offset] - background[0]), Math.abs(pixels[offset + 1] - background[1]),
+      Math.abs(pixels[offset + 2] - background[2])) >= thresholds.backgroundContrast;
+  const edge = (pixels, width, height, x, y) => {
+    const offset = (y * width + x) * 4; let largest = 0;
+    for (let direction = 0; direction < 4; direction++) {
+      const neighbor = direction === 0 ? x > 0 ? offset - 4 : -1 : direction === 1 ? x + 1 < width ? offset + 4 : -1
+        : direction === 2 ? y > 0 ? offset - width * 4 : -1 : y + 1 < height ? offset + width * 4 : -1;
+      if (neighbor >= 0)
+      largest = Math.max(largest, Math.abs(pixels[offset] - pixels[neighbor]),
+        Math.abs(pixels[offset + 1] - pixels[neighbor + 1]), Math.abs(pixels[offset + 2] - pixels[neighbor + 2]));
+    }
+    return largest;
+  };
+  window.__sharpContentPixelStats = (pixels, width, height, background) => {
+    if (!background || pixels.length !== width * height * 4) throw Error('Content pixel statistics require complete RGBA and page background');
+    let coloredPixels = 0, contrastPixels = 0;
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (colored(pixels, (y * width + x) * 4, background)) {
+      coloredPixels++; if (edge(pixels, width, height, x, y) >= thresholds.edgeContrast) contrastPixels++;
+    }
+    return { physicalPixels: width * height, coloredPixels, contrastPixels,
+      coverageStatus: coloredPixels >= thresholds.coloredPixels && contrastPixels >= thresholds.contrastPixels
+        ? 'coverage-exercised' : 'coverage-not-exercised', informationalOnly: true,
+      meaning: 'Opaque pixels contrasting with the page background and their four-neighbor RGB edges; coverage evidence, not image-quality acceptance.' };
+  };
+  window.__sharpSelectContentSeeds = (pixels, width, height, background) => {
+    if (!background || pixels.length !== width * height * 4) throw Error('Content seeds require complete actual RGBA and page background');
+    const candidates = [];
+    for (let y = Math.max(2, Math.ceil(height * .1)); y < Math.min(height - 2, height * .9); y++)
+      for (let x = Math.max(2, Math.ceil(width * .1)); x < Math.min(width - 2, width * .9); x++) {
+        const offset = (y * width + x) * 4; if (!colored(pixels, offset, background)) continue;
+        const contrast = edge(pixels, width, height, x, y); if (contrast < thresholds.edgeContrast) continue;
+        const nx = (x + .5) / width, ny = (y + .5) / height;
+        candidates.push({ x, y, normalized: { x: nx, y: ny }, contrast,
+          central: nx >= .4 && nx <= .6, rgba: Array.from(pixels.slice(offset, offset + 4)) });
+      }
+    candidates.sort((a, b) => Number(b.central) - Number(a.central) ||
+      Math.abs(a.normalized.x - .5) + Math.abs(a.normalized.y - .5) * .25 -
+      Math.abs(b.normalized.x - .5) - Math.abs(b.normalized.y - .5) * .25 || b.contrast - a.contrast || a.y - b.y || a.x - b.x);
+    const seeds = [];
+    for (const candidate of candidates) if (seeds.every(seed => Math.hypot(seed.normalized.x - candidate.normalized.x,
+      seed.normalized.y - candidate.normalized.y) >= thresholds.minimumSeedSpacing)) {
+      seeds.push(candidate); if (seeds.length === 3) break;
+    }
+    if (seeds.length !== 3) throw Error('Fewer than three separated non-background contrasting actual content pixels at 100%; no synthetic anchors substituted');
+    return seeds;
+  };
+}
 await mkdir(out, { recursive: false }); await mkdir(path.join(out, 'profiles'));
 const report = { status: 'running', startedAt: new Date().toISOString(), fixture: path.basename(fixture),
   fixtureSha256: hash(await readFile(fixture)), harnessSha256: hash(await readFile(new URL(import.meta.url))),
-  runtime: { node: process.version, v8: process.versions.v8 }, mode: visualAudit ? 'visual-audit' : 'latency', profile,
+  runtime: { node: process.version, v8: process.versions.v8 }, mode: visualAudit ? 'visual-audit' : 'latency', profile, diagnostics,
+  cleanTimingInstrumentation: !visualAudit && !profile && diagnostics === 'off',
+  diagnosticsScope: diagnostics === 'off' ? 'Terminal diagnostics disabled; missing detailed coverage cannot pass the strict sharpness gate.' : 'Detailed scalar diagnostics add overhead. Compare only runs with matching instrumentation; these are not clean production timings.',
   profileScope: profile ? 'Actual renderer and CDP-auto-attached worker CPU profiles around the same motion trace; no native sampler' : 'disabled',
   latencyTimingComparable: !visualAudit && !profile,
   ...(visualAudit ? { visualThresholds, visualClassifierVersion: 2,
@@ -53,7 +116,9 @@ const report = { status: 'running', startedAt: new Date().toISOString(), fixture
   workload: { startZoom: 1, checkpoints: stress ? [32, .25, 16, 32] : [7, 32], reverseTo: 1, wheelGain: .003,
     maximumDelta: stress ? 96 : 12, intervalMs, stress, cycles: stress ? cycles : 1,
     ...(stress ? { mixedPans: 'Ten real Space-drag gestures per cycle at 3200%, 25%, 1600% and 100%; repeated forward/reverse exposures, no settle between actions.',
-      wheelAnchors: [[.18, .20], [.82, .78], [.50, .50]], anchorPolicy: 'One fixed canvas-space wheel anchor within each whole round trip; different spatial regions across cycles.',
+      wheelAnchors: contentAnchors ? [] : [[.18, .20], [.82, .78], [.50, .50]], anchorPolicy: contentAnchors
+        ? 'Three actual 100% pixel seeds, central-x preferred, selected before profiler/trace; one fixed compositor-space seed per complete round trip, repeated every three cycles.'
+        : 'One fixed canvas-space wheel anchor within each whole round trip; different spatial regions across cycles.',
       ...(visualAudit ? { extraVisualSampling: 'Two reserved captures per cycle: first bound ACK during pan-32-out and pan-0.25-return, each at most once. Readbacks are serialized and add overhead; this audit is not a clean latency comparison.',
         expectedExtraVisualLabels: visualClassifier.stressVisualCaptureLabels(cycles) } : {}) } : {}),
     cadenceMeaning: 'Requested input pacing, not a display refresh-rate claim. Actual trusted event timestamps are retained.' },
@@ -70,6 +135,11 @@ await writeFile(path.join(out, 'runtime-artifacts.json'), JSON.stringify({ captu
 const save = () => writeFile(path.join(out, 'results.json'), JSON.stringify(report, null, 2));
 const logWrites = [];
 let app, page, ownedPid, phase = 'startup', tracing = false, profilerAttached = false, profilerStopped = false;
+// Results are intentionally saved in batches. This small phase journal is the
+// live observation; a stale results.json must never be used to infer that no
+// native inputs or profiler commands have executed.
+const progress = (label, fields = {}) => appendFile(path.join(out, 'phase-progress.jsonl'),
+  JSON.stringify({ label, phase, atUtc: new Date().toISOString(), ...fields }) + '\n');
 
 const stopProfiles = async interrupted => {
   if (!profile || !profilerAttached || profilerStopped || !app) return;
@@ -86,7 +156,7 @@ const stopProfiles = async interrupted => {
       const profiles = await Promise.all(entries.map(async entry => {
         const stopCommandAt = Date.now();
         try {
-          const result = await state.debug.sendCommand('Profiler.stop', {}, entry.sessionId);
+          const result = await state.sendCommand('Profiler.stop', {}, entry.sessionId);
           entry.stopped = true;
           return { target: entry.target, sessionId: entry.sessionId ?? null, startedAt: entry.startedAt,
             stopCommandAt, stoppedAt: Date.now(), sourceURLs: [...new Set(result.profile.nodes
@@ -96,7 +166,7 @@ const stopProfiles = async interrupted => {
           return null;
         }
       }));
-      try { await state.debug.sendCommand('Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }); }
+      try { await state.sendCommand('Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }); }
       catch (error) { state.errors.push({ operation: 'Target.setAutoAttach(false)', error: String(error) }); }
       finally { state.debug.removeListener('message', state.onMessage); if (state.debug.isAttached()) state.debug.detach(); }
       return { profiles: profiles.filter(Boolean), errors: state.errors, targets: state.targets, events: state.events,
@@ -196,16 +266,19 @@ try {
   const args = [desktop, '--desktop-gui-test', `--desktop-gui-test-owner=${hash(out).slice(0, 16)}`,
     ...(process.env.DESIGN_TEST_PASSIVE === '1' ? ['--disable-features=MacWebContentsOcclusion', '--disable-backgrounding-occluded-windows', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'] : [])];
   app = await _electron.launch({ executablePath: require(path.join(desktop, 'node_modules/electron')), args,
-    env: { ...env, TMPDIR: path.join(out, 'profiles'), CORE_RENDER_DIAGNOSTICS: 'detail' }, chromiumSandbox: true, timeout: 60000 });
+    env: { ...env, TMPDIR: path.join(out, 'profiles'), CORE_RENDER_DIAGNOSTICS: diagnostics === 'detail' ? 'detail' : '0' }, chromiumSandbox: true, timeout: 60000 });
   ownedPid = app.process().pid;
   await writeFile(path.join(out, 'owned-test-process.json'), JSON.stringify({ pid: ownedPid, desktop, args, profile: path.join(out, 'profiles') }, null, 2));
   for (const [name, stream] of [['stdout', app.process().stdout], ['stderr', app.process().stderr]])
     stream?.on('data', bytes => logWrites.push(appendFile(path.join(out, `host-${name}.log`), bytes)));
   page = await app.firstWindow(); page.setDefaultTimeout(20000);
+  await page.exposeFunction('__sharpReferenceProgress', row =>
+    appendFile(path.join(out, 'reference-progress.jsonl'), JSON.stringify(row) + '\n'));
   page.on('pageerror', error => report.errors.push({ phase, error: String(error) }));
   await page.waitForURL(/^design-app:/);
   await page.addInitScript({ path: fileURLToPath(new URL('./visual-omission.cjs', import.meta.url)) });
-  await page.addInitScript(({ visualAudit, visualThresholds, stress, cycles, referenceBudgetMiB }) => {
+  if (contentAnchors) await page.addInitScript(installContentPixelHelpers, { thresholds: contentCoverageThresholds });
+  await page.addInitScript(({ visualAudit, visualThresholds, stress, cycles, referenceBudgetMiB, contentAnchors, contentCoverageThresholds }) => {
     const now = () => performance.timeOrigin + performance.now(), numeric = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
     const state = window.__sharpZoom = { recording: false, phase: 'setup', inputs: [], panInputs: [], requests: [], acks: [], dropped: 0,
       visual: [], visualTasks: [], visualMilestones: new Set(), latestAck: undefined, latestWorker: undefined, startAt: 0, endAt: 0,
@@ -306,6 +379,52 @@ try {
         catch (error) { owned.delete(id); clearTimeout(timer); reject(error); }
       });
     };
+    state.readContentAnchorSeeds = async background => {
+      if (state.recording) throw Error('Content anchor readback must precede the measured trace');
+      const worker = state.latestWorker, compositor = document.querySelector('.kernel-compositor');
+      if (!worker || !compositor || typeof background !== 'string' || !CSS.supports('color', background))
+        throw Error('Actual compositor and valid authored page background required for content seeds');
+      let bitmap;
+      try {
+        const result = await ownedRead(worker, 'display-capture-content'); bitmap = result.bitmap;
+        if (result.error || !bitmap || !result.contentFrame) throw Error(result.error || 'Actual content seed readback unavailable');
+        const frame = result.contentFrame, ack = state.latestAck, workerIndex = workerInfo.get(worker)?.workerIndex;
+        if (frame.view.zoom !== 1 || bitmap.width !== Math.round(frame.width * frame.dpr) || bitmap.height !== Math.round(frame.height * frame.dpr) ||
+            !ack || ack.workerIndex !== workerIndex || ack.camera.zoom !== 1 ||
+            ack.presentationId !== (frame.presentationId ?? null) || ack.camera.x !== frame.view.x || ack.camera.y !== frame.view.y ||
+            ack.width !== frame.width || ack.height !== frame.height || ack.dpr !== frame.dpr ||
+            ack.ids.length !== frame.ids.length || !ack.ids.every((id, index) => id === frame.ids[index]))
+          throw Error('100% content seed readback is not bound to the actual compositor ACK');
+        // This local canvas owns its bitmap and readback. It is never attached
+        // to the app or used to replace product/reference pixels.
+        const pixelsCanvas = document.createElement('canvas'); pixelsCanvas.width = bitmap.width; pixelsCanvas.height = bitmap.height;
+        const context = pixelsCanvas.getContext('2d', { willReadFrequently: true });
+        if (!context) throw Error('Owned content-seed PixelCanvas unavailable');
+        context.clearRect(0, 0, bitmap.width, bitmap.height); context.fillStyle = background; context.fillRect(0, 0, 1, 1);
+        const pageBackground = Array.from(context.getImageData(0, 0, 1, 1).data);
+        context.clearRect(0, 0, bitmap.width, bitmap.height); context.drawImage(bitmap, 0, 0);
+        const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+        const seeds = window.__sharpSelectContentSeeds(pixels, bitmap.width, bitmap.height, pageBackground);
+        const digest = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)))
+          .map(value => value.toString(16).padStart(2, '0')).join('');
+        for (const seed of seeds) {
+          const patch = new Uint8Array(5 * 5 * 4); let index = 0;
+          for (let y = seed.y - 2; y <= seed.y + 2; y++) for (let x = seed.x - 2; x <= seed.x + 2; x++) {
+            const offset = (y * bitmap.width + x) * 4; patch.set(pixels.subarray(offset, offset + 4), index); index += 4;
+          }
+          seed.seedPixelsSha256 = await digest(patch);
+        }
+        const box = compositor.getBoundingClientRect();
+        if (Math.abs(box.width - frame.width) > 1 || Math.abs(box.height - frame.height) > 1)
+          throw Error('Content seed compositor CSS dimensions do not match the captured frame');
+        return { selectedBeforeTrace: true, selectedBeforeProfiler: true,
+          source: 'Actual kernel-compositor content readback into an owned PixelCanvas; no model pixel substitution.',
+          pageBackground, width: bitmap.width, height: bitmap.height, dpr: frame.dpr, view: frame.view,
+          baselinePixelsSha256: await digest(pixels), seeds,
+          baselineContent: window.__sharpContentPixelStats(pixels, bitmap.width, bitmap.height, pageBackground),
+          png: pixelsCanvas.toDataURL('image/png') };
+      } finally { bitmap?.close(); }
+    };
     state.readGpuMemoryWorkers = async () => {
       if (state.recording) throw Error('GPU memory observation cannot overlap the measured zoom interval');
       const rows = [], workers = [...observedWorkers];
@@ -393,8 +512,9 @@ try {
         method: 'Independent original render worker; exact readback at each captured camera and physical DPR, existing previewTileFallback only.' };
       let reference;
       const pending = new Map(); let next = 0;
-      const unavailable = message => { for (const capture of state.visual) if (!capture.error)
+      const unavailable = message => { for (const capture of state.visual) if (!capture.error && !capture.reference)
         capture.reference = { available: false, error: message, ...metadata }; };
+      let referenceAbandoned = false;
       try {
         if (!launch || !info?.executionPolicy || invalidFontPayloads || invalidImagePayloads)
           throw Error('Reference source, font/image payloads or observed execution policy unavailable');
@@ -421,9 +541,12 @@ try {
           try { reference.postMessage({ id, ...payload, executionPolicy: referencePolicy }); }
           catch (error) { pending.delete(id); clearTimeout(timer); reject(error); }
         });
-        for (const capture of state.visual) {
+        for (const [captureIndex, capture] of state.visual.entries()) {
           if (capture.error) continue;
+          if (contentAnchors && capture.pixels)
+            capture.contentCoverage = window.__sharpContentPixelStats(capture.pixels, capture.width, capture.height, pageBackground);
           let referenceBitmap, resultMemory = null;
+          await window.__sharpReferenceProgress({ captureIndex, label: capture.label, status: 'started', at: now() });
           try {
             if (capture.matchedAcknowledgement < 0 || !capture.acknowledgement || !capture.pixels)
               throw Error('Actual content pixels are not bound to an observed owner/camera acknowledgement');
@@ -445,6 +568,8 @@ try {
             if (result.error || result.backend !== 'webgpu' || !(result.buffer instanceof ArrayBuffer) || result.buffer.byteLength !== width * height * 4)
               throw Error(result.error || 'Reference did not return complete original GPU RGBA8 pixels');
             const actual = capture.pixels, expected = new Uint8Array(result.buffer), count = width * height;
+            const referenceContent = contentAnchors
+              ? window.__sharpContentPixelStats(expected, width, height, pageBackground) : undefined;
             const suspect = new Uint8Array(count), contrast = visualThresholds.referenceContentContrast,
               interior = visualThresholds.referenceInteriorRadius, histogram = new Uint32Array(256);
             const difference = new Uint8ClampedArray(count * 4);
@@ -510,6 +635,7 @@ try {
             for (const component of components) context.strokeRect(component.x, component.y, component.width, component.height);
             capture.reference = { ...metadata, available: true, startedAt, completedAt: now(), targetContentFrame: { ...frame, ids: [...frame.ids] },
               previewTiles: result.previewTiles, previewLane: result.previewLane, resultMemory,
+              ...(referenceContent ? { contentCoverage: referenceContent } : {}),
               referencePng, differencePng: output.toDataURL('image/png'),
               comparison: { physicalPixels: count, rgbMeanAbsolute: sum / (count * 3), rgbMaximum: max, rgbP99: p99,
                 differentPixels, unexpectedTransparentPixels: unexpectedTransparent, ignoredTransparentPageBackgroundPixels,
@@ -518,10 +644,24 @@ try {
                 connectedComponents: componentCount, suspiciousComponentCount, reportedComponents: components,
                 sampledOmissionPassed: suspiciousComponentCount === 0,
                 meaning: 'Only large near-white/transparent/page-background actual regions with contrasting expected content are flagged. Other pixel differences are report-only and may include undersampling/AA/filter differences.' } };
-          } catch (error) { capture.reference = { ...metadata, available: false, resultMemory, error: String(error) }; }
-          finally { referenceBitmap?.close?.(); delete capture.pixels; }
+          } catch (error) {
+            capture.reference = { ...metadata, available: false, resultMemory, error: String(error) };
+            if (error instanceof Error && ['Independent reference timed out', 'Independent reference worker failed'].includes(error.message)) {
+              // A timed-out request still owns GPU work. Stop this independent
+              // worker rather than placing further reference requests behind
+              // it and counting their timeouts as separate executions.
+              referenceAbandoned = true; reference?.terminate();
+              unavailable('Not executed: independent reference worker abandoned after an earlier timeout/failure');
+            }
+          } finally {
+            referenceBitmap?.close?.(); delete capture.pixels;
+            await window.__sharpReferenceProgress({ captureIndex, label: capture.label,
+              status: capture.reference?.available ? 'completed' : 'failed', referenceAbandoned, at: now() });
+          }
+          if (referenceAbandoned) break;
         }
         try {
+          if (referenceAbandoned) throw Error('Independent reference worker abandoned; no final memory query executed');
           const result = await request({ command: 'gpu-memory' }), memory = result.gpuMemory;
           metadata.referenceFinalMemoryObservation = {
             workingBudgetBytes: Number.isFinite(memory?.rendererPolicy?.workingBudgetBytes) ? memory.rendererPolicy.workingBudgetBytes : null,
@@ -564,7 +704,7 @@ try {
     };
     new MutationObserver(() => { if (state.recording) state.readRequest(); }).observe(document, {
       subtree: true, attributes: true, attributeFilter: ['data-requested-camera-x', 'data-requested-camera-y', 'data-requested-camera-zoom'] });
-  }, { visualAudit, visualThresholds, stress, cycles, referenceBudgetMiB });
+  }, { visualAudit, visualThresholds, stress, cycles, referenceBudgetMiB, contentAnchors, contentCoverageThresholds });
   // Reload only this new, still-unimported test window, so worker observation
   // starts before renderer creation. No user session or other app is touched.
   await page.reload(); await page.waitForURL(/^design-app:/);
@@ -657,19 +797,35 @@ try {
   const before = await settle();
   if (Number(before.presentation.requestedCameraZoom) !== 1) throw Error('Fresh sweep must begin at exactly 100%');
   report.before = before;
+  if (contentAnchors) {
+    const { png, ...seeds } = await page.evaluate(background => window.__sharpZoom.readContentAnchorSeeds(background), document.pages[0].background);
+    const bytes = Buffer.from(png.split(',')[1], 'base64');
+    await writeFile(path.join(out, 'content-anchor-seed.png'), bytes);
+    report.contentAnchors = { ...seeds, thresholds: contentCoverageThresholds, file: 'content-anchor-seed.png', pngSha256: hash(bytes) };
+    report.workload.wheelAnchors = seeds.seeds.map(seed => [seed.normalized.x, seed.normalized.y]);
+    await save();
+    await progress('content-seeds-ready', { seeds: seeds.seeds.length });
+  }
   if (profile) {
+    await progress('profiler-start-requested');
     report.cpuProfileStart = await app.evaluate(async ({ BrowserWindow }) => {
     const debug = BrowserWindow.getAllWindows()[0].webContents.debugger; debug.attach('1.3');
     const state = globalThis.__sharpZoomProfiler = { debug, sessions: new Map(), pending: new Set(), errors: [],
       targets: [], events: [], active: false, stopping: false,
       main: { target: { type: 'page', url: BrowserWindow.getAllWindows()[0].webContents.getURL() }, started: false, stopped: false } };
+    state.sendCommand = async (method, parameters = {}, sessionId) => {
+      let timer;
+      try { return await Promise.race([debug.sendCommand(method, parameters, sessionId),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Profiler command timed out: ' + method)), 15000); })]); }
+      finally { clearTimeout(timer); }
+    };
     const error = (operation, entry, value) => state.errors.push({ operation, target: entry?.target,
       sessionId: entry?.sessionId ?? null, error: String(value) });
     state.drain = async () => { while (state.pending.size) await Promise.allSettled([...state.pending]); };
     state.startEntry = async entry => {
       if (entry.started || entry.starting || !state.active || state.stopping) return entry.starting;
       entry.starting = (async () => { try {
-        const startedAt = Date.now(); await debug.sendCommand('Profiler.start', {}, entry.sessionId);
+        const startedAt = Date.now(); await state.sendCommand('Profiler.start', {}, entry.sessionId);
         entry.started = true; entry.startedAt = startedAt;
       } catch (value) { error('Profiler.start', entry, value); } })();
       try { await entry.starting; } finally { delete entry.starting; }
@@ -689,25 +845,39 @@ try {
       state.sessions.set(params.sessionId, entry); state.targets.push({ target: params.targetInfo, sessionId: params.sessionId, attachedAt: Date.now() });
       state.events.push({ method, target: params.targetInfo, sessionId: params.sessionId, at: Date.now(), active: state.active });
       const pending = (async () => { try {
-        await debug.sendCommand('Profiler.enable', {}, params.sessionId);
-        await debug.sendCommand('Profiler.setSamplingInterval', { interval: 1000 }, params.sessionId);
+        await state.sendCommand('Profiler.enable', {}, params.sessionId);
+        await state.sendCommand('Profiler.setSamplingInterval', { interval: 1000 }, params.sessionId);
         await state.startEntry(entry);
       } catch (value) { error('Worker profiler configuration', entry, value); }
       })().finally(() => state.pending.delete(pending)); state.pending.add(pending);
     };
+    try {
     debug.on('message', state.onMessage);
-    await debug.sendCommand('Profiler.enable');
-    await debug.sendCommand('Profiler.setSamplingInterval', { interval: 1000 });
-    await debug.sendCommand('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
+    await state.sendCommand('Profiler.enable');
+    await state.sendCommand('Profiler.setSamplingInterval', { interval: 1000 });
+    await state.sendCommand('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
     await state.drain(); state.active = true;
     const startCommandAt = Date.now();
     await Promise.all([state.startEntry(state.main), ...[...state.sessions.values()].map(entry => state.startEntry(entry))]);
     await state.drain();
     return { startCommandAt, readyAt: Date.now(), workerSessions: state.sessions.size,
       errors: state.errors.slice(), boundary: 'Profiler starts precede trace start; all native sweep inputs occur after all attached targets are started. Stop follows trace end before references.' };
+    } catch (value) {
+      // Node has not yet received the start acknowledgement, so its ordinary
+      // stopProfiles guard cannot own cleanup of a partially started session.
+      state.active = false; state.stopping = true;
+      try { debug.removeListener('message', state.onMessage); }
+      catch (cleanup) { error('Profiler.startup-listener-cleanup', undefined, cleanup); }
+      try { if (debug.isAttached()) debug.detach(); }
+      catch (cleanup) { error('Profiler.startup-debugger-cleanup', undefined, cleanup); }
+      throw value;
+    }
     });
     profilerAttached = true;
+    await progress('profiler-start-acknowledged', { workerSessions: report.cpuProfileStart.workerSessions,
+      errors: report.cpuProfileStart.errors.length });
   }
+  await progress('native-pressure-start');
   await page.evaluate(() => { const s = window.__sharpZoom; s.inputs = []; s.panInputs = []; s.requests = []; s.acks = []; s.recording = true;
     s.phase = 'up-to-700'; s.startAt = performance.timeOrigin + performance.now(); s.readRequest(); });
   tracing = true; const scripted = [], scriptedPans = []; let nextEventAt = performance.now(), controlHeld = true, stressWheelAnchor;
@@ -742,9 +912,12 @@ try {
   try {
     if (stress) {
       for (let cycle = 1; cycle <= cycles; cycle++) {
-        const box = await canvas.boundingBox(); if (!box) throw Error('Stress wheel canvas bounds unavailable');
-        const point = [[.18, .20], [.82, .78], [.50, .50]][(cycle - 1) % 3];
+        const box = contentAnchors ? await page.locator('.kernel-compositor').boundingBox() : await canvas.boundingBox();
+        if (!box) throw Error('Stress wheel canvas bounds unavailable');
+        const point = report.workload.wheelAnchors[(cycle - 1) % 3];
         stressWheelAnchor = { x: box.x + box.width * point[0], y: box.y + box.height * point[1] };
+        if (contentAnchors) (report.contentAnchors.roundTrips ??= []).push({ cycle, seedIndex: (cycle - 1) % 3,
+          normalized: { x: point[0], y: point[1] }, pointer: { ...stressWheelAnchor }, fixedForWholeRoundTrip: true });
         let previous = 1;
         for (const target of [32, .25, 16, 32, 1]) {
           await zoomStage(`${target > previous ? 'up' : 'down'}-cycle-${cycle}-to-${target}`, previous, target);
@@ -756,17 +929,22 @@ try {
     } else for (const [name, start, target] of [['up-to-700', 1, 7], ['up-to-3200', 7, 32], ['down-to-100', 32, 1]]) await zoomStage(name, start, target);
   } finally { await page.keyboard.up('Control'); await page.keyboard.up('Space'); }
   phase = 'settling'; await page.evaluate(() => { window.__sharpZoom.phase = 'settling'; });
+  await progress('native-pressure-inputs-complete', { wheelInputs: scripted.length, panGestures: scriptedPans.length,
+    stages: report.stages.length });
   await page.waitForFunction(count => window.__sharpZoom.inputs.length === count &&
     Math.abs(Number(document.querySelector('.kernel-presentation')?.dataset.requestedCameraZoom) - 1) < 1e-6,
   scripted.length, { timeout: 20000 });
   report.after = await settle();
+  await progress('settling-complete');
   if (visualAudit) await page.evaluate(async () => { const s = window.__sharpZoom; s.enqueueCapture('settled-return-100'); await Promise.all(s.visualTasks); });
   const trace = await page.evaluate(() => { const s = window.__sharpZoom; s.recording = false; s.endAt = performance.timeOrigin + performance.now();
     return { startAt: s.startAt, endAt: s.endAt, inputs: s.inputs, panInputs: s.panInputs, requests: s.requests, acks: s.acks, dropped: s.dropped,
       setupMaximumAcknowledgedZoom: s.setupMaximumAcknowledgedZoom }; });
   tracing = false;
+  await progress('actual-captures-and-trace-complete', { acknowledgements: trace.acks.length });
   if (profile) report.cpuProfileTraceBoundary = { startAt: trace.startAt, endAt: trace.endAt, interrupted: false };
   await stopProfiles(false);
+  if (profile) await progress('profiler-stop-complete');
   await writeFile(path.join(out, 'zoom-trace.json'), JSON.stringify({ scripted, scriptedPans, ...trace }, null, 2));
   if (stress && (!trace.panInputs.length || scriptedPans.length !== cycles * 10))
     report.errors.push({ phase: 'stress-input-validation', error: 'Mixed native pan inputs or required gesture cycles were not observed' });
@@ -778,6 +956,7 @@ try {
     // Reference preparation, extra GPU work, comparisons and all PNG artifact
     // writes occur after the motion trace. Never insert these into latency mode.
     phase = 'post-motion-visual-reference';
+    await progress('independent-reference-start');
     const unchanged = hash(JSON.stringify(await stored())) === report.documentSha256;
     if (unchanged) report.visualReference = { ...await page.evaluate(payload => window.__sharpZoom.referenceVisuals(payload),
       { documentJson: JSON.stringify(document), pageId: document.pages[0].id }), documentSha256: report.documentSha256 };
@@ -820,6 +999,17 @@ try {
     }
     report.visualOmissionGate = { thresholds: visualThresholds,
       ...visualClassifier.assessSampledVisualOmission(report.visual, report.errors) };
+    if (contentAnchors) {
+      const highZoom = report.visual.filter(capture => capture.reference?.available &&
+        Number(capture.frame?.view?.zoom) >= contentCoverageThresholds.highZoom);
+      const exercised = highZoom.filter(capture => capture.reference.contentCoverage?.coverageStatus === 'coverage-exercised');
+      report.contentAnchorCoverageGate = { thresholds: contentCoverageThresholds, highZoomReferences: highZoom.length,
+        exercisedHighZoomReferences: exercised.length, passed: exercised.length >= 1,
+        coverageNotExercisedLabels: highZoom.filter(capture => capture.reference.contentCoverage?.coverageStatus !== 'coverage-exercised').map(capture => capture.label),
+        meaning: 'Additional workload-coverage gate only. Blank/flat high-zoom references are not strong content evidence; omission and sharpness gates remain unchanged.' };
+      if (!report.contentAnchorCoverageGate.passed) report.errors.push({ phase: 'content-anchor-coverage',
+        error: 'No high-zoom actual GPU reference exercises the fixed non-background and local-contrast pixel counts' });
+    }
     report.visualLimit = 'Four required milestones plus every additional sampled, owner/camera-bound actual content image compared to original fine screen references. References run only after trace end. Normal white reference regions are not missing-content evidence; other differences may be AA/undersampling/filter differences. This neither proves every intermediate frame nor yields comparable latency metrics.';
   }
   // Trace recording already ended above. This existing read-only command may

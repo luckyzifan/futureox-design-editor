@@ -1,0 +1,244 @@
+{
+  "scope": "Actual immutable Electron six-cycle native wheel/pan audit with content anchors, detailed diagnostics, screenshots and actual CPU samples. Both files fail sharpness acceptance. Sampled omission controls do not cover every intermediate frame or prove blur-free rapid navigation; ACK statistics are instrumented observations, not controlled speedups.",
+  "allSharpGatesPassed": false,
+  "rawRunArtifactsRemainIgnored": true,
+  "runs": [
+    {
+      "fixture": "117",
+      "rawStatus": "failed",
+      "resultSha256": "d167d8524daf63cae57ea9008f77bcdcc98caac29cbd9194587993a96c9d20ea",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "harnessSha256": "3e5593277c054cc423187ab1b596ce67cb6bb38ea424da2df7eee85d086fb4e7",
+      "documentSha256": "9673725df6790fa8b3ea9a39ca5666b9cbfc055a91bf9a2897fa45f02a76861e",
+      "buildManifestSha256": "44149abeca7de7d52b3913746d0e120c0da759a619fb24811de51fd2b30ec209",
+      "runtimeArtifactsSha256": "563e7e3ee320702ed6d17aaac732c7d4eb7ee3966e364f472564bb1ae4422de7",
+      "wasmSha256": "20b6c2b8388ccf91641e8c363375b3b4439b87f98d5e9cb60314a31fbb94aebb",
+      "cycles": 6,
+      "wheelInputs": 366,
+      "panInputs": 960,
+      "traceDurationMs": 27409.300048828125,
+      "acknowledgements": 1752,
+      "motionAcknowledgements": 1670,
+      "settlingAcknowledgements": 82,
+      "sharpGatePassed": false,
+      "sharpViolations": 5164,
+      "sharpViolationKinds": {
+        "incomplete-or-under-density": 1739,
+        "upscaled-content": 1732,
+        "quality-not-fresh": 1659,
+        "camera-ack-lag": 2,
+        "input-ack-lag": 13,
+        "pan-input-ack-lag": 19
+      },
+      "freshMeasuredQualityCount": 93,
+      "minimumSharpCoverage": 0,
+      "inputToSubmissionAckMs": {
+        "p50": 19.300048828125,
+        "p95": 64.599853515625,
+        "max": 375.5
+      },
+      "ackScope": "Submission ACK, often retained/reprojected pixels; not new sharp-frame latency, GPU completion, scanout or FPS.",
+      "sampledVisualOmissionGate": {
+        "capturedSamples": 16,
+        "availableReferenceSamples": 9,
+        "boundSamples": 16,
+        "suspiciousComponentCount": 0,
+        "missingTextureSamples": 0,
+        "errorCount": 7,
+        "available": false,
+        "passed": false,
+        "allIntermediateFramesVerified": false
+      },
+      "contentAnchorCoverageGate": {
+        "highZoomReferences": 4,
+        "exercisedHighZoomReferences": 4,
+        "passed": true
+      },
+      "referencePolicy": {
+        "afterTrace": true,
+        "rasterProfile": "figmaSubpixel",
+        "readback": true,
+        "requestedOverrideMiB": 1024,
+        "actualAppPolicyUnchanged": true
+      },
+      "sourceFilePreserved": true,
+      "storedDocumentPreserved": true,
+      "editingUndoExportExecuted": false,
+      "cacheObservation": {
+        "before": {
+          "tilesRendered": "121",
+          "cacheHits": "535",
+          "residentBytes": "129851040",
+          "activeResidentBudget": "134217728",
+          "cacheSteadyBudget": "134217728",
+          "cacheAdmissionBudget": "160637328",
+          "residentBudget": "234881024",
+          "pageCachePages": "0",
+          "failedTiles": "0",
+          "detailReady": "true"
+        },
+        "after": {
+          "tilesRendered": "154",
+          "cacheHits": "26737",
+          "residentBytes": "134211568",
+          "activeResidentBudget": "134217728",
+          "cacheSteadyBudget": "134217728",
+          "cacheAdmissionBudget": "160637328",
+          "residentBudget": "234881024",
+          "pageCachePages": "0",
+          "failedTiles": "0",
+          "detailReady": "true"
+        }
+      },
+      "postTraceDriverObservation": {
+        "scope": "Last queried primary display driver; lifetime counters include startup and motion and are not active-phase-only.",
+        "backend": "webgpu",
+        "displayMath": false,
+        "deviceLost": false,
+        "lastWorkingBudgetBytes": 268435456,
+        "textureBytes": 250423712,
+        "displayTextureBytes": 148622120,
+        "sampleOnlyCoverageCurrentPasses": 0,
+        "sampleOnlyCoverageLifetimePasses": 0,
+        "sampleOnlyCoverageLifetimePixels": 0,
+        "sampleOnlyCoverageEligibleScenes": 0,
+        "queueWaitScope": "driver-lifetime",
+        "queueCpuWaitMs": 13605.099999964237,
+        "queueMaxCpuWaitMs": 1411.699999988079
+      },
+      "latencyTimingComparable": false,
+      "cpuProfileInterruption": false,
+      "cpuProfileErrors": 0,
+      "preservedFailure": "Seven independent post-motion references failed with invalid CommandBuffer; only 9/16 reference samples were available. This remains failed evidence.",
+      "primaryWorkerErrorCounts": {
+        "1": 145,
+        "20": 30,
+        "21": 3,
+        "64": 188
+      },
+      "lastRecoveredWorkerBudgetCounts": {
+        "20": 30,
+        "21": 3,
+        "64": 188
+      }
+    },
+    {
+      "fixture": "fig",
+      "rawStatus": "failed",
+      "resultSha256": "8e2dd43fcc2cc2ee9e715951358d8bfa7d6d487f0eff7f9661ad092c428334c3",
+      "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+      "harnessSha256": "3e5593277c054cc423187ab1b596ce67cb6bb38ea424da2df7eee85d086fb4e7",
+      "documentSha256": "4d81718cc3220d7b649d7d50cb59af1427914c791a071b2b64ba75bfbbc44ef6",
+      "buildManifestSha256": "44149abeca7de7d52b3913746d0e120c0da759a619fb24811de51fd2b30ec209",
+      "runtimeArtifactsSha256": "563e7e3ee320702ed6d17aaac732c7d4eb7ee3966e364f472564bb1ae4422de7",
+      "wasmSha256": "20b6c2b8388ccf91641e8c363375b3b4439b87f98d5e9cb60314a31fbb94aebb",
+      "cycles": 6,
+      "wheelInputs": 366,
+      "panInputs": 960,
+      "traceDurationMs": 22793.199951171875,
+      "acknowledgements": 2063,
+      "motionAcknowledgements": 1953,
+      "settlingAcknowledgements": 110,
+      "sharpGatePassed": false,
+      "sharpViolations": 6101,
+      "sharpViolationKinds": {
+        "incomplete-or-under-density": 2054,
+        "upscaled-content": 2051,
+        "quality-not-fresh": 1975,
+        "camera-ack-lag": 1,
+        "input-ack-lag": 12,
+        "pan-input-ack-lag": 8
+      },
+      "freshMeasuredQualityCount": 88,
+      "minimumSharpCoverage": 0,
+      "inputToSubmissionAckMs": {
+        "p50": 19.10009765625,
+        "p95": 62.199951171875,
+        "max": 259.099853515625
+      },
+      "ackScope": "Submission ACK, often retained/reprojected pixels; not new sharp-frame latency, GPU completion, scanout or FPS.",
+      "sampledVisualOmissionGate": {
+        "capturedSamples": 16,
+        "availableReferenceSamples": 16,
+        "boundSamples": 16,
+        "suspiciousComponentCount": 0,
+        "missingTextureSamples": 0,
+        "errorCount": 0,
+        "available": true,
+        "passed": true,
+        "allIntermediateFramesVerified": false
+      },
+      "contentAnchorCoverageGate": {
+        "highZoomReferences": 7,
+        "exercisedHighZoomReferences": 7,
+        "passed": true
+      },
+      "referencePolicy": {
+        "afterTrace": true,
+        "rasterProfile": "figmaSubpixel",
+        "readback": true,
+        "requestedOverrideMiB": 1024,
+        "actualAppPolicyUnchanged": true
+      },
+      "sourceFilePreserved": true,
+      "storedDocumentPreserved": true,
+      "editingUndoExportExecuted": false,
+      "cacheObservation": {
+        "before": {
+          "tilesRendered": "508",
+          "cacheHits": "6270",
+          "residentBytes": "134211568",
+          "activeResidentBudget": "134217728",
+          "cacheSteadyBudget": "134217728",
+          "cacheAdmissionBudget": "160637328",
+          "residentBudget": "234881024",
+          "pageCachePages": "0",
+          "failedTiles": "0",
+          "detailReady": "true"
+        },
+        "after": {
+          "tilesRendered": "759",
+          "cacheHits": "12991",
+          "residentBytes": "133657296",
+          "activeResidentBudget": "134217728",
+          "cacheSteadyBudget": "134217728",
+          "cacheAdmissionBudget": "160637328",
+          "residentBudget": "234881024",
+          "pageCachePages": "0",
+          "failedTiles": "0",
+          "detailReady": "true"
+        }
+      },
+      "postTraceDriverObservation": {
+        "scope": "Last queried primary display driver; lifetime counters include startup and motion and are not active-phase-only.",
+        "backend": "webgpu",
+        "displayMath": false,
+        "deviceLost": false,
+        "lastWorkingBudgetBytes": 536870912,
+        "textureBytes": 177587964,
+        "displayTextureBytes": 148558496,
+        "sampleOnlyCoverageCurrentPasses": 0,
+        "sampleOnlyCoverageLifetimePasses": 0,
+        "sampleOnlyCoverageLifetimePixels": 0,
+        "sampleOnlyCoverageEligibleScenes": 0,
+        "queueWaitScope": "driver-lifetime",
+        "queueCpuWaitMs": 10616.499999284744,
+        "queueMaxCpuWaitMs": 594.8000000119209
+      },
+      "latencyTimingComparable": false,
+      "cpuProfileInterruption": false,
+      "cpuProfileErrors": 0,
+      "primaryWorkerErrorCounts": {
+        "1": 166,
+        "20": 48,
+        "21": 0,
+        "64": 56
+      },
+      "lastRecoveredWorkerBudgetCounts": {
+        "20": 48,
+        "21": 0,
+        "64": 56
+      }
+    }
+  ]
+}

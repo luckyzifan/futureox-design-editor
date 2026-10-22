@@ -26,6 +26,20 @@ test('static image blur telemetry contains only five bounded numeric counters',(
     assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(sample).map(key=>[key,value]))),{})
   assert.deepEqual(sanitizeFields({staticImageBlurBytes:17825793,staticImageBlurEntries:2}),{})
 })
+test('exact X-phase reuse exposes counts and bytes without program words or identities',()=>{
+  assert.deepEqual(sanitizeFields({imageXTablePrograms:2,imageXTableDuplicateBytesSaved:5351424,
+    imageXTableAxes:[1,2,3],imageXTableSource:'private'}),{imageXTablePrograms:2,imageXTableDuplicateBytesSaved:5351424})
+  for(const value of [NaN,Infinity,-1,.5,'1',true,{}])
+    assert.deepEqual(sanitizeFields({imageXTablePrograms:value,imageXTableDuplicateBytesSaved:value}),{})
+  assert.deepEqual(sanitizeFields({imageXTablePrograms:4e6+1,imageXTableDuplicateBytesSaved:17179869185}),{})
+})
+test('background region witnesses retain only bounded anonymous frame counters',()=>{
+  const values={backdropRegionBuilds:1,backdropRegionSourcePixels:13380964,backdropRegionResultPixels:6400,
+    displayTentRadiusPasses:22,displayTentRadiusPixels:95338}
+  assert.deepEqual(sanitizeFields({...values,backdropCapture:'private',backdropBox:[0,0,4,4]}),values)
+  for(const value of [NaN,Infinity,-1,.5,'1',true,{}])
+    assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(values).map(key=>[key,value]))),{})
+})
 test('surface replacement admission exposes bounded numeric ownership counts without identifiers',()=>{
   const sample={surfaceProposedBytes:135266304,surfaceBudgetBytes:160637328,surfaceSteadyBudgetBytes:134217728,
     surfaceTotalBudgetBytes:234881024,surfaceReserveBytes:26419600,surfaceHeldCount:25,surfaceUsedCount:92,

@@ -1,0 +1,164 @@
+{
+  "scope": "Immutable deep1 diagnostic candidate before equivalent-mask/image-identity/capture-read work. Actual six-cycle Electron native wheel/pan with CDP CPU profiles and sampled GPU-content references. Profiler and captures affect timing. Submission ACK is not physical display FPS. Both whole acceptance results remain failed.",
+  "compilePolicy": {
+    "scope": "Explicit diagnostic build flags for immutable deep1 Electron host. Native navigation candidate remains off to isolate existing navigation lane and painter/image changes. Not product acceptance.",
+    "VITE_DESIGN_EXACT_CLAMP_PREFIX": "1",
+    "VITE_DESIGN_DESKTOP_IMAGE_SOURCE": "1",
+    "VITE_DESIGN_QUEUE_WAIT_TIMING": "1",
+    "VITE_DESIGN_NATIVE_NAVIGATION": "0"
+  },
+  "wasmSha256": "4efb26d67f71bf031fed9efbdfe3ea15385c57017de46aa5fd465a13136679a9",
+  "runs": [
+    {
+      "fixture": "117",
+      "rawStatus": "failed",
+      "resultSha256": "63f8a2531fa7cbacb8a219a2fb28ccbc293af4c689f5e1fd26697c821f608cb1",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "documentSha256": "6b6881f0d9b76d6985ae99485fd7315c4cd3dfacd957176c41e50bfa826afd08",
+      "cycles": 6,
+      "wheelInputs": 366,
+      "panInputs": 960,
+      "acknowledgements": 1772,
+      "sharpGatePassed": false,
+      "minimumSharpCoverage": 0,
+      "maximumUpscale": null,
+      "nullUpscaleMeaning": "Missing or nonfinite upper bound; never zero or a sharpness pass.",
+      "inputToSubmissionAckMs": {
+        "p50": 18.699951171875,
+        "p95": 83.699951171875,
+        "max": 863.400146484375
+      },
+      "captures": 16,
+      "referencesAvailable": 14,
+      "suspiciousComponentsInAvailableReferences": 0,
+      "referenceErrors": [
+        "Error: Independent reference timed out",
+        "Error: Independent reference timed out"
+      ],
+      "sourceFilePreserved": true,
+      "storedDocumentPreserved": true,
+      "editingUndoExportExecuted": false,
+      "deduplicatedFences": [
+        {
+          "reasonCode": 3,
+          "count": 4,
+          "observedCpuQueueCompletionWaitSumMs": 82.8,
+          "unsupportedRequestCount": 0
+        },
+        {
+          "reasonCode": 5,
+          "count": 21,
+          "observedCpuQueueCompletionWaitSumMs": 141.5,
+          "unsupportedRequestCount": 0
+        },
+        {
+          "reasonCode": 6,
+          "count": 268,
+          "observedCpuQueueCompletionWaitSumMs": 30338.1,
+          "unsupportedRequestCount": 0
+        },
+        {
+          "reasonCode": 8,
+          "count": 62,
+          "observedCpuQueueCompletionWaitSumMs": 1191.7,
+          "unsupportedRequestCount": 0
+        }
+      ],
+      "profiles": [
+        {
+          "thread": "renderer",
+          "activeMs": 6446.414,
+          "idleMs": 38261.627,
+          "programUnattributedMs": 2341.357,
+          "profileSha256": "41efccf6087b8d4f3dbabf53b8db903a9740acc8f2e13925eb0f4149317120c4"
+        },
+        {
+          "thread": "render-worker",
+          "activeMs": 4334.383,
+          "idleMs": 42623.958,
+          "programUnattributedMs": 91.042,
+          "profileSha256": "5816ebb78054abbd95893dd035fc385f845403b5a3ac64ea37f7d2ad5ac192c7"
+        }
+      ]
+    },
+    {
+      "fixture": "fig",
+      "rawStatus": "failed",
+      "resultSha256": "bb24961ffc304fd75d818c2bbe006967cea7413e310e0d2bcaafd28d86add5e3",
+      "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+      "documentSha256": "46420f5dc7fddf3c2a0f56739e6d3858fa2e5252790cecfbf51247228fc7bde5",
+      "cycles": 6,
+      "wheelInputs": 366,
+      "panInputs": 960,
+      "acknowledgements": 2262,
+      "sharpGatePassed": false,
+      "minimumSharpCoverage": 0,
+      "maximumUpscale": null,
+      "nullUpscaleMeaning": "Missing or nonfinite upper bound; never zero or a sharpness pass.",
+      "inputToSubmissionAckMs": {
+        "p50": 19.10009765625,
+        "p95": 211,
+        "max": 327.199951171875
+      },
+      "captures": 16,
+      "referencesAvailable": 14,
+      "suspiciousComponentsInAvailableReferences": 0,
+      "referenceErrors": [
+        "Error: PREVIEW_BUDGET: Error: GPU 积分模糊半径超过 512 像素",
+        "Error: webgpu: GPU 积分模糊半径超过 512 像素"
+      ],
+      "sourceFilePreserved": true,
+      "storedDocumentPreserved": true,
+      "editingUndoExportExecuted": false,
+      "deduplicatedFences": [
+        {
+          "reasonCode": 5,
+          "count": 55,
+          "observedCpuQueueCompletionWaitSumMs": 951.4,
+          "unsupportedRequestCount": 0
+        },
+        {
+          "reasonCode": 6,
+          "count": 12,
+          "observedCpuQueueCompletionWaitSumMs": 11.4,
+          "unsupportedRequestCount": 0
+        },
+        {
+          "reasonCode": 8,
+          "count": 2,
+          "observedCpuQueueCompletionWaitSumMs": 20.6,
+          "unsupportedRequestCount": 0
+        },
+        {
+          "reasonCode": 9,
+          "count": 8,
+          "observedCpuQueueCompletionWaitSumMs": 7.9,
+          "unsupportedRequestCount": 0
+        },
+        {
+          "reasonCode": 10,
+          "count": 8,
+          "observedCpuQueueCompletionWaitSumMs": 4,
+          "unsupportedRequestCount": 0
+        }
+      ],
+      "profiles": [
+        {
+          "thread": "renderer",
+          "activeMs": 6004.958,
+          "idleMs": 11493.52,
+          "programUnattributedMs": 2416.491,
+          "profileSha256": "8ab3e19243c432741ad8a8f1fe75c7a71db52352221dca1b6d18421fe8192aae"
+        },
+        {
+          "thread": "render-worker",
+          "activeMs": 2754.376,
+          "idleMs": 17110.957,
+          "programUnattributedMs": 49.645,
+          "profileSha256": "d76dba4cf8630a3063278d775d524fa2ae3492ce5ba88e7ddab37d56885c4742"
+        }
+      ]
+    }
+  ],
+  "flameSummarySha256": "63dbd0e53cbda59caa062d974f8103145d1781e461bae76bf5e355d6335e3fcc"
+}

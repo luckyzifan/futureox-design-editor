@@ -23,6 +23,19 @@ const diagnostics=process.env.DESIGN_RENDER_DIAGNOSTICS||(sampling?'detail':'0')
 const extended=process.env.DESIGN_EXTENDED==='1';report.extendedEnabled=extended;
 const verifyExport=process.env.DESIGN_VERIFY_EXPORT==='1';report.verifyExportEnabled=verifyExport;
 if(verifyExport&&!extended)throw Error('DESIGN_VERIFY_EXPORT=1 requires DESIGN_EXTENDED=1 so authored edit/undo/persistence run first');
+const verifyHeld=process.env.DESIGN_VERIFY_HELD_DRAG==='1';
+const heldDragStress=process.env.DESIGN_HELD_DRAG_STRESS==='1';report.heldDragStressEnabled=heldDragStress;
+if(heldDragStress&&(!extended||!verifyHeld))throw Error('DESIGN_HELD_DRAG_STRESS=1 requires DESIGN_EXTENDED=1 and DESIGN_VERIFY_HELD_DRAG=1');
+const editZoom=Number(process.env.DESIGN_EDIT_ZOOM||100);report.requestedEditZoom=editZoom;
+if(![100,3200].includes(editZoom)||editZoom!==100&&(!extended||!verifyHeld))
+ throw Error('DESIGN_EDIT_ZOOM supports 100 or 3200; 3200 requires extended held-drag verification');
+// Self-contained helpers: the acknowledgement predicate also runs in Chromium.
+function heldDragStressPaths(x,y){return [[44,26],[336.5,191.25],[-148.25,-83.5],[44,26]].map(([dx,dy],index)=>({index,dx,dy,x:x+dx,y:y+dy,steps:24}))}
+function heldDragStressAcknowledged(expectedMoves){
+ const c=document.querySelector('.kernel-compositor')?.dataset;
+ return Number.isSafeInteger(expectedMoves)&&expectedMoves>0&&!!c&&!c.interactionError&&c.interactionActive==='true'&&
+  Number(c.interactionSamples)>0&&Number(c.interactionMoves)===expectedMoves&&Number(c.contentSequence)===expectedMoves;
+}
 let app,page,phase='startup';
 const save=()=>writeFile(path.join(out,'results.json'),JSON.stringify(report,null,2));
 const compositorPng=async()=>Buffer.from((await page.locator('.kernel-compositor').evaluate(c=>c.toDataURL('image/png'))).split(',')[1],'base64');
@@ -296,14 +309,15 @@ try {
    await page.getByLabel('搜索图层',{exact:true}).fill('');
    await canvas.focus();await page.keyboard.press('v');await page.keyboard.press('Shift+2');
    const fitted=await settle();if(!fitted.ok)throw Error('The selected edit target did not reach exact presentation');
-   await setZoom(100);
+   await setZoom(editZoom);
   });
   const beforeEdit=await stored(),beforeEditHash=hash(JSON.stringify(beforeEdit)),beforeTransform=beforeEdit.nodes[group.id]?.transform;
   if(!Array.isArray(beforeTransform)||beforeTransform.length!==6)throw Error('The original edit target has no persisted transform');
   if(beforeEditHash!==report.document.sha256)throw Error('Selecting the edit target changed the document before the edit');
   report.extended.edit={mode:isFig?'property-x':'pointer-drag',target:{id:group.id,name:group.name,kind:group.kind},
-   beforeSha256:beforeEditHash,beforeTransform:[...beforeTransform],zoom:100};
+   beforeSha256:beforeEditHash,beforeTransform:[...beforeTransform],zoom:editZoom};
   if(isFig){
+   if(heldDragStress)report.extended.edit.heldDragStress={requested:true,status:'notExecuted',reason:'FIG uses property-x; no held native pointer drag was performed'};
    const input=page.locator('.inspector').getByLabel('X',{exact:true}),initialX=Number(await input.inputValue());
    if(!Number.isFinite(initialX))throw Error('The actual X property is not a finite editable value');
    report.extended.edit.property={name:'X',before:initialX,requested:initialX+24};
@@ -332,20 +346,61 @@ try {
    const {x,y}=geometry.point;report.extended.edit.pointer={from:{x,y},to:{x:x+44,y:y+26},steps:24};
    const dragStart=await snapshot();
    report.extended.edit.previewBefore=dragStart.compositor;
+   const stress=heldDragStress?report.extended.edit.heldDragStress={requested:true,status:'running',
+    scope:'One held native mouse gesture; requested fractional coordinates and long excursions are recorded, not assumed to prove a nativePose or rebase.',
+    paths:heldDragStressPaths(x,y),segments:[],beforeInteractionMoves:Number(dragStart.compositor.interactionMoves||0)}:undefined;
    await extra('pointer-drag',async()=>{
+    if(stress)await page.evaluate(()=>{
+     if(window.__displayHeldDragStress)throw Error('A held-drag recorder is already owned');
+     const s={pathIndex:0,moves:[],run:true};window.__displayHeldDragStress=s;
+     s.move=e=>{if(s.run&&e.pointerType==='mouse'&&(e.buttons&1))s.moves.push({pathIndex:s.pathIndex,at:performance.now(),x:e.clientX,y:e.clientY,buttons:e.buttons,pointerId:e.pointerId})};
+     window.addEventListener('pointermove',s.move,true);
+    });
     await canvas.focus();await page.mouse.move(x,y);await page.mouse.down();
     try{
      await expect(canvas).toHaveAttribute('data-transform-gesture','move');
      await page.mouse.move(x+44,y+26,{steps:24});
-     if(process.env.DESIGN_VERIFY_HELD_DRAG==='1'){
-      const holdStarted=performance.now();
-      await page.waitForFunction(()=>{
-       const c=document.querySelector('.kernel-compositor')?.dataset;
-       return c&&!c.interactionError&&Number(c.interactionMoves)>0&&
-        Number(c.interactionSamples)>0&&Number(c.contentSequence)>=Number(c.interactionMoves);
-      },null,{timeout:20000});
+     if(stress){
+      stress.segments.push({pathIndex:0,returnedAt:performance.now(),snapshot:await snapshot()});
+      for(const target of stress.paths.slice(1)){
+       await page.evaluate(index=>{window.__displayHeldDragStress.pathIndex=index},target.index);
+       const startedAt=performance.now(),before=await snapshot();
+       await page.mouse.move(target.x,target.y,{steps:target.steps});
+       const returnedAt=performance.now();
+       stress.segments.push({pathIndex:target.index,startedAt,returnedAt,beforeInteractionMoves:Number(before.compositor.interactionMoves||0),snapshot:await snapshot()});
+      }
+      stress.lastMoveReturnedAt=stress.segments.at(-1).returnedAt;
+      // Drain the final pointer callback and its React publication while held.
+      // This is not a GPU-completion certificate; the exact input ACK below is.
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+      stress.finalInput=await snapshot();
+      stress.nativeMoves=await page.evaluate(()=>window.__displayHeldDragStress.moves);
+      stress.expectedContentSequence=Number(stress.finalInput.compositor.interactionMoves);
+      const last=stress.nativeMoves.at(-1),target=stress.paths.at(-1);
+      stress.actualNativeMoves=stress.nativeMoves.length;
+      stress.actualInteractionMoves=stress.expectedContentSequence-stress.beforeInteractionMoves;
+      stress.observedFractionalCoordinates=stress.nativeMoves.some(move=>!Number.isInteger(move.x)||!Number.isInteger(move.y));
+      if(!last||last.pathIndex!==target.index||Math.abs(last.x-target.x)>1||Math.abs(last.y-target.y)>1||!(last.buttons&1)||
+          stress.paths.some(target=>!stress.nativeMoves.some(move=>move.pathIndex===target.index))||
+          !Number.isSafeInteger(stress.expectedContentSequence)||stress.expectedContentSequence<=stress.segments.at(-1).beforeInteractionMoves)
+       throw Error('Held stress final native path was not accepted as a new interaction input');
+     }
+     if(verifyHeld){
+      const holdStarted=stress?stress.lastMoveReturnedAt:performance.now();
+      if(stress)await page.waitForFunction(heldDragStressAcknowledged,stress.expectedContentSequence,{timeout:20000});
+      else await page.waitForFunction(()=>{
+        const c=document.querySelector('.kernel-compositor')?.dataset;
+        return c&&!c.interactionError&&Number(c.interactionMoves)>0&&
+         Number(c.interactionSamples)>0&&Number(c.contentSequence)>=Number(c.interactionMoves);
+       },null,{timeout:20000});
       report.extended.edit.heldPreview={waitMs:performance.now()-holdStarted,...await snapshot()};
       if(report.extended.edit.heldPreview.compositor.interactionActive!=='true')throw Error('Held gesture ended before a verified content update; inspect capture trace');
+      if(stress){
+       stress.heldFinal=report.extended.edit.heldPreview;
+       stress.acknowledgedContentSequence=Number(stress.heldFinal.compositor.contentSequence);
+       if(stress.acknowledgedContentSequence!==stress.expectedContentSequence||Number(stress.heldFinal.compositor.interactionMoves)!==stress.expectedContentSequence)
+        throw Error('Held stress content acknowledgement no longer matches the final input');
+      }
       if(process.env.DESIGN_TEST_HIDDEN!=='1'&&process.env.DESIGN_TEST_PASSIVE!=='1')await page.locator('.kernel-compositor').screenshot({path:path.join(out,'held-drag-compositor.png')});
       const readbackStarted=performance.now();
       const heldPng=await page.locator('.kernel-compositor').evaluate(c=>c.toDataURL('image/png'));
@@ -354,15 +409,24 @@ try {
       // for complete actual pixels, not an exclusive GPU timestamp or photon time.
       report.extended.edit.heldPreview.verifiedPixelsUpperMs=performance.now()-holdStarted;
       await writeFile(path.join(out,'held-drag-canvas-buffer.png'),Buffer.from(heldPng.split(',')[1],'base64'));
+      if(stress)stress.status='passed';
      }
-    }finally{await page.mouse.up()}
+    }finally{
+     try{
+      if(stress){
+       if(stress.status==='running')stress.status='failed';
+       await page.evaluate(()=>{const s=window.__displayHeldDragStress;if(s){s.run=false;window.removeEventListener('pointermove',s.move,true);delete window.__displayHeldDragStress}});
+      }
+     }catch(error){if(stress)stress.status='failed';throw error
+     }finally{await page.mouse.up()}
+    }
     await expect(page.locator('.inspector')).toHaveAttribute('data-node-id',group.id);
    });
    const dragEnd=await snapshot();report.extended.edit.previewAfter=dragEnd.compositor;
    if(dragEnd.compositor.interactionError||Number(dragEnd.compositor.interactionMoves)<=Number(dragStart.compositor.interactionMoves||0))
     throw Error('Drag preview did not accept real movement: '+JSON.stringify(dragEnd.compositor));
    if(process.env.DESIGN_TEST_HIDDEN!=='1'&&process.env.DESIGN_TEST_PASSIVE!=='1')await page.locator('.kernel-compositor').screenshot({path:path.join(out,'settled-drag-compositor.png')});
-   if(process.env.DESIGN_VERIFY_HELD_DRAG==='1'){
+   if(verifyHeld){
     const settledPng=await page.locator('.kernel-compositor').evaluate(c=>c.toDataURL('image/png'));
     await writeFile(path.join(out,'settled-drag-canvas-buffer.png'),Buffer.from(settledPng.split(',')[1],'base64'));
    }

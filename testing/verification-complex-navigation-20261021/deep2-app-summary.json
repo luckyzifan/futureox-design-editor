@@ -1,0 +1,163 @@
+{
+  "scope": "Immutable deep2 actual Electron six-cycle native wheel/pan diagnostic with CPU sampling and capture overhead. Completed diagnostic runs; whole sharpness acceptance failed for BOTH files. Sampled omission pass does not cover every intermediate frame or establish no blur. Some high-zoom references were blank, so later content-anchor coverage gate is required.",
+  "wasmSha256": "40748786a93f9bdf2775b210904d787fa9b069fa46e565035cd980bcab36fe1f",
+  "runs": [
+    {
+      "fixture": "117",
+      "rawStatus": "completed",
+      "resultSha256": "45fab7fdf3bd3a988df249d0f5f6ec61afae74b5e6e2a6d4e2d89512a946f520",
+      "fixtureSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "harnessSha256": "be23f2910874f89d7ecb84b657a6b521ab3b5993a009a44a6697f90f44c5ebbe",
+      "documentSha256": "31743ebfd1a4b4ab1212261455eb979fa56b7d581bf2b816b586116028730c9a",
+      "cycles": 6,
+      "wheelInputs": 366,
+      "panInputs": 960,
+      "acknowledgements": 1763,
+      "sharpGatePassed": false,
+      "sharpViolations": 5249,
+      "minimumSharpCoverage": 0,
+      "maximumUpscale": null,
+      "inputToSubmissionAckMs": {
+        "p50": 19,
+        "p95": 79.5,
+        "max": 1386.60009765625
+      },
+      "sampledVisualOmissionGate": {
+        "thresholds": {
+          "nearWhiteMin": 250,
+          "transparentMaxAlpha": 4,
+          "referenceOpaqueMinAlpha": 240,
+          "backgroundTolerance": 4,
+          "referenceContentContrast": 32,
+          "referenceInteriorRadius": 1,
+          "minimumDifference": 32,
+          "componentMinPixels": 256,
+          "componentMinSide": 8,
+          "reportedComponentLimit": 32
+        },
+        "capturedSamples": 16,
+        "availableReferenceSamples": 16,
+        "boundSamples": 16,
+        "missingRequiredLabels": [],
+        "suspiciousComponentCount": 0,
+        "missingTextureSamples": 0,
+        "errorCount": 0,
+        "available": true,
+        "passed": true,
+        "allIntermediateFramesVerified": false
+      },
+      "sourceFilePreserved": true,
+      "storedDocumentPreserved": true,
+      "editingUndoExportExecuted": false,
+      "cacheObservation": {
+        "before": {
+          "tilesRendered": "121",
+          "cacheHits": "535",
+          "residentBytes": "129851040",
+          "activeResidentBudget": "134217728",
+          "cacheSteadyBudget": "134217728",
+          "cacheAdmissionBudget": "160637328",
+          "residentBudget": "234881024",
+          "pageCachePages": "0"
+        },
+        "after": {
+          "tilesRendered": "274",
+          "cacheHits": "5151",
+          "residentBytes": "127316592",
+          "activeResidentBudget": "134217728",
+          "cacheSteadyBudget": "134217728",
+          "cacheAdmissionBudget": "160637328",
+          "residentBudget": "234881024",
+          "pageCachePages": "0"
+        }
+      }
+    },
+    {
+      "fixture": "fig",
+      "rawStatus": "completed",
+      "resultSha256": "056d4f6ce68b3e0ba22e09ed10a8e8c19463905ce84b619187c13d8ce688379e",
+      "fixtureSha256": "3b2f071aebe931a1cfee60f04d5a1b49ea438dc9134ea628d584cce38949716c",
+      "harnessSha256": "be23f2910874f89d7ecb84b657a6b521ab3b5993a009a44a6697f90f44c5ebbe",
+      "documentSha256": "3d97ad1779dcfbeff60b2ac2191b79ce280c74db9127fa0aa52bbe133f72d449",
+      "cycles": 6,
+      "wheelInputs": 366,
+      "panInputs": 960,
+      "acknowledgements": 1846,
+      "sharpGatePassed": false,
+      "sharpViolations": 5734,
+      "minimumSharpCoverage": 0,
+      "maximumUpscale": null,
+      "inputToSubmissionAckMs": {
+        "p50": 19.400146484375,
+        "p95": 101.10009765625,
+        "max": 559
+      },
+      "sampledVisualOmissionGate": {
+        "thresholds": {
+          "nearWhiteMin": 250,
+          "transparentMaxAlpha": 4,
+          "referenceOpaqueMinAlpha": 240,
+          "backgroundTolerance": 4,
+          "referenceContentContrast": 32,
+          "referenceInteriorRadius": 1,
+          "minimumDifference": 32,
+          "componentMinPixels": 256,
+          "componentMinSide": 8,
+          "reportedComponentLimit": 32
+        },
+        "capturedSamples": 16,
+        "availableReferenceSamples": 16,
+        "boundSamples": 16,
+        "missingRequiredLabels": [],
+        "suspiciousComponentCount": 0,
+        "missingTextureSamples": 0,
+        "errorCount": 0,
+        "available": true,
+        "passed": true,
+        "allIntermediateFramesVerified": false
+      },
+      "sourceFilePreserved": true,
+      "storedDocumentPreserved": true,
+      "editingUndoExportExecuted": false,
+      "cacheObservation": {
+        "before": {
+          "tilesRendered": "506",
+          "cacheHits": "6265",
+          "residentBytes": "134211568",
+          "activeResidentBudget": "134217728",
+          "cacheSteadyBudget": "134217728",
+          "cacheAdmissionBudget": "160637328",
+          "residentBudget": "234881024",
+          "pageCachePages": "0"
+        },
+        "after": {
+          "tilesRendered": "775",
+          "cacheHits": "11622",
+          "residentBytes": "125203024",
+          "activeResidentBudget": "134217728",
+          "cacheSteadyBudget": "134217728",
+          "cacheAdmissionBudget": "160637328",
+          "residentBudget": "234881024",
+          "pageCachePages": "0"
+        }
+      }
+    }
+  ],
+  "laterInterruptedRun": {
+    "resultSha256": "a1f45b6891367e93853b9cd4f21785995331528ae095161a9b715e7bd130a9b4",
+    "rawStatus": "failed",
+    "explicitWorkingBudgetMiB": 4096,
+    "motionStagesCompleted": 90,
+    "wheelInputs": 366,
+    "panInputs": 960,
+    "acknowledgements": 1443,
+    "completeVisualAcceptance": false,
+    "operatorInterruption": "Root misread a stale, batched results.json as stalled profiler startup and SIGTERM-interrupted its OWN test during post-motion independent references. Final records confirm all 90 native motion stages and profiler start succeeded. Original stop and correction artifacts are both retained privately. This is not a failed profiler-start or no-input run.",
+    "errors": [
+      {
+        "phase": "post-motion-visual-reference",
+        "error": "Error: page.evaluate: Target page, context or browser has been closed"
+      }
+    ]
+  }
+}

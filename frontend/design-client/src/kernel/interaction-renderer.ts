@@ -459,7 +459,9 @@ export class InteractionRenderer {
         const livePlan = { document: props.document, pageId, ids: [...props.selection], layers: [] }
         this.resident = { plan: livePlan, tiles: [], scale: view.zoom * dpr,
           offsets: interactionOffsets(livePlan, props.document)!, active: props.active, live: true }
-        const entries = scene(props.document, pageId)
+        // Borrow only current Canvas geometry under its original slot/scope
+        // guards. No cache is created for mutable or standalone callers.
+        const entries = props.scene?.entriesFor(props.document, pageId, props.epoch) ?? scene(props.document, pageId)
         Object.assign(this.resident, buildInteractionDependencyScope(props.document, pageId, entries,
           props.selection, { zoom: view.zoom, dpr, allowFixedBackdrop: import.meta.env.VITE_DESIGN_LOCAL_BACKDROP !== '0' }))
         this.liveAuthored = props.document

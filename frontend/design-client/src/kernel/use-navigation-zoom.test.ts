@@ -31,18 +31,19 @@ function harness() {
   owners.push(dispose)
   return {
     render(zoom: number, identity = 'document', enabled = true,
-      pan: { enabled?: boolean; held?: boolean; x?: number; y?: number } = {}) {
+      pan: { enabled?: boolean; held?: boolean; x?: number; y?: number; sampleOnFrame?: boolean } = {}) {
       state = ref = effect = 0; layouts = []
       const internal = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
       const previous = internal.H
       let value: ReturnType<typeof useNavigationZoom>
       try { internal.H = dispatcher; value = useNavigationZoom({ x: pan.x || 0, y: pan.y || 0, zoom },
-        identity, enabled, pan.enabled === true, pan.held === true) }
+        identity, enabled, pan.enabled === true, pan.held === true, pan.sampleOnFrame === true) }
       finally { internal.H = previous }
       layouts.forEach(run => run()); return value!
     },
     frame(at: number) { time = at; const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(at)) },
     visibility(hidden: boolean) { page.hidden = hidden; listeners.forEach(listener => listener()) },
+    pendingCallbacks() { return [...frames.values()] },
     get pending() { return frames.size }, get listeners() { return listeners.size }, dispose,
   }
 }
@@ -132,5 +133,32 @@ test('the normal hook keeps conservative 160ms settling with one live RAF subscr
   }
   h.frame(320)
   expect(h.render(21).active).toBe(false)
+  expect(h.pending).toBe(0)
+})
+
+test('native hook coalesces all raw targets until RAF without losing the immediate first sample', () => {
+  const h = harness(), policy = { sampleOnFrame: true }
+  h.render(1, 'document', true, policy); h.render(2, 'document', true, policy)
+  const first = h.render(2, 'document', true, policy).sample!
+  expect(first.view.zoom).toBe(2)
+  for (let zoom = 3; zoom <= 100; zoom++)
+    expect(h.render(zoom, 'document', true, policy).sample).toBe(first)
+  expect(h.pending).toBe(1)
+  h.frame(8)
+  const latest = h.render(100, 'document', true, policy).sample!
+  expect(latest.view.zoom).toBe(100); expect(latest.sequence).toBe(first.sequence + 1)
+  h.frame(159); expect(h.render(100, 'document', true, policy).active).toBe(true)
+  h.frame(160); expect(h.render(100, 'document', true, policy).active).toBe(false)
+})
+
+test.each(['document', 'policy', 'disabled', 'visibility'] as const)('an already queued native RAF callback cannot publish after %s ownership is revoked', change => {
+  const h = harness(), policy = { sampleOnFrame: true }
+  h.render(1, 'document', true, policy); h.render(2, 'document', true, policy)
+  const stale = h.pendingCallbacks()[0]
+  if (change === 'visibility') { h.visibility(true); h.render(2, 'document', true, policy) }
+  else h.render(2, change === 'document' ? 'replacement' : 'document', change !== 'disabled',
+    change === 'policy' ? {} : policy)
+  expect(h.pending).toBe(0)
+  stale(500)
   expect(h.pending).toBe(0)
 })

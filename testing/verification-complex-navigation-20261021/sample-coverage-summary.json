@@ -1,0 +1,431 @@
+{
+  "schema": 1,
+  "proof": "independent-four-phase-raw-scalar-coverage",
+  "status": "passed",
+  "caseCount": 16,
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": "",
+    "isFallbackAdapter": false
+  },
+  "rawFormat": "r32float",
+  "rawLane": "r",
+  "rendererCanonicalization": false,
+  "fullMaskReadWordsIncludingDeliberatelyDifferentControls": 57775392,
+  "countMeaning": "Read volume includes phase0 and deliberate negative controls; it is not a total zero-difference claim",
+  "groups": {
+    "accepted": {
+      "caseCount": 9,
+      "fullMaskReadWords": 55677776,
+      "phaseDifferentWordsVersusPhase0": 0,
+      "regionComparedWords": 1912,
+      "regionDifferentWords": 0,
+      "certifiedCaseCount": 9
+    },
+    "declared-different": {
+      "caseCount": 5,
+      "fullMaskReadWords": 416,
+      "phaseDifferentWordsVersusPhase0": 13,
+      "regionComparedWords": 444,
+      "regionDifferentWords": 0,
+      "certifiedCaseCount": 0
+    },
+    "unknown": {
+      "caseCount": 2,
+      "fullMaskReadWords": 2097200,
+      "phaseDifferentWordsVersusPhase0": 0,
+      "regionComparedWords": 532,
+      "regionDifferentWords": 0,
+      "certifiedCaseCount": 0
+    }
+  },
+  "regionDifferentWords": 0,
+  "freshNativeCompileMatched": true,
+  "freshBrowserNativeCompileMatched": true,
+  "inputHashesStable": true,
+  "browserErrorCount": 0,
+  "bindingsSha256": {
+    "sceneSha256": "91b7d963a027bf556c7eddad3ee593260431ab15114a89c5cf313913612bb7d1",
+    "documentSha256": "a0d0df3b24ea187dfd5723c9d41ab17908ce22afebb0bf64592f749d6fac3677",
+    "requestFileSha256": "f38710da2551f6a338b009e77a6edb6ce18b050537f56137de7f40460976ca6a",
+    "executionRequestSha256": "e3fc7bdc92eaf921c387843b8d4448e603c2813c656f8fd3433b1cc84448cba7",
+    "wasmSha256": "4efb26d67f71bf031fed9efbdfe3ea15385c57017de46aa5fd465a13136679a9",
+    "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da"
+  },
+  "candidatePathCount": 5,
+  "uniqueCandidateCount": 4,
+  "selectedPathCount": 3,
+  "rawResultsSha256": "b3f6c13398b8c85657f323717f7070557c12906ac7694925eeebbe4f0cbce74e",
+  "sourceSha256": {
+    "src/kernel/gpu/area-shader.ts": "119af509c5969f231aa2ba40b1b62d033f555252dd945156df74ceffb37eb35e",
+    "src/kernel/gpu/sample-equivalent-coverage.test.ts": "56966bbb666af841b46a5fca902e85f7ea8c6fb437cc66727827acb462c14c92",
+    "src/kernel/gpu/sample-equivalent-coverage.ts": "6087e603703b9a57236719c318e0be844eb2e8c8e10b5e3fc84db45275738494",
+    "src/kernel/gpu/webgpu.ts": "affe40efa67b1f0ea0da100551fcc06bab7d7f1acdd472c2677c82f9c3613d6a",
+    "public/kernel/design_kernel_bg.wasm": "4efb26d67f71bf031fed9efbdfe3ea15385c57017de46aa5fd465a13136679a9",
+    "shaders/area.wgsl": "9d16a377c02bbf473d7255eaf1fa52ca5e509eab4cd856c7e07e44ea939e06f7",
+    "shaders/coverage64.wgsl": "bbbc444b7485e58ed01d9be8a452a1546c57692af62c7de52513fe9046950f57",
+    "shaders/vector.wgsl": "9c789c39659f02154abb81f87ee9923ed277966160329afa88580aab7de76973",
+    "frontend/design-client/scripts/check-sample-coverage.ts": "81c638a26e138fe6cdcf96c6f5786be5c5431e1bcb462b5e1f2872d08d798f1e"
+  },
+  "cases": [
+    {
+      "name": "partial-and-empty-rows",
+      "classification": "accepted",
+      "certified": true,
+      "width": 12,
+      "height": 2,
+      "phaseHashes": [
+        "8eb18041dfd86a0a99893c28c9493ba07648741d525d31be4417b641933fbb32",
+        "8eb18041dfd86a0a99893c28c9493ba07648741d525d31be4417b641933fbb32",
+        "8eb18041dfd86a0a99893c28c9493ba07648741d525d31be4417b641933fbb32",
+        "8eb18041dfd86a0a99893c28c9493ba07648741d525d31be4417b641933fbb32"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 96,
+      "regionDifferentWords": 0,
+      "regionWords": 124,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "1b189fb53f1b9e564e0a6366060479fa1559795dbc36b2a86119013f27c93631",
+      "programSha256": "f72a00c405f50a1e2778cbfa844252206603b95b6571e1338777a3e7f4243e20"
+    },
+    {
+      "name": "same-raw-spans-offsets-separate",
+      "classification": "declared-different",
+      "certified": false,
+      "width": 12,
+      "height": 1,
+      "phaseHashes": [
+        "ecc0ade51415acb5952dd0435e54e1a408e1979f1bdd6e0fcb9a5fac166ad78c",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "ecc0ade51415acb5952dd0435e54e1a408e1979f1bdd6e0fcb9a5fac166ad78c",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451"
+      ],
+      "phaseDifferentWords": 4,
+      "fullMaskWords": 48,
+      "regionDifferentWords": 0,
+      "regionWords": 84,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "b40e808e5a3b91fe8a5ec78b2385c1f358caa6b3afc1a39ddf59b8042fa2ee44",
+      "programSha256": "b5747319c47db5e20b4e24e7309c0228b5bcecb3201fcfbdf6772d3a1b8a5f8e"
+    },
+    {
+      "name": "different-programs-same-integer-runs",
+      "classification": "accepted",
+      "certified": true,
+      "width": 12,
+      "height": 1,
+      "phaseHashes": [
+        "2133b379d8a8c474cb589da02972290fc63c5f4cdd627d97ec8740b96fff7335",
+        "2133b379d8a8c474cb589da02972290fc63c5f4cdd627d97ec8740b96fff7335",
+        "2133b379d8a8c474cb589da02972290fc63c5f4cdd627d97ec8740b96fff7335",
+        "2133b379d8a8c474cb589da02972290fc63c5f4cdd627d97ec8740b96fff7335"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 48,
+      "regionDifferentWords": 0,
+      "regionWords": 84,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "b40e808e5a3b91fe8a5ec78b2385c1f358caa6b3afc1a39ddf59b8042fa2ee44",
+      "programSha256": "54a4b66eeb2afa3bfa4494100703804e980222cffa8631544bee229f72dfe543"
+    },
+    {
+      "name": "overlap-run-minimum-does-not-retreat",
+      "classification": "accepted",
+      "certified": true,
+      "width": 12,
+      "height": 1,
+      "phaseHashes": [
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 48,
+      "regionDifferentWords": 0,
+      "regionWords": 84,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "6bcf7ae991316bd56e5380be9822ef255ecb7632437671c52581dab57e29688c",
+      "programSha256": "64a907961924cea1472fe20a34643ff5d22b711b61816c843f0443af7781b834"
+    },
+    {
+      "name": "endpoint-adjust-retreat-negative",
+      "classification": "declared-different",
+      "certified": false,
+      "width": 12,
+      "height": 1,
+      "phaseHashes": [
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "31c6f275bedd7b98914facb1051335578633c0dcaf5663a65721f3f04b79b73d",
+        "31c6f275bedd7b98914facb1051335578633c0dcaf5663a65721f3f04b79b73d",
+        "31c6f275bedd7b98914facb1051335578633c0dcaf5663a65721f3f04b79b73d"
+      ],
+      "phaseDifferentWords": 3,
+      "fullMaskWords": 48,
+      "regionDifferentWords": 0,
+      "regionWords": 84,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "6bcf7ae991316bd56e5380be9822ef255ecb7632437671c52581dab57e29688c",
+      "programSha256": "0928838a2e67576b1413ddef9a522dd6bc462eb6aa02a06fe66555cbd1c17488"
+    },
+    {
+      "name": "signed-zero-endpoint-order",
+      "classification": "accepted",
+      "certified": true,
+      "width": 12,
+      "height": 1,
+      "phaseHashes": [
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 48,
+      "regionDifferentWords": 0,
+      "regionWords": 84,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "b40e808e5a3b91fe8a5ec78b2385c1f358caa6b3afc1a39ddf59b8042fa2ee44",
+      "programSha256": "d65bbb4498819713c242e65a3f715a60768bbfb6559196fc7aafbaefd24b1a06"
+    },
+    {
+      "name": "negative-upper-phase-split",
+      "classification": "declared-different",
+      "certified": false,
+      "width": 12,
+      "height": 1,
+      "phaseHashes": [
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "31c6f275bedd7b98914facb1051335578633c0dcaf5663a65721f3f04b79b73d",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451"
+      ],
+      "phaseDifferentWords": 1,
+      "fullMaskWords": 48,
+      "regionDifferentWords": 0,
+      "regionWords": 84,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "b40e808e5a3b91fe8a5ec78b2385c1f358caa6b3afc1a39ddf59b8042fa2ee44",
+      "programSha256": "114f8f73b189c9100d5055899f2f5fddece5eb62047be55ccd7760994a60e695"
+    },
+    {
+      "name": "single-pixel-both-endpoints",
+      "classification": "declared-different",
+      "certified": false,
+      "width": 12,
+      "height": 1,
+      "phaseHashes": [
+        "77d047801d7f45f48bc9723982714b3b6820c57cef8a2d3402bfcedcbc4c3eb5",
+        "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1",
+        "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1",
+        "77d047801d7f45f48bc9723982714b3b6820c57cef8a2d3402bfcedcbc4c3eb5"
+      ],
+      "phaseDifferentWords": 2,
+      "fullMaskWords": 48,
+      "regionDifferentWords": 0,
+      "regionWords": 84,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "b40e808e5a3b91fe8a5ec78b2385c1f358caa6b3afc1a39ddf59b8042fa2ee44",
+      "programSha256": "c9a87ab4011958e066fc3f2e008fed83772e151bacc03e36746ae457b7419858"
+    },
+    {
+      "name": "seventeen-span-binary-search",
+      "classification": "accepted",
+      "certified": true,
+      "width": 56,
+      "height": 1,
+      "phaseHashes": [
+        "b09eea3edefec3ab8b0819cd0f7678b3c081287c1f41d01d5337f72de814e1cf",
+        "b09eea3edefec3ab8b0819cd0f7678b3c081287c1f41d01d5337f72de814e1cf",
+        "b09eea3edefec3ab8b0819cd0f7678b3c081287c1f41d01d5337f72de814e1cf",
+        "b09eea3edefec3ab8b0819cd0f7678b3c081287c1f41d01d5337f72de814e1cf"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 224,
+      "regionDifferentWords": 0,
+      "regionWords": 108,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "df2c1d1206e075e35378dd063ce506efae6678ede9a7910a3ffb767e4144b732",
+      "programSha256": "10222ebd100517895254d217c27075cc54f4259063055d6c90bf235d22d395c0"
+    },
+    {
+      "name": "seventeen-span-final-endpoint-split",
+      "classification": "declared-different",
+      "certified": false,
+      "width": 56,
+      "height": 1,
+      "phaseHashes": [
+        "1cd4ed3e1e847fdd59b72c185d6fecc60e95c272aa1430f840dc9b95b41ecb95",
+        "b09eea3edefec3ab8b0819cd0f7678b3c081287c1f41d01d5337f72de814e1cf",
+        "b09eea3edefec3ab8b0819cd0f7678b3c081287c1f41d01d5337f72de814e1cf",
+        "b09eea3edefec3ab8b0819cd0f7678b3c081287c1f41d01d5337f72de814e1cf"
+      ],
+      "phaseDifferentWords": 3,
+      "fullMaskWords": 224,
+      "regionDifferentWords": 0,
+      "regionWords": 108,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "df2c1d1206e075e35378dd063ce506efae6678ede9a7910a3ffb767e4144b732",
+      "programSha256": "21bf0783eb3069a96106a3ac31a4d59ccfb7c0a0e31e15e54ac7e513a21a4a60"
+    },
+    {
+      "name": "nonzero-program-storage-offset",
+      "classification": "accepted",
+      "certified": true,
+      "width": 12,
+      "height": 1,
+      "phaseHashes": [
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 48,
+      "regionDifferentWords": 0,
+      "regionWords": 84,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "b107c269c093fb550e9f9ebe6634128897353b8cc134ab7580431c19408087b4",
+      "programSha256": "bafb95798e71b1a4b323c793c0c487daf1523e067f89be171a4c9f1b466adecf"
+    },
+    {
+      "name": "unsupported-sample-count-equal-allowed",
+      "classification": "unknown",
+      "certified": false,
+      "width": 12,
+      "height": 1,
+      "phaseHashes": [
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451",
+        "afc32ff2da686ce52c5eff93fef9529026824db157c60ba9f2313a095de52451"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 48,
+      "regionDifferentWords": 0,
+      "regionWords": 84,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "188ea68e0726bf3fcca23b65bd007cc6ee9d5047c6f8fc5205c17ab770493cba",
+      "programSha256": "81a297c560d4aa5843e7dcacf4d7405f3d339719175902b958401e49e5d6b31a"
+    },
+    {
+      "name": "aliased-row-span-work-budget",
+      "classification": "unknown",
+      "certified": false,
+      "width": 8192,
+      "height": 64,
+      "phaseHashes": [
+        "221da67aba54e5321ed368bcf808a6a4ce34ffbea9b1930fbf745c6099e3ca78",
+        "221da67aba54e5321ed368bcf808a6a4ce34ffbea9b1930fbf745c6099e3ca78",
+        "221da67aba54e5321ed368bcf808a6a4ce34ffbea9b1930fbf745c6099e3ca78",
+        "221da67aba54e5321ed368bcf808a6a4ce34ffbea9b1930fbf745c6099e3ca78"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 2097152,
+      "regionDifferentWords": 0,
+      "regionWords": 448,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "96971244822a6ea9b104fca2e770c723feb4eddc724332f3f687f06ceb05ac99",
+      "programSha256": "f82447b0768adb0d91d9a061e9160fb235a4d3262ce1d003f4788cde4f9e7923"
+    },
+    {
+      "name": "bound-117-accepted-1",
+      "classification": "accepted",
+      "certified": true,
+      "width": 3658,
+      "height": 3658,
+      "phaseHashes": [
+        "82b458f7eaf1674258dc4bd513d8c6880e8c51515ee2c5ec2a1a3cfcc25496b8",
+        "82b458f7eaf1674258dc4bd513d8c6880e8c51515ee2c5ec2a1a3cfcc25496b8",
+        "82b458f7eaf1674258dc4bd513d8c6880e8c51515ee2c5ec2a1a3cfcc25496b8",
+        "82b458f7eaf1674258dc4bd513d8c6880e8c51515ee2c5ec2a1a3cfcc25496b8"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 53523856,
+      "regionDifferentWords": 0,
+      "regionWords": 448,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "495c28484c5b37a19303713cdaa354b95a84e172f2ba1fdbefb94fd5de967b23",
+      "programSha256": "ab02dfd7b4c1c6691db2b4060b9ab9d107fcab2df3db3e2bc39dd6affea3d8ad"
+    },
+    {
+      "name": "bound-117-accepted-2",
+      "classification": "accepted",
+      "certified": true,
+      "width": 1283,
+      "height": 416,
+      "phaseHashes": [
+        "8f05b1c26d8ed3259d9c204563f24af8fee419c7873cca4ca39fcf0128ebec8e",
+        "8f05b1c26d8ed3259d9c204563f24af8fee419c7873cca4ca39fcf0128ebec8e",
+        "8f05b1c26d8ed3259d9c204563f24af8fee419c7873cca4ca39fcf0128ebec8e",
+        "8f05b1c26d8ed3259d9c204563f24af8fee419c7873cca4ca39fcf0128ebec8e"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 2134912,
+      "regionDifferentWords": 0,
+      "regionWords": 448,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "6361a99277fb9999bf2f81276cf476c64f233a26126cdad52b354db43a3b3696",
+      "programSha256": "ab02dfd7b4c1c6691db2b4060b9ab9d107fcab2df3db3e2bc39dd6affea3d8ad"
+    },
+    {
+      "name": "bound-117-accepted-3",
+      "classification": "accepted",
+      "certified": true,
+      "width": 68,
+      "height": 68,
+      "phaseHashes": [
+        "ce09a3fb4559fb496f33fa25556cf22c67960ee910394b72e3353ef2c35fb177",
+        "ce09a3fb4559fb496f33fa25556cf22c67960ee910394b72e3353ef2c35fb177",
+        "ce09a3fb4559fb496f33fa25556cf22c67960ee910394b72e3353ef2c35fb177",
+        "ce09a3fb4559fb496f33fa25556cf22c67960ee910394b72e3353ef2c35fb177"
+      ],
+      "phaseDifferentWords": 0,
+      "fullMaskWords": 18496,
+      "regionDifferentWords": 0,
+      "regionWords": 448,
+      "rawFormat": "r32float",
+      "rawLane": "r",
+      "rendererCanonicalization": false,
+      "pathSha256": "2244d327b712ff4de9999d840812be26843765684ec461c2aaa93f38c48e297e",
+      "programSha256": "ab02dfd7b4c1c6691db2b4060b9ab9d107fcab2df3db3e2bc39dd6affea3d8ad"
+    }
+  ],
+  "limitations": [
+    "Independent raw mask operator gate only; no whole-scene color, latency, editing, undo or export acceptance",
+    "Unknown predicates remain declined even when this particular numerical output happens to match",
+    "Deliberate negative controls must differ and must never certify; total read-word count is not an all-zero-difference total"
+  ]
+}

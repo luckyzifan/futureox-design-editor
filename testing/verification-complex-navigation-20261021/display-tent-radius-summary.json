@@ -1,0 +1,267 @@
+{
+  "scope": "Separate default-off SDR display-radius approximation. Actual GPU presentation byte comparison; cold regional timing is not whole-editor input latency or exclusive GPU execution time.",
+  "featureFlags": {
+    "VITE_DESIGN_DISPLAY_TENT_RADIUS": "1",
+    "VITE_DESIGN_EXACT_CLAMP_PREFIX": "1"
+  },
+  "fixtureHashes": {
+    "documentSha256": "a0d0df3b24ea187dfd5723c9d41ab17908ce22afebb0bf64592f749d6fac3677",
+    "requestsSha256": "f38710da2551f6a338b009e77a6edb6ce18b050537f56137de7f40460976ca6a",
+    "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+    "wasmSha256": "40748786a93f9bdf2775b210904d787fa9b069fa46e565035cd980bcab36fe1f"
+  },
+  "singleRegion256MiB": {
+    "sameCheckedSourceCohort": true,
+    "inputEntries": 1155,
+    "sourceManifestSha256": "27ce055633572ae26b30e8e0f3a90b0681b29290e37e74a4d32e3c99f27dc342",
+    "actualPresentedComponents": 16384,
+    "differentBytes": 0,
+    "maximumByteDifference": 0,
+    "predeclaredMaximumByteDifference": 1,
+    "exact": {
+      "coldRequestMs": 2636.100000023842,
+      "finishMs": 1006.5,
+      "queueCpuWaitMs": 1536.4999999403954,
+      "queueMaxCpuWaitMs": 1002.3999999761581,
+      "peakTextureBytes": 267702164,
+      "changedRadiusAxes": 0,
+      "changedRadiusPixels": 0,
+      "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550"
+    },
+    "display": {
+      "coldRequestMs": 1742.2000000476837,
+      "finishMs": 205.29999995231628,
+      "queueCpuWaitMs": 737.6999999284744,
+      "queueMaxCpuWaitMs": 463.5999999642372,
+      "peakTextureBytes": 267702164,
+      "changedRadiusAxes": 22,
+      "changedRadiusPixels": 95338,
+      "outputSha256": "9a24cab1ac7ac90de6fc0c46b6740dac81b2fdf80965c2844cce6f947b777550"
+    },
+    "exactResultSha256": "5c6ddee4f79ffd2721ad8df39f8d795d9f7fb5a809a3561f58148b983750946b",
+    "displayResultSha256": "b59c3fcc2a42969efb3aea7b8340bdc0c127ff884ea58405b881731163289217"
+  },
+  "largerRegionQuality": {
+    "workingBudgetMiB": 1024,
+    "meaning": "Explicit diagnostic reference allowance, not product working-budget or latency acceptance.",
+    "sameCheckedSourceCohort": true,
+    "inputEntries": 1155,
+    "sourceManifestSha256": "2c5a294d91d2de50d69bc2b63a6e142d533413cb7d0065e9914fa93a5b931130",
+    "windows": [
+      {
+        "index": 0,
+        "width": 128,
+        "height": 128,
+        "components": 65536,
+        "differentBytes": 0,
+        "maximumByteDifference": 0,
+        "referenceNonWhitePixels": 16384,
+        "exact": {
+          "coldRequestMs": 2963.899999976158,
+          "finishMs": 1740.800000011921,
+          "queueCpuWaitMs": 1735.699999988079,
+          "queueMaxCpuWaitMs": 1734.3999999761581,
+          "peakTextureBytes": 448600324,
+          "changedRadiusAxes": 0,
+          "changedRadiusPixels": 0,
+          "outputSha256": "18d01033f88fb608481ee802ef4083ae8acb7c68b9419f28621bd97aced264d7"
+        },
+        "display": {
+          "coldRequestMs": 1895.5,
+          "finishMs": 713.6999999880791,
+          "queueCpuWaitMs": 715.1999999880791,
+          "queueMaxCpuWaitMs": 710.6999999880791,
+          "peakTextureBytes": 448543684,
+          "changedRadiusAxes": 24,
+          "changedRadiusPixels": 196458,
+          "outputSha256": "18d01033f88fb608481ee802ef4083ae8acb7c68b9419f28621bd97aced264d7"
+        }
+      },
+      {
+        "index": 1,
+        "width": 128,
+        "height": 128,
+        "components": 65536,
+        "differentBytes": 0,
+        "maximumByteDifference": 0,
+        "referenceNonWhitePixels": 16384,
+        "exact": {
+          "coldRequestMs": 2006.9000000357628,
+          "finishMs": 1641.699999988079,
+          "queueCpuWaitMs": 3413.199999988079,
+          "queueMaxCpuWaitMs": 1734.3999999761581,
+          "peakTextureBytes": 448600324,
+          "changedRadiusAxes": 0,
+          "changedRadiusPixels": 0,
+          "outputSha256": "b213c3ead3996fba8d099ea8f645d603b488a47482c2b68821088e3be78df75e"
+        },
+        "display": {
+          "coldRequestMs": 1025.5,
+          "finishMs": 662,
+          "queueCpuWaitMs": 1410,
+          "queueMaxCpuWaitMs": 710.6999999880791,
+          "peakTextureBytes": 448543684,
+          "changedRadiusAxes": 24,
+          "changedRadiusPixels": 196458,
+          "outputSha256": "b213c3ead3996fba8d099ea8f645d603b488a47482c2b68821088e3be78df75e"
+        }
+      },
+      {
+        "index": 2,
+        "width": 128,
+        "height": 128,
+        "components": 65536,
+        "differentBytes": 0,
+        "maximumByteDifference": 0,
+        "referenceNonWhitePixels": 16384,
+        "exact": {
+          "coldRequestMs": 2075.699999988079,
+          "finishMs": 1717.699999988079,
+          "queueCpuWaitMs": 5164.599999964237,
+          "queueMaxCpuWaitMs": 1734.3999999761581,
+          "peakTextureBytes": 577058680,
+          "changedRadiusAxes": 0,
+          "changedRadiusPixels": 0,
+          "outputSha256": "e9f424be3a23c580e449572933d9413008a4fee2e236149660d3e9d297e15191"
+        },
+        "display": {
+          "coldRequestMs": 1189.2000000476837,
+          "finishMs": 792,
+          "queueCpuWaitMs": 2242.899999976158,
+          "queueMaxCpuWaitMs": 790.5,
+          "peakTextureBytes": 577002040,
+          "changedRadiusAxes": 26,
+          "changedRadiusPixels": 215227,
+          "outputSha256": "e9f424be3a23c580e449572933d9413008a4fee2e236149660d3e9d297e15191"
+        }
+      },
+      {
+        "index": 3,
+        "width": 128,
+        "height": 128,
+        "components": 65536,
+        "differentBytes": 0,
+        "maximumByteDifference": 0,
+        "referenceNonWhitePixels": 16384,
+        "exact": {
+          "coldRequestMs": 2286.800000011921,
+          "finishMs": 1890.199999988079,
+          "queueCpuWaitMs": 7100.199999988079,
+          "queueMaxCpuWaitMs": 1886.5,
+          "peakTextureBytes": 577058680,
+          "changedRadiusAxes": 0,
+          "changedRadiusPixels": 0,
+          "outputSha256": "20c0314f76bb44663cbce4cf2312e307fe4adbd448e921343fb15337ff0de70e"
+        },
+        "display": {
+          "coldRequestMs": 1101.1000000238419,
+          "finishMs": 745.6999999880791,
+          "queueCpuWaitMs": 3013.9999999403954,
+          "queueMaxCpuWaitMs": 790.5,
+          "peakTextureBytes": 577002040,
+          "changedRadiusAxes": 26,
+          "changedRadiusPixels": 215227,
+          "outputSha256": "20c0314f76bb44663cbce4cf2312e307fe4adbd448e921343fb15337ff0de70e"
+        }
+      }
+    ],
+    "actualPresentedComponents": 262144,
+    "differentBytes": 0,
+    "maximumByteDifference": 0,
+    "predeclaredMaximumByteDifference": 1,
+    "requestsSha256": "3c6429b230fbf5ad4e773f48437aa8731baf6ae89baae493672ae53afcb22f39",
+    "exactResultSha256": "e70f0814d867b08821e5ea660639a17a3a10e69aba44ab4a5d4897bd9a1ce234",
+    "displayResultSha256": "7ea277dbdd544a9cc4d35a300d4a48247c97bbaeb5b0dbe78843efe95cea6e57"
+  },
+  "wholeEditorAccepted": false,
+  "nestedHighRadiusFallbackCovered": false,
+  "defaultEnabled": false,
+  "continuousZoomLowRadius": {
+    "scope": "Later 1..2048 candidate, matched checked source/WASM/document/fonts/request and explicit diagnostic 1024MiB, actual GPU ImageBitmap presentation. Per-request cold totals include pipelines and differ in order; not app input latency or a repeated speed estimate.",
+    "boundSourceInputsSha256": "eb93eade6c64e0068576972c2ca9201490483ca23db19341bf73715a095f6067",
+    "rawExactResultSha256": "71f7a4ed580e9e67e2ea4e53c45b2280262c3577598d8e6fcd26e7f5e2babf6a",
+    "rawDisplayResultSha256": "52bd6d961f01c4c5b4c3cb7bc54c44623650439cfa52bd85d43f332f3b935af4",
+    "workingBudgetMiB": 1024,
+    "predeclaredMaximumByteDifference": 1,
+    "cases": [
+      {
+        "requestIndex": 0,
+        "physicalZoom": 2,
+        "presentedComponents": 16384,
+        "maximumByteDifference": 0,
+        "differentBytes": 0,
+        "referenceNonWhitePixels": 4002,
+        "exactColdDiagnosticMs": 1138.1000000238419,
+        "displayColdDiagnosticMs": 1194.199999988079,
+        "actualChangedAxes": 2,
+        "outputSha256": "54d1ce0053553d2bdcaa14995d64e43337f59ae6ede33ebc5ee63cfa08454069"
+      },
+      {
+        "requestIndex": 1,
+        "physicalZoom": 8,
+        "presentedComponents": 16384,
+        "maximumByteDifference": 0,
+        "differentBytes": 0,
+        "referenceNonWhitePixels": 4096,
+        "exactColdDiagnosticMs": 404.10000002384186,
+        "displayColdDiagnosticMs": 334.30000001192093,
+        "actualChangedAxes": 2,
+        "outputSha256": "8065171c77ff7eefdd6f5ed1f309fec402e16f39f5a8d1487b78ec3bc3277e48"
+      },
+      {
+        "requestIndex": 2,
+        "physicalZoom": 16,
+        "presentedComponents": 16384,
+        "maximumByteDifference": 0,
+        "differentBytes": 0,
+        "referenceNonWhitePixels": 4096,
+        "exactColdDiagnosticMs": 917.2000000476837,
+        "displayColdDiagnosticMs": 544.5,
+        "actualChangedAxes": 2,
+        "outputSha256": "7730eade40e056723678ad5407d161c76d1a56e9e31e20f6fa1bfff4d7e24628"
+      }
+    ]
+  },
+  "wideFallbackExecution": {
+    "scope": "Formerly unsupported raw radius>512 real 117 region now completes via actual production operator. No original whole-scene GPU/CPU pixel reference exists for this formerly rejected request; this is execution, not quality or latency acceptance.",
+    "sourceInputsSha256": "ccb9ee36db912bcef3d708ff2bd24ab8ec261f9ddee4977ccd5849f100fbbf1c",
+    "rawResultSha256": "8ed937082ecc715b4b9402d8523a383f3280cd1ac3d9f6de94eec663c5ef9c1a",
+    "completed": true,
+    "actualOperatorHits": 1,
+    "coldDiagnosticMs": 5685.600000023842,
+    "peakTextureBytes": 1056007140,
+    "workingBudgetMiB": 1024,
+    "renderWork": {
+      "graphMs": 758.1999999880791,
+      "finishMs": 4541.800000011921,
+      "checkpointMs": 0,
+      "passPixels": 300317249,
+      "drawCalls": 1254,
+      "commandSubmissions": 1,
+      "imageXTableBuilds": 1,
+      "imageXTablePixels": 5856400,
+      "imageXTableBytes": 11112896,
+      "imageXTablePrograms": 4,
+      "materialFieldBuildMs": 6.299999952316284,
+      "maskRasterizations": 24,
+      "backdropReads": 1,
+      "opaqueTentPasses": 0,
+      "wholeFilterAxes": 0,
+      "textureBytes": 1040699940,
+      "workingBudgetBytes": 1073741824
+    },
+    "actualRawRadius": 588.6074829101561,
+    "nestedHeldInteractionExecuted": false,
+    "lowLatencyAccepted": false
+  },
+  "wideOperatorSameRadiusProofV1": {
+    "scope": "Production band operator vs independent whole driver H/V prefix passes at SAME selected display radius. Not original scalar shader, original-radius equivalence, whole document or app latency.",
+    "rawResultSha256": "98eff65f217874a9e94c7db5736fdac6cccebd3a64af7067d99d99ac8fccc3e9",
+    "sourceInputsSha256": "023b7d26eeffb433b7436d561badd5c4927e50110c7e1fbc17004966c75ed98f",
+    "status": "passed",
+    "cases": 4,
+    "rawFloatComponents": 170032,
+    "different": 0,
+    "adapter": "metal-3"
+  }
+}

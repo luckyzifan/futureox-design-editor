@@ -1,0 +1,2570 @@
+{
+  "schema": 1,
+  "candidate": "native-painter-capture-read-footprint",
+  "defaultEnabled": false,
+  "nativeCpuStatus": "passed",
+  "gpuExecuted": true,
+  "portableWasmStatus": "rebuilt-identical-public-generated",
+  "gpuColorStatus": "small-scene-gates-passed",
+  "trustedEnvelopePolicy": {
+    "field": "gpuPainterCaptureReads",
+    "type": "boolean",
+    "requiresGpuPainterSupport": true,
+    "wholeExportPixelPreviewUnchanged": true,
+    "fallback": "proven phase3, otherwise original conservative compiler"
+  },
+  "readDomain": "Frozen phase3 rectangular hull(post_composites[id],backdrop_inputs[id]) intersect full mode26 bilinear load footprint expanded by 2, union current phase4 demand",
+  "tests": {
+    "newFootprintUnits": 6,
+    "newPacketPolicyIntegration": 7,
+    "existingPhaseBoundaries": 6,
+    "existingPainterBackdrop": 20,
+    "totalNonOverlappingPassed": 39,
+    "failed": 0
+  },
+  "sourceSha256": {
+    "design-studio/crates/design-kernel/src/gpu.rs": "8d75387cdf055c1f89799465a60add011d46ff39921e77e0b18d4c6f37afc10e",
+    "design-studio/crates/design-kernel/tests/gpu_painter_capture_reads.rs": "9d487a1cd8bcc493d94f478e505e324085c94b073365fb1b5fe199a182c4aee6",
+    "design-studio/crates/design-kernel/examples/profile_painter_capture_reads.rs": "a40c3333f27512e6f204d1737e56d40ef7ddee634283bc6d6db799aab9048f0b"
+  },
+  "inputSha256": {
+    "documentSha256": "a0d0df3b24ea187dfd5723c9d41ab17908ce22afebb0bf64592f749d6fac3677",
+    "requestFileSha256": "f38710da2551f6a338b009e77a6edb6ce18b050537f56137de7f40460976ca6a",
+    "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da"
+  },
+  "numericPreflightSha256": "d856e173b241c9e4325482436ad494ec66618ddf85173b4f37deab81b2212dad",
+  "pairedNativePreflight": [
+    {
+      "backdropBoxBitChanges": 0,
+      "captureReads": {
+        "backdropCount": 1,
+        "childrenInputBoxes": [
+          [
+            -1182.0,
+            958.0,
+            2402.0,
+            1248.0
+          ],
+          [
+            -1182.0,
+            958.0,
+            2428.0,
+            1248.0
+          ],
+          [
+            -1182.0,
+            958.0,
+            2428.0,
+            1248.0
+          ]
+        ],
+        "extent": {
+          "h": 2478,
+          "w": 3658,
+          "x": -1797,
+          "y": 343
+        },
+        "filteredSourceSizes": [
+          {
+            "height": 2478,
+            "width": 3658
+          }
+        ],
+        "nodeCount": 9,
+        "nodeRectPixels": 27753409,
+        "pixels": 9064524,
+        "rootInputBox": [
+          -2.0,
+          958.0,
+          68.0,
+          68.0
+        ]
+      },
+      "checkedBackdropBoxes": 1,
+      "effectFieldChanges": 0,
+      "matrixBitChanges": 0,
+      "phaseThree": {
+        "backdropCount": 1,
+        "childrenInputBoxes": [
+          [
+            -1182.0,
+            -222.0,
+            2402.0,
+            2428.0
+          ],
+          [
+            -1182.0,
+            -222.0,
+            2428.0,
+            2428.0
+          ],
+          [
+            -1182.0,
+            -222.0,
+            2428.0,
+            2428.0
+          ]
+        ],
+        "extent": {
+          "h": 3658,
+          "w": 3658,
+          "x": -1797,
+          "y": -837
+        },
+        "filteredSourceSizes": [
+          {
+            "height": 3658,
+            "width": 3658
+          }
+        ],
+        "nodeCount": 9,
+        "nodeRectPixels": 49229409,
+        "pixels": 13380964,
+        "rootInputBox": [
+          -2.0,
+          958.0,
+          68.0,
+          68.0
+        ]
+      },
+      "phaseThreeRestoredExactly": true,
+      "requestIndex": 0
+    }
+  ],
+  "limitations": [
+    "Native preflight sizes remain allocation metadata, not measured whole-app GPU memory or latency",
+    "Independent small-scene GPU gates do not establish real 117/FIG or complex Electron acceptance",
+    "Rejected domains retain historical wider-reference differences and certify only unchanged legacy same-crop equality",
+    "Candidate remains default-off pending real-document paired GPU and whole-app quality/history/export acceptance"
+  ],
+  "portableWasmSha256": "40748786a93f9bdf2775b210904d787fa9b069fa46e565035cd980bcab36fe1f",
+  "gpuExecutionScope": "Independent synthetic 40-case raw GPU gates; actual-document local requests and unavailable-reference results are separately identified. No whole-app acceptance.",
+  "realDocumentGpuStatus": "Local 117 and FIG execution evidence is separate; FIG r1920 complete-scene CPU parity unavailable because unchanged CPU halo guard rejects the reference. Complex Electron acceptance remains separate.",
+  "complexElectronStatus": "unrun",
+  "wholeAppAccepted": false,
+  "smallSceneGpu": {
+    "status": "passed",
+    "proofDirectory": "deep-painter-phase4-oracle-v3",
+    "caseCount": 40,
+    "componentsAcrossDistinctGates": 583680,
+    "gatedDifferentComponents": 0,
+    "admittedWiderCrop": {
+      "caseCount": 32,
+      "components": 466944,
+      "different": 0
+    },
+    "rejectedLegacySameCrop": {
+      "caseCount": 8,
+      "components": 116736,
+      "different": 0,
+      "sceneMetadataExactlyLegacy": true
+    },
+    "historicalWiderReferenceDifferencesInRejectedDomains": 888,
+    "historicalWiderMeaning": "Rejected rotated domains retain 2+886 differences against the wider reference. Their accepted gate is unchanged legacy same-crop equality; wider-reference equality is not established.",
+    "nonfiniteComponents": 0,
+    "extentReducedAdmittedCases": 32,
+    "captureReadsChangedScenes": 14,
+    "actualCompactWrites": 16,
+    "actualByteTentAlphaAxes": 6,
+    "inputHashesStable": true,
+    "inputManifestEntries": 1149,
+    "browserErrorCount": 0,
+    "artifactSha256": {
+      "fixtures.json": "bd31a213a91a3e59b1f0f704abba99ad2116a93ae4b9f10f3a3f8d6f35364dc2",
+      "gpu-result.json": "55ae3458fc0f1bfe6fa8e9b5b4455a70807009074ae813878b53b7715dc07db1",
+      "results.json": "0046b0cf1a8814409685ffffc7d6e46ba2f1b7b53a2026143fe4e9f6ccb20f80",
+      "inputs-before.json": "23bbbc799b30aa0a9cff805331e9986c6f148fdbcc51a9de96446479720fd3da",
+      "inputs-after.json": "23bbbc799b30aa0a9cff805331e9986c6f148fdbcc51a9de96446479720fd3da"
+    },
+    "sourceSha256": {
+      "src/kernel/gpu/renderer.ts": "84a1e68367b6abd7405dc2d71d06174581595ee61fb368169d6c773f97d4c972",
+      "src/kernel/gpu/webgpu.ts": "7489e60d51f3e68842bef76017596d762f253f5ac0382c1a2556442867c1850b",
+      "src/kernel/gpu/sample-equivalent-coverage.ts": "6087e603703b9a57236719c318e0be844eb2e8c8e10b5e3fc84db45275738494",
+      "src/kernel/gpu/texture-prefix.ts": "9d9c391b555b7e393cb35154fcedc17aa520b39f3de881e0bbbf417d745cc75b",
+      "src/kernel/gpu/texture-prefix.wgsl": "ef876d97308cc76a9eb6805d13b5923478e73225c4a52ef364f2d42ef49e3944",
+      "frontend/design-client/scripts/check-painter-support-region.ts": "af4eea383cc5cdb277838fcc88a2ef549452b9f6142da6978a03006da99c3cca",
+      "public/kernel/design_kernel_bg.wasm": "40748786a93f9bdf2775b210904d787fa9b069fa46e565035cd980bcab36fe1f"
+    },
+    "records": [
+      {
+        "variant": "prefix",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 13605548,
+        "documentPreserved": true,
+        "actualSha256": "d44d496e079ae16c7952f4798191f50b7abe96fea31cd2ef4ff088f2b773a8fa"
+      },
+      {
+        "variant": "prefix",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 15491756,
+        "documentPreserved": true,
+        "actualSha256": "fee41512359a3f7059dfa5e450173c287869662f65c5254cc259a6244c3a8f31"
+      },
+      {
+        "variant": "prefix-large",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 26440700,
+        "documentPreserved": true,
+        "actualSha256": "136cc44b2e7791523fb345b084bb8dcae80a038edb8f5ae71901fca38f11f2fd"
+      },
+      {
+        "variant": "prefix-large",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 38824204,
+        "documentPreserved": true,
+        "actualSha256": "e3ab0685d4626a7014d4025283c14c72796ba3d0f454a7b10c24a2d09cc3f2da"
+      },
+      {
+        "variant": "prefix-near-tap",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 20394540,
+        "documentPreserved": true,
+        "actualSha256": "fd7f56f3d6fe09649bd2a40181ef522ff70380d122970697119b9d34a33e9ae1"
+      },
+      {
+        "variant": "prefix-near-tap",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 32414732,
+        "documentPreserved": true,
+        "actualSha256": "83d51f3107ea9b03018d3a43d2220df220f7732800bd0a5c91b2f41aa41abd3b"
+      },
+      {
+        "variant": "reverse-order",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 12900332,
+        "documentPreserved": true,
+        "actualSha256": "d36a6c998da6f27fb52cc2ee710b32d0c3c5a603090f9b90924919dbfbf2deb8"
+      },
+      {
+        "variant": "reverse-order",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 14427212,
+        "documentPreserved": true,
+        "actualSha256": "b013c34842c4e54b383f8642046c062509cc4ebb0d74ecee0d609fa1a9c1c63b"
+      },
+      {
+        "variant": "two-backdrops",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 16012976,
+        "documentPreserved": true,
+        "actualSha256": "b6ba6479cc17a8d5ca88394b0a0c89bfba25415657b3f9f3b900834eb6bef860"
+      },
+      {
+        "variant": "two-backdrops",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 18736652,
+        "documentPreserved": true,
+        "actualSha256": "d138cfa77abda798f7662fd84009128b2882c2ce1365c87c9cd135a84772bd2f"
+      },
+      {
+        "variant": "nested",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 18423800,
+        "documentPreserved": true,
+        "actualSha256": "8ed0d45c5eeb0a415d8e8b45140fdab1f7431e87ae59d4aca56df36edc02cd7f"
+      },
+      {
+        "variant": "nested",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 20898384,
+        "documentPreserved": true,
+        "actualSha256": "c06e0bfcf4c45edd6ce1a9a5ca694f8272c8ce06c7261bdc35cc173406a29fca"
+      },
+      {
+        "variant": "clipped",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 10814508,
+        "documentPreserved": true,
+        "actualSha256": "d44d496e079ae16c7952f4798191f50b7abe96fea31cd2ef4ff088f2b773a8fa"
+      },
+      {
+        "variant": "clipped",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 15491756,
+        "documentPreserved": true,
+        "actualSha256": "fee41512359a3f7059dfa5e450173c287869662f65c5254cc259a6244c3a8f31"
+      },
+      {
+        "variant": "rotated",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 2,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "extentReduced": true,
+        "peakTextureBytes": 14588648,
+        "documentPreserved": true,
+        "actualSha256": "3522578d744092a4cd832908dfaf5ecadb811d2ebcf269a74eb7a9b486d9727a"
+      },
+      {
+        "variant": "rotated",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 886,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "extentReduced": true,
+        "peakTextureBytes": 16498880,
+        "documentPreserved": true,
+        "actualSha256": "1664f80a4826963ce0bc76aaf3f254b2fa0f3098afe2e748a4dd00eeced7e8a6"
+      },
+      {
+        "variant": "gradient-fallback",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "extentReduced": true,
+        "peakTextureBytes": 17060584,
+        "documentPreserved": true,
+        "actualSha256": "c53da034d962fdbbaa35092ed2bfd95cd99760cf2e766169d309bed365b67ecf"
+      },
+      {
+        "variant": "gradient-fallback",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "extentReduced": true,
+        "peakTextureBytes": 20170064,
+        "documentPreserved": true,
+        "actualSha256": "16a2f90134cf8abc2ecafa8df3f7e65a520edd121d6ec22c90434a60d18b4dee"
+      },
+      {
+        "variant": "mask-fallback",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "extentReduced": true,
+        "peakTextureBytes": 17080104,
+        "documentPreserved": true,
+        "actualSha256": "23abf763cf6f40b2394e26aa39de960bf3d0ed4fe37cb2cfda8aaa6f81e10851"
+      },
+      {
+        "variant": "mask-fallback",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "extentReduced": true,
+        "peakTextureBytes": 20034768,
+        "documentPreserved": true,
+        "actualSha256": "14ef37a2d1431f891659ee49caef183337f262bad4f3bf0da4de37f0c191a40f"
+      },
+      {
+        "variant": "transparent-layer",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 8,
+          "actualWrites": 4,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 14093420,
+        "documentPreserved": true,
+        "actualSha256": "cfaee3a0631261ed6f1f659f93a7fce318f6af420502367ac3d578552c3c82a6"
+      },
+      {
+        "variant": "transparent-layer",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 8,
+          "actualWrites": 4,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 16105388,
+        "documentPreserved": true,
+        "actualSha256": "a64558e38f76f1f106d2b452d596af3159d1589d64d1752e582d245158032eba"
+      },
+      {
+        "variant": "transparent-layer-hdr",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 8,
+          "actualWrites": 4,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 14093420,
+        "documentPreserved": true,
+        "actualSha256": "c1dc5b19c93b3cf1485fa56e1070ab32d782b1415640507c42580786289bedc1"
+      },
+      {
+        "variant": "transparent-layer-hdr",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 8,
+          "actualWrites": 4,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 16105388,
+        "documentPreserved": true,
+        "actualSha256": "55218f30c8ec52966115d5248d0940265db671677f5d5c10d216b8b5fd1c9673"
+      },
+      {
+        "variant": "transparent-layer-clipped",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 16,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 14079708,
+        "documentPreserved": true,
+        "actualSha256": "d44d496e079ae16c7952f4798191f50b7abe96fea31cd2ef4ff088f2b773a8fa"
+      },
+      {
+        "variant": "transparent-layer-clipped",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 16,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 16080892,
+        "documentPreserved": true,
+        "actualSha256": "fee41512359a3f7059dfa5e450173c287869662f65c5254cc259a6244c3a8f31"
+      },
+      {
+        "variant": "image-prefix",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 13645612,
+        "documentPreserved": true,
+        "actualSha256": "d9000fdefbabaaac72292dc63555fc19da2f0d20ef409b15581501fc08beabbc"
+      },
+      {
+        "variant": "image-prefix",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 15538732,
+        "documentPreserved": true,
+        "actualSha256": "77f0ae04a3d431a198c836deac01b022b98d1facc233b81f4562ac48795a83e4"
+      },
+      {
+        "variant": "image-partial-prefix",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 13645612,
+        "documentPreserved": true,
+        "actualSha256": "482015354b33581890f6f0d1068a2ab8c7e1b03135e4e24d5e2ae3a85f68ab6a"
+      },
+      {
+        "variant": "image-partial-prefix",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 15538732,
+        "documentPreserved": true,
+        "actualSha256": "526f3b70df7d2df77cbe011c5a011157f2bc3128b3198acc1b7939815218ddcd"
+      },
+      {
+        "variant": "unmanaged-shadow",
+        "zoom": 1,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 3728224,
+        "documentPreserved": true,
+        "actualSha256": "6a12fa2eb6eabe38a8d13c67f2960443b45a8cdc834205a3ec2607fb519517ef"
+      },
+      {
+        "variant": "unmanaged-shadow",
+        "zoom": 1.375,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 5541876,
+        "documentPreserved": true,
+        "actualSha256": "79ac69128c9eea6ce7b74511cc08689493d9010fb7f5129bbc359dd8b5c85980"
+      },
+      {
+        "variant": "unmanaged-shadow-integer",
+        "zoom": 1,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 2,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 3799792,
+        "documentPreserved": true,
+        "actualSha256": "5c13b06ee3048be58e2606af5aab8c98cc77ef59c84b918e7ab3c4c63f1139ae"
+      },
+      {
+        "variant": "unmanaged-shadow-integer",
+        "zoom": 1.375,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 5232156,
+        "documentPreserved": true,
+        "actualSha256": "79ac69128c9eea6ce7b74511cc08689493d9010fb7f5129bbc359dd8b5c85980"
+      },
+      {
+        "variant": "unmanaged-shadow-negative-offset",
+        "zoom": 1,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 3692704,
+        "documentPreserved": true,
+        "actualSha256": "45d007ab45de125d8463ea0289edc4146d434b61c32463ad060c68a413d397bd"
+      },
+      {
+        "variant": "unmanaged-shadow-negative-offset",
+        "zoom": 1.375,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 5464812,
+        "documentPreserved": true,
+        "actualSha256": "08948c7370f2776101ea03868d6468669cd8a335374d0788101ebf1d4d690632"
+      },
+      {
+        "variant": "unmanaged-shadow-fractional-fallback",
+        "zoom": 1,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "extentReduced": true,
+        "peakTextureBytes": 4198784,
+        "documentPreserved": true,
+        "actualSha256": "ef47c111c6b4b6d6a1032116a66c9f8161b084bf5d4ae05b206e7e3fc5cb3709"
+      },
+      {
+        "variant": "unmanaged-shadow-fractional-fallback",
+        "zoom": 1.375,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "extentReduced": true,
+        "peakTextureBytes": 6983132,
+        "documentPreserved": true,
+        "actualSha256": "79ac69128c9eea6ce7b74511cc08689493d9010fb7f5129bbc359dd8b5c85980"
+      },
+      {
+        "variant": "unmanaged-shadow-parent-clip",
+        "zoom": 1,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 2,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 3485344,
+        "documentPreserved": true,
+        "actualSha256": "32dd9efbded2e31ffe2a59214c07a966bb0a52b37ab7eb2658232848e8196df9"
+      },
+      {
+        "variant": "unmanaged-shadow-parent-clip",
+        "zoom": 1.375,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 2,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "extentReduced": true,
+        "peakTextureBytes": 4624024,
+        "documentPreserved": true,
+        "actualSha256": "83b0a82bebed6d08f16a886c4c2009f87c22dacf60b5b5f63bcb111a6f572112"
+      }
+    ],
+    "scope": "Synthetic 40-case production-GPU gate; includes two added ancestor-clipped byte-shadow cases at two zooms. No whole-document interaction or latency acceptance."
+  },
+  "historicalSmallSceneGpuV2": {
+    "status": "passed",
+    "caseCount": 38,
+    "componentsAcrossDistinctGates": 554496,
+    "gatedDifferentComponents": 0,
+    "admittedWiderCrop": {
+      "caseCount": 30,
+      "components": 437760,
+      "different": 0
+    },
+    "rejectedLegacySameCrop": {
+      "caseCount": 8,
+      "components": 116736,
+      "different": 0,
+      "sceneMetadataExactlyLegacy": true
+    },
+    "historicalWiderReferenceDifferencesInRejectedDomains": 888,
+    "historicalWiderMeaning": "Rejected rotated domains retain 2+886 wider-reference differences; fallback equality is only to unchanged legacy same-crop",
+    "nonfiniteComponents": 0,
+    "extentReducedAdmittedCases": 30,
+    "captureReadsChangedScenes": 14,
+    "actualCompactWrites": 16,
+    "actualByteTentAlphaAxes": 2,
+    "inputHashesStable": true,
+    "browserErrorCount": 0,
+    "rawResultsSha256": "37656d4e782af2e4f3403b13165d36e9b5a77fbe705fd8b864857959f5e8a785",
+    "sourceSha256": {
+      "src/kernel/gpu/renderer.ts": "f07762601da793a44c966fb3503c8cf0b52499acf4fd2c3f943e57bb270abb35",
+      "src/kernel/gpu/webgpu.ts": "7489e60d51f3e68842bef76017596d762f253f5ac0382c1a2556442867c1850b",
+      "src/kernel/gpu/sample-equivalent-coverage.ts": "6087e603703b9a57236719c318e0be844eb2e8c8e10b5e3fc84db45275738494",
+      "src/kernel/gpu/texture-prefix.ts": "9d9c391b555b7e393cb35154fcedc17aa520b39f3de881e0bbbf417d745cc75b",
+      "src/kernel/gpu/texture-prefix.wgsl": "ef876d97308cc76a9eb6805d13b5923478e73225c4a52ef364f2d42ef49e3944",
+      "frontend/design-client/scripts/check-painter-support-region.ts": "4c43fd885fe03f5599d80c70a0fd5913bec6c67434f2018961dcaf2b88f5efcb"
+    },
+    "records": [
+      {
+        "variant": "prefix",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 21,
+          "y": 13,
+          "w": 116,
+          "h": 108
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 13605548,
+        "documentPreserved": true,
+        "actualSha256": "d44d496e079ae16c7952f4798191f50b7abe96fea31cd2ef4ff088f2b773a8fa"
+      },
+      {
+        "variant": "prefix",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 15,
+          "y": 7,
+          "w": 128,
+          "h": 121
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 15491756,
+        "documentPreserved": true,
+        "actualSha256": "fee41512359a3f7059dfa5e450173c287869662f65c5254cc259a6244c3a8f31"
+      },
+      {
+        "variant": "prefix-large",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -71,
+          "y": -71,
+          "w": 310,
+          "h": 287
+        },
+        "regionalExtent": {
+          "x": -3,
+          "y": -5,
+          "w": 149,
+          "h": 126
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 26440700,
+        "documentPreserved": true,
+        "actualSha256": "136cc44b2e7791523fb345b084bb8dcae80a038edb8f5ae71901fca38f11f2fd"
+      },
+      {
+        "variant": "prefix-large",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -97,
+          "y": -97,
+          "w": 362,
+          "h": 339
+        },
+        "regionalExtent": {
+          "x": -7,
+          "y": -4,
+          "w": 183,
+          "h": 165
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 38824204,
+        "documentPreserved": true,
+        "actualSha256": "e3ab0685d4626a7014d4025283c14c72796ba3d0f454a7b10c24a2d09cc3f2da"
+      },
+      {
+        "variant": "prefix-near-tap",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -65,
+          "y": -65,
+          "w": 298,
+          "h": 275
+        },
+        "regionalExtent": {
+          "x": 0,
+          "y": -5,
+          "w": 146,
+          "h": 126
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 20394540,
+        "documentPreserved": true,
+        "actualSha256": "fd7f56f3d6fe09649bd2a40181ef522ff70380d122970697119b9d34a33e9ae1"
+      },
+      {
+        "variant": "prefix-near-tap",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -89,
+          "y": -89,
+          "w": 346,
+          "h": 323
+        },
+        "regionalExtent": {
+          "x": -7,
+          "y": -4,
+          "w": 179,
+          "h": 161
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 32414732,
+        "documentPreserved": true,
+        "actualSha256": "83d51f3107ea9b03018d3a43d2220df220f7732800bd0a5c91b2f41aa41abd3b"
+      },
+      {
+        "variant": "reverse-order",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 31,
+          "y": 23,
+          "w": 96,
+          "h": 88
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 12900332,
+        "documentPreserved": true,
+        "actualSha256": "d36a6c998da6f27fb52cc2ee710b32d0c3c5a603090f9b90924919dbfbf2deb8"
+      },
+      {
+        "variant": "reverse-order",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 27,
+          "y": 19,
+          "w": 104,
+          "h": 97
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 14427212,
+        "documentPreserved": true,
+        "actualSha256": "b013c34842c4e54b383f8642046c062509cc4ebb0d74ecee0d609fa1a9c1c63b"
+      },
+      {
+        "variant": "two-backdrops",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 2,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 14,
+          "y": 6,
+          "w": 130,
+          "h": 115
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 16012976,
+        "documentPreserved": true,
+        "actualSha256": "b6ba6479cc17a8d5ca88394b0a0c89bfba25415657b3f9f3b900834eb6bef860"
+      },
+      {
+        "variant": "two-backdrops",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 2,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 12,
+          "y": -1,
+          "w": 139,
+          "h": 137
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 18736652,
+        "documentPreserved": true,
+        "actualSha256": "d138cfa77abda798f7662fd84009128b2882c2ce1365c87c9cd135a84772bd2f"
+      },
+      {
+        "variant": "nested",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -29,
+          "y": -29,
+          "w": 226,
+          "h": 203
+        },
+        "regionalExtent": {
+          "x": 16,
+          "y": 8,
+          "w": 126,
+          "h": 119
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 18423800,
+        "documentPreserved": true,
+        "actualSha256": "8ed0d45c5eeb0a415d8e8b45140fdab1f7431e87ae59d4aca56df36edc02cd7f"
+      },
+      {
+        "variant": "nested",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -40,
+          "y": -40,
+          "w": 248,
+          "h": 225
+        },
+        "regionalExtent": {
+          "x": 9,
+          "y": 1,
+          "w": 140,
+          "h": 133
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 20898384,
+        "documentPreserved": true,
+        "actualSha256": "c06e0bfcf4c45edd6ce1a9a5ca694f8272c8ce06c7261bdc35cc173406a29fca"
+      },
+      {
+        "variant": "clipped",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 21,
+          "y": 13,
+          "w": 116,
+          "h": 108
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 10814508,
+        "documentPreserved": true,
+        "actualSha256": "d44d496e079ae16c7952f4798191f50b7abe96fea31cd2ef4ff088f2b773a8fa"
+      },
+      {
+        "variant": "clipped",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 15,
+          "y": 7,
+          "w": 128,
+          "h": 121
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 15491756,
+        "documentPreserved": true,
+        "actualSha256": "fee41512359a3f7059dfa5e450173c287869662f65c5254cc259a6244c3a8f31"
+      },
+      {
+        "variant": "rotated",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 2,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "legacyCropDifferences": 0,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 24,
+          "y": 16,
+          "w": 110,
+          "h": 103
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 14588648,
+        "documentPreserved": true,
+        "actualSha256": "3522578d744092a4cd832908dfaf5ecadb811d2ebcf269a74eb7a9b486d9727a"
+      },
+      {
+        "variant": "rotated",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 886,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "legacyCropDifferences": 0,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 15,
+          "y": 7,
+          "w": 128,
+          "h": 121
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 16498880,
+        "documentPreserved": true,
+        "actualSha256": "1664f80a4826963ce0bc76aaf3f254b2fa0f3098afe2e748a4dd00eeced7e8a6"
+      },
+      {
+        "variant": "gradient-fallback",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "legacyCropDifferences": 0,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 24,
+          "y": 16,
+          "w": 110,
+          "h": 103
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 17060584,
+        "documentPreserved": true,
+        "actualSha256": "c53da034d962fdbbaa35092ed2bfd95cd99760cf2e766169d309bed365b67ecf"
+      },
+      {
+        "variant": "gradient-fallback",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "legacyCropDifferences": 0,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 15,
+          "y": 7,
+          "w": 128,
+          "h": 121
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 20170064,
+        "documentPreserved": true,
+        "actualSha256": "16a2f90134cf8abc2ecafa8df3f7e65a520edd121d6ec22c90434a60d18b4dee"
+      },
+      {
+        "variant": "mask-fallback",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "legacyCropDifferences": 0,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 24,
+          "y": 16,
+          "w": 110,
+          "h": 103
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 17080104,
+        "documentPreserved": true,
+        "actualSha256": "23abf763cf6f40b2394e26aa39de960bf3d0ed4fe37cb2cfda8aaa6f81e10851"
+      },
+      {
+        "variant": "mask-fallback",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "legacyCropDifferences": 0,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 15,
+          "y": 7,
+          "w": 128,
+          "h": 121
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 20034768,
+        "documentPreserved": true,
+        "actualSha256": "14ef37a2d1431f891659ee49caef183337f262bad4f3bf0da4de37f0c191a40f"
+      },
+      {
+        "variant": "transparent-layer",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 8,
+          "actualWrites": 4,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 21,
+          "y": 13,
+          "w": 116,
+          "h": 108
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 14093420,
+        "documentPreserved": true,
+        "actualSha256": "cfaee3a0631261ed6f1f659f93a7fce318f6af420502367ac3d578552c3c82a6"
+      },
+      {
+        "variant": "transparent-layer",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 8,
+          "actualWrites": 4,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 15,
+          "y": 7,
+          "w": 128,
+          "h": 121
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 16105388,
+        "documentPreserved": true,
+        "actualSha256": "a64558e38f76f1f106d2b452d596af3159d1589d64d1752e582d245158032eba"
+      },
+      {
+        "variant": "transparent-layer-hdr",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 8,
+          "actualWrites": 4,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 21,
+          "y": 13,
+          "w": 116,
+          "h": 108
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 14093420,
+        "documentPreserved": true,
+        "actualSha256": "c1dc5b19c93b3cf1485fa56e1070ab32d782b1415640507c42580786289bedc1"
+      },
+      {
+        "variant": "transparent-layer-hdr",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 8,
+          "actualWrites": 4,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 15,
+          "y": 7,
+          "w": 128,
+          "h": 121
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 16105388,
+        "documentPreserved": true,
+        "actualSha256": "55218f30c8ec52966115d5248d0940265db671677f5d5c10d216b8b5fd1c9673"
+      },
+      {
+        "variant": "transparent-layer-clipped",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 16,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 21,
+          "y": 13,
+          "w": 116,
+          "h": 108
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 14079708,
+        "documentPreserved": true,
+        "actualSha256": "d44d496e079ae16c7952f4798191f50b7abe96fea31cd2ef4ff088f2b773a8fa"
+      },
+      {
+        "variant": "transparent-layer-clipped",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 16,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 15,
+          "y": 7,
+          "w": 128,
+          "h": 121
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 16080892,
+        "documentPreserved": true,
+        "actualSha256": "fee41512359a3f7059dfa5e450173c287869662f65c5254cc259a6244c3a8f31"
+      },
+      {
+        "variant": "image-prefix",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 21,
+          "y": 13,
+          "w": 116,
+          "h": 108
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 13645612,
+        "documentPreserved": true,
+        "actualSha256": "d9000fdefbabaaac72292dc63555fc19da2f0d20ef409b15581501fc08beabbc"
+      },
+      {
+        "variant": "image-prefix",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 15,
+          "y": 7,
+          "w": 128,
+          "h": 121
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 15538732,
+        "documentPreserved": true,
+        "actualSha256": "77f0ae04a3d431a198c836deac01b022b98d1facc233b81f4562ac48795a83e4"
+      },
+      {
+        "variant": "image-partial-prefix",
+        "zoom": 1,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": true,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -23,
+          "y": -23,
+          "w": 214,
+          "h": 191
+        },
+        "regionalExtent": {
+          "x": 21,
+          "y": 13,
+          "w": 116,
+          "h": 108
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 13645612,
+        "documentPreserved": true,
+        "actualSha256": "482015354b33581890f6f0d1068a2ab8c7e1b03135e4e24d5e2ae3a85f68ab6a"
+      },
+      {
+        "variant": "image-partial-prefix",
+        "zoom": 1.375,
+        "format": "rgba32float",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 8,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 1,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 15,
+          "y": 7,
+          "w": 128,
+          "h": 121
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 15538732,
+        "documentPreserved": true,
+        "actualSha256": "526f3b70df7d2df77cbe011c5a011157f2bc3128b3198acc1b7939815218ddcd"
+      },
+      {
+        "variant": "unmanaged-shadow",
+        "zoom": 1,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 1,
+        "fullExtent": {
+          "x": -35,
+          "y": -35,
+          "w": 238,
+          "h": 215
+        },
+        "regionalExtent": {
+          "x": 27,
+          "y": 11,
+          "w": 88,
+          "h": 87
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 3728224,
+        "documentPreserved": true,
+        "actualSha256": "6a12fa2eb6eabe38a8d13c67f2960443b45a8cdc834205a3ec2607fb519517ef"
+      },
+      {
+        "variant": "unmanaged-shadow",
+        "zoom": 1.375,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 1,
+        "fullExtent": {
+          "x": -48,
+          "y": -48,
+          "w": 264,
+          "h": 241
+        },
+        "regionalExtent": {
+          "x": 22,
+          "y": 3,
+          "w": 114,
+          "h": 107
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 5541876,
+        "documentPreserved": true,
+        "actualSha256": "79ac69128c9eea6ce7b74511cc08689493d9010fb7f5129bbc359dd8b5c85980"
+      },
+      {
+        "variant": "unmanaged-shadow-integer",
+        "zoom": 1,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 2,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 1,
+        "fullExtent": {
+          "x": -32,
+          "y": -32,
+          "w": 232,
+          "h": 209
+        },
+        "regionalExtent": {
+          "x": 28,
+          "y": 12,
+          "w": 87,
+          "h": 86
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 3799792,
+        "documentPreserved": true,
+        "actualSha256": "5c13b06ee3048be58e2606af5aab8c98cc77ef59c84b918e7ab3c4c63f1139ae"
+      },
+      {
+        "variant": "unmanaged-shadow-integer",
+        "zoom": 1.375,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 1,
+        "fullExtent": {
+          "x": -44,
+          "y": -44,
+          "w": 256,
+          "h": 233
+        },
+        "regionalExtent": {
+          "x": 24,
+          "y": 5,
+          "w": 110,
+          "h": 103
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 5232156,
+        "documentPreserved": true,
+        "actualSha256": "79ac69128c9eea6ce7b74511cc08689493d9010fb7f5129bbc359dd8b5c85980"
+      },
+      {
+        "variant": "unmanaged-shadow-negative-offset",
+        "zoom": 1,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 1,
+        "fullExtent": {
+          "x": -35,
+          "y": -35,
+          "w": 238,
+          "h": 215
+        },
+        "regionalExtent": {
+          "x": 27,
+          "y": 27,
+          "w": 88,
+          "h": 81
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 3692704,
+        "documentPreserved": true,
+        "actualSha256": "45d007ab45de125d8463ea0289edc4146d434b61c32463ad060c68a413d397bd"
+      },
+      {
+        "variant": "unmanaged-shadow-negative-offset",
+        "zoom": 1.375,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": true,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-wider-GPU-crop",
+        "legacySceneEqual": false,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 1,
+        "fullExtent": {
+          "x": -48,
+          "y": -48,
+          "w": 264,
+          "h": 241
+        },
+        "regionalExtent": {
+          "x": 22,
+          "y": 25,
+          "w": 114,
+          "h": 92
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 5464812,
+        "documentPreserved": true,
+        "actualSha256": "08948c7370f2776101ea03868d6468669cd8a335374d0788101ebf1d4d690632"
+      },
+      {
+        "variant": "unmanaged-shadow-fractional-fallback",
+        "zoom": 1,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "legacyCropDifferences": 0,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -35,
+          "y": -35,
+          "w": 238,
+          "h": 215
+        },
+        "regionalExtent": {
+          "x": 12,
+          "y": 4,
+          "w": 134,
+          "h": 127
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 4198784,
+        "documentPreserved": true,
+        "actualSha256": "ef47c111c6b4b6d6a1032116a66c9f8161b084bf5d4ae05b206e7e3fc5cb3709"
+      },
+      {
+        "variant": "unmanaged-shadow-fractional-fallback",
+        "zoom": 1.375,
+        "format": "rgba8unorm",
+        "components": 14592,
+        "differences": 0,
+        "nonfinite": 0,
+        "certificateUsed": false,
+        "compactWitness": {
+          "acceptedPlans": 0,
+          "actualWrites": 0,
+          "declinedPlans": 0,
+          "materializedSamples": 0
+        },
+        "captureReadsChangedScene": false,
+        "byteTentAlphaPasses": 0,
+        "comparisonGate": "unchanged-legacy-same-crop-GPU",
+        "legacySceneEqual": true,
+        "legacyCropDifferences": 0,
+        "certifiedBackdropNodes": 0,
+        "certifiedShadowNodes": 0,
+        "fullExtent": {
+          "x": -48,
+          "y": -48,
+          "w": 264,
+          "h": 241
+        },
+        "regionalExtent": {
+          "x": -1,
+          "y": -9,
+          "w": 160,
+          "h": 153
+        },
+        "extentReduced": true,
+        "peakTextureBytes": 6983132,
+        "documentPreserved": true,
+        "actualSha256": "79ac69128c9eea6ce7b74511cc08689493d9010fb7f5129bbc359dd8b5c85980"
+      }
+    ],
+    "previousAttempt": {
+      "status": "failed-missing-pipeline",
+      "completedGatedCases": 32,
+      "message": "Exact compositor pipeline 31 not prepared",
+      "preserved": true,
+      "repairScope": "Unmanaged mask target-format routing; no shader arithmetic or phase-gate relaxation"
+    }
+  }
+}

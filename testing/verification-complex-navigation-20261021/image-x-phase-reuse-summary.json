@@ -1,0 +1,209 @@
+{
+  "status": "passed",
+  "adapter": "metal-3",
+  "cases": 16,
+  "windows": 33,
+  "components": 2684664,
+  "different": 0,
+  "maxBytes": 72409392,
+  "reference": "Original production mode2 -> mode3 over transparent -> mode48 in sample order 0,1,2,3. Mode51 is not used as the oracle.",
+  "scope": "Actual-device exact image-X program reuse oracle. Not whole-editor performance acceptance; the actual117 fixture still requires four distinct X programs.",
+  "wasmSha256": "4efb26d67f71bf031fed9efbdfe3ea15385c57017de46aa5fd465a13136679a9",
+  "inputsStable": true,
+  "rawResultSha256": "76bf50c92fef457a5a8b60a1f6bc6fab23e45615dd021a78d89a67ab010189c8",
+  "casePrograms": [
+    {
+      "name": "ordinary",
+      "tableBytes": 238272,
+      "allocatedBytes": 246208,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "signed-hdr-span24",
+      "tableBytes": 238272,
+      "allocatedBytes": 246208,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "subnormal",
+      "tableBytes": 238272,
+      "allocatedBytes": 246208,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "zero-alpha-hdr",
+      "tableBytes": 238272,
+      "allocatedBytes": 246208,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "max-finite",
+      "tableBytes": 238272,
+      "allocatedBytes": 246208,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "hdr-alpha",
+      "tableBytes": 238272,
+      "allocatedBytes": 246208,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "corner-zero-one",
+      "tableBytes": 238272,
+      "allocatedBytes": 246208,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "ku36-kv35",
+      "tableBytes": 238272,
+      "allocatedBytes": 246208,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "signed-hdr-ku36-kv35",
+      "tableBytes": 238272,
+      "allocatedBytes": 246208,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "signed-hdr-Y96-boundary",
+      "tableBytes": 238272,
+      "allocatedBytes": 246208,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "correlated-X-signed-HDR",
+      "tableBytes": 119136,
+      "allocatedBytes": 124736,
+      "xSampleCount": 2,
+      "sampleGroups": [
+        0,
+        1,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "correlated-X-opaque",
+      "tableBytes": 89352,
+      "allocatedBytes": 94952,
+      "xSampleCount": 2,
+      "sampleGroups": [
+        0,
+        1,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "all-X-identical-subnormal",
+      "tableBytes": 59568,
+      "allocatedBytes": 64000,
+      "xSampleCount": 1,
+      "sampleGroups": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "nonadjacent-X-endpoints",
+      "tableBytes": 119136,
+      "allocatedBytes": 124736,
+      "xSampleCount": 2,
+      "sampleGroups": [
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "name": "last-X-fraction-ULP",
+      "tableBytes": 178704,
+      "allocatedBytes": 185472,
+      "xSampleCount": 3,
+      "sampleGroups": [
+        0,
+        1,
+        0,
+        2
+      ]
+    },
+    {
+      "name": "actual-117-full-support",
+      "tableBytes": 6020352,
+      "allocatedBytes": 6466560,
+      "xSampleCount": 4,
+      "sampleGroups": [
+        0,
+        1,
+        2,
+        3
+      ]
+    }
+  ],
+  "rejectedCases": 23
+}

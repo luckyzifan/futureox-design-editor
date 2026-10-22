@@ -3,7 +3,7 @@ import type { CanvasCamera } from '../canvas-camera'
 import { NavigationZoom, type NavigationZoomSample } from './navigation-zoom'
 
 export function useNavigationZoom(view: CanvasCamera, identity: string, enabled: boolean,
-  includeTranslation = false, pointerHeld = false) {
+  includeTranslation = false, pointerHeld = false, sampleOnFrame = false) {
   const [visible, setVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
   useLayoutEffect(() => {
     if (typeof document === 'undefined') return
@@ -12,26 +12,34 @@ export function useNavigationZoom(view: CanvasCamera, identity: string, enabled:
     return () => document.removeEventListener('visibilitychange', changed)
   }, [])
   enabled = enabled && visible
-  const state = useRef(new NavigationZoom(view, { includeTranslation })), owner = useRef(identity),
-    translationOwner = useRef(includeTranslation)
+  const state = useRef(new NavigationZoom(view, { includeTranslation, sampleOnFrame })), owner = useRef(identity),
+    translationOwner = useRef(includeTranslation), schedulingOwner = useRef(sampleOnFrame)
   const [published, setPublished] = useState<NavigationZoomSample>(state.current.sample)
   useLayoutEffect(() => {
-    if (owner.current !== identity || translationOwner.current !== includeTranslation || !enabled) {
-      state.current = new NavigationZoom(view, { includeTranslation }); owner.current = identity
-      translationOwner.current = includeTranslation
+    if (owner.current !== identity || translationOwner.current !== includeTranslation ||
+        schedulingOwner.current !== sampleOnFrame || !enabled) {
+      state.current = new NavigationZoom(view, { includeTranslation, sampleOnFrame }); owner.current = identity
+      translationOwner.current = includeTranslation; schedulingOwner.current = sampleOnFrame
     }
     const current = state.current
-    const publish = (sample: NavigationZoomSample) => setPublished(old => old === sample ? old : sample)
+    let live = true
+    const owns = () => live && state.current === current && owner.current === identity &&
+      translationOwner.current === includeTranslation && schedulingOwner.current === sampleOnFrame
+    const publish = (sample: NavigationZoomSample) => {
+      if (owns()) setPublished(old => old === sample ? old : sample)
+    }
     publish(current.update(view, performance.now(), pointerHeld))
     let handle: number | undefined
     const tick = () => {
+      if (!owns()) return
       publish(current.frame(performance.now()))
       if (current.active) handle = requestAnimationFrame(tick)
     }
     if (enabled && current.active) handle = requestAnimationFrame(tick)
-    return () => { if (handle !== undefined) cancelAnimationFrame(handle) }
-  }, [view.x, view.y, view.zoom, identity, enabled, includeTranslation, pointerHeld])
-  const sameOwner = owner.current === identity && translationOwner.current === includeTranslation
+    return () => { live = false; if (handle !== undefined) cancelAnimationFrame(handle) }
+  }, [view.x, view.y, view.zoom, identity, enabled, includeTranslation, pointerHeld, sampleOnFrame])
+  const sameOwner = owner.current === identity && translationOwner.current === includeTranslation &&
+    schedulingOwner.current === sampleOnFrame
   // The input render must suppress exact work before its layout effect
   // publishes the first sampled preview of this gesture.
   const released = includeTranslation && state.current.pointerHeld && !pointerHeld
