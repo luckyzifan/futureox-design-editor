@@ -160,6 +160,18 @@ export class WorkspaceRoots {
     if (isolated) { this.current = await this.prepare(); return this.current }
     let previous, warning = ''
     try { previous = await this.saved() } catch { warning = '上次工作区记录无法读取，请重新选择。原文件不会移动或删除。' }
+    // A readable saved selection resumes directly instead of asking on every
+    // launch. The picker still covers first run, unreadable records and failed
+    // resumes (missing directory, probe failure); switching later keeps the
+    // existing staged workspace command.
+    if (!warning && previous) {
+      try {
+        const resumed = previous.kind === 'directory' ? await this.prepare(previous.rootPath, previous) : await this.prepare()
+        await this.probe(this.config(resumed)); await this.verify(resumed)
+        this.current = resumed
+        return resumed
+      } catch (error) { warning = workspaceRootError(error).message }
+    }
     while (true) {
       const hasPrevious = previous?.kind === 'directory'
       const buttons = [...(hasPrevious ? ['继续上次工作区'] : []), '选择本地目录…', '打开原默认工作区', '退出']
