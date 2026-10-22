@@ -1,3 +1,4 @@
+// Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
 import { afterEach, expect, test, vi } from 'vitest'
 import { GpuRenderer, type Surface } from './renderer'
 import { certifyExactImageRange, imageXTablePlanRange } from './exact-image-x-table'
@@ -94,7 +95,7 @@ function fixture(enabled = true, signed = false) {
     },
   } as unknown as Driver & { resourceEpoch: number; completedResourceEpoch: number; scratchBytes: number }
   const load = vi.fn(() => ({ width: 16, height: 16, pixels: sourcePixels }))
-  const renderer = new GpuRenderer(driver, true, false, load) as any
+  const renderer = new GpuRenderer(driver, true, false, load, undefined, undefined, 256) as any
   // Keep this native-field/ownership transport small. Only the performance
   // size predicate is overridden; its real large/edge limits have a separate
   // test. Source, table, coverage, halo and equality admission remain real.
@@ -211,7 +212,7 @@ function lifecycleFixture() {
     async finish() { if (fail) throw Error('finish rejected'); driver.completedResourceEpoch = driver.resourceEpoch; return {} },
     async abortFrameAndReleaseFilterScratch() { driver.completedResourceEpoch = driver.resourceEpoch }, dispose: vi.fn(),
   } as unknown as Driver & { resourceEpoch: number; completedResourceEpoch: number }
-  const renderer = new GpuRenderer(driver, true, false) as any
+  const renderer = new GpuRenderer(driver, true, false, undefined, undefined, undefined, 256) as any
   // This seam isolates publication/retirement. Native admission itself is
   // covered by the actual coordinate/plan fixtures above, not this injected plane.
   const source = renderer.staticImageBlurs.registerUpload(image, range, 'actual-upload', 'color/adjust')

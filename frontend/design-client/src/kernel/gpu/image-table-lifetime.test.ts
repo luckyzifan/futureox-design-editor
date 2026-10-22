@@ -1,3 +1,4 @@
+// Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
 import { afterEach, expect, test, vi } from 'vitest'
 import { setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { WebGpuDriver } from './webgpu'
@@ -34,7 +35,7 @@ function fixture(width = 4, height = 3, imageWidth = 8, imageHeight = 8, rgba = 
       queue: { writeBuffer(_buffer: unknown, _offset: number, value: Uint32Array) { writes.push(value.slice()) } } },
     checkpoint: vi.fn(async () => {}),
   }) as WebGpuDriver
-  const renderer = new GpuRenderer(driver as Driver) as any
+  const renderer = new GpuRenderer(driver as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   renderer.images.set('image', { texture: image, rect: { x: 0, y: 0, w: imageWidth, h: imageHeight } })
   renderer.bytes = image.bytes
   return { driver, renderer, image, resource, range, plan, axes, buffers, writes, pipeline, width, height,

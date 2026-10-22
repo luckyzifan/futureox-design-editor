@@ -1,3 +1,4 @@
+// Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
 import { setGpuDiagnosticSink } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { expect, test, vi } from 'vitest'
 import { GpuRenderer } from './renderer'
@@ -12,9 +13,9 @@ test('resident working admission depends on physical surfaces, not arithmetic si
     // Invalid protocol stops before allocating a device resource, after the
     // real render entry has selected its working-surface admission.
     await expect(renderer.renderAttempt(scene)).rejects.toThrow(/版本/)
-    expect(renderer.frameBudget).toBe(512*1024*1024)
+    expect(renderer.frameBudget).toBe(1024*1024*1024)
     await expect(renderer.renderAttempt({...scene,coherentSamples:true})).rejects.toThrow(/版本/)
-    expect(renderer.frameBudget).toBe(256*1024*1024)
+    expect(renderer.frameBudget).toBe(1024*1024*1024)
   }
 })
 
@@ -23,7 +24,7 @@ test('completed node masks retire without releasing ancestor clips, and pressure
   const destroyed:Texture[]=[]
   const driver={name:'webgpu',managed:true,captureDisplay:true,scratchBytes:0,
     checkpoint:vi.fn(async()=>{completed=true}),destroy(t:Texture){expect(completed).toBe(true);destroyed.push(t)}} as unknown as Driver
-  const renderer=new GpuRenderer(driver) as any
+  const renderer=new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   renderer.scene={interactionRetained:true};renderer.bytes=200*1024*1024
   const owned={width:1024,height:1024,bytes:16*1024*1024,resource:{}} as Texture
   const shared={...owned,resource:{}} as Texture
@@ -45,7 +46,7 @@ test('completed node masks retire without releasing ancestor clips, and pressure
 })
 
 test('display scratch and retained pixels have separate bounded admission',()=>{
-  const renderer=new GpuRenderer({name:'webgpu',managed:true,captureDisplay:true,scratchBytes:0} as Driver) as any
+  const renderer=new GpuRenderer({name:'webgpu',managed:true,captureDisplay:true,scratchBytes:0} as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   renderer.bytes=300*1024*1024;renderer.interactionBytes=128*1024*1024
   expect(renderer.workingBytes).toBe(172*1024*1024)
   expect(renderer.overBudget(60*1024*1024)).toBe(false)
@@ -58,7 +59,7 @@ test('fractional regional blending preserves destination lattice and avoids text
     create(w:number,h:number){expect(Number.isInteger(w)&&Number.isInteger(h)).toBe(true);return {width:w,height:h,bytes:w*h*16,resource:{}}},
     pass(target:Texture,_u:Float32Array,inputs:Texture[],region?:Rect){expect(inputs).not.toContain(target);passes.push({target,inputs,region})},
   } as unknown as Driver
-  const renderer=new GpuRenderer(driver) as any
+  const renderer=new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   renderer.scene={interactionRetained:true,coherentSamples:false,integratedBlur:true}
   const src={rect:{x:10.25,y:10.5,w:8,h:8},texture:{width:8,height:8,bytes:1024,resource:{}}}
   const dst={rect:{x:.25,y:.25,w:128,h:128},texture:{width:128,height:128,bytes:128*128*16,resource:{}}}
@@ -71,7 +72,7 @@ test('fractional regional blending preserves destination lattice and avoids text
 })
 
 test('transient neutral-group fusion preserves cache, clip, mask, and backdrop boundaries',async()=>{
-  const renderer=new GpuRenderer({name:'webgpu',managed:true,displayMath:true,scratchBytes:0} as Driver) as any
+  const renderer=new GpuRenderer({name:'webgpu',managed:true,displayMath:true,scratchBytes:0} as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   const side=Math.ceil(Math.sqrt(renderer.interactionBudget/16))+1
   const group={id:'group',rect:{x:0,y:0,w:side,h:side},opacity:1,blend:'normal',children:['child'],fills:[],strokes:[],effects:[]}
   const child={id:'child',blend:'normal',effects:[]}
@@ -152,7 +153,7 @@ test('viewport resize reclaims old GPU surfaces without destroying in-flight res
       throw new Error('No real device')
     },
   }
-  const renderer = new GpuRenderer(driver)
+  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256)
   const scene = (width: number): GpuScene => {
     const r = { x: 0, y: 0, w: width, h: 2048 },
       matrix: [number, number, number, number, number, number] = [1, 0, 0, 1, 0, 0]
@@ -340,7 +341,7 @@ test('glass capture replays each jitter and tile with local scissors and retaine
       },
     },
   }
-  const renderer = new GpuRenderer(driver)
+  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256)
   await renderer.render(scene)
   const optical = passes.filter((pass) => pass.mode === 34)
   expect(optical).toHaveLength(8)
@@ -502,7 +503,7 @@ test('measured gradients retain exact lookups and jitter fields across completed
       },
     },
   }
-  const renderer = new GpuRenderer(driver)
+  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256)
   await renderer.render(scene)
   expect([lookups, fields]).toEqual([1, 4])
   const first = passes.filter(({ u }) => u[16] === 42)
@@ -761,7 +762,7 @@ for (const { radius, clipped, original } of [
 ]) {
   test(`texture replay paints independent sources and directly blends canonical tiles (original=${original})`, async () => {
     const mock = textureReplayDriver()
-    const renderer = new GpuRenderer(mock.driver)
+    const renderer = new GpuRenderer(mock.driver, undefined, undefined, undefined, undefined, undefined, 256)
     await renderer.render(textureReplayScene(radius, clipped))
     const effects = mock.passes.filter((p) => p.mode === 43)
     const copybacks = mock.passes.filter((p) => p.mode === 44)
@@ -803,7 +804,7 @@ for (const { radius, clipped, original } of [
 
 test('texture passthrough skips texture processing while unsupported replay keeps the old effect', async () => {
   const pass = textureReplayDriver()
-  const ordinary = new GpuRenderer(pass.driver)
+  const ordinary = new GpuRenderer(pass.driver, undefined, undefined, undefined, undefined, undefined, 256)
   await ordinary.render(textureReplayScene(0.01, true))
   expect(pass.passes.some((p) => [8, 43, 44, 45].includes(p.mode))).toBe(false)
   expect(pass.passes.some((p) => p.mode === 42)).toBe(true)
@@ -814,7 +815,7 @@ test('texture passthrough skips texture processing while unsupported replay keep
   unsupported.nodes.leaf.rect = { x: 456, y: 36, w: 9, h: 9 }
   unsupported.nodes.leaf.fill.rect = unsupported.nodes.leaf.rect
   const fallback = textureReplayDriver()
-  const renderer = new GpuRenderer(fallback.driver)
+  const renderer = new GpuRenderer(fallback.driver, undefined, undefined, undefined, undefined, undefined, 256)
   await renderer.render(unsupported)
   expect(fallback.passes.some((p) => [43, 44, 45].includes(p.mode))).toBe(false)
   expect(fallback.passes.some((p) => p.mode === 8)).toBe(true)
@@ -824,7 +825,7 @@ test('texture passthrough skips texture processing while unsupported replay keep
 
 test('texture metadata upload errors release retained inputs without retrying or fallback', async () => {
   const mock = textureReplayDriver(3, true)
-  const renderer = new GpuRenderer(mock.driver)
+  const renderer = new GpuRenderer(mock.driver, undefined, undefined, undefined, undefined, undefined, 256)
   await expect(renderer.render(textureReplayScene())).rejects.toThrow(
     'injected parameter upload failure',
   )
@@ -862,7 +863,7 @@ test('texture replay keeps a single budgeted metadata allocation across four til
     nodeSize: [8, 8],
   })
   const mock = textureReplayDriver(Infinity, true)
-  const renderer = new GpuRenderer(mock.driver)
+  const renderer = new GpuRenderer(mock.driver, undefined, undefined, undefined, undefined, undefined, 256)
   await renderer.render(scene)
   expect(mock.passes.filter((p) => p.mode === 43)).toHaveLength(16)
   expect(mock.passes.filter((p) => p.mode === 44)).toHaveLength(16)
@@ -874,7 +875,7 @@ test('texture replay keeps a single budgeted metadata allocation across four til
 
 test('command v5 cannot silently omit texture replay', async () => {
   const mock = textureReplayDriver()
-  const renderer = new GpuRenderer(mock.driver)
+  const renderer = new GpuRenderer(mock.driver, undefined, undefined, undefined, undefined, undefined, 256)
   await expect(
     renderer.render({ ...textureReplayScene(), version: 6 } as unknown as GpuScene),
   ).rejects.toThrow('GPU 命令版本')
@@ -889,7 +890,7 @@ test('command v5 cannot silently omit texture replay', async () => {
 test('external failed-frame recovery reconciles retired driver scratch with the renderer ledger', async () => {
   const driver = { name: 'webgpu', managed: true, scratchBytes: 128,
     async abortFrameAndReleaseFilterScratch(this: { scratchBytes: number }) { this.scratchBytes = 0 } } as unknown as Driver
-  const renderer = new GpuRenderer(driver) as any
+  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   renderer.bytes += 64 // Valid resident textures remain accounted and alive.
   await renderer.abortFrameAndReleaseFilterScratch()
   expect(renderer.bytes).toBe(64)
@@ -898,7 +899,7 @@ test('external failed-frame recovery reconciles retired driver scratch with the 
 test('external abort failure still reconciles partially retired scratch exactly once', async () => {
   const driver = { name: 'webgpu', managed: true, scratchBytes: 128,
     async abortFrameAndReleaseFilterScratch(this: { scratchBytes: number }) { this.scratchBytes = 32; throw Error('submit failed') } } as unknown as Driver
-  const renderer = new GpuRenderer(driver) as any
+  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   renderer.bytes += 64
   await expect(renderer.abortFrameAndReleaseFilterScratch()).rejects.toThrow('submit failed')
   expect(renderer.bytes).toBe(96)
@@ -907,14 +908,14 @@ test('external abort failure still reconciles partially retired scratch exactly 
 
 test.each([NaN, Infinity, -Infinity, .5, Number.MAX_SAFE_INTEGER + 1])('invalid surface dimension %s is rejected before GPU allocation or eviction', width => {
   const create = vi.fn(), destroy = vi.fn()
-  const renderer = new GpuRenderer({ managed: true, create, destroy } as unknown as Driver) as any
+  const renderer = new GpuRenderer({ managed: true, create, destroy } as unknown as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   expect(() => renderer.acquire({ x: 0, y: 0, w: width, h: 2 })).toThrow()
   expect(create).not.toHaveBeenCalled(); expect(destroy).not.toHaveBeenCalled()
   expect(renderer.bytes).toBe(0)
 })
 
 test('unsafe surface products, non-finite origins, and invalid byte admissions cannot poison the ledger', () => {
-  const create = vi.fn(), renderer = new GpuRenderer({ managed: true, create } as unknown as Driver) as any
+  const create = vi.fn(), renderer = new GpuRenderer({ managed: true, create } as unknown as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   expect(() => renderer.acquire({ x: 0, y: 0, w: 2 ** 28, h: 2 ** 28 })).toThrow(/字节数/)
   expect(() => renderer.acquire({ x: NaN, y: 0, w: 1, h: 1 })).toThrow(/边界/)
   for (const bytes of [NaN, Infinity, -.1, .5, Number.MAX_SAFE_INTEGER + 1])
@@ -933,7 +934,7 @@ test('admission diagnostics classify real allocation pressure without early dest
       checkpoint: vi.fn(async (_reason: unknown, fields: unknown) => { metadata = fields; await new Promise<void>(resolve => { finish = resolve }); completed = true }),
       destroy(texture: Texture) { expect(completed).toBe(true); destroyed.push(texture) },
     } as unknown as Driver
-    const renderer = new GpuRenderer(driver) as any
+    const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
     renderer.scene = {}; renderer.bytes = 220 * MiB
     const texture = { width: 1536, height: 2048, bytes: 48 * MiB, resource: {} } as Texture
     renderer.free.set('1536:2048', [texture])
@@ -953,7 +954,7 @@ test('admission diagnostics classify real allocation pressure without early dest
 
 test('disabled admission diagnostics preserve the same fence with no metadata payload', async () => {
   const driver = { name: 'webgpu', managed: true, scratchBytes: 0, checkpoint: vi.fn(async () => {}), destroy() {} } as unknown as Driver
-  const renderer = new GpuRenderer(driver) as any
+  const renderer = new GpuRenderer(driver, undefined, undefined, undefined, undefined, undefined, 256) as any
   renderer.scene = {}; renderer.bytes = 220 * 1024 * 1024
   const texture = { width: 1536, height: 2048, bytes: 48 * 1024 * 1024, resource: {} } as Texture
   renderer.free.set('1536:2048', [texture])
@@ -966,7 +967,7 @@ function completedPoolFixture() {
   const MiB=1024*1024
   const driver={name:'webgpu',managed:true,scratchBytes:0,resourceEpoch:1,completedResourceEpoch:1,
     checkpoint:vi.fn(async()=>{}),destroy:vi.fn()}
-  const renderer=new GpuRenderer(driver as unknown as Driver) as any;renderer.scene={};renderer.bytes=96*MiB
+  const renderer=new GpuRenderer(driver as unknown as Driver, undefined, undefined, undefined, undefined, undefined, 256) as any;renderer.scene={};renderer.bytes=96*MiB
   const texture={width:1536,height:2048,bytes:48*MiB,resource:{}} as Texture
   renderer.busy.add(texture);renderer.release({texture,rect:{x:0,y:0,w:1536,h:2048}})
   driver.resourceEpoch=2

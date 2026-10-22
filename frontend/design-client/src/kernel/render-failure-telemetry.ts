@@ -37,6 +37,29 @@ export function markRenderFailure<T>(error: T, input: RenderFailureTag): T {
  }
  tags.set(error,next); return error
 }
+/** Allocation-rejection snapshot already owned by this exact Error. Never read
+ * renderer-global counters after recovery; never traverse exception causes or
+ * invoke a payload getter. Availability=0 is not a claim that usage was zero. */
+function failureBudgetFields(error: unknown): Record<string, number> {
+ const missing = { failureBudgetAvailable: 0 }
+ try {
+  if (!object(error)) return missing
+  const budget = Object.getOwnPropertyDescriptor(error, 'budgetDiagnostic')?.value
+  if (!budget || typeof budget !== 'object') return missing
+  const own = (name: string) => Object.getOwnPropertyDescriptor(budget, name)?.value
+  const requested = own('requestedBytes'), working = own('workingBytes'), limit = own('budgetBytes')
+  const bytes = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 17179869184
+  if (!bytes(requested) || !bytes(working) || !bytes(limit) || !limit || requested <= limit - working) return missing
+  const out: Record<string, number> = { failureBudgetAvailable: 1, failureRequestedBytes: requested,
+   failureWorkingBytes: working, failureBudgetBytes: limit }
+  const width = own('width'), height = own('height'), coherent = own('coherent')
+  if (Number.isSafeInteger(width) && width > 0 && width <= 1e9 && Number.isSafeInteger(height) && height > 0 && height <= 1e9) {
+   out.failureAllocationWidth = width; out.failureAllocationHeight = height
+  }
+  if (typeof coherent === 'boolean') out.failureCoherent = Number(coherent)
+  return out
+ } catch { return missing }
+}
 export function renderFailureFields(error: unknown) {
  const tagged = object(error) ? tags.get(error) : undefined
  let errorClassCode = 0, exact: {failureCategory:number;failureCode:number} | undefined
@@ -52,7 +75,8 @@ export function renderFailureFields(error: unknown) {
    if (typeof ctor === 'function' && error instanceof ctor) { errorClassCode = klass; exact ??= {failureCategory:category,failureCode:0}; break }
   }
  } catch { /* A hostile getter/class check yields explicit unknown, never text. */ }
- return { failureCategory: tagged?.failureCategory ?? exact?.failureCategory ?? 0,
+ const category = tagged?.failureCategory ?? exact?.failureCategory ?? 0
+ return { ...(category === 3 ? failureBudgetFields(error) : {}), failureCategory: category,
   failureCode: tagged?.failureCode ?? exact?.failureCode ?? 0, failureStage: tagged?.failureStage ?? 0, errorClassCode }
 }
 export function inheritRenderFailure<T>(source: unknown, target: T): T {
