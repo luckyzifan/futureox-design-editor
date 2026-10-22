@@ -1,3 +1,4 @@
+import { sanitizeSurfaceLedger } from './render-surface-ledger.mjs'
 const limits = Object.entries({ failureMaterialFieldBuilds:1e9,failureMaterialFieldUploadBytes:1e12,
   failureImageAxisFields:1e9,failureImageFieldBytes:1e12, failureAllocationSnapshotVersion: 1, failureAllocationKind: 12,
   failureBuildKind: 9, failureLedgerTotalBytes: 17179869184,
@@ -16,7 +17,7 @@ export function sanitizeFailureAllocation(value) {
       if (Number.isSafeInteger(item) && item >= 0 && item <= maximum) out[key] = item
     }
   } catch { return {} }
-  return out
+  return { ...out, ...sanitizeSurfaceLedger(value) }
 }
 const snapshots = new WeakMap()
 const object = value => (typeof value === 'object' && value !== null) || typeof value === 'function'

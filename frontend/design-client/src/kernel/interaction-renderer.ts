@@ -1,3 +1,4 @@
+import { createPoseDiagnostics, type PoseDiagnostics } from './pose-diagnostics'
 import { PoseFeedback } from './pose-feedback'
 import type { Bounds, DesignDocument, Matrix } from '../model'
 import { translateOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
@@ -85,6 +86,16 @@ export class InteractionRenderer {
   private failedGesture = false
   private feedbackDeferred = false
   private readonly feedbackOwners = new WeakMap<DesignDocument, object>()
+  private poseDocumentGeneration=0
+  private poseRetiredThrough=0
+  private poseRetiredReason=2
+  private poseEndedThrough=0
+  private readonly poseLog:PoseDiagnostics
+  private poseEvent(stage:number,reason=0,sequence=this.lastInput.sequence,sampleKind=0) {
+    if(!this.poseLog.enabled)return
+    this.poseLog.record(stage,reason,sequence,{interactionGeneration:this.generation,poseEpoch:this.props?.epoch??0,poseSampleKind:sampleKind,poseDocumentGeneration:this.poseDocumentGeneration,poseActive:Number(!!this.resident?.active),poseReady:Number(!!this.resident?.tiles.length),poseDeferred:Number(this.feedbackDeferred)})
+  }
+  private clearPoseFeedback(reason:number) { this.poseEvent(6,reason);this.poseRetiredThrough=this.lastInput.sequence;this.poseRetiredReason=reason;this.poseFeedback.clear();this.poseDocumentGeneration++ }
   private readonly poseFeedback = new PoseFeedback()
   private lastInput = {sequence:0,at:0}
   private lastPresentedInput = {sequence:0,at:0}
@@ -129,17 +140,18 @@ export class InteractionRenderer {
   readonly control: GpuMoveControl
 
   constructor(private readonly changed: () => void, private readonly sharedClient?: KernelClient,
-    private readonly allowIdleWarm = false) {
+    private readonly allowIdleWarm = false, poseDiagnostics?:PoseDiagnostics) {
+    this.poseLog=poseDiagnostics??createPoseDiagnostics(this.interactionOwner)
     this.control = {
       isActive: () => !!this.resident?.active,
       apply: (document, patches) => {
         const inputStarted=performance.now()
         this.endedDocument = undefined
         const r = this.resident
-        if (!r || this.error && (!r.tiles.length || r.live && !r.retainedFallback) || Object.keys(patches).some(id => !r.plan.ids.includes(id))) return null
+        if (!r || this.error && (!r.tiles.length || r.live && !r.retainedFallback) || Object.keys(patches).some(id => !r.plan.ids.includes(id))) { this.poseEvent(7,!r?11:this.error?5:13);return null }
         const fast=import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'
         const offsets = interactionPatchedOffsets(r.plan, document, patches,fast?this.baseOffsets(r.plan,document):undefined)
-        if (!offsets) return null
+        if (!offsets) { this.poseEvent(7,13);return null }
         // A useful same-context capture can finish into the first/latest pose
         // handoff. Only an unstarted idle timer is cancelled by this gesture.
         this.cancelIdleWarmTimer(); this.idleWarmCapture = undefined
@@ -147,7 +159,7 @@ export class InteractionRenderer {
         // pixels remain available while an aborted predecessor unwinds.
         this.handoff = undefined
         const transforms=Object.fromEntries(r.plan.ids.map(id=>[id,[...(patches[id]?.transform||document.nodes[id].transform)] as Matrix]))
-        if (this.liveAuthored !== document) this.poseFeedback.clear()
+        if (this.liveAuthored !== document) this.clearPoseFeedback(2)
         this.liveAuthored=document
         this.latestPatch={document,patches:Object.fromEntries(r.plan.ids.map(id=>[id,{transform:transforms[id]}]))}
         this.latestCandidate=fast?undefined:interactionPatchedDocument(document,patches)
@@ -173,6 +185,7 @@ export class InteractionRenderer {
         const deferred = !!r.live || retainedRebase
         if (deferred) this.poseFeedback.submit(this.lastInput.sequence, offset, this.feedbackOwner(document))
         this.feedbackDeferred = deferred
+        this.poseEvent(1)
         return offset
       },
       covers: (document, ids, _view) => !!this.resident && (!this.error || (!this.resident.live || !!this.resident.retainedFallback) && this.ready) && this.sameIds(ids) &&
@@ -182,6 +195,8 @@ export class InteractionRenderer {
       inputSequence: () => this.lastInput.sequence,
       previewFailure: () => this.error ? 1 : 0,
       end: document => {
+        this.poseEvent(5)
+        this.poseEndedThrough=this.lastInput.sequence
         this.poseFeedback.clear()
         const r = this.resident
         // Canvas forwards idle editor notifications (including hover) here.
@@ -366,7 +381,7 @@ export class InteractionRenderer {
       this.liveRequested = undefined
     }
     if (this.props?.control !== props?.control && this.props?.control.current === this.control) this.props.control.current = null
-    if (this.props?.document !== props?.document) this.poseFeedback.clear()
+    if (this.props?.document !== props?.document) this.clearPoseFeedback(2)
     this.props = props
     if (props) props.control.current = this.control
     if (this.disposed) return
@@ -582,6 +597,7 @@ export class InteractionRenderer {
           this.resident.offsets = new Map(plan.ids.map(id => [id, { x: 0, y: 0 }]))
           rebase = candidate || this.props!.document
         } else this.lastPresentedInput = this.lastInput
+        this.poseEvent(2,0,0,3)
         accepted=true
         this.latestCandidate=candidate; this.latestPatch=latestPatch
         this.warming = false; this.props?.onReady(); this.changed()
@@ -649,21 +665,33 @@ export class InteractionRenderer {
     return owner
   }
 
-  acceptPresentedInput(sequence: number, at = performance.now()) {
-    const offset = this.poseFeedback.present(sequence, this.liveAuthored && this.feedbackOwner(this.liveAuthored))
-    if (!offset || !this.resident?.active || !this.liveAuthored || !this.props || this.error) return
-    this.props.onPosePresented?.({ sequence, offset, document: this.liveAuthored, epoch: this.props.epoch, latencyMs: Math.max(0, performance.now() - at) })
+  acceptPresentedInput(sequence: number, at = performance.now(), ownerMatches=true, framePresented=true) {
+    if(!framePresented){this.poseEvent(4,4,sequence);return}
+    this.poseEvent(3,0,sequence)
+    if(!ownerMatches){this.poseEvent(4,1,sequence);return}
+    const owner=this.liveAuthored&&this.feedbackOwner(this.liveAuthored)
+    const status=this.poseFeedback.status(sequence,owner)
+    // Preserve the previous consumption order for owner-valid frame ACKs.
+    // New owner/no-frame observations must never consume feedback.
+    const offset=this.poseFeedback.present(sequence,owner)
+    const reason=this.disposed||!this.resident?.active||sequence<=this.poseEndedThrough?6:this.error?5:
+      !this.liveAuthored||!this.props?11:sequence<=this.poseRetiredThrough?this.poseRetiredReason:status
+    if(reason||!offset){this.poseEvent(4,reason||3,sequence);return}
+    this.poseEvent(8,0,sequence)
+    this.props!.onPosePresented?.({ sequence, offset, document: this.liveAuthored!, epoch: this.props!.epoch, latencyMs: Math.max(0, performance.now() - at) })
   }
 
   acceptResidentSample(sample:{slot:number;sequence:number;at:number;total?:number;compileMs?:number;nativePose?:boolean;graphMs?:number;finishMs?:number;groupHits?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number;bounds?:Bounds;needsRebase?:boolean;signature?:string}) {
     const resident=this.resident
-    if(this.disposed||!resident?.live||resident.tiles[0]?.gpuTile!==sample.slot)return
+    if(this.disposed||!resident?.live||resident.tiles[0]?.gpuTile!==sample.slot){this.poseEvent(4,this.disposed?6:9,sample.sequence);return}
+    this.poseEvent(2,0,sample.sequence,1)
     if(sample.needsRebase){
+      this.poseEvent(4,10,sample.sequence)
       if(this.inlineDisabled)return
       this.inlineDisabled=true;resident.captureBounds=undefined;this.liveRequested=undefined
       this.renderLive(this.candidateDocument()||this.props!.document);return
     }
-    if(sample.sequence<=this.lastPresentedInput.sequence)return
+    if(sample.sequence<=this.lastPresentedInput.sequence){this.poseEvent(4,7,sample.sequence);return}
     this.lastPresentedInput={sequence:sample.sequence,at:sample.at}
     if(sample.bounds)resident.visibleBounds=sample.bounds
     this.samples++;this.lastSampleMs=sample.total||0;this.lastSampleCompileMs=sample.compileMs||0;this.lastSampleGraphMs=sample.graphMs||0
@@ -833,6 +861,7 @@ export class InteractionRenderer {
           // capture on every pointer sample discarded the warmed GPU caches.
           if (this.viewportRevision === viewportRevision) resident.scale = scale
           resident.visibleBounds = this.viewport ? { ...bounds } : undefined
+          this.poseEvent(2,0,input.sequence,2)
           this.lastPresentedInput = input
           this.error = ''
           resident.retainedFallback = false
@@ -917,12 +946,13 @@ export class InteractionRenderer {
     this.client = null
   }
   private closeResidents() {
+    this.poseEvent(5,this.disposed?6:9)
     this.cancelIdleWarmTimer(); this.idleWarmCapture = undefined
     this.idleWarmAttempt = this.idleWarmFailed = undefined
     if(this.resident?.tiles[0]?.gpuTile)this.sharedClient?.stopResidentInteraction(this.resident.tiles[0].gpuTile)
     for (const tile of this.resident?.tiles || []) tile.bitmap?.close()
     this.failedGesture = false
-    this.poseFeedback.clear()
+    this.clearPoseFeedback(9)
     this.resident = undefined; this.livePending = undefined; this.liveRequested = undefined; this.liveAuthored = undefined
     this.liveCancelled = false
     this.liveDeferred = false

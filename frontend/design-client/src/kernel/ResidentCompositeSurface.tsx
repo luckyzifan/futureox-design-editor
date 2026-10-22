@@ -247,13 +247,16 @@ export function ResidentCompositeSurface(props: {
           el.dataset.contentSequence = String(input.sequence)
           if (import.meta.env.DEV) el.dataset.inputTrace = JSON.stringify(inputTrace.current)
         }
+        if(input?.sequence&&!usePageTranslation.current&&!stats.presented)
+          interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,false)
         if (stats.presented) {
           const actual = stats.presented as ResidentAcknowledgement
           actualPresentation.current=actual
+          if(input?.sequence&&!usePageTranslation.current)
+            interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,true)
           // Use the exact displayed input and its owner, not the latest pointer
           // or resident-sampling completion. Worker and SVG meet at this pose.
-          if (input?.sequence && input.owner === inputOwner.current && !usePageTranslation.current)
-            interaction.current?.acceptPresentedInput(input.sequence, input.at)
+
           if (import.meta.env.DEV)
             el.dataset.presentedCamera = JSON.stringify((stats.presented as { view: CanvasCamera }).view)
           // This callback runs in a worker message task. Publish the same

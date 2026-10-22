@@ -8,6 +8,11 @@ export class PoseFeedback {
     this.pending.set(sequence, { offset: { ...offset }, owner })
     while (this.pending.size > 180) this.pending.delete(this.pending.keys().next().value!)
   }
+  status(sequence:number,owner?:object) {
+    if(!Number.isSafeInteger(sequence)||sequence<=this.accepted)return 7
+    const record=this.pending.get(sequence)
+    return !record?3:record.owner!==owner?2:0
+  }
   present(sequence: number, owner?: object) {
     if (!Number.isSafeInteger(sequence) || sequence <= this.accepted) return undefined
     const record = this.pending.get(sequence)
