@@ -108,3 +108,29 @@ test.each([false,true])('handoff causal chain survives terminal cleaning detail=
  expect(rows.some(r=>r.handoffDecision===1&&r.handoffReason===1&&r.handoffOwnerKind===2&&r.handoffGesture===2)).toBe(true)
  expect(rows.every(r=>!('document' in r)&&!('nodeId' in r)&&!('matrix' in r)&&!('operationId' in r))).toBe(true)
 })
+test('affine commit handoff retains the completed pose until exact readiness retires it',async()=>{
+ const h=await harness(),b=h.rotate(.4)
+ await h.update(b);await h.resolve(1,200)
+ expect(h.ids()).toContain(200)
+ await act(async()=>{h.control.current!.end(b)})
+ // The commit landed but the exact page is not ready yet: the last completed
+ // affine pose stays presented instead of snapping back to the settled page.
+ await h.render({items:[page(4,4)],translationItems:[page(4,4)],settledDocument:undefined,
+  interaction:{...h.interaction,document:b,active:false}})
+ expect(h.frames.at(-1).items.some((i:any)=>i.tile.gpuTile===200)).toBe(true)
+ expect(h.frames.every(f=>f.items.length>0)).toBe(true)
+ expect(h.client.stopResidentInteraction).not.toHaveBeenCalled()
+ await h.render({items:[page(4,4)],translationItems:[page(4,4)],settledDocument:b,
+  interaction:{...h.interaction,document:b,active:false}})
+ expect(h.ids()).toEqual([4])
+ expect(h.client.releasePresented.mock.calls.some(([ids])=>ids.includes(200))).toBe(true)
+ expect(h.props.onFailure).not.toHaveBeenCalled()
+})
+test('affine end with content beyond selected transforms takes no retention fence',async()=>{
+ const h=await harness(),b=h.rotate(.4)
+ await h.update(b);await h.resolve(1,200)
+ const content={...b,nodes:{...b.nodes,[h.n.id]:{...b.nodes[h.n.id],width:60}}}
+ await act(async()=>{h.control.current!.end(content)})
+ expect(h.client.stopResidentInteraction).toHaveBeenCalledWith(200)
+ expect(h.client.releasePresented.mock.calls.some(([ids])=>ids.includes(200))).toBe(false)
+})

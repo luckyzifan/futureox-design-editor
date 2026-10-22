@@ -2,7 +2,7 @@ import type { InterfaceLocale } from './interface-preference'
 import { localizedToolCommands, unavailableReason } from './tool-registry'
 /** Ephemeral UI metadata only. Never serialize into a document or history label. */
 export type OperationStatus =
-  | { key: 'exportPreviewGenerating' | 'exportFileReady' | 'sketchExportGenerating' | 'sketchExportReadyCompatibility' | 'openBlockedActiveOperation' | 'imageImportBlockedActiveOperation' | 'singleDesignFileRequired' | 'designImportComplete' | 'finishOrCancelDrag' | 'propertiesCopied' | 'sharedFontStyleNeedsLocalOverride' }
+  | { key: 'exportPreviewGenerating' | 'exportFileReady' | 'sketchExportGenerating' | 'sketchExportReadyCompatibility' | 'openBlockedActiveOperation' | 'imageImportBlockedActiveOperation' | 'singleDesignFileRequired' | 'designImportComplete' | 'finishOrCancelDrag' | 'propertiesCopied' | 'sharedFontStyleNeedsLocalOverride' | 'instanceDetachHint' }
   | { key: 'importedGroupsAppended'; count: number }
   | { key: 'imageImportFailed' | 'saveFailedCanvasRetained' | 'kernelStartupFailed' | 'recoveryFailedAutosavePaused' | 'closeFailedDocumentRetained' | 'workspaceSwitchFailedDocumentRetained'; error: string }
   | { key: 'toolUnavailable' | 'unknownToolCommand'; commandId: string }
@@ -35,6 +35,7 @@ export function operationStatusText(raw: string, presentation: MessagePresentati
     }
     case 'unknownToolCommand': return `Unknown tool command ${status.commandId}`
     case 'sharedFontStyleNeedsLocalOverride': return 'Selected text uses a shared style; enable “Convert to local text style” first'
+    case 'instanceDetachHint': return 'Instance content derives from its main component: use “Detach instance” on the context menu to edit child layers'
     default: return raw
   }
 }
