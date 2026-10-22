@@ -870,3 +870,58 @@ test('missing or stale Canvas borrow falls back to fresh geometry, including sta
     expect((owner as any).resident.rootBounds.get(child.id).width).toBe(120)
   } finally { lookup.mockRestore() }
 })
+
+test('live SVG feedback follows actual accepted presenter input, never the submitted or compiled pose', async () => {
+  const f = pendingRetainedFixture(), feedback = vi.fn()
+  f.props.onPosePresented = feedback
+  worker.jobs[0].resolve({ gpuTile: 901, residentInteraction: true }); await f.flush()
+  const submitted = f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
+  expect(submitted).toEqual({ x: 12, y: 0 })
+  expect(f.owner.control.feedbackPending?.()).toBe(true)
+  expect(feedback).not.toHaveBeenCalled()
+  f.owner.acceptResidentSample({ slot: 901, ...worker.poses[0][2], nativePose: true })
+  expect(feedback).not.toHaveBeenCalled()
+  f.owner.acceptPresentedInput(worker.poses[0][2].sequence)
+  expect(feedback).toHaveBeenCalledOnce()
+  expect(feedback.mock.calls[0][0]).toMatchObject({ sequence: 1, offset: { x: 12, y: 0 }, epoch: 1, document: f.doc })
+  f.owner.acceptPresentedInput(1); expect(feedback).toHaveBeenCalledOnce()
+})
+
+test('failed live preview stops claiming the gesture but does not mutate its authored document', async () => {
+  const f = pendingRetainedFixture(), original = JSON.stringify(f.doc)
+  worker.jobs[0].resolve({ gpuTile: 902, residentInteraction: false }); await f.flush()
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
+  worker.jobs[1].reject(Error('Sampling coordinate field exceeds 64 MiB')); await f.flush()
+  expect(f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(16) } })).toBeNull()
+  expect(f.owner.control.covers(f.doc, [f.child.id], f.view)).toBe(false)
+  expect(JSON.stringify(f.doc)).toBe(original)
+})
+
+test('ended or replaced gesture cannot publish delayed DOM feedback', async () => {
+  const f = pendingRetainedFixture(), feedback = vi.fn(); f.props.onPosePresented = feedback
+  worker.jobs[0].resolve({ gpuTile: 903, residentInteraction: true }); await f.flush()
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(8) } })
+  f.owner.acceptPresentedInput(999); expect(feedback).not.toHaveBeenCalled()
+  f.owner.control.end(f.doc)
+  f.owner.acceptPresentedInput(1); expect(feedback).not.toHaveBeenCalled()
+  f.owner.dispose(); f.owner.acceptPresentedInput(1); expect(feedback).not.toHaveBeenCalled()
+})
+
+
+test('same-epoch document replacement cannot relabel an older accepted pose', async () => {
+  const f = pendingRetainedFixture(), feedback = vi.fn(); f.props.onPosePresented = feedback
+  worker.jobs[0].resolve({ gpuTile: 904, residentInteraction: true }); await f.flush()
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(8) } })
+  const replacement = { ...f.doc, nodes: { ...f.doc.nodes,
+    [f.child.id]: { ...f.child, name: 'replacement' } } }
+  f.prepare({ ...f.props, document: replacement })
+  f.owner.acceptPresentedInput(1)
+  expect(feedback).not.toHaveBeenCalled()
+  // Returning to the old immutable snapshot must not revive its retired ACK.
+  f.prepare(f.props); f.owner.acceptPresentedInput(1)
+  expect(feedback).not.toHaveBeenCalled()
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
+  f.owner.acceptPresentedInput(2)
+  expect(feedback).toHaveBeenCalledOnce()
+  expect(feedback.mock.calls[0][0]).toMatchObject({ sequence: 2, document: f.doc, offset: { x: 12, y: 0 } })
+})

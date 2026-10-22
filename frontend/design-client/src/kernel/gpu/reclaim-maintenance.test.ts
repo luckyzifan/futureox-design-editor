@@ -263,9 +263,23 @@ function requiredSequentialRetirement(kind: 'allocation' | 'retired-upload' | 'c
   return { ...f, resource, required: kind === 'allocation' ? 128 * MiB : 0 }
 }
 
+// Optional no-pressure retirement may defer, but no ownership or charge is
+// released until a real checkpoint. Then exercise the allocation boundary.
+async function observeDeferredRetirement(f: ReturnType<typeof requiredSequentialRetirement>, kind: string) {
+  if (kind !== 'retired-upload' && kind !== 'coordinate') return
+  const bytes = f.renderer.bytes, key = `${f.pooled.width}:${f.pooled.height}`
+  await f.renderer.reclaimScratch(0)
+  expect(f.driver.checkpoint).not.toHaveBeenCalled(); expect(f.driver.destroy).not.toHaveBeenCalled()
+  expect(f.renderer.bytes).toBe(bytes); expect(f.renderer.free.get(key)).toEqual([f.pooled])
+  if (kind === 'retired-upload') expect(f.renderer.retiredUploads).toContain(f.resource)
+  else expect(f.renderer.coordinateMaps.has(f.resource)).toBe(true)
+  f.required = 1 // A known allocation is an explicit non-deferrable boundary.
+}
+
 test.each(['allocation', 'retired-upload', 'coordinate', 'image'] as const)(
   'sequential %s work still waits for completion before retiring resources', async kind => {
-    const f = requiredSequentialRetirement(kind), pending = f.renderer.reclaimScratch(f.required)
+    const f = requiredSequentialRetirement(kind); await observeDeferredRetirement(f, kind)
+    const pending = f.renderer.reclaimScratch(f.required)
     expect(f.driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission', undefined)
     expect(f.driver.destroy).not.toHaveBeenCalled()
     f.complete(); await pending
@@ -282,6 +296,7 @@ test.each(['allocation', 'retired-upload', 'coordinate', 'image'] as const)(
   'ordinary %s work still fences before retiring resources and preserves every owner on device-loss failure', async kind => {
     for (const fails of [false, true]) {
       const f = requiredSequentialRetirement(kind); f.renderer.scene.sequentialDisplay = false
+      await observeDeferredRetirement(f, kind)
       const bytes = f.renderer.bytes, key = `${f.pooled.width}:${f.pooled.height}`
       const pending = f.renderer.reclaimScratch(f.required)
       expect(f.driver.checkpoint).toHaveBeenCalledExactlyOnceWith('admission', undefined)
@@ -367,7 +382,8 @@ test.each(['image', 'atlas', 'empty-atlas'] as const)(
 
 test.each(['allocation', 'retired-upload', 'coordinate', 'image'] as const)(
   'a failed sequential %s fence leaves all resource owners intact', async kind => {
-    const f = requiredSequentialRetirement(kind), bytes = f.renderer.bytes
+    const f = requiredSequentialRetirement(kind); await observeDeferredRetirement(f, kind)
+    const bytes = f.renderer.bytes
     const key = `${f.pooled.width}:${f.pooled.height}`, pending = f.renderer.reclaimScratch(f.required)
     expect(f.driver.checkpoint).toHaveBeenCalledOnce()
     f.fail(); await expect(pending).rejects.toThrow('lost fence')

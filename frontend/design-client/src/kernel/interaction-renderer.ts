@@ -1,3 +1,4 @@
+import { PoseFeedback } from './pose-feedback'
 import type { Bounds, DesignDocument, Matrix } from '../model'
 import { translateOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
 import type { CanvasCamera } from '../canvas-camera'
@@ -81,6 +82,10 @@ export class InteractionRenderer {
   private idleWarmAttempt?: IdleWarmContext
   private idleWarmFailed?: IdleWarmContext
   private inputs = new WeakMap<DesignDocument,{sequence:number;at:number}>()
+  private failedGesture = false
+  private feedbackDeferred = false
+  private readonly feedbackOwners = new WeakMap<DesignDocument, object>()
+  private readonly poseFeedback = new PoseFeedback()
   private lastInput = {sequence:0,at:0}
   private lastPresentedInput = {sequence:0,at:0}
   private latestCandidate?: DesignDocument
@@ -131,7 +136,7 @@ export class InteractionRenderer {
         const inputStarted=performance.now()
         this.endedDocument = undefined
         const r = this.resident
-        if (!r || this.error && !r.tiles.length || Object.keys(patches).some(id => !r.plan.ids.includes(id))) return null
+        if (!r || this.error && (!r.tiles.length || r.live && !r.retainedFallback) || Object.keys(patches).some(id => !r.plan.ids.includes(id))) return null
         const fast=import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'
         const offsets = interactionPatchedOffsets(r.plan, document, patches,fast?this.baseOffsets(r.plan,document):undefined)
         if (!offsets) return null
@@ -142,6 +147,7 @@ export class InteractionRenderer {
         // pixels remain available while an aborted predecessor unwinds.
         this.handoff = undefined
         const transforms=Object.fromEntries(r.plan.ids.map(id=>[id,[...(patches[id]?.transform||document.nodes[id].transform)] as Matrix]))
+        if (this.liveAuthored !== document) this.poseFeedback.clear()
         this.liveAuthored=document
         this.latestPatch={document,patches:Object.fromEntries(r.plan.ids.map(id=>[id,{transform:transforms[id]}]))}
         this.latestCandidate=fast?undefined:interactionPatchedDocument(document,patches)
@@ -163,12 +169,20 @@ export class InteractionRenderer {
         const id = r.plan.ids[0], next = patches[id]?.transform, current = document.nodes[id].transform
         const m = r.parentLinear?.get(id) || [1, 0, 0, 1], dx = next ? next[4] - current[4] : 0, dy = next ? next[5] - current[5] : 0
         if(import.meta.env.DEV){this.inputPreparationTrace.push(performance.now()-inputStarted);if(this.inputPreparationTrace.length>180)this.inputPreparationTrace.shift()}
-        return { x: m[0] * dx + m[2] * dy, y: m[1] * dx + m[3] * dy }
+        const offset = { x: m[0] * dx + m[2] * dy, y: m[1] * dx + m[3] * dy }
+        const deferred = !!r.live || retainedRebase
+        if (deferred) this.poseFeedback.submit(this.lastInput.sequence, offset, this.feedbackOwner(document))
+        this.feedbackDeferred = deferred
+        return offset
       },
-      covers: (document, ids, _view) => !!this.resident && (!this.error || this.ready) && this.sameIds(ids) &&
+      covers: (document, ids, _view) => !!this.resident && (!this.error || (!this.resident.live || !!this.resident.retainedFallback) && this.ready) && this.sameIds(ids) &&
         (this.resident.live && document.id === this.resident.plan.document.id && (this.props?.active || this.resident.active) ||
           !!this.baseOffsets(this.resident.plan, document)),
+      feedbackPending: () => this.feedbackDeferred,
+      inputSequence: () => this.lastInput.sequence,
+      previewFailure: () => this.error ? 1 : 0,
       end: document => {
+        this.poseFeedback.clear()
         const r = this.resident
         // Canvas forwards idle editor notifications (including hover) here.
         // They must not dispose a warmed worker before the first pointer-down.
@@ -176,6 +190,21 @@ export class InteractionRenderer {
         if(this.endedDocument===document)return
         this.endedDocument=document
         this.latestPatch=undefined;this.latestCandidate=document
+        if (this.error && r.live && !r.retainedFallback) {
+          // Normal editor.preview now owns the authored transform. Do not keep
+          // the failed native pose active over that new document, or submit it
+          // a second time as a successful gesture handoff. Retain allocations
+          // until ordinary ownership retirement; only stop this pose session.
+          if (r.tiles[0]?.gpuTile) this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
+          this.failedGesture = true
+          this.inlineDisabled = true
+          this.livePending = this.liveRequested = undefined
+          this.handoff = undefined
+          this.nextGeneration()
+          r.active = false
+          this.changed()
+          return
+        }
         const offsets = this.baseOffsets(r.plan, document)
         this.lastEnd = offsets ? [...offsets.values()].map(p => `${p.x},${p.y}`).join(';') : 'content-changed'
         r.active = r.live ? document !== r.plan.document && document.id === r.plan.document.id :
@@ -337,6 +366,7 @@ export class InteractionRenderer {
       this.liveRequested = undefined
     }
     if (this.props?.control !== props?.control && this.props?.control.current === this.control) this.props.control.current = null
+    if (this.props?.document !== props?.document) this.poseFeedback.clear()
     this.props = props
     if (props) props.control.current = this.control
     if (this.disposed) return
@@ -347,6 +377,15 @@ export class InteractionRenderer {
     if (this.sessionEpoch !== props.epoch) {
       this.nextGeneration(); this.releaseClient(); this.pending = undefined; this.pendingDensity = undefined
       this.closeResidents(); this.error = ''; this.sessionEpoch = props.epoch
+    }
+    if (this.failedGesture) {
+      // React updates from ordinary editor.preview must not reclaim the same
+      // failed gesture and reapply its retained native pose. Retry only after
+      // the gesture ends or its selection/session ownership changes.
+      if (props.active && this.resident?.plan.pageId === pageId && this.sameIds(props.selection)) return
+      this.failedGesture = false
+      this.pending = undefined; this.pendingDensity = undefined
+      this.closeResidents(); this.error = ''
     }
     const r = this.resident, key = props.selection.join(',')
     const samePolicy = profile === this.profile && backend === this.backend
@@ -602,6 +641,20 @@ export class InteractionRenderer {
   get mode() { return this.resident?.live && !this.resident.retainedFallback ? 'live-kernel' : 'retained-layers' }
   get presentedInput() { return this.resident?.live ? this.lastPresentedInput : this.lastInput }
   get backgroundLinear(){return this.resident?.backgroundLinear}
+  /** Only the compositor's owner-validated presented-frame acknowledgement
+   * may advance DOM feedback. Native sampling completion alone is insufficient. */
+  private feedbackOwner(document: DesignDocument) {
+    let owner = this.feedbackOwners.get(document)
+    if (!owner) { owner = {}; this.feedbackOwners.set(document, owner) }
+    return owner
+  }
+
+  acceptPresentedInput(sequence: number, at = performance.now()) {
+    const offset = this.poseFeedback.present(sequence, this.liveAuthored && this.feedbackOwner(this.liveAuthored))
+    if (!offset || !this.resident?.active || !this.liveAuthored || !this.props || this.error) return
+    this.props.onPosePresented?.({ sequence, offset, document: this.liveAuthored, epoch: this.props.epoch, latencyMs: Math.max(0, performance.now() - at) })
+  }
+
   acceptResidentSample(sample:{slot:number;sequence:number;at:number;total?:number;compileMs?:number;nativePose?:boolean;graphMs?:number;finishMs?:number;groupHits?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number;bounds?:Bounds;needsRebase?:boolean;signature?:string}) {
     const resident=this.resident
     if(this.disposed||!resident?.live||resident.tiles[0]?.gpuTile!==sample.slot)return
@@ -868,6 +921,8 @@ export class InteractionRenderer {
     this.idleWarmAttempt = this.idleWarmFailed = undefined
     if(this.resident?.tiles[0]?.gpuTile)this.sharedClient?.stopResidentInteraction(this.resident.tiles[0].gpuTile)
     for (const tile of this.resident?.tiles || []) tile.bitmap?.close()
+    this.failedGesture = false
+    this.poseFeedback.clear()
     this.resident = undefined; this.livePending = undefined; this.liveRequested = undefined; this.liveAuthored = undefined
     this.liveCancelled = false
     this.liveDeferred = false
