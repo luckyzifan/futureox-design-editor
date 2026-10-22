@@ -93,8 +93,7 @@ impl GraphApi {
     pub fn new(document_json: &str) -> Result<Self, Error> {
         let mut document: Document =
             serde_json::from_str(document_json).map_err(|e| Error::Json(e.to_string()))?;
-        let store = NodeStore::from_document(&document);
-        document.nodes.clear();
+        let store = NodeStore::from_owned_json_nodes(std::mem::take(&mut document.nodes), document_json);
         let mut api = GraphApi {
             log: OpLog::new(store),
             base: document,
@@ -242,8 +241,16 @@ impl GraphApi {
         let scope = self.scope_for_commit(explicit)?;
         let mut next: Document =
             serde_json::from_str(document_json).map_err(|e| Error::Json(e.to_string()))?;
-        let store = NodeStore::from_document(&next);
-        next.nodes.clear();
+        // Appends change page metadata and therefore use whole-document replace.
+        // Preserve equal nodes across these revisions instead of retaining a new
+        // deep node graph for every undo entry. A different document never borrows
+        // the previous document's allocations, even if its IDs/content coincide.
+        let nodes = std::mem::take(&mut next.nodes);
+        let store = if next.id == self.base.id {
+            self.log.store().replacing_nodes(nodes, document_json)
+        } else {
+            NodeStore::from_owned_json_nodes(nodes, document_json)
+        };
         self.last_scope = Some(scope);
         let snapshot = GraphSnapshot {
             base: next,
@@ -1150,4 +1157,205 @@ mod tests {
             "ignored typed batch left the (already undone) history intact"
         );
     }
+    #[test]
+    fn replacement_reuses_unchanged_nodes_and_preserves_metadata() {
+        let mut api = GraphApi::new(&document_json()).unwrap();
+        let original = api.document_json();
+        let unchanged = api.log.store().arc_ptr("f1").unwrap();
+        let mut next: Document = serde_json::from_str(&original).unwrap();
+        next.name = "Appended document".into();
+        next.pages[0].name = "Renamed page".into();
+        next.pages[0].children.push("new".into());
+        next.nodes.get_mut("p1").unwrap().children.push("new".into());
+        next.nodes.insert("new".into(), sample_node("new", "frame"));
+        let expected = serde_json::to_value(&next).unwrap();
+        api.replace_document(&serde_json::to_string(&next).unwrap()).unwrap();
+        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), unchanged, "whole replacements must share unchanged native nodes");
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&api.document_json()).unwrap(), expected);
+        assert_eq!(api.undo_depth(), 1);
+        assert!(api.undo().unwrap());
+        assert_eq!(api.document_json(), original);
+        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), unchanged);
+        assert!(api.redo().unwrap());
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&api.document_json()).unwrap(), expected);
+    }
+
+    #[test]
+    fn replacement_full_node_equality_does_not_hide_changes() {
+        let mut api = GraphApi::new(&document_json()).unwrap();
+        let mutations: [fn(&mut Node); 5] = [
+            |n| n.name = "Changed".into(),
+            |n| n.width += 1.0,
+            |n| n.height += 1.0,
+            |n| n.opacity = 0.25,
+            |n| { n.bindings.insert("fill".into(), "new-token".into()); },
+        ];
+        for mutate in mutations {
+            let old = api.log.store().arc_ptr("f1").unwrap();
+            let page = api.log.store().arc_ptr("p1").unwrap();
+            let before = api.document_json();
+            let mut next: Document = serde_json::from_str(&before).unwrap();
+            mutate(next.nodes.get_mut("f1").unwrap());
+            let expected = serde_json::to_value(&next).unwrap();
+            api.replace_document(&serde_json::to_string(&next).unwrap()).unwrap();
+            assert_ne!(api.log.store().arc_ptr("f1").unwrap(), old);
+            assert_eq!(api.log.store().arc_ptr("p1").unwrap(), page);
+            assert_eq!(serde_json::from_str::<serde_json::Value>(&api.document_json()).unwrap(), expected);
+            assert!(api.undo().unwrap());
+            assert_eq!(api.document_json(), before);
+            assert!(api.redo().unwrap());
+            assert_eq!(serde_json::from_str::<serde_json::Value>(&api.document_json()).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn replacement_deletion_and_readdition_preserve_exact_history() {
+        let mut api = GraphApi::new(&document_json()).unwrap();
+        let original = api.document_json();
+        let old = api.log.store().arc_ptr("f1").unwrap();
+        let mut removed: Document = serde_json::from_str(&original).unwrap();
+        removed.nodes.remove("f1");
+        removed.nodes.get_mut("p1").unwrap().children.clear();
+        removed.pages[0].children.clear();
+        let removed_json = serde_json::to_string(&removed).unwrap();
+        api.replace_document(&removed_json).unwrap();
+        assert!(api.log.store().get("f1").is_none());
+        api.replace_document(&original).unwrap();
+        let readded = api.log.store().arc_ptr("f1").unwrap();
+        assert_ne!(readded, old, "do not search deleted historical nodes or cross ownership boundaries");
+        assert_eq!(api.document_json(), original);
+        assert!(api.undo().unwrap());
+        assert_eq!(api.document_json(), removed_json);
+        assert!(api.undo().unwrap());
+        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), old);
+        assert_eq!(api.document_json(), original);
+        assert!(api.redo().unwrap());
+        assert!(api.log.store().get("f1").is_none());
+        assert!(api.redo().unwrap());
+        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), readded);
+    }
+
+    #[test]
+    fn replacement_different_document_never_reuses_previous_owner() {
+        let mut api = GraphApi::new(&document_json()).unwrap();
+        let old = api.log.store().arc_ptr("f1").unwrap();
+        let mut next: Document = serde_json::from_str(&api.document_json()).unwrap();
+        next.id = "different-document".into();
+        api.replace_document(&serde_json::to_string(&next).unwrap()).unwrap();
+        assert_ne!(api.log.store().arc_ptr("f1").unwrap(), old);
+        assert_eq!(api.base.id, "different-document");
+        assert!(api.undo().unwrap());
+        assert_eq!(api.base.id, "d1");
+        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), old);
+        assert!(api.redo().unwrap());
+        assert_eq!(api.base.id, "different-document");
+    }
+
+    #[test]
+    fn replacement_retains_all_128_history_entries_with_shared_nodes() {
+        let mut api = GraphApi::new(&document_json()).unwrap();
+        let original = api.log.store().arc_ptr("f1").unwrap();
+        let mut next: Document = serde_json::from_str(&api.document_json()).unwrap();
+        for revision in 1..=130 {
+            next.name = format!("revision-{revision}");
+            api.replace_document(&serde_json::to_string(&next).unwrap()).unwrap();
+            assert_eq!(api.log.store().arc_ptr("f1").unwrap(), original);
+        }
+        assert_eq!(api.undo_depth(), 128);
+        for _ in 0..128 { assert!(api.undo().unwrap()); }
+        assert_eq!(api.base.name, "revision-2");
+        assert!(!api.undo().unwrap());
+        for _ in 0..128 { assert!(api.redo().unwrap()); }
+        assert_eq!(api.base.name, "revision-130");
+        assert!(!api.redo().unwrap());
+        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), original);
+    }
+
+    #[test]
+    fn replacement_preserves_signed_zero_bits_and_exact_history() {
+        for (from, to) in [(0.0_f64, -0.0_f64), (-0.0, 0.0), (-0.0, -0.0)] {
+            let mut source: Document = serde_json::from_str(&document_json()).unwrap();
+            source.nodes.get_mut("f1").unwrap().opacity = from;
+            let before = serde_json::to_string(&source).unwrap();
+            let mut api = GraphApi::new(&before).unwrap();
+            let old = api.log.store().arc_ptr("f1").unwrap();
+            source.nodes.get_mut("f1").unwrap().opacity = to;
+            let after = serde_json::to_string(&source).unwrap();
+            api.replace_document(&after).unwrap();
+            assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), to.to_bits());
+            assert_eq!(api.document_json(), after);
+            assert_ne!(api.log.store().arc_ptr("f1").unwrap(), old, "signed-zero projections conservatively allocate fresh nodes");
+            assert!(api.undo().unwrap());
+            assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), from.to_bits());
+            assert_eq!(api.document_json(), before);
+            assert!(api.redo().unwrap());
+            assert_eq!(api.document_json(), after);
+        }
+    }
+    #[test]
+    fn replacement_preserves_nested_json_signed_zero() {
+        let mut source: Document = serde_json::from_str(&document_json()).unwrap();
+        source.nodes.get_mut("f1").unwrap().instance = Some(crate::components::Instance {
+            slot_contents: Default::default(), component_id: "source".into(), overrides: Default::default(),
+            property_values: [("nested".into(), serde_json::from_str(r#"{"items":[0.0]}"#).unwrap())].into(),
+        });
+        let before = serde_json::to_string(&source).unwrap();
+        let mut api = GraphApi::new(&before).unwrap();
+        source.nodes.get_mut("f1").unwrap().instance.as_mut().unwrap().property_values
+            .insert("nested".into(), serde_json::from_str(r#"{"items":[-0.0]}"#).unwrap());
+        let after = serde_json::to_string(&source).unwrap();
+        api.replace_document(&after).unwrap();
+        let value = &api.log.store().get("f1").unwrap().instance.as_ref().unwrap().property_values["nested"]["items"][0];
+        assert_eq!(value.as_f64().unwrap().to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(api.document_json(), after, "Value::PartialEq is not a signed-zero oracle");
+        assert!(api.undo().unwrap()); assert_eq!(api.document_json(), before);
+        assert!(api.redo().unwrap()); assert_eq!(api.document_json(), after);
+    }
+
+    #[test]
+    fn replacement_preserves_underflow_negative_zero_and_ignores_string_tokens() {
+        let mut source: Document = serde_json::from_str(&document_json()).unwrap();
+        source.nodes.get_mut("f1").unwrap().opacity = 0.0;
+        source.nodes.get_mut("f1").unwrap().name = "quoted \\\" -0 -1e-999 \\ tail".into();
+        let before = serde_json::to_string(&source).unwrap();
+        let mut api = GraphApi::new(&before).unwrap();
+        let old = api.log.store().arc_ptr("f1").unwrap();
+        source.name = "metadata-only".into();
+        let metadata = serde_json::to_string(&source).unwrap();
+        api.replace_document(&metadata).unwrap();
+        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), old, "escaped text does not disable safe reuse");
+        let raw = metadata.replace("\"opacity\":0.0", "\"opacity\":-1e-999");
+        assert_ne!(raw, metadata);
+        let normalized: Document = serde_json::from_str(&raw).unwrap();
+        assert_eq!(normalized.nodes["f1"].opacity.to_bits(), (-0.0_f64).to_bits());
+        api.replace_document(&raw).unwrap();
+        assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(api.document_json(), serde_json::to_string(&normalized).unwrap());
+        assert!(api.undo().unwrap()); assert_eq!(api.document_json(), metadata);
+        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), old);
+        assert!(api.redo().unwrap());
+        assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
+    }
+
+    #[test]
+    fn replacement_after_typed_op_does_not_reuse_uncertain_float_bits() {
+        let mut source: Document = serde_json::from_str(&document_json()).unwrap();
+        source.nodes.get_mut("f1").unwrap().opacity = 0.0;
+        let mut api = GraphApi::new(&serde_json::to_string(&source).unwrap()).unwrap();
+        let handle = api.node_handle("f1");
+        api.set_opacity(handle, -0.0).unwrap();
+        assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
+        let positive = serde_json::to_string(&source).unwrap();
+        api.replace_document(&positive).unwrap();
+        assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), 0.0_f64.to_bits());
+        assert_eq!(api.document_json(), positive);
+        assert!(api.undo().unwrap());
+        assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
+        assert!(api.redo().unwrap()); assert_eq!(api.document_json(), positive);
+        let restored = api.log.store().arc_ptr("f1").unwrap();
+        source.name = "proof restored by redo".into();
+        api.replace_document(&serde_json::to_string(&source).unwrap()).unwrap();
+        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), restored);
+    }
+
 }

@@ -376,3 +376,11 @@ test('pet health subscription validates payload, strips IPC event and unsubscrib
 test('terminal diagnostics is disabled unless explicit native launch flag is present',()=>{assert.equal(load().api.renderDiagnostics,false);assert.equal(load(['--core-render-diagnostics']).api.renderDiagnostics,true)})
 
 test('detail mode is separately explicit',()=>{assert.equal(load().api.renderDiagnosticsDetail,false);assert.equal(load(['--core-render-diagnostics','--core-render-diagnostics-detail']).api.renderDiagnosticsDetail,true)})
+
+test('document capacity is frozen trusted launch policy and cannot be supplied by a document request',()=>{
+ const {api}=load(['--core-document-memory-bytes=1073741824'])
+ assert.equal(api.documentCapacity.memoryBytes,1073741824)
+ assert.equal(Object.isFrozen(api.documentCapacity),true)
+ for(const value of ['0','Infinity','1073741824.5','-1','9007199254740992']) assert.throws(()=>load([`--core-document-memory-bytes=${value}`]))
+ assert.throws(()=>load(['--core-document-memory-bytes=1073741824','--core-document-memory-bytes=1073741824']))
+})

@@ -118,8 +118,11 @@ test('64-target and expansion budgets reject before any graph changes',()=>{
   for(let i=0;i<65;i++){const n=node('rectangle',i*5,0,1,1);d.nodes[n.id]=n;d.pages[0].children.push(n.id);ids.push(n.id)}
   expect(()=>planPasteOverSelection(d,d.pages[0].id,ids,s.packet,'sketch-like')).toThrow('64')
   expect(()=>planPasteOverSelection(d,d.pages[0].id,ids.slice(0,64),' '.repeat(524289),'sketch-like')).toThrow('32 MiB')
-  const big=JSON.parse(s.packet);for(let i=0;i<320;i++){const n=node('rectangle');big.document.nodes[n.id]=n;big.document.pages[0].children.push(n.id);big.roots.push(n.id)}
-  expect(()=>planPasteOverSelection(d,d.pages[0].id,ids.slice(0,64),JSON.stringify(big),'sketch-like')).toThrow(/20000/)
+  // Existing admitted content does not consume a separate 20k business quota.
+  for(let i=0;i<20001;i++){const n=node('rectangle',0,0,1,1);d.nodes[n.id]=n;d.pages[0].children.push(n.id)}
+  const planned=planPasteOverSelection(d,d.pages[0].id,[ids[0]],s.packet,'sketch-like')
+  expect(Object.keys(planned.document.nodes)).toHaveLength(Object.keys(d.nodes).length+2)
+  expect(Object.keys(d.nodes)).not.toHaveLength(Object.keys(planned.document.nodes).length)
 })
 test.each(['document','selection','page','session','interaction','busy'] as const)('async clipboard %s change refuses stale application',async kind=>{
   const f=fixture(),s=source();let resolve!:(value:string)=>void

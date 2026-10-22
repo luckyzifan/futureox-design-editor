@@ -48,8 +48,11 @@ const nativeDir = process.env.CARGO_TARGET_DIR ? resolve(process.env.CARGO_TARGE
 const exe = process.platform === 'win32' ? '.exe' : ''
 const prepare = process.env.DESIGN_PREPARE_BINARY || join(nativeDir, `design-prepare${exe}`)
 const sidecar = process.env.CORE_DESKTOP_SIDECAR || join(nativeDir, `futureox-design-desktop-backend${exe}`)
+const nativeTestBinary = process.env.FUTUREOX_BACKEND_TEST_BINARY || sidecar
+const nativeFrontendNames = new Set(['workspace-autosave-sqlite.test.ts', 'document-history-sqlite.test.ts', 'automation/workspace-sqlite.test.ts', 'automation/workspace-import-copy.test.ts', 'automation/workspace-fig-import-copy.test.ts'])
+const nativeFrontendFiles = clientFiles.filter(file => nativeFrontendNames.has(relative(join(client, 'src'), file).replaceAll('\\', '/')))
 const env = { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0', DESIGN_PREPARE_BINARY: prepare, CORE_DESKTOP_SIDECAR: sidecar,
-  FUTUREOX_BACKEND_TEST_BINARY: process.env.FUTUREOX_BACKEND_TEST_BINARY || sidecar, CORE_DESKTOP_TEST_SOURCE: pathToFileURL(join(desktop, 'src') + '/').href }
+  CORE_DESKTOP_TEST_SOURCE: pathToFileURL(join(desktop, 'src') + '/').href }
 const nodePhase = (id, files, cwd, category, group, prerequisites = []) => ({ id, files, cwd, category, group, prerequisites,
   command: process.execPath, args: ['--test', '--test-timeout=120000', '--test-reporter=tap', ...files], format: 'tap' })
 const phases = [
@@ -59,14 +62,15 @@ const phases = [
   { id: 'python-tools', group: 'contracts', category: 'CPU tool unit tests', cwd: join(root, 'design-studio/scripts'), command: process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), args: ['-m', 'unittest', 'discover', '-p', 'test_*.py'], files: (await readdir(join(root, 'design-studio/scripts'))).filter(n => /^test_.*\.py$/.test(n)).map(n => join(root, 'design-studio/scripts', n)), format: 'python' },
   { id: 'typecheck', group: 'portable', category: 'static TypeScript check', cwd: client, command: process.execPath, args: [join(client, 'node_modules/typescript/bin/tsc'), '--noEmit'], prerequisites: [...wasm, join(client, 'node_modules/typescript/bin/tsc')], files: [] },
   { id: 'frontend-vitest', group: 'portable', category: 'real CPU WASM + pure logic + mocked DOM/driver suites; not real GPU/UI', cwd: client, command: process.execPath, args: [join(client, 'node_modules/vitest/vitest.mjs'), 'run', '--reporter=default', '--reporter=json'], prerequisites: [...wasm, join(client, 'node_modules/vitest/vitest.mjs')], files: clientFiles.filter(p => /\.test\.tsx?$/.test(p) && !p.replaceAll('\\', '/').endsWith('/render-policy.test.ts')), format: 'vitest' },
+  { id: 'frontend-native', group: 'native', category: 'real Editor/WASM plus native SQLite/NDJSON frontend contracts; no GUI or GPU', cwd: client, command: process.execPath, args: [join(client, 'node_modules/vitest/vitest.mjs'), 'run', ...nativeFrontendFiles, '--reporter=default', '--reporter=json'], prerequisites: [...wasm, join(client, 'node_modules/vitest/vitest.mjs'), nativeTestBinary], files: nativeFrontendFiles, format: 'vitest' },
   { id: 'mcp-example', group: 'portable', category: 'real Editor/WASM via in-memory MCP, synthetic HTML/CSS and native-file outputs', cwd: client, command: process.execPath, args: [join(client, 'node_modules/vitest/vitest.mjs'), 'run', '--config', '../design-mcp/examples/vitest.config.mjs', '--reporter=default', '--reporter=json'], prerequisites: [...wasm, join(client, 'node_modules/vitest/vitest.mjs')], files: [join(mcp, 'examples/generate-example.test.ts')], format: 'vitest' },
   { id: 'bun-unit', group: 'portable', category: 'CPU budget/policy logic; no actual GPU', cwd: client, command: process.env.BUN || 'bun', args: ['test', ...bunFiles], files: bunFiles, format: 'bun' },
   { id: 'rust-cpu', group: 'native', category: 'real CPU Rust kernel + local SQLite/backend; no cloud server or GPU', cwd: join(root, 'design-studio'), command: process.env.CARGO || 'cargo', args: ['test', '--locked', '-p', 'futureox-design-kernel', '-p', 'futureox-design-desktop-backend'], files: [join(root, 'design-studio/Cargo.lock')], format: 'rust', timeoutMs: 1800000 },
-  nodePhase('automation-storage', desktopFiles.filter(p => p.endsWith('automation-storage-bridge.test.mjs')), desktop, 'real SQLite sidecar + mocked IPC host', 'native', [env.FUTUREOX_BACKEND_TEST_BINARY]),
+  nodePhase('automation-storage', desktopFiles.filter(p => p.endsWith('automation-storage-bridge.test.mjs')), desktop, 'real SQLite sidecar + mocked IPC host', 'native', [nativeTestBinary]),
   nodePhase('mcp-contracts', mcpFiles.filter(p => p.endsWith('.test.mjs') && !p.endsWith('socket-integration.test.mjs')), mcp, 'in-memory protocol/transport + real stdio; no OS socket', 'contracts'),
   nodePhase('socket-integration', [...desktopFiles.filter(p => p.endsWith('automation-bridge-socket.test.mjs')), ...mcpFiles.filter(p => p.endsWith('socket-integration.test.mjs'))], root, 'real OS socket IPC; explicit opt-in only, permission required', 'manual'),
-  nodePhase('native-preparation', [join(desktop, 'test/runtime/preparation-runtime.test.mjs')], desktop, 'real native CPU binary / WASM packet + pixel comparison', 'native', [...wasm, prepare]),
-  nodePhase('native-sidecar', desktopFiles.filter(p => /\/runtime\/(sidecar|workspace)-runtime\.test\.mjs$/.test(p.replaceAll('\\', '/'))), desktop, 'real owned Rust processes + local SQLite; not OS dialogs', 'native', [sidecar]),
+  nodePhase('native-preparation', desktopFiles.filter(p => /\/runtime\/(preparation-runtime|native-preparation-capacity-runtime)\.test\.mjs$/.test(p.replaceAll('\\', '/'))), desktop, 'real native CPU binary / WASM packet + pixel comparison', 'native', [...wasm, prepare]),
+  nodePhase('native-sidecar', desktopFiles.filter(p => /\/runtime\/(sidecar|workspace|document-capacity)-runtime\.test\.mjs$/.test(p.replaceAll('\\', '/'))), desktop, 'real owned Rust processes + local SQLite; not OS dialogs', 'native', [sidecar]),
 ]
 const selected = p => suites ? suites.includes(p.id) : (profile === 'all' && p.group !== 'manual') || p.group === profile || (profile === 'portable' && p.group === 'contracts')
 if (suites?.some(id => !phases.some(p => p.id === id))) throw new Error(`Unknown suite: ${suites.filter(id => !phases.some(p => p.id === id)).join(',')}`)
@@ -101,7 +105,9 @@ for (const phase of phases) {
   const jsonReport = join(output, `${phase.id}.json`)
   if (phase.format === 'vitest') commandArgs.push(`--outputFile.json=${jsonReport}`)
   entry.command = [phase.command, ...commandArgs]
-  const phaseEnv = { ...env, FUTUREOX_MCP_EXAMPLE_DIR: join(output, 'mcp-example') }
+  // Only native phases manufacture an opt-in. Portable phases keep any explicit
+  // caller opt-in, but must not accidentally launch a missing/stale sidecar.
+  const phaseEnv = { ...env, ...(phase.group === 'native' ? { FUTUREOX_BACKEND_TEST_BINARY: nativeTestBinary } : {}), FUTUREOX_MCP_EXAMPLE_DIR: join(output, 'mcp-example') }
   console.log(`RUN ${phase.id}: ${phase.category}`)
   try {
     const result = await execute(phase.command, commandArgs, { cwd: phase.cwd, env: phaseEnv, log, timeoutMs: phase.timeoutMs || 600000 })

@@ -2,14 +2,14 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { PreparationChannel } from './preparation-channel'
 vi.mock('./kernel-resources', () => ({ loadKernelResources: async () => {
-  const { default: init } = await import('../generated/design-kernel/design_kernel')
-  await init({module_or_path: new Uint8Array(await readFile(new URL('../generated/design-kernel/design_kernel_bg.wasm', import.meta.url)))})
   return new Uint8Array(await readFile(new URL('../../public/fonts/NotoSansSC.ttf', import.meta.url)))
 } }))
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(f => f()); vi.unstubAllGlobals() })
 async function setup() {
   vi.resetModules(); const scope: any = {}; vi.stubGlobal('self', scope)
+  const { initializeKernelModule } = await import('./module')
+  await initializeKernelModule(new Uint8Array(await readFile(new URL('../../public/kernel/design_kernel_bg.wasm', import.meta.url))))
   await import('./preparation-worker')
   const pair = new MessageChannel(), client = new PreparationChannel(pair.port1)
   scope.onmessage({data:{port:pair.port2}})

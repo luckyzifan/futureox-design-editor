@@ -14,8 +14,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-pub const SCHEMA_VERSION: i64 = 5;
-pub const MAX_WORKSPACE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+pub const SCHEMA_VERSION: i64 = 6;
 pub const MAX_DOCUMENTS: i64 = 10_000;
 const MAX_REVISION: i64 = 9_007_199_254_740_991;
 const HISTORY_PAGE: i64 = 1000;
@@ -135,8 +134,12 @@ async fn opened(
 ) -> Result<Opened> {
     let entry = entry(row)?;
     let bytes: Option<Vec<u8>> = row.try_get("snapshot").map_err(db)?;
-    let bytes =
-        bytes.ok_or_else(|| corrupt("Snapshot exceeds its byte budget; stored bytes retained"))?;
+    let bytes = bytes.ok_or_else(|| {
+        BackendError::new(
+            "DOCUMENT_RESOURCE_LIMIT",
+            "Snapshot exceeds this session's working-memory allowance; stored bytes retained",
+        )
+    })?;
     let encoding: i64 = row.try_get("encoding").map_err(db)?;
     let document =
         crate::workspace_snapshot::decode(connection, &bytes, encoding, &entry.id, entry.revision)
@@ -195,12 +198,6 @@ fn prepare_database_file(path: &Path) -> Result<()> {
             Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
                 return Err(invalid(
                     "Workspace database and journals must be regular files",
-                ));
-            }
-            Ok(metadata) if candidate == path && metadata.len() > MAX_WORKSPACE_BYTES => {
-                return Err(BackendError::new(
-                    "WORKSPACE_FULL",
-                    "Workspace exceeds the 4 GiB budget; database retained",
                 ));
             }
             Ok(_) => {}
@@ -311,36 +308,9 @@ impl WorkspaceStore {
                     sqlx::query("PRAGMA wal_autocheckpoint=1000")
                         .execute(&mut *connection)
                         .await?;
-                    let page_size: i64 = sqlx::query_scalar("PRAGMA page_size")
-                        .fetch_one(&mut *connection)
-                        .await?;
-                    if page_size <= 0 {
-                        return Err(sqlx::Error::Protocol("Invalid workspace page size".into()));
-                    }
-                    let max_pages = MAX_WORKSPACE_BYTES / page_size as u64;
-                    let pragma = match page_size {
-                        512 => "PRAGMA max_page_count=8388608",
-                        1024 => "PRAGMA max_page_count=4194304",
-                        2048 => "PRAGMA max_page_count=2097152",
-                        4096 => "PRAGMA max_page_count=1048576",
-                        8192 => "PRAGMA max_page_count=524288",
-                        16384 => "PRAGMA max_page_count=262144",
-                        32768 => "PRAGMA max_page_count=131072",
-                        65536 => "PRAGMA max_page_count=65536",
-                        _ => {
-                            return Err(sqlx::Error::Protocol(
-                                "Unsupported workspace page size".into(),
-                            ));
-                        }
-                    };
-                    let effective: i64 = sqlx::query_scalar(pragma)
-                        .fetch_one(&mut *connection)
-                        .await?;
-                    if effective as u64 != max_pages {
-                        return Err(sqlx::Error::Protocol(
-                            "Workspace page budget could not be enforced".into(),
-                        ));
-                    }
+                    // No product-size ceiling. SQLite's own representable-page
+                    // limit and actual disk errors remain authoritative; failed
+                    // writes roll back under the existing immediate transaction.
                     Ok(())
                 })
             })
@@ -494,6 +464,21 @@ impl WorkspaceStore {
                 .await
                 .map_err(db)?;
         }
+        if version < 6 {
+            for sql in [
+                "CREATE TABLE assets_v6(hash TEXT PRIMARY KEY CHECK(length(hash)=64),kind TEXT NOT NULL CHECK(kind IN('font','image')),value BLOB NOT NULL,byte_length INTEGER NOT NULL CHECK(byte_length>=0 AND byte_length=length(value)))",
+                "INSERT INTO assets_v6 SELECT hash,kind,value,byte_length FROM assets",
+                "CREATE TABLE revision_assets_v6(document_id TEXT NOT NULL,revision INTEGER NOT NULL,asset_hash TEXT NOT NULL REFERENCES assets_v6(hash),PRIMARY KEY(document_id,revision,asset_hash),FOREIGN KEY(document_id,revision) REFERENCES revisions(document_id,revision))",
+                "INSERT INTO revision_assets_v6 SELECT document_id,revision,asset_hash FROM revision_assets",
+                "DROP TABLE revision_assets",
+                "DROP TABLE assets",
+                "ALTER TABLE assets_v6 RENAME TO assets",
+                "ALTER TABLE revision_assets_v6 RENAME TO revision_assets",
+                "PRAGMA user_version=6",
+            ] {
+                sqlx::query(sql).execute(&mut *tx).await.map_err(db)?;
+            }
+        }
         tx.commit().await.map_err(db)
     }
     pub(crate) fn automation_pool(&self) -> &SqlitePool {
@@ -541,11 +526,7 @@ impl WorkspaceStore {
         // Preserve the existing Value representation (and its object-key order),
         // byte limit and content hash; directly serializing Vec<Entry> is different.
         let mut documents = json!({"documents":&entries});
-        let bytes = crate::bounded_json(
-            &documents,
-            MAX_WORKSPACE_BYTES.min(32 * 1024 * 1024) as usize,
-            "WORKSPACE_ERROR",
-        )?;
+        let bytes = crate::bounded_json(&documents, 32 * 1024 * 1024, "WORKSPACE_ERROR")?;
         let hash = hash(&bytes);
         let response = (hash != view_hash).then(|| documents["documents"].take());
         let retained_bytes = HeadsSnapshot::retained_bytes(&entries, &hash);
@@ -583,8 +564,8 @@ impl WorkspaceStore {
             validate_revision(revision)?;
         }
         let mut connection = self.pool.acquire().await.map_err(db)?;
-        let row = sqlx::query("SELECT r.document_id,r.revision,r.name,r.hash,r.updated_at,r.deleted,r.encoding,CASE WHEN length(r.snapshot)<=33619968 THEN r.snapshot ELSE NULL END AS snapshot FROM revisions r JOIN documents d ON d.id=r.document_id WHERE r.document_id=? AND r.revision=COALESCE(?,d.head_revision)")
-            .bind(id).bind(revision).fetch_optional(&mut *connection).await.map_err(db)?.ok_or_else(not_found)?;
+        let row = sqlx::query("SELECT r.document_id,r.revision,r.name,r.hash,r.updated_at,r.deleted,r.encoding,CASE WHEN length(r.snapshot)<=? THEN r.snapshot ELSE NULL END AS snapshot FROM revisions r JOIN documents d ON d.id=r.document_id WHERE r.document_id=? AND r.revision=COALESCE(?,d.head_revision)")
+            .bind(crate::workspace_snapshot::snapshot_byte_limit() as i64).bind(id).bind(revision).fetch_optional(&mut *connection).await.map_err(db)?.ok_or_else(not_found)?;
         opened(&mut connection, &row).await
     }
     pub async fn revisions(&self, id: &str, before_revision: Option<i64>) -> Result<Value> {
@@ -618,7 +599,7 @@ impl WorkspaceStore {
         mutation: &str,
         request_hash: &str,
     ) -> Result<Option<Opened>> {
-        let row = sqlx::query("SELECT m.request_hash,r.document_id,r.revision,r.name,r.hash,r.updated_at,r.deleted,r.encoding,CASE WHEN length(r.snapshot)<=33619968 THEN r.snapshot ELSE NULL END AS snapshot FROM mutations m JOIN revisions r ON r.document_id=m.document_id AND r.revision=m.revision WHERE m.mutation_id=?").bind(mutation).fetch_optional(&mut **tx).await.map_err(db)?;
+        let row = sqlx::query("SELECT m.request_hash,r.document_id,r.revision,r.name,r.hash,r.updated_at,r.deleted,r.encoding,CASE WHEN length(r.snapshot)<=? THEN r.snapshot ELSE NULL END AS snapshot FROM mutations m JOIN revisions r ON r.document_id=m.document_id AND r.revision=m.revision WHERE m.mutation_id=?").bind(crate::workspace_snapshot::snapshot_byte_limit() as i64).bind(mutation).fetch_optional(&mut **tx).await.map_err(db)?;
         match row {
             Some(row) if row.try_get::<String, _>("request_hash").map_err(db)? != request_hash => {
                 Err(BackendError::new(
@@ -635,7 +616,7 @@ impl WorkspaceStore {
         id: &str,
         expected: Option<i64>,
     ) -> Result<Option<Opened>> {
-        let row = sqlx::query("SELECT r.document_id,r.revision,r.name,r.hash,r.updated_at,r.deleted,r.encoding,CASE WHEN length(r.snapshot)<=33619968 THEN r.snapshot ELSE NULL END AS snapshot FROM documents d JOIN revisions r ON r.document_id=d.id AND r.revision=d.head_revision WHERE d.id=?").bind(id).fetch_optional(&mut **tx).await.map_err(db)?;
+        let row = sqlx::query("SELECT r.document_id,r.revision,r.name,r.hash,r.updated_at,r.deleted,r.encoding,CASE WHEN length(r.snapshot)<=? THEN r.snapshot ELSE NULL END AS snapshot FROM documents d JOIN revisions r ON r.document_id=d.id AND r.revision=d.head_revision WHERE d.id=?").bind(crate::workspace_snapshot::snapshot_byte_limit() as i64).bind(id).fetch_optional(&mut **tx).await.map_err(db)?;
         let result = match row {
             Some(row) => Some(opened(tx, &row).await?),
             None => None,
@@ -844,8 +825,8 @@ impl WorkspaceStore {
         Self::head(&mut tx, id, Some(expected))
             .await?
             .ok_or_else(not_found)?;
-        let row = sqlx::query("SELECT document_id,revision,name,hash,updated_at,deleted,encoding,CASE WHEN length(snapshot)<=33619968 THEN snapshot ELSE NULL END AS snapshot FROM revisions WHERE document_id=? AND revision=?")
-            .bind(id)
+        let row = sqlx::query("SELECT document_id,revision,name,hash,updated_at,deleted,encoding,CASE WHEN length(snapshot)<=? THEN snapshot ELSE NULL END AS snapshot FROM revisions WHERE document_id=? AND revision=?")
+            .bind(crate::workspace_snapshot::snapshot_byte_limit() as i64).bind(id)
             .bind(revision)
             .fetch_optional(&mut *tx)
             .await

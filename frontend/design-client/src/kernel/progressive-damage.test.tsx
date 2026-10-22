@@ -1309,7 +1309,7 @@ test.each(['webgl2', 'webgpu'] as const)('pending %s preview survives raw pan an
   expect(worker.calls).toHaveLength(2)
 })
 
-test.each(['edit', 'undo', 'fonts', 'page', 'epoch', 'dpr', 'extent', 'pause', 'hidden', 'suspended', 'release'] as const)(
+test.each(['edit', 'undo', 'fonts', 'page', 'epoch', 'dpr', 'extent', 'pause', 'hidden', 'suspended'] as const)(
   'a running and queued navigation capture lose ownership on %s, releasing a late result exactly once', async change => {
     vi.stubGlobal('WebGL2RenderingContext', class {})
     const h = harness(false), first = { x: -.25, y: .75, zoom: 2 }, next = { ...first, x: -20 }
@@ -1330,7 +1330,6 @@ test.each(['edit', 'undo', 'fonts', 'page', 'epoch', 'dpr', 'extent', 'pause', '
     if (change === 'pause') override = { paused: true }
     if (change === 'hidden') override = { visible: false }
     if (change === 'suspended') worker.navigation = { active: false, suspended: true, sample: undefined }
-    if (change === 'release') worker.navigation = { active: false, suspended: false, sample: undefined }
     h.render({ ...base, view: next, ...override }); await settleRejected()
     expect(pending.signal.aborted).toBe(true)
     const close = vi.fn()
@@ -2090,4 +2089,141 @@ test('unmount cancels a pending sequential capture and never publishes its late 
     expect(worker.calls).toHaveLength(before)
     expect(worker.clients[0].releasePresented).toHaveBeenCalledWith([704])
   } finally { vi.useRealTimers() }
+})
+
+// Cold zoom-out acceptance here is orchestration/geometry only. No child GPU
+// compositor, texture pixels or physical display completion is simulated.
+async function highZoomCoverageFixture() {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
+  worker.dynamicPlan = true
+  const seeds = planTiles({ x: 0, y: 0, width: 1024 / 32, height: 512 / 32 }, 32)
+  const h = harness(seeds), options = { backend: 'webgl2', view: { x: 0, y: 0, zoom: 32 } }
+  h.render(options); await flushRasterWork()
+  expect(surfaceParts(h.render(options)).wrapper.props['data-frame-publication']).toBe('complete')
+  return { h, options }
+}
+
+test.each([1, 2, 3, 4, 5])('cold 32x dwell → %ix admits bounded coverage despite intersecting old pixels, then native repair', async zoom => {
+  const { h, options } = await highZoomCoverageFixture()
+  const next = { ...options, view: { x: 0, y: 0, zoom } }, before = worker.calls.length
+  let parts = surfaceParts(h.render(next))
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(before + 1))
+  const capture = worker.calls[before]
+  expect(capture.options.livePreview).toBe(true)
+  expect(capture.options.renderIntent).toBe('preview')
+  expect(capture.options.width * capture.options.height).toBeLessThanOrEqual(1_050_000)
+  const old = parts.compositor.props.items.filter((item: any) => item.active)
+  expect(old.length).toBeGreaterThan(0)
+  const rows = compositeDrawPlan(old, next.view, 1024, 512)
+  expect(rows.reduce((sum, row) => sum + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)).toBeLessThan(1024 * 512)
+  expect(parts.wrapper.props['data-detail-ready']).toBe('false')
+  capture.resolve(); await settleRejected()
+  await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(before + 1))
+  expect(worker.calls[before + 1].options.renderIntent).toBe('canvas')
+  parts = surfaceParts(h.render(next))
+  const tile = parts.compositor.props.items.find((item: any) => item.tile.key.startsWith('coverage-preview:')).tile
+  // Arrival alone neither removes the old crop nor certifies full display.
+  expect(parts.compositor.props.items.find((item: any) => item.tile === tile).active).toBe(false)
+  parts.compositor.props.onReady(tile.key, tile.serial, false)
+  parts = surfaceParts(h.render(next))
+  const covered = compositeDrawPlan(parts.compositor.props.items, next.view, 1024, 512)
+  expect(covered.reduce((sum, row) => sum + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)).toBe(1024 * 512)
+  expect(parts.wrapper.props['data-detail-ready']).toBe('false')
+})
+
+test('running zoom-out coverage survives quiet and is not duplicated while importing before native repair', async () => {
+  const { h, options } = await highZoomCoverageFixture(), before = worker.calls.length
+  const next = { ...options, view: { x: 0, y: 0, zoom: 2 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: next.view } }
+  h.render(next); await vi.waitFor(() => expect(worker.calls).toHaveLength(before + 1))
+  const running = worker.calls[before], cancellations = worker.clients[0].cancelPreview.mock.calls.length
+  worker.navigation = { active: false, suspended: false, sample: undefined }
+  h.render(next); await settleRejected()
+  expect(running.signal.aborted).toBe(false)
+  expect(worker.clients[0].cancelPreview).toHaveBeenCalledTimes(cancellations)
+  running.resolve(); await settleRejected()
+  await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(before + 1))
+  expect(worker.calls[before + 1].options.renderIntent).toBe('canvas')
+  expect(worker.calls.slice(before).filter(call => call.options.livePreview)).toHaveLength(1)
+  expect(surfaceParts(h.render(next)).compositor.props.items.some((item: any) => item.tile.viewportPreview)).toBe(true)
+})
+
+test('rapid zoom-out reversal supersedes waiting coverage without cancelling useful running pixels', async () => {
+  const { h, options } = await highZoomCoverageFixture(), before = worker.calls.length
+  for (const [sequence, zoom] of [[1, 1], [2, 5], [3, 2]]) {
+    const next = { ...options, view: { x: 0, y: 0, zoom } }
+    worker.navigation = { active: true, suspended: false, sample: { active: true, sequence, view: next.view } }
+    h.render(next); await settleRejected()
+  }
+  expect(worker.calls).toHaveLength(before + 1)
+  expect(worker.calls[before].signal.aborted).toBe(false)
+  worker.calls[before].resolve(); await settleRejected()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(before + 2))
+  expect(worker.calls[before + 1].options.view.zoom).toBe(2)
+})
+
+test.each(['document', 'page', 'session', 'paused'] as const)('late running zoom-out coverage cannot cross %s invalidation', async kind => {
+  const { h, options } = await highZoomCoverageFixture(), before = worker.calls.length
+  const next = { ...options, view: { x: 0, y: 0, zoom: 2 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: next.view } }
+  h.render(next); await vi.waitFor(() => expect(worker.calls).toHaveLength(before + 1))
+  const running = worker.calls[before], close = vi.fn()
+  const changed = { ...next, ...(kind === 'document' ? { document: { ...h.doc, nodes: { ...h.doc.nodes } } } :
+    kind === 'page' ? { pageId: 'different-page' } : kind === 'session' ? { presentationEpoch: 1 } : { paused: true }) }
+  h.render(changed)
+  expect(running.signal.aborted).toBe(true)
+  running.resolve({ bitmap: { close }, gpuTile: 8821 }); await settleRejected()
+  expect(close).toHaveBeenCalledOnce()
+  expect(worker.clients[0].releasePresented).toHaveBeenCalledWith([8821])
+  expect(surfaceParts(h.render(changed)).compositor.props.items.some((item: any) => item.tile.gpuTile === 8821)).toBe(false)
+})
+
+
+test('zoom-out continuity targets the latest requested viewport, not only its sampled camera', async () => {
+  const { h, options } = await highZoomCoverageFixture(), before = worker.calls.length
+  const next = { ...options, view: { x: 0, y: 0, zoom: 2 }, requestedView: { x: -25.25, y: 10.125, zoom: 1 } }
+  h.render(next); await vi.waitFor(() => expect(worker.calls).toHaveLength(before + 1))
+  expect(worker.calls[before].options.view).toEqual(next.requestedView)
+  expect(surfaceParts(h.render(next)).wrapper.props['data-detail-ready']).toBe('false')
+})
+
+test('zoom-out coverage budget rejection immediately resumes native repair without a blur retry ladder', async () => {
+  const { h, options } = await highZoomCoverageFixture(), before = worker.calls.length
+  const next = { ...options, view: { x: 0, y: 0, zoom: 1 } }
+  h.render(next); await vi.waitFor(() => expect(worker.calls).toHaveLength(before + 1))
+  worker.calls[before].reject(Error('GPU surface budget exceeded')); await settleRejected()
+  await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(before + 1))
+  expect(worker.calls[before + 1].options.renderIntent).toBe('canvas')
+  expect(worker.calls.slice(before).filter(call => call.options.livePreview)).toHaveLength(1)
+  expect(surfaceParts(h.render(next)).compositor.props.items.some((item: any) => item.active && item.tile.zoom === 32)).toBe(true)
+})
+
+
+test('device replacement discards a late settled coverage result and wakes current-view repair', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {}); vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
+  worker.dynamicPlan = true
+  const seeds = planTiles({ x: 0, y: 0, width: 1024 / 32, height: 512 / 32 }, 32).map((tile, index) => ({ ...tile, gpuTile: 8900 + index }))
+  const h = harness(seeds), initial = { backend: 'webgpu', view: { x: 0, y: 0, zoom: 32 } }
+  h.render(initial); await flushRasterWork()
+  let parts = surfaceParts(h.render(initial))
+  const owner = { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 1 }
+  parts.compositor.props.onPresented({ view: initial.view, width: 1024, height: 512, dpr: 1,
+    interaction: false, ids: seeds.map(tile => tile.gpuTile) }, undefined, owner)
+  h.render(initial)
+  const next = { ...initial, view: { x: 0, y: 0, zoom: 1 } }, before = worker.calls.length
+  h.render(next); await vi.waitFor(() => expect(worker.calls).toHaveLength(before + 1))
+  expect(worker.calls[before].options.livePreview).toBe(true)
+  parts = surfaceParts(h.render(next))
+  parts.compositor.props.onPresented({ view: next.view, width: 1024, height: 512, dpr: 1,
+    interaction: false, ids: [] }, undefined, { ...owner, deviceIncarnation: 2, deviceOwner: 2 })
+  h.render(next)
+  const close = vi.fn()
+  worker.calls[before].resolve({ bitmap: { close }, gpuTile: 8999 }); await settleRejected()
+  expect(close).toHaveBeenCalledOnce()
+  expect(worker.clients[0].releasePresented).toHaveBeenCalledWith([8999])
+  expect(surfaceParts(h.render(next)).compositor.props.items.some((item: any) => item.tile.gpuTile === 8999)).toBe(false)
+  await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(before + 1))
+  expect(worker.calls[before + 1].options.view.zoom).toBe(1)
 })

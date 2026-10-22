@@ -12,10 +12,14 @@ use std::sync::Arc;
 const HISTORY_LIMIT: usize = 128;
 
 /// Structurally shared node store: nodes are `Arc`d and the map is an
-/// HAMT, so snapshotting only copies the spine.
+/// ordered persistent B-tree, so snapshots share unchanged map structure.
 #[derive(Clone, Default)]
 pub struct NodeStore {
     nodes: OrdMap<String, Arc<Node>>,
+    // PartialEq collapses signed zero. Reuse is allowed only for projections
+    // proven free of negative-zero f32/f64 values by their original JSON.
+    // Arbitrary typed writes invalidate this proof; Clone/undo retain it.
+    exact_float_equality_safe: bool,
 }
 
 impl NodeStore {
@@ -30,7 +34,48 @@ impl NodeStore {
                 .iter()
                 .map(|(id, node)| (id.clone(), Arc::new(node.clone())))
                 .collect(),
+            exact_float_equality_safe: false,
         }
+    }
+
+    /// Adopt a freshly parsed node map without cloning each owned node.
+    pub(crate) fn from_owned_json_nodes(nodes: std::collections::BTreeMap<String, Node>, json: &str) -> Self {
+        Self {
+            nodes: nodes.into_iter().map(|(id, node)| (id, Arc::new(node))).collect(),
+            exact_float_equality_safe: json_supports_exact_float_equality(json),
+        }
+    }
+
+    /// Replace a same-document projection, retaining equal immutable allocations.
+    /// Ordered merge visits each old/new ID once and compares each matching Node
+    /// once; only changed/inserted/deleted entries update the persistent map.
+    /// Cost is O(old + new + compared payload + changes * log N), not all-pairs.
+    /// The caller owns document-identity checks; no process-global interning occurs.
+    pub(crate) fn replacing_nodes(&self, nodes: std::collections::BTreeMap<String, Node>, json: &str) -> Self {
+        let exact_float_equality_safe = json_supports_exact_float_equality(json);
+        if !self.exact_float_equality_safe || !exact_float_equality_safe {
+            return Self {
+                nodes: nodes.into_iter().map(|(id, node)| (id, Arc::new(node))).collect(),
+                exact_float_equality_safe,
+            };
+        }
+        let mut result = self.nodes.clone();
+        let mut previous = self.nodes.iter().peekable();
+        for (id, node) in nodes {
+            while previous.peek().is_some_and(|(old_id, _)| old_id.as_str() < id.as_str()) {
+                let (removed, _) = previous.next().expect("peeked previous node");
+                result.remove(removed);
+            }
+            let unchanged = if previous.peek().is_some_and(|(old_id, _)| *old_id == &id) {
+                let (_, old_node) = previous.next().expect("peeked matching node");
+                old_node.as_ref() == &node
+            } else {
+                false
+            };
+            if !unchanged { result.insert(id, Arc::new(node)); }
+        }
+        for (removed, _) in previous { result.remove(removed); }
+        Self { nodes: result, exact_float_equality_safe }
     }
 
     pub fn get(&self, id: &str) -> Option<&Node> {
@@ -44,12 +89,14 @@ impl NodeStore {
     {
         let arc = self.nodes.get(id)?;
         let mut node = Node::clone(arc);
+        self.exact_float_equality_safe = false;
         let result = f(&mut node);
         self.nodes.insert(id.into(), Arc::new(node));
         Some(result)
     }
 
     pub fn insert(&mut self, node: Node) {
+        self.exact_float_equality_safe = false;
         self.nodes.insert(node.id.clone(), Arc::new(node));
     }
 
@@ -83,6 +130,49 @@ impl NodeStore {
             .collect();
         document
     }
+}
+
+
+/// Inspect an already successfully parsed document JSON buffer, without cloning
+/// strings or serializing nodes. Signed-zero numeric values (including exponent
+/// underflow) conservatively disable sharing for the complete projection. Text,
+/// escaped strings and base64 payloads do not act as numeric tokens.
+fn json_supports_exact_float_equality(json: &str) -> bool {
+    let bytes = json.as_bytes();
+    let mut at = 0;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'"' => {
+                at += 1;
+                loop {
+                    match bytes.get(at) {
+                        Some(b'\\') => at += 2,
+                        Some(b'"') => { at += 1; break; }
+                        Some(_) => at += 1,
+                        None => return false,
+                    }
+                }
+            }
+            b'-' | b'0'..=b'9' => {
+                let start = at;
+                at += 1;
+                while at < bytes.len() && matches!(bytes[at], b'0'..=b'9' | b'.' | b'e' | b'E' | b'+' | b'-') {
+                    at += 1;
+                }
+                if bytes[start] != b'-' { continue; }
+                let token = &bytes[start..at];
+                // Use serde_json's own numeric conversion, including f32 fields:
+                // -1e-999 can become -0 even though it does not begin with -0.
+                let Ok(wide) = serde_json::from_slice::<f64>(token) else { return false; };
+                let Ok(narrow) = serde_json::from_slice::<f32>(token) else { return false; };
+                if (wide == 0.0 && wide.is_sign_negative()) || (narrow == 0.0 && narrow.is_sign_negative()) {
+                    return false;
+                }
+            }
+            _ => at += 1,
+        }
+    }
+    true
 }
 
 #[derive(Clone)]
@@ -258,4 +348,42 @@ mod tests {
         }
         assert_eq!(history.undo_depth(), HISTORY_LIMIT);
     }
+    #[test]
+    fn exact_float_json_scan_handles_escaped_strings_nested_values_and_underflow() {
+        for json in [r#"{"x":-0}"#, r#"{"x":-0.0}"#, r#"{"nested":{"x":[-0e4]}}"#,
+                     r#"{"x":-1e-999}"#, r#"{"x":-1e-99}"#] {
+            assert!(!json_supports_exact_float_equality(json), "unsafe numeric token: {json}");
+        }
+        for json in [r#"{"x":0.0,"negative":-1.0,"fraction":-0.25}"#,
+                     r#"{"text":"-0 -1e-999","nested":[1e-999,0]}"#,
+                     r#"{"text":"escaped\" -0 \\","next":-1.0}"#] {
+            assert!(serde_json::from_str::<serde_json::Value>(json).is_ok(), "test JSON must be valid");
+            assert!(json_supports_exact_float_equality(json), "safe numeric projection: {json}");
+        }
+    }
+
+    #[test]
+    fn typed_store_insert_and_update_invalidate_exact_float_reuse_proof() {
+        let document = document_with(2);
+        let json = serde_json::to_string(&document).unwrap();
+        let initial = NodeStore::from_owned_json_nodes(document.nodes.clone(), &json);
+        assert!(initial.exact_float_equality_safe);
+        let cloned = initial.clone();
+        assert!(cloned.exact_float_equality_safe);
+        let mut updated = initial.clone();
+        updated.update("n0", |node| node.opacity = -0.0).unwrap();
+        assert!(!updated.exact_float_equality_safe);
+        let old_sibling = updated.arc_ptr("n1").unwrap();
+        let replaced = updated.replacing_nodes(document.nodes.clone(), &json);
+        assert!(replaced.exact_float_equality_safe);
+        assert_ne!(replaced.arc_ptr("n1").unwrap(), old_sibling, "unknown typed state conservatively gets a fresh projection");
+        let mut inserted = cloned;
+        let mut node = sample_node("n0", "frame"); node.opacity = -0.0;
+        inserted.insert(node);
+        assert!(!inserted.exact_float_equality_safe);
+        let replaced = inserted.replacing_nodes(document.nodes.clone(), &json);
+        assert_eq!(replaced.get("n0").unwrap().opacity.to_bits(), document.nodes["n0"].opacity.to_bits());
+        assert!(initial.exact_float_equality_safe, "writes cannot invalidate an immutable old snapshot");
+    }
+
 }

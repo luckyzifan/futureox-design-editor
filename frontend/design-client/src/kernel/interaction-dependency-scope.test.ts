@@ -19,6 +19,7 @@ function reference(document: DesignDocument, selection: string[], zoom: number, 
   // is an ordinary effect-free, mask-free container; other selections
   // retain the conservative viewport dependency path.
   const byId = new Map(entries.map(entry => [entry.id, entry]))
+  scope.parentMatrices = new Map(selection.map(id => [id, byId.get(byId.get(id)?.parent || '')?.matrix || [1, 0, 0, 1, 0, 0] as import('../model').Matrix]))
   scope.parentLinear = new Map(selection.map(id =>
     [id, byId.get(byId.get(id)?.parent || '')?.matrix.slice(0, 4) || [1, 0, 0, 1]]))
   scope.localizedBounds = new Set()

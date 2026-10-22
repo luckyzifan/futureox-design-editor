@@ -563,6 +563,8 @@ export class Editor {
     draftIds?: string[],
     source: EditorEditEvent['source'] = 'user',
     diagnosticCategory: OperationCategory = 'other',
+    // Trusted local admission after materialization, before history/publication.
+    admitResolved?: (document: DesignDocument) => void,
   ) {
     if (!this.propertyPreviewWrite && !this.settleOwnedPropertyPreview('edit'))
       return { status: 'rejected' as const, revision: this.state.version, message: '请先完成颜色输入' }
@@ -649,6 +651,7 @@ export class Editor {
         if ((n.pathOffset || n.vectorBrush) && n !== before.doc.nodes[n.id]) kernelBounds(n)
       validateStructure(resolved)
       validateDocument(resolved)
+      admitResolved?.(resolved)
       if (resolved === before.doc) { finish('unchanged'); return { status: 'unchanged' as const, revision: this.state.version } }
       if (this.transaction) {
         this.transaction.previewBase = resolved

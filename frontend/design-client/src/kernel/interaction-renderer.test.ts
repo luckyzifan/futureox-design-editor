@@ -923,6 +923,7 @@ test('same-epoch document replacement cannot relabel an older accepted pose', as
   f.prepare(f.props); f.owner.acceptPresentedInput(1)
   expect(feedback).not.toHaveBeenCalled()
   f.owner.control.apply(f.doc, { [f.child.id]: { transform: f.transform(12) } })
+  f.owner.acceptResidentSample({slot:904,sequence:2,at:0})
   f.owner.acceptPresentedInput(2)
   expect(feedback).toHaveBeenCalledOnce()
   expect(feedback.mock.calls[0][0]).toMatchObject({ sequence: 2, document: f.doc, offset: { x: 12, y: 0 } })
@@ -986,6 +987,7 @@ test('actual renderer reports document retirement, stale sequence, missing seque
  const rows:Record<string,number>[]=[];const f=pendingRetainedFixture(true,new PoseDiagnostics(r=>rows.push(r)))
  worker.jobs[0].resolve({gpuTile:942,residentInteraction:true});await f.flush()
  f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}})
+ f.owner.acceptResidentSample({slot:942,sequence:1,at:0})
  f.owner.acceptPresentedInput(1);f.owner.acceptPresentedInput(1);f.owner.acceptPresentedInput(999)
  f.owner.acceptResidentSample({slot:999,sequence:2,at:0})
  f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(12)}})
@@ -1019,6 +1021,7 @@ test('throwing diagnostic output never changes apply, accepted feedback or end s
  const f=pendingRetainedFixture(true,new PoseDiagnostics(()=>{throw Error('sink')})),feedback=vi.fn();f.props.onPosePresented=feedback
  worker.jobs[0].resolve({gpuTile:943,residentInteraction:true});await f.flush()
  expect(f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}})).toEqual({x:8,y:0})
+ f.owner.acceptResidentSample({slot:943,sequence:1,at:0})
  f.owner.acceptPresentedInput(1)
  expect(feedback).toHaveBeenCalledOnce()
  expect(()=>f.owner.control.end(f.doc)).not.toThrow()
@@ -1035,4 +1038,78 @@ test.each(['dispose','epoch','selection'] as const)('renderer %s retires pending
  expect(rows.find(r=>r.poseStage===5)?.posePendingCount).toBe(1)
  f.owner.acceptPresentedInput(1)
  expect(rows.filter(r=>r.poseStage===5)).toHaveLength(1)
+})
+
+test('rotation coalesces full native captures, presents only rendered affine feedback, and hands off before React props catch up', async () => {
+  const f = pendingRetainedFixture(), feedback = vi.fn(); f.props.onPosePresented = feedback
+  worker.jobs[0].resolve({ gpuTile: 980, residentInteraction: true }); await f.flush()
+  const first = [0, 1, -1, 0, 60, 40] as typeof f.child.transform
+  const latest = [.6, .8, -.8, .6, 62, 42] as typeof f.child.transform
+  expect(f.owner.control.apply(f.doc, { [f.child.id]: { transform: first } })?.matrix).toBeDefined()
+  expect(worker.stops).toContain(980)
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.jobs[1].options).toMatchObject({ interactionNative: true, interactionAffine: true, interactionWindowFixed: true })
+  expect(worker.jobs[1].options.interactionWindow.w).toBe(480)
+  expect(worker.jobs[1].options.interactionWindow.h).toBe(360)
+  f.owner.control.apply(f.doc, { [f.child.id]: { transform: latest } })
+  f.owner.acceptPresentedInput(2)
+  expect(feedback).not.toHaveBeenCalled()
+  worker.jobs[1].resolve({ gpuTile: 981, residentInteraction: true }); await f.flush()
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.poses.at(-1)[1][f.child.id]).toEqual(latest)
+  expect(f.owner.presentedInput.sequence).toBe(1)
+  f.owner.acceptPresentedInput(1)
+  expect(feedback.mock.calls[0][0].offset.matrix).toBeDefined()
+  f.owner.acceptResidentSample({ slot: 981, sequence: 2, at: 0 })
+  f.owner.acceptPresentedInput(2)
+  expect(feedback).toHaveBeenCalledTimes(2)
+  const final = { ...f.doc, nodes: { ...f.doc.nodes, [f.child.id]: { ...f.child, transform: latest } } }
+  f.owner.control.end(final)
+  expect(f.owner.control.feedbackPending!()).toBe(false)
+  f.prepare(f.props) // Stale props before the commit notification.
+  f.prepare({ ...f.props, active: false, document: final })
+  f.owner.control.end(final)
+  expect(worker.jobs).toHaveLength(2)
+  expect(f.owner.items(f.view)).not.toBeNull()
+})
+
+test('inactive root selection leaves incomplete zoom coverage to canvas while preserving a callable interaction lease', async () => {
+  const f = pendingRetainedFixture(false)
+  f.prepare({ ...f.props, selection: [f.root.id] })
+  expect(worker.jobs).toHaveLength(0)
+  for (const zoom of [.2, 2, .3, 1]) f.prepare({ ...f.props, selection: [f.root.id] }, { ...f.view, zoom })
+  expect(worker.jobs).toHaveLength(0)
+  expect(f.owner.control.apply(f.doc, { [f.root.id]: { transform: [1, 0, 0, 1, 12, 8] } })).not.toBeNull()
+  expect(worker.jobs).toHaveLength(1)
+  worker.jobs[0].resolve({ gpuTile: 982 }); await f.flush()
+  expect(f.owner.ready).toBe(true)
+})
+
+test.each(['page','profile','backend'] as const)('stale committed-document props cannot retain handoff after %s ownership changes',async changed=>{
+ const f=pendingRetainedFixture();worker.jobs[0].resolve({gpuTile:983,residentInteraction:true});await f.flush()
+ const next={...f.doc,nodes:{...f.doc.nodes,[f.child.id]:{...f.child,transform:f.transform(12)}}}
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(12)}});f.owner.control.end(next)
+ expect(worker.stops).not.toContain(983)
+ f.owner.prepare(f.props,changed==='page'?'replacement-page':f.doc.pages[0].id,f.view,2,
+   changed==='profile'?'analytic':'figmaSubpixel',changed==='backend'?'cpu':'webgpu',undefined,{width:240,height:180})
+ expect(worker.stops).toContain(983)
+})
+
+test('an in-flight translation-localized warm capture cannot ACK or clip the first affine input',async()=>{
+ const f=pendingRetainedFixture(),feedback=vi.fn();f.props.onPosePresented=feedback
+ const transform=[0,1,-1,0,60,40] as typeof f.child.transform
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform}})
+ expect(worker.jobs).toHaveLength(1)
+ worker.jobs[0].resolve({gpuTile:984,residentInteraction:true});await f.flush()
+ expect(f.owner.presentedInput.sequence).toBe(0)
+ f.owner.acceptPresentedInput(1);expect(feedback).not.toHaveBeenCalled()
+ expect(worker.poses.at(-1)[1][f.child.id]).toEqual(transform)
+ // The worker explicitly declines the old translation-localized lease.
+ f.owner.acceptResidentSample({slot:984,sequence:1,at:0,needsRebase:true})
+ expect(worker.jobs).toHaveLength(2)
+ expect(worker.jobs[1].options).toMatchObject({interactionAffine:true,interactionNative:true,interactionWindow:{w:480,h:360}})
+ worker.jobs[1].resolve({gpuTile:985,residentInteraction:true});await f.flush()
+ expect(f.owner.presentedInput.sequence).toBe(1)
+ f.owner.acceptPresentedInput(1);expect(feedback).toHaveBeenCalledOnce()
+ expect(worker.jobs).toHaveLength(2)
 })

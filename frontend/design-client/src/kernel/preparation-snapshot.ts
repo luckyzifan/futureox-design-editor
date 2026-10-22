@@ -1,3 +1,4 @@
+import { documentCapacity } from '../document-capacity'
 import { applyDocumentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument } from '../model'
 
@@ -8,7 +9,7 @@ export class PreparationSnapshots {
   private sources = new Map<string, Source>()
   private mips = new Map<string, boolean>()
   private epochs = new Map<string, number>()
-  private static readonly maxSourceCodeUnits = 32 * 1024 * 1024
+  private static get maxSourceCodeUnits() { return documentCapacity().documentBytes }
   private static readonly maxPatches = 256
   // UTF-16 storage upper bound. Overflow revokes reuse, never document updates.
   private static readonly maxPatchBytes = 4 * 1024 * 1024

@@ -636,6 +636,8 @@ export class WebGlDriver implements Driver {
       gl.disable(gl.SCISSOR_TEST)
     }
   }
+  // GL uploads each batch independently; its existing bound is per call.
+  solidBatchRemaining() { return MAX_SOLID_INSTANCES }
   solidBatch(target: Texture, u: Float32Array, data: Float32Array, clip?: Texture) {
     if (clip === target) throw new Error('GPU texture feedback loop')
     if (data.length > MAX_SOLID_INSTANCES * SOLID_INSTANCE_FLOATS)

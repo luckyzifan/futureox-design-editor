@@ -235,7 +235,7 @@ wired for a supported runner; an unexecuted CI lane is not a passing platform re
 - Main process dialogs select `.fd` destinations; the renderer receives opaque
   capabilities and file display names, never arbitrary filesystem access.
 - Local files are checked against the Rust model. Document payloads are bounded to
-  **32 MiB**, stdio frames to **64 MiB**, and pending RPC requests to eight.
+  **a trusted startup memory allowance**, stdio frames to **64 MiB**, and pending RPC requests to eight. Larger admitted documents use ordered 1 MiB multipart chunks, not larger frames. See [document capacity](../../docs/DOCUMENT_CAPACITY_V1.md).
 - Saving uses the last observed hash and rejects external changes. Save As obtains a
   new destination baseline; when adding an extension changes the selected destination,
   an existing normalized target needs its own explicit replacement confirmation.

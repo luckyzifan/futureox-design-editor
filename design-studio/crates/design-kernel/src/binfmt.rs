@@ -7,7 +7,8 @@
 use crate::scene::Document;
 
 pub const FORMAT_VERSION: u16 = 2;
-pub const MAX_VALUE_BYTES: usize = 32 * 1024 * 1024;
+/// Current resource allowance, not an FD format/version limit.
+pub fn max_value_bytes() -> usize { crate::capacity::document_byte_limit() }
 pub const MAGIC: [u8; 4] = [b'F', b'X', b'D', b'K'];
 
 #[derive(Debug)]
@@ -110,7 +111,6 @@ impl Writer {
         head.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
         head.extend_from_slice(&[0; 8]);
         // string table first so the reader can resolve refs while scanning
-        let mut table = Vec::new();
         let mut table_writer = Writer {
             out: Vec::new(),
             strings: Vec::new(),
@@ -120,8 +120,7 @@ impl Writer {
         for s in &self.strings {
             table_writer.bytes(s.as_bytes());
         }
-        table.extend_from_slice(&table_writer.out);
-        head.extend_from_slice(&table);
+        head.extend_from_slice(&table_writer.out);
         head.append(&mut body);
         // Version 2 covers the string table as well as the typed body.
         use sha2::{Digest, Sha256};
@@ -134,7 +133,7 @@ impl Writer {
 pub struct Reader<'a> {
     data: &'a [u8],
     pos: usize,
-    strings: Vec<String>,
+    strings: Vec<&'a str>,
 }
 
 impl<'a> Reader<'a> {
@@ -172,11 +171,13 @@ impl<'a> Reader<'a> {
         if count > data.len() {
             return Err(Error::Truncated);
         }
+        if count.checked_mul(std::mem::size_of::<&str>()).is_none_or(|bytes| bytes > crate::capacity::expanded_value_limit()) {
+            return Err(Error::Malformed("FD string table exceeds resource allowance".into()));
+        }
+        reader.strings.try_reserve(count).map_err(|_| Error::Malformed("FD string table allocation failed".into()))?;
         for _ in 0..count {
             let raw = reader.blob()?;
-            reader
-                .strings
-                .push(String::from_utf8(raw.to_vec()).map_err(|_| Error::Truncated)?);
+            reader.strings.push(std::str::from_utf8(raw).map_err(|_| Error::Truncated)?);
         }
         let body_start = reader.pos;
         let body = &data[if version == 1 { body_start } else { 14 }..];
@@ -365,7 +366,10 @@ fn read_string(reader: &mut Reader<'_>, budget: &mut usize) -> Result<String, Er
     *budget = budget
         .checked_sub(text.len())
         .ok_or_else(|| Error::Malformed("expanded string limit".into()))?;
-    Ok(text.clone())
+    let mut value = String::new();
+    value.try_reserve(text.len()).map_err(|_| Error::Malformed("FD string allocation failed".into()))?;
+    value.push_str(text);
+    Ok(value)
 }
 
 /// Preserve every authored field, including explicit nulls and extension data.
@@ -375,11 +379,11 @@ pub fn encode_value(value: &Value) -> Vec<u8> {
     writer.finish()
 }
 pub fn decode_value(data: &[u8]) -> Result<Value, Error> {
-    if data.len() > MAX_VALUE_BYTES {
-        return Err(Error::Malformed("file size limit".into()));
+    if data.len() > max_value_bytes() {
+        return Err(Error::Malformed("DOCUMENT_RESOURCE_LIMIT: FD exceeds this session's resource allowance".into()));
     }
     let mut reader = Reader::new(data)?;
-    let value = read_value(&mut reader, 0, &mut (MAX_VALUE_BYTES * 4))?;
+    let value = read_value(&mut reader, 0, &mut crate::capacity::expanded_value_limit())?;
     if reader.consumed() != data.len() {
         return Err(Error::Malformed("trailing bytes".into()));
     }

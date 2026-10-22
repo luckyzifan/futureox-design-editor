@@ -1,3 +1,5 @@
+import { pinDocumentCapacity } from '../document-capacity'
+import { initializeKernelModule } from './module'
 import { createTileCostDiagnostics } from './tile-cost-diagnostics'
 import { setDeviceDiagnosticRequestContext, beginDeviceRecovery, deviceDiagnosticFields, deviceLifecyclePhase, type DeviceDiagnosticFields } from './gpu/device-lifecycle-diagnostics'
 import { GridMeasurements } from './grid-measurements'
@@ -13,7 +15,7 @@ import { createRenderDiagnostics, snapshotResourceFields, setGpuDiagnosticSink, 
 import { NavigationJournal, validateNavigationJournalOptions } from './navigation-journal'
 import { renderFailureEnvelope, renderErrorWithBudget } from './render-diagnostics'
 import { readAuthoredSnapshot } from './authored-snapshot'
-import initialize, {
+import {
   transcode_export_png as raw_transcode_export_png,
   VectorEngine,
   encode_png_rgba as raw_encode_png_rgba,
@@ -54,6 +56,8 @@ import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
+import { residentOverlayAffines } from './gpu/resident-affine-pose'
+import { interactionPatchTransforms } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport } from './tile-prepare-viewport'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
@@ -236,7 +240,7 @@ function selectLane(name: RenderLaneName) {
 async function engine(state = laneState) {
   if (!state.enginePromise)
     state.enginePromise = (async () => {
-      const boot = () => initialize({ module_or_path: '/kernel/design_kernel_bg.wasm' })
+      const boot = () => initializeKernelModule()
       // Warm only after a real request owns the render queue/GPU permit. Merely
       // constructing idle clients must not boot unlimited WASM/font workers.
       const font = preparation ? (await Promise.all([boot(), preparation.request(state.name, 'warm_resources')]), undefined) : await loadKernelResources(boot)
@@ -304,17 +308,13 @@ const queue = new RenderWorkQueue()
 type ResidentPose={slot:number;transforms:Record<string,Matrix>;input:{sequence:number;at:number}}
 type PoseSession={slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
-  patch?:TranslationPatchSession;native?:boolean;delta?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
+  patch?:TranslationPatchSession;native?:boolean;affine?:boolean;delta?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
-function displayedOverlayOffsets(frame:import('./gpu/resident-presenter').ResidentFrame) {
-  const session=poseSession
-  if(!frame.overlay?.transforms||!session||!frame.interaction||!frame.items.some(i=>i.active&&i.tile.gpuTile===session.slot))return undefined
-  const offsets:Record<string,{x:number;y:number}>={}
-  for(const [id,transform] of Object.entries(frame.overlay.transforms)){
-    const delta=previewTranslationDelta(session.scene,id,transform)
-    if(delta)offsets[id]={x:-delta[0]/session.scene.view.zoom,y:-delta[1]/session.scene.view.zoom}
-  }
-  return offsets
+function displayedOverlayAffines(frame:import('./gpu/resident-presenter').ResidentFrame) {
+  const session = poseSession
+  if (!frame.overlay?.transforms || !session || !frame.interaction ||
+      !frame.items.some(item => item.active && item.tile.gpuTile === session.slot)) return undefined
+  return residentOverlayAffines(session.scene, frame.overlay.transforms)
 }
 function rebasePose(pose:ResidentPose){
   if(poseSession?.slot===pose.slot)poseSession.stopped=true
@@ -325,11 +325,12 @@ function schedulePose(){
   if(poseQueued||!pendingPose)return
   poseQueued=true
   void queue.run(async()=>{
+    let runningPose: ResidentPose | undefined
     try{
       while(pendingPose){
-        const pose=pendingPose;pendingPose=undefined
+        const pose=pendingPose;pendingPose=undefined;runningPose=pose
         const session=poseSession
-        if(!session||session.slot!==pose.slot||!gpu?.driver.replacePresented)continue
+        if(!session||session.stopped||session.slot!==pose.slot||!gpu?.driver.replacePresented)continue
         const started=performance.now()
         selectLane('interaction')
         const ids=Object.keys(pose.transforms)
@@ -340,12 +341,16 @@ function schedulePose(){
           [id,{...session.document.nodes[id],transform:pose.transforms[id]}]))}}
         const documentMs=performance.now()-documentStarted
         const scale=session.scene.view.zoom,base=session.window
+        const affine = ids.some(id => pose.transforms[id].slice(0, 4).some((value, i) => value !== session.baseDocument.nodes[id]?.transform[i]))
+        // Translation-localized captures cannot prove rotated paint/support.
+        // Rebase once into a full-viewport, compiler-owned affine capture.
+        if (affine && (!session.native || !session.affine)) { rebasePose(pose); break }
         const deltas = ids.map(id => previewTranslationDelta(session.scene, id, pose.transforms[id]))
         if (deltas.some(delta => !delta)) { rebasePose(pose); break }
         // session.window belongs to the initial capture. Native recompilation
         // replaces moved nodes, so their current previewSource cannot anchor a
         // cumulative displacement (a same-pose pointerup has delta zero).
-        const shifts=session.fixedWindow?[{x:0,y:0}]:ids.map((id,index)=>{
+        const shifts=session.affine||session.fixedWindow?[{x:0,y:0}]:ids.map((id,index)=>{
           const origin=session.origins.get(id)
           return origin && residentPoseShift(origin,session.scene.nodes[id].matrix,deltas[index]!)
         })
@@ -393,7 +398,7 @@ function schedulePose(){
           prepareDisplay()
           const result=await failureAttempt(12, () => gpu!.render(next,false,true))
           if(!result.gpuTile)throw Error('Resident movement did not produce a GPU texture')
-          if(poseSession!==session){gpu.driver.releasePresented?.([result.gpuTile]);continue}
+          if(poseSession!==session||session.stopped){gpu.driver.releasePresented?.([result.gpuTile]);continue}
           gpu.driver.replacePresented(session.slot,result.gpuTile)
           session.scene=next
           if(session.patch)session.patch.accept(next,pose.transforms)
@@ -406,7 +411,7 @@ function schedulePose(){
             const view=displayFrame.view
             displayFrame={...displayFrame,interaction:true,input:pose.input,items:displayFrame.items.map(item=>item.tile.gpuTile===session.slot
               ?{...item,clip:{left:bounds.x*view.zoom+view.x,top:bounds.y*view.zoom+view.y,width:bounds.width*view.zoom,height:bounds.height*view.zoom}}:item)}
-            displayFrame.overlayPose=displayedOverlayOffsets(displayFrame)
+            displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
             gpu.driver.presentFrame?.(displayFrame)
           }
           reportDisplay({residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
@@ -424,11 +429,20 @@ function schedulePose(){
             signature:displayFrame?residentFrameSignature(displayFrame):undefined}})
         }catch(error){console.warn('[resident-interaction] rebuilding capture',String(error));rebasePose(pose);break}
       }
+    }catch(error){
+      // Preparation/compilation can fail before GPU.render. Retire the lease
+      // just like a raster failure so input never waits for an impossible ACK.
+      if(runningPose && poseSession?.slot === runningPose.slot && !poseSession.stopped)rebasePose(runningPose)
+      if(import.meta.env.DEV)console.warn('DESIGN_POSE',error)
     }finally{poseQueued=false;if(pendingPose)schedulePose()}
   },1)
 }
 self.onmessage = (e) => {
   const request = e.data
+  if (request.documentMemoryBytes !== undefined) {
+    try { pinDocumentCapacity(request.documentMemoryBytes, 'trusted-worker-bootstrap') }
+    catch (error) { self.postMessage({ id: request.id, error: String(error) }); return }
+  }
   if (request.command === 'document-fallback') {
     const pending = documentFallbacks.get(request.id)
     if (pending) {
@@ -484,7 +498,7 @@ self.onmessage = (e) => {
     displayFrame=request.frame
     if(displayFrame&&poseSession?.input&&poseSession.bounds)
       displayFrame=withResidentPose(displayFrame,{slot:poseSession.slot,input:poseSession.input,bounds:poseSession.bounds})
-    if(displayFrame)displayFrame.overlayPose=displayedOverlayOffsets(displayFrame)
+    if(displayFrame)displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
     if (!displayFramePending) {
       displayFramePending=true
       // Input is already coalesced on the window's animation clock. A second
@@ -513,6 +527,7 @@ self.onmessage = (e) => {
   }
   if(request.command==='interaction-pose-stop'){
     if(poseSession&&poseSession.slot===request.slot)poseSession.stopped=true
+    if(pendingPose?.slot===request.slot)pendingPose=undefined
     return
   }
   if (request.command === 'display-release') {
@@ -639,7 +654,7 @@ self.onmessage = (e) => {
       const retainInteraction = request.options?.retainInteractionGraph === true && request.options?.renderIntent === 'preview' && request.options?.livePreview === true &&
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
-      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
+      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
         tilePrepareViewport: requestedPrepareViewport, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
@@ -835,7 +850,10 @@ self.onmessage = (e) => {
         // A conservative subset mismatch must not reject an otherwise valid
         // edit: keep backend CAS but withhold renewal of authored authority.
         const canAcknowledge = canGuard && boundedPatchWire(request.documentPatch) && supportsAcknowledgedPropertyPatch(actualBefore!, patch)
-        const damage = defer ? { full: true, bounds: null, reason: 'transient-translation' } :
+        const transforms = channel === 'interaction' && retainInteraction && interactionNative &&
+          laneState.synchronizedInteractionDocument && interactionPatchTransforms(laneState.synchronizedInteractionDocument, patch, interactionSelection || [])
+        const nativePose = !!transforms && await kernel.apply_interaction_transforms(JSON.stringify(transforms))
+        const damage = nativePose ? { full: true, bounds: null, reason: 'native-interaction-pose' } : defer ? { full: true, bounds: null, reason: 'transient-translation' } :
           JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch, canGuard ? request.patchBaseReceipt : undefined).catch(error => {
             if (canGuard) laneState.interactionDocument = priorAuthoredDocument
             throw error
@@ -1503,7 +1521,7 @@ self.onmessage = (e) => {
             // path; warming their former bilinear approximation is unnecessary.
             const origins=capturePoseOrigins(scene!,interactionSelection||[])
             if(origins)poseSession={slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,
-              scene:scene!,native:interactionNative===true,delta:!!incrementalScene,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
+              scene:scene!,native:interactionNative===true,affine:interactionAffine===true,delta:!!incrementalScene,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
               patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,laneState.interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
           }
           const bitmap = request.png ? undefined : result.bitmap

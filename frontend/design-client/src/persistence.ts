@@ -1,3 +1,4 @@
+import { assertDocumentBytes } from './document-capacity'
 import { forma_encode_json, forma_decode_json } from './generated/design-kernel/design_kernel'
 import { initializeKernelModule } from './kernel/module'
 import { desktopBridge } from './desktop'
@@ -25,7 +26,9 @@ export async function readDocument(file: File) {
 export async function readDesignFile(file:File, signal?:AbortSignal):Promise<import('./import-svg').ImportedDesign> {
   signal?.throwIfAborted()
   const svgFile = /\.svgz?$/i.test(file.name)
-  if (file.size > (svgFile ? 48 : 32) * 1024 * 1024) throw new Error(svgFile ? 'SVG 文件超过 48 MiB' : '文件超过 32 MB')
+  const nativeFile = /\.(fd|json)$/i.test(file.name)
+  if (nativeFile) assertDocumentBytes(file.size)
+  else if (file.size > (svgFile ? 48 : 32) * 1024 * 1024) throw new Error(svgFile ? 'SVG 文件超过 48 MiB' : '文件超过 32 MB')
   if (/\.(fig|sketch|pdf)$/i.test(file.name)) {
     const bytes = await file.arrayBuffer()
     signal?.throwIfAborted()

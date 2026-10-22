@@ -1,0 +1,58 @@
+{
+  "baseline": "5494bb50b3057ccf5f6b9cc9056fb4221dbbb420",
+  "functionalTestsRunDuringPackaging": false,
+  "checks": [
+    {
+      "mode": "check",
+      "validatedFiles": 117,
+      "filesToChange": 117,
+      "baseline": "5494bb50b3057ccf5f6b9cc9056fb4221dbbb420"
+    },
+    {
+      "patchForwardCheck": true
+    },
+    {
+      "mode": "apply",
+      "validatedFiles": 117,
+      "filesChanged": 117,
+      "baseline": "5494bb50b3057ccf5f6b9cc9056fb4221dbbb420",
+      "databaseTouched": false
+    },
+    {
+      "mode": "apply",
+      "validatedFiles": 117,
+      "filesChanged": 0,
+      "baseline": "5494bb50b3057ccf5f6b9cc9056fb4221dbbb420",
+      "databaseTouched": false
+    },
+    {
+      "patchReverseCheck": true
+    },
+    {
+      "mode": "rollback",
+      "validatedFiles": 117,
+      "filesChanged": 117,
+      "baseline": "5494bb50b3057ccf5f6b9cc9056fb4221dbbb420",
+      "databaseTouched": false
+    },
+    {
+      "mode": "rollback",
+      "validatedFiles": 117,
+      "filesChanged": 0,
+      "baseline": "5494bb50b3057ccf5f6b9cc9056fb4221dbbb420",
+      "databaseTouched": false
+    },
+    {
+      "patchApplyAndReverseRoundTrip": true
+    },
+    {
+      "unknownEditRefusedAndPreserved": true
+    },
+    {
+      "wrongHeadApplyAndRollbackRefused": true
+    },
+    {
+      "all117FrozenSourceHashesStillMatch": true
+    }
+  ]
+}

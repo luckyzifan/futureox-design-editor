@@ -1,10 +1,12 @@
+import { pinDocumentCapacity } from './document-capacity'
 import { importFig } from './import-fig'
 import { initializeKernelModule } from './kernel/module'
 import { uid, type DesignDocument } from './model'
 type FileJob = { bytes: ArrayBuffer; name: string; format: 'fig' | 'sketch' | 'pdf' }
   | { document: DesignDocument; format: 'sketch-export' }
-self.onmessage = async (event: MessageEvent<FileJob>) => {
+self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>) => {
   try {
+    if (event.data.memoryBytes !== undefined) pinDocumentCapacity(event.data.memoryBytes, 'trusted-worker-bootstrap')
     if (event.data.format === 'sketch-export') {
       await initializeKernelModule()
       const { export_sketch_json } = await import('./generated/design-kernel/design_kernel')

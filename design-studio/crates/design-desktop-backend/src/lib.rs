@@ -29,7 +29,8 @@ use std::{io::Write, path::Path};
 pub use recovery::{RecoveryEntry, RecoveryList, RecoveryRecord};
 pub use storage::{OpenedDocument, SavedDocument, TargetState};
 
-pub const MAX_DOCUMENT_BYTES: usize = 32 * 1024 * 1024;
+pub use futureox_design_kernel::capacity::document_byte_limit;
+pub(crate) mod document_transport;
 pub const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_RECOVERIES: usize = 16;
 pub(crate) const MAX_PATH_BYTES: usize = 32 * 1024;
@@ -251,7 +252,7 @@ pub(crate) fn validate_hash(value: Option<&str>) -> Result<()> {
 }
 
 pub(crate) fn validate_document(value: &Value) -> Result<()> {
-    // Deserialize by reference; don't clone a potentially 32 MiB JSON tree.
+    // Deserialize by reference; don't clone a potentially large JSON tree.
     let document = Document::deserialize(value)
         .map_err(|e| BackendError::new("INVALID_DOCUMENT", e.to_string()))?;
     fn uuid(value: &str) -> bool {
@@ -285,7 +286,7 @@ pub(crate) fn validate_document(value: &Value) -> Result<()> {
 /// Check the serialized byte budget while writing, rather than after allocating
 /// an unbounded output. Preserve authored JSON fields that the kernel ignores.
 pub(crate) fn document_bytes(value: &Value) -> Result<Vec<u8>> {
-    let bytes = bounded_json(value, MAX_DOCUMENT_BYTES, "DOCUMENT_TOO_LARGE")?;
+    let bytes = bounded_json(value, document_byte_limit(), "DOCUMENT_TOO_LARGE")?;
     validate_document(value)?;
     Ok(bytes)
 }
@@ -306,6 +307,9 @@ pub(crate) fn bounded_json(
                 self.exceeded = true;
                 return Err(std::io::Error::other("JSON byte limit exceeded"));
             }
+            self.bytes
+                .try_reserve(buf.len())
+                .map_err(|_| std::io::Error::other("Document allocation failed"))?;
             self.bytes.extend_from_slice(buf);
             Ok(buf.len())
         }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * GPU 优化综合测试 - 验证三项核心优化
+ * CPU batching estimates and production GPU module wiring only; no measured GPU performance
  *
  * 1. 扩展实例化批渲染
  * 2. 描边 GPU 计算管线
@@ -11,7 +11,7 @@ import { describe, test, expect } from 'bun:test'
 
 // ========== 测试 1: 扩展实例化批渲染 ==========
 
-describe('高级批渲染', () => {
+describe('production batching CPU estimator, not GPU draw or speedup measurements', () => {
   test('纯色批渲染', () => {
     const { organizeAdvancedBatches, estimateAdvancedBatchingSavings } =
       require('../src/kernel/gpu/advanced-batching')
@@ -45,11 +45,6 @@ describe('高级批渲染', () => {
     const batches = organizeAdvancedBatches(nodes)
     const savings = estimateAdvancedBatchingSavings(nodes)
 
-    console.log('✅ 纯色批渲染测试')
-    console.log(`   节点数: ${savings.totalNodes}`)
-    console.log(`   批处理组: ${savings.batchGroups}`)
-    console.log(`   可批处理节点: ${savings.batchableNodes}`)
-    console.log(`   Draw Call 减少: ${savings.drawCallReduction} (-${savings.savingsPercent.toFixed(1)}%)`)
 
     expect(batches.length).toBeGreaterThan(0)
     expect(savings.drawCallReduction).toBeGreaterThan(0)
@@ -94,9 +89,6 @@ describe('高级批渲染', () => {
       enableGradientBatching: true,
     })
 
-    console.log('✅ 渐变批渲染测试')
-    console.log(`   渐变节点: ${savings.breakdown.gradient}`)
-    console.log(`   Draw Call 减少: ${savings.drawCallReduction}`)
 
     expect(savings.breakdown.gradient).toBeGreaterThan(0)
     expect(savings.drawCallReduction).toBeGreaterThan(40)
@@ -182,13 +174,6 @@ describe('高级批渲染', () => {
       enableImageBatching: true,
     })
 
-    console.log('✅ 混合批渲染测试')
-    console.log(`   总节点: ${savings.totalNodes}`)
-    console.log(`   纯色: ${savings.breakdown.solid}`)
-    console.log(`   渐变: ${savings.breakdown.gradient}`)
-    console.log(`   图片: ${savings.breakdown.image}`)
-    console.log(`   Draw Call: ${savings.totalNodes} → ${savings.totalNodes - savings.drawCallReduction}`)
-    console.log(`   节省: ${savings.savingsPercent.toFixed(1)}%`)
 
     expect(savings.breakdown.solid).toBe(20)
     expect(savings.breakdown.gradient).toBe(15)
@@ -200,24 +185,24 @@ describe('高级批渲染', () => {
 // ========== 测试 2: 描边 GPU 计算管线 ==========
 
 describe('描边 GPU 计算', () => {
-  test('基础描边几何生成', async () => {
-    // 需要 WebGPU 上下文，跳过单元测试
-    // 实际测试在 Electron 环境中进行
-    console.log('✅ 描边 GPU 计算（需要 WebGPU 环境）')
-    console.log('   - 前缀和管线: 已实现')
-    console.log('   - 法线计算: 已实现')
-    console.log('   - 偏移计算: 已实现')
-    console.log('   - 连接计算: 已实现')
-    expect(true).toBe(true)
+  test('production stroke initialization selects its four shader entry points', async () => {
+    const { StrokeGpuPipeline } = require('../src/kernel/gpu/stroke-gpu-pipeline')
+    const modules: any[] = [], pipelines: any[] = []
+    const device = {
+      createShaderModule(descriptor: any) { modules.push(descriptor); return descriptor },
+      createComputePipeline(descriptor: any) { pipelines.push(descriptor); return descriptor },
+    }
+    await new StrokeGpuPipeline(device).initialize()
+    expect(modules.length).toBe(4)
+    expect(pipelines.map(p => p.compute.entryPoint)).toEqual(['prefixSum', 'computeNormals', 'computeOffsets', 'computeJoints'])
+    for (const p of pipelines) expect(p.compute.module.code).toContain(`fn ${p.compute.entryPoint}(`)
   })
+  test.todo('actual WebGPU stroke geometry and shader compilation require a real device and independent output oracle')
 
-  test('验证 Shader 代码完整性', () => {
+  test('stroke shader and class exports retain their public structure (not compilation)', () => {
     const { parallelPrefixSumWGSL } = require('../src/kernel/gpu/parallel-prefix-sum.wgsl')
     const { StrokeGpuPipeline } = require('../src/kernel/gpu/stroke-gpu-pipeline')
 
-    console.log('✅ 描边 Shader 验证')
-    console.log(`   - 前缀和 WGSL: ${parallelPrefixSumWGSL.length} 字符`)
-    console.log(`   - StrokeGpuPipeline: ${typeof StrokeGpuPipeline === 'function'}`)
 
     expect(parallelPrefixSumWGSL).toContain('@compute')
     expect(parallelPrefixSumWGSL).toContain('prefixSum')
@@ -228,12 +213,10 @@ describe('描边 GPU 计算', () => {
 // ========== 测试 3: 玻璃效果 GPU 片元化 ==========
 
 describe('玻璃效果 GPU', () => {
-  test('SDF 计算正确性', () => {
+  test('glass shader exposes its declared SDF entry points (structural contract only)', () => {
     // 验证 Shader 代码
     const { glassEffectFragmentShaderWGSL } = require('../src/kernel/gpu/glass-sdf-shader')
 
-    console.log('✅ 玻璃效果 Shader 验证')
-    console.log(`   - Shader 长度: ${glassEffectFragmentShaderWGSL.length} 字符`)
 
     expect(glassEffectFragmentShaderWGSL).toContain('roundedBoxSDF')
     expect(glassEffectFragmentShaderWGSL).toContain('smoothSDF')
@@ -244,36 +227,13 @@ describe('玻璃效果 GPU', () => {
     expect(glassEffectFragmentShaderWGSL).toContain('splayDistortion')
   })
 
-  test('玻璃参数正确性', () => {
+  test('glass renderer constructor remains exported (not pixel correctness)', () => {
     const { GlassEffectGpuRenderer } = require('../src/kernel/gpu/glass-sdf-shader')
 
-    console.log('✅ 玻璃效果渲染器')
-    console.log(`   - GlassEffectGpuRenderer: ${typeof GlassEffectGpuRenderer === 'function'}`)
 
     expect(typeof GlassEffectGpuRenderer).toBe('function')
   })
 })
 
-// ========== 综合性能预估 ==========
-
-console.log('\n========== GPU 优化预期收益 ==========')
-console.log('')
-console.log('1️⃣ 扩展实例化批渲染:')
-console.log('   - Draw Call 减少: 70-80%')
-console.log('   - GPU 使用率提升: +5-8%')
-console.log('   - 状态: ✅ 已实现')
-console.log('')
-console.log('2️⃣ 描边 GPU 计算管线:')
-console.log('   - 描边计算从 CPU 迁移到 GPU')
-console.log('   - GPU 使用率提升: +8-12%')
-console.log('   - 状态: ✅ 已实现（需 WebGPU 环境测试）')
-console.log('')
-console.log('3️⃣ 玻璃效果 GPU 片元化:')
-console.log('   - 性能提升: 72× (187ms → 2.6ms)')
-console.log('   - GPU 使用率提升: +5-7%')
-console.log('   - 状态: ✅ 已实现（需 WebGPU 环境测试）')
-console.log('')
-console.log('========== 预期总提升 ==========')
-console.log('GPU 使用率: 25-35% → 40-45%')
-console.log('超过 Figma 的 40% 水平 🎉')
-console.log('=====================================')
+// No device timing, utilization, FPS or speedup is measured by this suite.
+test.todo('actual WebGPU glass pixels and performance require matched device/browser evidence')

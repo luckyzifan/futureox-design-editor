@@ -68,6 +68,7 @@ pub mod math;
 /// (`futureox-design-gpu`), which feeds the four-bucket GPU memory ledger at
 /// its resource construction/destruction points.
 pub mod memory;
+pub mod capacity;
 mod mutation;
 pub mod ops;
 pub mod optics;
@@ -110,9 +111,7 @@ pub use renderer::{Engine, RenderOptions, View};
 
 /// Stateless authored-document admission. No renderer, font or history state is created.
 pub fn validate_document_json(json: &str) -> Result<(), String> {
-    if json.len() > 32 * 1024 * 1024 {
-        return Err("Design document exceeds 32 MB".into());
-    }
+    capacity::check_document_bytes(json.len())?;
     let document: scene::Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
     document.validate()
 }
@@ -430,6 +429,16 @@ pub fn stroke_geometry(json: &str) -> Result<String, String> {
 mod wasm {
     use super::*;
     use wasm_bindgen::prelude::*;
+    /// Trusted bootstrap only. No document field or operation argument routes here.
+    #[wasm_bindgen]
+    pub fn configure_document_capacity(memory_bytes: f64) -> Result<(), JsValue> {
+        if !memory_bytes.is_finite() || memory_bytes.fract() != 0. || memory_bytes < 16. || memory_bytes > capacity::WASM_ADDRESS_BYTES as f64 {
+            return Err(JsValue::from_str("Invalid trusted document memory budget"));
+        }
+        capacity::configure(memory_bytes as u64).map_err(|e| JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn document_capacity_bytes() -> f64 { capacity::document_byte_limit() as f64 }
     #[wasm_bindgen]
     pub fn validate_document_json(json: &str) -> Result<(), JsValue> {
         super::validate_document_json(json).map_err(|e| JsValue::from_str(&e))
@@ -1546,9 +1555,7 @@ mod wasm {
                 .map_err(|e| JsValue::from_str(&e))
         }
         pub fn apply_document_patch(&mut self, json: &str) -> Result<(), JsValue> {
-            if json.len() > 32 * 1024 * 1024 {
-                return Err(JsValue::from_str("Document patch exceeds 32 MB"));
-            }
+            capacity::check_document_bytes(json.len()).map_err(|e| JsValue::from_str(&e))?;
             let patch =
                 serde_json::from_str(json).map_err(|e| JsValue::from_str(&format!("{e}")))?;
             self.inner
@@ -1556,9 +1563,7 @@ mod wasm {
                 .map_err(|e| JsValue::from_str(&e))
         }
         pub fn apply_document_patch_with_damage(&mut self, json: &str) -> Result<String, JsValue> {
-            if json.len() > 32 * 1024 * 1024 {
-                return Err(JsValue::from_str("Document patch exceeds 32 MB"));
-            }
+            capacity::check_document_bytes(json.len()).map_err(|e| JsValue::from_str(&e))?;
             let patch =
                 serde_json::from_str(json).map_err(|e| JsValue::from_str(&format!("{e}")))?;
             let damage = self
@@ -2559,30 +2564,30 @@ mod portable_wasm {
     /// Portable Forma files retain authored JSON, including extension fields.
     #[wasm_bindgen]
     pub fn forma_encode_json(json: &str) -> Result<Vec<u8>, JsValue> {
-        if json.len() > binfmt::MAX_VALUE_BYTES {
-            return Err(JsValue::from_str("Forma file size limit"));
-        }
+        capacity::check_document_bytes(json.len()).map_err(|e| JsValue::from_str(&e))?;
         let value: serde_json::Value =
             serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let document: scene::Document =
-            serde_json::from_value(value.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+            serde::Deserialize::deserialize(&value).map_err(|e| JsValue::from_str(&e.to_string()))?;
         document.validate().map_err(|e| JsValue::from_str(&e))?;
+        // Validation is complete. Release its typed graph before allocating
+        // the encoded/output representation; Value retains all authored fields.
+        drop(document);
         let bytes = binfmt::encode_value(&value);
-        if bytes.len() > binfmt::MAX_VALUE_BYTES {
-            return Err(JsValue::from_str("Forma file size limit"));
-        }
+        capacity::check_document_bytes(bytes.len()).map_err(|e| JsValue::from_str(&e))?;
         Ok(bytes)
     }
     #[wasm_bindgen]
     pub fn forma_decode_json(bytes: &[u8]) -> Result<String, JsValue> {
         let value = binfmt::decode_value(bytes).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let document: scene::Document =
-            serde_json::from_value(value.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+            serde::Deserialize::deserialize(&value).map_err(|e| JsValue::from_str(&e.to_string()))?;
         document.validate().map_err(|e| JsValue::from_str(&e))?;
+        // Validation is complete. Release its typed graph before allocating
+        // the encoded/output representation; Value retains all authored fields.
+        drop(document);
         let json = serde_json::to_string(&value).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        if json.len() > binfmt::MAX_VALUE_BYTES {
-            return Err(JsValue::from_str("Forma expanded size limit"));
-        }
+        capacity::check_document_bytes(json.len()).map_err(|e| JsValue::from_str(&e))?;
         Ok(json)
     }
 }

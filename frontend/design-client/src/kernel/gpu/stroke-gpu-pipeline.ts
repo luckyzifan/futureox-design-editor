@@ -134,7 +134,7 @@ export class StrokeGpuPipeline {
                         style.align === 'outside' ? 2.0 : 0.0
 
     const offsetsBuffer = this.device.createBuffer({
-      size: vertexCount * 4 * 4,  // 4× vec2<f32> per vertex (left outer/inner, right outer/inner)
+      size: vertexCount * 4 * 2 * 4,  // Four vec2<f32> values per vertex (8 floats).
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     })
 
@@ -305,13 +305,13 @@ export class StrokeGpuPipeline {
   ) {
     const joinTypeMap = { miter: 0, round: 1, bevel: 2 }
     const paramsBuffer = this.device.createBuffer({
-      size: 16,
+      size: 32,  // JointParams: six scalars (24 bytes), rounded to a 16-byte allocation.
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
     this.device.queue.writeBuffer(paramsBuffer, 0, new Uint32Array([
       vertexCount, joinTypeMap[joinType], 0, 0,
     ]))
-    this.device.queue.writeBuffer(paramsBuffer, 8, new Float32Array([miterLimit, 0]))
+    this.device.queue.writeBuffer(paramsBuffer, 16, new Float32Array([miterLimit, 0]))
 
     const bindGroup = this.device.createBindGroup({
       layout: this.jointsPipeline!.getBindGroupLayout(0),

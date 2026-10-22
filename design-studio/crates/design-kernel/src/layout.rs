@@ -876,9 +876,7 @@ pub fn resolve(doc: &mut Document, fonts: &Fonts) -> Result<(), String> {
     Err("Layout did not converge; inspect nested hug/fill sizing".into())
 }
 pub fn changes(json: &str, fonts: &Fonts) -> Result<String, String> {
-    if json.len() > 32 * 1024 * 1024 {
-        return Err("Document exceeds 32 MB".into());
-    }
+    crate::capacity::check_document_bytes(json.len())?;
     let mut doc: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
     doc.validate()?;
     let fonts = fonts.with_resources(&doc.fonts)?;

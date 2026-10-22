@@ -10,7 +10,7 @@ export type InteractionPreviewRecovery = {
  * The existing transaction and latest absolute patch remain the only mutation. */
 export function recoverInteractionPreview(failure:InteractionPreviewFailure,context:InteractionPreviewRecovery) {
  const {editor}=context,pending=context.pending(),gesture=context.gesture()
- if(!pending||gesture?.kind!=='move'||gesture.duplicating||!editor.interactionActive||
+ if(!pending||!gesture||!['move','rotate','scale'].includes(gesture.kind)||gesture.duplicating||!editor.interactionActive||
   failure.epoch!==editor.sessionGeneration||failure.document!==editor.state.doc||failure.pageId!==editor.state.page||
   failure.sequence!==context.sequence()||failure.ids.length!==gesture.ids.length||
   failure.ids.some((id,index)=>id!==gesture.ids[index])||failure.ids.length!==editor.state.selection.length||

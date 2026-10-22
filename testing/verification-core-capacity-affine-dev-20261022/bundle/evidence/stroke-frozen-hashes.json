@@ -1,0 +1,17 @@
+[
+  {
+    "path": "frontend/design-client/src/kernel/gpu/stroke-compute.test.ts",
+    "baselineSha256": "7731d0767302cff519561b315312356cc418d02a8ca9cbb29b29a63970e6ce37",
+    "candidateSha256": "3a9136ec9b2803aa2285f557fc71edd8d88cc2442121d24613091274e76d9f89"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/gpu/stroke-gpu-pipeline.ts",
+    "baselineSha256": "15aba1afcdb53e9a99472d8dc3e2ac8aab0aa45cbfade19d5cd749f517634e5a",
+    "candidateSha256": "b6c01bb27e4b9d939fa13acbd1facb623f257570e5ac471148aa85a2a3973ab4"
+  },
+  {
+    "path": "frontend/design-client/scripts/test-advanced-gpu-optimizations.ts",
+    "baselineSha256": "1b289db7b4721b2505607b287c3c431e36965ff9461141297d003fb77d68c6f9",
+    "candidateSha256": "2f3f15160d9ce5c2a85624a5bb13e84317a0e134bfcf82e4fabebcad813c04df"
+  }
+]

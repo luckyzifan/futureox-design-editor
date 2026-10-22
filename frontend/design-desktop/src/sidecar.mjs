@@ -2,21 +2,23 @@ import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { MAX_FRAME_BYTES } from './security.mjs'
+import { DOCUMENT_TRANSFER_BYTES, documentChildEnvironment, assertDocumentSerialization } from './document-capacity.mjs'
+import { documentFrames, DocumentFrameAssembler } from './document-transport.mjs'
 
 function failure(code, message) {
   return Object.assign(new Error(message), { code })
 }
 
 /** Bounded NDJSON, no shell, sockets or renderer-selected executable. No automatic write retries. */
-export const MAX_PENDING_BYTES = 96 * 1024 * 1024
+export const MAX_PENDING_BYTES = DOCUMENT_TRANSFER_BYTES + 8 * 1024 * 1024
 // Reserve large result envelopes too; this is a wire/admission bound, not a JS RSS limit.
 const responseReservations = new Map([
   ['automation.audit.list', 256 * 1024], ['automation.task.list', 512 * 1024],
   ['sketch.inspect',MAX_FRAME_BYTES],['sketch.session.preview',MAX_FRAME_BYTES],
-  ['open', MAX_FRAME_BYTES],
-  ['recovery.read', MAX_FRAME_BYTES],
-  ['workspace.open', MAX_FRAME_BYTES],
-  ['workspace.restore', MAX_FRAME_BYTES],
+  ['open', DOCUMENT_TRANSFER_BYTES],
+  ['recovery.read', DOCUMENT_TRANSFER_BYTES],
+  ['workspace.open', DOCUMENT_TRANSFER_BYTES],
+  ['workspace.restore', DOCUMENT_TRANSFER_BYTES],
   ['workspace.observe', 16 * 1024 * 1024],
   ['workspace.list', 8 * 1024 * 1024],
   ['fonts.list', 1024 * 1024],
@@ -43,6 +45,7 @@ export class Sidecar extends EventEmitter {
     this.inputEnded = false
     this.pending = new Map()
     this.parts = []
+    this.assembler = new DocumentFrameAssembler(DOCUMENT_TRANSFER_BYTES)
     this.bufferBytes = 0
     this.stopped = false
     this.exited = false
@@ -56,11 +59,11 @@ export class Sidecar extends EventEmitter {
       windowsHide: true,
       shell: false,
       // Do not pass Electron's node-mode or arbitrary dynamic-loader settings to the backend.
-      env: Object.fromEntries(
+      env: documentChildEnvironment(Object.fromEntries(
         Object.entries(process.env).filter(
           ([key]) => !/^(ELECTRON_|NODE_OPTIONS$|LD_PRELOAD$|DYLD_)/.test(key),
         ),
-      ),
+      )),
     })
     this.child.stdout.on('error', () => this.fail(failure('BACKEND_UNAVAILABLE', 'Backend output closed')))
     this.child.stdout.on('data', (chunk) => this.consume(Buffer.from(chunk)))
@@ -107,7 +110,9 @@ export class Sidecar extends EventEmitter {
       this.bufferBytes = 0
       offset = newline + 1
       try {
-        const response = JSON.parse(line.toString('utf8'))
+        const assembled = this.assembler.accept(line)
+        if (!assembled) continue
+        const response = JSON.parse(assembled.toString('utf8'))
         const pending = this.pending.get(response.id)
         if (!pending || !!response.error === Object.hasOwn(response, 'result'))
           throw new Error('Invalid response')
@@ -141,11 +146,17 @@ export class Sidecar extends EventEmitter {
   flushWrites() {
     if (this.stopped || this.writeBlocked) return
     while (this.writeQueue.length && !this.writeBlocked && !this.stopped) {
-      const { frame, pending } = this.writeQueue.shift()
+      const queued = this.writeQueue[0]
+      const { pending } = queued
+      const frame = queued.next.value
+      queued.next = queued.frames.next()
+      if (queued.next.done) { this.writeQueue.shift(); pending.allQueued = true }
+      pending.outstandingWrites++
       pending.sent = true
       try {
         const accepted = this.child.stdin.write(frame, (error) => {
-          pending.written = true
+          pending.outstandingWrites--
+          pending.written = pending.allQueued && pending.outstandingWrites === 0
           this.releaseBytes(pending)
           if (error) this.fail(failure('BACKEND_UNAVAILABLE', 'Backend write failed'))
         })
@@ -162,25 +173,25 @@ export class Sidecar extends EventEmitter {
     if (this.stopped || this.closing) return Promise.reject(failure('BACKEND_UNAVAILABLE', 'Backend unavailable'))
     if (this.admittedCount >= 8) return Promise.reject(failure('BUSY', 'Backend queue full'))
     const id = randomUUID()
-    let frame
-    try { frame = JSON.stringify({ id, method, params }) + '\n' }
-    catch { return Promise.reject(failure('INVALID_REQUEST', 'Request is not serializable')) }
-    const wireBytes = Buffer.byteLength(frame)
-    const bytes = Math.max(wireBytes, responseReservation(method))
-    if (wireBytes - 1 > MAX_FRAME_BYTES)
-      return Promise.reject(failure('TOO_LARGE', 'Request frame too large'))
-    if (this.pendingBytes + bytes > this.maxPendingBytes)
-      return Promise.reject(failure('BUSY', 'Backend aggregate byte budget full'))
+    let frame, bytes
+    try {
+      const wireBytes = assertDocumentSerialization({ id, method, params }, DOCUMENT_TRANSFER_BYTES)
+      bytes = Math.max(wireBytes, responseReservation(method))
+      if (this.pendingBytes + bytes > this.maxPendingBytes)
+        return Promise.reject(failure('BUSY', 'Backend aggregate byte budget full'))
+      frame = JSON.stringify({ id, method, params })
+    } catch (error) { return Promise.reject(failure(/working-memory/.test(error.message) ? 'TOO_LARGE' : 'INVALID_REQUEST', error.message)) }
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         // A transmitted commit may have reached disk. Never claim rollback or retry it.
         this.fail(failure('BACKEND_TIMEOUT', 'Backend timed out; verify files before retrying'))
       }, this.timeoutMs)
-      const pending = { resolve, reject, timer, bytes, method, sent: false, written: false, completed: false }
+      const pending = { resolve, reject, timer, bytes, method, sent: false, written: false, completed: false, allQueued: false, outstandingWrites: 0 }
       this.pendingBytes += bytes
       this.admittedCount++
       this.pending.set(id, pending)
-      this.writeQueue.push({ frame, pending })
+      const frames = documentFrames(Buffer.from(frame), id, MAX_FRAME_BYTES)
+      this.writeQueue.push({ frames, next: frames.next(), pending })
       this.flushWrites()
     })
   }
@@ -198,6 +209,7 @@ export class Sidecar extends EventEmitter {
       pending.released = true
     }
     this.pending.clear()
+    this.assembler.clear()
     this.writeQueue = []
     this.pendingBytes = 0
     this.admittedCount = 0

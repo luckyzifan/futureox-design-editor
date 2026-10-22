@@ -1,19 +1,20 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { NativePreparation, registerNativePreparation } from '../src/preparation.mjs'
+import { NativePreparation, PreparationAdmission, registerNativePreparation } from '../src/preparation.mjs'
+import { DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
 
 test('native transport admits negotiated derivation methods without weakening the method allowlist', async () => {
  const messages=[]
  // Exercise the real request validator and queue bookkeeping without spawning
  // a child. Application errors stay ordinary replies; IPC failure is separate.
  const owner=Object.assign(Object.create(NativePreparation.prototype),{
-  pending:new Map(),sequence:0,closed:false,diagnostics:{enabled:false},
+  pending:new Map(),sequence:0,closed:false,admission:new PreparationAdmission(),reservations:new Set(),diagnostics:{enabled:false},
   worker:{postMessage:message=>messages.push(message)}
  })
  const finish=(id,reply)=>{
   const pending=owner.pending.get(id)
-  clearTimeout(pending.timer);owner.pending.delete(id);pending.resolve(reply)
+  clearTimeout(pending.timer);owner.pending.delete(id);owner.release(pending.release);pending.resolve(reply)
  }
  const capability=owner.request({lane:'canvas',method:'preparation_capabilities_v1',args:[]})
  assert.equal(messages[0].method,'preparation_capabilities_v1')
@@ -39,7 +40,7 @@ test('local document codec roundtrips UTF-8 and rejects oversized/invalid input 
   assert.equal(encoded,JSON.stringify(document))
   assert.deepEqual((await call('parse',encoded)).value,JSON.parse(JSON.stringify(document)))
   assert.ok((await call('parse','{')).error)
-  assert.match((await call('serialize','x'.repeat(32*1024*1024))).error,/32 MiB/)
+  assert.match((await call('serialize','x'.repeat(DOCUMENT_BYTE_LIMIT))).error,/working-memory/)
   assert.deepEqual((await call('parse','{"name":"still usable"}')).value,{name:'still usable'})
  }finally{await codec.close()}
 })
@@ -56,4 +57,37 @@ test('native document IPC validates the sender and retires codec workers on navi
   assert.deepEqual(await handlers.get('native-document:decode')(event,'{"name":"new session"}'),{name:'new session'})
   sender.emit('destroyed')
  }finally{await stop()}
+})
+
+
+test('host admission rejects before posting a clone and releases exactly once after replies or send failure',async()=>{
+ const admission=new PreparationAdmission(170),messages=[]
+ const owner=Object.assign(Object.create(NativePreparation.prototype),{
+  pending:new Map(),sequence:0,closed:false,admission,reservations:new Set(),diagnostics:{enabled:false},
+  worker:{postMessage:message=>messages.push(message)}
+ })
+ const call=()=>owner.request({lane:'canvas',method:'serialize',args:['x'.repeat(50)]})
+ const first=call();assert.equal(messages.length,1);assert.equal(admission.bytes,Buffer.byteLength(JSON.stringify(messages[0])))
+ await assert.rejects(call(),/budget exceeded/);assert.equal(messages.length,1)
+ const pending=owner.pending.get(1);clearTimeout(pending.timer);owner.pending.delete(1)
+ owner.release(pending.release);owner.release(pending.release);pending.resolve({value:'ok'})
+ await first;assert.equal(admission.bytes,0)
+ owner.worker.postMessage=()=>{throw Error('clone failed')}
+ await assert.rejects(call(),/clone failed/);assert.equal(admission.bytes,0);assert.equal(owner.reservations.size,0)
+})
+
+test('host admission is shared across sessions and cancellation retains clones until worker exit',async()=>{
+ const admission=new PreparationAdmission(170)
+ const codec=new NativePreparation(undefined,undefined,true,admission)
+ const second=new NativePreparation(undefined,undefined,true,admission)
+ try{
+  const first=codec.request({lane:'canvas',method:'serialize',args:['x'.repeat(50)]})
+  const rejected=assert.rejects(first,/closed/)
+  const exited=codec.close()
+  assert.ok(admission.bytes>0)
+  await assert.rejects(second.request({lane:'canvas',method:'serialize',args:['x'.repeat(50)]}),/budget exceeded/)
+  await rejected;await exited;assert.equal(admission.bytes,0)
+  assert.equal((await second.request({lane:'canvas',method:'serialize',args:['usable']})).value,'"usable"')
+  assert.equal(admission.bytes,0)
+ }finally{await codec.close();await second.close()}
 })

@@ -17,7 +17,6 @@ import { randomUUID } from 'node:crypto'
 import {
   APP_URL,
   CSP,
-  MAX_DOCUMENT_BYTES,
   assertSender,
   documentFromString,
   isAppResource,
@@ -27,6 +26,7 @@ import {
   validHandle,
 } from './security.mjs'
 import { Sidecar } from './sidecar.mjs'
+import { DOCUMENT_MEMORY_BYTES } from './document-capacity.mjs'
 import { registerNativeRender } from './native-render.mjs'
 import { registerNativePreparation } from './preparation.mjs'
 import { formatForNativePath, sketchInspection } from './kernel-admission.mjs'
@@ -149,7 +149,7 @@ const workspaceRoots = new WorkspaceRoots({
     const candidate = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb })
     try {
       const health = await candidate.request('health')
-      if (health.protocolVersion !== 1 || health.maxDocumentBytes !== MAX_DOCUMENT_BYTES) throw new Error('Backend protocol mismatch')
+      if (health.protocolVersion !== 1 || health.documentCapacity?.memoryBytes !== DOCUMENT_MEMORY_BYTES || health.documentTransferVersion !== 1) throw new Error('Backend protocol mismatch')
       // Health alone succeeds when either SQLite store failed to open.
       await candidate.request('workspace.list', {})
       await candidate.request('catalog.list', {})
@@ -500,11 +500,11 @@ register('text-command', async (value) => {
 }, false)
 register('clipboard-read', async (value) => {
   if (value !== undefined) throw new Error('Unexpected arguments')
-  return {status:'ok',...await readDesignClipboard(clipboard,MAX_DOCUMENT_BYTES)}
+  return {status:'ok',...await readDesignClipboard(clipboard,32 * 1024 * 1024)}
 }, false)
 register('clipboard-write', async (value) => {
   const r=record(value,['forma','text','svg','image'])
-  await writeDesignClipboard(clipboard,ClipboardItem,nativeImage,r,MAX_DOCUMENT_BYTES)
+  await writeDesignClipboard(clipboard,ClipboardItem,nativeImage,r,32 * 1024 * 1024)
   return {status:'ok'}
 }, false)
 
@@ -1011,6 +1011,7 @@ async function buildWindow() {
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
       additionalArguments: [
+        `--core-document-memory-bytes=${DOCUMENT_MEMORY_BYTES}`,
         ...(cpuOnly ? ['--core-cpu-only'] : []),
         ...(gpuWorkingBudgetMiB === undefined ? [] : [`--core-gpu-working-budget-mib=${gpuWorkingBudgetMiB}`]),
         ...(renderDiagnosticsEnabled?['--core-render-diagnostics',...(process.env.CORE_RENDER_DIAGNOSTICS==='detail'?['--core-render-diagnostics-detail']:[])]:[]),
@@ -1222,7 +1223,7 @@ else {
       let startupError
       try {
         const health = await backend.request('health')
-        if (health.protocolVersion !== 1 || health.maxDocumentBytes !== MAX_DOCUMENT_BYTES)
+        if (health.protocolVersion !== 1 || health.documentCapacity?.memoryBytes !== DOCUMENT_MEMORY_BYTES || health.documentTransferVersion !== 1)
           throw new Error('Backend protocol mismatch')
       } catch (error) {
         startupError = error

@@ -1,3 +1,4 @@
+import { documentCapacity } from './document-capacity'
 import { afterEach, expect, test, vi } from 'vitest'
 import { blank } from './model'
 import { exportSketchInWorker, importFileInWorker } from './import-file-worker'
@@ -24,7 +25,7 @@ test.each(['fig', 'sketch', 'pdf'] as const)('imports %s through the same bounde
   const bytes = new ArrayBuffer(4), document = blank('shared editor')
   const result = importFileInWorker(bytes, 'shared editor', format)
   const worker = ImportWorker.instances[0]
-  expect(worker.postMessage).toHaveBeenCalledWith({ bytes, name: 'shared editor', format }, [bytes])
+  expect(worker.postMessage).toHaveBeenCalledWith({ bytes, name: 'shared editor', format, memoryBytes: documentCapacity().memoryBytes }, [bytes])
   worker.reply({ result: { document, warnings: ['字体需要匹配'] } })
   expect(await result).toEqual({ document, warnings: ['字体需要匹配'] })
   expect(worker.terminate).toHaveBeenCalledOnce()
@@ -94,7 +95,7 @@ test('Sketch compatibility export reclaims the worker and returns owned archive 
   installWorker()
   const document = blank(), result = exportSketchInWorker(document)
   const worker = ImportWorker.instances[0]
-  expect(worker.postMessage.mock.calls[0][0]).toEqual({ format: 'sketch-export', document })
+  expect(worker.postMessage.mock.calls[0][0]).toEqual({ format: 'sketch-export', document, memoryBytes: documentCapacity().memoryBytes })
   worker.reply({ bytes: new Uint8Array([80, 75, 3, 4]).buffer })
   expect(await result).toEqual(new Uint8Array([80, 75, 3, 4]))
   expect(worker.terminate).toHaveBeenCalledOnce()

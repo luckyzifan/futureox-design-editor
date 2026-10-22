@@ -1,4 +1,6 @@
-import initialize, { VectorEngine } from '../generated/design-kernel/design_kernel'
+import { pinDocumentCapacity } from '../document-capacity'
+import { initializeKernelModule } from './module'
+import { VectorEngine } from '../generated/design-kernel/design_kernel'
 import { renderCpuFrame } from './cpu-frame'
 import type { PreparationMethod } from './preparation-channel'
 import { loadKernelResources } from './kernel-resources'
@@ -11,7 +13,7 @@ const allowed = new Set<PreparationMethod>(['preparation_capabilities_v1', 'deri
 let initialized: Promise<Uint8Array> | undefined
 const engines = new Map<string, VectorEngine>()
 function resources() {
-  initialized ??= loadKernelResources(() => initialize({ module_or_path: '/kernel/design_kernel_bg.wasm' }))
+  initialized ??= loadKernelResources(() => initializeKernelModule())
   return initialized
 }
 async function engine(lane: string) {
@@ -28,6 +30,7 @@ const states = new PreparationStates()
 let attached = false
 self.onmessage = event => {
   if (attached || !(event.data.port instanceof MessagePort)) return
+  if (event.data.memoryBytes !== undefined) pinDocumentCapacity(event.data.memoryBytes, 'trusted-worker-bootstrap')
   attached = true
   const port = event.data.port as MessagePort
   let queue = Promise.resolve()

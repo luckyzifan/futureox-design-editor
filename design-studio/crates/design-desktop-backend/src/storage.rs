@@ -1,8 +1,9 @@
 use crate::{
-    BackendError, MAX_DOCUMENT_BYTES, MAX_PATH_BYTES, Result, document_bytes, hash, validate_hash,
+    BackendError, MAX_PATH_BYTES, Result, document_byte_limit, document_bytes, hash, validate_hash,
 };
 use serde::Serialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
@@ -33,7 +34,7 @@ pub struct SavedDocument {
 
 pub fn open(path: &Path) -> Result<OpenedDocument> {
     let path = document_path(path)?;
-    let bytes = read_bounded(&path, MAX_DOCUMENT_BYTES)?;
+    let bytes = read_bounded(&path, document_byte_limit())?;
     let document: Value = if bytes.starts_with(&futureox_design_kernel::binfmt::MAGIC) {
         futureox_design_kernel::binfmt::decode_value(&bytes)
             .map_err(|e| BackendError::new("INVALID_DOCUMENT", e.to_string()))?
@@ -52,7 +53,7 @@ pub fn open(path: &Path) -> Result<OpenedDocument> {
 pub fn stat(path: &Path) -> Result<TargetState> {
     let path = document_path(path)?;
     Ok(TargetState {
-        hash: file_hash(&path, MAX_DOCUMENT_BYTES)?,
+        hash: file_hash(&path, document_byte_limit())?,
         path,
     })
 }
@@ -72,7 +73,7 @@ pub(crate) fn save_guarded(
     let path = document_path(path)?;
     document_bytes(document)?; // Validate and bound the authored value before encoding.
     let bytes = futureox_design_kernel::binfmt::encode_value(document);
-    if bytes.len() > MAX_DOCUMENT_BYTES {
+    if bytes.len() > document_byte_limit() {
         return Err(BackendError::new(
             "DOCUMENT_TOO_LARGE",
             "Encoded document exceeds byte limit",
@@ -82,7 +83,7 @@ pub(crate) fn save_guarded(
         &path,
         &bytes,
         expected_hash,
-        MAX_DOCUMENT_BYTES,
+        document_byte_limit(),
         || Ok(()),
         sync_directory,
         authorize,
@@ -211,7 +212,44 @@ pub(crate) fn file_hash(path: &Path, limit: usize) -> Result<Option<String>> {
     if checked_metadata(path)?.is_none() {
         return Ok(None);
     }
-    read_bounded(path, limit).map(|bytes| Some(hash(&bytes)))
+    let file = open_read_no_follow(path).map_err(|e| BackendError::io("Cannot hash file", e))?;
+    let metadata = file
+        .metadata()
+        .map_err(|e| BackendError::io("Cannot inspect file", e))?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(BackendError::new(
+            "INVALID_PATH",
+            "Only regular files are supported",
+        ));
+    }
+    if metadata.len() > limit as u64 {
+        return Err(BackendError::new(
+            "DOCUMENT_TOO_LARGE",
+            "File exceeds the available document working-memory allowance",
+        ));
+    }
+    let mut reader = file.take(limit as u64 + 1);
+    let mut digest = Sha256::new();
+    let mut length = 0usize;
+    let mut chunk = [0u8; 64 * 1024];
+    loop {
+        let count = reader
+            .read(&mut chunk)
+            .map_err(|e| BackendError::io("Cannot hash file", e))?;
+        if count == 0 {
+            break;
+        }
+        length = length.saturating_add(count);
+        if length > limit {
+            return Err(BackendError::new(
+                "DOCUMENT_TOO_LARGE",
+                "File grew beyond the admitted allowance",
+            ));
+        }
+        digest.update(&chunk[..count]);
+    }
+    checked_metadata(path)?;
+    Ok(Some(format!("{:x}", digest.finalize())))
 }
 
 fn check_expected(path: &Path, expected: Option<&str>, limit: usize) -> Result<()> {

@@ -415,3 +415,119 @@ async fn cjk_font_multiple_revision_size_and_time_benchmark() {
         times
     );
 }
+
+#[tokio::test]
+async fn version_five_resource_migration_preserves_receipts_and_admits_resources_above_32_mib() {
+    let f = Fixture::new();
+    let old = document(&asset(42, 4096));
+    let store = WorkspaceStore::open(&f.db()).await.unwrap();
+    let original = store.commit(&old, None, "before-v6").await.unwrap();
+    store.close().await;
+    let mut conn = f.connection().await;
+    conn.execute("BEGIN IMMEDIATE").await.unwrap();
+    // Reproduce the actual v5 constraint and foreign-key shape, not just its
+    // version marker. The original bytes, history and retry receipt must survive.
+    for sql in [
+        "CREATE TABLE assets_v5(hash TEXT PRIMARY KEY CHECK(length(hash)=64),kind TEXT NOT NULL CHECK(kind IN('font','image')),value BLOB NOT NULL,byte_length INTEGER NOT NULL CHECK(byte_length>=0 AND byte_length<=33554432))",
+        "INSERT INTO assets_v5 SELECT * FROM assets",
+        "CREATE TABLE revision_assets_v5(document_id TEXT NOT NULL,revision INTEGER NOT NULL,asset_hash TEXT NOT NULL REFERENCES assets_v5(hash),PRIMARY KEY(document_id,revision,asset_hash),FOREIGN KEY(document_id,revision) REFERENCES revisions(document_id,revision))",
+        "INSERT INTO revision_assets_v5 SELECT * FROM revision_assets",
+        "DROP TABLE revision_assets",
+        "DROP TABLE assets",
+        "ALTER TABLE assets_v5 RENAME TO assets",
+        "ALTER TABLE revision_assets_v5 RENAME TO revision_assets",
+        "PRAGMA user_version=5",
+        "COMMIT",
+    ] {
+        conn.execute(sql).await.unwrap();
+    }
+    conn.execute("UPDATE assets SET byte_length=byte_length+1")
+        .await
+        .unwrap();
+    let before_failure: Vec<(String, String, Vec<u8>, i64)> =
+        sqlx::query_as("SELECT hash,kind,value,byte_length FROM assets ORDER BY hash")
+            .fetch_all(&mut conn)
+            .await
+            .unwrap();
+    conn.close().await.unwrap();
+    assert!(WorkspaceStore::open(&f.db()).await.is_err());
+    let mut conn = f.connection().await;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("PRAGMA user_version")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap(),
+        5
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM sqlite_master WHERE name IN ('assets_v6','revision_assets_v6')"
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM mutations WHERE mutation_id='before-v6'"
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap(),
+        1
+    );
+    let after_failure: Vec<(String, String, Vec<u8>, i64)> =
+        sqlx::query_as("SELECT hash,kind,value,byte_length FROM assets ORDER BY hash")
+            .fetch_all(&mut conn)
+            .await
+            .unwrap();
+    assert_eq!(after_failure, before_failure);
+    // Repair only this intentionally corrupted fixture, then retry the migration.
+    conn.execute("UPDATE assets SET byte_length=length(value)")
+        .await
+        .unwrap();
+    conn.close().await.unwrap();
+    let store = WorkspaceStore::open(&f.db()).await.unwrap();
+    assert_eq!(store.read(ID, Some(1)).await.unwrap().document, old);
+    assert_eq!(
+        store.commit(&old, None, "before-v6").await.unwrap().hash,
+        original.hash
+    );
+    let large = document(&asset(7, 25 * 1024 * 1024));
+    assert!(serde_json::to_vec(&large).unwrap().len() > 32 * 1024 * 1024);
+    let saved = store
+        .commit(&large, Some(1), "after-v6-large")
+        .await
+        .unwrap();
+    assert_eq!(saved.revision, 2);
+    store.close().await;
+    let reopened = WorkspaceStore::open(&f.db()).await.unwrap();
+    assert_eq!(reopened.read(ID, None).await.unwrap().document, large);
+    assert_eq!(reopened.read(ID, Some(1)).await.unwrap().document, old);
+    assert_eq!(
+        reopened
+            .commit(&large, Some(1), "after-v6-large")
+            .await
+            .unwrap()
+            .revision,
+        2
+    );
+    let mut conn = f.connection().await;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("PRAGMA user_version")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap(),
+        6
+    );
+    assert!(
+        sqlx::query("PRAGMA foreign_key_check")
+            .fetch_optional(&mut conn)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    conn.close().await.unwrap();
+    reopened.close().await;
+}

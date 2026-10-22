@@ -1,5 +1,5 @@
 use crate::{
-    BackendError, MAX_DOCUMENT_BYTES, MAX_PATH_BYTES, MAX_RECOVERIES, Result, bounded_json,
+    BackendError, MAX_PATH_BYTES, MAX_RECOVERIES, Result, bounded_json, document_byte_limit,
     document_bytes, hash, storage, validate_hash,
 };
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const MAX_RECOVERY_BYTES: usize = MAX_DOCUMENT_BYTES + 64 * 1024;
+fn recovery_byte_limit() -> usize {
+    document_byte_limit().saturating_add(64 * 1024)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -149,7 +151,7 @@ impl RecoveryStore {
             ));
         }
         let bytes = document_bytes(document)?;
-        let old = storage::file_hash(&path, MAX_RECOVERY_BYTES)?;
+        let old = storage::file_hash(&path, recovery_byte_limit())?;
         if old.is_some() {
             // Do not silently overwrite a corrupt recovery copy with new data.
             self.read(id)?;
@@ -186,15 +188,16 @@ impl RecoveryStore {
                 entry: &entry,
                 document,
             },
-            MAX_RECOVERY_BYTES,
+            recovery_byte_limit(),
             "DOCUMENT_TOO_LARGE",
         )?;
-        entry.warning = storage::atomic_write(&path, &record, old.as_deref(), MAX_RECOVERY_BYTES)?;
+        entry.warning =
+            storage::atomic_write(&path, &record, old.as_deref(), recovery_byte_limit())?;
         Ok(entry)
     }
 
     pub fn read(&self, id: &str) -> Result<RecoveryRecord> {
-        let bytes = storage::read_bounded(&self.path(id)?, MAX_RECOVERY_BYTES)?;
+        let bytes = storage::read_bounded(&self.path(id)?, recovery_byte_limit())?;
         let record: RecoveryRecord = serde_json::from_slice(&bytes).map_err(|e| {
             BackendError::new(
                 "INVALID_RECOVERY",

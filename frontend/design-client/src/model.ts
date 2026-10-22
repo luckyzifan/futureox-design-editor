@@ -1,3 +1,4 @@
+import { assertDocumentStructure } from './document-capacity'
 import { hasSchema15Features } from './schema-features'
 import { validateRepeat, validateRepeatDocument, type RepeatTransform } from './repeat-transforms'
 import { hasLogic, validateLogicActions } from './prototype-logic'
@@ -729,8 +730,7 @@ export function validateDocument(value: unknown): DesignDocument {
       ))
   )
     throw new Error('字体资源无效或超过限制')
-  if (!d.pages.length || d.pages.length > 100 || entries.length > 20000)
-    throw new Error('文档应包含 1–100 页，最多 20000 个节点')
+  assertDocumentStructure(entries.length, d.pages.length)
   const seen = new Set<string>()
   if (
     d.colorManagement !== undefined &&
@@ -1132,8 +1132,7 @@ export function validateDocument(value: unknown): DesignDocument {
 // Keep this cheaper than validating every paint during each pointer update.
 export function validateStructure(doc: DesignDocument) {
   const count = Object.keys(doc.nodes).length
-  if (!doc.pages.length || doc.pages.length > 100 || count > 20000)
-    throw new Error('文档最多支持 100 页、20000 个图层；本次操作未应用')
+  assertDocumentStructure(count, doc.pages.length)
   const seen = new Set<string>()
   const visit = (id: string, depth: number) => {
     if (depth > 64) throw new Error('图层嵌套最多支持 64 层；本次操作未应用')
