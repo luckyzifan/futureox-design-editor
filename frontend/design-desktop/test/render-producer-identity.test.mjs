@@ -28,7 +28,7 @@ test('missing Git, source, dictionary or unambiguous WASM is explicit unknown wi
     const unknown = await renderDiagnosticBuildIdentity('/unused', 'build', dependencies(extra))
     assert.equal(unknown.producerIdentityStatus, 0); assert(!('producerSourceSha256' in unknown))
   }
-  for (const extra of [{ list: fail }, { list: async () => [] }, { list: async () => ['a.wasm', 'b.wasm'] }, { read: fail }]) {
+  for (const extra of [{ list: fail }, { list: async () => ['other.wasm'] }, { list: async () => ['a.wasm', 'b.wasm'] }, { read: fail }]) {
     const partial = await renderDiagnosticBuildIdentity('/unused', 'build', dependencies(extra))
     assert.equal(partial.producerIdentityStatus, 1); assert(!('producerWasmInputSha256' in partial))
     assert(!JSON.stringify(partial).includes('private'))

@@ -591,12 +591,15 @@ test('admission context rides the existing fence event without advancing complet
     admissionUploadCount: 2, admissionImageCount: 3 }
   setGpuDiagnosticSink((event, fields) => records.push({ event, fields }))
   try {
+    Object.assign(driver, { submissionSequence: 32, fenceSequence: 32 })
     driver.begin(new Float32Array(0)); boundary.holdWait()
     const waiting = driver.checkpoint('admission', metadata)
-    expect(records).toEqual([]); expect(driver.completedResourceEpoch).toBe(0)
+    expect(records.map(record => record.event)).toEqual(['gpu-submit', 'fence'])
+    expect(records[1]).toMatchObject({ event: 'fence', fields: { ...metadata, reasonCode: 6, deviceFencePhase: 1, deviceFenceAsync: 0 } })
+    expect(driver.completedResourceEpoch).toBe(0)
     boundary.releaseWait(); await waiting
-    expect(records).toHaveLength(1)
-    expect(records[0]).toMatchObject({ event: 'fence', fields: { ...metadata, reasonCode: 6 } })
+    expect(records).toHaveLength(3)
+    expect(records[2]).toMatchObject({ event: 'fence', fields: { ...metadata, reasonCode: 6, deviceFencePhase: 2, deviceFenceOutcome: 1 } })
     expect(driver.completedResourceEpoch).toBe(0)
     expect(driver.stats().queueWaits.reasons.admission.completed).toBe(1)
   } finally { setGpuDiagnosticSink(undefined); driver.dispose() }
@@ -683,7 +686,7 @@ test('delayed fence retains initiating request, identity and start epochs despit
   const records:{event:string;fields:any}[]=[]
   setGpuDiagnosticSink((event,fields)=>records.push({event,fields}))
   try{
-    const first=await createDriver(true);first.driver.begin(new Float32Array(0));first.boundary.holdWait()
+    const first=await createDriver(true);Object.assign(first.driver,{fenceSequence:32});first.driver.begin(new Float32Array(0));first.boundary.holdWait()
     const pending=first.driver.checkpoint('admission'),firstId=records.find(row=>row.event==='device-lifecycle')!.fields.deviceIncarnation
     activeRequest = 75
     const second=await createDriver(true)

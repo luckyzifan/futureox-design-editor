@@ -1,3 +1,4 @@
+import { produceDraftWithPatches } from './draft'
 import { certifyLayerTransition } from './layer-row-transition'
 import type { DesignDocument, DesignNode } from './model'
 export type DocumentPatch = {
@@ -38,18 +39,43 @@ export function equalValue(a: unknown, b: unknown): boolean {
 }
 /** Reuse unchanged immutable records instead of retaining 80 complete clones. */
 export function shareDocument(before: DesignDocument, candidate: DesignDocument): DesignDocument {
-  const nodes: Record<string, DesignNode> = {}
-  let changed = Object.keys(before.nodes).length !== Object.keys(candidate.nodes).length
-  for (const [id, n] of Object.entries(candidate.nodes)) {
-    const same = equalValue(before.nodes[id], n)
-    nodes[id] = same ? before.nodes[id] : n
-    changed ||= !same
+  if (before === candidate) return before
+  const witnessed = witnessedIds(before, candidate)
+  let nodes = candidate.nodes, changed = false
+  if (witnessed) {
+    // A complete producer/applied-patch witness proves that all other records
+    // are unchanged. Never accept caller selection/draft IDs as that proof.
+    for (const id of witnessed) {
+      const same = equalValue(before.nodes[id], candidate.nodes[id])
+      if (same && candidate.nodes[id] !== before.nodes[id]) {
+        if (nodes === candidate.nodes) nodes = { ...nodes }
+        if (before.nodes[id]) nodes[id] = before.nodes[id]
+        else delete nodes[id]
+      }
+      changed ||= !same
+    }
+  } else {
+    nodes = {}
+    changed = Object.keys(before.nodes).length !== Object.keys(candidate.nodes).length
+    for (const [id, n] of Object.entries(candidate.nodes)) {
+      const same = equalValue(before.nodes[id], n)
+      nodes[id] = same ? before.nodes[id] : n
+      changed ||= !same
+    }
   }
-  const result = { ...candidate, nodes: changed ? nodes : before.nodes }
+  if (!changed) nodes = before.nodes
+  let result = nodes === candidate.nodes ? candidate : { ...candidate, nodes }
   for (const key of Object.keys(candidate) as (keyof DesignDocument)[])
-    if (key !== 'nodes' && equalValue(before[key], candidate[key]))
+    if (key !== 'nodes' && candidate[key] !== before[key] && equalValue(before[key], candidate[key])) {
+      if (result === candidate) result = { ...candidate, nodes }
       Object.assign(result, { [key]: before[key] })
-  return equalValue(before, result) ? before : result
+    }
+  // Do not recursively compare every node again after the complete node diff.
+  const keys = Object.keys(before) as (keyof DesignDocument)[]
+  if (!changed && keys.length === Object.keys(result).length && keys.every(key =>
+    Object.hasOwn(result, key) && before[key] === result[key])) return before
+  if (witnessed) rememberTransition(before, result, [...witnessed])
+  return result
 }
 // Contract: published documents and their node records are immutable. This is
 // the same identity contract used by the client lane revision snapshots.
@@ -78,6 +104,20 @@ function witnessedIds(before: DesignDocument, after: DesignDocument): Set<string
     if (previous === before) return ids
     cursor = previous
   }
+}
+/** The producer itself computes the complete changed-node witness. Whole
+ * root/node-map replacement falls back to the ordinary full diff. The witness
+ * is process-local acceleration only; documentPatch remains serializable. */
+export function produceDocumentDraft(before: DesignDocument, recipe: (draft: DesignDocument) => void): DesignDocument {
+  const [after, patches] = produceDraftWithPatches(before, recipe)
+  const ids = new Set<string>()
+  let complete = true
+  for (const patch of patches) {
+    if (!patch.path.length || (patch.path[0] === 'nodes' && patch.path.length < 2)) { complete = false; break }
+    if (patch.path[0] === 'nodes') ids.add(String(patch.path[1]))
+  }
+  if (complete) rememberTransition(before, after, [...ids])
+  return after
 }
 export function documentPatch(before: DesignDocument, after: DesignDocument): DocumentPatch {
   if (before.id !== after.id) throw new Error('编辑操作不能改变文件标识')

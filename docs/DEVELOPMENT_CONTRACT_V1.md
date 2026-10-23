@@ -150,3 +150,5 @@ bounded independently. See [capacity policy and remaining physical ceilings](cap
 This is not an unlimited-memory, streaming-document-model or whole-app acceptance
 claim. Rebuild all native/WASM participants and verify real import/edit/save/reopen
 before citing its capacity behavior.
+
+The 2026-10-22 resident image-table candidate separates same-device capture submission from bounded table retirement without enabling resident-prefix reuse. Keep its three-batch/64 MiB soft deferral threshold, unchanged total budget, source pins and synchronous scratch-ledger collection. Transient scratch and possible geometry replacement retain completion boundaries. Submission ACK is not physical display or faster GPU arithmetic. See [the candidate verification record](../testing/verification-resident-image-retirement-20261022/README.md) and [trace dictionary](IMAGE_TABLE_RETIREMENT_DIAGNOSTICS_20261022.md); hardware/whole-editor acceptance remains open.

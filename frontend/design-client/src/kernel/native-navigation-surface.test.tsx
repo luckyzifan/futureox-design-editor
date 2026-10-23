@@ -218,13 +218,40 @@ test.each(['document', 'page', 'session', 'backend', 'width', 'height', 'dpr', '
       expect(f.props.onFallback).not.toHaveBeenCalled()
     } finally { await act(async () => f.root.unmount()) }
   })
-test('flag off retains cancellation on the ordinary navigation quiet boundary', async () => {
+test('ordinary navigation retains same-content coverage over quiet without certifying exact native pixels', async () => {
   vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION', '0')
   const f = await fixture()
   try {
+    const pending = state.pending[0]
     await f.quiet()
-    expect(state.pending[0].signal.aborted).toBe(true)
-    expect(state.clients[0].cancelPreview).toHaveBeenCalled()
-    expect((await f.complete()).close).toHaveBeenCalledOnce()
+    // Quiet revokes queued goals, not a useful already-running coverage
+    // capture. Ordinary DPR-1 pixels do not acquire a DPR-2 certificate.
+    expect(pending.signal.aborted).toBe(false)
+    const bitmap = await f.complete(), tile = await f.acknowledge(bitmap)
+    expect(bitmap.close).not.toHaveBeenCalled()
+    expect(tile.zoom).toBe(32)
+    expect(tile.nativeNavigationDevice).toBeUndefined()
+    expect(f.container.querySelector('[data-detail-ready="true"]')).toBeNull()
+    expect(f.props.onFallback).not.toHaveBeenCalled()
   } finally { await act(async () => f.root.unmount()) }
 })
+
+for (const boundary of ['content', 'session', 'size', 'device'] as const) {
+  test(`ordinary quiet coverage does not survive a mismatched ${boundary} owner`, async () => {
+    vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION', '0')
+    const f = await fixture()
+    try {
+      const pending = state.pending[0]
+      await f.quiet(boundary === 'content' ? { document: { ...f.props.document, nodes: { ...f.props.document.nodes } } } :
+        boundary === 'session' ? { presentationEpoch: 1 } : boundary === 'size' ? { width: 120 } : {})
+      if (boundary === 'device') await act(async () => state.composites.at(-1).onPresented(f.frame([]), undefined,
+        { ...f.device, deviceIncarnation: f.device.deviceIncarnation + 1 }))
+      expect(pending.signal.aborted).toBe(true)
+      const bitmap = await f.complete()
+      expect(bitmap.close).toHaveBeenCalledOnce()
+      expect(state.composites.at(-1).items.some((item: any) => item.tile.bitmap === bitmap)).toBe(false)
+      expect(f.container.querySelector('[data-detail-ready="true"]')).toBeNull()
+      expect(f.props.onFallback).not.toHaveBeenCalled()
+    } finally { await act(async () => f.root.unmount()) }
+  })
+}

@@ -30,6 +30,9 @@ function fixture() {
   renderer.imageFor = () => ({ texture: create(1, 1), rect: { x: 0, y: 0, w: 1, h: 1 } })
   // The actual paint path uploads a compact field before allocating its mode2
   // source. The retained scene's other live planes are represented by bytes.
+  // This suite supplies its own compact field below; large-field layout and
+  // decoding are covered separately, not by this merge-boundary fixture.
+  renderer.prepareLargeImageAxes = () => true
   renderer.imageGrid = () => {
     renderer.bytes += MiB
     return { texture: create(256, 256), rect: r }

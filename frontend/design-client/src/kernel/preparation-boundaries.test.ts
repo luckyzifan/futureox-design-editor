@@ -66,3 +66,40 @@ test('recreated channels with reset IDs preserve unambiguous diagnostic correlat
  expect(sanitizeFields({originChannelId:0xffffffffffff+1})).toEqual({})
  expect(sanitizeFields({originChannelId:1.5})).toEqual({})
 })
+
+test('renderer bridge timestamps separate local IPC resume/post from worker delivery without exposing payloads', async () => {
+ const rows:any[] = [], progress:any[] = []
+ let finish!:(v:any)=>void
+ const port:any={start(){},close(){},postMessage:(data:any)=>progress.push(data)}
+ const bridge={open:async()=>'owner',close:async()=>{},request:()=>new Promise<any>(r=>{finish=r})}
+ const connection=connectNativePreparation(bridge,port,undefined,row=>rows.push(row))
+ try {
+  const pending=port.onmessage({data:{id:7,lane:'interaction',method:'compile_gpu_packet',args:['private'],diagnostics:{originChannelId:8,requestId:9}}})
+  await vi.waitFor(()=>expect(finish).toBeTypeOf('function'))
+  expect(rows.map(r=>r.boundaryCode)).toEqual([1,5])
+  finish({id:99,value:new Uint8Array([1,2])});await pending
+  expect(rows.map(r=>r.boundaryCode)).toEqual([1,5,6,13,14])
+  expect(rows.every(r=>r.originChannelId===8&&r.preparationId===7&&r.requestId===9&&r.channel===1)).toBe(true)
+  expect(rows.every(r=>Number.isFinite(r.bridgeBoundaryAt))).toBe(true)
+  expect(progress.at(-1).bridgeBoundaryAt).toBe(rows.at(-2).bridgeBoundaryAt)
+  expect(JSON.stringify(rows)).not.toContain('private')
+  const f=fixture(), result=f.client.request('canvas','stats')
+  f.reply({id:1,value:42,bridgeBoundaryAt:performance.timeOrigin+performance.now()-15})
+  expect((await result).value).toBe(42)
+  expect(f.rows.at(-1).bridgeDeliveryMs).toBeGreaterThanOrEqual(15)
+  expect(f.rows.at(-1).bridgeDeliveryMs).toBeLessThan(1000)
+  f.client.close()
+ } finally {connection.close()}
+})
+
+test('malformed bridge clocks never become timing evidence or change terminal ownership',async()=>{
+ for(const clock of [-1,NaN,Infinity,'private',{},1e16]) {
+  const f=fixture(), result=f.client.request('canvas','stats')
+  f.reply({id:2,value:'wrong owner',bridgeBoundaryAt:clock})
+  expect(f.rows.filter(r=>r.phase===4)).toHaveLength(0)
+  f.reply({id:1,value:42,bridgeBoundaryAt:clock})
+  expect((await result).value).toBe(42)
+  expect(f.rows.at(-1)).not.toHaveProperty('bridgeBoundaryAt')
+  expect(f.rows.at(-1)).not.toHaveProperty('bridgeDeliveryMs');f.client.close()
+ }
+})

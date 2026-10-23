@@ -2,8 +2,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { selectDocumentMemoryBytes, DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
 import { documentFromString } from '../src/security.mjs'
-import { documentFrames, DocumentFrameAssembler, DOCUMENT_CHUNK_BYTES } from '../src/document-transport.mjs'
+import { documentFrames, documentWrites, DocumentFrameAssembler, DOCUMENT_CHUNK_BYTES } from '../src/document-transport.mjs'
 const MIB=1024*1024
+test('ordinary stream writes borrow the whole payload instead of copying it to add a newline',()=>{
+ for(const length of [0,1,4096,MIB]){
+  const bytes=Buffer.alloc(length,42)
+  const writes=documentWrites(bytes,'ordinary',MIB)
+  assert.equal(writes.next().value,bytes)
+  assert.deepEqual(writes.next().value,Buffer.from('\n'))
+  assert.equal(writes.next().done,true)
+ }
+})
+test('stream writes keep multipart wire bytes and sequence unchanged beyond the frame boundary',()=>{
+ const bytes=Buffer.alloc(MIB+19,42)
+ assert.deepEqual([...documentWrites(bytes,'chunked',MIB)],[...documentFrames(bytes,'chunked',MIB)])
+})
 test('startup capacity reflects available memory and cgroup constraints, not a document business quota',()=>{
  assert.equal(selectDocumentMemoryBytes({total:16*1024*MIB,available:3*1024*MIB}),1536*MIB)
  assert.equal(selectDocumentMemoryBytes({total:16*1024*MIB,available:3*1024*MIB,constrained:1024*MIB}),512*MIB)

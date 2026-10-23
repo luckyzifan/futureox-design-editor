@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile, readFile, access, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, copyFile, writeFile, readFile, access, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,7 +38,7 @@ test('native font and package paths retain notices and reject stale reference ou
   assert.match(lucide, /ISC License/); assert.match(lucide, /Cole Bemis/); assert.match(lucide, /The MIT License/)
 })
 
-test('distributed notices match installed runtime packages and configuration activates filtering', async () => {
+test('distributed notices match installed runtime packages', async () => {
   const inventory = JSON.parse(await readFile(path.join(publicDir, 'licenses/inventory.json'), 'utf8'))
   for (const item of inventory.packages) {
     const installed = path.join(root, 'frontend/design-client/node_modules', item.package)
@@ -46,6 +46,23 @@ test('distributed notices match installed runtime packages and configuration act
     assert.equal(item.version, metadata.version, `Refresh notice inventory for ${item.package}`)
     if (item.package !== 'kiwi-schema') assert.deepEqual(await readFile(path.join(publicDir, 'licenses', item.file)), await readFile(path.join(installed, 'LICENSE')))
   }
-  const config = await readFile(path.join(root, 'frontend/design-client/vite.config.ts'), 'utf8')
-  assert.match(config, /plugins: \[react\(\), productionPublicAssets\(\)\]/)
+})
+
+test('configuration passes its actual captured WASM identity into the production copy plugin', async () => {
+  const { default: configure } = await import('../../design-client/vite.config.ts')
+  const config = await configure({ command: 'build', mode: 'production' })
+  const identity = JSON.parse(config.define.__CORE_RENDER_DIAGNOSTIC_BUILD__)
+  assert.equal(identity.producerIdentityStatus, 2)
+  const plugin = config.plugins.find(value => value.name === 'futureox-production-public-assets')
+  const temp = await mkdtemp(path.join(tmpdir(), 'futureox-config-wasm-'))
+  try {
+    const from = path.join(temp, 'public'), to = path.join(temp, 'dist')
+    await mkdir(path.join(from, 'kernel'), { recursive: true })
+    await copyFile(path.join(publicDir, 'kernel/design_kernel_bg.wasm'), path.join(from, 'kernel/design_kernel_bg.wasm'))
+    plugin.configResolved({ root: path.join(root, 'frontend/design-client'), publicDir: from, build: { outDir: to } })
+    await plugin.writeBundle()
+    assert.deepEqual(await readFile(path.join(to, 'kernel/design_kernel_bg.wasm')), await readFile(path.join(publicDir, 'kernel/design_kernel_bg.wasm')))
+    await writeFile(path.join(from, 'kernel/design_kernel_bg.wasm'), 'different bytes')
+    await assert.rejects(plugin.writeBundle(), /WASM/)
+  } finally { await rm(temp, { recursive: true, force: true }) }
 })

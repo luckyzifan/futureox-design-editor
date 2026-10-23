@@ -1,0 +1,52 @@
+import { expect, test, vi } from 'vitest'
+import { NavigationRefinementScheduler, type NavigationRefinementGoal } from './navigation-refinement'
+import { RenderMailbox } from './render-mailbox'
+const deferred = () => { let resolve!: () => void; return { promise: new Promise<void>(r => { resolve = r }), resolve: () => resolve() } }
+const goal = (scope = 'one', sequence = 1): NavigationRefinementGoal => ({ scope, sequence,
+  current: () => true, run: vi.fn(async () => {}), failed: vi.fn() })
+
+test('one sampled camera earns at most one turn, regardless of raw event count', async () => {
+  const scheduler = new NavigationRefinementScheduler(new RenderMailbox()), current = goal()
+  scheduler.update(current)
+  expect(await scheduler.request()).toBe(true)
+  for (let i = 0; i < 100; i++) { scheduler.update({ ...current }); expect(await scheduler.request()).toBe(false) }
+  expect(current.run).toHaveBeenCalledOnce()
+  scheduler.update({ ...current, sequence: 2 }); expect(await scheduler.request()).toBe(true)
+  expect(current.run).toHaveBeenCalledTimes(2)
+})
+test('one pending turn takes the latest goal and never grows with inputs', async () => {
+  const mailbox = new RenderMailbox(), gate = deferred(), ahead = mailbox.run(() => true, () => gate.promise)
+  const scheduler = new NavigationRefinementScheduler(mailbox), first = goal(), latest = goal('one', 100)
+  scheduler.update(first); const turn = scheduler.request()
+  for (let i = 2; i < 100; i++) { scheduler.update(goal('one', i)); expect(await scheduler.request()).toBe(false) }
+  scheduler.update(latest); gate.resolve(); await ahead; await turn
+  expect(first.run).not.toHaveBeenCalled(); expect(latest.run).toHaveBeenCalledOnce()
+  // Retargeting spends the camera actually rendered, not the old queued credit.
+  expect(await scheduler.request()).toBe(false)
+  expect(latest.run).toHaveBeenCalledOnce()
+})
+test('quiet, hidden or content/device scope changes revoke queued turns', async () => {
+  for (const replacement of [undefined, { ...goal(), current: () => false }, goal('new-scope')]) {
+    const mailbox = new RenderMailbox(), gate = deferred(), ahead = mailbox.run(() => true, () => gate.promise)
+    const scheduler = new NavigationRefinementScheduler(mailbox), first = goal()
+    scheduler.update(first); const turn = scheduler.request(); scheduler.update(replacement)
+    gate.resolve(); await ahead; expect(await turn).toBe(false)
+    expect(first.run).not.toHaveBeenCalled(); expect(first.failed).not.toHaveBeenCalled()
+  }
+})
+test('started work is not restarted on pan; errors report to latest same-scope owner', async () => {
+  const gate = deferred(), scheduler = new NavigationRefinementScheduler(new RenderMailbox())
+  const first = { ...goal(), run: vi.fn(() => gate.promise.then(() => { throw Error('GPU device lost') })) }
+  scheduler.update(first); const turn = scheduler.request(); await Promise.resolve(); await Promise.resolve()
+  const latest = goal('one', 100); scheduler.update(latest)
+  expect(await scheduler.request()).toBe(false); gate.resolve(); expect(await turn).toBe(false)
+  expect(first.run).toHaveBeenCalledOnce(); expect(first.failed).not.toHaveBeenCalled()
+  expect(latest.failed).toHaveBeenCalledWith(expect.objectContaining({ message: 'GPU device lost' }))
+})
+test('obsolete scope failures cannot poison replacement ownership', async () => {
+  const gate = deferred(), scheduler = new NavigationRefinementScheduler(new RenderMailbox())
+  const first = { ...goal(), run: () => gate.promise.then(() => { throw Error('old error') }) }
+  scheduler.update(first); const turn = scheduler.request(); await Promise.resolve(); await Promise.resolve()
+  const latest = goal('replacement'); scheduler.update(latest); gate.resolve(); await turn
+  expect(latest.failed).not.toHaveBeenCalled(); expect(await scheduler.request()).toBe(true)
+})

@@ -1,3 +1,4 @@
+import { CpuStage, measureCpuStage } from '../cpu-stage-diagnostics'
 import {
   hit_test_json,
   hit_test_device_json,
@@ -361,7 +362,9 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
   }
   if (!ready || !layoutEngine) throw new Error('布局内核尚未就绪')
   if (components) {
-    const changes = JSON.parse(layoutEngine.resolve_components(JSON.stringify(document))) as {
+    const json = measureCpuStage(CpuStage.serialize, () => JSON.stringify(document))
+    const encoded = measureCpuStage(CpuStage.resolveComponents, () => layoutEngine!.resolve_components(json))
+    const changes = measureCpuStage(CpuStage.parse, () => JSON.parse(encoded)) as {
       nodes: Record<string, DesignNode>
       removed: string[]
     }
@@ -383,7 +386,9 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
     }
     return { ...document, nodes }
   }
-  const patches = JSON.parse(layoutEngine.resolve_layout(JSON.stringify(document))) as Record<
+  const json = measureCpuStage(CpuStage.serialize, () => JSON.stringify(document))
+  const encoded = measureCpuStage(CpuStage.resolveLayout, () => layoutEngine!.resolve_layout(json))
+  const patches = measureCpuStage(CpuStage.parse, () => JSON.parse(encoded)) as Record<
     string,
     Partial<DesignNode> | null
   >

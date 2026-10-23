@@ -14,7 +14,7 @@ export class ResidentPrograms {
   constructor(private readonly maxWords=16*1024*1024,private readonly maxEntries=8192){}
   get bytes(){return this.words.byteLength}
   reset(){this.entries.clear();this.count=0;this.length=0;this.words=new Uint32Array(0)}
-  plan(values:Float32Array,paths:Program[]):ProgramPlan|undefined {
+  private lookup(values:Float32Array,paths:Program[]) {
     const source=new Uint32Array(values.buffer,values.byteOffset,values.length)
     const unique=new Map<number,Program>()
     for(const p of paths){
@@ -34,7 +34,27 @@ export class ResidentPrograms {
       for(let i=0;i<entry.length;i++)if(this.words[entry.offset+i]!==source[start+i])return false
       return true
     }
-    let matches=requests.map(p=>this.entries.get(key(p))?.find(entry=>equal(entry,p)))
+    const matches=requests.map(p=>this.entries.get(key(p))?.find(entry=>equal(entry,p)))
+    return {source,requests,total,key,equal,matches}
+  }
+  /** Read-only exact hit proof. No arena reset, append, capacity growth or
+   * upload is possible; hashes remain bucket selectors, never equality. */
+  exactPlan(values:Float32Array,paths:Program[]):ProgramPlan|undefined {
+    const found=this.lookup(values,paths)
+    if(!found||found.matches.some(entry=>!entry))return undefined
+    const offsets=new Map<number,number>()
+    let hitBytes=0
+    for(let i=0;i<found.requests.length;i++){
+      const entry=found.matches[i]!
+      offsets.set(found.requests[i].first,entry.offset/4);hitBytes+=entry.length*4
+    }
+    return {offsets,words:this.words.subarray(0,this.length),hits:found.requests.length,hitBytes}
+  }
+  plan(values:Float32Array,paths:Program[]):ProgramPlan|undefined {
+    const found=this.lookup(values,paths)
+    if(!found)return undefined
+    const {source,requests,total,key,equal}=found
+    let {matches}=found
     let newWords=requests.reduce((sum,p,i)=>sum+(matches[i]?0:p.count*4),0)
     const newEntries=matches.filter(e=>!e).length
     if(this.length+newWords>this.maxWords||this.count+newEntries>this.maxEntries){

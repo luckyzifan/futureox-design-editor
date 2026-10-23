@@ -1,3 +1,4 @@
+import { createCpuStageDiagnostics } from './cpu-stage-diagnostics'
 import { operationCorrelation } from './canvas-operation-terminal'
 import { createRenderDiagnostics, PREFIX } from '../../design-desktop/src/render-terminal-diagnostics.mjs'
 /** Only enums/counts/booleans leave this module. Never text, IDs, keys, geometry, clipboard or errors. */
@@ -86,7 +87,8 @@ function create(editor: EditorContext) {
     terminal.record('canvas-action', { actionOwner: owner, ...row, ...(correlation.authoredRevision === row.actionFinalRevision ? correlation : {}) })
   })
   const context = () => ({ session: editor.sessionGeneration, revision: editor.state.version })
-  return { enabled: collector.enabled, begin: (code: ActionCode, source: ActionSourceCode, fields?: ActionFields) => collector.begin(code, source, context(), fields),
+  const cpu = createCpuStageDiagnostics(terminal.enabled, fields => terminal.record('cpu-stage', { actionOwner: owner, actionSession: editor.sessionGeneration, documentRevision: editor.state.version, ...fields }))
+  return { enabled: collector.enabled, cpu, begin: (code: ActionCode, source: ActionSourceCode, fields?: ActionFields) => collector.begin(code, source, context(), fields),
     sample: (id: number, fields?: ActionFields) => collector.sample(id, fields),
     finish: (id: number, outcome: ActionOutcomeCode, reason: ActionReasonCode = 0, fields?: ActionFields) => collector.finish(id, outcome, context(), reason, fields),
     event: (code: ActionCode, source: ActionSourceCode, outcome: ActionEventOutcomeCode, reason: ActionReasonCode = 0, fields?: ActionFields) => { const id = collector.begin(code, source, context(), fields); collector.finish(id, outcome, context(), reason) },

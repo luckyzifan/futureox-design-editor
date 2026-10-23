@@ -2,8 +2,8 @@ import type { PreparationStateReceiptV1 } from './preparation-state'
 export type PreparationMethod = 'preparation_capabilities_v1' | 'derive_document_v1' | 'warm_resources' | 'initialize' | 'load_document' | 'apply_document_patch_with_damage' | 'apply_interaction_transforms' |
   'compile_gpu_scene_update' | 'clear_gpu_scene_session' | 'compile_gpu_packet' | 'render_linear' | 'render_png' | 'render_color_png' | 'render_region_png' |
   'render_cpu_frame' | 'stats' | 'gpu_memory_breakdown'
-export type PreparationProgress = { backendCode: 1 | 2; boundaryCode: number; boundaryDurationMs?: number }
-export type PreparationReply = { progress?: PreparationProgress; id: number; value?: unknown; settings?: string; error?: string; fatal?: string; documentFork?: boolean; compileStats?:Record<string,unknown>; stateReceipt?: PreparationStateReceiptV1 | null }
+export type PreparationProgress = { backendCode: 1 | 2; boundaryCode: number; boundaryDurationMs?: number; bridgeBoundaryAt?: number }
+export type PreparationReply = { progress?: PreparationProgress; bridgeBoundaryAt?: number; id: number; value?: unknown; settings?: string; error?: string; fatal?: string; documentFork?: boolean; compileStats?:Record<string,unknown>; stateReceipt?: PreparationStateReceiptV1 | null }
 
 const methods: PreparationMethod[] = ['warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms','compile_gpu_scene_update','clear_gpu_scene_session','compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown','preparation_capabilities_v1','derive_document_v1']
 type Diagnostics = { enabled: () => boolean; owner: () => number; record: (event: string, fields: Record<string, number | boolean>) => void }
@@ -51,6 +51,14 @@ export class PreparationChannel {
       if (reply.fatal) { this.close(new Error(reply.fatal)); return }
       const job = this.active
       if (!job || job.id !== reply.id) return
+      // Clocks carry their performance time origin: retain sender time separately
+      // from this worker's receive timestamp. This is delivery/event-loop delay,
+      // not Rust execution time. Invalid or clock-discontinuous ages are omitted.
+      const bridgeTiming = (sentAt: unknown) => {
+        if (typeof sentAt !== 'number' || !Number.isFinite(sentAt) || sentAt < 0 || sentAt > 1e15) return {}
+        const age = performance.timeOrigin + performance.now() - sentAt
+        return { bridgeBoundaryAt: sentAt, ...(age >= 0 && age <= 120000 ? { bridgeDeliveryMs: age } : {}) }
+      }
       // Progress never completes the physical job, even after consumer cancellation.
       if ('progress' in reply) {
         const p = reply.progress
@@ -58,12 +66,12 @@ export class PreparationChannel {
           (p.boundaryDurationMs === undefined || (Number.isFinite(p.boundaryDurationMs) && p.boundaryDurationMs >= 0 && p.boundaryDurationMs <= 120000))) {
           this.observedBackendCode = p.backendCode
           job.backendCode = p.backendCode; job.boundaryCode = p.boundaryCode
-          this.trace(job, 5, { backendCode: p.backendCode, boundaryCode: p.boundaryCode, ...(p.boundaryDurationMs === undefined ? {} : { boundaryDurationMs: p.boundaryDurationMs }) })
+          this.trace(job, 5, { ...bridgeTiming(p.bridgeBoundaryAt), backendCode: p.backendCode, boundaryCode: p.boundaryCode, ...(p.boundaryDurationMs === undefined ? {} : { boundaryDurationMs: p.boundaryDurationMs }) })
         }
         return
       }
       clearTimeout(job.diagnosticTimer)
-      this.trace(job, 4, { durationMs: performance.now() - (job.startedAt ?? performance.now()), documentFork: reply.documentFork === true })
+      this.trace(job, 4, { ...bridgeTiming(reply.bridgeBoundaryAt), durationMs: performance.now() - (job.startedAt ?? performance.now()), documentFork: reply.documentFork === true })
       this.active = undefined
       if (PreparationChannel.mutates(job.method)) {
         if (!reply.error && reply.stateReceipt) this.receipts.set(job.lane, reply.stateReceipt)

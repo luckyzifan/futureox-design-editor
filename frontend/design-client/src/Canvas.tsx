@@ -1,5 +1,7 @@
+import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
+import { canvasOverlayCommands, canvasGpuOverlayOwnsUi } from './canvas-overlay-commands'
 import { recordCanvasGrid } from './kernel/grid-measurements'
 import { canvasActions, CanvasAction, ActionSource, ActionOutcome, ActionReason, modifierBits, type ActionReasonCode, type ActionOutcomeCode } from './canvas-action-diagnostics'
 import { actionGeometry, compareActionGeometry } from './canvas-action-geometry'
@@ -19,7 +21,6 @@ import { resizedNode, resizeGestureAxes } from './selection-properties'
 import {cancelToolActivation} from './tool-activation'
 import {selectionHandles, selectionRotation} from './selection-handles'
 import {selectionScaleFrame} from './selection-scale'
-import {measureBounds} from './canvas-measurements'
 import {CanvasLayoutHandles} from './CanvasLayoutHandles'
 import {CanvasSmartSelection} from './CanvasSmartSelection'
 import {pixelGridPathData} from './pixel-grid'
@@ -212,6 +213,8 @@ class PresentedSignal {
       previous.pageId === frame.pageId &&
       previous.epoch === frame.epoch &&
       previous.gpuOverlay === frame.gpuOverlay &&
+      previous.gpuOverlayIdentity === frame.gpuOverlayIdentity &&
+      previous.gpuOverlayCapture === frame.gpuOverlayCapture &&
       !!previous.preview === !!frame.preview
     if (stable) return
     this.listeners.forEach((listener) => listener())
@@ -430,7 +433,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     })
   }
   const resizeWithTrace = (d: Drag, ...args: Parameters<typeof resizeInBasis>) => {
-    const result = resizeInBasis(...args)
+    const result = measureCpuStage(CpuStage.proposal, () => resizeInBasis(...args))
     if (d.actionToken) {
       const unsnapped = args[7] ? resizeInBasis(args[0], args[1], args[2], args[3], args[4], args[5], args[6], false) : result
       const unconstrained = args[5] || args[6] ? resizeInBasis(args[0], args[1], args[2], args[3], args[4], false, false, false) : unsnapped
@@ -470,7 +473,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     return cancelQueuedMove
   }, [editor, editor.sessionGeneration, state.page])
-  const queuePointerMove = (event: React.PointerEvent) => {
+  const queuePointerMove = (event: React.PointerEvent) => actionTrace.cpu.run(CpuStage.pointerQueue, () => queuePointerMoveImpl(event), drag.current?.actionToken)
+  const queuePointerMoveImpl = (event: React.PointerEvent) => {
     const active = drag.current
     const hover = !active && !pencil.current && !utility.active()
     // These previews are functions of the captured gesture baseline and latest
@@ -756,7 +760,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     ? displayedHit(cursor,measureKeys.deep,n=>!selection.has(n.id)) : null
   const measurementBounds = measurementTarget && displayedSnapshot
     ? displayedIndex?.entries.find(e=>e.id===measurementTarget)?.bounds : null
-  const measurements = useMemo(() => measurementBounds ? measureBounds(selectionBox,measurementBounds) : [], [selectionBox,measurementBounds])
   const transformHandles = useMemo(() => selectionHandles(selectionCorners, zoom), [selectionCorners, zoom])
   const ownedDrag = drag.current?.session === editor.sessionGeneration && drag.current.page === state.page
     ? drag.current : null
@@ -768,24 +771,19 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // live document, so the user can keep working while tiles re-render.
   const canTransform = capturedTransform || (['select','multiselect','scale'].includes(state.tool) && !spaceHeld && !textEdit &&
     !selectionFeedback.readOnly && !!displayedSnapshot)
-  const gpuOverlay = !!presented?.gpuOverlay && presentationScopeMatches
   const frameTitles = useMemo(() => entries.filter(e => {
     const n=state.doc.nodes[e.id]
     return ['frame','section'].includes(n.kind) && (e.depth===0||selection.has(e.id)) &&
       ((!n.instance&&!n.instanceOrigin)||selection.has(e.id))
   }), [entries,state.doc,selection])
-  const overlay = useMemo(() => {
-    const showSelection=!!selected.length&&!['vector','width','pencil','brush','marker','washi-tape'].includes(state.tool)
-    const labels:import('./kernel/gpu/canvas-labels').CanvasLabel[]=frameTitles.map(e=>({anchor:apply(e.matrix,{x:0,y:0}),offset:{x:0,y:-12},
-      basis:e.matrix.slice(0,4) as [number,number,number,number],text:state.doc.nodes[e.id].name,size:11,color:'#73778b',owners:[...e.ancestors,e.id]}))
-    if(showSelection)labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
-      text:selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix),
-      size:10,color:'#0d99ff',centered:true,owners:selectionFeedback.ids})
-    for(const m of measurements)labels.push({anchor:{x:(m.from.x+m.to.x)/2,y:(m.from.y+m.to.y)/2},offset:{x:4,y:-5},text:String(Number(m.distance.toFixed(2))),size:11,color:'#f24822',halo:true})
-    return { document:state.doc,pageId:state.page,epoch:editor.sessionGeneration, commands:{pixelGrid:state.pixelGrid,labels,measurements,
-      transforms:Object.fromEntries(selectionFeedback.ids.map(id=>[id,state.doc.nodes[id].transform])),
-      selection:showSelection?{corners:selectionCorners,handles:canTransform,owners:selectionFeedback.ids}:undefined} }
-  }, [state.doc,state.page,state.selection,state.tool,state.pixelGrid,editor.sessionGeneration,frameTitles,canTransform,measurements,selectionCorners,selectionBox,localSelection,selectionFeedback])
+  const overlay = useMemo(() => canvasOverlayCommands({
+    document:state.doc,pageId:state.page,epoch:editor.sessionGeneration,tool:state.tool,pixelGrid:state.pixelGrid,
+    canTransform,selected,owners:selectionFeedback.ids,frameTitles,localSelection,selectionCorners,selectionBox,
+    measurementTarget:measurementTarget&&measurementBounds?{id:measurementTarget,bounds:measurementBounds}:null,
+  }), [state.doc,state.page,state.tool,state.pixelGrid,editor.sessionGeneration,frameTitles,canTransform,selected,
+    measurementTarget,measurementBounds,selectionCorners,selectionBox,localSelection,selectionFeedback])
+  const measurements = overlay.commands.measurements || []
+  const gpuOverlay = canvasGpuOverlayOwnsUi(presented,overlay,presentationScopeMatches)
   const pixelGridPath = useMemo(
     () => pixelGridPathData(displayView, size.width, size.height, state.pixelGrid),
     [state.pixelGrid, displayView.x, displayView.y, displayView.zoom, size.width, size.height],
@@ -1505,6 +1503,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (vertex) editor.set({ editingVertex: vertex, editingVertices:drag.current?.vertices||[vertex] })
   }
   function move(e: React.PointerEvent) {
+    return actionTrace.cpu.run(CpuStage.pointerMove, () => moveImpl(e), drag.current?.actionToken, actionTrace.enabled && queuedInputAt.current ? performance.now() - queuedInputAt.current : undefined)
+  }
+  function moveImpl(e: React.PointerEvent) {
     editInputAt.current = queuedInputAt.current || performance.now()
     if (!drag.current && !pencil.current && !utility.active() && e.target instanceof Element &&
       (!host.current?.contains(e.target) || e.target.closest(canvasChromeSelector))) {
@@ -1854,6 +1855,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }
   moveCallback.current = move
   function end(e: React.PointerEvent) {
+    return actionTrace.cpu.run(CpuStage.pointerUp, () => endImpl(e), drag.current?.actionToken)
+  }
+  function endImpl(e: React.PointerEvent) {
     if (utility.end(e,world(e))) { if(host.current?.hasPointerCapture(e.pointerId))host.current.releasePointerCapture(e.pointerId); return }
     if (pencil.current) {
       const draft = pencil.current
@@ -1883,18 +1887,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       return
     }
     cancelQueuedMove()
-    // Every gesture must consume the release position when a final move was
-    // coalesced or absent. A no-motion handle click must remain a no-op.
     const release = screenPoint(e), last = d.lastScreen || d.screen, modifiers = d.lastModifiers
-    const changedModifiers = modifiers && (modifiers.shift !== e.shiftKey || modifiers.alt !== e.altKey ||
-      modifiers.ctrl !== e.ctrlKey || modifiers.meta !== e.metaKey)
-    if (d.kind !== 'create' && (d.kind === 'move' || release.x !== last.x || release.y !== last.y ||
-      (changedModifiers && d.sampledMovement))) move(e)
-    const pending = pendingBoardMove.current
-    if (pending) {
-      pendingBoardMove.current = null; retainedMove.current?.restore()
-      editor.preview(...pending)
-    }
+    measureCpuStage(CpuStage.releaseFlush, () => {
+      // Every gesture must consume the release position when a final move was
+      // coalesced or absent. A no-motion handle click must remain a no-op.
+      const changedModifiers = modifiers && (modifiers.shift !== e.shiftKey || modifiers.alt !== e.altKey ||
+        modifiers.ctrl !== e.ctrlKey || modifiers.meta !== e.metaKey)
+      if (d.kind !== 'create' && (d.kind === 'move' || release.x !== last.x || release.y !== last.y ||
+        (changedModifiers && d.sampledMovement))) move(e)
+      const pending = pendingBoardMove.current
+      if (pending) {
+        pendingBoardMove.current = null; retainedMove.current?.restore()
+        editor.preview(...pending)
+      }
+    })
     if (d.actionToken && d.actionBefore) d.actionResolved = actionGeometry(editor.state.doc, d.ids)
     // Coalesced camera writes land synchronously before the gesture unwinds.
     flushView()

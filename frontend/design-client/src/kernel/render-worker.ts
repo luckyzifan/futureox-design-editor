@@ -51,7 +51,7 @@ import { OwnerTileCache, ownsExactTileBytes } from './owner-tile-cache'
 import { tileComputationDependsOnCamera } from './tile-computation-key'
 import { recoverFailedTileRenderer } from './tile-failure'
 import { recoverPreviewBudget, isRecoverablePreviewBudget } from './preview-budget-recovery'
-import { PreviewAdmission } from './preview-tiles'
+import { PreviewAdmission, isAnalyticProgramBudget } from './preview-tiles'
 import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
@@ -1133,7 +1133,8 @@ self.onmessage = (e) => {
                 // A whole tile may exceed the working-surface budget. Let the
                 // regional renderer subdivide it; a compiler admission error
                 // must not bypass the same recovery as a GPU allocation error.
-                if (!/GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(String(error))) throw error
+                if (!/GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(String(error)) &&
+                    !isAnalyticProgramBudget(error)) throw error
               }
               const verifyMs = performance.now() - compileStarted + speculativeSavedMs, cached = !!result
               terminalDiagnostics.record('cache',{requestId:request.id,tileIndex,cached,reasonCode:cached?0:disableExactCache?3:request.debug?.disableCertifiedTileReuse?4:5,generation,fillGeneration})

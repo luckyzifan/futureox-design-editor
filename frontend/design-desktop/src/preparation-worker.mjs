@@ -4,7 +4,7 @@ import { parentPort, workerData } from 'node:worker_threads'
 import { spawn } from 'node:child_process'
 import { NativePreparationFrame } from './preparation-frame.mjs'
 import { DOCUMENT_BYTE_LIMIT, DOCUMENT_TRANSFER_BYTES, documentChildEnvironment, assertDocumentSerialization } from './document-capacity.mjs'
-import { documentFrames } from './document-transport.mjs'
+import { documentWrites } from './document-transport.mjs'
 const child=spawn(workerData.binary,['--font',workerData.font],{stdio:['pipe','pipe','ignore'],shell:false,
   env:documentChildEnvironment(Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(ELECTRON_|NODE_OPTIONS$|LD_PRELOAD$|DYLD_)/.test(k))))})
 const queue=[];let active,queuedBytes=0,frame=new NativePreparationFrame(),stopped=false
@@ -24,7 +24,7 @@ function next(){
  active=queue.shift()
  progress(active,10)
  const writing=active
- const frames=documentFrames(writing.bytes,String(writing.id),68*1024*1024)
+ const frames=documentWrites(writing.bytes,String(writing.id),68*1024*1024)
  const send=()=>{
   if(stopped||active!==writing)return
   const item=frames.next();if(item.done)return

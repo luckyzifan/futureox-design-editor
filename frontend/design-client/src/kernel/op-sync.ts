@@ -19,6 +19,7 @@
  */
 import type { Op } from './graph'
 import { equalValue } from '../document-patch'
+import { localEditProof } from '../local-edit-proof'
 import type { DesignDocument, DesignNode, Page } from '../model'
 
 /** Synthetic parent of the per-page pseudo nodes; never a real node id. */
@@ -228,6 +229,22 @@ export function compileEditOps(before: DesignDocument, after: DesignDocument): C
   const { nodes: _afterNodes, ...afterBase } = after
   if (!equalValue(beforeBase, afterBase)) return replacement('document metadata changed')
   try {
+    const local = localEditProof(before, after)
+    if (local?.ids.length === 1) {
+      const ops: Op[] = []
+      let complete = true
+      for (const id of local.ids) {
+        const batch = scalarOps(id, before.nodes[id], after.nodes[id])
+        if (!batch) { complete = false; break }
+        ops.push(...batch)
+      }
+      // The proof excludes topology/ID/base-field changes. A single target
+      // retains the old compiler's exact wire order without augmented parent
+      // maps or a structural simulation. Multi-target batches keep the old
+      // compiler: producer witness order is not node-map enumeration order.
+      // Non-scalar payloads keep the normal exact remove/insert compiler.
+      if (complete) return { mode: 'ops', ops }
+    }
     return compile(before, after)
   } catch (error) {
     return replacement(`compile failed: ${String(error)}`)
