@@ -485,7 +485,7 @@ export class KernelClient {
       const channel = new MessageChannel()
       const native = connectNativePreparation(desktopHost.preparation, channel.port1, error => {
         if (this.worker === worker) this.reset(error)
-      })
+      }, fields => this.terminalDiagnostics.record('preparation', fields))
       this.closeNativePreparation = native.close
       this.serializeNative = native.serialize
       worker.postMessage({ command: 'prepare-port', port: channel.port2, documentMemoryBytes: documentCapacity().memoryBytes }, [channel.port2])

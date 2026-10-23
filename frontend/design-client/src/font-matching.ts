@@ -24,6 +24,15 @@ export function unmatchedSourceFonts(document: DesignDocument, node: DesignNode)
   }
   return [...names]
 }
+/** Before replacing a missing layer font, pin unresolved imported run faces to
+ * their existing fallback. FIG runs can carry only a source identity, so leaving
+ * fontId omitted would silently retarget them to the newly matched layer font. */
+export function preserveUnmatchedSourceRuns(node: DesignNode, source: Source) {
+  for (const [index, name] of Object.entries(source.runs || {})) {
+    const run = node.textRuns?.[Number(index)]
+    if (run && typeof name === 'string' && run.fontId === undefined) run.fontId = 'default'
+  }
+}
 const normalize = (s: string) => s.normalize('NFKC').replace(/[\s_-]/g, '').toLowerCase()
 /** Exact identity matching only. Ambiguous family names never pick a random weight. */
 export function matchFont<T extends FontIdentity>(name: string, fonts: T[]): T | undefined {
@@ -52,6 +61,7 @@ export function applyMatchedFonts(document: DesignDocument, matches: Map<string,
     }
     const match = source.style && matches.get(source.style)
     if (match && original === 'default') {
+      preserveUnmatchedSourceRuns(node, source)
       document.fonts = { ...document.fonts, [match.id]: match.resource }
       node.textStyle = { ...defaultTextStyle(), ...node.textStyle, fontId: match.id }; changed++
     }

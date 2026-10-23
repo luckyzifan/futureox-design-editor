@@ -36,7 +36,7 @@ import { parameters, previewUniforms, type PreviewPresentation } from './types'
 import { MAX_SOLID_INSTANCES, SOLID_INSTANCE_FLOATS } from './solid-batch'
 import { GpuBindingCache } from './binding-cache'
 import { ResidentGeometry } from './resident-geometry'
-import { ResidentPrograms } from './resident-programs'
+import { ResidentPrograms, type ProgramPlan } from './resident-programs'
 import { PipelineRegistry } from './pipeline-registry'
 const maskShader = `struct Params{values:array<vec4<f32>,64>} @group(0) @binding(0) var<uniform> p:Params;
 @vertex fn mesh(@location(0) point:vec2<f32>)->@builtin(position) vec4<f32>{return vec4<f32>((point.x-p.values[1].x)/p.values[0].z*2.-1.,1.-(point.y-p.values[1].y)/p.values[0].w*2.-1.,0.,1.);}
@@ -45,6 +45,17 @@ const maskShader = `struct Params{values:array<vec4<f32>,64>} @group(0) @binding
 
 /** Consecutive frames of ≥4× overprovision before a geometry buffer shrinks. */
 const CAPACITY_SHRINK_FRAMES = 60
+// A second bound in addition to the renderer's unchanged working-set budget.
+// Count unique pinned sources conservatively even though their bytes already
+// belong to the renderer ledger. Never accumulate an unlimited GPU backlog.
+const IMAGE_RETIREMENT_BATCHES = 3
+const IMAGE_RETIREMENT_BYTES = 64 * 1024 * 1024
+type ImageTableRetirement = {
+  tables: readonly ExactImageTable[]
+  epoch: number
+  complete: boolean
+  error?: unknown
+}
 /** How long a parked driver keeps its (non-lost) device and compiled pipelines
  * between a dispose and the next matching create. Preview-tile budget recovery
  * disposes and immediately re-creates the whole GPU stack; parking lets that
@@ -73,12 +84,66 @@ type ParkedDriver = {
 }
 export class WebGpuDriver implements Driver {
   private queueWaitStats = new QueueWaitStats(import.meta.env.VITE_DESIGN_QUEUE_WAIT_TIMING === '1')
-  private waitForQueue(reason: QueueWaitReason, admission?: GpuAdmissionDiagnostic) {
-    const diagnosticIdentity = { ...captureDeviceDiagnosticRequest(), ...deviceDiagnosticFields(this), deviceFenceResourceEpoch: this.resourceEpoch, deviceFenceCompletedResourceEpoch: this.completedResourceEpoch }
-    const started=gpuDiagnosticsEnabled()?performance.now():0
-    const pending=this.queueWaitStats.wait(reason, () => this.device.queue.onSubmittedWorkDone(), () => this.lost)
-    if(!gpuDiagnosticsEnabled())return pending
-    return pending.finally(()=>recordDeviceDiagnostic('fence',{...admission,...diagnosticIdentity,reasonCode:['readback','timing','prefix-scratch','interaction','periodic','admission','checkpoint','cancel','initialization','park','image-table-scratch'].indexOf(reason)+1,queueWaitMs:performance.now()-started,resourceEpoch:this.resourceEpoch,completedResourceEpoch:this.completedResourceEpoch}))
+  private submissionSequence = 0
+  private completedSubmissionSequence = 0
+  private fenceSequence = 0
+  private submitTraceSkipped = 0
+  private fenceTraceSkipped = 0
+  private retirementTraceSequence = 0
+  private retirementTraceSkipped = 0
+  private submitQueue(command: GPUCommandBuffer) {
+    this.queueWaitStats.submit(() => this.device.queue.submit([command]))
+    this.submissionSequence = (this.submissionSequence || 0) + 1
+    if (!gpuDiagnosticsEnabled()) return
+    // Routine submissions are sampled; every slow/rejected completion below
+    // still carries the frozen submission range and workload counters.
+    if (this.submissionSequence % 32 !== 1) { this.submitTraceSkipped++; return }
+    recordDeviceDiagnostic('gpu-submit', {
+      ...captureDeviceDiagnosticRequest(), ...deviceDiagnosticFields(this),
+      deviceSubmitSequence: this.submissionSequence, deviceSubmitTraceSkipped: this.submitTraceSkipped, resourceEpoch: this.resourceEpoch,
+      drawCalls: this.drawCalls, opaqueTentPasses: this.opaqueTentPasses,
+      deviceSubmitTableCount: this.imageTables?.size || 0,
+      deviceSubmitTableWidthMax: [...(this.imageTables?.keys() || [])].reduce((max, table) => Math.max(max, table.width), 0),
+      deviceSubmitTableHeightMax: [...(this.imageTables?.keys() || [])].reduce((max, table) => Math.max(max, table.height), 0),
+      ...this.imageRetirementFields(),
+    })
+  }
+  private waitForQueue(reason: QueueWaitReason, admission?: GpuAdmissionDiagnostic, asynchronous = false, geometryReason = 0) {
+    const device = this.device, last = this.submissionSequence || 0
+    const diagnosticIdentity = { ...captureDeviceDiagnosticRequest(), ...deviceDiagnosticFields(this),
+      deviceFenceResourceEpoch: this.resourceEpoch, deviceFenceCompletedResourceEpoch: this.completedResourceEpoch,
+      deviceFenceId: this.fenceSequence = (this.fenceSequence || 0) + 1,
+      deviceFenceSubmitFirst: Math.min(last, (this.completedSubmissionSequence || 0) + 1), deviceFenceSubmitLast: last,
+      deviceFenceAsync: Number(asynchronous), deviceFenceGeometryReason: geometryReason, deviceGpuTimingEnabled: Number(!!this.timingQueries),
+      ...this.imageRetirementFields(),
+      drawCalls: this.drawCalls, opaqueTentPasses: this.opaqueTentPasses,
+      deviceSubmitTraceSkipped: this.submitTraceSkipped || 0,
+      deviceSubmitTableCount: this.imageTables?.size || 0,
+      deviceSubmitTableWidthMax: [...(this.imageTables?.keys() || [])].reduce((max, table) => Math.max(max, table.width), 0),
+      deviceSubmitTableHeightMax: [...(this.imageTables?.keys() || [])].reduce((max, table) => Math.max(max, table.height), 0),
+    }
+    const sampled = diagnosticIdentity.deviceFenceId % 32 === 1
+    const enabled = gpuDiagnosticsEnabled(), started = enabled ? performance.now() : 0
+    const reasonCode = ['readback','timing','prefix-scratch','interaction','periodic','admission','checkpoint','cancel','initialization','park','image-table-scratch'].indexOf(reason)+1
+    if (enabled && sampled) recordDeviceDiagnostic('fence', { ...admission, ...diagnosticIdentity, reasonCode, deviceFencePhase: 1, deviceFenceTraceSkipped: this.fenceTraceSkipped || 0 })
+    // A background completion observation is not a blocking finish wait. Keep
+    // it out of QueueWaitStats' cpu-queue-completion-wait totals/histogram.
+    const pending = asynchronous ? (() => { try { return device.queue.onSubmittedWorkDone() } catch (error) { return Promise.reject(error) } })() :
+      this.queueWaitStats.wait(reason, () => device.queue.onSubmittedWorkDone(), () => this.lost)
+    const ended = (outcome: number) => {
+      if (!enabled) return
+      const elapsed = performance.now()-started
+      if (!sampled && outcome === 1 && elapsed < 32) { this.fenceTraceSkipped++; return }
+      recordDeviceDiagnostic('fence', { ...admission, ...diagnosticIdentity, reasonCode,
+        deviceFenceTraceSkipped: this.fenceTraceSkipped || 0,
+        deviceFencePhase: 2, deviceFenceOutcome: outcome, queueWaitMs: elapsed,
+        deviceCompletedSubmitSequence: this.completedSubmissionSequence || 0,
+        resourceEpoch: this.resourceEpoch, completedResourceEpoch: this.completedResourceEpoch })
+    }
+    return pending.then(() => {
+      if (!this.lost && this.device === device) this.completedSubmissionSequence = Math.max(this.completedSubmissionSequence || 0, last)
+      ended(this.lost ? 3 : 1)
+    }, error => { ended(this.lost ? 3 : 2); throw markRenderFailure(error, { failureStage: 9 }) })
   }
   private bindingCache = new GpuBindingCache()
   // Rollout gate until real-device validation and timings are available. The
@@ -99,6 +164,9 @@ export class WebGpuDriver implements Driver {
   private programOffsets?: Map<number,number>
   private programGpuValid = false
   private programArenaActive = false
+  private preparedGeometryOwner?: {
+    device: GPUDevice; generation: number; vertices?: GPUBuffer; curves?: GPUBuffer
+  }
   private programHits = 0
   private programHitBytes = 0
   private readonly sampleOnlyCoverageEnabled = import.meta.env.VITE_DESIGN_SAMPLE_ONLY_COVERAGE === '1'
@@ -199,7 +267,8 @@ export class WebGpuDriver implements Driver {
   private displayImageUploads = new WeakMap<Texture, { resource: GPUTexture; width: number; height: number; range: ExactImageRange }>()
   private imageAxisPrograms = new WeakMap<Texture, Float32Array>()
   private imageTablePipeline?: Promise<ImageXTablePipeline>
-  private imageTables = new Map<ExactImageTable, {storage: ImageXTableStorage; pipeline: ImageXTablePipeline; image: Texture; opaqueAlpha: boolean; retired: boolean}>()
+  private imageTables = new Map<ExactImageTable, {storage: ImageXTableStorage; pipeline: ImageXTablePipeline; image: Texture; opaqueAlpha: boolean; retired: boolean; retirement?: ImageTableRetirement}>()
+  private imageTableRetirements: ImageTableRetirement[] = []
   private preparingImageTables = new Map<Texture, number>()
   usesDisplayFilter(radius: number, channels = 15): boolean {
     if (!this.managed || this.hdr || this.disposed || this.lost || !this.displayFilters || !this.displayFilterPipeline) return false
@@ -228,7 +297,52 @@ export class WebGpuDriver implements Driver {
   hasActiveImageTableSource(image: Texture) {
     return this.preparingImageTables.has(image) || [...this.imageTables.values()].some(entry => entry.image === image)
   }
+  private imageRetirementFields() {
+    let bytes = 0
+    const sources = new Set<Texture>()
+    for (const [table, entry] of this.imageTables || []) if (entry.retired) { bytes += table.bytes; sources.add(entry.image) }
+    return { deviceRetirementBatchCount: this.imageTableRetirements?.length || 0,
+      deviceRetiringScratchBytes: bytes,
+      deviceRetiringSourceBytes: [...sources].reduce((sum, source) => sum + source.bytes, 0) }
+  }
+  /** The callback only certifies a frozen snapshot; collection is synchronous
+   * inside the renderer's scratch-delta accounting boundary, never in a microtask. */
+  collectCompletedImageTables() {
+    const batches = this.imageTableRetirements || []
+    const failed = batches.find(batch => batch.error !== undefined)
+    if (failed) throw failed.error
+    for (const batch of [...batches]) if (batch.complete) this.collectRetiredImageTables(batch.tables, 1)
+  }
+  private canDeferImageTables() {
+    const fields = this.imageRetirementFields()
+    return fields.deviceRetirementBatchCount < IMAGE_RETIREMENT_BATCHES &&
+      fields.deviceRetiringScratchBytes + fields.deviceRetiringSourceBytes <= IMAGE_RETIREMENT_BYTES
+  }
+  private deferImageTables(tables: readonly ExactImageTable[]) {
+    const snapshot = tables.filter(table => !this.imageTables.get(table)?.retirement)
+    if (!snapshot.length) return
+    const batch: ImageTableRetirement = { tables: snapshot, epoch: this.resourceEpoch, complete: false }
+    this.imageTableRetirements.push(batch)
+    for (const table of snapshot) this.imageTables.get(table)!.retirement = batch
+    const device = this.device
+    const valid = () => this.device === device && this.imageTableRetirements.includes(batch)
+    // Capture the fence NOW, directly after this submission, not in a later
+    // microtask after a following frame may have submitted more commands.
+    void this.waitForQueue('image-table-scratch', undefined, true).then(() => {
+      if (!valid()) return
+      if (this.lost) { batch.error = new Error('GPU 设备已丢失'); return }
+      batch.complete = true
+      this.completedResourceEpoch = Math.max(this.completedResourceEpoch, batch.epoch)
+    }, error => { if (valid()) batch.error = error ?? new Error('GPU queue completion rejected') })
+  }
   private releaseImageTables() {
+    if (this.imageTables?.size && gpuDiagnosticsEnabled()) recordDeviceDiagnostic('gpu-retirement', {
+      ...captureDeviceDiagnosticRequest(), ...deviceDiagnosticFields(this), ...this.imageRetirementFields(),
+      deviceRetirementPhase: 3, deviceRetirementTableCount: this.imageTables.size,
+      deviceRetirementReleasedBytes: [...this.imageTables.keys()].reduce((sum, table) => sum + table.bytes, 0),
+      resourceEpoch: this.resourceEpoch, completedResourceEpoch: this.completedResourceEpoch,
+    })
+    this.imageTableRetirements = []
     for(const entry of this.imageTables?.values() || [])entry.storage.destroy()
     this.imageTables?.clear()
   }
@@ -244,13 +358,24 @@ export class WebGpuDriver implements Driver {
   }
   /** Call only after submitted references in this snapshot actually completed.
    * A later retirement is not covered by an earlier queue-completion promise. */
-  private collectRetiredImageTables(snapshot: readonly ExactImageTable[]): void {
+  private collectRetiredImageTables(snapshot: readonly ExactImageTable[], phase = 2): void {
+    let count = 0, bytes = 0
     for (const table of snapshot) {
       const entry = this.imageTables.get(table)
       if (!entry?.retired) continue
       entry.storage.destroy()
+      count++; bytes += table.bytes
       this.imageTables.delete(table)
     }
+    this.imageTableRetirements = (this.imageTableRetirements || []).filter(batch => batch.tables.some(table => this.imageTables.has(table)))
+    if (!count || !gpuDiagnosticsEnabled()) return
+    this.retirementTraceSequence = (this.retirementTraceSequence || 0) + 1
+    if (bytes < 48 * 1024 * 1024 && this.retirementTraceSequence % 32 !== 1) { this.retirementTraceSkipped++; return }
+    recordDeviceDiagnostic('gpu-retirement', {
+      ...captureDeviceDiagnosticRequest(), ...deviceDiagnosticFields(this), ...this.imageRetirementFields(),
+      deviceRetirementPhase: phase, deviceRetirementTraceSkipped: this.retirementTraceSkipped || 0, deviceRetirementTableCount: count, deviceRetirementReleasedBytes: bytes,
+      resourceEpoch: this.resourceEpoch, completedResourceEpoch: this.completedResourceEpoch,
+    })
   }
   async prepareImageTable(image: Texture, plan: ExactImageXTablePlan, availableBytes: number): Promise<ExactImageTable | undefined> {
     const range=this.imageTableRange(image)
@@ -1093,7 +1218,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       if (ownsByteScratch) { this.byteTentRecordingFailed = true; this.abandonByteTentEncoder() }
       throw error
     }
-    try { this.queueWaitStats.submit(() => this.device.queue.submit([command])) }
+    try { this.submitQueue(command) }
     catch (error) { if (ownsByteScratch) this.byteTentRecordingFailed = true; throw error }
     finally {
       for (const [lease, entry] of this.byteTentLeases || []) if (entry.encoder === encoder && !entry.submitted) {
@@ -1157,7 +1282,62 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.transient = []; this.msaa.clear(); this.transientBytes = 0
     this.submittedBoundaryReady = true
   }
+  private residentProgramPlan(curves: Float32Array): ProgramPlan | undefined {
+    if (!this.curves || !this.programArenaActive || !this.programGpuValid ||
+        !this.scenePrograms?.length || this.programArena.bytes > this.curveCapacity) return
+    return this.programArena.exactPlan(curves, this.scenePrograms)
+  }
+  private geometryPreparationReason(vertices: Float32Array, curves: Float32Array, resident?: ProgramPlan) {
+    return Number(!!this.vertices && vertices.byteLength > this.vertexCapacity) |
+      Number(!!this.curves && Math.max(16, curves.byteLength) > this.curveCapacity) << 1 |
+      Number(!!this.curves && !!this.scenePrograms?.length && !resident) << 2
+  }
+  async prepareFrameResources(vertices: Float32Array, curves = new Float32Array(0)) {
+    this.preparedGeometryOwner = undefined
+    this.collectCompletedImageTables()
+    if (!this.imageTableRetirements?.length) return
+    if (this.lost) throw Error('GPU 设备已丢失')
+    if (this.errors.length) throw Error(this.errors.join('\n'))
+    // Only a read-only all-hit plan can prove that the resident arena and GPU
+    // allocation remain unchanged. Misses, resets and growth keep the fence.
+    const reason = this.geometryPreparationReason(vertices, curves, this.residentProgramPlan(curves))
+    if (this.disposed || this.lost || !this.initialized || !this.submittedBoundaryReady || this.frameScopeOpen || this.activeOver)
+      throw Error('Geometry preparation requires an ended GPU frame')
+    if (!reason) {
+      this.preparedGeometryOwner = { device: this.device, generation: this.submittedBoundaryGeneration,
+        vertices: this.vertices, curves: this.curves }
+      return
+    }
+    const epoch = this.resourceEpoch, tables = this.retiredImageTableSnapshot()
+    const generation = this.submittedBoundaryGeneration, device = this.device
+    await this.waitForQueue('admission', undefined, false, reason)
+    if (this.lost) throw Error('GPU 设备已丢失')
+    if (this.disposed || !this.initialized || !this.submittedBoundaryReady ||
+        this.frameScopeOpen || this.activeOver || this.submittedBoundaryGeneration !== generation || this.device !== device)
+      throw Error('Geometry preparation boundary owner changed')
+    if (this.errors.length) throw Error(this.errors.join('\n'))
+    this.completedResourceEpoch = Math.max(this.completedResourceEpoch, epoch)
+    this.collectRetiredImageTables(tables)
+  }
   begin(vertices: Float32Array, curves = new Float32Array(0)) {
+    const owner = this.preparedGeometryOwner
+    this.preparedGeometryOwner = undefined
+    if (this.disposed || this.lost) throw new Error('WebGPU 设备已丢失')
+    let residentPrograms: ProgramPlan | undefined
+    if (this.imageTableRetirements?.length) {
+      const failed = this.imageTableRetirements.find(batch => batch.error !== undefined)
+      if (failed) throw failed.error
+      if (this.errors.length) throw Error(this.errors.join('\n'))
+      if (!owner || this.disposed || this.lost || !this.initialized || !this.submittedBoundaryReady ||
+          this.frameScopeOpen || this.activeOver || this.device !== owner.device ||
+          this.submittedBoundaryGeneration !== owner.generation || this.vertices !== owner.vertices || this.curves !== owner.curves)
+        throw Error('Geometry preparation boundary owner changed')
+      // Revalidate after the await in the caller, before any mutation. Consume
+      // this exact plan synchronously, never invoke mutable plan() twice.
+      residentPrograms = this.residentProgramPlan(curves)
+      if (this.geometryPreparationReason(vertices, curves, residentPrograms))
+        throw Error('Geometry preparation inputs changed')
+    }
     this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
     this.sampleOnlyPrograms.resetFrame(); this.sampleOnlyDispatch = undefined
     this.sampleOnlyCoveragePasses = this.sampleOnlyCoveragePixels = 0
@@ -1187,7 +1367,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.solidRanges.clear()
     this.errors = []
     if (!this.programArenaActive) this.programArena.reset()
-    const programs=this.scenePrograms?this.programArena.plan(curves,this.scenePrograms):undefined
+    const programs=residentPrograms||(this.scenePrograms?this.programArena.plan(curves,this.scenePrograms):undefined)
     this.programOffsets=programs?.offsets
     this.programHits=programs?.hits||0;this.programHitBytes=programs?.hitBytes||0
     if(!programs&&this.programArenaActive){this.programArena.reset();this.curveMirror.reset()}
@@ -1209,7 +1389,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         // until completion; subsequent queue writes append only new programs.
         const encoder=this.device.createCommandEncoder()
         encoder.copyBufferToBuffer(previous!,0,this.curves,0,Math.min(previous!.size,this.curveCapacity))
-        this.queueWaitStats.submit(() => this.device.queue.submit([encoder.finish()]));this.commandSubmissions++
+        this.submitQueue(encoder.finish());this.commandSubmissions++
       }
       previous?.destroy()
     }
@@ -1552,7 +1732,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     try {
       const encoder=this.device.createCommandEncoder()
       encoder.copyTextureToBuffer({texture:source.resource as GPUTexture},{buffer,bytesPerRow:stride},[width,height])
-      this.queueWaitStats.submit(() => this.device.queue.submit([encoder.finish()]));this.commandSubmissions++
+      this.submitQueue(encoder.finish());this.commandSubmissions++
       await buffer.mapAsync(GPUMapMode.READ)
       const raw=new Uint8Array(buffer.getMappedRange()),packed=new Uint8Array(width*height*bpp)
       for(let y=0;y<height;y++)packed.set(raw.subarray(y*stride,y*stride+width*bpp),y*width*bpp)
@@ -2116,6 +2296,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   ) {
     let captured: { id: number; texture: GPUTexture } | undefined
     try {
+    this.collectCompletedImageTables()
     this.closeOver()
     const bytePreview = !!preview && this.managed && !this.linearLight
     // Peak transient bytes this finish call itself allocates (shown copy,
@@ -2196,12 +2377,17 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     }
     const retainFilterScratch = this.residentFilterScratch && !!captured && !readback && !timingRead
     const retiredTables = this.retiredImageTableSnapshot(true)
+    // A captured texture is consumed on this same device/queue. Returning its
+    // handle need not wait merely to destroy image-table buffers. It is NOT a
+    // GPU-complete or physical-presentation acknowledgement.
+    const deferImageScratch = !!captured && !readback && !timingRead &&
+      !this.transientTargets.length && !this.transient.length && !this.transientBytes && this.canDeferImageTables()
     // Keep the existing interaction/periodic backpressure. Only per-tile waits
     // whose purpose was scratch destruction or diagnostic counters disappear.
     const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' :
       this.byteTentLeases?.size ? 'prefix-scratch' :
       !retainFilterScratch && this.prefix?.scratchBytes ? 'prefix-scratch' :
-      !retainFilterScratch && this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation &&
+      !deferImageScratch && this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation &&
         (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') ? 'interaction' :
         ++this.presentationSubmissions >= 4 ? 'periodic' : undefined
     // Counters do not authorize pixels: each GPU line already selects its
@@ -2225,6 +2411,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       await this.retireByteTentSnapshot(byteTentSnapshot, coveredCompletion)
       this.collectRetiredImageTables(retiredTables)
       this.presentationSubmissions = 0
+    } else if (retiredTables.length) {
+      this.deferImageTables(retiredTables)
     }
     const error = await this.device.popErrorScope()
     this.frameScopeOpen = false
@@ -2232,7 +2420,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       throw markRenderFailure(new Error([error?.message, ...this.errors].filter(Boolean).join('\n')), { failureStage: 7, failureCategory: error ? renderFailureFields(error).failureCategory : this.lost ? 4 : 0, failureCode: 201 })
     // Keep the existing submitted-geometry shrink policy. Filter storage above
     // is reclaimed only by the actual completed snapshot, never by this ACK.
-    this.shrinkCapacities()
+    if (waitReason || this.completedResourceEpoch >= this.resourceEpoch) this.shrinkCapacities()
     if (readPrefixCounters) {
       const counters=await this.prefix!.readCounters()
       this.prefixCounterSamples++
@@ -2456,6 +2644,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
    * commands completed (park path) or after device loss (every destroy is then
    * a safe no-op). */
   private releaseFrameResources(recreateEncoder = true) {
+    this.preparedGeometryOwner = undefined
     this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
     this.sampleOnlyPrograms.reset(); this.sampleOnlyDispatch = undefined; this.sampleOnlyRequested = false
     this.discardByteTentEncoder(this.encoder)

@@ -4,7 +4,7 @@ import { PoseDiagnostics, createPoseDiagnostics } from './pose-diagnostics'
 import { sanitizeFields } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { InteractionRenderer } from './interaction-renderer'
 import { PageTranslation } from './page-translation'
-import type { InteractionProps } from './interaction-layers'
+import { planInteractionLayers, type InteractionProps } from './interaction-layers'
 import {KernelClient} from './client'
 import * as geometry from '../geometry'
 import { CanvasSceneSnapshots } from '../canvas-scene-snapshots'
@@ -1083,6 +1083,134 @@ test('inactive root selection leaves incomplete zoom coverage to canvas while pr
   expect(worker.jobs).toHaveLength(1)
   worker.jobs[0].resolve({ gpuTile: 982 }); await f.flush()
   expect(f.owner.ready).toBe(true)
+})
+
+function idleRootWarmFixture(layered = false) {
+  const doc = blank(), root = node('frame', 0, 0, 100, 100)
+  root.blend = 'normal'; doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
+  if (layered) {
+    const before = node('frame', 20, 20, 100, 100), after = node('frame', 40, 40, 100, 100)
+    for (const sibling of [before, after]) { sibling.blend = 'normal'; doc.nodes[sibling.id] = sibling }
+    doc.pages[0].children = [before.id, root.id, after.id]
+  }
+  const shared = new KernelClient(), owner = new InteractionRenderer(vi.fn(), shared); owners.push(owner)
+  const props: InteractionProps = { document: doc, selection: [root.id], active: false,
+    epoch: 1, control: { current: null }, onReady() {} }
+  const view = { x: 0, y: 0, zoom: 1 }, size = { width: 320, height: 240 }
+  const prepare = (nextView = view, settled: typeof doc | undefined = doc, nextProps = props) =>
+    owner.prepare(nextProps, doc.pages[0].id, nextView, 1, 'analytic', 'webgpu', settled, size)
+  const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
+  prepare()
+  expect(worker.jobs).toHaveLength(1)
+  expect(worker.jobs[0].options.interactionBranch).toBe(1)
+  return { doc, root, shared, owner, props, view, prepare, flush }
+}
+
+test.each(['camera', 'canvas-repair'] as const)('idle root warm yields its private capture to %s without a replacement warming loop', async reason => {
+  const f = idleRootWarmFixture(), old = worker.jobs[0]
+  try {
+    const view = reason === 'camera' ? { ...f.view, zoom: .75 } : f.view
+    // Undefined settledDocument is supplied by the real surface while its
+    // current exact plan is incomplete, even if the authored camera is unchanged.
+    f.owner.prepare(f.props, f.doc.pages[0].id, view, 1, 'analytic', 'webgpu', undefined, { width: 320, height: 240 })
+    expect(old.signal.aborted).toBe(true)
+    expect(worker.jobs).toHaveLength(1)
+    old.resolve({ gpuTile: 990, bytes: new Uint8Array() }); await f.flush()
+    expect(worker.released).toContain(990)
+    expect(f.owner.ready).toBe(false); expect(f.owner.error).toBe('')
+    f.owner.prepare(f.props, f.doc.pages[0].id, view, 1, 'analytic', 'webgpu', undefined, { width: 320, height: 240 })
+    expect(worker.jobs).toHaveLength(1)
+    expect(f.owner.control.apply(f.doc, { [f.root.id]: { transform: [1, 0, 0, 1, 12, 8] } })).not.toBeNull()
+    expect(worker.jobs).toHaveLength(2)
+    expect(worker.jobs[1].signal.aborted).toBe(false)
+    expect(worker.jobs[1].options.view.zoom).toBe(view.zoom)
+  } finally { f.shared.dispose() }
+})
+
+test.each([false, true])('idle root warm cancellation preserves real pointer input before/after React active=%s', async active => {
+  const f = idleRootWarmFixture(), old = worker.jobs[0]
+  try {
+    expect(f.owner.control.apply(f.doc, { [f.root.id]: { transform: [1, 0, 0, 1, 12, 8] } })).not.toBeNull()
+    f.owner.prepare({ ...f.props, active }, f.doc.pages[0].id, f.view, 1, 'analytic', 'webgpu', undefined, { width: 320, height: 240 })
+    expect(old.signal.aborted).toBe(false)
+    old.resolve({ gpuTile: 991, bytes: new Uint8Array() }); await f.flush()
+    expect(f.owner.ready).toBe(true)
+    expect(f.owner.items(f.view)).not.toBeNull()
+    expect(worker.released).not.toContain(991)
+  } finally { f.shared.dispose() }
+})
+
+test('idle root warm yields after the exact final edit snapshot and a late old completion cannot clear a newer gesture', async () => {
+  const f = idleRootWarmFixture(), old = worker.jobs[0]
+  try {
+    const transform = [1, 0, 0, 1, 12, 8] as typeof f.root.transform
+    f.owner.control.apply(f.doc, { [f.root.id]: { transform } })
+    const committed = { ...f.doc, nodes: { ...f.doc.nodes, [f.root.id]: { ...f.root, transform } } }
+    f.owner.control.end(committed)
+    const props = { ...f.props, document: committed, active: false }
+    f.owner.prepare(props, committed.pages[0].id, f.view, 1, 'analytic', 'webgpu', undefined, { width: 320, height: 240 })
+    expect(old.signal.aborted).toBe(true)
+    expect(worker.jobs).toHaveLength(1)
+    expect(f.owner.control.apply(committed, { [f.root.id]: { transform: [1, 0, 0, 1, 24, 16] } })).not.toBeNull()
+    expect(worker.jobs).toHaveLength(2)
+    const latest = worker.jobs[1]
+    old.resolve({ gpuTile: 992, bytes: new Uint8Array() }); await f.flush()
+    expect(worker.released).toContain(992)
+    expect(latest.signal.aborted).toBe(false)
+    latest.resolve({ gpuTile: 993, bytes: new Uint8Array() }); await f.flush()
+    expect(f.owner.ready).toBe(true)
+    expect(f.owner.tiles.map(tile => tile.gpuTile)).toEqual([993])
+    expect(f.owner.error).toBe('')
+  } finally { f.shared.dispose() }
+})
+
+test('idle root warm cancellation preserves a complete resident while a higher-density replacement is revoked', async () => {
+  const f = idleRootWarmFixture()
+  try {
+    worker.jobs[0].resolve({ gpuTile: 994, bytes: new Uint8Array() }); await f.flush()
+    const previous = f.owner.tiles
+    const view = { ...f.view, zoom: 2 }
+    f.prepare(view)
+    expect(worker.jobs).toHaveLength(2)
+    const replacing = worker.jobs[1]
+    f.owner.prepare(f.props, f.doc.pages[0].id, view, 1, 'analytic', 'webgpu', undefined, { width: 320, height: 240 })
+    expect(replacing.signal.aborted).toBe(true)
+    expect(f.owner.tiles).toBe(previous)
+    replacing.resolve({ gpuTile: 995, bytes: new Uint8Array() }); await f.flush()
+    expect(worker.released).toContain(995)
+    expect(worker.released).not.toContain(994)
+    expect(f.owner.tiles).toBe(previous)
+    expect(worker.jobs).toHaveLength(2)
+    f.owner.prepare(f.props, f.doc.pages[0].id, view, 1, 'analytic', 'webgpu', undefined, { width: 320, height: 240 })
+    expect(worker.jobs).toHaveLength(2)
+    expect(f.owner.tiles).toBe(previous)
+    // Once the exact canvas is complete, optional native-density replacement
+    // may resume. Its scale has not been reduced by the cancellation policy.
+    f.prepare(view)
+    expect(worker.jobs).toHaveLength(3)
+    expect(worker.jobs[2].options.view.zoom).toBe(2)
+  } finally { f.shared.dispose() }
+})
+
+test('idle root warm cancellation retires staged layers and prevents later layers from being requested', async () => {
+  const f = idleRootWarmFixture(true)
+  try {
+    expect(planInteractionLayers(f.doc, f.doc.pages[0].id, [f.root.id])!.layers).toHaveLength(3)
+    worker.jobs[0].resolve({ gpuTile: 996, bytes: new Uint8Array() }); await f.flush()
+    expect(worker.jobs).toHaveLength(2)
+    const inFlight = worker.jobs[1]
+    f.owner.prepare(f.props, f.doc.pages[0].id, { ...f.view, zoom: 2 }, 1, 'analytic', 'webgpu', undefined, { width: 320, height: 240 })
+    expect(inFlight.signal.aborted).toBe(true)
+    inFlight.resolve({ gpuTile: 997, bytes: new Uint8Array() }); await f.flush()
+    expect(worker.jobs).toHaveLength(2)
+    expect(worker.released.filter(id => id === 996)).toHaveLength(1)
+    expect(worker.released.filter(id => id === 997)).toHaveLength(1)
+    expect(f.owner.ready).toBe(false)
+    expect(f.owner.control.apply(f.doc, { [f.root.id]: { transform: [1, 0, 0, 1, 12, 8] } })).not.toBeNull()
+    expect(worker.jobs).toHaveLength(3)
+    expect(worker.jobs[2].signal.aborted).toBe(false)
+    expect(worker.jobs[2].options.interactionBranch).not.toBe(1)
+  } finally { f.shared.dispose() }
 })
 
 test.each(['page','profile','backend'] as const)('stale committed-document props cannot retain handoff after %s ownership changes',async changed=>{

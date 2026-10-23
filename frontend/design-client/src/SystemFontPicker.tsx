@@ -14,6 +14,15 @@ type BrowserFont = { family: string; style: string; postscriptName: string; blob
 type SystemFont = { id: string; family: string; style: string; postscript: string; index: number; browserFont?: BrowserFont }
 const queryFonts = () => (window as unknown as { queryLocalFonts?: () => Promise<BrowserFont[]> }).queryLocalFonts
 
+function fontAccessStatus(error: unknown): PropertyStatus {
+  // DOMExceptions can originate in another realm. Store a presentation key so
+  // a later locale change translates the existing result without re-requesting
+  // permission. Unknown/native diagnostics remain intact.
+  if (error && typeof error === 'object' && 'name' in error && error.name === 'NotAllowedError')
+    return '本机字体访问未获授权；可重新授权或导入 TTF / OTF 字体'
+  return String(error)
+}
+
 export async function browserFontResource(font: BrowserFont): Promise<FontResource> {
   const blob = await font.blob()
   if (blob.size > 20 * 1024 * 1024) throw new Error('字体资源超过 20 MiB')
@@ -83,7 +92,7 @@ export function SystemFontPicker({ editor, ids, detachSharedStyle = false }: { e
       const result = await importStep(request, list)
       setFonts(result.fonts); setPageIndex(0)
       setMessage({ zh: `${result.fonts.length} 个字体${result.notice ? `；${result.notice}` : ''}`, en: `${result.fonts.length} fonts${result.noticeEnglish ? `; ${result.noticeEnglish}` : ''}` })
-    } catch (e) { if (request.isCurrent()) setMessage(String(e)) }
+    } catch (e) { if (request.isCurrent()) setMessage(fontAccessStatus(e)) }
     finally { if (request.isCurrent()) setBusy(false); request.finish() }
   }
   const choose = async (font: SystemFont) => {
@@ -96,7 +105,7 @@ export function SystemFontPicker({ editor, ids, detachSharedStyle = false }: { e
       const result = applySelectionFont(editor, ids, id, { detachSharedStyle }, resource)
       setMessage(fontEditStatus(result, 'apply'))
       if (result.status === 'committed' || result.status === 'unchanged') setOpen(false)
-    } catch (e) { if (request.isCurrent()) setMessage(String(e)) }
+    } catch (e) { if (request.isCurrent()) setMessage(fontAccessStatus(e)) }
     finally { if (request.isCurrent()) setBusy(false); request.finish() }
   }
   const matchDocument = async () => {
@@ -127,10 +136,10 @@ export function SystemFontPicker({ editor, ids, detachSharedStyle = false }: { e
       }
       request.assertCurrent()
       if (!commitPendingEdits(editor)) { setMessage(editor.state.message); return }
-      let changed = 0, skipped = 0
-      const result = matched.size ? editor.change('匹配文档原字体', document => { const edit = matchSourceFontsInDocument(document, matched); changed = edit.changed; skipped = edit.skippedLinked + edit.skippedLocked }) : undefined
-      setMessage(result?.status === 'rejected' ? result.message : { zh: `已匹配 ${changed} 处原字体引用${skipped ? `；跳过 ${skipped} 个锁定或共享样式图层` : ''}${missing.length ? `；未找到：${missing.join('、')}` : ''}`, en: `Matched ${changed} source-font references${skipped ? `; skipped ${skipped} locked or shared-style layers` : ''}${missing.length ? `; not found: ${missing.join(', ')}` : ''}` })
-    } catch (e) { if (request.isCurrent()) setMessage(String(e)) }
+      let changed = 0, skipped = 0, deferredInherited = 0
+      const result = matched.size ? editor.change('匹配文档原字体', document => { const edit = matchSourceFontsInDocument(document, matched); changed = edit.changed; skipped = edit.skippedLinked + edit.skippedLocked; deferredInherited = edit.deferredInherited }) : undefined
+      setMessage(result?.status === 'rejected' ? result.message : { zh: `已匹配 ${changed} 处原字体引用${skipped ? `；跳过 ${skipped} 个锁定或共享样式图层` : ''}${deferredInherited ? `；跳过 ${deferredInherited} 个含继承字体片段的图层，请在主组件检查` : ''}${missing.length ? `；未找到：${missing.join('、')}` : ''}`, en: `Matched ${changed} source-font references${skipped ? `; skipped ${skipped} locked or shared-style layers` : ''}${deferredInherited ? `; skipped ${deferredInherited} layers with inherited source-font runs; check the main component` : ''}${missing.length ? `; not found: ${missing.join(', ')}` : ''}` })
+    } catch (e) { if (request.isCurrent()) setMessage(fontAccessStatus(e)) }
     finally { if (request.isCurrent()) setBusy(false); request.finish() }
   }
   if (!available) return null

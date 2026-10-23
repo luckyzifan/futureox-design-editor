@@ -39,8 +39,13 @@ type DisplayedFrame = {
   managed: boolean
   request: Request
 }
+/** Local immutable identity of one completed capture, independent of UI state
+ * and GPU slot reuse. It crosses the worker only through presentationId. */
+export type OverlayCaptureCohort = { readonly slots: readonly number[] }
 export type PresentedFrame = ExactPresentation & {
   gpuOverlay?: boolean
+  gpuOverlayIdentity?: string
+  gpuOverlayCapture?: OverlayCaptureCohort
   document: DesignDocument
   managed: boolean
   computeBackend?: BackendPreference
@@ -53,7 +58,7 @@ export type SurfaceProps = {
   navigationInputOwner?: object
   /** Explicit hand/space/middle-button pan ownership; never object editing. */
   panGestureActive?: boolean
-  overlay?: { document: DesignDocument; pageId: string; epoch: number; commands: import('./gpu/canvas-overlay').CanvasOverlay }
+  overlay?: { document: DesignDocument; pageId: string; epoch: number; uiIdentity?: string; commands: import('./gpu/canvas-overlay').CanvasOverlay }
   interaction?: import('./interaction-layers').InteractionProps
   interactionPreview?: boolean
   onRenderFailure?: () => void

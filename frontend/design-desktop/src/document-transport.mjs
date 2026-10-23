@@ -1,6 +1,16 @@
 // Private desktop stdio transport. The per-frame boundary remains independent
 // from the admitted complete request; no MCP transport uses these envelopes.
 export const DOCUMENT_CHUNK_BYTES = 1024 * 1024
+const newline = Buffer.from('\n')
+/** Writable streams need byte order, not one Buffer per NDJSON line. Borrow the
+ * admitted ordinary payload and write its delimiter separately: concatenating
+ * here would temporarily allocate a second whole-document Buffer. Multipart
+ * envelopes remain complete, independently bounded lines. This does not remove
+ * the full input Buffer or the receiver's full-document assembly. */
+export function *documentWrites(bytes, transferId, frameLimit) {
+  if (bytes.length <= frameLimit) { yield bytes; yield newline; return }
+  yield *documentFrames(bytes, transferId, frameLimit)
+}
 export function *documentFrames(bytes, transferId, frameLimit) {
   if (bytes.length <= frameLimit) { yield Buffer.concat([bytes, Buffer.from('\n')]); return }
   for (let offset = 0; offset < bytes.length; offset += DOCUMENT_CHUNK_BYTES) {

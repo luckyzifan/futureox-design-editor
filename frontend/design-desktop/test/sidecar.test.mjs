@@ -17,16 +17,22 @@ function fake({ ignoreTerm = false, respond = true, malformed = false, failSpawn
     queueMicrotask(() => { process.emit('exit', null, signal); process.emit('close', null, signal) })
     return true
   }
+  let input = ''
   process.stdin.on('data', (chunk) => {
     if (!respond) return
-    const request = JSON.parse(chunk.toString())
-    queueMicrotask(() =>
-      process.stdout.write(
-        malformed
-          ? '{invalid}\n'
-          : `${JSON.stringify({ id: request.id, result: { protocolVersion: 1 } })}\n`,
-      ),
-    )
+    input += chunk.toString()
+    let end
+    while ((end = input.indexOf('\n')) >= 0) {
+      const request = JSON.parse(input.slice(0, end))
+      input = input.slice(end + 1)
+      queueMicrotask(() =>
+        process.stdout.write(
+          malformed
+            ? '{invalid}\n'
+            : `${JSON.stringify({ id: request.id, result: { protocolVersion: 1 } })}\n`,
+        ),
+      )
+    }
   })
   const spawnProcess = (...args) => {
     process.spawnArgs = args
@@ -96,7 +102,7 @@ test('aggregate bytes reject before transport and drain gates queued frames', as
   const first = client.request('save', { document: 'x'.repeat(180) }).catch((error) => error)
   const second = client.request('health', { padding: 'x'.repeat(180) }).catch((error) => error)
   assert.equal(writes.length, 1)
-  assert.equal(client.writeQueue.length, 1)
+  assert.equal(client.writeQueue.length, 2) // First payload still owes its newline.
   await assert.rejects(client.request('save', { document: 'x'.repeat(180) }), { code: 'BUSY' })
   writes[0].callback()
   fixture.process.stdin.emit('drain')
@@ -107,6 +113,31 @@ test('aggregate bytes reject before transport and drain gates queued frames', as
   writes[1].callback()
   assert.equal(client.pendingBytes, 0)
   assert.equal(client.writeQueue.length, 0)
+  await client.stop()
+})
+
+test('ordinary payload and delimiter keep one reservation until both writes finish, even with an early reply', async () => {
+  const fixture = fake({ respond: false }), writes = []
+  fixture.process.stdin.write = (bytes, callback) => { writes.push({ bytes, callback }); return false }
+  const client = new Sidecar('/trusted/backend', '/trusted/recovery', fixture)
+  const saving = client.request('save', { document: { name: 'Owned snapshot' } })
+  const id = [...client.pending.keys()][0]
+  assert.equal(writes.length, 1)
+  assert.equal(JSON.parse(writes[0].bytes).id, id)
+  assert.notEqual(writes[0].bytes.at(-1), 10)
+  assert.equal(client.admittedCount, 1)
+  writes[0].callback()
+  fixture.process.stdin.emit('drain')
+  assert.equal(writes.length, 2)
+  assert.deepEqual(writes[1].bytes, Buffer.from('\n'))
+  fixture.process.stdout.write(JSON.stringify({ id, result: { committed: true } }) + '\n')
+  assert.deepEqual(await saving, { committed: true })
+  assert.equal(client.admittedCount, 1)
+  assert.ok(client.pendingBytes > 0)
+  writes[1].callback()
+  assert.equal(client.admittedCount, 0)
+  assert.equal(client.pendingBytes, 0)
+  fixture.process.stdin.emit('drain')
   await client.stop()
 })
 

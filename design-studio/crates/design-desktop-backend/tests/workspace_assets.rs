@@ -229,7 +229,8 @@ async fn missing_or_corrupt_resources_refuse_reads_restores_and_reuse_without_re
             conn.execute("PRAGMA foreign_keys=OFF").await.unwrap();
             conn.execute("DELETE FROM assets").await.unwrap();
         } else {
-            conn.execute("UPDATE assets SET value=x'626164'")
+            // Keep schema-6 byte lengths valid so this reaches hash validation.
+            conn.execute("UPDATE assets SET value=zeroblob(byte_length)")
                 .await
                 .unwrap();
         }

@@ -404,6 +404,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "已取消": "Cancelled",
   "此浏览器不支持本机字体访问，请导入 TTF / OTF 字体": "This browser does not support local font access. Import a TTF / OTF font instead.",
   "本机字体访问已不可用": "Local font access is no longer available",
+  "本机字体访问未获授权；可重新授权或导入 TTF / OTF 字体": "Local font access was not allowed. Grant access or import a TTF / OTF font instead.",
   "正在读取本机字体…": "Reading local fonts…",
   "正在匹配原字体…": "Matching source fonts…",
   "文档最多支持 32 个字体资源；请先缩小原字体匹配范围": "A document supports at most 32 font resources. Narrow the source-font matching scope first.",

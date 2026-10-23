@@ -133,10 +133,18 @@ export function ResidentCompositeSurface(props: {
         ? [...p.items, ...moved.map((item) => ({ ...item, layer: 4 }))]
         : moved || p.items
     let presentationId: string | undefined
-    const sourceOverlay = p.presentation && p.overlay?.document === p.presentation.document &&
-      p.overlay.pageId === p.presentation.pageId && p.overlay.epoch === p.presentation.epoch ? p.overlay.commands : undefined
-    const overlay=sourceOverlay?(moved?moving?.overlay(sourceOverlay):sourceOverlay):undefined
-    try { presentationId = presentation.current.stage(p.presentation ? { ...p.presentation, gpuOverlay: !!overlay } : null) }
+    const scopedOverlay = p.presentation && p.overlay &&
+      p.overlay.pageId === p.presentation.pageId && p.overlay.epoch === p.presentation.epoch ? p.overlay : undefined
+    // A retained capture can replay only the complete chrome snapshot that was
+    // observed with its own document, never inverse-warp a newer world AABB.
+    const capturedOverlay = scopedOverlay && moved && moving===interaction.current
+      ? interaction.current?.capturedOverlay(scopedOverlay.document,scopedOverlay.pageId,scopedOverlay.epoch,scopedOverlay.commands,scopedOverlay.uiIdentity) : undefined
+    const sourceOverlay = scopedOverlay?.document === p.presentation?.document ? scopedOverlay?.commands : undefined
+    // A capture owns the entire chrome decision, including a failed proof.
+    // Do not fall back to inverse-projecting newer commands after rejection.
+    const overlay=capturedOverlay ? capturedOverlay.commands : (sourceOverlay?(moved?moving?.overlay(sourceOverlay):sourceOverlay):undefined)
+    try { presentationId = presentation.current.stage(p.presentation ? { ...p.presentation, gpuOverlay: !!overlay, gpuOverlayIdentity: overlay ? scopedOverlay?.uiIdentity : undefined,
+      gpuOverlayCapture: overlay ? capturedOverlay?.cohort : undefined } : null) }
     catch (error) { p.onFailure(String(error)); return }
     const frame: ResidentFrame = {
       presentationId,
@@ -262,9 +270,14 @@ export function ResidentCompositeSurface(props: {
           interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,false)
         if (stats.presented) {
           const actual = stats.presented as ResidentAcknowledgement
+          const rejected=presentation.current.rejectsAcknowledgement(actual)
+          const source=presentation.current.resolve(actual)
+          // Rejected display ACKs must not replace the readback expectation or
+          // downstream exact ACK. Other message payloads were handled above.
+          if(rejected)return
           actualPresentation.current=actual
           if(input?.sequence&&!usePageTranslation.current)
-            interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,true)
+            interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,true,actual.ids)
           // Use the exact displayed input and its owner, not the latest pointer
           // or resident-sampling completion. Worker and SVG meet at this pose.
 
@@ -274,7 +287,7 @@ export function ResidentCompositeSurface(props: {
           // camera to SVG chrome and picking before the next browser paint.
           const device = { client: p.client, deviceWorkerScope: stats.deviceWorkerScope as number,
             deviceIncarnation: stats.deviceIncarnation as number, deviceOwner: stats.deviceOwner as number }
-          flushSync(() => latest.current.onPresented?.(actual, presentation.current.resolve(actual),
+          flushSync(() => latest.current.onPresented?.(actual, source,
             viewportPreviewDeviceKey(device) ? device : undefined))
         }
       }

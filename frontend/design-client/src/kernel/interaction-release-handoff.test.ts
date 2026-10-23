@@ -32,7 +32,7 @@ afterEach(() => {
 })
 
 const microtasks = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
-function fixture(shared = new KernelClient(), active = true, profile: 'figma'|'analytic'|'figmaSoftware' = 'figma') {
+function fixture(shared = new KernelClient(), active = true, profile: 'figma'|'analytic'|'figmaSoftware' = 'figma', gestureKind?: string) {
   const document = blank(), root = node('frame', 0, 0, 200, 180)
   const selected = node('rectangle', 10, 10, 30, 20), other = node('rectangle', 60, 10, 30, 20)
   root.blend = 'normal'; root.clip = false; root.effects = [effect('background-blur')]
@@ -40,7 +40,7 @@ function fixture(shared = new KernelClient(), active = true, profile: 'figma'|'a
   document.nodes[root.id] = root; document.nodes[selected.id] = selected; document.nodes[other.id] = other
   document.pages[0].children = [root.id]
   const props: InteractionProps = {
-    document, selection: [selected.id], active: false, epoch: 1, control: { current: null }, onReady: vi.fn(),
+    document, selection: [selected.id], active: false, epoch: 1, gestureKind, control: { current: null }, onReady: vi.fn(),
   }
   const changed = vi.fn(), owner = new InteractionRenderer(changed, shared)
   owners.push(owner)
@@ -197,6 +197,101 @@ test('content changes cannot enter the translation-only release handoff', async 
   await complete(pending, 200)
   expect(worker.jobs).toHaveLength(3)
   expect(worker.jobs[2].document).toBe(changed)
+})
+
+test.each([false, true])('finished resize content yields branch3 to canvas with complete resident=%s', async completeFirst => {
+  const f = fixture(new KernelClient(), true, 'analytic', 'resize')
+  const resized = (width: number) => ({ ...f.document, nodes: { ...f.document.nodes,
+    [f.selected.id]: { ...f.selected, width } } })
+  if (completeFirst) { worker.jobs[0].resolve({ gpuTile: 920 }); await microtasks() }
+  const previous = f.owner.tiles, intermediate = resized(50), final = resized(70)
+  f.prepare({ ...f.props, active: true, document: intermediate }, undefined, f.view, f.size, 2, 'analytic')
+  const inFlight = worker.jobs.at(-1), count = worker.jobs.length
+  expect(inFlight.options.interactionBranch).toBe(3)
+  expect(inFlight.signal.aborted).toBe(false)
+  f.prepare({ ...f.props, active: true, document: final }, undefined, f.view, f.size, 2, 'analytic')
+  expect(worker.jobs).toHaveLength(count)
+  f.owner.control.end(final)
+  expect(inFlight.signal.aborted).toBe(true)
+  // end() precedes React's committed props. Neither the stale active render
+  // nor repeated exact final snapshots may resurrect queued resize captures.
+  f.prepare({ ...f.props, active: true, document: final }, undefined, f.view, f.size, 2, 'analytic')
+  const committed = { ...f.props, active: false, document: final }
+  f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
+  f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
+  expect(f.owner.tiles).toBe(previous)
+  inFlight.resolve({ gpuTile: 921 }); await microtasks()
+  expect(worker.released.filter(id => id === 921)).toHaveLength(1)
+  expect(worker.jobs).toHaveLength(count)
+  expect(f.owner.tiles).toBe(previous)
+  expect(f.owner.error).toBe('')
+})
+
+test.each(['no-op click', 'new resize content'] as const)('resize release handles %s without a prior imperative apply', async action => {
+  const f = fixture(new KernelClient(), true, 'analytic', 'resize')
+  worker.jobs[0].resolve({ gpuTile: 922 }); await microtasks()
+  const resized = (width: number) => ({ ...f.document, nodes: { ...f.document.nodes,
+    [f.selected.id]: { ...f.selected, width } } })
+  const final = resized(70)
+  f.prepare({ ...f.props, active: true, document: final }, undefined, f.view, f.size, 2, 'analytic')
+  const inFlight = worker.jobs.at(-1), count = worker.jobs.length
+  f.owner.control.end(final)
+  expect(inFlight.signal.aborted).toBe(true)
+  inFlight.resolve({ gpuTile: 923 }); await microtasks()
+  const committed = { ...f.props, active: false, document: final }
+  f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
+  // React may report a newly active pointer before any content changed. The
+  // same final snapshot alone must not restart an optional whole-view capture.
+  f.prepare({ ...committed, active: true }, undefined, f.view, f.size, 2, 'analytic')
+  expect(worker.jobs).toHaveLength(count)
+  if (action === 'no-op click') {
+    f.owner.control.end(final)
+    f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
+    expect(worker.jobs).toHaveLength(count)
+    expect(f.owner.tiles[0].gpuTile).toBe(922)
+  } else {
+    // Resize content need not call apply(); its first changed snapshot must
+    // revoke the old exact-document fence and own an uncancelled new capture.
+    const next = resized(90)
+    f.prepare({ ...committed, document: next, active: true }, undefined, f.view, f.size, 2, 'analytic')
+    expect(worker.jobs).toHaveLength(count + 1)
+    expect(worker.jobs.at(-1).signal.aborted).toBe(false)
+    expect(worker.jobs.at(-1).document).toBe(next)
+  }
+})
+
+test('ended resize never acknowledges old content as the committed revision and retires only at exact readiness', async () => {
+  const f = fixture(new KernelClient(), true, 'analytic', 'resize')
+  worker.jobs[0].resolve({ gpuTile: 930 }); await microtasks()
+  const final = { ...f.document, nodes: { ...f.document.nodes, [f.selected.id]: { ...f.selected, width: 80 } } }
+  f.prepare({ ...f.props, active: true, document: final }, undefined, f.view, f.size, 2, 'analytic')
+  const before = f.owner.presentedInput.sequence
+  f.owner.control.end(final)
+  const committed = { ...f.props, active: false, document: final, onPosePresented: vi.fn() }
+  f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
+  expect(f.owner.items(f.view)?.map(item => item.tile.gpuTile)).toEqual([930])
+  f.owner.acceptPresentedInput(before + 1)
+  expect(committed.onPosePresented).not.toHaveBeenCalled()
+  f.prepare(committed, final, f.view, f.size, 2, 'analytic')
+  expect(f.owner.items(f.view)).toBeNull()
+  expect(worker.jobs).toHaveLength(2)
+})
+
+test('real imperative input revokes resize release before React updates active props', async () => {
+  const f = fixture(new KernelClient(), true, 'analytic', 'resize')
+  worker.jobs[0].resolve({ gpuTile: 940 }); await microtasks()
+  f.apply(20)
+  const inFlight = worker.jobs[1], final = f.moved(20)
+  f.owner.control.end(final)
+  expect(inFlight.signal.aborted).toBe(true)
+  const committed = { ...f.props, document: final, active: false }
+  f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
+  expect(f.apply(35, final)).not.toBeNull()
+  f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
+  inFlight.resolve({ gpuTile: 941 }); await microtasks()
+  expect(worker.jobs).toHaveLength(3)
+  expect(worker.jobs[2].signal.aborted).toBe(false)
+  expect(worker.jobs[2].document.nodes[f.selected.id].transform[4]).toBe(35)
 })
 
 test('cancelled cold capture stays idle until active same-document same-density preparation', async () => {
