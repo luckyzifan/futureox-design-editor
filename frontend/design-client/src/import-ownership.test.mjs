@@ -112,7 +112,7 @@ test('production imports capture ownership before read/hash/verify and wire canc
     assert.match(source, /input\?\.removeEventListener\('cancel', onCancel\)/)
   }
   const input = app.slice(app.indexOf('  async function importDesignFile('), app.indexOf('  const switchLifetime'))
-  assert.ok(input.indexOf('const request = fileImports.begin(editor)') < input.indexOf('readDesignFile(f, request.signal)'))
+  assert.ok(input.indexOf('const request = fileImports.begin(editor)') < input.indexOf('readDesignFile(f, request.signal, diagnostic)'))
   const accepted = app.match(/accept="([^"]*\.sketch[^"]*)"/)
   assert.ok(accepted, 'design input must advertise Sketch and other import formats')
   for (const format of ['.fd', '.json', '.svg', '.fig', '.sketch', '.pdf']) assert.ok(accepted[1].split(',').includes(format), format)

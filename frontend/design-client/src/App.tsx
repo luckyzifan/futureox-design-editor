@@ -1,3 +1,5 @@
+import { importInputStatus } from './import-input-policy'
+import { beginImportDiagnostic, ImportStage, ImportFailure, type ImportDiagnostic } from './import-diagnostics'
 import { operationStatusText } from './operation-status-messages'
 import { FramePresetPanel } from './FramePresetPanel'
 import { LocalHome, HomeCanvasGate } from './LocalHome'
@@ -283,47 +285,56 @@ export default function App() {
   const importMode = useRef<'open' | 'append'>('open')
   async function importDesignFile(f: File, mode: 'open' | 'append' = 'open') {
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 312)
+    const diagnostic = beginImportDiagnostic(f, mode, trace)
     trace.result(ActionOutcome.cancelled, ActionReason.unobserved)
     try {
     if(!ready || switching || desktopStatus.busy || editor.interactionActive){trace.result(ActionOutcome.blocked, ActionReason.busy);editor.notify('请结束当前操作后打开文件', { key: 'openBlockedActiveOperation' });return}
     const request = fileImports.begin(editor)
+    diagnostic.bindRequest(request)
     try {
-      const imported = await importStep(request, () => readDesignFile(f, request.signal))
+      const imported = await importStep(request, () => readDesignFile(f, request.signal, diagnostic))
       request.assertCurrent()
-      const document = createImportedCopy(imported.document)
+      const document = diagnostic.run(ImportStage.copy, () => createImportedCopy(imported.document))
       if (mode === 'append') {
         if (!commitPendingEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
         request.assertCurrent()
         const revision = editor.state.version
-        const roots = editor.appendDocument(document)
+        const roots = diagnostic.run(ImportStage.commit, () => editor.appendDocument(document))
         trace.result(editor.state.version !== revision ? ActionOutcome.committed : ActionOutcome.unchanged)
         setImportReport(imported.warnings.length ? { documentId: editor.state.doc.id, warnings: imported.warnings } : null)
         editor.notify(`已追加 ${roots.length} 组内容，可整体拖动；撤销可移除此轮导入`, { key: 'importedGroupsAppended', count: roots.length })
         return
       }
-      const opened = await switchDocument(document, undefined, true, request)
+      const opened = await diagnostic.wait(ImportStage.open, () => switchDocument(document, undefined, true, request))
       if (opened) trace.result(ActionOutcome.observed)
       if (opened && request.isLatest() && editor.state.doc.id === document.id && imported.warnings.length) {
         setImportReport({ documentId: document.id, warnings: imported.warnings }); editor.notify('导入完成，可以继续编辑', { key: 'designImportComplete' })
       }
-    } catch (error) { trace.result(ActionOutcome.rejected, ActionReason.validation); if (request.isCurrent()) { desktopPet.event('error'); editor.notify(String(error)) } }
+    } catch (error) {
+      const retired = request.signal.aborted || !request.isCurrent()
+      const cancelled = diagnostic.fail(error, retired) === ImportFailure.cancelled
+      trace.result(cancelled ? ActionOutcome.cancelled : ActionOutcome.rejected, cancelled ? ActionReason.superseded : ActionReason.validation)
+      if (!cancelled && request.isCurrent()) { desktopPet.event('error'); const status = importInputStatus(error); editor.notify(error instanceof Error ? error.message : String(error), status) }
+    }
     finally { request.finish() }
     } finally { trace.finish() }
   }
   async function importImageFiles(files: File[]) {
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 313)
+    const diagnostics: ImportDiagnostic[] = []
     try {
       if (!ready || editor.interactionActive) { trace.result(ActionOutcome.blocked, ActionReason.notReady); editor.notify('请结束当前操作后导入图片', { key: 'imageImportBlockedActiveOperation' }); return }
       if (!commitPendingEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
       const canvas = document.querySelector<HTMLElement>('[data-testid=canvas]')
       const anchor = captureImageImportAnchor(editor, { width: canvas?.clientWidth ?? 0, height: canvas?.clientHeight ?? 0 })
-      const result = await appendImageFiles(editor, files, anchor)
+      const result = await appendImageFiles(editor, files, anchor, undefined, file => { const diagnostic = beginImportDiagnostic(file, 'append', trace); diagnostics.push(diagnostic); return diagnostic })
       trace.result(result.status === 'committed' ? ActionOutcome.committed : result.status === 'rejected' ? ActionOutcome.rejected : ActionOutcome.unchanged, result.status === 'rejected' ? ActionReason.validation : ActionReason.none)
     } catch (error) {
-      trace.result(error instanceof StaleImageImport ? ActionOutcome.cancelled : ActionOutcome.rejected,
-        error instanceof StaleImageImport ? ActionReason.superseded : ActionReason.validation)
-      if (error instanceof StaleImageImport) editor.notify(error.message)
-      else { const detail = String(error); editor.notify(`图片导入失败: ${detail}`, { key: 'imageImportFailed', error: detail }) }
+      const cancelled = error instanceof StaleImageImport || (diagnostics.length > 0 && diagnostics.every(diagnostic => diagnostic.fail(error) === ImportFailure.cancelled))
+      trace.result(cancelled ? ActionOutcome.cancelled : ActionOutcome.rejected,
+        cancelled ? ActionReason.superseded : ActionReason.validation)
+      if (cancelled) editor.notify('图片导入期间画布已变化，请重新导入')
+      else { const detail = error instanceof Error ? error.message : String(error); const status = importInputStatus(error); editor.notify(status ? detail : `图片导入失败: ${detail}`, status || { key: 'imageImportFailed', error: detail }) }
     } finally { trace.finish() }
   }
   const switchLifetime = useRef(0)
@@ -1142,7 +1153,11 @@ export default function App() {
         onChange={async (e) => {
           const f = e.currentTarget.files?.[0]
           e.currentTarget.value = ''
-          if (f) await importDesignFile(f, importMode.current)
+          if (!f) return
+          if (/\.(png|jpe?g|webp)$/i.test(f.name)) {
+            if (showHome) editor.notify('请先打开画布，再导入图片', { key: 'openCanvasBeforeImageImport' })
+            else await importImageFiles([f])
+          } else await importDesignFile(f, importMode.current)
         }}
       />
       {desktopPrompt && <DesktopLeaveDialog name={s.doc.name} reason={desktopPrompt.reason} onDecision={(decision) => {

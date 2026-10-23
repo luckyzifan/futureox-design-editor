@@ -79,7 +79,7 @@ struct ArchiveLimits {
 }
 
 const ARCHIVE_LIMITS: ArchiveLimits = ArchiveLimits {
-    input: crate::sketch::archive::MAX_TOTAL_BYTES as usize,
+    input: crate::sketch::archive::MAX_INPUT_BYTES,
     entries: crate::sketch::archive::MAX_ENTRIES,
     entry: crate::sketch::archive::MAX_ENTRY_BYTES,
     document_entry: crate::sketch::archive::MAX_DOCUMENT_BYTES,
@@ -4602,6 +4602,15 @@ fn import_fig_via_converter(bytes: &[u8]) -> Result<Document> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn import_input_policy_does_not_raise_expansion_budget() {
+        assert_eq!(ARCHIVE_LIMITS.input, 1_073_741_824);
+        assert_eq!(ARCHIVE_LIMITS.total, 67_108_864);
+        assert_eq!(ARCHIVE_LIMITS.entry, 16_777_216);
+        assert_eq!(ARCHIVE_LIMITS.document_entry, 41_943_040);
+        assert_eq!(ARCHIVE_LIMITS.entries, 4096);
+    }
+
     fn archive_test_limits() -> ArchiveLimits {
         ArchiveLimits { input: 16 * 1024, entries: 4, entry: 1024, document_entry:1024, total: 1536 }
     }
