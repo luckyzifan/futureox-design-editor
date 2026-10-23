@@ -1,5 +1,7 @@
 import { activateDocumentFonts, prepareDocumentForEditing, prepareDocumentJsonForEditing } from './kernel/picking'
 import type { DesignDocument } from './model'
+import { requestDocumentPreparation, type DocumentPreparationIdentity } from './document-preparation-worker-client'
+import { documentPreparationRuntime, sameDocumentPreparationRuntime } from './document-preparation-identity'
 
 const owned = new WeakMap<object, { document?: DesignDocument; validatedJson?: string }>()
 const currentEncodings = new WeakMap<DesignDocument, { json: string; current: () => boolean }>()
@@ -19,6 +21,22 @@ export function prepareDocumentJson(source: string, syntaxFailureAttempt?: objec
   let validatedJson: string | undefined
   const document = prepareDocumentJsonForEditing(source, json => { validatedJson = json }, syntaxFailureAttempt)
   return ownDocument(document, validatedJson)
+}
+
+/** Only this controlled worker request can reach the private ownership mint.
+ * Recheck the exact source request's owner after the await and before minting;
+ * cancellation/staleness never activates main-thread fonts or editing history. */
+export async function prepareDocumentJsonInWorker(source: string, identity: DocumentPreparationIdentity,
+  signal: AbortSignal, isCurrent: () => boolean): Promise<PreparedDocument> {
+  if (signal.aborted || !isCurrent()) throw new DOMException('文档准备已过期', 'AbortError')
+  const runtime = documentPreparationRuntime()
+  const result = await requestDocumentPreparation(source, identity, signal)
+  if (signal.aborted || !isCurrent() || !sameDocumentPreparationRuntime(runtime, documentPreparationRuntime()))
+    throw new DOMException('文档准备已过期', 'AbortError')
+  // Mutable main document-font/geometry epochs are deliberately not reused as
+  // preparation identity. The worker installs this source's own font map, and
+  // takePreparedDocument restores it atomically before main-thread adoption.
+  return ownDocument(result.document, result.validatedJson)
 }
 
 /** Normalize every adoption path through the private ownership boundary.

@@ -65,3 +65,18 @@ test('expected/resolved geometry stays in process and exports only equality/unsu
  const row=sanitizeRecord({v:1,session:1,source:'main',seq:1,at:1,event:'canvas-action',...fields})
  expect(row).toMatchObject(fields)
  })
+
+
+test('action labels are immutable cached pending identities and fallback fields remain scalar',()=>{
+ const rows:unknown[]=[];const trace=new CanvasActionDiagnostics(true,true,row=>rows.push(row))
+ const id=trace.begin(CanvasAction.rotate,ActionSource.pointer,{session:2,revision:3})
+ const label=trace.token(id,101)
+ expect(label).toEqual({actionOwner:101,actionId:id,actionSession:2,actionStartRevision:3,actionCode:13})
+ expect(Object.isFrozen(label)).toBe(true);expect(trace.token(id,101)).toBe(label)
+ trace.sample(id,{renderRouteCode:2,renderFallbackCount:5})
+ trace.finish(id,ActionOutcome.unchanged,{session:2,revision:3})
+ expect(trace.token(id,101)).toBeUndefined()
+ expect(label).toMatchObject({actionOwner:101,actionId:id})
+ expect(rows.at(-1)).toMatchObject({renderRouteCode:2,renderFallbackCount:5})
+ expect(sanitizeActionFields({renderRouteCode:5,renderFallbackCount:-1})).toEqual({})
+})

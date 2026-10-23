@@ -11,7 +11,7 @@ import {
   VectorEngine,
   DocumentHistory,
 } from '../generated/design-kernel/design_kernel'
-import { initializeKernelModule, validateKernelDocument } from './module'
+import { initializeKernelModule, validateKernelDocument, kernelModuleResourceIdentity, kernelResourceSha256 } from './module'
 import { documentStage, DocumentStage } from '../document-lifecycle-diagnostics'
 import { admitDocumentSync, admitDocumentJsonSync } from '../document-admission'
 import { InitializationGate, readKernelAsset } from './initialization'
@@ -20,6 +20,9 @@ import type { DesignNode, Point, DesignDocument, Bounds, Matrix } from '../model
 import { defaultLayout, defaultSizing, validateVariableModes } from '../model'
 import { translationOnlyChanges } from './translation-preview'
 let ready = false
+let preparationResources: Readonly<{ wasmSha256: string; fontSha256: string; bundled: boolean }> | undefined
+/** The immutable base WASM/font resources, not the mutable document-font epoch. */
+export function pickingPreparationResources() { return ready ? preparationResources : undefined }
 // Opaque identity avoids counter wraparound and does not retain font resources.
 // Canvas snapshots must not survive a changed main-thread font environment.
 let geometryEpoch: object = {}
@@ -115,10 +118,19 @@ export function initializePicking(resources?: { wasm: Uint8Array; font: Uint8Arr
       async () => resources?.font?.slice() || await readKernelAsset('/fonts/NotoSansSC.ttf', limit, lease.signal),
     )
     lease.assertCurrent()
+    // Do not hold an engine while awaiting an uninterruptible digest: a timed
+    // out/late hash must not publish or retain a new layout/font environment.
+    const fontSha256 = await kernelResourceSha256(fontBytes)
+    lease.assertCurrent()
+    const wasmIdentity = kernelModuleResourceIdentity()
     const engine = new VectorEngine()
     try {
       engine.load_font(fontBytes)
       lease.commit(() => {
+        preparationResources = fontSha256 && wasmIdentity ? Object.freeze({
+          wasmSha256: wasmIdentity.wasmSha256, fontSha256,
+          bundled: wasmIdentity.bundled && resources === undefined,
+        }) : undefined
         layoutEngine = engine
         ready = true
         geometryEpoch = {}

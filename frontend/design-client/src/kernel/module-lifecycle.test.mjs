@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
+import { stripTypeScriptTypes } from 'node:module'
 import { InitializationGate, readKernelAsset } from './initialization.ts'
 import { loadKernelResourcePair } from './kernel-resources.ts'
 
@@ -24,19 +25,19 @@ function replaceExactly(source, from, to) {
   assert.equal(source.split(from).length, 2, `Source shape changed: ${from}`)
   return source.replace(from, to)
 }
-function moduleBoundary(compile, read = async () => { throw new Error('unexpected resource download') }) {
-  let source = readFileSync(new URL('./module.ts', import.meta.url), 'utf8')
-  for (const header of ["import initKernel, { validate_document_json } from '../generated/design-kernel/design_kernel'",
-    "import { InitializationGate, readKernelAsset } from './initialization'"]) source = replaceExactly(source, header, '')
-  source = replaceExactly(source, 'export function initializeKernelModule(wasm?: Uint8Array): Promise<void>', 'function initializeKernelModule(wasm)')
-  source = replaceExactly(source, 'export function kernelModuleReady()', 'function kernelModuleReady()')
-  source = replaceExactly(source, 'export function validateKernelDocument(json: string): void', 'function validateKernelDocument(json)')
+function moduleBoundary(compile, read = async () => { throw new Error('unexpected resource download') }, hash = async () => new Uint8Array(32).buffer, install = async module => module) {
+  // Strip the actual typed module rather than matching obsolete pre-capacity
+  // import/signature text. The previous harness already drifted in the baseline.
+  const source = stripTypeScriptTypes(readFileSync(new URL('./module.ts', import.meta.url), 'utf8'))
+    .replace(/^import .*$/gm, '').replace(/^export /gm, '')
   assert.doesNotMatch(source, /new VectorEngine|load_font|render_|compile_gpu|initializePicking/)
   const clock = fakeClock(), admitted = [], installed = []
-  const api = vm.runInNewContext(`${source}\n({ initializeKernelModule, validateKernelDocument })`, {
+  const api = vm.runInNewContext(`${source}\n({ initializeKernelModule, validateKernelDocument, kernelModuleResourceIdentity })`, {
     InitializationGate: class extends InitializationGate { constructor() { super(30, clock) } },
     WebAssembly: { compile }, readKernelAsset: read,
-    initKernel: async ({ module_or_path }) => { installed.push(module_or_path); return module_or_path },
+    documentCapacity: () => ({ memoryBytes: 1024 * 1024 }), pinDocumentCapacity() {}, configure_document_capacity() {},
+    crypto: hash === null ? undefined : { subtle: { digest: (_algorithm, bytes) => hash(bytes) } },
+    initKernel: async ({ module_or_path }) => { installed.push(module_or_path); return install(module_or_path) },
     validate_document_json: json => admitted.push(json),
   })
   return { ...api, admitted, installed, clock }
@@ -126,12 +127,15 @@ test('font initialization timeout and late completion cannot replace a newer ini
   assert.equal(source.split(header).length, 2)
   const end = '\n/** All file-opening paths share'
   assert.equal(source.split(end).length, 2)
-  const callback = source.slice(source.indexOf(header), source.indexOf(end)).replace(header, 'function initializePicking(resources) {')
+  const callback = stripTypeScriptTypes(source.slice(source.indexOf(header), source.indexOf(end))).replace('export function', 'function')
   const clock = fakeClock(), a = deferred(), b = deferred(), enteredA = deferred(), enteredB = deferred(), engines = []
   let requests = 0
   const context = vm.createContext({
     initialization: new InitializationGate(30, clock), ready: false, layoutEngine: undefined,
     initializeKernelModule: async () => {}, loadKernelResourcePair,
+    kernelResourceSha256: async () => 'c'.repeat(64),
+    kernelModuleResourceIdentity: () => ({ wasmSha256: 'b'.repeat(64), bundled: true }),
+    preparationResources: undefined, geometryEpoch: {},
     readKernelAsset: () => { if (++requests === 1) { enteredA.resolve(); return a.promise }; enteredB.resolve(); return b.promise },
     VectorEngine: class { constructor() { engines.push(this) }; load_font(bytes) { this.bytes = bytes }; free() { this.freed = true } },
   })
@@ -158,4 +162,105 @@ test('the committed publication remains successful when the clock crosses the de
   await result
   assert.equal(ready, true)
   assert.equal(gate.run(async () => { throw new Error('must reuse committed result') }), result)
+})
+
+
+test('late hash after timeout cannot publish over a newer successful module identity', async () => {
+  const a = deferred(), b = deferred(), enteredA = deferred(), enteredB = deferred(); let calls = 0
+  const api = moduleBoundary(async bytes => new Uint8Array(bytes)[0], undefined,
+    () => { if (++calls === 1) { enteredA.resolve(); return a.promise }; enteredB.resolve(); return b.promise })
+  const first = api.initializeKernelModule(new Uint8Array([1])); await enteredA.promise
+  api.clock.advance(31); await assert.rejects(first, /初始化超时/)
+  assert.equal(api.kernelModuleResourceIdentity(), undefined); assert.deepEqual(api.installed, [])
+  const second = api.initializeKernelModule(new Uint8Array([2])); await enteredB.promise
+  b.resolve(new Uint8Array(32).fill(2).buffer); await second
+  const current = api.kernelModuleResourceIdentity()
+  assert.equal(current.wasmSha256, '02'.repeat(32)); assert.equal(current.bundled, false)
+  assert.equal(Object.isFrozen(current), true)
+  a.resolve(new Uint8Array(32).fill(1).buffer); await Promise.resolve(); await Promise.resolve()
+  assert.equal(api.kernelModuleResourceIdentity(), current); assert.deepEqual(api.installed, [2])
+})
+
+test('generated initializer timeout and late singleton publication cannot certify retry bytes', async () => {
+  const a = deferred(), enteredA = deferred(); let calls = 0, singleton
+  const api = moduleBoundary(async bytes => new Uint8Array(bytes)[0], undefined,
+    async bytes => new Uint8Array(32).fill(bytes[0]).buffer,
+    async module => {
+      if (++calls === 1) { enteredA.resolve(); await a.promise }
+      if (singleton === undefined) singleton = module
+      return singleton
+    })
+  const first = api.initializeKernelModule(new Uint8Array([1])); await enteredA.promise
+  api.clock.advance(31); await assert.rejects(first, /初始化超时/)
+  // The old generated initializer publishes after its caller has timed out.
+  a.resolve(); await Promise.resolve(); await Promise.resolve()
+  await api.initializeKernelModule(new Uint8Array([2]))
+  assert.equal(singleton, 1)
+  api.validateKernelDocument('{}')
+  assert.equal(api.kernelModuleResourceIdentity(), undefined)
+})
+
+test('generated initializer failure conservatively disables identity after a successful retry', async () => {
+  let calls = 0
+  const api = moduleBoundary(async () => 'compiled', undefined, undefined,
+    async module => { if (++calls === 1) throw new Error('installation failure'); return module })
+  await assert.rejects(api.initializeKernelModule(new Uint8Array([1])), /installation failure/)
+  await api.initializeKernelModule(new Uint8Array([2]))
+  api.validateKernelDocument('{}')
+  assert.equal(api.kernelModuleResourceIdentity(), undefined)
+})
+
+for (const hash of [null, async () => { throw new Error('WebCrypto unavailable') }]) {
+  test(`ordinary module initialization survives ${hash === null ? 'absent' : 'failed'} WebCrypto without fabricating identity`, async () => {
+    const api = moduleBoundary(async () => 'module', undefined, hash)
+    await api.initializeKernelModule(new Uint8Array([1]))
+    api.validateKernelDocument('{}')
+    assert.equal(api.kernelModuleResourceIdentity(), undefined)
+  })
+}
+
+function pickingHashBoundary(hash) {
+  const source = readFileSync(new URL('./picking.ts', import.meta.url), 'utf8')
+  const start = source.indexOf('export function initializePicking(')
+  const end = source.indexOf('\n/** All file-opening paths share', start)
+  const callback = stripTypeScriptTypes(source.slice(start, end)).replace('export function', 'function')
+  const clock = fakeClock(), engines = []
+  const context = vm.createContext({
+    initialization: new InitializationGate(30, clock), ready: false, layoutEngine: undefined,
+    preparationResources: undefined, geometryEpoch: {},
+    initializeKernelModule: async () => {}, loadKernelResourcePair,
+    kernelResourceSha256: hash, kernelModuleResourceIdentity: () => ({ wasmSha256: 'b'.repeat(64), bundled: true }),
+    readKernelAsset: async () => new Uint8Array([1]),
+    VectorEngine: class { constructor() { engines.push(this) }; load_font(bytes) { this.bytes = bytes }; free() { this.freed = true } },
+  })
+  const initialize = vm.runInContext(`${callback}\ninitializePicking`, context)
+  return { initialize, context, engines, clock }
+}
+
+test('font hash timeout creates no engine and a late old hash cannot replace new resources or epoch', async () => {
+  const a = deferred(), b = deferred(), enteredA = deferred(), enteredB = deferred(); let calls = 0
+  const api = pickingHashBoundary(() => { if (++calls === 1) { enteredA.resolve(); return a.promise }; enteredB.resolve(); return b.promise })
+  const originalEpoch = api.context.geometryEpoch
+  const first = api.initialize(); await enteredA.promise
+  api.clock.advance(31); await assert.rejects(first, /初始化超时/)
+  assert.equal(api.engines.length, 0); assert.equal(api.context.preparationResources, undefined)
+  assert.equal(api.context.geometryEpoch, originalEpoch)
+  const second = api.initialize(); await enteredB.promise
+  b.resolve('d'.repeat(64)); await second
+  const resources = api.context.preparationResources, epoch = api.context.geometryEpoch
+  assert.equal(resources.fontSha256, 'd'.repeat(64)); assert.equal(Object.isFrozen(resources), true)
+  a.resolve('c'.repeat(64)); await Promise.resolve(); await Promise.resolve()
+  assert.equal(api.context.preparationResources, resources); assert.equal(api.context.geometryEpoch, epoch)
+  assert.equal(api.engines.length, 1)
+})
+
+test('custom font resources never claim the bundled preparation environment', async () => {
+  const api = pickingHashBoundary(async () => 'c'.repeat(64))
+  await api.initialize({ wasm: new Uint8Array([2]), font: new Uint8Array([3]) })
+  assert.equal(api.context.preparationResources.bundled, false)
+  const resources = api.context.preparationResources
+  await api.initialize({ wasm: new Uint8Array([4]), font: new Uint8Array([5]) })
+  assert.equal(api.context.preparationResources, resources)
+  assert.equal(api.engines.length, 1)
+  assert.equal(api.context.layoutEngine.bytes[0], 3)
 })

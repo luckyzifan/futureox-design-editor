@@ -1,3 +1,4 @@
+import type { PoseActionToken } from './kernel/pose-action-correlation'
 import { createCpuStageDiagnostics } from './cpu-stage-diagnostics'
 import { operationCorrelation } from './canvas-operation-terminal'
 import { createRenderDiagnostics, PREFIX } from '../../design-desktop/src/render-terminal-diagnostics.mjs'
@@ -12,8 +13,8 @@ export type ActionOutcomeCode = typeof ActionOutcome[keyof typeof ActionOutcome]
 export type ActionEventOutcomeCode = Exclude<ActionOutcomeCode, typeof ActionOutcome.committed>
 export type ActionReasonCode = typeof ActionReason[keyof typeof ActionReason]
 /** Comparison fields:0 unobserved,1 equal,2 different,3 unsupported. Different is not automatically failure. */
-export type ActionFields = Partial<Record<'modifiers' | 'toolCode' | 'hitCount' | 'hitDepth' | 'selectionBefore' | 'selectionAfter' | 'targetCount' | 'lockedCount' | 'commandCode' | 'inputSamples' | 'sampleUpdates' | 'coalescedSamples' | 'thresholdPassed' | 'motionObserved' | 'snapEnabled' | 'snapChanged' | 'constraintChanged' | 'constraintEnabled' | 'proposalChanged' | 'resolvedChanged' | 'committedChanged' | 'intentResolvedComparison' | 'resolvedCommittedComparison' | 'proposalResolvedComparison' | 'selectionChanged' | 'routeSupported' | 'geometrySupported' | 'inputPhase' | 'fieldFamily' | 'inputValid' | 'expectedWidthComparison' | 'expectedHeightComparison' | 'aspectRatioComparison' | 'layoutConstraintAccepted' | 'poseSubmittedSequence' | 'posePresentedSequence' | 'poseFallbackReason' | 'poseLatencyMs', number | boolean>>
-const limits: Record<keyof ActionFields, number> = { modifiers: 15, toolCode: 64, hitCount: 1e6, hitDepth: 1e6, selectionBefore: 1e6, selectionAfter: 1e6, targetCount: 1e6, lockedCount: 1e6, commandCode: 1024, inputSamples: 1e9, sampleUpdates: 1e9, coalescedSamples: 1e9, thresholdPassed: 1, motionObserved: 1, snapEnabled: 1, snapChanged: 1, constraintChanged: 1, constraintEnabled: 1, proposalChanged: 1, resolvedChanged: 1, committedChanged: 1, intentResolvedComparison: 3, resolvedCommittedComparison: 3, proposalResolvedComparison: 3, selectionChanged: 1, routeSupported: 1, geometrySupported: 1, inputPhase: 9, fieldFamily: 11, inputValid: 1, expectedWidthComparison: 3, expectedHeightComparison: 3, aspectRatioComparison: 3, layoutConstraintAccepted: 1, poseSubmittedSequence: 1e9, posePresentedSequence: 1e9, poseFallbackReason: 9, poseLatencyMs: 600000 }
+export type ActionFields = Partial<Record<'modifiers' | 'toolCode' | 'hitCount' | 'hitDepth' | 'selectionBefore' | 'selectionAfter' | 'targetCount' | 'lockedCount' | 'commandCode' | 'inputSamples' | 'sampleUpdates' | 'coalescedSamples' | 'thresholdPassed' | 'motionObserved' | 'snapEnabled' | 'snapChanged' | 'constraintChanged' | 'constraintEnabled' | 'proposalChanged' | 'resolvedChanged' | 'committedChanged' | 'intentResolvedComparison' | 'resolvedCommittedComparison' | 'proposalResolvedComparison' | 'selectionChanged' | 'routeSupported' | 'geometrySupported' | 'inputPhase' | 'fieldFamily' | 'inputValid' | 'expectedWidthComparison' | 'expectedHeightComparison' | 'aspectRatioComparison' | 'layoutConstraintAccepted' | 'poseSubmittedSequence' | 'posePresentedSequence' | 'poseFallbackReason' | 'poseLatencyMs' | 'renderRouteCode' | 'renderFallbackCount', number | boolean>>
+const limits: Record<keyof ActionFields, number> = { modifiers: 15, toolCode: 64, hitCount: 1e6, hitDepth: 1e6, selectionBefore: 1e6, selectionAfter: 1e6, targetCount: 1e6, lockedCount: 1e6, commandCode: 1024, inputSamples: 1e9, sampleUpdates: 1e9, coalescedSamples: 1e9, thresholdPassed: 1, motionObserved: 1, snapEnabled: 1, snapChanged: 1, constraintChanged: 1, constraintEnabled: 1, proposalChanged: 1, resolvedChanged: 1, committedChanged: 1, intentResolvedComparison: 3, resolvedCommittedComparison: 3, proposalResolvedComparison: 3, selectionChanged: 1, routeSupported: 1, geometrySupported: 1, inputPhase: 9, fieldFamily: 11, inputValid: 1, expectedWidthComparison: 3, expectedHeightComparison: 3, aspectRatioComparison: 3, layoutConstraintAccepted: 1, poseSubmittedSequence: 1e9, posePresentedSequence: 1e9, poseFallbackReason: 9, poseLatencyMs: 600000, renderRouteCode: 4, renderFallbackCount: 1e9 }
 const limitEntries = Object.entries(limits)
 export function sanitizeActionFields(input: unknown): Record<string, number> {
   const out: Record<string, number> = {}
@@ -30,7 +31,7 @@ const safeCount = (value: number) => Number.isSafeInteger(value) && value >= 0 &
 const safeDuration = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1e9, value)) : 0
 type Context = { session: number; revision: number }
 type Row = { actionId: number; actionCode: number; actionSource: number; actionSession: number; actionStartRevision: number; actionFinalRevision?: number; actionPhase: number; actionOutcome: number; actionReason: number; actionDurationMs: number; [key: string]: number | undefined }
-type Pending = { row: Row; started: number }
+type Pending = { row: Row; started: number; token?:PoseActionToken }
 export class CanvasActionDiagnostics {
   private serial = 0
   private pending = new Map<number, Pending>()
@@ -56,6 +57,12 @@ export class CanvasActionDiagnostics {
     const row: Row = { actionId: id, actionCode: code, actionSource: source, actionSession: context.session, actionStartRevision: context.revision, actionPhase: 1, actionOutcome: 0, actionReason: 0, actionDurationMs: 0, ...sanitizeActionFields(fields) }
     if (this.pending.size >= this.capacity) { this.pendingEvicted = Math.min(1e9, this.pendingEvicted + 1); const oldest = this.pending.keys().next().value!; this.finish(oldest, ActionOutcome.cancelled, context, ActionReason.superseded) }
     this.pending.set(id, { row, started }); this.output(row); return id
+  }
+  token(id: number, owner: number): PoseActionToken | undefined {
+    const pending=this.pending.get(id);if(!pending)return
+    if(pending.token?.actionOwner===owner)return pending.token
+    const row=pending.row
+    return pending.token=Object.freeze({actionOwner:owner,actionId:row.actionId,actionSession:row.actionSession,actionStartRevision:row.actionStartRevision,actionCode:row.actionCode})
   }
   sample(id: number, fields?: ActionFields) { const p = this.pending.get(id); if (!p) return; Object.assign(p.row, sanitizeActionFields(fields)); p.row.sampleUpdates = Math.min(1e9, (p.row.sampleUpdates || 0) + 1) }
   finish(id: number, outcome: ActionOutcomeCode, context: Context, reason: ActionReasonCode = 0, fields?: ActionFields) {
@@ -89,6 +96,7 @@ function create(editor: EditorContext) {
   const context = () => ({ session: editor.sessionGeneration, revision: editor.state.version })
   const cpu = createCpuStageDiagnostics(terminal.enabled, fields => terminal.record('cpu-stage', { actionOwner: owner, actionSession: editor.sessionGeneration, documentRevision: editor.state.version, ...fields }))
   return { owner, enabled: collector.enabled, cpu, begin: (code: ActionCode, source: ActionSourceCode, fields?: ActionFields) => collector.begin(code, source, context(), fields),
+    token: (id: number) => collector.token(id, owner),
     sample: (id: number, fields?: ActionFields) => collector.sample(id, fields),
     finish: (id: number, outcome: ActionOutcomeCode, reason: ActionReasonCode = 0, fields?: ActionFields) => collector.finish(id, outcome, context(), reason, fields),
     event: (code: ActionCode, source: ActionSourceCode, outcome: ActionEventOutcomeCode, reason: ActionReasonCode = 0, fields?: ActionFields) => { const id = collector.begin(code, source, context(), fields); collector.finish(id, outcome, context(), reason) },
