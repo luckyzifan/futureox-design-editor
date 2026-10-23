@@ -621,6 +621,7 @@ pub fn sample_node(id: &str, kind: &str) -> Node {
         points: 0,
         inner_radius: 0.,
         network: None,
+        vector_geometry: None,
         text: String::new(),
         font_size: 28.,
         text_style: None,

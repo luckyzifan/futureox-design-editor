@@ -128,7 +128,7 @@ test.each([
   ['focal-position', `<radialGradient id="g" fx=".2">${stops}</radialGradient>`, /偏心/],
   ['color-space', `<linearGradient id="g" color-interpolation="linearRGB">${stops}</linearGradient>`, /color-interpolation/],
   ['animation', '<linearGradient id="g"><animate attributeName="x1"/></linearGradient>', /动态/],
-  ['stop-limit', `<linearGradient id="g">${'<stop stop-color="#000000"/>'.repeat(33)}</linearGradient>`, /32/],
+  ['stop-limit', `<linearGradient id="g">${'<stop stop-color="#000000"/>'.repeat(65)}</linearGradient>`, /64/],
 ] as const)('gradient %s fails explicitly without partial output', (_name, defs, error) => {
   expect(() => importSvg(svg(`<defs>${defs}</defs>${rectangle()}`))).toThrow(error)
 })

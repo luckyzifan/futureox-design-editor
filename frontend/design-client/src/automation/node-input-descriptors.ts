@@ -3,7 +3,7 @@
  * These are whole-property replacements, not recursive merge patches.
  * Document/kind/reference and cross-field constraints remain model-authoritative.
  */
-import { blendModes, type DesignNode } from '../model'
+import { MAX_GRADIENT_STOPS, blendModes, type DesignNode } from '../model'
 type Schema = Record<string, unknown>
 const num = (minimum = -1e7, maximum = 1e7): Schema => ({ type: 'number', minimum, maximum })
 const integer = (minimum: number, maximum: number): Schema => ({ type: 'integer', minimum, maximum })
@@ -23,7 +23,7 @@ export const nodeTransformSchema = describe(tuple(num(), 6), 'Parent-local affin
 const paintTransform = describe(tuple(num(), 6), 'Paint affine matrix [a,b,c,d,tx,ty]; absolute determinant must be at least 1e-12.')
 const paint = obj({
   id: str(), kind: en('solid', 'linear', 'radial', 'image', 'angular', 'diamond'), color, opacity: unit,
-  visible: bool, angle: num(), stops: describe(array(obj({ offset: unit, color }, ['offset', 'color']), 32), 'Gradient kinds require at least two stops.'),
+  visible: bool, angle: num(), stops: describe(array(obj({ offset: unit, color }, ['offset', 'color']), MAX_GRADIENT_STOPS), 'Gradient kinds require at least two stops.'),
   image: describe(nullable(str()), 'PNG/JPEG/WebP base64 data URL; subject to request byte budget.'), fit: en('cover', 'contain', 'stretch'), blend: en(...blendModes), transform: nullable(paintTransform),
   adjust: describe(obj({ exposure: num(-1, 1), contrast: num(-1, 1), temperature: num(-1, 1), tint: num(-1, 1), highlights: num(-1, 1), shadows: num(-1, 1), color: num(-1, 1), highlightShadowThreshold: unit }), 'Image paints only; missing adjustments use identity defaults.'),
   tile: describe(obj({ mode: en('none', 'grid', 'stagger_horizontal', 'stagger_vertical'), size: tuple(num(0), 2), offset: tuple(num(), 2) }, ['mode', 'size', 'offset']), 'Image paints only. Zero size uses native image extent.'),
@@ -43,12 +43,15 @@ for (const key of ['glass', 'texture', 'gradientBlur']) {
 }
 const network = describe(obj({ vertices: array(obj({ id: str(), x: num(), y: num() }, ['id', 'x', 'y']), 10000), edges: array(obj({ id: str(), from: str(), to: str(), c1: nullable(point), c2: nullable(point) }, ['id', 'from', 'to']), 20000), fillRule: en('evenodd', 'nonzero'), filledFaces: array(array(str(), 10000), 10000) }, ['vertices', 'edges']), 'Vertex and edge IDs must be unique; edges reference existing vertices and filledFaces reference existing edges.')
 const align = en('start', 'center', 'end', 'stretch')
+const curve:Schema={anyOf:[en('close'),...Object.entries({move:2,line:2,quad:4,cubic:6}).map(([key,length])=>obj({[key]:tuple(num(),length)},[key]))]}
+const vectorGeometry=describe(obj({fillRule:en('evenodd','nonzero'),fill:array(curve,131072),stroke:array(curve,131072)},['fillRule','fill']), 'Schema 16 f64 render curves, at most 131072 commands in total. Fill contours close explicitly. Mutually exclusive with network, booleans and vector brush; point editing materializes a separately admitted network.')
 const textCase = en('original', 'upper', 'lower')
 const textStyle = obj({ fontId: describe(id, 'default or an existing document font ID.'), fallbacks: array(id, 16), weight: num(1, 1000), lineHeight: num(0.1, 10), letterSpacing: num(-1000, 1000), wrap: bool, align: en('start', 'center', 'end', 'justify'), direction: en('auto', 'ltr', 'rtl'), paragraphSpacing: num(0, 10000), paragraphIndent: num(-10000, 10000), textCase, writingMode: en('horizontal', 'vertical'), features: describe(array(str(32), 16), 'Valid HarfBuzz/OpenType feature syntax, e.g. -liga or kern.'), variations: array(obj({ tag: describe({ type: 'string', minLength: 4, maxLength: 4 }, 'Four ASCII alphanumeric characters; wght is reserved, use weight instead.'), value: num(-10000, 10000) }, ['tag', 'value']), 16) })
 const endpoint = obj({ point, nodeId: nullable(id), anchor: nullable(obj({ x: unit, y: unit }, ['x', 'y'])) }, ['point'])
 /** Null on these top-level fields removes the property, preserving patchNode semantics. */
-export const OPTIONAL_NODE_FIELDS = new Set<string>(['vectorBrush', 'repeat', 'network', 'textStyle', 'textRuns', 'layout', 'sizing', 'constraints', 'layoutGrid', 'guides', 'arc', 'cornerRadius', 'constrainProportions', 'booleanOperation', 'exportSettings', 'textPath', 'pathOffset', 'connector', 'board', 'maskType'])
+export const OPTIONAL_NODE_FIELDS = new Set<string>(['vectorGeometry','vectorBrush', 'repeat', 'network', 'textStyle', 'textRuns', 'layout', 'sizing', 'constraints', 'layoutGrid', 'guides', 'arc', 'cornerRadius', 'constrainProportions', 'booleanOperation', 'exportSettings', 'textPath', 'pathOffset', 'connector', 'board', 'maskType'])
 const fields = {
+  vectorGeometry,
   vectorBrush: describe(obj({source: network, mode: en('stretch','scatter'), width: num(.001,10000), spacing: num(.001,1e7), seed: integer(0,4294967295), rotation: num(-Math.PI*2,Math.PI*2), rotationVariance: num(0,Math.PI*2), scaleVariance: num(0,.99), scatter: num(0,10000), followTangent: bool}, ['source','mode','width','spacing','seed','rotation','rotationVariance','scaleVariance','scatter','followTangent']), 'Editable embedded single closed nonzero-fill source; vector guide also nonzero. Stretch admits straight forward-only guides; Scatter preserves source Beziers with bounded arc-length placement. 4096 input edges/vertices and stamps, 100000 output commands. No holes or multicolor sources.'),
   repeat: describe(obj({ count: integer(1, 256), translation: point, pivot: point, rotation: num(-Math.PI*200, Math.PI*200), scale: obj({ x: num(0.01,100), y: num(0.01,100) }, ['x','y']) }, ['count','translation','pivot','rotation','scale']), 'Non-destructive total count including source; translation and pivot in parent coordinates, rotation in radians, positive per-step scales. Bounded derived scene: 16384 nodes / 16 MiB.'),
   name: str(), transform: nodeTransformSchema,

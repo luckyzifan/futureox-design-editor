@@ -59,3 +59,5 @@ incremental = true
 
 [patch.crates-io]
 moxcms = { path = "../vendor/moxcms" }
+
+flo_curves = { path = "../vendor/flo_curves" }

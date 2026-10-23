@@ -15,6 +15,7 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
+mod boolean_worksets;
 
 #[derive(Debug)]
 pub enum Error {
@@ -576,9 +577,17 @@ fn gradient_paint(gradient: &Value, fill_type: u64, size: [f64; 2], space: Color
     };
     let mut paint = blank_paint(kind);
     if let (Some(from), Some(to)) = (gradient.get("from"), gradient.get("to")) {
-        let (x, y) = point_xy(from);
+        let (mut x, mut y) = point_xy(from);
         let (tx, ty) = point_xy(to);
         let (dx, dy) = (tx - x, ty - y);
+        // A linear gradient samples only its longitudinal coordinate. Exact
+        // axis-aligned gradients can discard an out-of-range perpendicular
+        // translation without changing any sample. Keep the raw source anchors
+        // in sketchSourceGradients for unchanged compatibility export.
+        if kind=="linear" {
+            if dx==0. && dy!=0. && x.abs()>1e7 {x=0.;}
+            if dy==0. && dx!=0. && y.abs()>1e7 {y=0.;}
+        }
         if dx * dx + dy * dy > 1e-12 {
             paint.transform = Some(if kind == "radial" {
                 // Sketch `from` is the center, `to` is one radius endpoint.
@@ -903,6 +912,7 @@ impl<'a> Importer<'a> {
             .unwrap_or(true);
         node.locked = bool_at(layer, "isLocked");
         let frame = layer.get("frame").cloned().unwrap_or(Value::Null);
+        node.constrain_proportions = bool_at(&frame,"constrainProportions");
         node.width = f64_at(&frame, "width").max(0.);
         node.height = f64_at(&frame, "height").max(0.);
         let x = f64_at(&frame, "x");
@@ -1057,7 +1067,16 @@ impl<'a> Importer<'a> {
             );
         }
         match class {
-            "rectangle" => node.corner_radius = f64_at(layer, "fixedRadius"),
+            "rectangle" => {
+                // Shared rectangle corners use radii; cornerRadius belongs to
+                // polygon/star fillets and is invalid on a rectangle.
+                node.radii = [f64_at(layer, "fixedRadius"); 4];
+                if let Some(points) = layer.get("points").and_then(Value::as_array).filter(|p| p.len() == 4) {
+                    for (radius, point) in node.radii.iter_mut().zip(points) {
+                        if point.get("cornerRadius").is_some() { *radius = f64_at(point, "cornerRadius"); }
+                    }
+                }
+            }
             "oval" | "star" | "polygon" | "triangle" => {
                 node.points = layer
                     .get("numberOfPoints")
@@ -1072,6 +1091,7 @@ impl<'a> Importer<'a> {
                 if layer.get("userInfo")
                     .and_then(|u| u.get("com.futureox.design-kernel"))
                     .and_then(|u| u.get("originalId")).is_none()
+                    || layer.pointer("/userInfo/com.futureox.design-kernel/geometryUnits").and_then(Value::as_str)==Some("normalized")
                 {
                     node.bindings.insert("sketchNormalizedCoordinates".into(), "true".into());
                 }
@@ -1080,7 +1100,7 @@ impl<'a> Importer<'a> {
                         filled_faces: None,
                         vertices: Vec::new(),
                         edges: Vec::new(),
-                        fill_rule: "nonzero".into(),
+                        fill_rule: if style.get("windingRule").or_else(||layer.get("windingRule")).and_then(Value::as_u64).unwrap_or(1)==0 {"nonzero"} else {"evenodd"}.into(),
                     };
                     // Explicit handle flags own the rendered geometry, just
                     // as in sketch::CurveContour. curveMode is an editing
@@ -1818,6 +1838,10 @@ fn validate_sketch_shared_style_ids(document: &Value) -> Result<()> {
 pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
     let files = crate::sketch::archive::read(bytes)
         .map_err(|e| Error::Unsupported(e.to_string()))?;
+    import_sketch_files(&files)
+}
+
+fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
     let meta = json_part(&files, "meta.json")?;
     let document = json_part(&files, "document.json")?;
     validate_sketch_shared_style_ids(&document)?;
@@ -1852,7 +1876,7 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
         flow_home: None,
     };
     let mut page_index: BTreeMap<String, Value> = BTreeMap::new();
-    for (name, data) in &files {
+    for (name, data) in files {
         if let Some(page_id) = name
             .strip_prefix("pages/")
             .and_then(|n| n.strip_suffix(".json"))
@@ -1906,8 +1930,7 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
     for (file_id, kernel_id, page_name) in ordered {
         let page_json = page_index
             .get(&file_id)
-            .cloned()
-            .unwrap_or_else(|| json!({"_class": "page", "name": page_name, "layers": []}));
+            .ok_or_else(|| Error::MissingPart(format!("pages/{file_id}.json")))?;
         let mut page_node = crate::facet::sample_node(&kernel_id, "page");
         page_node.name = page_name.clone();
         let mut children = Vec::new();
@@ -2225,6 +2248,7 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
     // newly imported constraints/layouts/components/text styles need 4+,
     // stroke markers 8, slices 10
     let mut version = doc.schema_version.max(1);
+    if doc.color_management.is_some() { version = version.max(3); }
     if doc.design_system.is_some() {
         // design systems (shared styles, swatch/foreign containers) need 4+
         version = version.max(4);
@@ -2246,6 +2270,9 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
         || doc.nodes.values().any(|n| !n.export_settings.is_empty())
     {
         version = version.max(8);
+    }
+    if doc.nodes.values().any(|n| n.arc.is_some() || n.corner_radius != 0. || n.constrain_proportions) {
+        version = version.max(7);
     }
     if doc.nodes.values().any(|n| n.kind == "slice"
         || n.export_settings.iter().any(|s| !matches!(s.format.as_str(), "png" | "svg"))) {
@@ -2372,7 +2399,26 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
 }
 
 pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
-    let mut document = import_sketch(bytes)?;
+    finish_sketch_report(import_sketch(bytes)?)
+}
+
+/// Native source storage has already checked the original archive and extracts
+/// one bounded subtree at a time. Reuse the very same codec without re-zipping
+/// that subtree or applying the ordinary whole-archive expansion policy to it.
+/// This does not admit a larger live document or alter GPU resource policy.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn import_sketch_source_window(files: &BTreeMap<String, Vec<u8>>) -> Result<SketchImportReport> {
+    const ENTRY: usize = 64 * 1024 * 1024;
+    const TOTAL: usize = 96 * 1024 * 1024;
+    if files.len() > 4096 || files.values().any(|v| v.len() > ENTRY)
+        || files.values().try_fold(0usize, |n, v| n.checked_add(v.len())).is_none_or(|n| n > TOTAL)
+    {
+        return Err(Error::Unsupported("Source conversion window exceeds its memory allowance".into()));
+    }
+    finish_sketch_report(import_sketch_files(files)?)
+}
+
+fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
     admit_sketch_symbols(&mut document)?;
     let mut warnings = std::collections::BTreeSet::new();
     warnings.insert("Sketch compatibility import: unsupported source fields may not be editable or survive export; keep the original .sketch file.".to_owned());
@@ -2387,6 +2433,7 @@ pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
     // Sketch archives normally name installed fonts without embedding their
     // bytes. Rendering requires portable resources; retain source identities
     // as format metadata and make the substitution visible before admission.
+    let mut large_booleans=Vec::new();
     for node in document.nodes.values_mut() {
         if node.kind == "hotspot" || node.bindings.get("interopLimited")
             .is_some_and(|value| value.starts_with("sketch-unknown-layer-class:"))
@@ -2426,13 +2473,23 @@ pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
             // encoding; never scale an already admitted document a second time.
             node.bindings.remove("sketchNormalizedCoordinates");
         }
+        if node.network.as_ref().is_some_and(|g| g.vertices.len()>10000) {
+            let closed=!node.bindings.get("sketchOpenPath").is_some_and(|v| v=="true");
+            node.vector_geometry=Some(crate::vector_geometry::VectorGeometry::ordered_network(node.network.as_ref().unwrap(),closed).map_err(Error::InvalidDocument)?);
+            node.network=None;
+            document.schema_version=document.schema_version.max(16);
+        }
         if let Some(group) = node.bindings.get("sketchSourceShapeGroup") {
             let source: Value = serde_json::from_str(group).map_err(|e| Error::MalformedJson(e.to_string()))?;
             let codes: Vec<i64> = serde_json::from_value(source["operations"].clone())
                 .map_err(|e| Error::MalformedJson(e.to_string()))?;
-            if node.children.is_empty() || node.children.len() > 64 || codes.len() != node.children.len() {
-                return Err(Error::Unsupported(format!("Sketch shapeGroup `{}` requires 1–64 operands", node.id)));
+            if node.children.len() > 4096 || codes.len() != node.children.len() {
+                return Err(Error::Unsupported(format!("Sketch shapeGroup `{}` exceeds source conversion allowance ({} operands)", node.id,node.children.len())));
             }
+            if node.children.len()>64 {large_booleans.push(node.id.clone());}
+            if node.children.is_empty() {
+                node.kind="vector".into();node.boolean_operation=None;
+            } else {
             let operations = codes.iter().skip(1).map(|code| match code {
                 -1 | 0 => Some(crate::boolean::Operation::Union),
                 value => boolean_from_code(*value),
@@ -2446,6 +2503,7 @@ pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
             node.boolean_operation = Some(operation);
             node.bindings.insert("sketchShapeGroupMappedOperation".into(), serde_json::to_string(&operation)
                 .map_err(|e| Error::MalformedJson(e.to_string()))?);
+            }
         } else if let Some(operation) = node.boolean_operation {
             node.bindings.insert("sketchOperandBooleanOperation".into(),
                 serde_json::to_string(&operation).map_err(|e| Error::MalformedJson(e.to_string()))?);
@@ -2501,6 +2559,7 @@ pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
             source.insert("signature".into(), text_layout_signature(node));
         }
     }
+    boolean_worksets::bound(&mut document,&large_booleans)?;
     let mut omitted = false;
     for node in document.nodes.values() {
         for key in ["sketchImportLossy", "sketchExportLossy", "sketchFlowUntranslated", "interopLimited"] {
@@ -3286,9 +3345,16 @@ fn sketch_placement(node: &Node) -> Option<([f64; 4], f64, [bool; 2])> {
 }
 
 fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result<Value> {
+    export_layer_impl(doc, id, images, true)
+}
+
+fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, descendants: bool) -> Result<Value> {
     let mut source_text_frame_restored = false;
-    let restored_node = doc.nodes.get(id).map(|node| {
+    let restored_node = doc.nodes.get(id).map(|node| -> Result<crate::scene::Node> {
         let mut node = node.clone();
+        if let Some(geometry)=node.vector_geometry.take() {
+            node.network=Some(geometry.network(crate::vector_geometry::MAX_COMMANDS).map_err(Error::InvalidDocument)?);
+        }
         let metadata = doc.design_system.as_ref()
             .and_then(|system| system.sketch_containers.get("nodeMetadata"))
             .and_then(|metadata| metadata.get(id));
@@ -3316,8 +3382,8 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
                 node.height = 0.;
             }
         }
-        node
-    });
+        Ok(node)
+    }).transpose()?;
     let node = restored_node.as_ref();
     let mut layer = Map::new();
     // Class refinement beyond pure kind (21 号 P1-5/P1-9): component frames
@@ -3341,6 +3407,8 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
             class = "symbolMaster";
         } else if matches!(n.kind.as_str(), "group" | "vector") && n.boolean_operation.is_some() {
             class = "shapeGroup";
+        } else if n.kind=="vector" && n.children.is_empty() && n.network.is_none() && n.vector_geometry.is_none() && n.bindings.contains_key("sketchSourceShapeGroup") {
+            class="shapeGroup";
         }
     }
     layer.insert("_class".into(), json!(class));
@@ -3409,6 +3477,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
         {
             layer.insert("frame".into(), frame.clone());
         }
+        if let Some(frame)=layer.get_mut("frame").and_then(Value::as_object_mut) {frame.insert("constrainProportions".into(),json!(n.constrain_proportions));}
         // P1-7: constraints → resizingConstraint bits (63 = Sketch's
         // measured default "free" value and must not re-import as a rule).
         if let Some(c) = &n.constraints {
@@ -3470,6 +3539,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
             layer.insert("sharedStyleID".into(), json!(sketch_shared_style_id(shared)));
         }
         style.insert("_class".into(), json!("style"));
+        style.insert("windingRule".into(),json!(if n.fill_even_odd(){1}else{0}));
         style.insert(
             "do_objectID".into(),
             json!(sketch_id(&format!("{id}-style"))),
@@ -3494,7 +3564,9 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
         layer.insert("style".into(), Value::Object(style));
         match class {
             "rectangle" => {
-                layer.insert("fixedRadius".into(), json!(n.corner_radius));
+                layer.insert("fixedRadius".into(), json!(if n.radii.iter().all(|r| *r == n.radii[0]) { n.radii[0] } else { 0. }));
+                let points = ["{0, 0}", "{1, 0}", "{1, 1}", "{0, 1}"].into_iter().zip(n.radii).map(|(point, radius)| json!({"_class":"curvePoint","point":point,"cornerRadius":radius,"curveMode":1,"hasCurveFrom":false,"hasCurveTo":false})).collect::<Vec<_>>();
+                layer.insert("points".into(), json!(points));
                 layer.insert("needsConversion".into(), json!(false));
             }
             "artboard" | "symbolMaster" => {
@@ -4077,6 +4149,7 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
         let mut children: Vec<Value> = n
             .children
             .iter()
+            .filter(|_| descendants)
             .map(|c| export_layer(doc, c, images))
             .collect::<Result<Vec<_>>>()?;
         if class == "shapeGroup" && let Some(operation) = n.boolean_operation {
@@ -4101,6 +4174,8 @@ fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result
         }
         if !children.is_empty() {
             layer.insert("layers".into(), Value::Array(children));
+        } else if class=="shapeGroup" {
+            layer.insert("layers".into(),json!([]));
         }
         if n.mask {
             layer.insert("hasClippingMask".into(), json!(true));
@@ -4264,7 +4339,26 @@ fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<
 }
 
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
+/// Source-backed property commits use the same codec, excluding cold children.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn export_sketch_layer_fields(doc: &Document, id: &str) -> Result<Value> {
+    let node = doc.nodes.get(id).ok_or_else(|| Error::MissingPart("Source node".into()))?;
+    if node.vector_brush.is_some() || node.repeat.is_some() || sketch_placement(node).is_none() {
+        return Err(Error::Unsupported("Sketch cannot preserve this edited geometry; keep the source draft".into()));
+    }
+    let settings = doc.color_management.unwrap_or_default();
+    settings.validate().map_err(Error::InvalidDocument)?;
+    if !matches!(settings.document_space, ColorSpace::Srgb | ColorSpace::DisplayP3) {
+        return Err(Error::Unsupported("Sketch requires an explicit SDR profile conversion".into()));
+    }
+    let mut images = ExportedImages { font_weight_axes:BTreeMap::new(), color_settings:settings, entries:Vec::new(), seen:Default::default() };
+    export_layer_impl(doc, id, &mut images, false)
+}
+
+/// Export the kernel document as a `.sketch` bundle Sketch can open.
 pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
+    let source=boolean_worksets::source_view(doc)?;
+    let doc=source.as_ref();
     if let Some(node) = doc.nodes.values().find(|n| n.vector_brush.is_some()) {
         return Err(Error::Unsupported(format!("Sketch cannot preserve editable vector brush on layer `{}`; preserve the native FD document or explicitly bake the brush before exporting", node.id)));
     }
@@ -4602,6 +4696,61 @@ fn import_fig_via_converter(bytes: &[u8]) -> Result<Document> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn large_source_boolean_is_bounded_for_render_and_exports_original_hierarchy() {
+        for code in 0..4 {
+        let layers=(0..204).map(|i|json!({"_class":"rectangle","do_objectID":format!("rect{i}"),"booleanOperation":code,"frame":{"x":i*3,"y":0,"width":1,"height":10}})).collect::<Vec<_>>();
+        let files=BTreeMap::from([("meta.json".into(),br#"{"version":136}"#.to_vec()),("document.json".into(),br#"{"colorSpace":1,"pages":[{"_ref":"pages/p"}]}"#.to_vec()),("pages/p.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"shapeGroup","do_objectID":"n","frame":{"width":612,"height":10},"layers":layers,"style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":0.2,"green":0.4,"blue":0.8,"alpha":1}}]}}]})).unwrap())]);
+        let report=finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();let mut document=report.document;document.raster_profile=Some(crate::fidelity::RasterProfile::FigmaSoftware);
+        document.validate().unwrap();assert!(document.nodes.values().filter(|n|n.boolean_operation.is_some()).all(|n|n.children.len()<=64));
+        let bytes=export_sketch(&document).unwrap();let parts=crate::sketch::archive::read(&bytes).unwrap();let page:Value=serde_json::from_slice(parts.iter().find(|(name,_)|name.starts_with("pages/")).unwrap().1).unwrap();assert_eq!(page["layers"][0]["layers"].as_array().unwrap().len(),204);
+        let mut reference=boolean_worksets::source_view(&document).unwrap().into_owned();let fills=reference.nodes["n"].fills.clone();
+        for (i,id) in reference.nodes["n"].children.clone().into_iter().enumerate(){let child=reference.nodes.get_mut(&id).unwrap();child.fills=fills.clone();child.visible=match code {1=>i==0,3=>false,_=>true};}
+        let root=reference.nodes.get_mut("n").unwrap();root.kind="group".into();root.boolean_operation=None;root.fills.clear();
+        let mut a=crate::Engine::new();let mut b=crate::Engine::new();a.load_document(&serde_json::to_string(&document).unwrap()).unwrap();b.load_document(&serde_json::to_string(&reference).unwrap()).unwrap();
+        let options=crate::RenderOptions{page_id:"p".into(),width:620,height:16,view:crate::View{x:0.,y:0.,zoom:1.},transparent:true,grid:false,pixel_preview:None,animation:None,raster_profile:crate::fidelity::RasterProfile::FigmaSoftware,interactive_effects:false,checkerboard:false};
+        let actual=a.render_linear(&options).unwrap();let expected=b.render_linear(&options).unwrap();let changed=actual.iter().zip(&expected).filter(|(a,b)|a!=b).count();assert_eq!(changed,0,"Sketch boolean code {code}");
+        }
+    }
+    #[test]
+    fn sketch_style_winding_controls_render_fill_and_survives_export() {
+        for (rule,inside) in [(0,true),(1,false)] {
+            let points=[[0.,0.],[1.,0.],[1.,1.],[0.,1.],[0.,0.],[1.,0.],[1.,1.],[0.,1.]].into_iter().map(|p|json!({"point":format!("{{{}, {}}}",p[0],p[1]),"hasCurveFrom":false,"hasCurveTo":false})).collect::<Vec<_>>();
+            let files=BTreeMap::from([("meta.json".into(),br#"{"version":136}"#.to_vec()),("document.json".into(),br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),("pages/p.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"shapePath","do_objectID":"n","isClosed":true,"frame":{"width":20,"height":20},"points":points,"style":{"windingRule":rule,"fills":[{"fillType":0,"isEnabled":true,"color":{"red":1,"green":0,"blue":0,"alpha":1}}]}}]})).unwrap())]);
+            let report=finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();
+            assert_eq!(crate::hit_test_fill_device(&report.document.nodes["n"],crate::math::Point::new(10.,10.),Transform::default()).unwrap(),inside);
+            let back=import_sketch_report(&export_sketch(&report.document).unwrap()).unwrap();assert_eq!(back.document.nodes["n"].network.as_ref().unwrap().fill_rule,if rule==0{"nonzero"}else{"evenodd"});
+        }
+    }
+    #[test]
+    fn extreme_perpendicular_linear_anchor_has_identical_mapping_and_keeps_raw_source() {
+        let source=json!({"gradientType":0,"from":"{510351200223232, 0}","to":"{510351200223232, 1}","stops":[{"position":0,"color":{"red":0.,"green":0.,"blue":0.,"alpha":1.}},{"position":1,"color":{"red":1.,"green":1.,"blue":1.,"alpha":1.}}]});
+        let mut reference=source.clone();reference["from"]=json!("{0, 0}");reference["to"]=json!("{0, 1}");
+        let a=gradient_paint(&source,1,[0.1,146.],ColorSpace::Srgb).unwrap();let b=gradient_paint(&reference,1,[0.1,146.],ColorSpace::Srgb).unwrap();assert_eq!(a,b);
+        let files=BTreeMap::from([("meta.json".into(),br#"{"version":136}"#.to_vec()),("document.json".into(),br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),("pages/p.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"rectangle","do_objectID":"n","frame":{"width":10,"height":146},"style":{"fills":[{"isEnabled":true,"fillType":1,"gradient":source}]}}]})).unwrap())]);
+        let report=finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();let bytes=export_sketch(&report.document).unwrap();let parts=crate::sketch::archive::read(&bytes).unwrap();let page:Value=serde_json::from_slice(parts.iter().find(|(name,_)|name.starts_with("pages/")).unwrap().1).unwrap();assert_eq!(page["layers"][0]["style"]["fills"][0]["gradient"]["from"],source["from"]);
+    }
+    #[test]
+    fn empty_sketch_shape_group_stays_empty_and_round_trips_as_a_group() {
+        let files=BTreeMap::from([("meta.json".into(),br#"{"version":136}"#.to_vec()),("document.json".into(),br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),("pages/p.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"shapeGroup","do_objectID":"n","frame":{"width":10,"height":10},"layers":[]}]})).unwrap())]);
+        let report=finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();assert!(report.document.nodes["n"].paths().unwrap().0.commands.is_empty());assert!(report.document.nodes["n"].boolean_operation.is_none());
+        let bytes=export_sketch(&report.document).unwrap();let parts=crate::sketch::archive::read(&bytes).unwrap();let page:Value=serde_json::from_slice(parts.iter().find(|(name,_)|name.starts_with("pages/")).unwrap().1).unwrap();assert_eq!(page["layers"][0]["_class"],"shapeGroup");assert_eq!(page["layers"][0]["layers"],json!([]));
+    }
+    #[test]
+    fn rectangle_corners_and_proportion_lock_admit_and_round_trip() {
+        let files=BTreeMap::from([
+            ("meta.json".into(),br#"{"version":136}"#.to_vec()),
+            ("document.json".into(),br#"{"pages":[{"_ref":"pages/00000000-0000-4000-8000-000000000001"}]}"#.to_vec()),
+            ("pages/00000000-0000-4000-8000-000000000001.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"rectangle","do_objectID":"00000000-0000-4000-8000-000000000002","frame":{"x":0,"y":0,"width":100,"height":100,"constrainProportions":true},"fixedRadius":12,"points":[{"cornerRadius":1},{"cornerRadius":2},{"cornerRadius":3},{"cornerRadius":4}]}]})).unwrap())
+        ]);
+        let report=finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();
+        let node=report.document.nodes.values().next().unwrap();
+        assert_eq!(node.radii,[1.,2.,3.,4.]);assert_eq!(node.corner_radius,0.);
+        assert!(report.document.schema_version>=7);
+        let roundtrip=import_sketch_report(&export_sketch(&report.document).unwrap()).unwrap();
+        assert_eq!(roundtrip.document.nodes[&node.id].radii,node.radii);
+        assert!(roundtrip.document.nodes[&node.id].constrain_proportions);
+    }
     #[test]
     fn import_input_policy_does_not_raise_expansion_budget() {
         assert_eq!(ARCHIVE_LIMITS.input, 1_073_741_824);

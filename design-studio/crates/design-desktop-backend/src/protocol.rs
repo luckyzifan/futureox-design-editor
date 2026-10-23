@@ -12,6 +12,8 @@ pub(crate) struct Request {
     pub id: Value,
     pub method: String,
     pub params: Value,
+    #[serde(default)]
+    pub scheduling: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -155,6 +157,12 @@ fn dispatch(
         source_hash: Option<String>,
     }
     match method {
+        "large.open" => backend.large_documents.open(parse_params(params)?, cancel),
+        method if method.starts_with("large.") => {
+            backend
+                .large_documents
+                .dispatch(method, parse_params(params)?, cancel)
+        }
         method if method.starts_with("automation.") => {
             let method = method.to_owned();
             workspace_call(backend, |store| {

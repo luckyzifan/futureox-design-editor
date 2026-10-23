@@ -11,6 +11,12 @@ pub struct Bounds {
     pub width: f64,
     pub height: f64,
 }
+pub fn paths_bounds(fill:&Path, stroke:&Path, matrix:Transform)->Option<Bounds>{
+    match (path_bounds(fill,matrix),path_bounds(stroke,matrix)){
+        (Some(a),Some(b))=>{let x=a.x.min(b.x);let y=a.y.min(b.y);Some(Bounds{x,y,width:(a.x+a.width).max(b.x+b.width)-x,height:(a.y+a.height).max(b.y+b.height)-y})},
+        (a,b)=>a.or(b),
+    }
+}
 #[derive(Default)]
 struct Builder {
     range: Option<[f64; 4]>,

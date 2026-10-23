@@ -2,6 +2,7 @@ import { defaultSizing, defaultTextStyle, type DesignDocument, type DesignNode, 
 import { localBounds, parentBounds, rotationDegrees, selectionLocalBounds, selectionParentBounds } from './canvas-view'
 import { propertyUnits, type PropertyUnits } from './property-units'
 import { multiply } from './geometry'
+import { kernelScaleGeometry } from './kernel/picking'
 
 export function commonValue<T>(values: T[]): T | undefined {
   return values.length && values.every((value) => Object.is(value, values[0])) ? values[0] : undefined
@@ -53,7 +54,7 @@ export function resizeNodeDimension(node: DesignNode, axis: 'width' | 'height', 
   Object.assign(node, resizedNode(node, next, node.constrainProportions ? ['width', 'height'] : [axis]))
   // Explicit values must not acquire oldSize*(newSize/oldSize) rounding;
   // otherwise equal batch edits can incorrectly display as mixed values.
-  if (node.kind !== 'group' && !node.network) {
+  if (node.kind !== 'group' && !node.network && !node.vectorGeometry) {
     const scale = axis === 'width' ? Math.hypot(node.transform[0], node.transform[1]) : Math.hypot(node.transform[2], node.transform[3])
     node[axis] = value / (units * scale)
   }
@@ -77,6 +78,7 @@ export function resizedNode(source: DesignNode, transform: Matrix, editedAxes?: 
   return {
     transform: [transform[0] / sx, transform[1] / sx, transform[2] / sy, transform[3] / sy, transform[4], transform[5]],
     width: source.width * sx, height: source.height * sy,
+    ...(source.vectorGeometry?{vectorGeometry:kernelScaleGeometry(source.vectorGeometry,sx,sy)}:{}),
     ...(source.network ? { network: { ...source.network,
       vertices: source.network.vertices.map(v => ({ ...v, ...point(v) })),
       edges: source.network.edges.map(e => ({ ...e, ...(e.c1 ? { c1: point(e.c1) } : {}), ...(e.c2 ? { c2: point(e.c2) } : {}) })),

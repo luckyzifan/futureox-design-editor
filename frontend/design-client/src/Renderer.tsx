@@ -231,7 +231,7 @@ const Surface = React.memo(function Surface({ n, fonts, textMode }: { n: DesignN
             {
               fill: color(p, `paint-${n.id}-${i}`),
               fillOpacity: p.opacity,
-              fillRule: n.kind === 'text' ? 'nonzero' : n.network?.fillRule || 'evenodd',
+              fillRule: n.kind === 'text' ? 'nonzero' : n.vectorGeometry?.fillRule || n.network?.fillRule || 'evenodd',
               style: { mixBlendMode: cssBlend(p.blend) },
             },
             p.id,
@@ -392,7 +392,7 @@ export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId
                   <Color key={s.id} paint={s.paint} id={`stroke-${id}-${i}`} n={n} />
                 ))}
               {(n.clip || background || n.strokes.some(s => s.visible && s.align === 'inside')) && <clipPath id={`clip-${id}`}>
-                <path d={shapeD(n, true)} fillRule={n.network?.fillRule || 'evenodd'} />
+                <path d={shapeD(n, true)} fillRule={n.vectorGeometry?.fillRule || n.network?.fillRule || 'evenodd'} />
               </clipPath>}
               {n.strokes.some(s => s.visible && s.align === 'outside') && <mask id={`outside-${id}`} x="-100%" y="-100%" width="300%" height="300%">
                 <rect
@@ -405,7 +405,7 @@ export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId
                 <path
                   d={shapeD(n, true)}
                   fill="black"
-                  fillRule={n.network?.fillRule || 'evenodd'}
+                  fillRule={n.vectorGeometry?.fillRule || n.network?.fillRule || 'evenodd'}
                 />
               </mask>}
               {mask && (

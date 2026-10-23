@@ -863,6 +863,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           [p.id],
           (n) => {
             n.network = p.network
+            delete n.vectorGeometry
           },
           '编辑矢量网络',
         )
@@ -1051,7 +1052,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           editor.update(
             editor.state.selection,
             (n) => {
-              if (!n.network) { n.network = editableNetwork(n); n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
+              if (!n.network) { n.network = editableNetwork(n); delete n.vectorGeometry; n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
               if (n.network) {
                 n.network.vertices = n.network.vertices.filter((p) => !vertices.has(p.id))
                 n.network.edges = n.network.edges.filter((e) => !vertices.has(e.from) && !vertices.has(e.to))
@@ -1073,7 +1074,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             const dx = e.key === 'ArrowLeft' ? -amount : e.key === 'ArrowRight' ? amount : 0
             const dy = e.key === 'ArrowUp' ? -amount : e.key === 'ArrowDown' ? amount : 0
             const delta = { x: inv[0] * dx + inv[2] * dy, y: inv[1] * dx + inv[3] * dy }
-            if (!n.network) { n.network = editableNetwork(n); n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
+            if (!n.network) { n.network = editableNetwork(n); delete n.vectorGeometry; n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
             n.network=translateVertices(n.network,vertices,delta)
           }, '微移矢量节点'))
         } else if (!editor.state.selection.length) {
@@ -2014,8 +2015,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }
   const vectorNode = useMemo(() => {
     const n = state.tool === 'vector' && state.selection.length === 1 ? state.doc.nodes[state.selection[0]] : null
-    return n && editor.topSelection().includes(n.id) && !['frame', 'section', 'group', 'text'].includes(n.kind) ? { ...n, network: editableNetwork(n) } : null
+    try{return n && editor.topSelection().includes(n.id) && !['frame', 'section', 'group', 'text'].includes(n.kind) ? { ...n, network: editableNetwork(n) } : null}catch{return null}
   }, [state.tool, state.selection, state.doc])
+  useEffect(()=>{
+    if(state.tool!=='vector'||state.selection.length!==1||vectorNode)return
+    const n=state.doc.nodes[state.selection[0]]
+    if(n?.vectorGeometry){try{editableNetwork(n)}catch(error){editor.set({tool:'select'});editor.notify(String(error))}}
+  },[state.tool,state.selection,state.doc,vectorNode,editor])
   const widthNode =
     state.tool === 'width' && state.selection.length === 1
       ? state.doc.nodes[state.selection[0]]
@@ -2618,7 +2624,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                         editor.update(
                           [vectorNode.id],
                           (n) => {
-                            if (!n.network) { n.network = editableNetwork(n); n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
+                            if (!n.network) { n.network = editableNetwork(n); delete n.vectorGeometry; n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
                             splitEdge(n.network!, edge.id)
                           },
                           '分割路径段',
@@ -2631,7 +2637,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                       editor.update(
                         [vectorNode.id],
                         (n) => {
-                          if (!n.network) { n.network = editableNetwork(n); n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
+                          if (!n.network) { n.network = editableNetwork(n); delete n.vectorGeometry; n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
                           splitEdge(n.network!, edge.id)
                         },
                         '分割路径段',
@@ -2703,7 +2709,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     editor.update(
                       [vectorNode.id],
                       (n) => {
-                        if (!n.network) { n.network = editableNetwork(n); n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
+                        if (!n.network) { n.network = editableNetwork(n); delete n.vectorGeometry; n.kind = 'vector'; delete n.arc; delete n.cornerRadius }
                         for (const edge of n.network!.edges) {
                           if (edge.from === v.id) {
                             const to = n.network!.vertices.find((p) => p.id === edge.to)!

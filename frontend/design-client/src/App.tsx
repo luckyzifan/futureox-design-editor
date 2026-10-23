@@ -15,6 +15,7 @@ import { recordLocalError } from './local-diagnostics'
 import { keyboardNudgeActive, keyboardNudgeOwnsKey } from './keyboard-nudge-gesture'
 import { BatchRenameDialog } from './BatchRenameDialog'
 import { NativeSketchDialog } from './NativeSketchDialog'
+import { LargeDocumentWorkspace } from './LargeDocumentWorkspace'
 import { nativeSketchCapabilities } from './native-sketch-capabilities'
 import { alignmentAvailability, alignSelection } from './alignment-availability'
 import { SettingsDialog } from './SettingsDialog'
@@ -179,6 +180,7 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [sketchMode, setSketchMode] = useState<'inspect' | 'edit' | null>(null)
+  const [largeDocument, setLargeDocument] = useState<{file?:File}|null>(null)
   const sketchCapabilities = nativeSketchCapabilities(desktopBridge())
   const [workspaceRootBusy, setWorkspaceRootBusy] = useState(false)
   const workspaceRootPending = useRef(false)
@@ -284,6 +286,10 @@ export default function App() {
   const [fileImports] = useState(() => new ImportOwner())
   const importMode = useRef<'open' | 'append'>('open')
   async function importDesignFile(f: File, mode: 'open' | 'append' = 'open') {
+    if(mode==='open'&&desktopBridge()?.largeDocument&&/\.(json|sketch)$/i.test(f.name)&&f.size>64*1024**2){
+      if(!ready||switching||desktopStatus.busy||!commitPendingEdits(editor)||editor.interactionActive){editor.notify('请结束当前操作后打开文件');return}
+      setLargeDocument({file:f});return
+    }
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 312)
     const diagnostic = beginImportDiagnostic(f, mode, trace)
     trace.result(ActionOutcome.cancelled, ActionReason.unobserved)
@@ -314,7 +320,10 @@ export default function App() {
       const retired = request.signal.aborted || !request.isCurrent()
       const cancelled = diagnostic.fail(error, retired) === ImportFailure.cancelled
       trace.result(cancelled ? ActionOutcome.cancelled : ActionOutcome.rejected, cancelled ? ActionReason.superseded : ActionReason.validation)
-      if (!cancelled && request.isCurrent()) { desktopPet.event('error'); const status = importInputStatus(error); editor.notify(error instanceof Error ? error.message : String(error), status) }
+      if (!cancelled && request.isCurrent()) {
+        if(mode==='open'&&desktopBridge()?.largeDocument&&/\.(json|sketch)$/i.test(f.name)&&/Sketch archive: Limit|archive resource limit:/.test(String(error))){setLargeDocument({file:f});return}
+        desktopPet.event('error'); const status = importInputStatus(error); editor.notify(error instanceof Error ? error.message : String(error), status)
+      }
     }
     finally { request.finish() }
     } finally { trace.finish() }
@@ -678,6 +687,7 @@ export default function App() {
   }, [ready, switching, desktopStatus.transitioning, editor, showHome])
   useEffect(() => {
     const command = (name: DesktopCommand) => {
+      if (largeDocument) return
       if (name === 'settings') { openSettings(); return }
       if (showHome) {
         if (!admitHomeDocumentCommand(name, { ready, switching, busy: desktopStatus.busy,
@@ -711,6 +721,7 @@ export default function App() {
       }
     }
     const shortcut = (e: KeyboardEvent) => {
+      if (largeDocument) return
       const settingsMod = shortcutPlatform() === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
       if (settingsMod && e.key === ',' && !e.shiftKey && !e.altKey && !e.repeat && !e.isComposing && e.keyCode !== 229 && !e.defaultPrevented) {
         e.preventDefault(); openSettings(); return
@@ -732,6 +743,7 @@ export default function App() {
     window.addEventListener('keydown', shortcut)
     const offCommand = desktop?.onCommand(command)
     const offClose = desktop?.onCloseRequested(({ requestId }) => {
+      if (largeDocument) return
       fileImports.invalidate()
       // Release the settings portal's focus/inert ownership before a dirty
       // document confirmation is rendered in the application root.
@@ -749,7 +761,7 @@ export default function App() {
         })
     })
     return () => { window.removeEventListener('keydown', shortcut); offCommand?.(); offClose?.() }
-  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning])
+  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument])
   function resumeEditor() {
     if (!ready) return
     setShowHome(false)
@@ -816,6 +828,13 @@ export default function App() {
     const item = toolbarCommands.find(item => item.command === command)
     return !item || !!item.disabled
   }
+  if (largeDocument && desktop?.largeDocument) return <LargeDocumentWorkspace bridge={desktop.largeDocument} parentEditor={editor} initialFile={largeDocument.file}
+    onExit={()=>setLargeDocument(null)} onWindowClose={async requestId=>{
+      const approved=!!desktopSession&&await desktopSession.requestClose()
+      const allow=approved&&!!desktopSession?.closeReady
+      const response=await desktop.respondToClose({allow,requestId})
+      if(!allow||!response.accepted)desktopSession?.cancelClose()
+    }}/>
   return (
     <div
       ref={panelHost}
@@ -1095,6 +1114,7 @@ export default function App() {
               <FolderOpen size={15} />
               导入 Sketch / FIG / SVG / PDF
             </button>
+            {desktop?.largeDocument&&<button type="button" disabled={!ready||switching||desktopStatus.busy||editor.interactionActive} onClick={()=>{if(!commitPendingEdits(editor))return;setMenu(false);setLargeDocument({})}}>打开大型 JSON / Sketch（4 GiB）…</button>}
             {(['inspect', 'edit'] as const).map(mode => <button type="button" key={mode}
               disabled={!ready || switching || desktopStatus.busy || s.busy || editor.interactionActive || !sketchCapabilities[mode]}
               title={sketchCapabilities[mode] ? (mode === 'inspect' ? '原生只读预览，不转换为当前画布，也不修改源文件' : '独立原生会话，仅支持已声明的编辑范围；另存为全新文件') : '当前宿主未提供此原生 Sketch 能力；可使用兼容格式导入'}

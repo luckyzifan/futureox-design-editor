@@ -13,6 +13,10 @@ function failure(code, message) {
 export const MAX_PENDING_BYTES = DOCUMENT_TRANSFER_BYTES + 8 * 1024 * 1024
 // Reserve large result envelopes too; this is a wire/admission bound, not a JS RSS limit.
 const responseReservations = new Map([
+  ['large.scene', 64 * 1024], ['large.sceneRead', 768 * 1024],
+  // A 2 MiB JSON fragment is itself a string inside the RPC envelope: reserve
+  // its worst-case quote/backslash escaping as well as bounded metadata.
+  ['large.read', 4 * 1024 * 1024 + 64 * 1024], ['large.project', 4 * 1024 * 1024 + 64 * 1024], ['large.children', 512 * 1024],
   ['automation.audit.list', 256 * 1024], ['automation.task.list', 512 * 1024],
   ['sketch.inspect',MAX_FRAME_BYTES],['sketch.session.preview',MAX_FRAME_BYTES],
   ['open', DOCUMENT_TRANSFER_BYTES],
@@ -30,11 +34,14 @@ const responseReservations = new Map([
 const responseReservation = (method) => responseReservations.get(method) || 4096
 const writeMethods = new Set(['automation.config.set', 'automation.audit.append', 'automation.task.put', 'sketch.session.resizeLegacyContainer', 'sketch.session.setTextOverride', 'sketch.session.setLeafFrame', 'sketch.session.saveAs', 'sketch.session.undo', 'sketch.session.redo', 'sketch.session.open', 'sketch.session.rename', 'sketch.session.close', 'save', 'recovery.write', 'recovery.remove', 'catalog.register', 'catalog.scan', 'workspace.commit', 'workspace.trash', 'workspace.restore'])
 
+for(const method of ['large.open','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo','large.export'])writeMethods.add(method)
+
 export class Sidecar extends EventEmitter {
-  constructor(executable, recoveryDir, { timeoutMs = 30_000, spawnProcess = spawn, catalogDb, workspaceDb, maxPendingBytes = MAX_PENDING_BYTES } = {}) {
+  constructor(executable, recoveryDir, { timeoutMs = 30_000, queueTimeoutMs = 600_000, spawnProcess = spawn, catalogDb, workspaceDb, maxPendingBytes = MAX_PENDING_BYTES } = {}) {
     super()
     if (!Number.isSafeInteger(maxPendingBytes) || maxPendingBytes < 1 || maxPendingBytes > MAX_PENDING_BYTES)
       throw new TypeError('Invalid aggregate request byte limit')
+    this.queueTimeoutMs = Math.max(timeoutMs, queueTimeoutMs)
     this.timeoutMs = timeoutMs
     this.maxPendingBytes = maxPendingBytes
     this.pendingBytes = 0
@@ -113,6 +120,17 @@ export class Sidecar extends EventEmitter {
         const assembled = this.assembler.accept(line)
         if (!assembled) continue
         const response = JSON.parse(assembled.toString('utf8'))
+        if (Object.hasOwn(response, 'desktopScheduling')) {
+          const event=response.desktopScheduling, pending=this.pending.get(event?.id)
+          if(Object.keys(response).length!==1 || !event || Object.keys(event).length!==2 || !pending ||
+            !['queued','running'].includes(event.phase) ||
+            event.phase==='queued' && pending.phase!=='submitted' ||
+            event.phase==='running' && pending.phase!=='queued') throw Error('Invalid scheduling receipt')
+          clearTimeout(pending.timer);pending.phase=event.phase
+          pending.timer=setTimeout(()=>this.fail(failure('BACKEND_TIMEOUT',event.phase==='queued'?'Backend queue wait exceeded its bound':'Backend execution timed out; verify files before retrying')),
+            event.phase==='queued'?this.queueTimeoutMs:this.executionTimeout(pending.method))
+          continue
+        }
         const pending = this.pending.get(response.id)
         if (!pending || !!response.error === Object.hasOwn(response, 'result'))
           throw new Error('Invalid response')
@@ -169,24 +187,30 @@ export class Sidecar extends EventEmitter {
     }
   }
 
+  executionTimeout(method) {
+    return ['large.open','large.export','large.project','large.apply','large.commitCanvas','large.undo','large.redo'].includes(method) ? Math.max(this.timeoutMs, 600_000) : this.timeoutMs
+  }
   request(method, params = {}) {
     if (this.stopped || this.closing) return Promise.reject(failure('BACKEND_UNAVAILABLE', 'Backend unavailable'))
-    if (this.admittedCount >= 8) return Promise.reject(failure('BUSY', 'Backend queue full'))
+    // Reserve one small control request for cancelling already-admitted work.
+    // This cannot add a ninth data job or bypass its byte admission.
+    const control = method === 'cancel' && typeof params.requestId === 'string' && this.pending.has(params.requestId) && ![...this.pending.values()].some(p => p.method === 'cancel')
+    if (this.admittedCount >= 8 && !control) return Promise.reject(failure('BUSY', 'Backend queue full'))
     const id = randomUUID()
     let frame, bytes
     try {
-      const wireBytes = assertDocumentSerialization({ id, method, params }, DOCUMENT_TRANSFER_BYTES)
+      const wireBytes = assertDocumentSerialization({ id, method, params, scheduling:true }, DOCUMENT_TRANSFER_BYTES)
       bytes = Math.max(wireBytes, responseReservation(method))
-      if (this.pendingBytes + bytes > this.maxPendingBytes)
+      if (this.pendingBytes + bytes > this.maxPendingBytes + (control ? 4096 : 0))
         return Promise.reject(failure('BUSY', 'Backend aggregate byte budget full'))
-      frame = JSON.stringify({ id, method, params })
+      frame = JSON.stringify({ id, method, params, scheduling:true })
     } catch (error) { return Promise.reject(failure(/working-memory/.test(error.message) ? 'TOO_LARGE' : 'INVALID_REQUEST', error.message)) }
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         // A transmitted commit may have reached disk. Never claim rollback or retry it.
         this.fail(failure('BACKEND_TIMEOUT', 'Backend timed out; verify files before retrying'))
-      }, this.timeoutMs)
-      const pending = { resolve, reject, timer, bytes, method, sent: false, written: false, completed: false, allQueued: false, outstandingWrites: 0 }
+      }, this.executionTimeout(method))
+      const pending = { resolve, reject, timer, bytes, method, phase:'submitted', sent: false, written: false, completed: false, allQueued: false, outstandingWrites: 0 }
       this.pendingBytes += bytes
       this.admittedCount++
       this.pending.set(id, pending)
@@ -194,6 +218,14 @@ export class Sidecar extends EventEmitter {
       this.writeQueue.push({ frames, next: frames.next(), pending })
       this.flushWrites()
     })
+  }
+
+  async cancelLargeDocument() {
+    const methods = new Set(['large.open','large.project','large.apply','large.commitCanvas','large.undo','large.redo','large.export'])
+    const jobs = [...this.pending].filter(([, pending]) => methods.has(pending.method))
+    const results = []
+    for (const [requestId] of jobs) results.push(await this.request('cancel', { requestId }))
+    return { requested: jobs.length, running: results.some(result => result.running), cancelled: results.some(result => result.cancelled) }
   }
 
   fail(error) {

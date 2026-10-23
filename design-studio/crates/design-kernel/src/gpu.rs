@@ -716,7 +716,7 @@ fn constant_fill_coverage(n: &Node, p: &crate::geometry_snapshot::Prepared, regi
     }
     let winding = crate::path::winding(Point::new(f64::from(r.x) + f64::from(r.w) / 2.,
         f64::from(r.y) + f64::from(r.h) / 2.), &p.fill);
-    Some(if n.kind == "text" || n.network.as_ref().is_some_and(|g| g.fill_rule == "nonzero") {
+    Some(if n.kind == "text" || !n.fill_even_odd() {
         winding != 0
     } else { winding % 2 != 0 })
 }
@@ -1579,7 +1579,7 @@ impl Compiler<'_> {
             None => Arc::new(fill_path.flatten(matrix, 0.015625)?),
         };
         let rule =
-            if n.kind == "text" || n.network.as_ref().is_some_and(|g| g.fill_rule == "nonzero") {
+            if n.kind == "text" || !n.fill_even_odd() {
                 "nonzero"
             } else {
                 "evenodd"
@@ -3048,4 +3048,35 @@ mod program_cache_invalidation_tests {
             assert_eq!(cache.order.len(), count);
         }
     }
+}
+
+#[cfg(test)]
+mod resolved_camera_regressions {
+ use super::*;
+ use serde_json::json;
+ #[test]
+ fn resize_preserves_unaffected_programs_and_matches_fresh_compile(){
+  let value=json!({"schemaVersion":16,"id":"d","name":"retention","pages":[{"id":"p","name":"p","background":"#ffffff","children":["a","b"]}],"nodes":{
+   "a":{"id":"a","kind":"ellipse","width":40,"height":40,"fills":[{"kind":"solid","color":"#ff0000"}]},
+   "b":{"id":"b","kind":"ellipse","width":40,"height":40,"transform":[1,0,0,1,500,0],"fills":[{"kind":"solid","color":"#00ff00"}]}}});
+  let mut engine=Engine::new();engine.load_document(&value.to_string()).unwrap();
+  let options:RenderOptions=serde_json::from_value(json!({"pageId":"p","width":128,"height":128,"view":{"x":0,"y":0,"zoom":1},"rasterProfile":"figmaSubpixel"})).unwrap();
+  let first=engine.compile_gpu_region(&options,Rect::new(0,0,128,128),None).unwrap().into_packet().unwrap();
+  let old=engine.camera_prepare.as_ref().unwrap().prepared["a"].fill.clone();
+  let mut after:crate::scene::Document=serde_json::from_value(value).unwrap();after.nodes.get_mut("b").unwrap().width=50.;
+  let patch=crate::editing::DocumentPatch{nodes:std::collections::BTreeMap::from([("b".into(),Some(after.nodes["b"].clone()))]),fields:Default::default()};
+  engine.apply_document_patch_with_damage(&patch).unwrap();
+  let second=engine.compile_gpu_region(&options,Rect::new(0,0,128,128),None).unwrap().into_packet().unwrap();
+  assert_eq!(first,second);
+  assert!(Arc::ptr_eq(&old,&engine.camera_prepare.as_ref().unwrap().prepared["a"].fill));
+  assert!(engine.gpu_compile_cache_stats()["hits"].as_u64().unwrap()>0);
+  let mut reference=Engine::new();reference.load_document(&serde_json::to_string(&after).unwrap()).unwrap();
+  assert_eq!(second,reference.compile_gpu_region(&options,Rect::new(0,0,128,128),None).unwrap().into_packet().unwrap());
+  // Visible geometry still invalidates and updates its sampled pixels/program.
+  after.nodes.get_mut("a").unwrap().width=70.;
+  let patch=crate::editing::DocumentPatch{nodes:std::collections::BTreeMap::from([("a".into(),Some(after.nodes["a"].clone()))]),fields:Default::default()};engine.apply_document_patch_with_damage(&patch).unwrap();
+  let changed=engine.compile_gpu_region(&options,Rect::new(0,0,128,128),None).unwrap().into_packet().unwrap();
+  reference.load_document(&serde_json::to_string(&after).unwrap()).unwrap();
+  assert_ne!(changed,second);assert_eq!(changed,reference.compile_gpu_region(&options,Rect::new(0,0,128,128),None).unwrap().into_packet().unwrap());
+ }
 }

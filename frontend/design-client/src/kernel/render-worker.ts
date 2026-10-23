@@ -51,7 +51,7 @@ import { OwnerTileCache, ownsExactTileBytes } from './owner-tile-cache'
 import { tileComputationDependsOnCamera } from './tile-computation-key'
 import { recoverFailedTileRenderer } from './tile-failure'
 import { recoverPreviewBudget, isRecoverablePreviewBudget } from './preview-budget-recovery'
-import { PreviewAdmission, isAnalyticProgramBudget } from './preview-tiles'
+import { PreviewAdmission, isAnalyticProgramBudget, isScenePathBudget } from './preview-tiles'
 import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
@@ -1038,7 +1038,7 @@ self.onmessage = (e) => {
             // One prepare guard shared by every tile of this request: the
             // kernel caches the flattened-geometry phase per camera, so the
             // whole-document walk happens once instead of once per tile.
-            const prepareViewport = tilePrepareViewport(tileViewport, renderOptions.view, requestedPrepareViewport)
+            let prepareViewport = tilePrepareViewport(tileViewport, renderOptions.view, requestedPrepareViewport)
             let hits = 0, certifiedHits = 0,
               rendered = 0,
               milliseconds = 0, tileCompileMs = 0, tileGraphMs = 0, tileFinishMs = 0, tileCheckpointMs = 0,
@@ -1075,11 +1075,21 @@ self.onmessage = (e) => {
             const compileTile = async (tile: RasterTile) => {
               if (!current()) throw Error('PREVIEW_CANCELLED')
               const at = performance.now()
-              const bytes = await compilePacket(kernel, JSON.stringify({ ...renderOptions,
+              const compile = () => compilePacket(kernel, JSON.stringify({ ...renderOptions,
                 view: { ...renderOptions.view, zoom: tile.zoom }, width: tile.width, height: tile.height,
                 gpuViewport: { x: tile.x + Math.floor(renderOptions.view.x), y: tile.y + Math.floor(renderOptions.view.y), w: tile.width, h: tile.height },
                 ...(prepareViewport ? { prepareViewport } : {}),
               }), packetWait?.controller.signal)
+              let bytes: Uint8Array
+              try { bytes = await compile() }
+              catch (error) {
+                if (!prepareViewport || !isScenePathBudget(error)) throw error
+                // A camera-wide preparation window is optional reuse, not
+                // admission for a bounded tile. Retry this exact crop once.
+                prepareViewport = undefined
+                if (!current()) throw Error('PREVIEW_CANCELLED')
+                bytes = await compile()
+              }
               return { bytes, ms: performance.now() - at, tile }
             }
             try { for (let tileOrderIndex = 0; tileOrderIndex < tileViewport.length; tileOrderIndex++) {
@@ -1134,7 +1144,7 @@ self.onmessage = (e) => {
                 // regional renderer subdivide it; a compiler admission error
                 // must not bypass the same recovery as a GPU allocation error.
                 if (!/GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(String(error)) &&
-                    !isAnalyticProgramBudget(error)) throw error
+                    !isAnalyticProgramBudget(error) && !isScenePathBudget(error)) throw error
               }
               const verifyMs = performance.now() - compileStarted + speculativeSavedMs, cached = !!result
               terminalDiagnostics.record('cache',{requestId:request.id,tileIndex,cached,reasonCode:cached?0:disableExactCache?3:request.debug?.disableCertifiedTileReuse?4:5,generation,fillGeneration})
@@ -1958,12 +1968,22 @@ async function renderTiledPreview(
         const prepared = tile.x === 0 && tile.y === 0 &&
           tile.width === crop?.width && tile.height === crop?.height ? preparedScene : undefined
         preparedScene = undefined
-        const scene = prepared ?? decodeScenePacket(
-          await compilePacket(kernel, JSON.stringify({ ...options, width: tile.width, height: tile.height,
-            view: options.view, gpuViewport: { x: (crop?.x || 0) + tile.x,
-              y: (crop?.y || 0) + tile.y, w: tile.width, h: tile.height },
-            ...(prepareViewport ? { prepareViewport } : {}) })),
-        ) as GpuScene
+        const compileRegion = () => compilePacket(kernel, JSON.stringify({ ...options, width: tile.width, height: tile.height,
+          view: options.view, gpuViewport: { x: (crop?.x || 0) + tile.x,
+            y: (crop?.y || 0) + tile.y, w: tile.width, h: tile.height },
+          ...(prepareViewport ? { prepareViewport } : {}) }))
+        let scene = prepared
+        if (!scene) {
+          let packet: Uint8Array
+          try { packet = await compileRegion() }
+          catch (error) {
+            if (!prepareViewport || !isScenePathBudget(error)) throw error
+            prepareViewport = undefined
+            checkCurrent()
+            packet = await compileRegion()
+          }
+          scene = decodeScenePacket(packet) as GpuScene
+        }
         scene.filterBatchLease = filterBatchLease
         checkCurrent()
         compileMs += performance.now() - t

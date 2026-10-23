@@ -70,9 +70,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 fn main() {
+    // Two bounded business lanes plus stdio/parser progress; an OS stdin read
+    // must not consume the final slot needed to publish a completed save.
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
-        .max_blocking_threads(3)
+        .max_blocking_threads(4)
         .enable_all()
         .build()
         .expect("Tokio runtime");

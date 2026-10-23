@@ -2,7 +2,7 @@
 // production host/math policy and enable only existing pass/budget telemetry.
 // node scripts/profile-canvas.mjs FIXTURE_FD NEW_OUTPUT_DIRECTORY
 import assert from 'node:assert/strict'
-import { cp, mkdir, readFile, writeFile, symlink, appendFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, writeFile, appendFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
@@ -18,8 +18,10 @@ const zooms=(process.env.DESIGN_PROFILE_ZOOMS||'50,100,47.3').split(',').map(Num
 assert(zooms.length&&zooms.every(n=>Number.isFinite(n)&&n>0&&n<=6400),'Invalid profile zooms')
 const host=path.join(output,'host');await mkdir(path.join(host,'dist'),{recursive:true})
 await cp(path.join(desktop,'src'),path.join(host,'src'),{recursive:true})
+await cp(path.join(desktop,'assets'),path.join(host,'assets'),{recursive:true})
 await writeFile(path.join(host,'package.json'),JSON.stringify({name:'forma-owned-profiler',version:'0.0.0',type:'module',main:'src/main.mjs'}))
-for(const name of ['bin','sidecar','fonts'])await symlink(path.join(desktop,'dist',name),path.join(host,'dist',name),'dir')
+// A later rebuild must not mutate the native participants of an earlier run.
+for(const name of ['bin','sidecar','fonts'])await cp(path.join(desktop,'dist',name),path.join(host,'dist',name),{recursive:true})
 process.env.VITE_DESIGN_GPU_TIMINGS='1';process.env.VITE_DESIGN_TRACE_PASSES='tile'
 await build({root:client,configFile:path.join(client,'vite.config.ts'),base:'./',define:{'import.meta.env.DEV':'true'},
  build:{outDir:path.join(host,'dist/renderer'),emptyOutDir:true,sourcemap:true}})
@@ -71,7 +73,7 @@ try{
    document.querySelector('.kernel-tiles')?.getAttribute('data-detail-ready')==='true',null,{timeout:180000})
   const errors=await page.locator('.kernel-status.error').allTextContents();if(errors.length)throw Error(errors.join('; '))
  }
- await expect(page.locator('.app-shell')).toHaveAttribute('data-desktop-ready','true',{timeout:60000});await settle()
+ await expect(page.locator('.app-shell')).toHaveAttribute('data-desktop-ready','true',{timeout:60000})
  phase='import';const importStart=performance.now();await page.locator('input[type=file][accept*=".fd"]').setInputFiles(fixture)
  await expect(page.getByLabel('文档名称',{exact:true})).toHaveValue(document.name,{timeout:120000})
  await expect(page.locator('.document-transition')).toHaveCount(0,{timeout:120000})

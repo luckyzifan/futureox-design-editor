@@ -149,17 +149,64 @@ pub fn combine(inputs: &[(Path, Transform, bool)], op: Operation) -> Result<Netw
     if edges == 0 {
         return Ok(network(vec![]));
     }
+    Ok(network(clip_paths(&paths, inputs, op, 10000)?))
+}
+
+// Curve control hulls conservatively bound every intersection. Limit the
+// sweep work as well as segment storage before admitting a dense render path.
+fn admit_dense_paths(paths: &[Vec<SimpleBezierPath>]) -> Result<(), String> {
+    let mut hulls = Vec::new();
+    for path in paths.iter().flatten() {
+        let mut from = path.0;
+        for &(a,b,to) in &path.1 {
+            let points = [from,a,b,to];
+            let x = points.iter().map(|p|p.0).fold(f64::INFINITY,f64::min)-0.001;
+            let y = points.iter().map(|p|p.1).fold(f64::INFINITY,f64::min)-0.001;
+            let xx = points.iter().map(|p|p.0).fold(f64::NEG_INFINITY,f64::max)+0.001;
+            let yy = points.iter().map(|p|p.1).fold(f64::NEG_INFINITY,f64::max)+0.001;
+            if ![x,y,xx,yy].iter().all(|v|v.is_finite()) { return Err("Invalid dense Boolean bounds".into()); }
+            hulls.push([x,y,xx,yy]); from=to;
+        }
+    }
+    if hulls.len() > crate::vector_geometry::MAX_COMMANDS { return Err("Dense Boolean input command budget exceeded".into()); }
+    // Select the sparser axis. A tall narrow contour can have thousands of
+    // disjoint edges sharing x; counting only x would falsely reject it.
+    let sweep_work = |axis:usize| {
+        let mut starts:Vec<_>=hulls.iter().map(|h|h[axis]).collect();
+        let mut ends:Vec<_>=hulls.iter().map(|h|h[axis+2]).collect();
+        starts.sort_by(f64::total_cmp);ends.sort_by(f64::total_cmp);
+        starts.iter().enumerate().map(|(i,start)| i.saturating_sub(ends.partition_point(|end|end<start))).sum::<usize>()
+    };
+    let work=[sweep_work(0),sweep_work(1)];let axis=usize::from(work[1]<work[0]);
+    // At most the pair work of the former 8192-edge all-pairs ceiling.
+    // Count actual 2D hull overlaps separately: parallel, disjoint segments
+    // sharing one coordinate must not be mistaken for intersections.
+    if work[axis] > 32_000_000 {return Err("Dense Boolean intersection work budget exceeded".into());}
+    hulls.sort_by(|a,b|a[axis].total_cmp(&b[axis]));
+    let other=1-axis;let mut active:Vec<[f64;4]>=Vec::new();let mut overlaps=0usize;
+    for hull in hulls {
+        active.retain(|old|old[axis+2]>=hull[axis]);
+        overlaps+=active.iter().filter(|old|old[other]<=hull[other+2]&&old[other+2]>=hull[other]).count();
+        if overlaps>2_000_000{return Err("Dense Boolean intersection work budget exceeded".into());}
+        active.push(hull);
+    }
+    Ok(())
+}
+
+fn clip_paths(paths: &[Vec<SimpleBezierPath>], inputs: &[(Path,Transform,bool)], op:Operation, output_limit:usize) -> Result<Vec<SimpleBezierPath>,String> {
     let accuracy = 0.001;
     let mut graph = GraphPath::new();
     for (i, p) in paths.iter().enumerate() {
         let mut operand = GraphPath::from_merged_paths(p.iter().map(|p| (p, PathLabel(i as u32))));
         // Operand self-intersections are split before cross-operand clipping.
         operand.self_collide(accuracy);
+        if operand.num_points() > crate::vector_geometry::MAX_COMMANDS { return Err("Boolean intersection graph budget exceeded".into()); }
         graph = if i == 0 {
             graph.merge(operand)
         } else {
             graph.collide(operand, accuracy)
         };
+        if graph.num_points() > crate::vector_geometry::MAX_COMMANDS { return Err("Boolean intersection graph budget exceeded".into()); }
     }
     graph.round(accuracy);
     graph.set_edge_kinds_by_ray_casting(|counts| {
@@ -180,13 +227,49 @@ pub fn combine(inputs: &[(Path, Transform, bool)], op: Operation) -> Result<Netw
     });
     graph.heal_exterior_gaps();
     let result: Vec<SimpleBezierPath> = graph.exterior_paths();
-    if result.iter().map(|p| p.1.len()).sum::<usize>() > 10000 {
+    if result.iter().map(|p| p.1.len()).sum::<usize>() > output_limit {
         return Err("Curve Boolean output budget exceeded".into());
     }
-    Ok(network(result))
+    Ok(result)
 }
-pub fn resolve(doc: &mut Document) -> Result<(), String> { resolve_cached(doc, true) }
+
+fn combine_dense(inputs:&[(Path,Transform,bool)], op:Operation) -> Result<crate::vector_geometry::VectorGeometry,String> {
+    let paths=inputs.iter().map(|(p,m,_)|curves(p,*m)).collect::<Result<Vec<_>,_>>()?;
+    admit_dense_paths(&paths)?;
+    // Dense imported contours can have thousands of distinct segments inside
+    // flo_curves' fixed 0.001 coincidence tolerance. Scale this derived work
+    // space by an exact power of two; preserve authored f64 inputs and tighten
+    // clipping to 2^-10 of the ordinary local tolerance, never coarsen it.
+    const WORK_SCALE:f64=1024.;
+    let scale=|p:Coord2|Coord2(p.0*WORK_SCALE,p.1*WORK_SCALE);
+    let working:Vec<Vec<SimpleBezierPath>>=paths.iter().map(|operand|operand.iter().map(|(start,curves)|
+        (scale(*start),curves.iter().map(|(a,b,to)|(scale(*a),scale(*b),scale(*to))).collect())).collect()).collect();
+    let result=clip_paths(&working, inputs, op, crate::vector_geometry::MAX_COMMANDS)?;
+    let unscale=|p:Coord2|Point::new(p.0/WORK_SCALE,p.1/WORK_SCALE);
+    let mut path=Path::default();
+    for (start,segments) in result {
+        if segments.is_empty() {continue;}
+        path.commands.push(Command::Move(unscale(start)));
+        for (a,b,p) in segments {path.commands.push(Command::Cubic(unscale(a),unscale(b),unscale(p)));}
+        path.commands.push(Command::Close);
+    }
+    crate::vector_geometry::VectorGeometry::from_paths(&path,&path,"evenodd")
+}
+thread_local! {
+    // Pure exact operands/results only; no document IDs, fonts, GPU resources,
+    // revision authority or mutable node ownership cross this cache boundary.
+    // The pre-existing cache retains its 8 MiB/1024-entry admission limits.
+    static RESOLUTION_MEMO: std::cell::RefCell<crate::curve_boolean_cache::Cache> = Default::default();
+}
+pub fn resolve(doc: &mut Document) -> Result<(), String> {resolve_roots(doc,None)}
+pub(crate) fn resolve_roots(doc:&mut Document,roots:Option<&std::collections::BTreeSet<String>>)->Result<(),String>{
+    RESOLUTION_MEMO.with(|memo| resolve_with_cache(doc, &mut memo.borrow_mut(), true, roots))
+}
+#[cfg(test)]
 fn resolve_cached(doc: &mut Document, memoize: bool) -> Result<(), String> {
+    resolve_with_cache(doc, &mut crate::curve_boolean_cache::Cache::default(), memoize, None)
+}
+fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache::Cache, memoize: bool, selected:Option<&std::collections::BTreeSet<String>>) -> Result<(), String> {
     fn visit(doc: &mut Document, id: &str, depth: usize, cache: &mut crate::curve_boolean_cache::Cache, memoize: bool) -> Result<(), String> {
         if depth > 64 {
             return Err("Boolean depth exceeded".into());
@@ -204,10 +287,21 @@ fn resolve_cached(doc: &mut Document, memoize: bool) -> Result<(), String> {
                     Ok((
                         n.paths()?.0,
                         n.transform,
-                        n.network.as_ref().is_none_or(|g| g.fill_rule == "evenodd"),
+                        n.fill_even_odd(),
                     ))
                 })
                 .collect::<Result<Vec<_>, String>>()?;
+            let segments:usize=inputs.iter().map(|(p,_,_)|p.commands.len()).sum();
+            if segments > 8192 {
+                if doc.schema_version < 16 { return Err("Dense Boolean render geometry requires schema 16".into()); }
+                let key=crate::curve_boolean_cache::Cache::key(&inputs,op);
+                let geometry=if let Some(value)=memoize.then(||cache.get_geometry(&key)).flatten(){value}else{
+                    let value=combine_dense(&inputs,op).map_err(|e|format!("Boolean node {id}: {e}"))?;
+                    if memoize{cache.insert_geometry(key,&value);}value
+                };
+                let node=doc.nodes.get_mut(id).unwrap(); node.network=None;node.vector_geometry=Some(geometry);
+                return Ok(());
+            }
             let g = if inputs.is_empty() {
                 network(vec![])
             } else {
@@ -217,14 +311,14 @@ fn resolve_cached(doc: &mut Document, memoize: bool) -> Result<(), String> {
                     if memoize { cache.insert(key, &result); } result
                 }
             };
-            doc.nodes.get_mut(id).unwrap().network = Some(g);
+            let node=doc.nodes.get_mut(id).unwrap();node.vector_geometry=None;node.network=Some(g);
         }
         Ok(())
     }
     let roots: Vec<_> = doc.pages.iter().flat_map(|p| p.children.clone()).collect();
-    let mut cache = crate::curve_boolean_cache::Cache::default();
     for id in roots {
-        visit(doc, &id, 0, &mut cache, memoize)?;
+        if selected.is_some_and(|roots|!roots.contains(&id)){continue;}
+        visit(doc, &id, 0, cache, memoize)?;
     }
     Ok(())
 }
@@ -244,4 +338,40 @@ mod memo_tests {
         let mut reference=fast.clone();resolve_cached(&mut fast,true).unwrap();resolve_cached(&mut reference,false).unwrap();
         assert_eq!(serde_json::to_vec(&fast).unwrap(),serde_json::to_vec(&reference).unwrap());
     }
+    #[test]
+    fn persistent_memo_is_geometry_exact_across_material_edits() {
+        let mut doc:Document=serde_json::from_value(serde_json::json!({"schemaVersion":16,"id":"d","name":"cache","pages":[{"id":"p","name":"p","background":"#ffffff","children":["b"]}],"nodes":{
+            "b":{"id":"b","kind":"vector","width":80,"height":80,"booleanOperation":"union","children":["a","c"]},
+            "a":{"id":"a","kind":"ellipse","width":48,"height":48},"c":{"id":"c","kind":"ellipse","width":48,"height":48,"transform":[1,0,0,1,20.125,0]}}})).unwrap();
+        RESOLUTION_MEMO.with(|memo|*memo.borrow_mut()=Default::default());
+        resolve(&mut doc).unwrap();let initial=doc.nodes["b"].network.clone();
+        doc.nodes.get_mut("a").unwrap().opacity=0.375;
+        resolve(&mut doc).unwrap();assert_eq!(doc.nodes["b"].network,initial);
+        assert!(RESOLUTION_MEMO.with(|memo|memo.borrow().hits)>0);
+        let mut reference=doc.clone();doc.nodes.get_mut("c").unwrap().transform.0[4]+=7.;reference.nodes.get_mut("c").unwrap().transform.0[4]+=7.;
+        resolve(&mut doc).unwrap();resolve_cached(&mut reference,false).unwrap();assert_eq!(doc,reference);assert_ne!(doc.nodes["b"].network,initial);
+    }
+    #[test]
+    fn dense_render_boolean_retains_source_and_rejects_dense_intersection_storms() {
+        use crate::vector_geometry::{Curve,VectorGeometry};
+        let mut fill=vec![Curve::Move([0.,0.])];
+        for side in 0..4 {for step in 1..=2200 {let t=step as f64/2200.;fill.push(Curve::Line(match side {0=>[40.*t,0.],1=>[40.,40.*t],2=>[40.*(1.-t),40.],_=>[0.,40.*(1.-t)]}));}}
+        fill.push(Curve::Close);let geometry=VectorGeometry{fill_rule:"nonzero".into(),fill,stroke:None};
+        let mut doc:Document=serde_json::from_value(serde_json::json!({"schemaVersion":16,"id":"d","name":"dense","pages":[{"id":"p","name":"p","background":"#ffffff","children":["b"]}],"nodes":{
+            "b":{"id":"b","kind":"vector","width":40,"height":40,"booleanOperation":"union","children":["a"]},
+            "a":{"id":"a","kind":"vector","width":40,"height":40,"vectorGeometry":geometry}}})).unwrap();
+        doc.validate().unwrap();let source=doc.nodes["a"].clone();resolve(&mut doc).unwrap();doc.validate().unwrap();
+        assert_eq!(doc.nodes["a"],source);assert!(doc.nodes["b"].boolean_operation.is_some());assert!(doc.nodes["b"].vector_geometry.is_some());
+        let path=doc.nodes["b"].paths().unwrap().0;
+        let input=source.paths().unwrap().0;
+        // Dense representation takes the same established clipping algebra as
+        // a four-edge rectangle, retaining the original source independently.
+        let simple=Path{commands:vec![Command::Move(Point::new(0.,0.)),Command::Line(Point::new(40.,0.)),Command::Line(Point::new(40.,40.)),Command::Line(Point::new(0.,40.)),Command::Close]};
+        let expected=combine(&[(simple,Transform::default(),false)],Operation::Union).unwrap();
+        assert_eq!(path.control_bounds(Transform::default()),expected.paths().unwrap().0.control_bounds(Transform::default()));
+        assert!(combine(&[(input,Transform::default(),false)],Operation::Union).is_err(),"point-editing path keeps its original segment limit");
+        let storm=vec![(Coord2(0.,0.),vec![(Coord2(0.,1.),Coord2(1.,0.),Coord2(1.,1.));9000])];
+        assert!(admit_dense_paths(&[storm]).unwrap_err().contains("work budget"));
+    }
+
 }

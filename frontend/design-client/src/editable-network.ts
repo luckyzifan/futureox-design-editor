@@ -1,6 +1,6 @@
 import type { DesignNode, Network } from './model'
 import { toNetwork } from './geometry'
-import { kernelSvgPaths } from './kernel/picking'
+import { kernelSvgPaths, kernelGeometryNetwork } from './kernel/picking'
 import { pathNetwork } from './path-network'
 
 /** Tangent-matched quarter-ellipse cubic control length. This editing draft is
@@ -11,6 +11,7 @@ export const ELLIPSE_EDIT_KAPPA = (4 / 3) * Math.tan(Math.PI / 8)
  * Stable primitive vertex IDs keep pointer/handle ownership across rerenders. */
 export function editableNetwork(source: DesignNode): Network {
   if (source.network) return structuredClone(source.network)
+  if (source.vectorGeometry) return kernelGeometryNetwork(source.vectorGeometry)
   const vertexId = (index: number) => `${source.id}:edit:v${index}`
   const edgeId = (index: number) => `${source.id}:edit:e${index}`
   if (source.kind === 'ellipse' && !source.arc) {
@@ -50,6 +51,7 @@ export function editableNetwork(source: DesignNode): Network {
 export function materializeEditableNetwork(source: DesignNode, edited: Network): DesignNode {
   const result: DesignNode = { ...structuredClone(source), kind: 'vector', network: structuredClone(edited) }
   delete result.arc
+  delete result.vectorGeometry
   delete result.cornerRadius
   return result
 }

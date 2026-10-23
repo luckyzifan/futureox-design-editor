@@ -9,7 +9,8 @@ import type { Driver, Texture, PathMesh, Rect, GpuScene } from './types'
 import { parameters, previewUniforms, type PreviewPresentation } from './types'
 import { MAX_SOLID_INSTANCES, SOLID_INSTANCE_FLOATS } from './solid-batch'
 const byteSampling =
-  'vec4 bsBilinear4(vec4 a,vec4 b,vec4 c,vec4 d,vec2 k,uint wordLimit,uint termCount){return mix(mix(a,b,k.x),mix(c,d,k.x),k.y);}'
+  'vec4 bsBilinear4(vec4 a,vec4 b,vec4 c,vec4 d,vec2 k,uint wordLimit,uint termCount){return mix(mix(a,b,k.x),mix(c,d,k.x),k.y);}' +
+  'vec2 bsBilinearChannelAlpha(vec4 a,vec4 b,vec4 c,vec4 d,vec2 k,uint channel,uint wordLimit,uint termCount){vec4 value=bsBilinear4(a,b,c,d,k,wordLimit,termCount);return vec2(value[channel],value.w);}'
 const solidVertex = `#version 300 es
 precision highp float;precision highp int;layout(std140) uniform Params {vec4 u[64];};uniform highp sampler2D sourceInstances;flat out int solidItem;
 vec4 item(int i){ivec2 size=textureSize(sourceInstances,0);return texelFetch(sourceInstances,ivec2(i%size.x,i/size.x),0);}

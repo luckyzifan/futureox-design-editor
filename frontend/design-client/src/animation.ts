@@ -20,6 +20,7 @@ export type Pose = Pick<
   | 'strokes'
   | 'effects'
   | 'network'
+  | 'vectorGeometry'
   | 'arc'
   | 'cornerRadius'
 >
@@ -66,6 +67,7 @@ export function pose(n: DesignNode): Pose {
     strokes,
     effects,
     ...(network ? { network } : {}),
+    ...(source.vectorGeometry?{vectorGeometry:source.vectorGeometry}:{}),
     ...(n.arc ? { arc: n.arc } : {}),
     ...(n.cornerRadius ? { cornerRadius: n.cornerRadius } : {}),
   })

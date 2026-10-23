@@ -30,4 +30,8 @@ description: Plan, implement, benchmark, review, or package Futureox Design Core
 
 修改后优先给出：本轮改了什么；哪些 G 门已实测；哪些 FAIL/BLOCKED/NOT_RUN；证据与源码/产物 hash；下一步尚缺什么。全应用完成声明须满足规范的联合判定，单项候选只报告自身已证明范围。
 
+- 4 GiB 大源文件与调度隔离的边界见[本机验证记录](../../../testing/verification-large-document-4gib-20261023/README.md)：完整源字节留在磁盘，局部画布仍使用现有 Editor/Rust/WASM；原生流式导入、导出、后台保存延迟和真实 GUI 像素必须分别报告，不能以展开容量替代全图渲染验收。
+
 - 2026-10-23 的 0246 / 0741 / 1338 组合增量见[合并验证记录](../../../testing/verification-increment-0741-1338-20261023/README.md)。精确滤波、managed 背景入口和空场景 compose 候选保持默认关闭；源码和 mock 测试不替代真实硬件、全编辑器或导出/HDR 门。
+
+- 2026-10-24 拓扑素材修复的真实 GUI、完整归档字节核对、硬件浮点对照及分段火焰图见[验证记录](../../../testing/verification-topology-repairs-20261023/README.md)。保留早期能显示但 winding 不一致的失败候选；最终 dense 工作容差收紧后真实几何 oracle 才通过。无采样重放 uiStalls=0 只证明该轮素材操作，不能替代完整 G2/G5、物理显示或退出协议验收。
