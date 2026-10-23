@@ -18,6 +18,7 @@ mod certified_filter;
 pub mod code_blocks;
 pub mod color;
 pub mod components;
+pub mod component_updates;
 pub mod constraint_projection;
 pub mod connectors;
 pub mod coverage;
@@ -69,6 +70,9 @@ pub mod math;
 /// its resource construction/destruction points.
 pub mod memory;
 pub mod capacity;
+pub mod large_json;
+pub mod vector_geometry;
+pub mod fig_geometry;
 mod mutation;
 pub mod ops;
 pub mod optics;
@@ -185,10 +189,7 @@ pub fn hit_test_fill_device(
     }
     let contours = fill.flatten_for_point(matrix, HIT_DEVICE_ERROR, point)?;
     let winding = path::winding(point, &contours);
-    let inside = if node
-        .network
-        .as_ref()
-        .is_none_or(|g| g.fill_rule == "evenodd")
+    let inside = if node.fill_even_odd()
     {
         winding.abs() % 2 != 0
     } else {
@@ -213,10 +214,7 @@ pub fn hit_test(node: &scene::Node, point: math::Point, tolerance: f64) -> Resul
     let (fill, stroke) = node.paths()?;
     let fill = fill.flatten(math::Transform::default(), 0.02)?;
     let winding = path::winding(point, &fill);
-    let inside = if node
-        .network
-        .as_ref()
-        .is_none_or(|g| g.fill_rule == "evenodd")
+    let inside = if node.fill_even_odd()
     {
         winding.abs() % 2 != 0
     } else {
@@ -260,10 +258,7 @@ pub fn hit_test_device(
     let (fill_path, stroke_path) = node.paths()?;
     let fill = fill_path.flatten_for_point(matrix, ERROR, point)?;
     let winding = path::winding(point, &fill);
-    let inside = if node
-        .network
-        .as_ref()
-        .is_none_or(|g| g.fill_rule == "evenodd")
+    let inside = if node.fill_even_odd()
     {
         winding.abs() % 2 != 0
     } else {
@@ -323,7 +318,7 @@ pub fn geometry(json: &str) -> Result<String, String> {
         let (fill, _) = n.paths()?;
         let contours = fill.flatten(n.transform, 0.01)?;
         inputs.push(
-            if n.network.as_ref().is_some_and(|g| g.fill_rule == "nonzero") {
+            if !n.fill_even_odd() {
                 boolean::boolean_with_rules(&[contours], boolean::Operation::Union, &[false])?
             } else {
                 contours
@@ -353,7 +348,7 @@ pub fn geometry(json: &str) -> Result<String, String> {
                         },
                         &[
                             false,
-                            n.network.as_ref().is_none_or(|g| g.fill_rule == "evenodd"),
+                            n.fill_even_odd(),
                         ],
                     )?;
                 }
@@ -440,6 +435,41 @@ mod wasm {
     #[wasm_bindgen]
     pub fn document_capacity_bytes() -> f64 { capacity::document_byte_limit() as f64 }
     #[wasm_bindgen]
+    pub fn decode_fig_network_json(bytes:&[u8],sx:f64,sy:f64)->Result<String,JsValue>{
+        let decoded=fig_geometry::decode_network(bytes,sx,sy).map_err(|e|JsValue::from_str(&e))?;
+        serde_json::to_string(&decoded).map_err(|e|JsValue::from_str(&e.to_string()))
+    }
+    #[wasm_bindgen]
+    pub fn decode_fig_commands_json(bytes:&[u8])->Result<String,JsValue>{
+        let path=fig_geometry::decode_commands(bytes).map_err(|e|JsValue::from_str(&e))?;
+        let commands=vector_geometry::encode(&path).map_err(|e|JsValue::from_str(&e))?;
+        serde_json::to_string(&commands).map_err(|e|JsValue::from_str(&e.to_string()))
+    }
+    #[wasm_bindgen]
+    pub fn network_geometry_json(json:&str)->Result<String,JsValue>{
+        capacity::check_document_bytes(json.len()).map_err(|e|JsValue::from_str(&e))?;
+        let network:scene::Network=serde_json::from_str(json).map_err(|e|JsValue::from_str(&e.to_string()))?;
+        if network.vertices.len()>10000||network.edges.len()>20000{return Err(JsValue::from_str("Editable network exceeds its working allowance"));}
+        let (fill,stroke)=network.paths().map_err(|e|JsValue::from_str(&e))?;
+        let geometry=vector_geometry::VectorGeometry::from_paths(&fill,&stroke,&network.fill_rule).map_err(|e|JsValue::from_str(&e))?;
+        serde_json::to_string(&geometry).map_err(|e|JsValue::from_str(&e.to_string()))
+    }
+    #[wasm_bindgen]
+    pub fn vector_geometry_network_json(json: &str) -> Result<String,JsValue> {
+        capacity::check_document_bytes(json.len()).map_err(|e|JsValue::from_str(&e))?;
+        let geometry:vector_geometry::VectorGeometry=serde_json::from_str(json).map_err(|e|JsValue::from_str(&e.to_string()))?;
+        let network=geometry.network(10000).map_err(|e|JsValue::from_str(&e))?;
+        serde_json::to_string(&network).map_err(|e|JsValue::from_str(&e.to_string()))
+    }
+    #[wasm_bindgen]
+    pub fn vector_geometry_scale_json(json: &str, sx:f64, sy:f64) -> Result<String,JsValue> {
+        capacity::check_document_bytes(json.len()).map_err(|e|JsValue::from_str(&e))?;
+        if !sx.is_finite()||!sy.is_finite()||sx<=0.||sy<=0. {return Err(JsValue::from_str("Invalid geometry scale"));}
+        let mut geometry:vector_geometry::VectorGeometry=serde_json::from_str(json).map_err(|e|JsValue::from_str(&e.to_string()))?;
+        geometry.validate().map_err(|e|JsValue::from_str(&e))?;geometry.scale(sx,sy);geometry.validate().map_err(|e|JsValue::from_str(&e))?;
+        serde_json::to_string(&geometry).map_err(|e|JsValue::from_str(&e.to_string()))
+    }
+    #[wasm_bindgen]
     pub fn validate_document_json(json: &str) -> Result<(), JsValue> {
         super::validate_document_json(json).map_err(|e| JsValue::from_str(&e))
     }
@@ -458,8 +488,8 @@ mod wasm {
         if m.0.iter().any(|v| !v.is_finite() || v.abs() > 1e7) {
             return Err(JsValue::from_str("Invalid bounds transform"));
         }
-        let (_, path) = n.paths().map_err(|e| JsValue::from_str(&e))?;
-        serde_json::to_string(&bounds::path_bounds(&path, m))
+        let (fill, stroke) = n.paths().map_err(|e| JsValue::from_str(&e))?;
+        serde_json::to_string(&bounds::paths_bounds(&fill, &stroke, m))
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
     #[wasm_bindgen]
@@ -609,6 +639,18 @@ mod wasm {
             (sample < 4).then_some(sample as usize),
         )
         .map_err(|e| JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn gradient_sampling_grid_region(original:&str, region:&str, matrix:&[f64], size:&[f64], paint:&str, sample:u32) -> Result<Vec<f32>,JsValue> {
+        let parse=||->Result<Vec<f32>,String>{
+            if sample>4{return Err("Invalid gradient sample index".into());}
+            crate::paint::gradient_sampling_grid_region(
+                serde_json::from_str(original).map_err(|e|format!("{e}"))?,
+                serde_json::from_str(region).map_err(|e|format!("{e}"))?,
+                math::Transform(matrix.try_into().map_err(|_|"Invalid gradient transform")?),
+                size.try_into().map_err(|_|"Invalid gradient node dimensions")?,
+                &serde_json::from_str(paint).map_err(|e|format!("{e}"))?, (sample<4).then_some(sample as usize))
+        };parse().map_err(|e|JsValue::from_str(&e))
     }
     #[wasm_bindgen]
     pub fn image_sampling_grid(
@@ -1308,6 +1350,7 @@ mod wasm {
         /// transfers it once per frame.
         staged_tiled_bytes: Vec<u8>,
         scene_delta: crate::scene_delta::SceneDelta,
+        component_updates: crate::component_updates::State,
     }
     #[wasm_bindgen]
     pub struct DocumentHistory {
@@ -1364,6 +1407,7 @@ mod wasm {
                 .fonts
                 .with_resources(&resources)
                 .map_err(|e| JsValue::from_str(&e))?;
+            self.component_updates.clear();
             Ok(())
         }
         pub fn text_geometry(
@@ -1437,7 +1481,7 @@ mod wasm {
             Self {
                 inner: Engine::new(),
                 staged_tiled_bytes: Vec::new(),
-                scene_delta: Default::default(),
+                scene_delta: Default::default(), component_updates:Default::default(),
             }
         }
         /// Sketch-parity tiled frame update (`updateWithInstruction:`): the
@@ -1544,9 +1588,8 @@ mod wasm {
             self.inner.set_text_quantization(on);
         }
         pub fn load_font(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
-            self.inner
-                .load_font(bytes)
-                .map_err(|e| JsValue::from_str(&e))
+            self.inner.load_font(bytes).map_err(|e| JsValue::from_str(&e))?;
+            self.component_updates.clear();Ok(())
         }
         pub fn load_document(&mut self, json: &str) -> Result<(), JsValue> {
             self.scene_delta.clear();
@@ -1760,6 +1803,12 @@ mod wasm {
         pub fn resolve_layout(&self, document: &str) -> Result<String, JsValue> {
             layout::changes(document, &self.inner.fonts).map_err(|e| JsValue::from_str(&e))
         }
+        pub fn resolve_components_full(&mut self, document:&str)->Result<String,JsValue>{
+            self.component_updates.full(document,&self.inner.fonts).map_err(|e|JsValue::from_str(&e))
+        }
+        pub fn resolve_components_patch(&mut self, patch:&str, receipt:u32)->Result<String,JsValue>{
+            self.component_updates.patch(patch,receipt,&self.inner.fonts).map_err(|e|JsValue::from_str(&e))
+        }
         pub fn resolve_components(&self, document: &str) -> Result<String, JsValue> {
             components::changes(document, &self.inner.fonts).map_err(|e| JsValue::from_str(&e))
         }
@@ -1774,7 +1823,7 @@ mod wasm {
         pub fn clear_gpu_scene_session(&mut self) { self.scene_delta.clear(); }
         pub fn fork_static_render_engine(&self) -> Option<VectorEngine> {
             self.inner.snapshot_static_worker().map(|inner| VectorEngine {
-                inner, staged_tiled_bytes: Vec::new(), scene_delta: Default::default(),
+                inner, staged_tiled_bytes: Vec::new(), scene_delta: Default::default(), component_updates:Default::default(),
             })
         }
         pub fn compile_gpu_packet(&mut self, options: &str) -> Result<Vec<u8>, JsValue> {

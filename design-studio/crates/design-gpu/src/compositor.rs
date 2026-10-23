@@ -56,6 +56,7 @@ fn batchable(n: &GpuNode) -> bool {
         && n.fills[0].visible
         && n.fills[0].kind == "solid"
         && n.fills[0].blend == "normal"
+                && n.fills[0].stops.len() <= 32
         && n.fill.analytic.is_some()
 }
 pub(crate) fn render(
@@ -436,6 +437,7 @@ impl Compositor<'_, '_, '_> {
                 && n.strokes.is_empty()
                 && n.fills.len() == 1
                 && n.fills[0].blend == "normal"
+                && n.fills[0].stops.len() <= 32
             {
                 let p = &n.fills[0];
                 let mask = self.mask(&n.fill, 4)?;
@@ -1294,7 +1296,7 @@ impl Compositor<'_, '_, '_> {
                 &futureox_design_kernel::paint::solid_rgba8(&p.color, p.opacity as f32)?.0,
             );
         }
-        if p.stops.len() > 32 {
+        if p.stops.len() > futureox_design_kernel::scene::MAX_GRADIENT_STOPS {
             return Err("Gradient stop budget exceeded".into());
         }
         let fit = ["cover", "contain", "stretch"]
@@ -1315,7 +1317,7 @@ impl Compositor<'_, '_, '_> {
         }
         let mut stops: Vec<_> = p.stops.iter().collect();
         stops.sort_by(|a, b| a.offset.total_cmp(&b.offset));
-        for (i, s) in stops.iter().enumerate() {
+        for (i, s) in stops.iter().enumerate().take(if stops.len() <= 32 { 32 } else { 0 }) {
             let color = rgb(self.scene, &s.color)?;
             u[208 + i] = self.scene.colors.get(&s.color).map_or(1., |c| c[3]);
             u[52 + i * 4..56 + i * 4].copy_from_slice(&[
@@ -1434,6 +1436,19 @@ impl Compositor<'_, '_, '_> {
                 grid
             };
             inputs.extend([mask, mask, grid]);
+        }
+        if p.stops.len() > 32 && matches!(p.kind.as_str(), "linear" | "radial" | "angular" | "diamond") {
+            let mut stops: Vec<_> = p.stops.iter().collect();
+            stops.sort_by(|a,b| a.offset.total_cmp(&b.offset));
+            if stops.len() > futureox_design_kernel::scene::MAX_GRADIENT_STOPS { return Err("Gradient stop budget exceeded".into()); }
+            let mut values = vec![0f32; stops.len()*8];
+            for (i,s) in stops.iter().enumerate() {
+                let color = rgb(self.scene, &s.color)?;
+                values[i*4..i*4+4].copy_from_slice(&[s.offset as f32,color[0],color[1],color[2]]);
+                values[stops.len()*4+i*4] = self.scene.colors.get(&s.color).map_or(1., |c| c[3]);
+            }
+            let table = self.frame.upload_parameters(Rect::new(0,0,stops.len() as u32,2), &values)?;
+            if inputs.len() == 1 { inputs.push(table); } else { inputs[1] = table; }
         }
         let out = self.frame.acquire(n.rect)?;
         let mut u = parameters(n.rect, &inputs);
@@ -1583,6 +1598,7 @@ impl Compositor<'_, '_, '_> {
                 && n.strokes.is_empty()
                 && n.fills.len() == 1
                 && n.fills[0].blend == "normal"
+                && n.fills[0].stops.len() <= 32
             {
                 // Coherent paint is already quantized before source-over. A
                 // single translucent paint needs no isolated temporary layer.

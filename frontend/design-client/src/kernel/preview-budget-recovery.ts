@@ -7,7 +7,7 @@ type PreviewRenderer = {
 export function isRecoverablePreviewBudget(error: unknown, rendererLost = false) {
   const message = String(error)
   return !rendererLost && !/device lost|GPU device|has been lost|设备已丢失/i.test(message) &&
-    /^(?:Error: )?(?:GPU (?:表面内存预算超限|surface budget exceeded|analytic interval program budget exceeded)|Invalid GPU (?:tile )?viewport)(?:$|[\s(:;])/.test(message)
+    /^(?:Error: )?(?:GPU (?:表面内存预算超限|surface budget exceeded|analytic interval program budget exceeded)|Invalid GPU (?:tile )?viewport|Scene path budget exceeded)(?:$|[\s(:;])/.test(message)
 }
 
 /** A failed optional preview does not own the last displayed frame. Retire its

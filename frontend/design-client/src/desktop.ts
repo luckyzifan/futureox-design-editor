@@ -54,6 +54,27 @@ export interface SketchSessionBridge {
   rename(request: { owner: SketchSessionOwner; expectedRevision: number; layerId: string; name: string }): Promise<DesktopResult<SketchSessionStatus>>
   close(request: { owner: SketchSessionOwner; expectedRevision: number; discard: boolean }): Promise<DesktopResult>
 }
+export type LargeDocumentOwner = Readonly<{documentId:string;sessionEpoch:number}>
+export type LargeDocumentStatus = Readonly<{owner:LargeDocumentOwner;revision:number;name:string;format:'json'|'sketch';expandedBytes:number;maxExpandedBytes:number;indexedObjects:number;dirty:boolean;undoCount:number;redoCount:number;saveWarning?:string}>
+export type LargeDocumentRequest = {owner:LargeDocumentOwner;expectedRevision:number}
+export type LargeDocumentRow = {key:string;id:string;name:string;kind:string;bytes:number;part:string;hasChildren:boolean}
+export interface LargeDocumentBridge {
+  progress():Promise<DesktopResult<{phase:string;processedBytes:number;totalBytes:number}>>
+  cancel():Promise<DesktopResult<{requested:number;running:boolean;cancelled:boolean}>>
+  open():Promise<DesktopResult<LargeDocumentStatus>>
+  openFile(file:File):Promise<DesktopResult<LargeDocumentStatus>>
+  children(request:LargeDocumentRequest&{key?:string;offset?:number;limit?:number;query?:string}):Promise<DesktopResult<{items:LargeDocumentRow[];total:number;hasMore:boolean}>>
+  read(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;hash:string;omittedFields:string[]}>>
+  apply(request:LargeDocumentRequest&{key:string;json:string;expectedHash:string}):Promise<DesktopResult<LargeDocumentStatus>>
+  project(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[]}>>
+  scene(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[];nodes:number;bytes:number}>>
+  sceneCommit(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus>>
+  commitCanvas(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus>>
+  undo(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus>>
+  redo(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus>>
+  export(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus&{exported:true;displayName:string}>>
+  close(request:LargeDocumentRequest):Promise<DesktopResult>
+}
 export type LocalPeer={id:string;name:string;documentId:string;pageId:string;view:[number,number,number];cursor:[number,number]|null;selection:string[]}
 export type NativeRenderReply<T = Record<never, never>> = ({ ok: true } & T) | { ok: false; error: string }
 /** design-kernel `GpuMemoryBreakdown` serde camelCase 导出(E6 四桶台账)。 */
@@ -95,6 +116,7 @@ export interface DesktopBridge {
     close(session: string): Promise<void>
   }
   readonly sketchSession?: SketchSessionBridge
+  readonly largeDocument?: LargeDocumentBridge
   readonly live?: {
     initial():Promise<DesktopResult<{documentId:string|null;sessionId:string}>>
     observe(value:{documentId:string;pageId:string;view:[number,number,number];cursor:[number,number]|null;selection:string[];viewHash:string}):Promise<DesktopResult<{viewHash:string;changed:boolean;peers:LocalPeer[];documents:WorkspaceDocument[]|null}>>

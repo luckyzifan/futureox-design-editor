@@ -15,7 +15,7 @@ test('classification cannot relabel device loss as a preview-budget retry', () =
 })
 
 test.each(['GPU 表面内存预算超限', 'GPU surface budget exceeded',
-  'GPU analytic interval program budget exceeded', 'Invalid GPU viewport', 'Invalid GPU tile viewport'])
+  'GPU analytic interval program budget exceeded', 'Scene path budget exceeded', 'Invalid GPU viewport', 'Invalid GPU tile viewport'])
 ('optional preview preserves the device and resident certificates after %s', async message => {
   const { renderer, invalidate } = fixture()
   expect(await recoverPreviewBudget(Error(message), renderer, invalidate)).toBe(true)

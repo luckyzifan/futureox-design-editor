@@ -321,102 +321,6 @@ pub fn read_fig(bytes: &[u8]) -> Result<(Value, BTreeMap<String, Vec<u8>>, Vec<V
     Ok((tree, images, kiwi_blobs))
 }
 
-/// Decode a Figma vector-network blob (layout per
-/// `figformat/vector_network.py`): header {u32 vertices, u32 segments,
-/// u32 regions}; per vertex {u32 style, f32 x, f32 y}; per segment
-/// {u32 v1, u32 rest, f32×2 t1, u32 v2, f32×2 t2}; regions {u32×2 header,
-/// per loop {u32 count, u32 idx…}} — coordinates divided by `scale`.
-fn decode_vector_network(net: &[u8], scale: (f64, f64)) -> Result<crate::scene::Network, Error> {
-    let u32_at = |o: usize| -> Option<u32> {
-        net.get(o..o + 4)
-            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
-    };
-    let f_at = |o: usize| -> Option<f32> {
-        net.get(o..o + 4)
-            .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
-    };
-    let div = |v: f64, s: f64| if v == 0.0 { 0.0 } else { v / s };
-    let num_v = u32_at(0).ok_or(Error::Malformed("network header".into()))? as usize;
-    let num_s = u32_at(4).ok_or(Error::Malformed("network header".into()))? as usize;
-    let num_r = u32_at(8).ok_or(Error::Malformed("network header".into()))? as usize;
-    let mut i = 12usize;
-    let mut network = crate::scene::Network {
-        filled_faces: None,
-        vertices: Vec::with_capacity(num_v),
-        edges: Vec::new(),
-        fill_rule: "nonzero".into(),
-    };
-    let mut vx = Vec::with_capacity(num_v);
-    let mut vy = Vec::with_capacity(num_v);
-    for _ in 0..num_v {
-        let _style = u32_at(i).unwrap_or(0);
-        let x = f_at(i + 4).unwrap_or(0.) as f64;
-        let y = f_at(i + 8).unwrap_or(0.) as f64;
-        vx.push(div(x, scale.0));
-        vy.push(div(y, scale.1));
-        i += 12;
-    }
-    for (idx, (x, y)) in vx.iter().zip(&vy).enumerate() {
-        network.vertices.push(crate::scene::Vertex {
-            id: format!("v{idx}"),
-            x: *x,
-            y: *y,
-        });
-    }
-    for s in 0..num_s {
-        let v1 = u32_at(i).unwrap_or(0) as usize;
-        let t1 = (
-            f_at(i + 8).unwrap_or(0.) as f64,
-            f_at(i + 12).unwrap_or(0.) as f64,
-        );
-        let v2 = u32_at(i + 16).unwrap_or(0) as usize;
-        let t2 = (
-            f_at(i + 20).unwrap_or(0.) as f64,
-            f_at(i + 24).unwrap_or(0.) as f64,
-        );
-        i += 28;
-        let (a, b) = if v1 <= v2 { (v1, v2) } else { (v2, v1) };
-        let (ta, tb) = if v1 <= v2 { (t1, t2) } else { (t2, t1) };
-        let Some(va) = network.vertices.get(a) else {
-            continue;
-        };
-        let Some(vb) = network.vertices.get(b) else {
-            continue;
-        };
-        let _ = s;
-        network.edges.push(crate::scene::Edge {
-            id: format!("e{s}"),
-            from: va.id.clone(),
-            to: vb.id.clone(),
-            c1: Some(crate::math::Point::new(
-                div(ta.0, scale.0),
-                div(ta.1, scale.1),
-            )),
-            c2: Some(crate::math::Point::new(
-                div(tb.0, scale.0),
-                div(tb.1, scale.1),
-            )),
-        });
-    }
-    // regions: winding rule + loops (kept for completeness)
-    for _ in 0..num_r {
-        let header = (u32_at(i).unwrap_or(0), u32_at(i + 4).unwrap_or(1));
-        i += 8;
-        if header.1 == 2 {
-            network.fill_rule = "nonzero".into();
-        } else {
-            network.fill_rule = "evenodd".into();
-        }
-        let num_loops = u32_at(i).unwrap_or(0) as usize;
-        i += 4;
-        for _ in 0..num_loops {
-            let n = u32_at(i).unwrap_or(0) as usize;
-            i += 4 + n * 4;
-        }
-    }
-    Ok(network)
-}
-
 // ---------------------------------------------------------------------------
 // nodeChanges → Document
 // ---------------------------------------------------------------------------
@@ -812,7 +716,7 @@ impl FigImporter {
         }
     }
 
-    fn node(&self, change: &Value, untranslated: &mut Vec<String>) -> Node {
+    fn node(&self, change: &Value, untranslated: &mut Vec<String>) -> Result<Node,Error> {
         let fig_type = str_of(change, "type").unwrap_or("GROUP");
         let kind = kind_of(fig_type).unwrap_or("group");
         let id = guid_string(change.get("guid").unwrap_or(&Value::Null));
@@ -1370,26 +1274,30 @@ impl FigImporter {
             && let Some(vd) = change.get("vectorData")
             && let Some(blob_id) = vd.get("vectorNetworkBlob").and_then(Value::as_u64)
         {
-            let scale = (
-                vd.get("normalizedSize")
-                    .map(|s| f64_of(Some(s), "x"))
-                    .unwrap_or(1.)
-                    .max(1e-6),
-                vd.get("normalizedSize")
-                    .map(|s| f64_of(Some(s), "y"))
-                    .unwrap_or(1.)
-                    .max(1e-6),
-            );
-            if let Some(blob) = self.kiwi_blobs.get(blob_id as usize) {
-                match decode_vector_network(blob, scale) {
-                    Ok(network) => {
-                        node.network = Some(network);
-                    }
-                    Err(e) => eprintln!("[fig] vector network decode failed: {e}"),
-                }
-            }
+            let scale = vd.get("normalizedSize").map(|size|(node.width/f64_of(Some(size),"x"),node.height/f64_of(Some(size),"y"))).unwrap_or((1.,1.));
+            let blob=self.kiwi_blobs.get(blob_id as usize).ok_or_else(||Error::Malformed("FIG vector blob is missing".into()))?;
+            let decoded=crate::fig_geometry::decode_network(blob,scale.0,scale.1).map_err(Error::Malformed)?;
+            if decoded.vertex_styles.iter().chain(&decoded.region_styles).any(|id|*id!=0) {untranslated.push("vector vertex/region style overrides require source style mapping".into());}
+            node.network=decoded.network;
+            node.vector_geometry=decoded.vector_geometry;
         }
-        node
+        if fig_type=="VECTOR" && let Some(entries)=change.get("fillGeometry").and_then(Value::as_array).filter(|v|!v.is_empty()) {
+            let mut fill=crate::path::Path::default();let mut rule=None;
+            for entry in entries {
+                let index=entry.get("commandsBlob").and_then(Value::as_u64).ok_or_else(||Error::Malformed("FIG fill geometry blob missing".into()))?;
+                let blob=self.kiwi_blobs.get(index as usize).ok_or_else(||Error::Malformed("FIG fill geometry blob unavailable".into()))?;
+                let current=if matches!(str_of(entry,"windingRule"),Some("ODD"|"EVENODD")){"evenodd"}else{"nonzero"};
+                if rule.is_some_and(|r|r!=current){return Err(Error::Unsupported("Mixed FIG fill winding requires separate paint geometry".into()));}rule=Some(current);
+                fill.commands.extend(crate::fig_geometry::decode_commands(blob).map_err(Error::Malformed)?.commands);
+            }
+            let stroke=if let Some(geometry)=&node.vector_geometry {geometry.paths().map_err(Error::Malformed)?.1}
+                else if let Some(network)=&node.network {network.paths().map_err(Error::Malformed)?.1}
+                else if node.strokes.iter().any(|s|s.visible&&s.width>0.) {return Err(Error::Unsupported("FIG fill outline has no corresponding stroke path".into()));}
+                else {fill.clone()};
+            node.vector_geometry=Some(crate::vector_geometry::VectorGeometry::from_paths(&fill,&stroke,rule.unwrap()).map_err(Error::Malformed)?);
+            node.network=None;
+        }
+        Ok(node)
     }
 
     /// Text: node-level style plus per-segment runs recovered from
@@ -2079,7 +1987,7 @@ pub fn document_from_canvas(
                 .to_string();
             canvases.push((position, id.clone()));
         } else {
-            let mut node = importer.node(record, &mut untranslated);
+            let mut node = importer.node(record, &mut untranslated)?;
             importer.import_layout(&mut node, record, parent, &mut untranslated)?;
             nodes.insert(id.clone(), node);
             let parent_id = record
@@ -2188,6 +2096,8 @@ pub fn document_from_canvas(
         || n.text_runs.iter().any(|r| r.text_case.is_some())) { version=version.max(15); }
     if doc.nodes.values().any(|n| n.fills.iter().chain(n.strokes.iter().map(|s|&s.paint)).any(|p|p.adjust.is_some())) { version=version.max(13); }
     if doc.nodes.values().any(|n| n.fills.iter().chain(n.strokes.iter().map(|s|&s.paint)).any(|p|p.tile.is_some())) { version=version.max(14); }
+    if doc.nodes.values().any(|n|n.vector_geometry.is_some()){version=version.max(16);}
+    if doc.nodes.values().any(|n|n.network.as_ref().is_some_and(|g|g.filled_faces.is_some())){version=version.max(10);}
     doc.schema_version = version;
     Ok(doc)
 }

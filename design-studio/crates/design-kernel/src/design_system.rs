@@ -203,7 +203,7 @@ fn validate_style_parts(doc: &Document, style: &SharedStyle) -> Result<(), Strin
                 t.0.iter().any(|v| !v.is_finite() || v.abs() > 1e7) || t.inverse().is_err()
             })
             || !matches!(paint.fit.as_str(), "cover" | "contain" | "stretch")
-            || paint.stops.len() > 32
+            || paint.stops.len() > crate::scene::MAX_GRADIENT_STOPS
             || !crate::blend::valid_mode(&paint.blend)
         {
             return Err("Invalid shared style stroke paint".into());

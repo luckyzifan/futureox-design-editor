@@ -178,6 +178,9 @@ pub struct Engine {
     /// lineage, keying the camera-scoped prepare cache in `gpu.rs`.
     pub(crate) geo_revision: u64,
     pub(crate) camera_prepare: Option<crate::gpu::CameraPrepare>,
+    // Move, never duplicate, the prior camera until the new derived document
+    // is known. Only identical topology/configuration can retain its clean nodes.
+    pending_camera: Option<(SharedDocument, crate::gpu::CameraPrepare, bool)>,
     pub(crate) camera_residency: crate::gpu::CameraResidency,
     render_index: Option<Arc<crate::render_index::RenderIndex>>,
     /// Sketch-parity tiled renderer state (tile residency, instructions,
@@ -218,6 +221,7 @@ impl Engine {
             linear_tiles_options: None,
             geo_revision: 0,
             camera_prepare: None,
+            pending_camera: None,
             camera_residency: crate::gpu::CameraResidency::default(),
             render_index: None,
             tiled: None,
@@ -227,6 +231,7 @@ impl Engine {
         self.prepare_animation(None)?;
         self.fonts.load(data)?;
         self.layout_dirty = true;
+        self.pending_camera = None;
         self.paths.clear();
         self.geo_revision += 1;
         self.camera_prepare = None;
@@ -331,7 +336,8 @@ impl Engine {
                 cache.paint_changed(self.geo_revision);
             }
         } else {
-            self.install_document(next)?;
+            let retain_index=crate::render_index::RenderIndex::preserved_by(source,patch);
+            self.install_document_with_index(next,retain_index)?;
         }
         Ok(damage)
     }
@@ -508,9 +514,17 @@ impl Engine {
             self.doc.as_ref().unwrap(), rects, patch.nodes.keys().cloned().collect(), &self.fonts)))
     }
     fn install_document(&mut self, doc: impl Into<Document>) -> Result<(), String> {
-        let doc = doc.into();
+        self.install_document_with_index(doc.into(),false)
+    }
+    fn install_document_with_index(&mut self,doc:Document,retain_index:bool)->Result<(),String>{
         doc.validate()?;
         let fonts = self.fonts.with_resources(&doc.fonts)?;
+        let previous = self.doc.as_ref().filter(|old| !self.layout_dirty && self.animation_sample.is_none()
+            && old.id==doc.id && old.pages==doc.pages && old.fonts==doc.fonts
+            && old.color_management==doc.color_management && old.raster_profile==doc.raster_profile
+            && old.animations.is_empty() && doc.animations.is_empty()).cloned();
+        let resolved_source=self.source_doc.as_ref().zip(self.doc.as_ref()).is_some_and(|(source,resolved)|source==resolved);
+        self.pending_camera = previous.zip(self.camera_prepare.take()).map(|(doc,cache)|(doc,cache,resolved_source));
         self.images.set_color_settings(doc.color_management);
         self.images.retain_document(&doc);
         if self.doc.as_ref().is_some_and(|old| old.fonts != doc.fonts) {
@@ -527,7 +541,9 @@ impl Engine {
         // Loading historically admits by input size; oversized normalized
         // documents keep that behaviour, but cannot take the local fast path.
         self.source_doc_bytes = crate::editing::serialized_document_size(&doc).ok();
-        self.render_index = Some(Arc::new(crate::render_index::RenderIndex::new(&doc)));
+        if !retain_index||self.render_index.is_none(){
+            self.render_index = Some(Arc::new(crate::render_index::RenderIndex::new(&doc)));
+        }
         let doc = SharedDocument::from(doc);
         self.source_doc = Some(doc.clone());
         self.doc = Some(doc);
@@ -706,10 +722,25 @@ impl Engine {
         }
         Ok(())
     }
+    fn restore_resolved_camera(&mut self) {
+        let Some((before,mut cache,_))=self.pending_camera.take() else{return};
+        let Some(after)=self.doc.as_ref() else{return};
+        // Reparenting, generated-node insertion/removal and order changes need
+        // the old full rebuild. Never infer unchanged topology from a patch hint.
+        if before.nodes.len()!=after.nodes.len() || before.nodes.iter().any(|(id,n)|
+            after.nodes.get(id).is_none_or(|next|n.children!=next.children)) {return;}
+        let changed=after.nodes.iter().filter(|(id,n)|before.nodes.get(*id)!=Some(*n)).map(|(id,_)|id.clone()).collect::<Vec<_>>();
+        let parents=after.nodes.iter().flat_map(|(id,n)|n.children.iter().map(move|child|(child.clone(),id.clone()))).collect();
+        cache.transformed(after,changed.into_iter(),self.geo_revision,&parents);
+        self.camera_prepare=Some(cache);
+    }
     pub(crate) fn resolve_layout(&mut self) -> Result<(), String> {
         if !self.layout_dirty {
             return Ok(());
         }
+        let scope=match (&self.pending_camera,&self.doc){
+            (Some((before,_,true)),Some(after))=>crate::component_updates::plan(before,after)?, _=>None,
+        };
         if let Some(doc) = &mut self.doc {
             if !doc
                 .nodes
@@ -724,16 +755,21 @@ impl Engine {
                     .any(|n| n.boolean_operation.is_some() || !n.text_runs.is_empty())
             {
                 self.layout_dirty = false;
+                self.restore_resolved_camera();
                 return Ok(());
             }
             let before = doc.clone();
-            if let Err(error) = crate::design_system::resolve_authored(doc)
+            let resolved=if let Some(scope)=&scope{
+                crate::component_updates::resolve_plan(doc,&self.fonts,scope)
+            }else{
+                crate::design_system::resolve_authored(doc)
                 .and_then(|()| crate::components::resolve(doc))
                 .and_then(|()| crate::layout::resolve(doc, &self.fonts))
                 .and_then(|()| crate::curve_boolean::resolve(doc))
                 .and_then(|()| crate::components::check_budget(doc))
                 .and_then(|()| doc.validate())
-                .and_then(|()| crate::repeat::resolve(doc))
+            };
+            if let Err(error) = resolved.and_then(|()| crate::repeat::resolve(doc))
                 .and_then(|()| {
                     self.text_base = doc
                         .nodes
@@ -759,6 +795,7 @@ impl Engine {
             });
         }
         self.layout_dirty = false;
+        self.restore_resolved_camera();
         Ok(())
     }
     pub fn render(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
@@ -1686,6 +1723,7 @@ impl Engine {
             linear_tiles_options: None,
             geo_revision: self.geo_revision,
             camera_prepare: None,
+            pending_camera: None,
             camera_residency: crate::gpu::CameraResidency::default(),
             render_index: self.render_index.clone(),
             tiled: None,
@@ -2013,7 +2051,7 @@ impl Painter<'_> {
             let mask = crate::raster::rasterize_sample(
                 &prepared.fill,
                 r,
-                n.network.as_ref().is_none_or(|g| g.fill_rule == "evenodd") && n.kind != "text",
+                n.fill_even_odd() && n.kind != "text",
                 Some(sample),
             );
             fill.push(AccountedMask {
@@ -2848,7 +2886,7 @@ impl Painter<'_> {
         let fill = self.rasterize(
             &prepared.fill,
             r,
-            n.network.as_ref().is_none_or(|g| g.fill_rule == "evenodd") && n.kind != "text",
+            n.fill_even_odd() && n.kind != "text",
         )?;
         if let Some(fx) = n.backdrop_effect().filter(|_| apply_effects) {
             let blurred = if bounded {

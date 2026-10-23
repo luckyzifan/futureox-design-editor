@@ -119,7 +119,12 @@ export function createRenderDiagnostics({enabled=false, detail=false, session=0,
   const aggregates=new Map()
   const provenance = event => seq === 0 || ['error','failure-summary','start','summary'].includes(event) ? producerIdentityFields() : {}
   const ring=[]; let dropped=0
-  function output(event, values) { const identity=provenance(event); const record=sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event,...sanitizeFields(values),...identity}); if(record) {try{sink(record)}catch{}} }
+  function localRecord(event, values, identity) {
+    const at=now(), next=++seq
+    if (![session,next,at].every(v=>Number.isFinite(v)&&v>=0&&v<=1e15) || !['main','worker','host'].includes(source)) return null
+    return {v:1,session,source,seq:next,at,event,...sanitizeFields(values),...sanitizeProducerIdentity(identity)}
+  }
+  function output(event, values) { const identity=provenance(event); const record=localRecord(event,values,identity); if(record) {try{sink(record)}catch{}} }
   function flush() {
     timer=undefined
     if(detail) {
@@ -138,7 +143,7 @@ export function createRenderDiagnostics({enabled=false, detail=false, session=0,
       if (timer===undefined) timer=schedule(flush,detail?250:1000)
       if(detail) {
         const identity=provenance(event)
-        const row=sanitizeRecord({v:1,session,source,seq:++seq,at:now(),event,...sanitizeFields(values),...identity})
+        const row=localRecord(event,values,identity)
         if(ring.length>=512){ring.shift();dropped++}
         if(row)ring.push(row)
         return

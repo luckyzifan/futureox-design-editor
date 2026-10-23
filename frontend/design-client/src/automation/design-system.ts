@@ -184,7 +184,7 @@ function validateSample(d: DesignDocument, sample: DesignNode) {
   delete n.component; delete n.componentSet; delete n.instance; delete n.instanceOrigin
   delete n.variableModes; delete n.bindings; delete n.styleRefs
   validateDocument({
-    id: d.id, name: d.name, schemaVersion: 15, fonts: d.fonts, colorManagement: d.colorManagement,
+    id: d.id, name: d.name, schemaVersion: Math.max(15,d.schemaVersion) as DesignDocument['schemaVersion'], fonts: d.fonts, colorManagement: d.colorManagement,
     rasterProfile: d.rasterProfile,
     pages: [{ ...d.pages[0], children: [n.id], guides: undefined }], nodes: { [n.id]: n },
   })

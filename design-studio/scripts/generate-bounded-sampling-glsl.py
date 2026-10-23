@@ -15,6 +15,14 @@ destination = ROOT / 'frontend/design-client/src/kernel/gpu/sampling.glsl'
 block = 'uint sbSelect(uint a,uint b,bool s){return s?b:a;}\nint sbSelect(int a,int b,bool s){return s?b:a;}\nfloat sbSelect(float a,float b,bool s){return s?b:a;}\n' + generator.translate(source).replace('rfSelect(', 'sbSelect(')
 text = destination.read_text()
 expected = generator.replace_block(text, 'BOUNDED BILINEAR', block)
+shared = (ROOT / 'design-studio/crates/design-kernel/shaders/sampling.wgsl').read_text()
+alpha = generator.translate(shared[shared.index('fn bsBilinearChannelAlpha'):])
+label = 'CHANNEL ALPHA'
+if '// BEGIN GENERATED '+label+'\n' in expected:
+    expected = generator.replace_block(expected,label,alpha)
+else:
+    expected += '\n// BEGIN GENERATED '+label+'\n'+alpha+'// END GENERATED '+label+'\n'
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--check', action='store_true')
 args = parser.parse_args()

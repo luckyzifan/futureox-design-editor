@@ -1,3 +1,4 @@
+import { decode_fig_network_json, decode_fig_commands_json, network_geometry_json } from './generated/design-kernel/design_kernel'
 import { assertImportInputBytes } from './import-input-policy'
 import { figArchive, inflateFigDeflate } from './import-fig-archive'
 export { figArchive } from './import-fig-archive'
@@ -176,50 +177,10 @@ const bytesData = (bytes: Uint8Array) => {
     binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
   return btoa(binary)
 }
-function vectorBlob(bytes: Uint8Array): Network {
-  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  let at = 0
-  const u = () => {
-      const x = v.getUint32(at, true)
-      at += 4
-      return x
-    },
-    f = () => {
-      const x = v.getFloat32(at, true)
-      at += 4
-      return x
-    }
-  const vertices = u(),
-    segments = u()
-  u()
-  if (vertices > 10000 || segments > 20000 || 12 + vertices * 12 + segments * 28 > bytes.length)
-    throw new Error('FIG 矢量数据长度无效')
-  const g: Network = { vertices: [], edges: [], fillRule: 'evenodd' }
-  for (let i = 0; i < vertices; i++) {
-    u()
-    g.vertices.push({ id: String(i), x: f(), y: f() })
-  }
-  for (let i = 0; i < segments; i++) {
-    u()
-    const a = u(),
-      tx = f(),
-      ty = f(),
-      b = u(),
-      ux = f(),
-      uy = f()
-    const p = g.vertices[a],
-      q = g.vertices[b]
-    if (!p || !q) throw new Error('FIG 矢量端点无效')
-    g.edges.push({
-      id: String(i),
-      from: String(a),
-      to: String(b),
-      ...(tx || ty || ux || uy
-        ? { c1: { x: p.x + tx, y: p.y + ty }, c2: { x: q.x + ux, y: q.y + uy } }
-        : {}),
-    })
-  }
-  return g
+function vectorBlob(bytes: Uint8Array, sx: number, sy: number, warnings: {add(message:string):unknown}): Pick<DesignNode,'network'|'vectorGeometry'> {
+  const decoded=JSON.parse(decode_fig_network_json(bytes,sx,sy)) as Pick<DesignNode,'network'|'vectorGeometry'>&{vertexStyles:number[];regionStyles:number[]}
+  if(decoded.vertexStyles.some(id=>id!==0)||decoded.regionStyles.some(id=>id!==0))warnings.add('FIG 矢量包含独立顶点或区域样式；几何与区域引用已保留，样式覆盖需要核对')
+  return {...(decoded.network?{network:decoded.network}:{}),...(decoded.vectorGeometry?{vectorGeometry:decoded.vectorGeometry}:{})}
 }
 
 /** The field names and enum values here come from the embedded native FIG schema,
@@ -609,10 +570,19 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
           : {}),
       }
     })
-    if (r.vectorData?.vectorNetworkBlob !== undefined)
-      warnings.add('矢量网络已保留，区域填充规则与区域样式需要核对')
-    if (r.vectorData?.vectorNetworkBlob !== undefined)
-      n.network = vectorBlob(getBlob(r.vectorData.vectorNetworkBlob))
+    if (r.vectorData?.vectorNetworkBlob !== undefined) {
+      const normalized=r.vectorData.normalizedSize
+      const sx=normalized?.x===undefined?1:n.width/normalized.x,sy=normalized?.y===undefined?1:n.height/normalized.y
+      Object.assign(n,vectorBlob(getBlob(r.vectorData.vectorNetworkBlob),sx,sy,warnings))
+    }
+    if(r.type==='VECTOR'&&Array.isArray(r.fillGeometry)&&r.fillGeometry.length){
+      const paths=r.fillGeometry.map((entry:any)=>({rule:entry.windingRule==='ODD'||entry.windingRule==='EVENODD'?'evenodd':'nonzero',commands:JSON.parse(decode_fig_commands_json(getBlob(entry.commandsBlob))) as import('./model').CurveCommand[]}))
+      if(paths.some((p:any)=>p.rule!==paths[0].rule))throw Error('FIG 混合区域填充规则需要独立几何工作集')
+      const source=n.vectorGeometry??(n.network?JSON.parse(network_geometry_json(JSON.stringify(n.network))) as NonNullable<DesignNode['vectorGeometry']>:undefined)
+      if(!source&&n.strokes.some(s=>s.visible&&s.width>0))throw Error('FIG 仅提供填充轮廓，缺少可精确保留描边的路径')
+      n.vectorGeometry={fillRule:paths[0].rule,fill:paths.flatMap((p:any)=>p.commands),...(source?{stroke:source.stroke??source.fill}:{})}
+      delete n.network
+    }
     if (kind === 'text') {
       n.text = r.textData?.characters || ''
       n.fontSize = r.fontSize || 16
@@ -701,6 +671,8 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     ? 5
     : 4
   if (Object.values(doc.nodes).some(n=>[...n.fills,...n.strokes.map(s=>s.paint)].some(p=>p.adjust))) doc.schemaVersion = 13
-  if (Object.values(doc.nodes).some(n=>(n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) doc.schemaVersion = 15
+  if(Object.values(doc.nodes).some(n=>n.vectorGeometry))doc.schemaVersion=16
+  else if(Object.values(doc.nodes).some(n=>n.network?.filledFaces!==undefined))doc.schemaVersion=Math.max(10,doc.schemaVersion) as typeof doc.schemaVersion
+  if (Object.values(doc.nodes).some(n=>(n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) doc.schemaVersion = Math.max(15,doc.schemaVersion) as typeof doc.schemaVersion
   return { document: doc, ...warnings.result() }
 }

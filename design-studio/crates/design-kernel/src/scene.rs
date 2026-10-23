@@ -5,6 +5,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+pub const MAX_GRADIENT_STOPS: usize = 64;
+
 fn yes() -> bool {
     true
 }
@@ -260,6 +262,8 @@ pub struct Node {
     pub inner_radius: f64,
     #[serde(default)]
     pub network: Option<Network>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_geometry: Option<crate::vector_geometry::VectorGeometry>,
     #[serde(default)]
     pub text: String,
     #[serde(default = "font_size")]
@@ -543,7 +547,7 @@ pub struct Vertex {
     pub y: f64,
 }
 impl Vertex {
-    fn point(&self) -> Point {
+    pub(crate) fn point(&self) -> Point {
         Point::new(self.x, self.y)
     }
 }
@@ -568,6 +572,10 @@ pub struct Network {
     pub fill_rule: String,
 }
 impl Node {
+    pub fn fill_even_odd(&self) -> bool {
+        self.vector_geometry.as_ref().map(|g| g.fill_rule.as_str())
+            .or_else(|| self.network.as_ref().map(|g| g.fill_rule.as_str())) != Some("nonzero")
+    }
     pub fn requires_schema4(&self) -> bool {
         self.boolean_operation.is_some()
             || self.mask_type.is_some()
@@ -622,6 +630,7 @@ impl Node {
             && self.inner_radius == other.inner_radius
             && self.vector_brush == other.vector_brush
             && self.network == other.network
+            && self.vector_geometry == other.vector_geometry
             && self.derived_path == other.derived_path
             && self.text == other.text
             && self.font_size == other.font_size
@@ -878,9 +887,7 @@ impl Node {
                         crate::boolean::Operation::Subtract
                     },
                     &[
-                        self.network
-                            .as_ref()
-                            .is_none_or(|g| g.fill_rule == "evenodd"),
+                        self.fill_even_odd(),
                         false,
                     ],
                 )?
@@ -898,6 +905,7 @@ impl Node {
         if let Some(g) = &self.network {
             return g.paths();
         }
+        if let Some(geometry) = &self.vector_geometry { return geometry.paths(); }
         let p = match self.kind.as_str() {
             "ellipse" => self.arc.map_or_else(
                 || Path::ellipse(self.width, self.height),
@@ -962,6 +970,12 @@ impl Document {
         nodes: impl IntoIterator<Item = (&'a String, &'a Node)>,
     ) -> Result<(), String> {
         for (id, n) in nodes {
+            if let Some(geometry) = &n.vector_geometry {
+                if self.schema_version < 16 || n.kind != "vector" || n.network.is_some() || n.vector_brush.is_some() {
+                    return Err("Vector render geometry requires schema 16 and one authoritative vector representation".into());
+                }
+                geometry.validate()?;
+            }
             if self.schema_version < 15 && (n.vector_brush.is_some()
                 || n.component.as_ref().is_some_and(|c| !c.slots.is_empty())
                 || n.instance.as_ref().is_some_and(|i| !i.slot_contents.is_empty())) {
@@ -1146,9 +1160,9 @@ impl Document {
                         t.0.iter().any(|v| !v.is_finite() || v.abs() > 1e7) || t.inverse().is_err()
                     })
                     || !matches!(paint.fit.as_str(), "cover" | "contain" | "stretch")
-                    || paint.stops.len() > 32
+                    || paint.stops.len() > MAX_GRADIENT_STOPS
                 {
-                    return Err("Invalid paint parameters".into());
+                    return Err(format!("Invalid paint parameters (kind={}, opacity={}, stops={}, transformInvertible={})", paint.kind, paint.opacity, paint.stops.len(), paint.transform.is_none_or(|t| t.inverse().is_ok())));
                 }
                 if paint.adjust.is_some()
                     && (paint.kind != "image"
@@ -1221,7 +1235,7 @@ impl Document {
                         .iter()
                         .any(|e| [e.c1, e.c2].into_iter().flatten().any(|p| !p.finite())))
             {
-                return Err("Invalid vector network".into());
+                return Err(format!("Invalid vector network ({} vertices, {} edges; finite coordinates within the admitted range are required)", g.vertices.len(), g.edges.len()));
             }
             for e in &n.effects {
                 e.validate_material()?;
@@ -1323,7 +1337,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].contains(&self.schema_version)
+        if ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32

@@ -5,6 +5,7 @@ import { diagnosticFileAdapter } from './diagnostic-file.mjs'
 import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
 import { registerAutomationBridge } from './automation-bridge.mjs'
 import { SketchSessionHost } from './sketch-session.mjs'
+import { LargeDocumentHost } from './large-document.mjs'
 import { readDesignClipboard, writeDesignClipboard } from './clipboard.mjs'
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor } from 'electron'
 import path from 'node:path'
@@ -180,6 +181,7 @@ const automationBridge = registerAutomationBridge({
   }),
 })
 const sketchSessions = new SketchSessionHost((method, params) => backend.request(method, params), dialog, () => window)
+const largeDocuments = new LargeDocumentHost((method, params) => backend.request(method, params), dialog, () => window, () => backend.cancelLargeDocument())
 let dirty = true
 let permitClose = false
 let closePending = false
@@ -552,6 +554,25 @@ register('catalog-open', async (value) => {
 })
 
 register('sketch-session-open', value => sketchSessions.open(value))
+register('large-document-open', value => largeDocuments.open(value), false)
+register('large-document-open-file', value => {
+  const selected = record(value, ['path'])
+  if (typeof selected.path !== 'string' || selected.path.length > 32768 || !path.isAbsolute(selected.path)) throw Error('Invalid selected file')
+  return largeDocuments.open(undefined, selected.path)
+}, false)
+register('large-document-read', value => largeDocuments.read(value), false)
+register('large-document-children', value => largeDocuments.children(value), false)
+register('large-document-apply', value => largeDocuments.apply(value), false)
+register('large-document-project', value => largeDocuments.project(value), false)
+register('large-document-scene', value => largeDocuments.scene(value), false)
+register('large-document-scene-commit', value => largeDocuments.sceneCommit(value), false)
+register('large-document-commit-canvas', value => largeDocuments.commitCanvas(value), false)
+register('large-document-undo', value => largeDocuments.history('undo', value), false)
+register('large-document-redo', value => largeDocuments.history('redo', value), false)
+register('large-document-export', value => largeDocuments.export(value), false)
+register('large-document-close', value => largeDocuments.close(value), false)
+register('large-document-cancel', value => largeDocuments.cancel(value), false)
+register('large-document-progress', value => largeDocuments.progress(value), false)
 register('sketch-session-rename', value => sketchSessions.rename(value))
 register('sketch-session-text-targets', value => sketchSessions.textTargets(value), false)
 register('sketch-session-text-value', value => sketchSessions.textValue(value), false)

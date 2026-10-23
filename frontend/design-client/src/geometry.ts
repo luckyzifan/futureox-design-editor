@@ -1,6 +1,6 @@
 import { multiply, inverse, apply, translate, rotate, around, matrixString, boxPoints, bounds, unionBounds } from './commands/affine'
 import { maximumStrokeWidth } from './stroke-profile'
-import { kernelBounds } from './kernel/picking'
+import { kernelBounds, kernelGeometryNetwork, kernelHit, kernelSvgPaths } from './kernel/picking'
 import {
   type Point,
   type Matrix,
@@ -233,6 +233,7 @@ export function primitivePoints(n: DesignNode): Point[] {
   )
 }
 export function shapeD(n: DesignNode, fill = false): string {
+  if(n.vectorGeometry){const paths=kernelSvgPaths(n);if(!paths)throw Error('矢量内核尚未就绪');return fill?paths.fill:paths.stroke}
   return n.network ? networkD(n.network, fill) : polygonD(primitivePoints(n), n.kind !== 'line')
 }
 export function contours(n: DesignNode): Point[][] {
@@ -244,6 +245,7 @@ export function contours(n: DesignNode): Point[][] {
 }
 export function toNetwork(n: DesignNode): Network {
   if (n.network) return structuredClone(n.network)
+  if (n.vectorGeometry) return kernelGeometryNetwork(n.vectorGeometry)
   const ps = primitivePoints(n),
     vertices = ps.map((p) => ({ ...p, id: uid() }))
   return {
@@ -288,7 +290,7 @@ export function scene(d: DesignDocument, pageId: string): SceneEntry[] {
         ]
       : boxPoints({ x: 0, y: 0, width: n.width, height: n.height })
     const b =
-      ((n.network||n.textPath||n.pathOffset) ? kernelBounds(n, wm) : null) || bounds((localPoints.length ? localPoints : [{x:0,y:0}]).map((p) => apply(wm, p)))
+      ((n.network||n.vectorGeometry||n.textPath||n.pathOffset) ? kernelBounds(n, wm) : null) || bounds((localPoints.length ? localPoints : [{x:0,y:0}]).map((p) => apply(wm, p)))
     const padding =
       Math.max(0, ...n.strokes.filter((s) => s.visible).map(maximumStrokeWidth)) *
       4 *
@@ -340,6 +342,7 @@ export function worldMatrix(d: DesignDocument, id: string, parents: ParentMap = 
     : n.transform
 }
 export function preciseHit(n: DesignNode, p: Point, tolerance: number): boolean {
+  if(n.vectorGeometry)return kernelHit(n,p,tolerance)
   if (n.kind === 'text' || n.kind === 'frame' || n.kind === 'section')
     return contains({ x: 0, y: 0, width: n.width, height: n.height }, p)
   if (n.fills.some((f) => f.visible) && pointInContours(p, contours(n), n.network?.fillRule))

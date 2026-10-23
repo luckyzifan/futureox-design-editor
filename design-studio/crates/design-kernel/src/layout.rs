@@ -801,6 +801,7 @@ pub struct Patch {
     pub width: f64,
     pub height: f64,
     pub network: Option<crate::scene::Network>,
+    pub vector_geometry: Option<crate::vector_geometry::VectorGeometry>,
     pub sizing: Option<Sizing>,
     pub constraints: Option<Constraints>,
 }
@@ -811,13 +812,16 @@ fn state(doc: &Document) -> Vec<(Transform, f64, f64)> {
         .collect()
 }
 pub fn resolve(doc: &mut Document, fonts: &Fonts) -> Result<(), String> {
-    crate::code_blocks::resolve(doc)?;
+    resolve_roots(doc,fonts,None)
+}
+pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::collections::BTreeSet<String>>)->Result<(),String>{
+    if roots.is_none(){crate::code_blocks::resolve(doc)?;}
     if !doc
         .nodes
         .values()
         .any(|n| n.layout.is_some() || n.sizing.is_some() || n.constraints.is_some())
     {
-        return crate::connectors::resolve(doc);
+        return if roots.is_none(){crate::connectors::resolve(doc)}else{Ok(())};
     }
     fn order(doc: &Document, id: &str, out: &mut Vec<String>) {
         for c in &doc.nodes[id].children {
@@ -828,6 +832,7 @@ pub fn resolve(doc: &mut Document, fonts: &Fonts) -> Result<(), String> {
     let mut ordered = Vec::new();
     for p in &doc.pages {
         for id in &p.children {
+            if roots.is_some_and(|roots|!roots.contains(id)){continue;}
             order(doc, id, &mut ordered)
         }
     }
@@ -835,15 +840,18 @@ pub fn resolve(doc: &mut Document, fonts: &Fonts) -> Result<(), String> {
     // Component/variable expansion does not run inside this solve. Retain two
     // scalars per constrained Hug text, keyed by this document's stable map ID;
     // discard them on return, before any subsequent edits or component rebuild.
+    let active:std::collections::BTreeSet<_>=ordered.iter().cloned().collect();
+    let scoped_state=|doc:&Document|ordered.iter().map(|id|{let n=&doc.nodes[id];(n.transform,n.width,n.height)}).collect::<Vec<_>>();
     let mut constrained_text_sizes = BTreeMap::new();
     for (id, n) in &mut doc.nodes {
+        if roots.is_some()&&!active.contains(id){continue;}
         resize(n, n.width, n.height);
         if size_text(n, fonts)? {
             constrained_text_sizes.insert(id.clone(), (n.width, n.height));
         }
     }
     for _ in 0..68 {
-        let before = state(doc);
+        let before = if roots.is_some(){scoped_state(doc)}else{state(doc)};
         for id in ordered.iter().rev() {
             constrain(doc, id)
         }
@@ -864,13 +872,13 @@ pub fn resolve(doc: &mut Document, fonts: &Fonts) -> Result<(), String> {
                 }
             }
         }
-        let after = state(doc);
+        let after = if roots.is_some(){scoped_state(doc)}else{state(doc)};
         if before.iter().zip(&after).all(|((a, w, h), (b, x, y))| {
             a.0.iter().zip(b.0).all(|(a, b)| (a - b).abs() < 1e-7)
                 && (w - x).abs() < 1e-7
                 && (h - y).abs() < 1e-7
         }) {
-            return crate::connectors::resolve(doc);
+            return if roots.is_none(){crate::connectors::resolve(doc)}else{Ok(())};
         }
     }
     Err("Layout did not converge; inspect nested hug/fill sizing".into())
@@ -897,6 +905,7 @@ pub fn changes(json: &str, fonts: &Fonts) -> Result<String, String> {
                     width: n.width,
                     height: n.height,
                     network: n.network.clone(),
+                    vector_geometry: n.vector_geometry.clone(),
                     sizing: n.sizing.clone(),
                     constraints: n.constraints.clone(),
                 },

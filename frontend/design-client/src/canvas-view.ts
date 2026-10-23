@@ -4,7 +4,7 @@ import { kernelSnapPoint, kernelBounds } from './kernel/picking'
 export { zoomAt } from './canvas-camera'
 
 export function localBounds(n: DesignNode): Bounds {
-  return ((n.network || n.textPath || n.pathOffset) ? kernelBounds(n) : null) || { x: 0, y: 0, width: n.width, height: n.height }
+  return ((n.network || n.vectorGeometry || n.textPath || n.pathOffset) ? kernelBounds(n) : null) || { x: 0, y: 0, width: n.width, height: n.height }
 }
 /** A group's authored width can be stale after editing its descendants. Measure
  * children in the group's own axes instead of rotating a world AABB twice. */

@@ -1,6 +1,6 @@
 'use strict'
 // Sandboxed preloads can require Electron, but must not expose it or ipcRenderer.
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 // Sandboxed preload cannot import local host modules. Accept only the host's
 // canonical numeric argument, with the same launch bounds as the pure parser.
 const gpuBudgetPrefix = '--core-gpu-working-budget-mib='
@@ -135,6 +135,29 @@ contextBridge.exposeInMainWorld(
     openCatalogFile: (value) => invoke('catalog-open', value),
     openDocument: () => invoke('open'),
     inspectSketch: () => invoke('sketch-inspect'),
+    largeDocument: Object.freeze({
+      open: () => invoke('large-document-open'),
+      // webUtils validates a real browser File. Renderer-constructed Files have
+      // no native path; arbitrary path strings are never accepted by this API.
+      openFile: file => {
+        const path = webUtils.getPathForFile(file)
+        if (!path) return Promise.reject(new Error('请选择本机 JSON / Sketch 文件'))
+        return invoke('large-document-open-file', { path })
+      },
+      read: value => invoke('large-document-read', value),
+      children: value => invoke('large-document-children', value),
+      apply: value => invoke('large-document-apply', value),
+      project: value => invoke('large-document-project', value),
+      scene: value => invoke('large-document-scene', value),
+      sceneCommit: value => invoke('large-document-scene-commit', value),
+      commitCanvas: value => invoke('large-document-commit-canvas', value),
+      undo: value => invoke('large-document-undo', value),
+      redo: value => invoke('large-document-redo', value),
+      export: value => invoke('large-document-export', value),
+      close: value => invoke('large-document-close', value),
+      cancel: () => invoke('large-document-cancel'),
+      progress: () => invoke('large-document-progress'),
+    }),
     sketchSession: Object.freeze({
       open: () => invoke('sketch-session-open'),
       rename: value => invoke('sketch-session-rename', value),
