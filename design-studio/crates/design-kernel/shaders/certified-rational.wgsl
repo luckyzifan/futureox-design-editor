@@ -12,7 +12,10 @@ var<private> cfUpper:array<u32,4>;
 var<private> cfWork:array<u32,4>;
 
 fn rfCertifiedLoad(index:u32)->u32 {
- let bytes:vec4<u32>=vec4<u32>(round(textureLoad(sourceC,vec2<i32>(i32(index),0),0)*255.));
+ let dimensions:vec2<u32>=vec2<u32>(textureDimensions(sourceC,0));
+ var point:vec2<i32>=vec2<i32>(i32(index),0);
+ if(dimensions.y>1u){point=vec2<i32>(i32(index%dimensions.x),i32(index/dimensions.x));}
+ let bytes:vec4<u32>=vec4<u32>(round(textureLoad(sourceC,point,0)*255.));
  return bytes.x|(bytes.y<<8u)|(bytes.z<<16u)|(bytes.w<<24u);
 }
 fn rfCertifiedSource(point:vec2<f32>)->vec4<f32> {

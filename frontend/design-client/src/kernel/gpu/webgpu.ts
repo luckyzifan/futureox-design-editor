@@ -8,7 +8,10 @@ import vectorShader from '../../../../../design-studio/crates/design-kernel/shad
 import { minifiedPreviewRgba8 } from './rgba8'
 import samplingShader from '../../../../../design-studio/crates/design-kernel/shaders/sampling.wgsl?raw'
 import { exactFilterWgsl, rationalStubWgsl } from './exact-filter'
+import { exactFilterPacketLayout, exactFilterPacketTexels } from './exact-filter-packet-layout'
+import { managedBackgroundEntryPoint, managedBackgroundWgsl } from './managed-background'
 import { compositorModes } from './compositor-modes'
+import { emptyManagedComposeScene } from './empty-scene-compose'
 import { TexturePrefix, PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { ByteTentPrefix, type ByteTentPrefixLease, planByteTentPrefix, type ByteTentOptions } from './byte-tent-prefix'
 import { prefixModule } from './prefix-module'
@@ -153,6 +156,7 @@ export class WebGpuDriver implements Driver {
   completedResourceEpoch = 0
   private rationalKernelBounds = new WeakMap<Texture, { packet: PrefixRationalBoundCertificate; resource: unknown; width: number; height: number }>()
   private pipelines = new PipelineRegistry()
+  private readonly emptySceneComposeEnabled = import.meta.env.VITE_DESIGN_EMPTY_SCENE_COMPOSE === '1'
   private curveMirror = new ResidentGeometry()
   private vertexMirror = new ResidentGeometry()
   private geometryUploadBytes = 0
@@ -626,6 +630,7 @@ export class WebGpuDriver implements Driver {
       toneMapping: { mode: this.hdr ? 'extended' : 'standard' },
     })
     this.hdr = this.hdr && this.context.getConfiguration()?.toneMapping?.mode === 'extended'
+    const paintEntryPoint = managedBackgroundEntryPoint(this.managed, this.displayMath, import.meta.env.VITE_DESIGN_MANAGED_MODE12_ENTRY)
     const compositorCode =
         `const BYTE_SURFACE:bool=${!this.managed};\n` +
         (this.managed
@@ -633,7 +638,7 @@ export class WebGpuDriver implements Driver {
           : byteSamplingShader +
             '\nfn rationalBlur(point:vec2<f32>,axis:vec2<f32>)->vec4<f32>{return vec4<f32>(0);}' + '\nfn bsCorner4(a:vec4<f32>,b:vec4<f32>,c:vec4<f32>,d:vec4<f32>)->vec4<f32>{return a;}') +
         '\n' +
-        vectorShader + `
+        vectorShader + (paintEntryPoint === 'managedBackgroundFragment' ? managedBackgroundWgsl : '') + `
 @fragment fn exactPresent(@builtin(position) p:vec4<f32>)->@location(0) vec4<f32>{
  let value=smp(sourceA,p.xy+u(0).xy,u(1));
  if(u(60).z>0.5){return displayColor(value);}
@@ -742,7 +747,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.paintPipeline = await this.device.createRenderPipelineAsync({
       layout,
       vertex: { module, entryPoint: 'quad' },
-      fragment: { module, entryPoint: 'fragment', ...(this.managed ? { constants: { COMPOSITOR_MODE: 12 } } : {}), targets: [{ format: this.layerFormat }] },
+      fragment: { module, entryPoint: paintEntryPoint, ...(this.managed ? { constants: { COMPOSITOR_MODE: 12 } } : {}), targets: [{ format: this.layerFormat }] },
       primitive: { topology: 'triangle-list' },
     })
     if (this.managed) this.modePipelines.set(12, this.paintPipeline)
@@ -794,7 +799,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       primitive: { topology: 'triangle-list' },
     })
     })
-    register('compose', async () => {
+    if (this.managed && this.emptySceneComposeEnabled) this.registerManagedComposePipelines(layout, module)
+    else register('compose', async () => {
     if (this.managed) {
       const make = (entryPoint: string) => this.device.createRenderPipelineAsync({ layout,
         vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint, targets: [{ format: this.layerFormat }] },
@@ -921,6 +927,41 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.initialized = true
     this.submittedBoundaryReady = true
   }
+  /** Opt-in same-device descriptor dependencies. The registry alone owns
+   * in-flight and sticky failure promises; this map only holds fulfilled objects.
+   * Neither completion path reads/reinstalls a scene's mutable policy. */
+  private registerManagedComposePipelines(layout: GPUPipelineLayout, module: GPUShaderModule) {
+    const registry = this.pipelines, device = this.device, format = this.layerFormat
+    const entries = ['exactNormal', 'exactPresent', 'exactNormalCorner', 'exactCopyCorner',
+      'exactSolidPaintOver', 'exactResolveStep', 'exactShadowOver', 'exactImageResolveStep'] as const
+    const key = (entry: string) => `compose:descriptor:${entry}`
+    const fulfilled = new Map<string, GPURenderPipeline>()
+    for (const entryPoint of [...entries, 'exactAlphaResolve']) registry.register(key(entryPoint), async () => {
+      const pipeline = await device.createRenderPipelineAsync({ layout,
+        vertex: { module, entryPoint: 'quad' },
+        fragment: { module, entryPoint, targets: [{ format: entryPoint === 'exactAlphaResolve' ? 'r32float' : format }] },
+        primitive: { topology: 'triangle-list' } })
+      fulfilled.set(entryPoint, pipeline)
+    }, false)
+    registry.register('compose:empty-copy', async () => {
+      await registry.prepare([key('exactPresent'), key('exactCopyCorner')])
+      this.copyPipeline = fulfilled.get('exactPresent')!
+      this.copyCornerPipeline = fulfilled.get('exactCopyCorner')!
+    }, false)
+    registry.register('compose', async () => {
+      // First use launches the original eight in the original order. Shared
+      // copy jobs may already be in flight/ready/failed from an empty scene.
+      // Registry allSettled drains every started sibling before publication or
+      // rejection; error selection is descriptor order, not first-reject time.
+      await registry.prepare(entries.map(key))
+      ;[this.normalPipeline, this.copyPipeline, this.normalCornerPipeline, this.copyCornerPipeline,
+        this.solidPaintOverPipeline, this.resolveStepPipeline, this.shadowOverPipeline, this.imageResolveStepPipeline] =
+        entries.map(entry => fulfilled.get(entry)!)
+      await registry.prepare([key('exactAlphaResolve')])
+      this.alphaResolvePipeline = fulfilled.get('exactAlphaResolve')!
+      this.overPipeline = this.normalPipeline!
+    })
+  }
   async prepareScene(scene: GpuScene, displayOnly = false) {
     this.sampleOnlyPrograms.resetFrame()
     // Bitmap-assembly display leaves intentionally set captureDisplay=false.
@@ -945,7 +986,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.scenePrograms = import.meta.env.VITE_DESIGN_PROGRAM_RESIDENCY !== '0' &&
       !paths.some(p=>p.analytic||p.area&&!p.area.fingerprint)
       ? paths.flatMap(p=>p.area?[p.area]:[]) : undefined
-    const required = new Set(['compose'])
+    const required = new Set([this.emptySceneComposeEnabled && emptyManagedComposeScene(scene, this.managed)
+      ? 'compose:empty-copy' : 'compose'])
     if (paths.length) required.add('solid')
     if (paths.some(p => p.area && p.count)) required.add('area')
     if (this.managed && paths.length) { required.add('binary'); required.add('scalar') }
@@ -1489,6 +1531,19 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   createScalarCoverage(width:number,height:number):Texture {
     const texture=this.createFormat(width,height,'r32float');texture.scalarCoverage=true;return texture
   }
+  supportsExactWholeTentSource(source: Texture): boolean {
+    if (!this.managed || this.displayMath || this.displayFilters || this.disposed || this.lost || !this.encoder ||
+        this.filterPipelines.length !== 4 || this.filterPipelines.some(pipeline => !pipeline) ||
+        !this.textures.has(source) || source.binaryCoverage || source.scalarCoverage || source.uniformColor || source.transparentZero)
+      return false
+    const proof = this.byteTentTextures.get(source), resource = source.resource as GPUTexture
+    return !!proof && proof.resource === resource && proof.format === 'rgba32float' &&
+      Number.isSafeInteger(source.width) && Number.isSafeInteger(source.height) && source.width > 0 && source.height > 0 &&
+      source.width === proof.width && source.height === proof.height && source.bytes === proof.width * proof.height * 16 &&
+      resource.width === proof.width && resource.height === proof.height && resource.format === 'rgba32float' &&
+      resource.dimension === '2d' && resource.depthOrArrayLayers === 1 && resource.sampleCount === 1 &&
+      !!(resource.usage & GPUTextureUsage.TEXTURE_BINDING) && !!(resource.usage & GPUTextureUsage.RENDER_ATTACHMENT)
+  }
   private createFormat(width: number, height: number, format: GPUTextureFormat): Texture {
     if (
       width < 1 ||
@@ -1603,6 +1658,30 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     )
     if (packet) this.rationalKernelBounds.set(t, { packet, resource: t.resource, width, height })
     return t
+  }
+  get exactFilterPacketMaxDimension(): number | undefined {
+    if (import.meta.env.VITE_DESIGN_EXACT_WHOLE_TENT_2048 !== '1' || !this.managed || this.displayMath ||
+        this.disposed || this.lost || !this.device) return
+    const limit = this.device.limits.maxTextureDimension2D
+    return Number.isSafeInteger(limit) && limit > 0 ? limit : undefined
+  }
+  uploadExactFilterPacket(bytes: Uint8Array, width: number, height: number): Texture {
+    const limit = this.exactFilterPacketMaxDimension, logicalTexels = exactFilterPacketTexels(bytes)
+    const layout = limit !== undefined && logicalTexels !== undefined ? exactFilterPacketLayout(logicalTexels, limit) : undefined
+    if (!layout || logicalTexels! <= limit! || layout.height < 2 || layout.width !== width || layout.height !== height)
+      throw new Error('Invalid exact filter packet row layout')
+    // Parse the original packet only. Padding cannot grant or repair a proof.
+    const packet = import.meta.env.VITE_DESIGN_PREFIX_TIGHT_BOUND === '1' ? certifyPrefixRationalBound(bytes) : undefined
+    let physical = bytes
+    if (layout.physicalTexels !== logicalTexels) {
+      physical = new Uint8Array(layout.physicalTexels * 4)
+      physical.set(bytes)
+    }
+    // Caller admitted layout.bytes before this first padding/f32 allocation.
+    // Keep the existing managed byte/255 transport, not an RGBA8 shortcut.
+    const texture = this.uploadLinear(Float32Array.from(physical, value => value / 255), width, height)
+    if (packet) this.rationalKernelBounds.set(texture, { packet, resource: texture.resource, width, height })
+    return texture
   }
   uploadAtlasLinear(
     texture: Texture,

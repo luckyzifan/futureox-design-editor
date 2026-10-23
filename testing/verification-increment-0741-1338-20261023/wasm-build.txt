@@ -1,0 +1,114 @@
+   Compiling unicode-ident v1.0.26
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling version_check v0.9.5
+   Compiling cfg-if v1.0.5
+   Compiling wasm-bindgen-shared v0.2.128
+   Compiling typenum v1.20.1
+   Compiling syn v3.0.6
+   Compiling simd-adler32 v0.3.10
+   Compiling syn v2.0.119
+   Compiling generic-array v0.14.7
+   Compiling crc32fast v1.5.2
+   Compiling adler2 v2.0.1
+   Compiling rustversion v1.0.23
+   Compiling proc-macro2-diagnostics v0.10.1
+   Compiling libm v0.2.16
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling miniz_oxide v0.9.1
+   Compiling bumpalo v3.20.3
+   Compiling yansi v1.0.1
+   Compiling serde_core v1.0.229
+   Compiling static_assertions v1.1.0
+   Compiling flate2 v1.1.10
+   Compiling wasm-bindgen-macro-support v0.2.128
+   Compiling wasm-bindgen v0.2.128
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling log v0.4.34
+   Compiling zerocopy v0.8.59
+   Compiling bitflags v2.13.2
+   Compiling heck v0.4.1
+   Compiling zmij v1.0.23
+   Compiling thiserror v2.0.21
+   Compiling ouroboros_macro v0.18.5
+   Compiling wasm-bindgen-macro v0.2.128
+   Compiling digest v0.10.7
+   Compiling core_maths v0.1.1
+   Compiling miniz_oxide v0.8.9
+   Compiling thiserror-impl v2.0.21
+   Compiling zerocopy-derive v0.8.59
+   Compiling fdeflate v0.3.7
+   Compiling bitmaps v2.1.0
+   Compiling im v15.1.0
+   Compiling pin-project-lite v0.2.17
+   Compiling serde v1.0.229
+   Compiling zip v2.4.2
+   Compiling memchr v2.8.3
+   Compiling bytemuck v1.25.2
+   Compiling aliasable v0.1.3
+   Compiling hashbrown v0.17.1
+   Compiling futures-task v0.3.34
+   Compiling futures-core v0.3.34
+   Compiling quick-error v2.0.1
+   Compiling either v1.18.0
+   Compiling pxfm v0.1.30
+   Compiling serde_json v1.0.151
+   Compiling equivalent v1.0.2
+   Compiling byteorder-lite v0.1.0
+   Compiling slab v0.4.12
+   Compiling smallvec v1.16.2
+   Compiling rand_core v0.6.4
+   Compiling zune-core v0.5.3
+   Compiling once_cell v1.21.4
+   Compiling moxcms v0.8.1 (<candidate>/vendor/moxcms)
+   Compiling zune-jpeg v0.5.15
+   Compiling rand_xoshiro v0.6.0
+   Compiling futures-util v0.3.34
+   Compiling image-webp v0.2.4
+   Compiling indexmap v2.14.2
+   Compiling itertools v0.14.0
+   Compiling zopfli v0.8.3
+   Compiling ouroboros v0.18.5
+   Compiling sized-chunks v0.6.5
+   Compiling png v0.18.1
+   Compiling ttf-parser v0.25.1
+   Compiling twox-hash v1.6.3
+   Compiling serde_derive v1.0.229
+   Compiling displaydoc v0.2.7
+   Compiling unicode-properties v0.1.4
+   Compiling unicode-ccc v0.4.0
+   Compiling unicode-script v0.5.8
+   Compiling twox-hash v2.1.5
+   Compiling unicode-bidi-mirroring v0.4.0
+   Compiling itoa v1.0.18
+   Compiling roots v0.0.8
+   Compiling flo_curves v0.8.1
+   Compiling rustybuzz v0.20.1
+   Compiling lz4_flex v0.11.6
+   Compiling ruzstd v0.7.3
+   Compiling half v2.7.1
+   Compiling image v0.25.10
+   Compiling js-sys v0.3.105
+   Compiling sha2 v0.10.9
+   Compiling sha1 v0.10.7
+   Compiling unicode-linebreak v0.1.5
+   Compiling unicode-segmentation v1.13.3
+   Compiling base64 v0.22.1
+   Compiling unicode-bidi v0.3.18
+   Compiling futureox-design-kernel v0.1.0 (<candidate>/design-studio/crates/design-kernel)
+warning: method `over_rgba8_blend` is never used
+   --> crates/design-kernel/src/blend.rs:101:19
+    |
+ 86 | impl Pixel {
+    | ---------- method in this implementation
+...
+101 |     pub(crate) fn over_rgba8_blend(self, source: Self, opacity: f32, mode: &str) -> Self {
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `futureox-design-kernel` (lib) generated 1 warning
+    Finished `release` profile [optimized] target(s) in 4m 43s
+Kernel built: {'profile': 'release', 'simd': False, 'wasmOpt': False, 'originalBytes': 39030071, 'bytes': 38469406, 'output': '<candidate>/frontend/design-client/src/generated/design-kernel'}

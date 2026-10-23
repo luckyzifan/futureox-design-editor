@@ -1,0 +1,40 @@
+vite v8.3.3 building client environment for production...
+transforming...
+✓ 2374 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                           1.56 kB │ gzip:      0.61 kB
+dist/assets/geometry-worker-CC_-Y6jn.js                  24.77 kB
+dist/assets/preparation-worker-VrFwbGJ9.js               49.84 kB
+dist/assets/document-preparation-worker-ClnwpKFL.js      97.20 kB
+dist/assets/import-worker-CC38878y.js                   121.57 kB
+dist/assets/render-worker-C3cHENRk.js                   832.35 kB
+dist/assets/design_kernel_bg-C5HVkIY1.wasm           38,469.40 kB │ gzip: 14,103.76 kB
+dist/assets/index-DZ9mYYFq.css                           91.77 kB │ gzip:     16.58 kB
+dist/assets/preload-helper-H6TJD8m_.js                    2.36 kB │ gzip:      1.17 kB │ map:     2.94 kB
+dist/assets/color-presenter-PKjvM2L7.js                   4.99 kB │ gzip:      2.14 kB │ map:    14.14 kB
+dist/assets/jsx-runtime-Wy9s6hX0.js                       8.96 kB │ gzip:      3.43 kB │ map:    33.13 kB
+dist/assets/svg-editable-text-DvXGIxN1.js                 8.97 kB │ gzip:      3.71 kB │ map:    23.41 kB
+dist/assets/AutomationPanel-Roz5JOhL.js                  14.61 kB │ gzip:      5.87 kB │ map:    34.70 kB
+dist/assets/terminal-quality-BPFPiUG1.js                 14.72 kB │ gzip:      6.27 kB │ map:    68.99 kB
+dist/assets/export-options-DgkyiZxU.js                   17.58 kB │ gzip:      8.24 kB │ map:   134.44 kB
+dist/assets/import-svg-sz3KOii8.js                       18.94 kB │ gzip:      7.66 kB │ map:    58.08 kB
+dist/assets/svg-values-gh5gJOxW.js                       20.49 kB │ gzip:      7.11 kB │ map:   102.19 kB
+dist/assets/design_kernel-BgJV88s6.js                    39.18 kB │ gzip:      7.24 kB │ map:   194.11 kB
+dist/assets/NativeSketchDialogContent-D2JOvn66.js        41.42 kB │ gzip:     14.43 kB │ map:   115.21 kB
+dist/assets/client-z5aWYGEs.js                           71.16 kB │ gzip:     23.84 kB │ map:   301.92 kB
+dist/assets/geometry-CREwCTAg.js                         94.63 kB │ gzip:     32.15 kB │ map:   300.48 kB
+dist/assets/export-B07ot9c7.js                          224.41 kB │ gzip:     70.04 kB │ map:   914.57 kB
+dist/assets/factory-wqp4BTrp.js                         609.17 kB │ gzip:    166.24 kB │ map: 1,216.49 kB
+dist/assets/index-D7wEWHb9.js                         1,577.83 kB │ gzip:    497.36 kB │ map: 5,538.98 kB
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[INEFFECTIVE_DYNAMIC_IMPORT] src/import-svg-artifact.ts is dynamically imported by src/persistence.ts but also statically imported by src/automation/bridge.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/svg-artifact.ts is dynamically imported by src/ExportPanel.tsx but also statically imported by src/automation/bridge.ts, src/automation/vector-artifact.ts, dynamic import will not move module into another chunk.
+
+✓ built in 2.15s

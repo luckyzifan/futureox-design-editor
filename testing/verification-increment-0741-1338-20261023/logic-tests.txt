@@ -1,0 +1,56 @@
+
+ RUN  v5.0.1 <candidate>/frontend/design-client
+
+ ❯ src/kernel/gpu/empty-scene-compose.test.ts (0 test)
+ ❯ src/kernel/gpu/large-exact-whole-tent.test.ts (0 test)
+ ❯ src/kernel/gpu/exact-filter-packet-layout.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/kernel/gpu/empty-scene-compose.test.ts [ src/kernel/gpu/empty-scene-compose.test.ts ]
+Error: Cannot find module '../../generated/design-kernel/design_kernel' imported from <candidate>/frontend/design-client/src/kernel/gpu/renderer.ts
+ ❯ src/kernel/gpu/renderer.ts:37:1
+     35| import {disjointNeutralGroup} from './neutral-group'
+     36| import { backdropOverlap, exactBlendLattice, interactionEffectRegion, …
+     37| import { gradient_blur_composite_uniforms } from '../../generated/desi…
+       | ^
+     38| import { inverse } from '../../geometry'
+     39| import { EncodeYield } from './encode-yield'
+ ❯ src/kernel/gpu/empty-scene-compose.test.ts:4:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/kernel/gpu/exact-filter-packet-layout.test.ts [ src/kernel/gpu/exact-filter-packet-layout.test.ts ]
+Error: Cannot find module '../../generated/design-kernel/design_kernel' imported from <candidate>/frontend/design-client/src/kernel/gpu/renderer.ts
+ ❯ src/kernel/gpu/renderer.ts:37:1
+     35| import {disjointNeutralGroup} from './neutral-group'
+     36| import { backdropOverlap, exactBlendLattice, interactionEffectRegion, …
+     37| import { gradient_blur_composite_uniforms } from '../../generated/desi…
+       | ^
+     38| import { inverse } from '../../geometry'
+     39| import { EncodeYield } from './encode-yield'
+ ❯ src/kernel/gpu/exact-filter-packet-layout.test.ts:3:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  src/kernel/gpu/large-exact-whole-tent.test.ts [ src/kernel/gpu/large-exact-whole-tent.test.ts ]
+Error: Cannot find module '../../generated/design-kernel/design_kernel' imported from <candidate>/frontend/design-client/src/kernel/gpu/renderer.ts
+ ❯ src/kernel/gpu/renderer.ts:37:1
+     35| import {disjointNeutralGroup} from './neutral-group'
+     36| import { backdropOverlap, exactBlendLattice, interactionEffectRegion, …
+     37| import { gradient_blur_composite_uniforms } from '../../generated/desi…
+       | ^
+     38| import { inverse } from '../../geometry'
+     39| import { EncodeYield } from './encode-yield'
+ ❯ src/kernel/gpu/large-exact-whole-tent.test.ts:2:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  3 failed | 3 passed (6)
+      Tests  43 passed (43)
+   Start at  23:03:26
+   Duration  2.03s (transform 46%, tests 29%, import 16%, worker 8%)
+
+    Isolate  6 workers spawned · ~134ms startup each (spawn + environment, per file)
+             at least ~672ms faster with isolate: false — reuses workers across files instead of one per file

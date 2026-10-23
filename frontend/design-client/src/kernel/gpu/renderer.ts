@@ -56,6 +56,7 @@ import { parameters, blends, rect, intersect } from './types'
 import type { Paint, Effect, ImageAdjust } from '../../model'
 import { CoverageCache } from './coverage-cache'
 import { ImmutableKernelCache, immutableKernelKey } from './immutable-kernel-cache'
+import { exactFilterPacketLayout, exactFilterPacketTexels } from './exact-filter-packet-layout'
 import { CoefficientByteCache } from './coefficient-byte-cache'
 import { ReverseIndexMap } from './reverse-index-map'
 import { solidRgba8 } from './rgba8'
@@ -4526,17 +4527,26 @@ export class GpuRenderer {
     this.kernelBuilds = this.kernelResidentHits = this.kernelUploadBytes = 0
   }
   private filterKernel(operator: string, radius: number, build: () => Uint8Array | Float32Array,
-    shape?: (values: Uint8Array | Float32Array) => [number, number]): Surface {
+    shape?: (values: Uint8Array | Float32Array) => [number, number], allowPacketRows = false): Surface {
     const domain = [this.driver.managed ? 'float' : 'byte', !!this.driver.linearLight,
       !!this.driver.hdr, !!this.driver.certifiedFilter].join(':')
-    const key = immutableKernelKey(operator, radius, domain)
+    const candidateLimit = allowPacketRows && !shape && radius > 512 && radius <= 2048 &&
+      (operator === 'rational-tent' || operator === 'certified-tent') &&
+      import.meta.env.VITE_DESIGN_EXACT_WHOLE_TENT_2048 === '1' && this.driver.name === 'webgpu' && this.driver.managed &&
+      this.driver.uploadExactFilterPacket ? this.driver.exactFilterPacketMaxDimension : undefined
+    const packetLimit = Number.isSafeInteger(candidateLimit) && candidateLimit! > 0 ? candidateLimit : undefined
+    const mathematicalKey = immutableKernelKey(operator, radius, domain)
+    // Old callers cannot pick up a folded texture from a prior new-lane call.
+    // Even small new-lane packets remain 1D but use this isolated GPU policy.
+    const key = packetLimit === undefined ? mathematicalKey :
+      immutableKernelKey(operator, radius, `${domain}:packet-rows-v1:${packetLimit}`)
     const frame = operator.startsWith('certified-') ? this.certifiedKernels : this.blurKernels
     const existing = frame.get(key)
     if (existing) return existing
     let texture = this.retainKernels ? this.kernelCache.get(key, this.driver.resourceEpoch!) : undefined
     if (texture) this.kernelResidentHits++
     else {
-      const cpuKey = operator === 'certified-tent' ? `cpu-u8-v1/${key}` : undefined
+      const cpuKey = operator === 'certified-tent' ? `cpu-u8-v1/${mathematicalKey}` : undefined
       let values: Uint8Array | Float32Array | undefined = cpuKey ? this.coefficientBytes.get(cpuKey) : undefined
       if (!values) {
         values = build()
@@ -4545,10 +4555,20 @@ export class GpuRenderer {
         if (cpuKey && values instanceof Uint8Array)
           values = this.coefficientBytes.put(cpuKey, values) || values
       }
-      const [width, height] = shape ? shape(values) : [values.length / 4, 1]
-      const bytes = values.byteLength * (values instanceof Uint8Array && this.driver.managed ? 4 : 1)
+      let [width, height] = shape ? shape(values) : [values.length / 4, 1]
+      let bytes = values.byteLength * (values instanceof Uint8Array && this.driver.managed ? 4 : 1)
+      let folded = false
+      if (packetLimit !== undefined && values instanceof Uint8Array && width > packetLimit) {
+        const logicalTexels = exactFilterPacketTexels(values)
+        const layout = logicalTexels !== undefined ? exactFilterPacketLayout(logicalTexels, packetLimit) : undefined
+        if (!layout) throw new Error('WebGPU 纹理尺寸超限')
+        width = layout.width; height = layout.height; bytes = layout.bytes; folded = height > 1
+      }
+      // Includes padded physical texels, before padding/f32 expansion/upload.
       if (this.overBudget(bytes, width, height)) throw this.budgetError('GPU 表面内存预算超限', 9)
-      if (values instanceof Float32Array) {
+      if (folded) {
+        texture = this.driver.uploadExactFilterPacket!(values as Uint8Array, width, height)
+      } else if (values instanceof Float32Array) {
         if (!this.driver.uploadLinear) throw new Error('Backend cannot upload linear coefficients')
         texture = this.driver.uploadLinear(values, width, height)
       } else {
@@ -4567,10 +4587,10 @@ export class GpuRenderer {
     frame.set(key, surface)
     return surface
   }
-  private certifiedKernel(radius: number, box = false) {
+  private certifiedKernel(radius: number, box = false, allowPacketRows = false) {
     if (!this.driver.certifiedFilter) return undefined
     return this.filterKernel(box ? 'certified-box' : 'certified-tent', radius,
-      () => box ? certified_box_kernel_rgba(radius) : certified_tent_kernel_rgba(radius))
+      () => box ? certified_box_kernel_rgba(radius) : certified_tent_kernel_rgba(radius), undefined, allowPacketRows)
   }
   private wideDisplayBackdropEligible(node: GpuNode, radius: number) {
     if (!this.optimized || !this.driver.copyColorRegion || !allowsDisplayTentRadius(this.scene, this.driver, false, true) ||
@@ -4653,11 +4673,11 @@ export class GpuRenderer {
       const complete = result; result = undefined; return complete
     } finally { this.release(result); this.interactionCapturing = previousCapture }
   }
-  private exactTentAxis(input: Surface, radius: number, axis: number, output: Rect, destination?: Surface, clampEdges = false, displayEligible = false) {
+  private exactTentAxis(input: Surface, radius: number, axis: number, output: Rect, destination?: Surface, clampEdges = false, displayEligible = false, allowPacketRows = false) {
     if (!(radius > 0 && radius <= 2048)) throw Error('GPU exact blur radius exceeds 2048 pixels')
     const selected = selectDisplayTentRadius(radius, displayEligible && allowsDisplayTentRadius(this.scene, this.driver, false, true))
-    const kernel = this.filterKernel('rational-tent', selected, () => rational_tent_kernel_rgba(selected))
-    const certified=this.certifiedKernel(selected)
+    const kernel = this.filterKernel('rational-tent', selected, () => rational_tent_kernel_rgba(selected), undefined, allowPacketRows)
+    const certified=this.certifiedKernel(selected, false, allowPacketRows)
     const result = this.run(22,output,[input,kernel,...(certified?[certified]:[])],u=>u.set([selected,axis,clampEdges?1:0,1],36),15,{kind:'tent',radius:selected},false,destination)
     if (selected !== radius) { this.displayTentRadiusPasses++; this.displayTentRadiusPixels += output.w * output.h }
     return result
@@ -4733,9 +4753,61 @@ export class GpuRenderer {
     return this.driver.usesDisplayFilter ? this.driver.usesDisplayFilter(radius, channels) :
       this.scene.displayFilterRadiusLimit === undefined
   }
+  /** Independent opt-in whole-source operator, not an extension of the old
+   * <=512 lane. The complete original domain must already exist physically.
+   * No crop, rescale, display radius selection, scalar conversion or in-place
+   * update is used; the H texture is the existing f32 RNE boundary before V. */
+  private blurLargeExact(input: Surface, radius: number, clampEdges: boolean, alphaOnly: boolean, admit: boolean): Surface | Promise<Surface> | undefined {
+    const texture = input.texture, source = input.rect
+    if (import.meta.env.VITE_DESIGN_EXACT_WHOLE_TENT_2048 !== '1' ||
+        this.driver.name !== 'webgpu' || !this.driver.managed || this.driver.displayMath ||
+        this.scene.integratedBlur !== true || this.scene.displayFilters || this.scene.displayMaterialSource || this.scene.displayImageSource ||
+        this.scene.softwareRaster || this.scene.interactionRetained || this.interactionCapturing || alphaOnly ||
+        !(radius > 512 && radius <= 2048) || !Number.isFinite(radius) || typeof clampEdges !== 'boolean' ||
+        input.logicalBounds || input.compactMaxAbs || input.imageZeroOverIdentity ||
+        !this.busy.has(texture) || this.releasedAliases.has(input) || !exactBlendLattice([source]) ||
+        source.w < 1 || source.h < 1 || source.w > 8192 || source.h > 8192 || source.w * source.h > 16777216 ||
+        texture.width !== source.w || texture.height !== source.h || texture.bytes !== source.w * source.h * 16 ||
+        !this.driver.supportsExactWholeTentSource?.(texture)) return
+    // Prove the unchanged full-domain address lane for both axes, including
+    // real clamp edges and worst-case original-radius taps. This is geometry
+    // only: arbitrary HDR/signed/nonfinite values retain exact shader fallback.
+    for (const axis of [0, 1]) {
+      const u = parameters(source, source); u[37] = axis; u[38] = Number(clampEdges)
+      const geometry = prefixSamplingGeometry(u, radius, true)
+      if (!geometry || geometry.offset !== geometry.padding || geometry.crossOffset !== 0) return
+    }
+    this.checkFrameCurrent()
+    const kernel = this.filterKernel('rational-tent', radius, () => rational_tent_kernel_rgba(radius), undefined, true)
+    const certified = this.certifiedKernel(radius, false, true)
+    if (admit) {
+      const pending = this.admitSurface(source, 2, false, false, [input, kernel, ...(certified ? [certified] : [])],
+        // Existing admission pins the source and coefficients across the wait.
+        // Re-enter all qualification and cancellation checks, without retrying
+        // admission or selecting a display radius after the wait.
+        () => this.blur(input, radius / 2, clampEdges, false, false))
+      if (pending) return pending
+    }
+    let horizontal: Surface | undefined, vertical: Surface | undefined
+    try {
+      // Reserve both complete destinations before encoding H. Existing pool,
+      // per-resource and working-set limits remain authoritative. Prefix may
+      // use only its remaining admitted scratch or fall back to exact op22.
+      horizontal = this.acquire({ ...source }, false, false, SurfaceAllocationSite.passOutput, 22)
+      vertical = this.acquire({ ...source }, false, false, SurfaceAllocationSite.passOutput, 22)
+      if (!this.driver.supportsExactWholeTentSource!(horizontal.texture) || !this.driver.supportsExactWholeTentSource!(vertical.texture))
+        throw Error('Invalid exact whole-filter destination')
+      this.checkFrameCurrent()
+      this.exactTentAxis(input, radius, 0, horizontal.rect, horizontal, clampEdges, false, true)
+      this.checkFrameCurrent()
+      this.exactTentAxis(horizontal, radius, 1, vertical.rect, vertical, clampEdges, false, true)
+      const result = vertical; vertical = undefined; return result
+    } finally { this.release(horizontal, vertical) }
+  }
   private blur(input: Surface, sigma: number, clampEdges?: boolean, alphaOnly?: boolean, displayEligible?: boolean): Surface
   private blur(input: Surface, sigma: number, clampEdges: boolean, alphaOnly: boolean, displayEligible: boolean, admit: true): Surface | Promise<Surface>
-  private blur(input: Surface, sigma: number, clampEdges = false, alphaOnly = false, displayEligible = false, admit = false): Surface | Promise<Surface> {
+  private blur(input: Surface, sigma: number, clampEdges: boolean, alphaOnly: boolean, displayEligible: boolean, admit: false, largeExactSourceAllowed: boolean): Surface
+  private blur(input: Surface, sigma: number, clampEdges = false, alphaOnly = false, displayEligible = false, admit = false, largeExactSourceAllowed = true): Surface | Promise<Surface> {
     // Every finite normalized kernel maps the all-+0 field to itself, with
     // either transparent or clamped edges. Filter pipelines can keep using
     // physical inputs without allocating a transparent expansion first.
@@ -4749,10 +4821,13 @@ export class GpuRenderer {
       // entering them rather than letting R32F's default alpha become one.
       if (admit) {
         const pending = this.admitSurface(input.rect, 3, false, false, [input],
-          () => this.blur(input, sigma, clampEdges, alphaOnly, displayEligible))
+          () => this.blur(input, sigma, clampEdges, alphaOnly, displayEligible, false, false))
         if (pending) return pending
       }
-      const expanded=this.copy(input), result=this.blur(expanded,sigma,clampEdges,alphaOnly,displayEligible)
+      // Expansion preserves the established small-radius behavior, but cannot
+      // turn an originally scalar/constant source into new-lane authority.
+      // Carry this exclusion through recursion/admission, never shared state.
+      const expanded=this.copy(input), result=this.blur(expanded,sigma,clampEdges,alphaOnly,displayEligible,false,false)
       if(result!==expanded)this.release(expanded)
       return result
     }
@@ -4767,7 +4842,7 @@ export class GpuRenderer {
       }, values => [256, values.length / (256 * 4)])
       if (admit) {
         const pending = this.admitSurface(input.rect, 2, false, false, [input, kernel],
-          () => this.blur(input, sigma, clampEdges, alphaOnly, displayEligible))
+          () => this.blur(input, sigma, clampEdges, alphaOnly, displayEligible, false, largeExactSourceAllowed))
         if (pending) return pending
       }
       const horizontal = this.run(22, input.rect, [input, kernel], u => u.set([radius, 0, clampEdges ? 1 : 0, 1], 36), channels, { kind: 'tent', radius })
@@ -4778,7 +4853,11 @@ export class GpuRenderer {
     if (this.scene.integratedBlur) {
       const authoredRadius = this.driver.managed ? sigma * 2 : Math.fround(sigma * 2)
       if (authoredRadius <= 0) return input
-      if (authoredRadius > 512) throw new Error('GPU 积分模糊半径超过 512 像素')
+      if (authoredRadius > 512) {
+        const exact = largeExactSourceAllowed && this.blurLargeExact(input, authoredRadius, clampEdges, alphaOnly, admit)
+        if (exact) return exact
+        throw new Error('GPU 积分模糊半径超过 512 像素')
+      }
       // The original whole-filter guard must inspect the original radius:
       // display rounding cannot admit an unsupported nested >512 filter.
       const radius = selectDisplayTentRadius(authoredRadius, displayEligible && !alphaOnly &&
@@ -4791,7 +4870,7 @@ export class GpuRenderer {
       const certified = this.certifiedKernel(radius)
       if (admit) {
         const pending = this.admitSurface(input.rect, 2, false, !!scalarAlpha, [input, ...(kernel ? [kernel] : []), ...(certified ? [certified] : [])],
-          () => this.blur(input, sigma, clampEdges, alphaOnly, displayEligible))
+          () => this.blur(input, sigma, clampEdges, alphaOnly, displayEligible, false, largeExactSourceAllowed))
         if (pending) return pending
       }
       const horizontal = this.run(22, input.rect, kernel ? [input, kernel, ...(certified ? [certified] : [])] : [input], (u) =>
@@ -4813,7 +4892,7 @@ export class GpuRenderer {
       }
       if (kernels.length) {
         const pending = this.admitSurface(input.rect, 2, false, false, [input, ...kernels],
-          () => this.blur(input, sigma, clampEdges, alphaOnly, displayEligible))
+          () => this.blur(input, sigma, clampEdges, alphaOnly, displayEligible, false, largeExactSourceAllowed))
         if (pending) return pending
       }
     }

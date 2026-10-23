@@ -15,7 +15,10 @@ uint cfUpper[4];
 uint cfWork[4];
 
 uint rfCertifiedLoad(uint index) {
- uvec4 bytes=uvec4(round(texelFetch(sourceC,ivec2(int(index),0),0)*255.));
+ uvec2 dimensions=uvec2(textureSize(sourceC,0));
+ ivec2 point=ivec2(int(index),0);
+ if(dimensions.y>1u){point=ivec2(int(index%dimensions.x),int(index/dimensions.x));}
+ uvec4 bytes=uvec4(round(texelFetch(sourceC,point,0)*255.));
  return bytes.x|(bytes.y<<8u)|(bytes.z<<16u)|(bytes.w<<24u);
 }
 vec4 rfCertifiedSource(vec2 point) {

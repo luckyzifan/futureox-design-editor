@@ -29,3 +29,5 @@ description: Plan, implement, benchmark, review, or package Futureox Design Core
 开始前写明本轮解决的渲染故障、受影响门槛、冻结基线、测试环境及停止/取消边界。运行前冻结场景、oracle、阈值和配置；阈值缺失时明确 BLOCKED，不事后放宽。
 
 修改后优先给出：本轮改了什么；哪些 G 门已实测；哪些 FAIL/BLOCKED/NOT_RUN；证据与源码/产物 hash；下一步尚缺什么。全应用完成声明须满足规范的联合判定，单项候选只报告自身已证明范围。
+
+- 2026-10-23 的 0246 / 0741 / 1338 组合增量见[合并验证记录](../../../testing/verification-increment-0741-1338-20261023/README.md)。精确滤波、managed 背景入口和空场景 compose 候选保持默认关闭；源码和 mock 测试不替代真实硬件、全编辑器或导出/HDR 门。

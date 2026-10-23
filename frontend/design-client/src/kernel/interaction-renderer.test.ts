@@ -1241,3 +1241,178 @@ test('an in-flight translation-localized warm capture cannot ACK or clip the fir
  f.owner.acceptPresentedInput(1);expect(feedback).toHaveBeenCalledOnce()
  expect(worker.jobs).toHaveLength(2)
 })
+
+
+test('diagnostic action token survives a newer input and late presented callback',async()=>{
+ const rows:Record<string,number>[]=[];let now=0
+ const f=pendingRetainedFixture(true,new PoseDiagnostics(row=>rows.push(sanitizeFields(row)),()=>now))
+ const first={actionOwner:101,actionId:1,actionSession:2,actionStartRevision:3,actionCode:13}
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}},first)
+ worker.jobs[0].resolve({gpuTile:940,residentInteraction:true});await f.flush()
+ now=500;f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(12)}},{...first,actionId:2})
+ now=1000;f.owner.acceptPresentedInput(1,0,false,true)
+ const ack=rows.find(row=>row.poseStage===3&&row.poseSequence===1)
+ expect(ack).toMatchObject({actionOwner:101,actionId:1,poseActionKnown:1})
+ expect(rows.find(row=>row.poseStage===1&&row.poseSequence===2)).toMatchObject({actionId:2})
+})
+
+test('unsupported apply associates only its own diagnostic token without claiming a pose',()=>{
+ const rows:Record<string,number>[]=[]
+ const f=pendingRetainedFixture(true,new PoseDiagnostics(row=>rows.push(sanitizeFields(row))))
+ const result=f.owner.control.apply(f.doc,{unknown:{transform:f.transform(8)}},{actionOwner:102,actionId:7,actionSession:2,actionStartRevision:3,actionCode:13})
+ expect(result).toBeNull()
+ expect(rows.find(row=>row.poseStage===7)).toMatchObject({poseSequence:0,poseReason:13,actionOwner:102,actionId:7,poseActionKnown:1})
+ expect(rows.some(row=>row.poseStage===3||row.poseStage===8)).toBe(false)
+})
+
+
+test('production pose terminal preserves action labels and omitted sampling count',()=>{
+ vi.useFakeTimers();vi.stubGlobal('window',{coreDesktop:{renderDiagnostics:true,renderDiagnosticsDetail:true}})
+ const output=vi.spyOn(console,'log').mockImplementation(()=>{})
+ const clock=vi.spyOn(performance,'now').mockImplementation(()=>0)
+ try{
+  const f=pendingRetainedFixture(true,createPoseDiagnostics(778))
+  const token={actionOwner:1001,actionId:17,actionSession:2,actionStartRevision:3,actionCode:13}
+  for(let i=0;i<10;i++)f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(i+8)}},token)
+  f.owner.control.end(f.doc);vi.advanceTimersByTime(1100)
+  const records=output.mock.calls.flatMap(args=>{const value=JSON.parse(String(args[0]).replace('[render-diag] ',''));return value.batch||[value]})
+  expect(records.find(row=>row.poseStage===5)).toMatchObject({interactionOwner:778,actionOwner:1001,actionId:17,poseActionKnown:1,poseSuppressedCount:9,poseSubmittedCount:10})
+  expect(JSON.stringify(records)).not.toContain(f.child.id)
+ }finally{clock.mockRestore();output.mockRestore();vi.unstubAllGlobals();vi.useRealTimers()}
+})
+
+test('end worker sequence inherits only the matching final applied gesture token, including late ACK after a new action',async()=>{
+ let now=0;const rows:Record<string,number>[]=[]
+ const f=pendingRetainedFixture(true,new PoseDiagnostics(row=>rows.push(row),()=>now))
+ const a={actionOwner:201,actionId:1,actionSession:1,actionStartRevision:0,actionCode:10}
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}},a)
+ worker.jobs[0].resolve({gpuTile:940,residentInteraction:true});await f.flush()
+ const final={...f.doc,nodes:{...f.doc.nodes,[f.child.id]:{...f.child,transform:f.transform(8)}}}
+ f.owner.control.end(final)
+ const closing=worker.poses.at(-1)[2].sequence
+ expect(closing).toBe(2)
+ now=500;f.owner.control.apply(final,{[f.child.id]:{transform:f.transform(12)}},{...a,actionId:2})
+ now=1000;f.owner.acceptPresentedInput(closing,0,false,true)
+ expect(rows.find(row=>row.poseStage===3&&row.poseSequence===closing)).toMatchObject({actionOwner:201,actionId:1,poseActionKnown:1})
+})
+
+test('end whose final transforms differ from accepted apply does not manufacture gesture provenance',async()=>{
+ const rows:Record<string,number>[]=[];const f=pendingRetainedFixture(true,new PoseDiagnostics(row=>rows.push(row)))
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}},{actionOwner:202,actionId:1,actionSession:1,actionStartRevision:0,actionCode:10})
+ worker.jobs[0].resolve({gpuTile:941,residentInteraction:true});await f.flush()
+ const changed={...f.doc,nodes:{...f.doc.nodes,[f.child.id]:{...f.child,transform:f.transform(16)}}}
+ f.owner.control.end(changed);const closing=worker.poses.at(-1)[2].sequence
+ expect(closing).toBe(2)
+ f.owner.acceptPresentedInput(closing,0,false,true)
+ expect(rows.find(row=>row.poseStage===3&&row.poseSequence===closing)).toMatchObject({poseActionKnown:0})
+ const before=worker.poses.length;f.owner.control.end(changed);expect(worker.poses.length).toBe(before)
+})
+
+test('epoch reset cannot let a later gesture closing ACK borrow the retired action',async()=>{
+ let now=0;const rows:Record<string,number>[]=[];const f=pendingRetainedFixture(true,new PoseDiagnostics(row=>rows.push(row),()=>now))
+ const a={actionOwner:203,actionId:1,actionSession:1,actionStartRevision:0,actionCode:10}
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}},a)
+ worker.jobs[0].resolve({gpuTile:943,residentInteraction:true});await f.flush()
+ f.prepare({...f.props,epoch:2})
+ // A new accepted input supplies its own explicit identity after the reset.
+ now=500;f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(12)}},{...a,actionId:2,actionSession:2})
+ const current=worker.jobs.at(-1);current.resolve({gpuTile:942,residentInteraction:true});await f.flush()
+ const final={...f.doc,nodes:{...f.doc.nodes,[f.child.id]:{...f.child,transform:f.transform(12)}}}
+ f.owner.control.end(final);const closing=worker.poses.at(-1)?.[2]?.sequence
+ expect(closing).toBeGreaterThan(1)
+ now=1000;f.owner.acceptPresentedInput(closing,0,false,true)
+ const ack=rows.find(row=>row.poseStage===3&&row.poseSequence===closing)
+ expect(ack).not.toHaveProperty('actionId',1)
+ expect(ack).toMatchObject({poseActionKnown:1,actionId:2,actionSession:2})
+})
+
+
+// Failure-cause diagnostic contract. Transport is controlled; this is not GPU evidence.
+async function failedCauseFixture(enabled=true,sink?:(row:Record<string,number>)=>void,now=()=>0) {
+ const rows:Record<string,number>[]=[]
+ const f=pendingRetainedFixture(true,new PoseDiagnostics(sink||((row)=>rows.push(sanitizeFields(row))),now,enabled))
+ f.props.onPreviewFailed=vi.fn()
+ worker.jobs[0].resolve({gpuTile:970,residentInteraction:true});await f.flush()
+ const token={actionOwner:301,actionId:1,actionSession:1,actionStartRevision:0,actionCode:13}
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}},token)
+ f.owner.acceptResidentSample({slot:970,sequence:1,at:0,needsRebase:true})
+ return {...f,rows,token,failed:worker.jobs.at(-1),authored:JSON.stringify(f.doc)}
+}
+test('failed cause keeps original A while current recovery retires newer B',async()=>{
+ const f=await failedCauseFixture()
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(12)}},{...f.token,actionId:2})
+ f.failed.reject(Error('fixed controlled failure'));await f.flush()
+ const row=f.rows.find(r=>r.poseStage===7&&r.poseReason===5)
+ expect(row).toMatchObject({failedCauseKnown:1,failedCauseSequence:1,failedCauseActionId:1,observedCurrentSequence:2,actionId:2,causeRequestKnown:0,failedCausePhase:2})
+ expect(f.props.onPreviewFailed).toHaveBeenCalledOnce();expect(f.props.onPreviewFailed).toHaveBeenCalledWith(expect.objectContaining({sequence:2}))
+ expect(JSON.stringify(f.doc)).toBe(f.authored)
+})
+test('ordered capture failure has the same cause and current sequence without inventing a request id',async()=>{
+ const f=await failedCauseFixture();f.failed.reject(Error('fixed controlled failure'));await f.flush()
+ expect(f.rows.find(r=>r.poseStage===7&&r.poseReason===5)).toMatchObject({failedCauseSequence:1,observedCurrentSequence:1,causeRequestKnown:0})
+})
+test('intentional cancellation keeps existing cancellation behavior and does not emit recovery cause',async()=>{
+ const f=await failedCauseFixture();f.failed.reject(Error('PREVIEW_CANCELLED'));await f.flush()
+ expect(f.props.onPreviewFailed).not.toHaveBeenCalled()
+ expect(f.rows.some(r=>r.failedCauseKnown!==undefined)).toBe(false)
+})
+test('late failure after epoch reset cannot recover or label the new epoch as failed cause',async()=>{
+ const f=await failedCauseFixture();f.prepare({...f.props,epoch:2})
+ f.failed.reject(Error('fixed controlled failure'));await f.flush()
+ expect(f.props.onPreviewFailed).not.toHaveBeenCalled()
+ expect(f.rows.some(r=>r.failedCauseKnown!==undefined)).toBe(false)
+})
+test('captured cause survives subsequent diagnostic-map eviction without borrowing latest action',async()=>{
+ const f=await failedCauseFixture()
+ for(let i=2;i<=185;i++)f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(i+8)}},{...f.token,actionId:i})
+ // Existing forced end row preserves the cause even if ordinary fallback is sampled out.
+ f.failed.reject(Error('fixed controlled failure'));await f.flush()
+ expect(f.rows.find(r=>r.poseStage===5&&r.poseReason===5)).toMatchObject({failedCauseSequence:1,failedCauseActionId:1,observedCurrentSequence:185})
+ expect(f.props.onPreviewFailed).toHaveBeenCalledOnce()
+})
+test('diagnostics disabled does not change recovery sequence or authored data',async()=>{
+ const f=await failedCauseFixture(false);f.failed.reject(Error('fixed controlled failure'));await f.flush()
+ expect(f.props.onPreviewFailed).toHaveBeenCalledWith(expect.objectContaining({sequence:1}));expect(f.rows).toHaveLength(0);expect(JSON.stringify(f.doc)).toBe(f.authored)
+})
+test('throwing diagnostic sink cannot suppress existing failure recovery',async()=>{
+ const f=await failedCauseFixture(true,()=>{throw Error('sink')});f.failed.reject(Error('fixed controlled failure'));await f.flush()
+ expect(f.props.onPreviewFailed).toHaveBeenCalledOnce();expect(JSON.stringify(f.doc)).toBe(f.authored)
+})
+
+
+test('failure cause survives the actual 32 emitted row cap through existing forced terminal',async()=>{
+ let now=0;const f=await failedCauseFixture(true,undefined,()=>now)
+ for(let i=2;i<=42;i++){now+=300;f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(i+8)}},{...f.token,actionId:i})}
+ const gesture=f.rows.find(r=>r.poseStage===1)!.poseGesture
+ const before=f.rows.filter(r=>r.poseGesture===gesture)
+ expect(before).toHaveLength(32)
+ f.failed.reject(Error('fixed controlled failure'));await f.flush()
+ expect(f.rows.some(r=>r.poseStage===7&&r.poseReason===5)).toBe(false)
+ const terminal=f.rows.find(r=>r.poseStage===5&&r.poseReason===5)
+ expect(terminal).toMatchObject({failedCauseSequence:1,failedCauseActionId:1,observedCurrentSequence:42,causeRequestKnown:0})
+ expect(terminal!.poseSuppressedCount).toBeGreaterThan(0)
+ expect(f.props.onPreviewFailed).toHaveBeenCalledOnce()
+})
+
+test('successful capture followed by notification throw is phase4, not a GPU failure phase',async()=>{
+ const f=await failedCauseFixture()
+ f.props.onReady=vi.fn().mockImplementationOnce(()=>{throw Error('controlled notification failure')})
+ f.failed.resolve({gpuTile:971,residentInteraction:true});await f.flush()
+ expect(f.rows.find(r=>r.poseStage===5&&r.poseReason===5)).toMatchObject({failedCauseSequence:1,failedCausePhase:4,causeRequestKnown:0})
+ expect(f.props.onPreviewFailed).toHaveBeenCalledOnce()
+ expect(JSON.stringify(f.doc)).toBe(f.authored)
+})
+
+test('delayed recovery microtask keeps caught cause and does not borrow a rejected later action',async()=>{
+ const f=await failedCauseFixture(),tasks:(()=>void)[]=[]
+ const queued=vi.spyOn(globalThis,'queueMicrotask').mockImplementation(task=>tasks.push(task))
+ try{
+  f.failed.reject(Error('fixed controlled failure'));await f.flush()
+  expect(tasks).toHaveLength(1);expect(f.props.onPreviewFailed).not.toHaveBeenCalled()
+  // catch has already set error: existing control rejects this new input.
+  expect(f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(12)}},{...f.token,actionId:2})).toBeNull()
+  tasks.shift()!();await f.flush()
+  expect(f.rows.find(r=>r.poseStage===5&&r.poseReason===5)).toMatchObject({failedCauseSequence:1,failedCauseActionId:1,observedCurrentSequence:1,failedCausePhase:2})
+  expect(f.props.onPreviewFailed).toHaveBeenCalledOnce()
+ }finally{queued.mockRestore()}
+})

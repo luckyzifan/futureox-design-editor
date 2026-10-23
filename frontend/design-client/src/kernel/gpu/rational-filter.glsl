@@ -4,7 +4,10 @@ int rfSelect(int a,int b,bool s){return s?b:a;}
 // Exact rational weighted binary32 convolution. Generated GLSL uses this same
 // integer program; no native floating multiply/reduction chooses the result.
 uint rfLoad(uint index) {
- uvec4 bytes=uvec4(round(texelFetch(sourceB,ivec2(int(index),0),0)*255.));
+ uvec2 dimensions=uvec2(textureSize(sourceB,0));
+ ivec2 point=ivec2(int(index),0);
+ if(dimensions.y>1u){point=ivec2(int(index%dimensions.x),int(index/dimensions.x));}
+ uvec4 bytes=uvec4(round(texelFetch(sourceB,point,0)*255.));
  return bytes.x|(bytes.y<<8u)|(bytes.z<<16u)|(bytes.w<<24u);
 }
 vec4 rfSource(vec2 point) {

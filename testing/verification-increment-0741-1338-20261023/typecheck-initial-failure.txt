@@ -1,0 +1,4 @@
+Initial combined candidate tsc exit 1:
+exact-filter-packet-layout.test.ts:76 TS2322 undefined not assignable to inferred number.
+exact-filter-packet-layout.test.ts:92 TS2345 mock implementation number parameter incompatible with unknown[] spy arguments.
+Fixed the fixture capability union annotation and guarded unknown mock input; assertions and expected results unchanged.
