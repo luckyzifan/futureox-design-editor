@@ -1,0 +1,23 @@
+{
+  "gate": "zoom-portable",
+  "command": [
+    "node",
+    "--max-old-space-size=384",
+    "node_modules/vitest/vitest.mjs",
+    "run",
+    "--config",
+    "vitest.zoom-refinement.config.mts",
+    "--maxWorkers=1",
+    "--no-file-parallelism"
+  ],
+  "cwd": "/workspace/shared/import-increment-e411-20261023T0140Z/stage-source/frontend/design-client",
+  "exit": 0,
+  "stop": null,
+  "peakProcessGroupRSSBytes": 366739456,
+  "minimumFreeBytes": {
+    "/workspace/shared/import-increment-e411-20261023T0140Z/validation/combination-r2": 540999680,
+    "/tmp": 554512384
+  },
+  "seconds": 3.1029749299632385,
+  "logSHA256": "80555f094f6be064beed309bf6e33330f5c90dcdd7f908da45d6f083d3da6214"
+}

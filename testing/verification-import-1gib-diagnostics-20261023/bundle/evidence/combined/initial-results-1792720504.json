@@ -1,0 +1,21 @@
+[
+  {
+    "gate": "typecheck",
+    "command": [
+      "node",
+      "--max-old-space-size=384",
+      "node_modules/typescript/bin/tsc",
+      "--noEmit"
+    ],
+    "cwd": "/workspace/shared/import-increment-e411-20261023T0140Z/stage-source/frontend/design-client",
+    "exit": 1,
+    "stop": null,
+    "peakProcessGroupRSSBytes": 1578602496,
+    "minimumFreeBytes": {
+      "/workspace/shared/import-increment-e411-20261023T0140Z/validation": 562159616,
+      "/tmp": 554512384
+    },
+    "seconds": 3.465933100960683,
+    "logSHA256": "f8a5ace1ddc3303a35d516d940c8f5c1af14601d6a97b7a12e096745bbb123c6"
+  }
+]

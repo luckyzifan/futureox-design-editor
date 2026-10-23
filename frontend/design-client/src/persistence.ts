@@ -1,3 +1,5 @@
+import { assertImportInputBytes } from './import-input-policy'
+import { ImportStage, type ImportDiagnostic } from './import-diagnostics'
 import { assertDocumentBytes } from './document-capacity'
 import { forma_encode_json, forma_decode_json } from './generated/design-kernel/design_kernel'
 import { initializeKernelModule } from './kernel/module'
@@ -23,23 +25,24 @@ export function exportDocument(doc: DesignDocument) {
 export async function readDocument(file: File) {
   return (await readDesignFile(file)).document
 }
-export async function readDesignFile(file:File, signal?:AbortSignal):Promise<import('./import-svg').ImportedDesign> {
+export async function readDesignFile(file:File, signal?:AbortSignal, diagnostic?:ImportDiagnostic):Promise<import('./import-svg').ImportedDesign> {
+  diagnostic?.stage(ImportStage.admission)
   signal?.throwIfAborted()
-  const svgFile = /\.svgz?$/i.test(file.name)
+  assertImportInputBytes(file.size)
   const nativeFile = /\.(fd|json)$/i.test(file.name)
   if (nativeFile) assertDocumentBytes(file.size)
-  else if (file.size > (svgFile ? 48 : 32) * 1024 * 1024) throw new Error(svgFile ? 'SVG 文件超过 48 MiB' : '文件超过 32 MB')
   if (/\.(fig|sketch|pdf)$/i.test(file.name)) {
-    const bytes = await file.arrayBuffer()
+    const bytes = await (diagnostic ? diagnostic.wait(ImportStage.read, () => file.arrayBuffer()) : file.arrayBuffer())
     signal?.throwIfAborted()
     const format = /\.sketch$/i.test(file.name) ? 'sketch' : /\.pdf$/i.test(file.name) ? 'pdf' : 'fig'
-    return importFileInWorker(bytes, file.name.replace(/\.(fig|sketch|pdf)$/i, ''), format, signal)
+    return importFileInWorker(bytes, file.name.replace(/\.(fig|sketch|pdf)$/i, ''), format, signal, diagnostic)
   }
   if (!/\.(fd|json|svg|svgz)$/i.test(file.name)) throw new Error('请选择 .fd、Sketch、JSON、SVG、FIG 或 PDF 文件')
   if(/\.svgz?$/i.test(file.name)) {
+    diagnostic?.stage(ImportStage.decode)
     const {importSvg}=await import('./import-svg')
     const { decodeSvgFileBytes } = await import('./export-options')
-    const bytes = new Uint8Array(await file.arrayBuffer()); signal?.throwIfAborted()
+    const bytes = new Uint8Array(await (diagnostic ? diagnostic.wait(ImportStage.read, () => file.arrayBuffer()) : file.arrayBuffer())); signal?.throwIfAborted()
     const compressed=/\.svgz$/i.test(file.name)
     const expanded=compressed && bytes.length>=18 ? new DataView(bytes.buffer,bytes.byteOffset+bytes.length-4,4).getUint32(0,true) : bytes.length
     if (expanded>8*1024*1024 || bytes.length>8*1024*1024) {
@@ -47,11 +50,15 @@ export async function readDesignFile(file:File, signal?:AbortSignal):Promise<imp
       const {importSvgArtifact}=await import('./import-svg-artifact'); signal?.throwIfAborted()
       return importSvgArtifact(bytes,compressed?'svgz':'svg',signal,file.name.replace(/\.svgz?$/i,''))
     }
+    diagnostic?.stage(ImportStage.decode)
     const result=importSvg(decodeSvgFileBytes(bytes, compressed),file.name.replace(/\.svgz?$/i,''));validateDocument(result.document);return result
   }
-  const bytes=new Uint8Array(await file.arrayBuffer())
+  const bytes=new Uint8Array(await (diagnostic ? diagnostic.wait(ImportStage.read, () => file.arrayBuffer()) : file.arrayBuffer()))
+  diagnostic?.stage(ImportStage.decode)
   const binary=bytes[0]===70 && bytes[1]===88 && bytes[2]===68 && bytes[3]===75
-  return {document:validateDocument(JSON.parse(binary ? forma_decode_json(bytes) : new TextDecoder('utf-8',{fatal:true}).decode(bytes))),warnings:[]}
+  const decoded = JSON.parse(binary ? forma_decode_json(bytes) : new TextDecoder('utf-8',{fatal:true}).decode(bytes))
+  diagnostic?.stage(ImportStage.validate)
+  return {document:validateDocument(decoded),warnings:[]}
 }
 export { imageData } from './image-import'
 export type RemoteDocument = {

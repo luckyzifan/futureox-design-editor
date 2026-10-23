@@ -88,7 +88,7 @@ function create(editor: EditorContext) {
   })
   const context = () => ({ session: editor.sessionGeneration, revision: editor.state.version })
   const cpu = createCpuStageDiagnostics(terminal.enabled, fields => terminal.record('cpu-stage', { actionOwner: owner, actionSession: editor.sessionGeneration, documentRevision: editor.state.version, ...fields }))
-  return { enabled: collector.enabled, cpu, begin: (code: ActionCode, source: ActionSourceCode, fields?: ActionFields) => collector.begin(code, source, context(), fields),
+  return { owner, enabled: collector.enabled, cpu, begin: (code: ActionCode, source: ActionSourceCode, fields?: ActionFields) => collector.begin(code, source, context(), fields),
     sample: (id: number, fields?: ActionFields) => collector.sample(id, fields),
     finish: (id: number, outcome: ActionOutcomeCode, reason: ActionReasonCode = 0, fields?: ActionFields) => collector.finish(id, outcome, context(), reason, fields),
     event: (code: ActionCode, source: ActionSourceCode, outcome: ActionEventOutcomeCode, reason: ActionReasonCode = 0, fields?: ActionFields) => { const id = collector.begin(code, source, context(), fields); collector.finish(id, outcome, context(), reason) },

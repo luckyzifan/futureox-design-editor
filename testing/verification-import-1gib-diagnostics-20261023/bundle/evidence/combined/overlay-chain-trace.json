@@ -1,0 +1,564 @@
+[
+  {
+    "kind": "mailbox-enqueue",
+    "ms": 150.56,
+    "admissible": true
+  },
+  {
+    "kind": "mailbox-start",
+    "ms": 151.16,
+    "admissible": true
+  },
+  {
+    "kind": "request",
+    "ms": 151.26,
+    "document": 1,
+    "epoch": 1,
+    "tiles": 0
+  },
+  {
+    "kind": "deliver",
+    "ms": 151.38,
+    "document": 1
+  },
+  {
+    "kind": "mailbox-enqueue",
+    "ms": 151.48,
+    "admissible": true
+  },
+  {
+    "kind": "mailbox-start",
+    "ms": 151.49,
+    "admissible": true
+  },
+  {
+    "kind": "request",
+    "ms": 151.5,
+    "document": 1
+  },
+  {
+    "kind": "deliver",
+    "ms": 151.51,
+    "document": 1
+  },
+  {
+    "kind": "scheduler-fill",
+    "ms": 153.48,
+    "tiles": 36
+  },
+  {
+    "kind": "mailbox-enqueue",
+    "ms": 154.21,
+    "admissible": true
+  },
+  {
+    "kind": "mailbox-start",
+    "ms": 154.26,
+    "admissible": true
+  },
+  {
+    "kind": "request",
+    "ms": 154.57,
+    "document": 1,
+    "epoch": 1,
+    "tiles": 4
+  },
+  {
+    "kind": "deliver",
+    "ms": 154.57,
+    "document": 1
+  },
+  {
+    "kind": "scheduler-fill",
+    "ms": 170.45,
+    "tiles": 5
+  },
+  {
+    "kind": "mailbox-enqueue",
+    "ms": 170.57,
+    "admissible": true
+  },
+  {
+    "kind": "mailbox-start",
+    "ms": 171.96,
+    "admissible": true
+  },
+  {
+    "kind": "request",
+    "ms": 172.04,
+    "document": 1,
+    "epoch": 1,
+    "tiles": 1
+  },
+  {
+    "kind": "deliver",
+    "ms": 180.13,
+    "document": 1
+  },
+  {
+    "kind": "timer80-scheduled",
+    "ms": 217.64,
+    "timer": 1,
+    "document": 1,
+    "refineDocument": true
+  },
+  {
+    "kind": "source-S",
+    "ms": 242.82,
+    "document": 1
+  },
+  {
+    "kind": "request",
+    "ms": 265.02,
+    "document": 1,
+    "owner": 2,
+    "generation": 3
+  },
+  {
+    "kind": "timer80-cancelled",
+    "ms": 265.46,
+    "timer": 1
+  },
+  {
+    "kind": "deliver",
+    "ms": 274.56,
+    "document": 1,
+    "owner": 2,
+    "aborted": false
+  },
+  {
+    "kind": "request",
+    "ms": 294.16,
+    "document": 2,
+    "owner": 2,
+    "generation": 3
+  },
+  {
+    "kind": "deliver",
+    "ms": 299.17,
+    "document": 2,
+    "owner": 2,
+    "aborted": false
+  },
+  {
+    "kind": "completed-C",
+    "ms": 312.42,
+    "document": 2,
+    "slot": 8
+  },
+  {
+    "kind": "request",
+    "ms": 314.82,
+    "document": 3,
+    "owner": 2,
+    "generation": 3
+  },
+  {
+    "kind": "abort",
+    "ms": 334.36,
+    "document": 1,
+    "owner": 2
+  },
+  {
+    "kind": "abort",
+    "ms": 334.41,
+    "document": 2,
+    "owner": 2
+  },
+  {
+    "kind": "abort",
+    "ms": 334.41,
+    "document": 3,
+    "owner": 2
+  },
+  {
+    "kind": "timer80-scheduled",
+    "ms": 343.09,
+    "timer": 2,
+    "document": 4,
+    "refineDocument": true
+  },
+  {
+    "kind": "released-B",
+    "ms": 353.92,
+    "document": 4,
+    "pendingD": 3,
+    "dAborted": true
+  },
+  {
+    "kind": "deliver",
+    "ms": 354.06,
+    "document": 3,
+    "owner": 2,
+    "aborted": true
+  },
+  {
+    "kind": "before-B-refinement",
+    "ms": 355.01,
+    "nativePreparation": "not exercised: worker transport adapter",
+    "pendingRaf": 0,
+    "mailboxes": [
+      {
+        "running": false,
+        "queued": 0,
+        "admissible": []
+      }
+    ],
+    "schedulers": [
+      {
+        "cancelled": true,
+        "onScreen": 0,
+        "offScreen": 0,
+        "frameWaiting": false,
+        "counters": {
+          "frames": 1,
+          "onScreenSubmitted": 4,
+          "offScreenSubmitted": 0,
+          "deferredTiles": 32,
+          "cacheSkippedTiles": 0,
+          "cutoffs": {
+            "offscreenHitBudget": 1,
+            "offscreenHitCacheLimit": 0,
+            "completedScreenTiles": 0
+          }
+        }
+      },
+      {
+        "cancelled": true,
+        "onScreen": 0,
+        "offScreen": 0,
+        "frameWaiting": false,
+        "counters": {
+          "frames": 1,
+          "onScreenSubmitted": 0,
+          "offScreenSubmitted": 1,
+          "deferredTiles": 4,
+          "cacheSkippedTiles": 0,
+          "cutoffs": {
+            "offscreenHitBudget": 1,
+            "offscreenHitCacheLimit": 0,
+            "completedScreenTiles": 0
+          }
+        }
+      }
+    ],
+    "contract": {
+      "requestedRevision": "1",
+      "displayedRevision": "1",
+      "publication": "complete",
+      "detailReady": "true"
+    },
+    "requests": [
+      {
+        "document": 1,
+        "done": true,
+        "tiles": 0
+      },
+      {
+        "document": 1,
+        "done": true
+      },
+      {
+        "document": 1,
+        "done": true,
+        "tiles": 4
+      },
+      {
+        "document": 1,
+        "done": true,
+        "tiles": 1
+      },
+      {
+        "document": 1,
+        "owner": 2,
+        "done": true,
+        "aborted": true
+      },
+      {
+        "document": 2,
+        "owner": 2,
+        "done": true,
+        "aborted": true
+      },
+      {
+        "document": 3,
+        "owner": 2,
+        "done": true,
+        "aborted": true
+      }
+    ]
+  },
+  {
+    "kind": "timer80-fired",
+    "ms": 422.91,
+    "timer": 2,
+    "document": 4
+  },
+  {
+    "kind": "mailbox-enqueue",
+    "ms": 434.61,
+    "admissible": true
+  },
+  {
+    "kind": "mailbox-start",
+    "ms": 435.94,
+    "admissible": true
+  },
+  {
+    "kind": "request",
+    "ms": 435.96,
+    "document": 4,
+    "epoch": 1,
+    "tiles": 0
+  },
+  {
+    "kind": "B-refinement-arrived",
+    "ms": 437.02,
+    "nativePreparation": "not exercised: worker transport adapter",
+    "pendingRaf": 0,
+    "mailboxes": [
+      {
+        "running": true,
+        "queued": 0,
+        "admissible": []
+      }
+    ],
+    "schedulers": [
+      {
+        "cancelled": true,
+        "onScreen": 0,
+        "offScreen": 0,
+        "frameWaiting": false,
+        "counters": {
+          "frames": 1,
+          "onScreenSubmitted": 4,
+          "offScreenSubmitted": 0,
+          "deferredTiles": 32,
+          "cacheSkippedTiles": 0,
+          "cutoffs": {
+            "offscreenHitBudget": 1,
+            "offscreenHitCacheLimit": 0,
+            "completedScreenTiles": 0
+          }
+        }
+      },
+      {
+        "cancelled": true,
+        "onScreen": 0,
+        "offScreen": 0,
+        "frameWaiting": false,
+        "counters": {
+          "frames": 1,
+          "onScreenSubmitted": 0,
+          "offScreenSubmitted": 1,
+          "deferredTiles": 4,
+          "cacheSkippedTiles": 0,
+          "cutoffs": {
+            "offscreenHitBudget": 1,
+            "offscreenHitCacheLimit": 0,
+            "completedScreenTiles": 0
+          }
+        }
+      }
+    ],
+    "contract": {
+      "requestedRevision": "2",
+      "displayedRevision": "1",
+      "publication": "complete",
+      "detailReady": "false"
+    },
+    "requests": [
+      {
+        "document": 1,
+        "done": true,
+        "tiles": 0
+      },
+      {
+        "document": 1,
+        "done": true
+      },
+      {
+        "document": 1,
+        "done": true,
+        "tiles": 4
+      },
+      {
+        "document": 1,
+        "done": true,
+        "tiles": 1
+      },
+      {
+        "document": 1,
+        "owner": 2,
+        "done": true,
+        "aborted": true
+      },
+      {
+        "document": 2,
+        "owner": 2,
+        "done": true,
+        "aborted": true
+      },
+      {
+        "document": 3,
+        "owner": 2,
+        "done": true,
+        "aborted": true
+      },
+      {
+        "document": 4,
+        "done": false,
+        "tiles": 0
+      }
+    ]
+  },
+  {
+    "kind": "deliver",
+    "ms": 437.3,
+    "document": 4
+  },
+  {
+    "kind": "mailbox-enqueue",
+    "ms": 437.35,
+    "admissible": true
+  },
+  {
+    "kind": "mailbox-start",
+    "ms": 437.37,
+    "admissible": true
+  },
+  {
+    "kind": "request",
+    "ms": 437.39,
+    "document": 4
+  },
+  {
+    "kind": "deliver",
+    "ms": 437.41,
+    "document": 4
+  },
+  {
+    "kind": "exact-B-acknowledged",
+    "ms": 454.63,
+    "nativePreparation": "not exercised: worker transport adapter",
+    "pendingRaf": 0,
+    "mailboxes": [
+      {
+        "running": false,
+        "queued": 0,
+        "admissible": []
+      }
+    ],
+    "schedulers": [
+      {
+        "cancelled": true,
+        "onScreen": 0,
+        "offScreen": 0,
+        "frameWaiting": false,
+        "counters": {
+          "frames": 1,
+          "onScreenSubmitted": 4,
+          "offScreenSubmitted": 0,
+          "deferredTiles": 32,
+          "cacheSkippedTiles": 0,
+          "cutoffs": {
+            "offscreenHitBudget": 1,
+            "offscreenHitCacheLimit": 0,
+            "completedScreenTiles": 0
+          }
+        }
+      },
+      {
+        "cancelled": true,
+        "onScreen": 0,
+        "offScreen": 0,
+        "frameWaiting": false,
+        "counters": {
+          "frames": 1,
+          "onScreenSubmitted": 0,
+          "offScreenSubmitted": 1,
+          "deferredTiles": 4,
+          "cacheSkippedTiles": 0,
+          "cutoffs": {
+            "offscreenHitBudget": 1,
+            "offscreenHitCacheLimit": 0,
+            "completedScreenTiles": 0
+          }
+        }
+      }
+    ],
+    "contract": {
+      "requestedRevision": "2",
+      "displayedRevision": "2",
+      "publication": "complete",
+      "detailReady": "true"
+    },
+    "requests": [
+      {
+        "document": 1,
+        "done": true,
+        "tiles": 0
+      },
+      {
+        "document": 1,
+        "done": true
+      },
+      {
+        "document": 1,
+        "done": true,
+        "tiles": 4
+      },
+      {
+        "document": 1,
+        "done": true,
+        "tiles": 1
+      },
+      {
+        "document": 1,
+        "owner": 2,
+        "done": true,
+        "aborted": true
+      },
+      {
+        "document": 2,
+        "owner": 2,
+        "done": true,
+        "aborted": true
+      },
+      {
+        "document": 3,
+        "owner": 2,
+        "done": true,
+        "aborted": true
+      },
+      {
+        "document": 4,
+        "done": true,
+        "tiles": 0
+      },
+      {
+        "document": 4,
+        "done": true
+      }
+    ]
+  },
+  {
+    "kind": "timer80-scheduled",
+    "ms": 460.21,
+    "timer": 3,
+    "document": 1,
+    "refineDocument": true
+  },
+  {
+    "kind": "timer80-cancelled",
+    "ms": 471.35,
+    "timer": 3
+  },
+  {
+    "kind": "timer80-scheduled",
+    "ms": 471.41,
+    "timer": 4,
+    "document": 4,
+    "refineDocument": true
+  }
+]

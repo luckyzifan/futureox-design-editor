@@ -1,3 +1,4 @@
+import { assertImportInputBytes } from './import-input-policy'
 import { pinDocumentCapacity } from './document-capacity'
 import { importFig } from './import-fig'
 import { initializeKernelModule } from './kernel/module'
@@ -5,6 +6,7 @@ import { uid, type DesignDocument } from './model'
 type FileJob = { bytes: ArrayBuffer; name: string; format: 'fig' | 'sketch' | 'pdf' }
   | { document: DesignDocument; format: 'sketch-export' }
 self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>) => {
+  let importStage = 238 // initialize
   try {
     if (event.data.memoryBytes !== undefined) pinDocumentCapacity(event.data.memoryBytes, 'trusted-worker-bootstrap')
     if (event.data.format === 'sketch-export') {
@@ -14,10 +16,12 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       self.postMessage({ bytes }, { transfer: [bytes] })
       return
     }
+    assertImportInputBytes(event.data.bytes.byteLength)
     const bytes = new Uint8Array(event.data.bytes)
     if (event.data.format === 'sketch') {
       await initializeKernelModule()
       const { import_sketch_json } = await import('./generated/design-kernel/design_kernel')
+      importStage = 233 // decode
       const result = JSON.parse(import_sketch_json(bytes))
       result.document.id = uid()
       result.document.name = event.data.name || result.document.name
@@ -25,6 +29,7 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
     } else if (event.data.format === 'pdf') {
       await initializeKernelModule()
       const { import_pdf_json } = await import('./generated/design-kernel/design_kernel')
+      importStage = 233 // decode
       const document = JSON.parse(import_pdf_json(bytes))
       document.id = uid()
       // The PDF codec uses local sequential identifiers. Give the imported
@@ -41,9 +46,10 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       document.name = event.data.name || document.name
       self.postMessage({ result: { document, warnings: ['PDF 文本内容未导入；矢量路径与图像已转换为可编辑图层'] } })
     } else if (event.data.format === 'fig') {
+      importStage = 233 // decode
       self.postMessage({ result: importFig(bytes, event.data.name) })
     } else throw new Error('不支持的导入格式')
   } catch (error) {
-    self.postMessage({ error: error instanceof Error ? error.message : String(error) })
+    self.postMessage({ importStage, error: error instanceof Error ? error.message : String(error) })
   }
 }

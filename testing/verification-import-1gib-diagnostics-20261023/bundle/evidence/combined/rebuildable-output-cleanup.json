@@ -1,0 +1,8 @@
+{
+  "removed": "web-output",
+  "reason": "Reproducible Web build cache; complete manifest and logs retained. WASM identical canonical verified and retained. Source and unique test binary not removed.",
+  "canonicalWasm": "/workspace/shared/native-import-policy-20261023T0129Z/full-wasm/generated/design_kernel_bg.wasm",
+  "freeBefore": 441323520,
+  "freeAfter": 525025280,
+  "reclaimed": 83701760
+}

@@ -11,7 +11,17 @@ pub(crate) const MAX_DOCUMENT_BYTES: u64 = 40 * 1024 * 1024;
 fn entry_limit(name: &str) -> u64 {
     if name == "document.json" { MAX_DOCUMENT_BYTES } else { MAX_ENTRY_BYTES }
 }
+// Compressed-file admission policy, independent of expansion and export safety.
+// Must match frontend import-input-policy.ts IMPORT_INPUT_MAX_BYTES.
+pub(crate) const MAX_INPUT_BYTES: usize = 1024 * 1024 * 1024;
 pub(crate) const MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+
+fn check_input_len(len: usize) -> Result<()> {
+    if len > MAX_INPUT_BYTES {
+        return Err(Error::Limit("archive input"));
+    }
+    Ok(())
+}
 const MAX_RATIO: u64 = 200;
 const RATIO_FLOOR: u64 = 4096;
 
@@ -55,9 +65,7 @@ fn central_record_count(bytes: &[u8], start: u64) -> Result<usize> {
 }
 
 pub(crate) fn read(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
-    if bytes.len() as u64 > MAX_TOTAL_BYTES {
-        return Err(Error::Limit("archive input"));
-    }
+    check_input_len(bytes.len())?;
     let mut zip =
         zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| Error::Archive(e.to_string()))?;
     if central_record_count(bytes, zip.central_directory_start())? != zip.len() {
@@ -149,4 +157,32 @@ pub(crate) fn write(files: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>> {
         return Err(Error::Limit("archive output"));
     }
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod input_policy_tests {
+    use super::*;
+
+    #[test]
+    fn compressed_input_admission_boundaries_without_allocation() {
+        for len in [0, 32 * 1024 * 1024 - 1, 32 * 1024 * 1024,
+            32 * 1024 * 1024 + 1, MAX_INPUT_BYTES - 1, MAX_INPUT_BYTES] {
+            assert!(check_input_len(len).is_ok(), "admission rejected {len}");
+        }
+        for len in [MAX_INPUT_BYTES + 1, usize::MAX] {
+            assert!(matches!(check_input_len(len), Err(Error::Limit("archive input"))));
+        }
+        // Admission is not proof that an archive is valid or can be expanded.
+        assert!(read(&[]).is_err());
+    }
+
+    #[test]
+    fn expansion_and_export_limits_remain_independent() {
+        assert_eq!(MAX_INPUT_BYTES, 1_073_741_824);
+        assert_eq!(MAX_TOTAL_BYTES, 67_108_864);
+        assert_eq!(MAX_ENTRY_BYTES, 16_777_216);
+        assert_eq!(MAX_DOCUMENT_BYTES, 41_943_040);
+        assert_eq!(MAX_ENTRIES, 4096);
+        assert_eq!(MAX_RATIO, 200);
+    }
 }

@@ -1,0 +1,24 @@
+{
+  "gate": "desktop-node",
+  "command": [
+    "node",
+    "--max-old-space-size=384",
+    "--test",
+    "--test-concurrency=1",
+    "frontend/design-desktop/test/notice-runtime-versions.test.mjs",
+    "frontend/design-desktop/test/production-assets.test.mjs",
+    "frontend/design-desktop/test/render-producer-identity.test.mjs",
+    "frontend/design-desktop/test/render-runtime-wasm-identity.test.mjs",
+    "frontend/design-desktop/test/render-terminal-diagnostics.test.mjs"
+  ],
+  "cwd": "/workspace/shared/import-increment-e411-20261023T0140Z/stage-source",
+  "exit": 0,
+  "stop": null,
+  "peakProcessGroupRSSBytes": 326868992,
+  "minimumFreeBytes": {
+    "/workspace/shared/import-increment-e411-20261023T0140Z/validation/combination-r2": 426442752,
+    "/tmp": 554512384
+  },
+  "seconds": 1.9309730980312452,
+  "logSHA256": "5932595170ee8c494dd271b71a253e3b77232e1f270532c0beafb4e829cfc91e"
+}

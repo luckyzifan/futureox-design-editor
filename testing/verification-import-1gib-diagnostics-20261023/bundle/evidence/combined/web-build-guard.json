@@ -1,0 +1,21 @@
+{
+  "gate": "web-build",
+  "command": [
+    "node",
+    "--max-old-space-size=384",
+    "node_modules/vite/bin/vite.js",
+    "build",
+    "--outDir",
+    "/workspace/shared/import-increment-e411-20261023T0140Z/validation/combination-r2/web-output"
+  ],
+  "cwd": "/workspace/shared/import-increment-e411-20261023T0140Z/stage-source/frontend/design-client",
+  "exit": 0,
+  "stop": null,
+  "peakProcessGroupRSSBytes": 1280180224,
+  "minimumFreeBytes": {
+    "/workspace/shared/import-increment-e411-20261023T0140Z/validation/combination-r2": 441397248,
+    "/tmp": 554512384
+  },
+  "seconds": 3.725248174974695,
+  "logSHA256": "8d4aab403f997559981ddb737150e2f5abdd8a4a350900ceb1fea1ae34ada40d"
+}

@@ -1,0 +1,32 @@
+{
+  "status": "final-source-combination-passed; not GUI/GPU rendering acceptance",
+  "baseline": "e411af08f7b3e901f83415932c05d50515a00cdd",
+  "changedPaths": 26,
+  "guardedSourcePaths": 3211,
+  "typecheck": 0,
+  "vitest": {
+    "suites": 45,
+    "passed": 1043
+  },
+  "overlappingAdditional": {
+    "zoom": 30,
+    "overlayFocused": 39,
+    "overlayMounted": 4,
+    "overlayChain": 10
+  },
+  "nodeOwnership": 20,
+  "desktopNode": 53,
+  "webBuild": 0,
+  "nativeArchiveModule": 4,
+  "real117WasmImport": "raw output identical; no render",
+  "notRun": [
+    "full native desktop backend assembly",
+    "real1GiB parse/edit/save",
+    "GUI",
+    "hardware GPU",
+    "ten117 whole editor replay"
+  ],
+  "sameSourceBeforeAfter": true,
+  "initialTS7016FailurePreserved": true,
+  "noNewSchema": true
+}

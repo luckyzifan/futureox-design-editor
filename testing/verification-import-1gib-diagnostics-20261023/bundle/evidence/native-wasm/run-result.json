@@ -1,0 +1,71 @@
+{
+  "status": "success",
+  "failure": null,
+  "seconds": 30.83433286496438,
+  "stages": [
+    {
+      "stage": "rustc",
+      "exitCode": 0,
+      "seconds": 25.65682721999474,
+      "trigger": null
+    },
+    {
+      "stage": "wasm-bindgen",
+      "exitCode": 0,
+      "seconds": 4.43409375596093,
+      "trigger": null
+    }
+  ],
+  "outputs": [
+    {
+      "path": "/workspace/shared/native-import-policy-20261023T0129Z/full-wasm/raw/futureox_design_kernel.wasm",
+      "bytes": 53667677,
+      "sha256": "b1744917e297955eef077f48dd4640be609a509c86ff1b552e8b90122dbf3932"
+    },
+    {
+      "path": "/workspace/shared/native-import-policy-20261023T0129Z/full-wasm/generated/design_kernel_bg.wasm",
+      "bytes": 49321078,
+      "sha256": "09ff44d26dbd365a7551a9de56d135c21fb44b387d8f11a51b155887f84d9b28"
+    },
+    {
+      "path": "/workspace/shared/native-import-policy-20261023T0129Z/full-wasm/generated/design_kernel.js",
+      "bytes": 127358,
+      "sha256": "5ca41a193dbd6f3bb2102d53217b35a8feee274f9914a11ae0c4fbae306d42ad"
+    },
+    {
+      "path": "/workspace/shared/native-import-policy-20261023T0129Z/full-wasm/generated/design_kernel.d.ts",
+      "bytes": 41191,
+      "sha256": "5888b6729dc25572f95c4c8dbbabcc4bb94a6bdf4665c3f3f29280337c62e84e"
+    },
+    {
+      "path": "/workspace/shared/native-import-policy-20261023T0129Z/full-wasm/generated/design_kernel_bg.wasm.d.ts",
+      "bytes": 20785,
+      "sha256": "65493db1730922b238a58e40715238022649e24671e7e9134c695582289c15fc"
+    }
+  ],
+  "peakObservedProcessGroupRssBytes": 1451360256,
+  "minimumAvailableBytes": {
+    "/workspace/shared": 552235008,
+    "/tmp": 554463232
+  },
+  "afterAvailableBytes": {
+    "/workspace/shared": 562507776,
+    "/tmp": 554512384
+  },
+  "sourceChanged": [],
+  "dependencyChanged": [],
+  "guardTrigger": null,
+  "policy": {
+    "rssLimitBytes": 1610612736,
+    "deadlineSeconds": 900,
+    "minimumStartFreeBytes": 654311424,
+    "earlyDiskStopBytes": 436207616,
+    "diskFloorBytes": 419430400,
+    "pollSeconds": 0.02,
+    "isOsHardLimit": false
+  },
+  "executedWasm": false,
+  "nameStrip": false,
+  "wasmOpt": false,
+  "shippingRelease": false
+}

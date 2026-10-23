@@ -9,6 +9,24 @@ export type RenderFailureTag = { failureStage?: number; failureCategory?: number
 // 4 device lost,5 validation,6 protocol.
 const tags = new WeakMap<object, RenderFailureTag>()
 const known: readonly [string, number, number][] = [
+ // Fixed native compiler literals only. These codes do not infer a cause for older unknown failures.
+ ["GPU transform exceeds precision budget", 5, 119],
+ ["Render options must be an object", 5, 120],
+ ["Invalid GPU painter support policy", 5, 121],
+ ["Invalid GPU painter capture-read policy", 5, 122],
+ ["GPU painter capture reads require painter support", 5, 123],
+ ["Ambiguous GPU region", 5, 124],
+ ["Invalid prepare viewport bounds", 5, 125],
+ ["Native capture is a canvas operation", 6, 126],
+ ["Pixel preview uses complete-frame presentation", 6, 127],
+ ["Load document first", 6, 128],
+ ["Missing page", 5, 129],
+ ["GPU effect support exceeds coordinate budget", 5, 130],
+ ["Scene path budget exceeded", 3, 131],
+ ["Composed transform exceeds precision budget", 5, 132],
+ ["Effect expansion exceeds device coordinate budget", 5, 133],
+ ["Nested effect expansion exceeds device coordinate budget", 5, 134],
+ ["Scene sequence exhausted", 6, 135],
  ["Singular transform", 5, 80],
  ["Nonfinite composed transform", 5, 81],
  ["Composed inverse exceeds precision budget", 5, 82],

@@ -1,0 +1,18 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+752 !== 753
+
+    at file:///workspace/shared/native-import-policy-20261023T0129Z/runtime-import/probe.mjs:10:91 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 752,
+  expected: 753,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.19.0

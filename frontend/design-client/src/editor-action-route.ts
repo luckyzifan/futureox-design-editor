@@ -4,13 +4,14 @@ import { canvasActions, CanvasAction, ActionOutcome, ActionReason, type ActionCo
 /** Explicit action boundary only, never pointer samples or raw arguments. UI state
  * changes are observed, not claimed as document commits or visual correctness. */
 export function beginEditorAction(editor: Pick<Editor, 'state'> & Partial<Pick<Editor, 'sessionGeneration'>>, action: ActionCode, source: ActionSourceCode, commandCode = 0) {
-  if (editor.sessionGeneration === undefined) return { result(_value: ActionOutcomeCode, _why: ActionReasonCode = ActionReason.none) {}, finish() {} }
+  if (editor.sessionGeneration === undefined) return { actionId: 0, actionOwner: 0, result(_value: ActionOutcomeCode, _why: ActionReasonCode = ActionReason.none) {}, finish() {} }
   const trace = canvasActions(editor as Pick<Editor, 'state' | 'sessionGeneration'>)
   const session = editor.sessionGeneration
   const before = editor.state
   const token = trace.begin(action, source, { commandCode, selectionBefore: before.selection.length, routeSupported: true })
   let outcome: ActionOutcomeCode | undefined, reason: ActionReasonCode = ActionReason.none
   return {
+    actionId: token, actionOwner: trace.owner,
     result(value: ActionOutcomeCode, why: ActionReasonCode = ActionReason.none) { outcome = value; reason = why },
     finish() {
       const after = editor.state

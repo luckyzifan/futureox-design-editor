@@ -1,0 +1,24 @@
+{
+  "source": "/workspace/shared/render-fixed-failure-candidate-20261023",
+  "manifest": "/workspace/shared/render-fixed-failure-candidate-20261023/manifest.json",
+  "manifestSHA256": "43b4a31989002fa7d1d7da6dc9afd94d00e1cd7e4c46ced8f565b7c718b402d3",
+  "files": [
+    {
+      "path": "frontend/design-client/src/kernel/native-compile-failure-codes.test.ts",
+      "before": null,
+      "after": "ba7bbab8f6f588c77d47101cbe1f8c56b97c33703102dc2d6ea627fbb0ee1419"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-failure-telemetry.ts",
+      "before": "b4ce0f92ef737c559fdbd478799f13f41b57e5ee4867787aab4b38b1b93d211d",
+      "after": "b0855cfb83e5048ebc456658e54dfa2ea4d240beeb25e108867918cde57e63aa"
+    }
+  ],
+  "frozenOriginalsUnchanged": true,
+  "integrationAdjustment": {
+    "path": "frontend/design-client/src/kernel/native-compile-failure-codes.test.ts",
+    "before": "1abd1cbe1c860e9a9b90d76a069f4b639e6304eddcbb4bb168c875527ddecd5d",
+    "after": "ba7bbab8f6f588c77d47101cbe1f8c56b97c33703102dc2d6ea627fbb0ee1419",
+    "reason": "TS7016 for actual untyped desktop .mjs; precise expect-error only, unchanged runtime/implementation/assertions; initial RED retained"
+  }
+}

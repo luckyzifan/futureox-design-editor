@@ -1,6 +1,6 @@
+import { assertImportInputBytes } from './import-input-policy'
 import { Inflate } from 'fflate'
 
-const INPUT_LIMIT = 32 * 1024 * 1024
 const EXPANDED_LIMIT = 64 * 1024 * 1024
 const ENTRY_LIMIT = 2048
 const RATIO_LIMIT = 200
@@ -54,7 +54,7 @@ interface Entry {
 
 /** Strict, bounded ZIP32 admission. Archive paths are data, never filesystem paths. */
 export function figArchive(bytes: Uint8Array): Record<string, Uint8Array> {
-  if (bytes.length > INPUT_LIMIT) fail('文件超过 32 MiB')
+  assertImportInputBytes(bytes.length)
   const files: Record<string, Uint8Array> = Object.create(null)
   if (bytes.length >= 8 && [102, 105, 103, 45, 107, 105, 119, 105].every((v, i) => bytes[i] === v)) {
     files['canvas.fig'] = bytes

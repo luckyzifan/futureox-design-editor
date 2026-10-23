@@ -1,0 +1,987 @@
+{
+  "wasmSha256": "09ff44d26dbd365a7551a9de56d135c21fb44b387d8f11a51b155887f84d9b28",
+  "exportCount": 194,
+  "exports": [
+    {
+      "name": "memory",
+      "kind": 2,
+      "index": 0
+    },
+    {
+      "name": "__wbg_animationbakesession_free",
+      "kind": 0,
+      "index": 29861
+    },
+    {
+      "name": "__wbg_documenthistory_free",
+      "kind": 0,
+      "index": 27862
+    },
+    {
+      "name": "__wbg_graphapi_free",
+      "kind": 0,
+      "index": 27863
+    },
+    {
+      "name": "__wbg_shortcutapi_free",
+      "kind": 0,
+      "index": 29862
+    },
+    {
+      "name": "__wbg_vectorengine_free",
+      "kind": 0,
+      "index": 29863
+    },
+    {
+      "name": "animation_plan_json",
+      "kind": 0,
+      "index": 31035
+    },
+    {
+      "name": "animation_plan_sample_json",
+      "kind": 0,
+      "index": 31777
+    },
+    {
+      "name": "animationbakesession_bake",
+      "kind": 0,
+      "index": 32273
+    },
+    {
+      "name": "animationbakesession_new",
+      "kind": 0,
+      "index": 24731
+    },
+    {
+      "name": "animationbakesession_sample_json",
+      "kind": 0,
+      "index": 34311
+    },
+    {
+      "name": "animationbakesession_stats_json",
+      "kind": 0,
+      "index": 36188
+    },
+    {
+      "name": "binfmt_decode",
+      "kind": 0,
+      "index": 34309
+    },
+    {
+      "name": "binfmt_encode",
+      "kind": 0,
+      "index": 34308
+    },
+    {
+      "name": "certified_box_kernel_rgba",
+      "kind": 0,
+      "index": 34709
+    },
+    {
+      "name": "certified_tent_kernel_rgba",
+      "kind": 0,
+      "index": 34710
+    },
+    {
+      "name": "color_encode_display",
+      "kind": 0,
+      "index": 32272
+    },
+    {
+      "name": "color_encode_png",
+      "kind": 0,
+      "index": 31038
+    },
+    {
+      "name": "color_encode_rgba8",
+      "kind": 0,
+      "index": 33154
+    },
+    {
+      "name": "configure_document_capacity",
+      "kind": 0,
+      "index": 36187
+    },
+    {
+      "name": "document_capacity_bytes",
+      "kind": 0,
+      "index": 32417
+    },
+    {
+      "name": "documenthistory_apply",
+      "kind": 0,
+      "index": 33151
+    },
+    {
+      "name": "documenthistory_new",
+      "kind": 0,
+      "index": 35162
+    },
+    {
+      "name": "documenthistory_redo",
+      "kind": 0,
+      "index": 34707
+    },
+    {
+      "name": "documenthistory_undo",
+      "kind": 0,
+      "index": 34708
+    },
+    {
+      "name": "encode_float_rgba8",
+      "kind": 0,
+      "index": 34299
+    },
+    {
+      "name": "encode_png_rgba",
+      "kind": 0,
+      "index": 33156
+    },
+    {
+      "name": "exact_bucket_scale",
+      "kind": 0,
+      "index": 21032
+    },
+    {
+      "name": "export_region_plan_json",
+      "kind": 0,
+      "index": 33846
+    },
+    {
+      "name": "export_sketch_json",
+      "kind": 0,
+      "index": 34303
+    },
+    {
+      "name": "figma_gradient_field",
+      "kind": 0,
+      "index": 30162
+    },
+    {
+      "name": "figma_gradient_lookup",
+      "kind": 0,
+      "index": 34304
+    },
+    {
+      "name": "figma_unpremultiply_rgba8",
+      "kind": 0,
+      "index": 35394
+    },
+    {
+      "name": "float16_decode",
+      "kind": 0,
+      "index": 35825
+    },
+    {
+      "name": "float16_encode",
+      "kind": 0,
+      "index": 35824
+    },
+    {
+      "name": "font_faces_json",
+      "kind": 0,
+      "index": 34297
+    },
+    {
+      "name": "forma_decode_json",
+      "kind": 0,
+      "index": 34323
+    },
+    {
+      "name": "forma_encode_json",
+      "kind": 0,
+      "index": 34324
+    },
+    {
+      "name": "freehand_json",
+      "kind": 0,
+      "index": 34300
+    },
+    {
+      "name": "gaussian_box_radii",
+      "kind": 0,
+      "index": 34713
+    },
+    {
+      "name": "geometry_bounds_json",
+      "kind": 0,
+      "index": 33157
+    },
+    {
+      "name": "geometry_json",
+      "kind": 0,
+      "index": 34310
+    },
+    {
+      "name": "glass_capture_tiles",
+      "kind": 0,
+      "index": 32574
+    },
+    {
+      "name": "glass_geometry_field",
+      "kind": 0,
+      "index": 29100
+    },
+    {
+      "name": "glass_geometry_interior",
+      "kind": 0,
+      "index": 29679
+    },
+    {
+      "name": "glass_material_uniforms",
+      "kind": 0,
+      "index": 33845
+    },
+    {
+      "name": "gradient_blur_composite_rgba",
+      "kind": 0,
+      "index": 29675
+    },
+    {
+      "name": "gradient_blur_composite_uniforms",
+      "kind": 0,
+      "index": 32270
+    },
+    {
+      "name": "gradient_blur_sample",
+      "kind": 0,
+      "index": 30484
+    },
+    {
+      "name": "gradient_sampling_grid",
+      "kind": 0,
+      "index": 30483
+    },
+    {
+      "name": "graphapi_apply_facet_json",
+      "kind": 0,
+      "index": 34317
+    },
+    {
+      "name": "graphapi_apply_ops_json",
+      "kind": 0,
+      "index": 35398
+    },
+    {
+      "name": "graphapi_apply_scale_transform",
+      "kind": 0,
+      "index": 35399
+    },
+    {
+      "name": "graphapi_apply_scale_transform_scoped",
+      "kind": 0,
+      "index": 34718
+    },
+    {
+      "name": "graphapi_decode_ops_frame",
+      "kind": 0,
+      "index": 33160
+    },
+    {
+      "name": "graphapi_document_json",
+      "kind": 0,
+      "index": 36189
+    },
+    {
+      "name": "graphapi_export_binary",
+      "kind": 0,
+      "index": 36190
+    },
+    {
+      "name": "graphapi_facet_capabilities_json",
+      "kind": 0,
+      "index": 34319
+    },
+    {
+      "name": "graphapi_facet_json",
+      "kind": 0,
+      "index": 33158
+    },
+    {
+      "name": "graphapi_facet_kinds",
+      "kind": 0,
+      "index": 34312
+    },
+    {
+      "name": "graphapi_find_containing_page",
+      "kind": 0,
+      "index": 35168
+    },
+    {
+      "name": "graphapi_import_binary",
+      "kind": 0,
+      "index": 35397
+    },
+    {
+      "name": "graphapi_import_binary_scoped",
+      "kind": 0,
+      "index": 34716
+    },
+    {
+      "name": "graphapi_last_edit_scope_json",
+      "kind": 0,
+      "index": 34717
+    },
+    {
+      "name": "graphapi_level_for_zoom",
+      "kind": 0,
+      "index": 20597
+    },
+    {
+      "name": "graphapi_new",
+      "kind": 0,
+      "index": 35170
+    },
+    {
+      "name": "graphapi_node_children",
+      "kind": 0,
+      "index": 34314
+    },
+    {
+      "name": "graphapi_node_exists",
+      "kind": 0,
+      "index": 19697
+    },
+    {
+      "name": "graphapi_node_handle",
+      "kind": 0,
+      "index": 19321
+    },
+    {
+      "name": "graphapi_node_id",
+      "kind": 0,
+      "index": 34320
+    },
+    {
+      "name": "graphapi_node_kind",
+      "kind": 0,
+      "index": 34321
+    },
+    {
+      "name": "graphapi_node_name",
+      "kind": 0,
+      "index": 34322
+    },
+    {
+      "name": "graphapi_node_opacity",
+      "kind": 0,
+      "index": 35165
+    },
+    {
+      "name": "graphapi_node_parent",
+      "kind": 0,
+      "index": 35164
+    },
+    {
+      "name": "graphapi_node_transform",
+      "kind": 0,
+      "index": 34316
+    },
+    {
+      "name": "graphapi_node_visible",
+      "kind": 0,
+      "index": 35166
+    },
+    {
+      "name": "graphapi_ops_frame",
+      "kind": 0,
+      "index": 32577
+    },
+    {
+      "name": "graphapi_redo",
+      "kind": 0,
+      "index": 35400
+    },
+    {
+      "name": "graphapi_redo_depth",
+      "kind": 0,
+      "index": 31416
+    },
+    {
+      "name": "graphapi_replace_document",
+      "kind": 0,
+      "index": 34715
+    },
+    {
+      "name": "graphapi_replace_document_scoped",
+      "kind": 0,
+      "index": 33850
+    },
+    {
+      "name": "graphapi_resize",
+      "kind": 0,
+      "index": 35171
+    },
+    {
+      "name": "graphapi_set_edit_scope_strict",
+      "kind": 0,
+      "index": 22988
+    },
+    {
+      "name": "graphapi_set_name",
+      "kind": 0,
+      "index": 35172
+    },
+    {
+      "name": "graphapi_set_opacity",
+      "kind": 0,
+      "index": 35395
+    },
+    {
+      "name": "graphapi_set_transform",
+      "kind": 0,
+      "index": 33159
+    },
+    {
+      "name": "graphapi_set_visible",
+      "kind": 0,
+      "index": 35396
+    },
+    {
+      "name": "graphapi_tile_handle",
+      "kind": 0,
+      "index": 11385
+    },
+    {
+      "name": "graphapi_tile_needs_color_clear",
+      "kind": 0,
+      "index": 35169
+    },
+    {
+      "name": "graphapi_tile_release",
+      "kind": 0,
+      "index": 19698
+    },
+    {
+      "name": "graphapi_tile_scissor_for_clear",
+      "kind": 0,
+      "index": 34318
+    },
+    {
+      "name": "graphapi_tile_to_node",
+      "kind": 0,
+      "index": 35167
+    },
+    {
+      "name": "graphapi_tile_uv_rect",
+      "kind": 0,
+      "index": 34313
+    },
+    {
+      "name": "graphapi_tile_viewport",
+      "kind": 0,
+      "index": 34315
+    },
+    {
+      "name": "graphapi_tiles_for_rect",
+      "kind": 0,
+      "index": 33849
+    },
+    {
+      "name": "graphapi_undo",
+      "kind": 0,
+      "index": 35401
+    },
+    {
+      "name": "graphapi_undo_depth",
+      "kind": 0,
+      "index": 31417
+    },
+    {
+      "name": "hit_test_device_json",
+      "kind": 0,
+      "index": 32575
+    },
+    {
+      "name": "hit_test_fill_device_json",
+      "kind": 0,
+      "index": 33155
+    },
+    {
+      "name": "hit_test_json",
+      "kind": 0,
+      "index": 33847
+    },
+    {
+      "name": "image_byte_sampling_field",
+      "kind": 0,
+      "index": 29676
+    },
+    {
+      "name": "image_byte_sampling_field_at_level",
+      "kind": 0,
+      "index": 29099
+    },
+    {
+      "name": "image_byte_sampling_field_placed",
+      "kind": 0,
+      "index": 28139
+    },
+    {
+      "name": "image_byte_sampling_grid",
+      "kind": 0,
+      "index": 29677
+    },
+    {
+      "name": "image_byte_sampling_grid_at_level",
+      "kind": 0,
+      "index": 29102
+    },
+    {
+      "name": "image_mip_level",
+      "kind": 0,
+      "index": 31036
+    },
+    {
+      "name": "image_sampling_axes_placed",
+      "kind": 0,
+      "index": 28140
+    },
+    {
+      "name": "image_sampling_grid",
+      "kind": 0,
+      "index": 29678
+    },
+    {
+      "name": "image_sampling_grid_at_level",
+      "kind": 0,
+      "index": 29101
+    },
+    {
+      "name": "image_sampling_grid_placed",
+      "kind": 0,
+      "index": 28141
+    },
+    {
+      "name": "import_pdf_json",
+      "kind": 0,
+      "index": 34306
+    },
+    {
+      "name": "import_sketch_json",
+      "kind": 0,
+      "index": 34298
+    },
+    {
+      "name": "inferred_layout_json",
+      "kind": 0,
+      "index": 33153
+    },
+    {
+      "name": "layout_grid_frame_json",
+      "kind": 0,
+      "index": 33152
+    },
+    {
+      "name": "layout_grid_tracks_json",
+      "kind": 0,
+      "index": 34305
+    },
+    {
+      "name": "lod_bucket_scale",
+      "kind": 0,
+      "index": 21033
+    },
+    {
+      "name": "quantized_tent_kernel_rgba",
+      "kind": 0,
+      "index": 34714
+    },
+    {
+      "name": "raster_tile_addresses_json",
+      "kind": 0,
+      "index": 32271
+    },
+    {
+      "name": "rational_box_kernel_rgba",
+      "kind": 0,
+      "index": 34711
+    },
+    {
+      "name": "rational_tent_kernel_rgba",
+      "kind": 0,
+      "index": 34712
+    },
+    {
+      "name": "shortcutapi_actions",
+      "kind": 0,
+      "index": 34705
+    },
+    {
+      "name": "shortcutapi_display",
+      "kind": 0,
+      "index": 33826
+    },
+    {
+      "name": "shortcutapi_new",
+      "kind": 0,
+      "index": 35161
+    },
+    {
+      "name": "smart_guides_snap",
+      "kind": 0,
+      "index": 33844
+    },
+    {
+      "name": "snap_pixel_json",
+      "kind": 0,
+      "index": 34302
+    },
+    {
+      "name": "stroke_geometry_json",
+      "kind": 0,
+      "index": 34307
+    },
+    {
+      "name": "stroke_handles_json",
+      "kind": 0,
+      "index": 33848
+    },
+    {
+      "name": "texture_clip_math_atlas",
+      "kind": 0,
+      "index": 35163
+    },
+    {
+      "name": "texture_material_field",
+      "kind": 0,
+      "index": 31039
+    },
+    {
+      "name": "texture_replay_field",
+      "kind": 0,
+      "index": 31037
+    },
+    {
+      "name": "texture_replay_tiles",
+      "kind": 0,
+      "index": 32572
+    },
+    {
+      "name": "texture_sampling_grid",
+      "kind": 0,
+      "index": 32576
+    },
+    {
+      "name": "transcode_export_png",
+      "kind": 0,
+      "index": 32578
+    },
+    {
+      "name": "validate_document_json",
+      "kind": 0,
+      "index": 35826
+    },
+    {
+      "name": "vector_fill_region_json",
+      "kind": 0,
+      "index": 32573
+    },
+    {
+      "name": "vector_tool_json",
+      "kind": 0,
+      "index": 34301
+    },
+    {
+      "name": "vector_translate_json",
+      "kind": 0,
+      "index": 32269
+    },
+    {
+      "name": "vectorengine_animation_document",
+      "kind": 0,
+      "index": 32569
+    },
+    {
+      "name": "vectorengine_apply_document_patch",
+      "kind": 0,
+      "index": 35392
+    },
+    {
+      "name": "vectorengine_apply_document_patch_with_damage",
+      "kind": 0,
+      "index": 33841
+    },
+    {
+      "name": "vectorengine_apply_interaction_transforms",
+      "kind": 0,
+      "index": 34706
+    },
+    {
+      "name": "vectorengine_assemble_tiled_rgba",
+      "kind": 0,
+      "index": 32571
+    },
+    {
+      "name": "vectorengine_caret_at",
+      "kind": 0,
+      "index": 33150
+    },
+    {
+      "name": "vectorengine_clear_gpu_scene_session",
+      "kind": 0,
+      "index": 42168
+    },
+    {
+      "name": "vectorengine_color_settings",
+      "kind": 0,
+      "index": 36180
+    },
+    {
+      "name": "vectorengine_compile_gpu",
+      "kind": 0,
+      "index": 33829
+    },
+    {
+      "name": "vectorengine_compile_gpu_packet",
+      "kind": 0,
+      "index": 33838
+    },
+    {
+      "name": "vectorengine_compile_gpu_scene_update",
+      "kind": 0,
+      "index": 33149
+    },
+    {
+      "name": "vectorengine_compositing_ledger",
+      "kind": 0,
+      "index": 36183
+    },
+    {
+      "name": "vectorengine_export_pdf_vector",
+      "kind": 0,
+      "index": 33836
+    },
+    {
+      "name": "vectorengine_fork_static_render_engine",
+      "kind": 0,
+      "index": 24441
+    },
+    {
+      "name": "vectorengine_glyph_cache_stats",
+      "kind": 0,
+      "index": 36182
+    },
+    {
+      "name": "vectorengine_gpu_compile_cache_stats",
+      "kind": 0,
+      "index": 36185
+    },
+    {
+      "name": "vectorengine_gpu_memory_breakdown",
+      "kind": 0,
+      "index": 36184
+    },
+    {
+      "name": "vectorengine_hit_caret",
+      "kind": 0,
+      "index": 33842
+    },
+    {
+      "name": "vectorengine_image_info",
+      "kind": 0,
+      "index": 33827
+    },
+    {
+      "name": "vectorengine_image_info_at_level",
+      "kind": 0,
+      "index": 33146
+    },
+    {
+      "name": "vectorengine_image_linear",
+      "kind": 0,
+      "index": 33833
+    },
+    {
+      "name": "vectorengine_image_linear_at_level",
+      "kind": 0,
+      "index": 33148
+    },
+    {
+      "name": "vectorengine_image_mips",
+      "kind": 0,
+      "index": 30230
+    },
+    {
+      "name": "vectorengine_image_rgba8",
+      "kind": 0,
+      "index": 33830
+    },
+    {
+      "name": "vectorengine_image_rgba8_at_level",
+      "kind": 0,
+      "index": 33147
+    },
+    {
+      "name": "vectorengine_load_document",
+      "kind": 0,
+      "index": 35389
+    },
+    {
+      "name": "vectorengine_load_document_fonts",
+      "kind": 0,
+      "index": 35390
+    },
+    {
+      "name": "vectorengine_load_font",
+      "kind": 0,
+      "index": 35393
+    },
+    {
+      "name": "vectorengine_new",
+      "kind": 0,
+      "index": 24732
+    },
+    {
+      "name": "vectorengine_render_color_png",
+      "kind": 0,
+      "index": 32568
+    },
+    {
+      "name": "vectorengine_render_linear",
+      "kind": 0,
+      "index": 33834
+    },
+    {
+      "name": "vectorengine_render_png",
+      "kind": 0,
+      "index": 33828
+    },
+    {
+      "name": "vectorengine_render_region_png",
+      "kind": 0,
+      "index": 33837
+    },
+    {
+      "name": "vectorengine_render_rgba",
+      "kind": 0,
+      "index": 33831
+    },
+    {
+      "name": "vectorengine_resolve_components",
+      "kind": 0,
+      "index": 33839
+    },
+    {
+      "name": "vectorengine_resolve_layout",
+      "kind": 0,
+      "index": 33835
+    },
+    {
+      "name": "vectorengine_set_image_mips",
+      "kind": 0,
+      "index": 22989
+    },
+    {
+      "name": "vectorengine_set_text_quantization",
+      "kind": 0,
+      "index": 22990
+    },
+    {
+      "name": "vectorengine_stats",
+      "kind": 0,
+      "index": 36186
+    },
+    {
+      "name": "vectorengine_svg_paths",
+      "kind": 0,
+      "index": 33843
+    },
+    {
+      "name": "vectorengine_take_tiled_bytes",
+      "kind": 0,
+      "index": 36181
+    },
+    {
+      "name": "vectorengine_text_geometry",
+      "kind": 0,
+      "index": 31034
+    },
+    {
+      "name": "vectorengine_text_layout",
+      "kind": 0,
+      "index": 33832
+    },
+    {
+      "name": "vectorengine_tiled_visible_tiles",
+      "kind": 0,
+      "index": 33840
+    },
+    {
+      "name": "vectorengine_update_tiled_frame",
+      "kind": 0,
+      "index": 32570
+    },
+    {
+      "name": "vectorengine_validate_animations",
+      "kind": 0,
+      "index": 35391
+    },
+    {
+      "name": "__abort_handler",
+      "kind": 3,
+      "index": 1
+    },
+    {
+      "name": "__instance_terminated",
+      "kind": 3,
+      "index": 2
+    },
+    {
+      "name": "__wbindgen_exn_store",
+      "kind": 0,
+      "index": 42811
+    },
+    {
+      "name": "__externref_table_alloc",
+      "kind": 0,
+      "index": 8127
+    },
+    {
+      "name": "__wbindgen_externrefs",
+      "kind": 1,
+      "index": 1
+    },
+    {
+      "name": "__wbindgen_malloc",
+      "kind": 0,
+      "index": 31758
+    },
+    {
+      "name": "__wbindgen_realloc",
+      "kind": 0,
+      "index": 33138
+    },
+    {
+      "name": "__externref_table_dealloc",
+      "kind": 0,
+      "index": 23637
+    },
+    {
+      "name": "__wbindgen_free",
+      "kind": 0,
+      "index": 39698
+    },
+    {
+      "name": "__externref_drop_slice",
+      "kind": 0,
+      "index": 18290
+    },
+    {
+      "name": "__wbindgen_start",
+      "kind": 0,
+      "index": 7
+    }
+  ],
+  "relevant": [
+    "graphapi_import_binary",
+    "graphapi_import_binary_scoped",
+    "import_pdf_json",
+    "import_sketch_json",
+    "vectorengine_load_document",
+    "vectorengine_load_document_fonts",
+    "vectorengine_load_font",
+    "vectorengine_render_rgba"
+  ],
+  "executed": false
+}

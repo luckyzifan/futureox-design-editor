@@ -1,0 +1,22 @@
+{
+  "gate": "ownership-node",
+  "command": [
+    "node",
+    "--max-old-space-size=384",
+    "--experimental-transform-types",
+    "--import",
+    "./scripts/node-ts-local-resolver.mjs",
+    "--test",
+    "src/import-ownership.test.mjs"
+  ],
+  "cwd": "/workspace/shared/import-increment-e411-20261023T0140Z/stage-source/frontend/design-client",
+  "exit": 0,
+  "stop": null,
+  "peakProcessGroupRSSBytes": 126787584,
+  "minimumFreeBytes": {
+    "/workspace/shared/import-increment-e411-20261023T0140Z/validation/combination-r2": 525123584,
+    "/tmp": 554512384
+  },
+  "seconds": 0.5096111239981838,
+  "logSHA256": "74a48abe94771990018742be49a441d2ce34e96b97663fee88f811138945feff"
+}
