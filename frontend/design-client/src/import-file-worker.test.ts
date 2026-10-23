@@ -75,8 +75,8 @@ test('timed out import reclaims its worker without a retry', async () => {
 test('oversized Sketch input is rejected before reading or creating a worker', async () => {
   installWorker()
   const arrayBuffer = vi.fn()
-  await expect(readDesignFile({ name: 'large.sketch', size: 32 * 1024 * 1024 + 1, arrayBuffer } as unknown as File))
-    .rejects.toThrow('32 MB')
+  await expect(readDesignFile({ name: 'large.sketch', size: 1024 ** 3 + 1, arrayBuffer } as unknown as File))
+    .rejects.toThrow('1 GiB')
   expect(arrayBuffer).not.toHaveBeenCalled()
   expect(ImportWorker.instances).toHaveLength(0)
 })

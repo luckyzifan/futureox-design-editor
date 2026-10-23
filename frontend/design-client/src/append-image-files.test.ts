@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { beginImportDiagnostic, ImportStage, ImportFailure } from './import-diagnostics'
+import { describe, expect, it, vi } from 'vitest'
 import { Editor } from './engine'
 import { blank } from './model'
 import { appendImageFiles as appendImages, captureImageImportAnchor, type DecodeImportImage, type DecodedImportImage } from './append-image-files'
@@ -6,7 +7,7 @@ import { worldToScreen } from './canvas-camera'
 const viewport = { width: 800, height: 600 }
 const appendImageFiles = (editor: Editor, files: File[], decode: DecodeImportImage) => appendImages(editor, files, captureImageImportAnchor(editor, viewport), decode)
 const image = { uri: 'data:image/png;base64,AA==', width: 20, height: 30 }
-const file = {} as File
+const file = new File(['opaque test bytes'], 'fixture.png', { type: 'image/png' })
 function pending() { let resolve!: (image: DecodedImportImage) => void; const promise = new Promise<DecodedImportImage>(yes => { resolve = yes }); return { promise, resolve } }
 describe('image import target ownership', () => {
   it('never inserts decoded images into a document opened while decoding', async () => {
@@ -76,4 +77,45 @@ describe('image import target ownership', () => {
     expect(Object.keys(editor.state.doc.nodes)).toHaveLength(0); editor.dispose()
   })
 
+})
+
+it('image diagnostics report actual commit and rejection without extra history', async () => {
+ for (const invalid of [false, true]) {
+  const editor = new Editor(blank())
+  const diagnostic = beginImportDiagnostic(file, 'append', {actionId: 7, actionOwner: 9})
+  const completed = vi.spyOn(diagnostic, 'result'), stage = vi.spyOn(diagnostic, 'stage')
+  const result = await appendImages(editor, [file], {x:0,y:0}, async () => ({...image, width:invalid ? NaN : 20}), () => diagnostic)
+  expect(result.status).toBe(invalid ? 'rejected' : 'committed')
+  expect(completed).toHaveBeenCalledExactlyOnceWith(invalid ? 3 : 1, invalid ? 0 : 1)
+  expect(stage).toHaveBeenCalledWith(ImportStage.decode)
+  expect(stage).toHaveBeenCalledWith(ImportStage.commit)
+  editor.undo(); expect(Object.keys(editor.state.doc.nodes)).toHaveLength(0)
+  editor.dispose()
+ }
+})
+it('image late decode failure belongs to cancelled original request', async () => {
+ const editor = new Editor(blank()), diagnostic = beginImportDiagnostic(file, 'append', {actionId:8,actionOwner:9})
+ let reject!: (error: unknown) => void
+ const pending = new Promise<DecodedImportImage>((_, fail) => {reject=fail})
+ const error = Error('private decoder error')
+ const work = appendImages(editor,[file],{x:0,y:0},()=>pending,()=>diagnostic)
+ const rejected = expect(work).rejects.toBe(error)
+ editor.load(blank()); reject(error); await rejected
+ expect(diagnostic.fail(error)).toBe(ImportFailure.cancelled)
+ expect(Object.keys(editor.state.doc.nodes)).toHaveLength(0)
+ editor.dispose()
+})
+it('batch decode failure is attributed only to failing file, siblings are cancelled without commit', async () => {
+ const editor = new Editor(blank()), second = new File(['x'], 'second.png')
+ const firstDiag = beginImportDiagnostic(file,'append',{actionId:9,actionOwner:10})
+ const secondDiag = beginImportDiagnostic(second,'append',{actionId:9,actionOwner:10})
+ const error = Error('private decode failure')
+ await expect(appendImages(editor,[file,second],{x:0,y:0},async current=>{
+  if(current===second) throw error
+  return image
+ },current=>current===file ? firstDiag : secondDiag)).rejects.toBe(error)
+ expect(firstDiag.fail(error)).toBe(ImportFailure.cancelled)
+ expect(secondDiag.fail(error)).toBe(ImportFailure.unknown)
+ expect(Object.keys(editor.state.doc.nodes)).toHaveLength(0)
+ editor.dispose()
 })

@@ -2,7 +2,7 @@ import type { InterfaceLocale } from './interface-preference'
 import { localizedToolCommands, unavailableReason } from './tool-registry'
 /** Ephemeral UI metadata only. Never serialize into a document or history label. */
 export type OperationStatus =
-  | { key: 'exportPreviewGenerating' | 'exportFileReady' | 'sketchExportGenerating' | 'sketchExportReadyCompatibility' | 'openBlockedActiveOperation' | 'imageImportBlockedActiveOperation' | 'singleDesignFileRequired' | 'designImportComplete' | 'finishOrCancelDrag' | 'propertiesCopied' | 'sharedFontStyleNeedsLocalOverride' | 'instanceDetachHint' }
+  | { key: 'exportPreviewGenerating' | 'exportFileReady' | 'sketchExportGenerating' | 'sketchExportReadyCompatibility' | 'openBlockedActiveOperation' | 'imageImportBlockedActiveOperation' | 'singleDesignFileRequired' | 'designImportComplete' | 'finishOrCancelDrag' | 'propertiesCopied' | 'sharedFontStyleNeedsLocalOverride' | 'instanceDetachHint' | 'importInputTooLarge' | 'importInputInvalid' | 'openCanvasBeforeImageImport' }
   | { key: 'importedGroupsAppended'; count: number }
   | { key: 'imageImportFailed' | 'saveFailedCanvasRetained' | 'kernelStartupFailed' | 'recoveryFailedAutosavePaused' | 'closeFailedDocumentRetained' | 'workspaceSwitchFailedDocumentRetained'; error: string }
   | { key: 'toolUnavailable' | 'unknownToolCommand'; commandId: string }
@@ -21,6 +21,9 @@ export function operationStatusText(raw: string, presentation: MessagePresentati
     case 'singleDesignFileRequired': return 'Import one design file at a time'
     case 'importedGroupsAppended': return `Appended ${status.count} groups; move them together or undo this import`
     case 'designImportComplete': return 'Import complete; you can continue editing'
+    case 'openCanvasBeforeImageImport': return 'Open a canvas before importing an image'
+    case 'importInputTooLarge': return 'Import file exceeds the 1 GiB (1,073,741,824 bytes) input limit'
+    case 'importInputInvalid': return 'Invalid import file byte count'
     case 'imageImportFailed': return `Image import failed: ${status.error}`
     case 'saveFailedCanvasRetained': return `Save failed; the current canvas was retained: ${status.error}`
     case 'kernelStartupFailed': return `Design kernel failed to load: ${status.error}`

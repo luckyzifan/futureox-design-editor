@@ -1,3 +1,4 @@
+import { assertImportInputBytes } from './import-input-policy'
 import { figArchive, inflateFigDeflate } from './import-fig-archive'
 export { figArchive } from './import-fig-archive'
 import { preflightFigZstd } from './import-fig-zstd'
@@ -124,7 +125,7 @@ export function decodeKiwi(schema: Schema, bytes: Uint8Array): Record<string, an
   return read('Message', 0)
 }
 export function decodeFig(bytes: Uint8Array) {
-  if (bytes.length > 32 * 1024 * 1024) throw new Error('FIG 文件超过 32 MB')
+  assertImportInputBytes(bytes.length)
   const files = figArchive(bytes),
     canvas = files['canvas.fig']
   if (new TextDecoder().decode(canvas.subarray(0, 8)) !== 'fig-kiwi' || canvas.length < 20)

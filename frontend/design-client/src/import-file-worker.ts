@@ -1,3 +1,5 @@
+import { assertImportInputBytes } from './import-input-policy'
+import { ImportStage, type ImportDiagnostic } from './import-diagnostics'
 import { documentCapacity } from './document-capacity'
 import { FIG_WARNING_LIMITS, FIG_WARNINGS_TRUNCATED } from './import-warnings'
 import type { ImportedDesign } from './import-svg'
@@ -11,9 +13,12 @@ export function importFileInWorker(
   name: string,
   format: WorkerImportFormat,
   signal?: AbortSignal,
+  diagnostic?: ImportDiagnostic,
 ): Promise<ImportedDesign> {
+  assertImportInputBytes(bytes.byteLength)
   return runFileWorker({ bytes, name, format }, [bytes], format.toUpperCase(), (message) => {
     const result = message.result as ImportedDesign
+    diagnostic?.stage(ImportStage.validate)
     validateDocument(result.document)
     if (!Array.isArray(result.warnings) || result.warnings.some((warning) => typeof warning !== 'string'))
       throw new Error('文件导入兼容报告无效')
@@ -30,7 +35,7 @@ export function importFileInWorker(
         throw new Error('FIG 兼容报告超限或截断元数据无效')
     }
     return result
-  }, signal)
+  }, signal, diagnostic)
 }
 
 /** Compatibility export shares the same WASM codec in both application hosts. */
@@ -48,7 +53,9 @@ function runFileWorker<T>(
   label: string,
   decode: (message: Record<string, unknown>) => T,
   signal?: AbortSignal,
+  diagnostic?: ImportDiagnostic,
 ): Promise<T> {
+  diagnostic?.stage(ImportStage.worker)
   signal?.throwIfAborted()
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./import-worker.ts', import.meta.url), { type: 'module' })
@@ -70,7 +77,10 @@ function runFileWorker<T>(
     worker.onmessage = (event) => {
       if (settled) return
       try {
-        if (event.data.error) throw new Error(event.data.error)
+        if (event.data.error) {
+          if ([ImportStage.initialize, ImportStage.decode].includes(event.data.importStage)) diagnostic?.stage(event.data.importStage)
+          throw new Error(event.data.error)
+        }
         finish(undefined, decode(event.data))
       } catch (error) { finish(error) }
     }

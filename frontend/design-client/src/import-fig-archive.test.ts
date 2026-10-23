@@ -131,9 +131,9 @@ describe('FIG ZIP32 admission', () => {
     const a = archive(); put16(a.bytes, a.eocd + 8, 2049); put16(a.bytes, a.eocd + 10, 2049)
     expect(() => figArchive(a.bytes)).toThrow(/2048/)
   })
-  it('applies the 32 MiB input limit even to raw fig-kiwi', () => {
-    const bytes = new Uint8Array(32 * 1024 * 1024 + 1); bytes.set(canvas)
-    expect(() => figArchive(bytes)).toThrow(/32 MiB/)
+  it('applies the 1 GiB encoded input cap before accessing archive bytes', () => {
+    const bytes = { length: 1024 ** 3 + 1 } as Uint8Array
+    expect(() => figArchive(bytes)).toThrow(/1 GiB/)
   })
   it('rejects declared total expansion above 64 MiB before decoding', () => {
     const a = archive([base, { name: 'metadata', method: 8, data: text('ignored') }])

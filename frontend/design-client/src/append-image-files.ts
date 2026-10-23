@@ -1,16 +1,20 @@
+import { ImportStage, type ImportDiagnostic } from './import-diagnostics'
+import { assertImportInputBytes } from './import-input-policy'
 import type { Editor } from './engine'
 import { node, paint, type Point } from './model'
 import { screenToWorld, type CanvasSize } from './canvas-camera'
 export type DecodedImportImage = { uri: string; width: number; height: number }
 export class StaleImageImport extends Error { constructor() { super('图片导入期间画布已变化，请重新导入'); this.name = 'StaleImageImport' } }
 export type DecodeImportImage = (file: File) => Promise<DecodedImportImage>
-async function readImportImage(file: File): Promise<DecodedImportImage> {
+async function readImportImage(file: File, diagnostic?: ImportDiagnostic): Promise<DecodedImportImage> {
+  diagnostic?.stage(ImportStage.read)
   const uri = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
     reader.onerror = () => reject(new Error(`读取图片失败: ${file.name}`))
     reader.readAsDataURL(file)
   })
+  diagnostic?.stage(ImportStage.decode)
   // Get image dimensions
   const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
     const img = new Image()
@@ -32,7 +36,7 @@ export function captureImageImportAnchor(editor: Editor, size: CanvasSize): Poin
   return anchor
 }
 
-export async function appendImageFiles(editor: Editor, files: File[], anchor: Point, decode: DecodeImportImage = readImportImage) {
+export async function appendImageFiles(editor: Editor, files: File[], anchor: Point, decode: DecodeImportImage = readImportImage, diagnose?: (file: File) => ImportDiagnostic) {
   if (![anchor.x, anchor.y].every(Number.isFinite)) throw new Error('图片导入位置无效')
   const intendedAnchor = { ...anchor }
   // Ownership fix: never rebase a deferred image onto another session/page/edit.
@@ -41,10 +45,25 @@ export async function appendImageFiles(editor: Editor, files: File[], anchor: Po
     if (editor.sessionGeneration !== session || editor.state.doc !== document || editor.state.page !== page ||
       editor.state.version !== version || editor.interactionActive || editor.state.busy) throw new StaleImageImport()
   }
+  const diagnostics = files.map(file => diagnose?.(file))
+  for (const diagnostic of diagnostics) diagnostic?.bindCancellation(() => {
+    try { assertCurrent(); return false } catch { return true }
+  })
+  let activeIndex = -1
+  try {
   assertCurrent()
+  for (let index = 0; index < files.length; index++) {
+    activeIndex = index
+    const diagnostic = diagnostics[index]
+    if (diagnostic) diagnostic.run(ImportStage.admission, () => assertImportInputBytes(files[index].size))
+    else assertImportInputBytes(files[index].size)
+  }
   const images: { uri: string; width: number; height: number }[] = []
-  for (const file of files) {
-    const { uri, width, height } = await decode(file)
+  for (let index = 0; index < files.length; index++) {
+    activeIndex = index
+    const file = files[index], diagnostic = diagnostics[index]
+    diagnostic?.stage(ImportStage.decode)
+    const { uri, width, height } = await (decode === readImportImage ? readImportImage(file, diagnostic) : decode(file))
     assertCurrent()
     images.push({ uri, width, height })
   }
@@ -57,6 +76,8 @@ export async function appendImageFiles(editor: Editor, files: File[], anchor: Po
   const totalHeight = images.reduce((sum, image) => sum + image.height, 0) + Math.max(0, images.length - 1) * spacing
   let offsetY = centerY - totalHeight / 2
 
+  activeIndex = -1
+  for (const diagnostic of diagnostics) diagnostic?.stage(ImportStage.commit)
   const result = editor.change('导入图片', (doc) => {
     for (const { uri, width, height } of images) {
       // Construction fix: use all canonical required node/paint defaults.
@@ -70,5 +91,14 @@ export async function appendImageFiles(editor: Editor, files: File[], anchor: Po
     }
   })
   if (result?.status === 'committed') editor.notify(`已导入 ${images.length} 张图片`)
-  return { count: images.length, status: result?.status ?? 'unchanged' }
+  const status = result?.status ?? 'unchanged'
+  for (const diagnostic of diagnostics) diagnostic?.result(status === 'committed' ? 1 : status === 'rejected' ? 3 : 2, status === 'committed' ? 1 : 0)
+  return { count: images.length, status }
+  } catch (error) {
+    for (let index = 0; index < diagnostics.length; index++) {
+      const sibling = activeIndex >= 0 && index !== activeIndex
+      diagnostics[index]?.fail(sibling ? new DOMException('', 'AbortError') : error, sibling)
+    }
+    throw error
+  }
 }
