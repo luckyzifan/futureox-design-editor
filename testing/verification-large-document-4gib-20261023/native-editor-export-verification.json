@@ -1,0 +1,15 @@
+{
+  "members": 64,
+  "unchangedMembersByteIdentical": 63,
+  "editedPage": "pages/b5e640b2-e777-404c-b121-8e866696d553.json",
+  "selectedObjectId": "3D2E8E3B-3B43-4978-987E-03D6BB354BA2",
+  "unchangedPagePrefixBytes": 4096,
+  "unchangedPageSuffixBytes": 699395360,
+  "onlySelectedObjectSpanChanged": true,
+  "name": "拓扑-本机JSON校验",
+  "width": 180.0,
+  "disabledOriginalPaintsPreserved": true,
+  "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+  "outputSha256": "fcb1813d670de8f432e6f2fe6e7af03fbb1f2ecc92a9b25665ec5f1697a8c13c",
+  "outputBytes": 119392953
+}

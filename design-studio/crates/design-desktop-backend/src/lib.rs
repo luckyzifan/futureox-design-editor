@@ -19,6 +19,7 @@ mod sketch_session;
 mod storage;
 pub mod workspace;
 mod workspace_snapshot;
+mod large_document;
 
 use futureox_design_kernel::scene::Document;
 use serde::{Deserialize, Serialize};
@@ -83,6 +84,7 @@ pub struct Backend {
     workspace_issue: Option<&'static str>,
     fonts: fonts::FontCatalog,
     sketch_sessions: sketch_session::Sessions,
+    large_documents: large_document::Sessions,
 }
 
 impl Backend {
@@ -95,6 +97,7 @@ impl Backend {
             workspace_issue: Some("NOT_INITIALIZED"),
             fonts: fonts::FontCatalog::system(),
             sketch_sessions: sketch_session::Sessions::default(),
+            large_documents: large_document::Sessions::new(recovery_dir.join("large-documents")),
         })
     }
 

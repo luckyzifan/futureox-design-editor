@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "scope": "Real indexed source session (65 MiB whitespace plus valid controls JSON); persisted parent controls document; normal parent/source close handshake; no process kill; not another full Sketch GUI run",
+  "cases": [],
+  "exportFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-close-baseline-parent/topology-repaired-verification.sketch",
+  "visibility": "visible",
+  "nativeVisible": true,
+  "closeMs": 557.4393749999999
+}

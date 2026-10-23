@@ -1,0 +1,7 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-2-runtime/host",
+  "sourceScope": "combined local source, independent copied binaries",
+  "experimentalFlags": "default off",
+  "nativeSha256": "6d23798994cebf9b3b9011406e210e07770b68199c073711af4730fa870b78b9",
+  "wasmSha256": "6b0245c3f0d2d6d1f4fbb418ffe24ecadde5a51c8f7fc0013a4be8cec5944b22"
+}

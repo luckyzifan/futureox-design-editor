@@ -1,0 +1,773 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="864" viewBox="0 0 1600 864" style="font-family:monospace"><title>topology · zoom-400 · main renderer — timeDeltas weighted active CPU stacks; not a timeline</title><g><title>topology · zoom-400 · main renderer — 133.874 ms cumulative active samples
+
+</title><rect x="0.000" y="846" width="1599.700" height="17" fill="hsl(29 80% 72%)"/><text x="2.000" y="858" font-size="10">topology · zoom-400 · main renderer</text></g><g><title>e.onmessage — 39.247 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/client.ts:501:24
+design-app://app/assets/client-DSrI0adz.js:1:41614</title><rect x="0.000" y="828" width="468.762" height="17" fill="hsl(57 80% 72%)"/><text x="2.000" y="840" font-size="10">e.onmessage</text></g><g><title>sanitizeBatch — 15.565 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:169:16
+design-app://app/assets/geometry-EtBQcaS9.js:1:26180</title><rect x="0.000" y="810" width="185.726" height="17" fill="hsl(51 80% 72%)"/><text x="2.000" y="822" font-size="10">sanitizeBatch</text></g><g><title>sanitizeRecord — 15.565 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:112:16
+design-app://app/assets/geometry-EtBQcaS9.js:1:24565</title><rect x="0.000" y="792" width="185.726" height="17" fill="hsl(36 80% 72%)"/><text x="2.000" y="804" font-size="10">sanitizeRecord</text></g><g><title>sanitizeFields — 11.087 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/geometry-EtBQcaS9.js:1:22710</title><rect x="0.000" y="774" width="132.207" height="17" fill="hsl(38 80% 72%)"/><text x="2.000" y="786" font-size="10">sanitizeFields</text></g><g><title>e.client.onPresentation — 7.107 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:238:33
+design-app://app/assets/index-abYaEd8u.js:54:67102</title><rect x="186.026" y="810" width="84.640" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="822" font-size="10">e.client.onPr</text></g><g><title>t.flushSync — 5.991 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom.production.js:89:20
+design-app://app/assets/client-DSrI0adz.js:1:1590</title><rect x="186.026" y="792" width="71.302" height="17" fill="hsl(29 80% 72%)"/><text x="188.026" y="804" font-size="10">t.flushSync</text></g><g><title>flushSyncWork — 5.991 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:16914:9
+design-app://app/assets/index-abYaEd8u.js:10:30306</title><rect x="186.026" y="774" width="71.302" height="17" fill="hsl(56 80% 72%)"/><text x="188.026" y="786" font-size="10">flushSyncWo</text></g><g><title>flushSyncWork$1 — 5.991 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12402:9
+design-app://app/assets/index-abYaEd8u.js:9:125930</title><rect x="186.026" y="756" width="71.302" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="768" font-size="10">flushSyncWo</text></g><g><title>flushSyncWorkAcrossRoots_impl — 5.991 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13408:9
+design-app://app/assets/index-abYaEd8u.js:9:134766</title><rect x="186.026" y="738" width="71.302" height="17" fill="hsl(49 80% 72%)"/><text x="188.026" y="750" font-size="10">flushSyncWo</text></g><g><title>performSyncWorkOnRoot — 5.991 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13574:9
+design-app://app/assets/index-abYaEd8u.js:9:136536</title><rect x="186.026" y="720" width="71.302" height="17" fill="hsl(52 80% 72%)"/><text x="188.026" y="732" font-size="10">performSync</text></g><g><title>performWorkOnRoot — 5.991 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069:9
+design-app://app/assets/index-abYaEd8u.js:9:123527</title><rect x="186.026" y="702" width="71.302" height="17" fill="hsl(49 80% 72%)"/><text x="188.026" y="714" font-size="10">performWork</text></g><g><title>completeRootWhenReady — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12240:9
+design-app://app/assets/index-abYaEd8u.js:9:124631</title><rect x="186.026" y="684" width="53.279" height="17" fill="hsl(8 80% 72%)"/><text x="188.026" y="696" font-size="10">complete</text></g><g><title>completeRoot — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12867:9
+design-app://app/assets/index-abYaEd8u.js:9:129653</title><rect x="186.026" y="666" width="53.279" height="17" fill="hsl(15 80% 72%)"/><text x="188.026" y="678" font-size="10">complete</text></g><g><title>commitRoot — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12906:9
+design-app://app/assets/index-abYaEd8u.js:9:129887</title><rect x="186.026" y="648" width="53.279" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="660" font-size="10">commitRo</text></g><g><title>flushLayoutEffects — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13110:9
+design-app://app/assets/index-abYaEd8u.js:9:131810</title><rect x="186.026" y="630" width="53.279" height="17" fill="hsl(16 80% 72%)"/><text x="188.026" y="642" font-size="10">flushLay</text></g><g><title>commitLayoutEffectOnFiber — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="612" width="53.279" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="624" font-size="10">commitLa</text></g><g><title>recursivelyTraverseLayoutEffects — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="594" width="53.279" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="606" font-size="10">recursiv</text></g><g><title>commitLayoutEffectOnFiber — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="576" width="53.279" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="588" font-size="10">commitLa</text></g><g><title>recursivelyTraverseLayoutEffects — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="558" width="53.279" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="570" font-size="10">recursiv</text></g><g><title>commitLayoutEffectOnFiber — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="540" width="53.279" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="552" font-size="10">commitLa</text></g><g><title>recursivelyTraverseLayoutEffects — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="522" width="53.279" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="534" font-size="10">recursiv</text></g><g><title>commitLayoutEffectOnFiber — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="504" width="53.279" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="516" font-size="10">commitLa</text></g><g><title>recursivelyTraverseLayoutEffects — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="486" width="53.279" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="498" font-size="10">recursiv</text></g><g><title>commitLayoutEffectOnFiber — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="468" width="53.279" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="480" font-size="10">commitLa</text></g><g><title>recursivelyTraverseLayoutEffects — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="450" width="53.279" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="462" font-size="10">recursiv</text></g><g><title>commitLayoutEffectOnFiber — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="432" width="53.279" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="444" font-size="10">commitLa</text></g><g><title>recursivelyTraverseLayoutEffects — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="414" width="53.279" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="426" font-size="10">recursiv</text></g><g><title>commitLayoutEffectOnFiber — 4.483 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="396" width="53.279" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="408" font-size="10">commitLa</text></g><g><title>recursivelyTraverseLayoutEffects — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="378" width="36.296" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="390" font-size="10">recur</text></g><g><title>commitLayoutEffectOnFiber — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="360" width="36.296" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="372" font-size="10">commi</text></g><g><title>recursivelyTraverseLayoutEffects — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="342" width="36.296" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="354" font-size="10">recur</text></g><g><title>commitLayoutEffectOnFiber — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="324" width="36.296" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="336" font-size="10">commi</text></g><g><title>recursivelyTraverseLayoutEffects — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="306" width="36.296" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="318" font-size="10">recur</text></g><g><title>commitLayoutEffectOnFiber — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="288" width="36.296" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="300" font-size="10">commi</text></g><g><title>recursivelyTraverseLayoutEffects — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="270" width="36.296" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="282" font-size="10">recur</text></g><g><title>commitLayoutEffectOnFiber — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="252" width="36.296" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="264" font-size="10">commi</text></g><g><title>recursivelyTraverseLayoutEffects — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="234" width="36.296" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="246" font-size="10">recur</text></g><g><title>commitLayoutEffectOnFiber — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="216" width="36.296" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="228" font-size="10">commi</text></g><g><title>recursivelyTraverseLayoutEffects — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="198" width="36.296" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="210" font-size="10">recur</text></g><g><title>commitLayoutEffectOnFiber — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="180" width="36.296" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="192" font-size="10">commi</text></g><g><title>recursivelyTraverseLayoutEffects — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="162" width="36.296" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="174" font-size="10">recur</text></g><g><title>commitLayoutEffectOnFiber — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="144" width="36.296" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="156" font-size="10">commi</text></g><g><title>recursivelyTraverseLayoutEffects — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="186.026" y="126" width="36.296" height="17" fill="hsl(47 80% 72%)"/><text x="188.026" y="138" font-size="10">recur</text></g><g><title>commitLayoutEffectOnFiber — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="186.026" y="108" width="36.296" height="17" fill="hsl(51 80% 72%)"/><text x="188.026" y="120" font-size="10">commi</text></g><g><title>commitHookEffectListMount — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-abYaEd8u.js:9:95081</title><rect x="186.026" y="90" width="36.296" height="17" fill="hsl(30 80% 72%)"/><text x="188.026" y="102" font-size="10">commi</text></g><g><title>(anonymous) — 3.062 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:335:2
+design-app://app/assets/index-abYaEd8u.js:54:69433</title><rect x="186.026" y="72" width="36.296" height="17" fill="hsl(30 80% 72%)"/><text x="188.026" y="84" font-size="10">(anon</text></g><g><title>Vb.u.current — 1.544 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:74:10
+design-app://app/assets/index-abYaEd8u.js:54:62489</title><rect x="186.026" y="54" width="18.153" height="17" fill="hsl(32 80% 72%)"/><text x="188.026" y="66" font-size="10">Vb</text></g><g><title>(anonymous) — 1.544 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:165:9
+design-app://app/assets/index-abYaEd8u.js:54:65273</title><rect x="186.026" y="36" width="18.153" height="17" fill="hsl(30 80% 72%)"/><text x="188.026" y="48" font-size="10">(a</text></g><g><title>prepare — 1.518 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/page-translation.ts:128:2
+design-app://app/assets/index-abYaEd8u.js:54:57928</title><rect x="204.479" y="54" width="17.842" height="17" fill="hsl(9 80% 72%)"/><text x="206.479" y="66" font-size="10">pr</text></g><g><title>commitHookEffectListMount — 1.421 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-abYaEd8u.js:9:95081</title><rect x="222.621" y="378" width="16.683" height="17" fill="hsl(30 80% 72%)"/><text x="224.621" y="390" font-size="10">co</text></g><g><title>(anonymous) — 1.421 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/Canvas.tsx:736:2
+design-app://app/assets/index-abYaEd8u.js:58:22617</title><rect x="222.621" y="360" width="16.683" height="17" fill="hsl(30 80% 72%)"/><text x="224.621" y="372" font-size="10">(a</text></g><g><title>dt.current — 1.421 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/Canvas.tsx:724:15
+design-app://app/assets/index-abYaEd8u.js:58:22223</title><rect x="222.621" y="342" width="16.683" height="17" fill="hsl(11 80% 72%)"/><text x="224.621" y="354" font-size="10">dt</text></g><g><title>getBoundingClientRect — 1.421 ms cumulative active samples
+
+:0:0</title><rect x="222.621" y="324" width="16.683" height="17" fill="hsl(25 80% 72%)"/><text x="224.621" y="336" font-size="10">ge</text></g><g><title>renderRootSync — 1.508 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522:9
+design-app://app/assets/index-abYaEd8u.js:9:126946</title><rect x="239.604" y="684" width="17.723" height="17" fill="hsl(31 80% 72%)"/><text x="241.604" y="696" font-size="10">re</text></g><g><title>workLoopSync — 1.508 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12583:9
+design-app://app/assets/index-abYaEd8u.js:9:127422</title><rect x="239.604" y="666" width="17.723" height="17" fill="hsl(22 80% 72%)"/><text x="241.604" y="678" font-size="10">wo</text></g><g><title>beginWork — 1.508 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768:9
+design-app://app/assets/index-abYaEd8u.js:9:82343</title><rect x="239.604" y="648" width="17.723" height="17" fill="hsl(24 80% 72%)"/><text x="241.604" y="660" font-size="10">be</text></g><g><title>updateFunctionComponent — 1.508 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791:9
+design-app://app/assets/index-abYaEd8u.js:9:72009</title><rect x="239.604" y="630" width="17.723" height="17" fill="hsl(16 80% 72%)"/><text x="241.604" y="642" font-size="10">up</text></g><g><title>renderWithHooks — 1.508 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-abYaEd8u.js:9:49071</title><rect x="239.604" y="612" width="17.723" height="17" fill="hsl(36 80% 72%)"/><text x="241.604" y="624" font-size="10">re</text></g><g><title>KernelSurface — 1.508 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/Surface.tsx:545:16
+design-app://app/assets/index-abYaEd8u.js:54:136525</title><rect x="239.604" y="594" width="17.723" height="17" fill="hsl(20 80% 72%)"/><text x="241.604" y="606" font-size="10">Ke</text></g><g><title>record — 6.044 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/geometry-EtBQcaS9.js:1:25754</title><rect x="270.965" y="810" width="71.935" height="17" fill="hsl(57 80% 72%)"/><text x="272.965" y="822" font-size="10">record</text></g><g><title>localRecord — 6.044 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/geometry-EtBQcaS9.js:1:25122</title><rect x="270.965" y="792" width="71.935" height="17" fill="hsl(38 80% 72%)"/><text x="272.965" y="804" font-size="10">localRecord</text></g><g><title>sanitizeFields — 1.549 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/geometry-EtBQcaS9.js:1:22710</title><rect x="270.965" y="774" width="18.213" height="17" fill="hsl(38 80% 72%)"/><text x="272.965" y="786" font-size="10">sa</text></g><g><title>ze — 1.498 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:974:21
+design-app://app/assets/index-abYaEd8u.js:54:93700</title><rect x="343.200" y="810" width="17.603" height="17" fill="hsl(41 80% 72%)"/><text x="345.200" y="822" font-size="10">ze</text></g><g><title>reportAdmission — 1.498 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:1034:12
+design-app://app/assets/index-abYaEd8u.js:54:95347</title><rect x="343.200" y="792" width="17.603" height="17" fill="hsl(51 80% 72%)"/><text x="345.200" y="804" font-size="10">re</text></g><g><title>recordViewportDiagnostic — 1.498 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/client.ts:403:2
+design-app://app/assets/client-DSrI0adz.js:1:37813</title><rect x="343.200" y="774" width="17.603" height="17" fill="hsl(10 80% 72%)"/><text x="345.200" y="786" font-size="10">re</text></g><g><title>record — 1.498 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/geometry-EtBQcaS9.js:1:25754</title><rect x="343.200" y="756" width="17.603" height="17" fill="hsl(57 80% 72%)"/><text x="345.200" y="768" font-size="10">re</text></g><g><title>localRecord — 1.498 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/geometry-EtBQcaS9.js:1:25122</title><rect x="343.200" y="738" width="17.603" height="17" fill="hsl(38 80% 72%)"/><text x="345.200" y="750" font-size="10">lo</text></g><g><title>sanitizeFields — 1.486 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/geometry-EtBQcaS9.js:1:22710</title><rect x="361.104" y="810" width="17.460" height="17" fill="hsl(38 80% 72%)"/><text x="363.104" y="822" font-size="10">sa</text></g><g><title>(anonymous) — 29.836 ms cumulative active samples
+
+:1:2</title><rect x="469.062" y="828" width="356.286" height="17" fill="hsl(30 80% 72%)"/><text x="471.062" y="840" font-size="10">(anonymous)</text></g><g><title>evaluate — 29.836 ms cumulative active samples
+
+:305:11</title><rect x="469.062" y="810" width="356.286" height="17" fill="hsl(53 80% 72%)"/><text x="471.062" y="822" font-size="10">evaluate</text></g><g><title>(anonymous) — 29.836 ms cumulative active samples
+
+:1:1</title><rect x="469.062" y="792" width="356.286" height="17" fill="hsl(30 80% 72%)"/><text x="471.062" y="804" font-size="10">(anonymous)</text></g><g><title>toDataURL — 21.080 ms cumulative active samples
+
+:0:0</title><rect x="469.062" y="774" width="251.638" height="17" fill="hsl(56 80% 72%)"/><text x="471.062" y="786" font-size="10">toDataURL</text></g><g><title>querySelectorAll — 6.068 ms cumulative active samples
+
+:7010:19</title><rect x="721.000" y="774" width="72.222" height="17" fill="hsl(28 80% 72%)"/><text x="723.000" y="786" font-size="10">querySelect</text></g><g><title>_queryEngineAll — 6.068 ms cumulative active samples
+
+:7058:18</title><rect x="721.000" y="756" width="72.222" height="17" fill="hsl(18 80% 72%)"/><text x="723.000" y="768" font-size="10">_queryEngin</text></g><g><title>queryAll — 4.568 ms cumulative active samples
+
+:7133:17</title><rect x="721.000" y="738" width="54.295" height="17" fill="hsl(55 80% 72%)"/><text x="723.000" y="750" font-size="10">queryAll</text></g><g><title>(anonymous) — 3.061 ms cumulative active samples
+
+:7136:35</title><rect x="721.000" y="720" width="36.284" height="17" fill="hsl(30 80% 72%)"/><text x="723.000" y="732" font-size="10">(anon</text></g><g><title>getElementLabels — 3.061 ms cumulative active samples
+
+:5257:26</title><rect x="721.000" y="702" width="36.284" height="17" fill="hsl(37 80% 72%)"/><text x="723.000" y="714" font-size="10">getEl</text></g><g><title>_queryCSS — 1.507 ms cumulative active samples
+
+:5716:12</title><rect x="757.584" y="720" width="17.711" height="17" fill="hsl(22 80% 72%)"/><text x="759.584" y="732" font-size="10">_q</text></g><g><title>_cached — 1.507 ms cumulative active samples
+
+:5500:10</title><rect x="757.584" y="702" width="17.711" height="17" fill="hsl(23 80% 72%)"/><text x="759.584" y="714" font-size="10">_c</text></g><g><title>(anonymous) — 1.507 ms cumulative active samples
+
+:5717:113</title><rect x="757.584" y="684" width="17.711" height="17" fill="hsl(30 80% 72%)"/><text x="759.584" y="696" font-size="10">(a</text></g><g><title>query — 1.507 ms cumulative active samples
+
+:5719:21</title><rect x="757.584" y="666" width="17.711" height="17" fill="hsl(44 80% 72%)"/><text x="759.584" y="678" font-size="10">qu</text></g><g><title>queryAll — 1.500 ms cumulative active samples
+
+:7079:17</title><rect x="775.595" y="738" width="17.627" height="17" fill="hsl(55 80% 72%)"/><text x="777.595" y="750" font-size="10">qu</text></g><g><title>query — 1.500 ms cumulative active samples
+
+:5534:8</title><rect x="775.595" y="720" width="17.627" height="17" fill="hsl(44 80% 72%)"/><text x="777.595" y="732" font-size="10">qu</text></g><g><title>_cached — 1.500 ms cumulative active samples
+
+:5500:10</title><rect x="775.595" y="702" width="17.627" height="17" fill="hsl(23 80% 72%)"/><text x="777.595" y="714" font-size="10">_c</text></g><g><title>(anonymous) — 1.500 ms cumulative active samples
+
+:5538:117</title><rect x="775.595" y="684" width="17.627" height="17" fill="hsl(30 80% 72%)"/><text x="777.595" y="696" font-size="10">(a</text></g><g><title>_queryEngine — 1.500 ms cumulative active samples
+
+:5696:15</title><rect x="775.595" y="666" width="17.627" height="17" fill="hsl(37 80% 72%)"/><text x="777.595" y="678" font-size="10">_q</text></g><g><title>_callQuery — 1.500 ms cumulative active samples
+
+:5708:13</title><rect x="775.595" y="648" width="17.627" height="17" fill="hsl(49 80% 72%)"/><text x="777.595" y="660" font-size="10">_c</text></g><g><title>_cached — 1.500 ms cumulative active samples
+
+:5500:10</title><rect x="775.595" y="630" width="17.627" height="17" fill="hsl(23 80% 72%)"/><text x="777.595" y="642" font-size="10">_c</text></g><g><title>(anonymous) — 1.500 ms cumulative active samples
+
+:5709:126</title><rect x="775.595" y="612" width="17.627" height="17" fill="hsl(30 80% 72%)"/><text x="777.595" y="624" font-size="10">(a</text></g><g><title>query — 1.500 ms cumulative active samples
+
+:5747:8</title><rect x="775.595" y="594" width="17.627" height="17" fill="hsl(44 80% 72%)"/><text x="777.595" y="606" font-size="10">qu</text></g><g><title>query — 1.500 ms cumulative active samples
+
+:5534:8</title><rect x="775.595" y="576" width="17.627" height="17" fill="hsl(44 80% 72%)"/><text x="777.595" y="588" font-size="10">qu</text></g><g><title>_cached — 1.500 ms cumulative active samples
+
+:5500:10</title><rect x="775.595" y="558" width="17.627" height="17" fill="hsl(23 80% 72%)"/><text x="777.595" y="570" font-size="10">_c</text></g><g><title>(anonymous) — 1.500 ms cumulative active samples
+
+:5538:117</title><rect x="775.595" y="540" width="17.627" height="17" fill="hsl(30 80% 72%)"/><text x="777.595" y="552" font-size="10">(a</text></g><g><title>_querySimple — 1.500 ms cumulative active samples
+
+:5595:15</title><rect x="775.595" y="522" width="17.627" height="17" fill="hsl(57 80% 72%)"/><text x="777.595" y="534" font-size="10">_q</text></g><g><title>_queryCSS — 1.500 ms cumulative active samples
+
+:5716:12</title><rect x="775.595" y="504" width="17.627" height="17" fill="hsl(22 80% 72%)"/><text x="777.595" y="516" font-size="10">_q</text></g><g><title>_cached — 1.500 ms cumulative active samples
+
+:5500:10</title><rect x="775.595" y="486" width="17.627" height="17" fill="hsl(23 80% 72%)"/><text x="777.595" y="498" font-size="10">_c</text></g><g><title>(anonymous) — 1.500 ms cumulative active samples
+
+:5717:113</title><rect x="775.595" y="468" width="17.627" height="17" fill="hsl(30 80% 72%)"/><text x="777.595" y="480" font-size="10">(a</text></g><g><title>query — 1.500 ms cumulative active samples
+
+:5719:21</title><rect x="775.595" y="450" width="17.627" height="17" fill="hsl(44 80% 72%)"/><text x="777.595" y="462" font-size="10">qu</text></g><g><title>checkElementStates — 1.156 ms cumulative active samples
+
+:7290:27</title><rect x="793.522" y="774" width="13.516" height="17" fill="hsl(50 80% 72%)"/><text x="795.522" y="786" font-size="10">c</text></g><g><title>elementState — 1.156 ms cumulative active samples
+
+:7371:15</title><rect x="793.522" y="756" width="13.516" height="17" fill="hsl(37 80% 72%)"/><text x="795.522" y="768" font-size="10">e</text></g><g><title>isElementVisible — 1.156 ms cumulative active samples
+
+:3184:26</title><rect x="793.522" y="738" width="13.516" height="17" fill="hsl(10 80% 72%)"/><text x="795.522" y="750" font-size="10">i</text></g><g><title>computeBox — 1.156 ms cumulative active samples
+
+:3165:20</title><rect x="793.522" y="720" width="13.516" height="17" fill="hsl(40 80% 72%)"/><text x="795.522" y="732" font-size="10">c</text></g><g><title>isElementStyleVisibilityVisible — 1.156 ms cumulative active samples
+
+:3141:41</title><rect x="793.522" y="702" width="13.516" height="17" fill="hsl(53 80% 72%)"/><text x="795.522" y="714" font-size="10">i</text></g><g><title>computeElementStyleVisibilityVisible — 1.156 ms cumulative active samples
+
+:3149:46</title><rect x="793.522" y="684" width="13.516" height="17" fill="hsl(28 80% 72%)"/><text x="795.522" y="696" font-size="10">c</text></g><g><title>checkVisibility — 1.156 ms cumulative active samples
+
+:0:0</title><rect x="793.522" y="666" width="13.516" height="17" fill="hsl(22 80% 72%)"/><text x="795.522" y="678" font-size="10">c</text></g><g><title>performWorkUntilDeadline — 25.743 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/scheduler/cjs/scheduler.production.js:121:9
+design-app://app/assets/index-abYaEd8u.js:2:12223</title><rect x="825.648" y="828" width="307.368" height="17" fill="hsl(54 80% 72%)"/><text x="827.648" y="840" font-size="10">performWorkUntilDeadline</text></g><g><title>performWorkOnRootViaSchedulerTask — 24.246 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13555:9
+design-app://app/assets/index-abYaEd8u.js:9:136205</title><rect x="825.648" y="810" width="289.477" height="17" fill="hsl(17 80% 72%)"/><text x="827.648" y="822" font-size="10">performWorkOnRootViaSchedulerTask</text></g><g><title>performWorkOnRoot — 24.246 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069:9
+design-app://app/assets/index-abYaEd8u.js:9:123527</title><rect x="825.648" y="792" width="289.477" height="17" fill="hsl(49 80% 72%)"/><text x="827.648" y="804" font-size="10">performWorkOnRoot</text></g><g><title>completeRootWhenReady — 16.823 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12240:9
+design-app://app/assets/index-abYaEd8u.js:9:124631</title><rect x="825.648" y="774" width="200.761" height="17" fill="hsl(8 80% 72%)"/><text x="827.648" y="786" font-size="10">completeRootWhenReady</text></g><g><title>completeRoot — 16.823 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12867:9
+design-app://app/assets/index-abYaEd8u.js:9:129653</title><rect x="825.648" y="756" width="200.761" height="17" fill="hsl(15 80% 72%)"/><text x="827.648" y="768" font-size="10">completeRoot</text></g><g><title>commitRoot — 16.823 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12906:9
+design-app://app/assets/index-abYaEd8u.js:9:129887</title><rect x="825.648" y="738" width="200.761" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="750" font-size="10">commitRoot</text></g><g><title>flushLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13110:9
+design-app://app/assets/index-abYaEd8u.js:9:131810</title><rect x="825.648" y="720" width="115.737" height="17" fill="hsl(16 80% 72%)"/><text x="827.648" y="732" font-size="10">flushLayoutEffects</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="702" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="714" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="684" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="696" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="666" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="678" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="648" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="660" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="630" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="642" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="612" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="624" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="594" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="606" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="576" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="588" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="558" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="570" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="540" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="552" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="522" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="534" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="504" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="516" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="486" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="498" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="468" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="480" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="450" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="462" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="432" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="444" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="414" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="426" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="396" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="408" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="378" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="390" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="360" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="372" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="342" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="354" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="324" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="336" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="306" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="318" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="288" width="115.737" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="300" font-size="10">recursivelyTravers</text></g><g><title>commitLayoutEffectOnFiber — 9.709 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="270" width="115.737" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="282" font-size="10">commitLayoutEffect</text></g><g><title>recursivelyTraverseLayoutEffects — 7.179 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="252" width="85.500" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="264" font-size="10">recursivelyTr</text></g><g><title>commitLayoutEffectOnFiber — 7.179 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="234" width="85.500" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="246" font-size="10">commitLayoutE</text></g><g><title>recursivelyTraverseLayoutEffects — 7.179 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="825.648" y="216" width="85.500" height="17" fill="hsl(47 80% 72%)"/><text x="827.648" y="228" font-size="10">recursivelyTr</text></g><g><title>commitLayoutEffectOnFiber — 7.179 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="825.648" y="198" width="85.500" height="17" fill="hsl(51 80% 72%)"/><text x="827.648" y="210" font-size="10">commitLayoutE</text></g><g><title>commitHookEffectListMount — 7.179 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-abYaEd8u.js:9:95081</title><rect x="825.648" y="180" width="85.500" height="17" fill="hsl(30 80% 72%)"/><text x="827.648" y="192" font-size="10">commitHookEff</text></g><g><title>(anonymous) — 7.179 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:335:2
+design-app://app/assets/index-abYaEd8u.js:54:69433</title><rect x="825.648" y="162" width="85.500" height="17" fill="hsl(30 80% 72%)"/><text x="827.648" y="174" font-size="10">(anonymous)</text></g><g><title>Vb.u.current — 7.179 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:74:10
+design-app://app/assets/index-abYaEd8u.js:54:62489</title><rect x="825.648" y="144" width="85.500" height="17" fill="hsl(32 80% 72%)"/><text x="827.648" y="156" font-size="10">Vb.u.current</text></g><g><title>record — 1.287 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/handoff-trace.ts:12:1
+design-app://app/assets/index-abYaEd8u.js:35:6111</title><rect x="825.648" y="126" width="15.082" height="17" fill="hsl(57 80% 72%)"/><text x="827.648" y="138" font-size="10">r</text></g><g><title>commitHookEffectListMount — 2.530 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-abYaEd8u.js:9:95081</title><rect x="911.448" y="252" width="29.937" height="17" fill="hsl(30 80% 72%)"/><text x="913.448" y="264" font-size="10">comm</text></g><g><title>(anonymous) — 2.530 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:2125:2
+design-app://app/assets/index-abYaEd8u.js:54:114304</title><rect x="911.448" y="234" width="29.937" height="17" fill="hsl(30 80% 72%)"/><text x="913.448" y="246" font-size="10">(ano</text></g><g><title>retireExcept — 2.530 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/presentation-ownership.ts:7:2
+design-app://app/assets/index-abYaEd8u.js:54:70487</title><rect x="911.448" y="216" width="29.937" height="17" fill="hsl(16 80% 72%)"/><text x="913.448" y="228" font-size="10">reti</text></g><g><title>flushSpawnedWork — 4.226 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13134:9
+design-app://app/assets/index-abYaEd8u.js:9:132008</title><rect x="941.685" y="720" width="50.207" height="17" fill="hsl(25 80% 72%)"/><text x="943.685" y="732" font-size="10">flushSp</text></g><g><title>flushSyncWorkAcrossRoots_impl — 4.226 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13408:9
+design-app://app/assets/index-abYaEd8u.js:9:134766</title><rect x="941.685" y="702" width="50.207" height="17" fill="hsl(49 80% 72%)"/><text x="943.685" y="714" font-size="10">flushSy</text></g><g><title>performSyncWorkOnRoot — 4.226 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13574:9
+design-app://app/assets/index-abYaEd8u.js:9:136536</title><rect x="941.685" y="684" width="50.207" height="17" fill="hsl(52 80% 72%)"/><text x="943.685" y="696" font-size="10">perform</text></g><g><title>performWorkOnRoot — 4.226 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069:9
+design-app://app/assets/index-abYaEd8u.js:9:123527</title><rect x="941.685" y="666" width="50.207" height="17" fill="hsl(49 80% 72%)"/><text x="943.685" y="678" font-size="10">perform</text></g><g><title>completeRootWhenReady — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12240:9
+design-app://app/assets/index-abYaEd8u.js:9:124631</title><rect x="941.685" y="648" width="32.196" height="17" fill="hsl(8 80% 72%)"/><text x="943.685" y="660" font-size="10">comp</text></g><g><title>completeRoot — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12867:9
+design-app://app/assets/index-abYaEd8u.js:9:129653</title><rect x="941.685" y="630" width="32.196" height="17" fill="hsl(15 80% 72%)"/><text x="943.685" y="642" font-size="10">comp</text></g><g><title>commitRoot — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12906:9
+design-app://app/assets/index-abYaEd8u.js:9:129887</title><rect x="941.685" y="612" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="624" font-size="10">comm</text></g><g><title>flushLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13110:9
+design-app://app/assets/index-abYaEd8u.js:9:131810</title><rect x="941.685" y="594" width="32.196" height="17" fill="hsl(16 80% 72%)"/><text x="943.685" y="606" font-size="10">flus</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="576" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="588" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="558" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="570" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="540" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="552" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="522" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="534" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="504" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="516" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="486" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="498" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="468" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="480" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="450" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="462" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="432" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="444" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="414" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="426" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="396" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="408" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="378" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="390" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="360" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="372" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="342" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="354" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="324" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="336" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="306" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="318" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="288" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="300" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="270" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="282" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="252" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="264" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="234" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="246" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="216" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="228" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="198" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="210" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="180" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="192" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="162" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="174" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="144" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="156" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="126" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="138" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="108" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="120" font-size="10">comm</text></g><g><title>recursivelyTraverseLayoutEffects — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="941.685" y="90" width="32.196" height="17" fill="hsl(47 80% 72%)"/><text x="943.685" y="102" font-size="10">recu</text></g><g><title>commitLayoutEffectOnFiber — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="941.685" y="72" width="32.196" height="17" fill="hsl(51 80% 72%)"/><text x="943.685" y="84" font-size="10">comm</text></g><g><title>commitHookEffectListMount — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-abYaEd8u.js:9:95081</title><rect x="941.685" y="54" width="32.196" height="17" fill="hsl(30 80% 72%)"/><text x="943.685" y="66" font-size="10">comm</text></g><g><title>(anonymous) — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:335:2
+design-app://app/assets/index-abYaEd8u.js:54:69433</title><rect x="941.685" y="36" width="32.196" height="17" fill="hsl(30 80% 72%)"/><text x="943.685" y="48" font-size="10">(ano</text></g><g><title>Vb.u.current — 2.719 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:74:10
+design-app://app/assets/index-abYaEd8u.js:54:62489</title><rect x="941.685" y="18" width="32.196" height="17" fill="hsl(32 80% 72%)"/><text x="943.685" y="30" font-size="10">Vb.u</text></g><g><title>record — 1.212 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/handoff-trace.ts:12:1
+design-app://app/assets/index-abYaEd8u.js:35:6111</title><rect x="941.685" y="0" width="14.185" height="17" fill="hsl(57 80% 72%)"/><text x="943.685" y="12" font-size="10">r</text></g><g><title>renderRootSync — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522:9
+design-app://app/assets/index-abYaEd8u.js:9:126946</title><rect x="974.182" y="648" width="17.711" height="17" fill="hsl(31 80% 72%)"/><text x="976.182" y="660" font-size="10">re</text></g><g><title>workLoopSync — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12583:9
+design-app://app/assets/index-abYaEd8u.js:9:127422</title><rect x="974.182" y="630" width="17.711" height="17" fill="hsl(22 80% 72%)"/><text x="976.182" y="642" font-size="10">wo</text></g><g><title>performUnitOfWork — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12706:9
+design-app://app/assets/index-abYaEd8u.js:9:128385</title><rect x="974.182" y="612" width="17.711" height="17" fill="hsl(17 80% 72%)"/><text x="976.182" y="624" font-size="10">pe</text></g><g><title>beginWork — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768:9
+design-app://app/assets/index-abYaEd8u.js:9:82343</title><rect x="974.182" y="594" width="17.711" height="17" fill="hsl(24 80% 72%)"/><text x="976.182" y="606" font-size="10">be</text></g><g><title>updateFunctionComponent — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791:9
+design-app://app/assets/index-abYaEd8u.js:9:72009</title><rect x="974.182" y="576" width="17.711" height="17" fill="hsl(16 80% 72%)"/><text x="976.182" y="588" font-size="10">up</text></g><g><title>renderWithHooks — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-abYaEd8u.js:9:49071</title><rect x="974.182" y="558" width="17.711" height="17" fill="hsl(36 80% 72%)"/><text x="976.182" y="570" font-size="10">re</text></g><g><title>ProgressiveSurfaceImpl — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:367:16
+design-app://app/assets/index-abYaEd8u.js:54:79860</title><rect x="974.182" y="540" width="17.711" height="17" fill="hsl(40 80% 72%)"/><text x="976.182" y="552" font-size="10">Pr</text></g><g><title>flushMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12986:9
+design-app://app/assets/index-abYaEd8u.js:9:130538</title><rect x="992.193" y="720" width="34.216" height="17" fill="hsl(37 80% 72%)"/><text x="994.193" y="732" font-size="10">flush</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="702" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="714" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="684" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="696" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="666" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="678" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="648" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="660" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="630" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="642" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="612" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="624" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="594" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="606" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="576" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="588" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="558" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="570" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="540" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="552" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="522" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="534" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="504" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="516" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="486" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="498" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="468" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="480" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="450" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="462" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="432" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="444" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="414" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="426" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="396" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="408" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="378" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="390" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="360" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="372" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="342" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="354" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="324" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="336" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="306" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="318" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="288" width="34.216" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="300" font-size="10">recur</text></g><g><title>commitMutationEffectsOnFiber — 2.888 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="270" width="34.216" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="282" font-size="10">commi</text></g><g><title>recursivelyTraverseMutationEffects — 1.378 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="992.193" y="252" width="16.169" height="17" fill="hsl(28 80% 72%)"/><text x="994.193" y="264" font-size="10">re</text></g><g><title>commitMutationEffectsOnFiber — 1.378 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="992.193" y="234" width="16.169" height="17" fill="hsl(57 80% 72%)"/><text x="994.193" y="246" font-size="10">co</text></g><g><title>commitHostUpdate — 1.378 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218:9
+design-app://app/assets/index-abYaEd8u.js:9:97182</title><rect x="992.193" y="216" width="16.169" height="17" fill="hsl(52 80% 72%)"/><text x="994.193" y="228" font-size="10">co</text></g><g><title>updateProperties — 1.378 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035:9
+design-app://app/assets/index-abYaEd8u.js:10:7981</title><rect x="992.193" y="198" width="16.169" height="17" fill="hsl(40 80% 72%)"/><text x="994.193" y="210" font-size="10">up</text></g><g><title>renderRootSync — 7.423 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522:9
+design-app://app/assets/index-abYaEd8u.js:9:126946</title><rect x="1026.709" y="774" width="88.416" height="17" fill="hsl(31 80% 72%)"/><text x="1028.709" y="786" font-size="10">renderRootSync</text></g><g><title>workLoopSync — 7.423 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12583:9
+design-app://app/assets/index-abYaEd8u.js:9:127422</title><rect x="1026.709" y="756" width="88.416" height="17" fill="hsl(22 80% 72%)"/><text x="1028.709" y="768" font-size="10">workLoopSync</text></g><g><title>beginWork — 6.022 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768:9
+design-app://app/assets/index-abYaEd8u.js:9:82343</title><rect x="1026.709" y="738" width="71.672" height="17" fill="hsl(24 80% 72%)"/><text x="1028.709" y="750" font-size="10">beginWork</text></g><g><title>updateFunctionComponent — 6.022 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791:9
+design-app://app/assets/index-abYaEd8u.js:9:72009</title><rect x="1026.709" y="720" width="71.672" height="17" fill="hsl(16 80% 72%)"/><text x="1028.709" y="732" font-size="10">updateFunct</text></g><g><title>renderWithHooks — 6.022 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-abYaEd8u.js:9:49071</title><rect x="1026.709" y="702" width="71.672" height="17" fill="hsl(36 80% 72%)"/><text x="1028.709" y="714" font-size="10">renderWithH</text></g><g><title>ProgressiveSurfaceImpl — 4.519 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:367:16
+design-app://app/assets/index-abYaEd8u.js:54:79860</title><rect x="1026.709" y="684" width="53.709" height="17" fill="hsl(40 80% 72%)"/><text x="1028.709" y="696" font-size="10">Progress</text></g><g><title>(anonymous) — 1.509 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:2187:37
+design-app://app/assets/index-abYaEd8u.js:54:116217</title><rect x="1026.709" y="666" width="17.735" height="17" fill="hsl(30 80% 72%)"/><text x="1028.709" y="678" font-size="10">(a</text></g><g><title>updateLayoutEffect — 1.499 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:5420:9
+design-app://app/assets/index-abYaEd8u.js:9:57587</title><rect x="1044.744" y="666" width="17.615" height="17" fill="hsl(38 80% 72%)"/><text x="1046.744" y="678" font-size="10">up</text></g><g><title>ResidentCompositeSurface — 1.503 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:24:16
+design-app://app/assets/index-abYaEd8u.js:54:62000</title><rect x="1080.718" y="684" width="17.663" height="17" fill="hsl(28 80% 72%)"/><text x="1082.718" y="696" font-size="10">Re</text></g><g><title>Ib — 1.503 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/resident-presentation.ts:31:0
+design-app://app/assets/index-abYaEd8u.js:54:54046</title><rect x="1080.718" y="666" width="17.663" height="17" fill="hsl(19 80% 72%)"/><text x="1082.718" y="678" font-size="10">Ib</text></g><g><title>(anonymous) — 1.503 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/resident-presentation.ts:32:2
+design-app://app/assets/index-abYaEd8u.js:54:54052</title><rect x="1080.718" y="648" width="17.663" height="17" fill="hsl(30 80% 72%)"/><text x="1082.718" y="660" font-size="10">(a</text></g><g><title>performUnitOfWork — 1.401 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12706:9
+design-app://app/assets/index-abYaEd8u.js:9:128385</title><rect x="1098.681" y="738" width="16.444" height="17" fill="hsl(17 80% 72%)"/><text x="1100.681" y="750" font-size="10">pe</text></g><g><title>beginWork — 1.401 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768:9
+design-app://app/assets/index-abYaEd8u.js:9:82343</title><rect x="1098.681" y="720" width="16.444" height="17" fill="hsl(24 80% 72%)"/><text x="1100.681" y="732" font-size="10">be</text></g><g><title>updateFunctionComponent — 1.401 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791:9
+design-app://app/assets/index-abYaEd8u.js:9:72009</title><rect x="1098.681" y="702" width="16.444" height="17" fill="hsl(16 80% 72%)"/><text x="1100.681" y="714" font-size="10">up</text></g><g><title>renderWithHooks — 1.401 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-abYaEd8u.js:9:49071</title><rect x="1098.681" y="684" width="16.444" height="17" fill="hsl(36 80% 72%)"/><text x="1100.681" y="696" font-size="10">re</text></g><g><title>ProgressiveSurfaceImpl — 1.401 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:367:16
+design-app://app/assets/index-abYaEd8u.js:54:79860</title><rect x="1098.681" y="666" width="16.444" height="17" fill="hsl(40 80% 72%)"/><text x="1100.681" y="678" font-size="10">Pr</text></g><g><title>estimatedTileResidencyBytes — 1.401 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/page-memory-policy.ts:22:16
+design-app://app/assets/client-DSrI0adz.js:1:18760</title><rect x="1098.681" y="648" width="16.444" height="17" fill="hsl(49 80% 72%)"/><text x="1100.681" y="660" font-size="10">es</text></g><g><title>flushPassiveEffects — 1.497 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13229:9
+design-app://app/assets/index-abYaEd8u.js:9:132969</title><rect x="1115.425" y="810" width="17.591" height="17" fill="hsl(9 80% 72%)"/><text x="1117.425" y="822" font-size="10">fl</text></g><g><title>(anonymous) — 24.018 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13579:20
+design-app://app/assets/index-abYaEd8u.js:9:136598</title><rect x="1133.316" y="828" width="286.752" height="17" fill="hsl(30 80% 72%)"/><text x="1135.316" y="840" font-size="10">(anonymous)</text></g><g><title>processRootScheduleInMicrotask — 24.018 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13456:9
+design-app://app/assets/index-abYaEd8u.js:9:135181</title><rect x="1133.316" y="810" width="286.752" height="17" fill="hsl(32 80% 72%)"/><text x="1135.316" y="822" font-size="10">processRootScheduleInMicrotask</text></g><g><title>flushSyncWorkAcrossRoots_impl — 22.512 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13408:9
+design-app://app/assets/index-abYaEd8u.js:9:134766</title><rect x="1133.316" y="792" width="268.753" height="17" fill="hsl(49 80% 72%)"/><text x="1135.316" y="804" font-size="10">flushSyncWorkAcrossRoots_impl</text></g><g><title>performSyncWorkOnRoot — 22.512 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13574:9
+design-app://app/assets/index-abYaEd8u.js:9:136536</title><rect x="1133.316" y="774" width="268.753" height="17" fill="hsl(52 80% 72%)"/><text x="1135.316" y="786" font-size="10">performSyncWorkOnRoot</text></g><g><title>performWorkOnRoot — 22.512 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069:9
+design-app://app/assets/index-abYaEd8u.js:9:123527</title><rect x="1133.316" y="756" width="268.753" height="17" fill="hsl(49 80% 72%)"/><text x="1135.316" y="768" font-size="10">performWorkOnRoot</text></g><g><title>renderRootSync — 11.323 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522:9
+design-app://app/assets/index-abYaEd8u.js:9:126946</title><rect x="1133.316" y="738" width="135.027" height="17" fill="hsl(31 80% 72%)"/><text x="1135.316" y="750" font-size="10">renderRootSync</text></g><g><title>workLoopSync — 11.323 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12583:9
+design-app://app/assets/index-abYaEd8u.js:9:127422</title><rect x="1133.316" y="720" width="135.027" height="17" fill="hsl(22 80% 72%)"/><text x="1135.316" y="732" font-size="10">workLoopSync</text></g><g><title>beginWork — 8.283 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768:9
+design-app://app/assets/index-abYaEd8u.js:9:82343</title><rect x="1133.316" y="702" width="98.695" height="17" fill="hsl(24 80% 72%)"/><text x="1135.316" y="714" font-size="10">beginWork</text></g><g><title>updateFunctionComponent — 5.276 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791:9
+design-app://app/assets/index-abYaEd8u.js:9:72009</title><rect x="1133.316" y="684" width="62.756" height="17" fill="hsl(16 80% 72%)"/><text x="1135.316" y="696" font-size="10">updateFun</text></g><g><title>renderWithHooks — 5.276 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-abYaEd8u.js:9:49071</title><rect x="1133.316" y="666" width="62.756" height="17" fill="hsl(36 80% 72%)"/><text x="1135.316" y="678" font-size="10">renderWit</text></g><g><title>ProgressiveSurfaceImpl — 3.768 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:367:16
+design-app://app/assets/index-abYaEd8u.js:54:79860</title><rect x="1133.316" y="648" width="44.733" height="17" fill="hsl(40 80% 72%)"/><text x="1135.316" y="660" font-size="10">Progre</text></g><g><title>(anonymous) — 2.271 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:2187:37
+design-app://app/assets/index-abYaEd8u.js:54:116217</title><rect x="1133.316" y="630" width="26.842" height="17" fill="hsl(30 80% 72%)"/><text x="1135.316" y="642" font-size="10">(an</text></g><g><title>ln — 2.253 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:2170:20
+design-app://app/assets/index-abYaEd8u.js:54:115766</title><rect x="1133.316" y="612" width="26.627" height="17" fill="hsl(16 80% 72%)"/><text x="1135.316" y="624" font-size="10">ln</text></g><g><title>estimatedTileResidencyBytes — 1.497 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/page-memory-policy.ts:22:16
+design-app://app/assets/client-DSrI0adz.js:1:18760</title><rect x="1160.458" y="630" width="17.591" height="17" fill="hsl(49 80% 72%)"/><text x="1162.458" y="642" font-size="10">es</text></g><g><title>reconcileChildren — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6414:9
+design-app://app/assets/index-abYaEd8u.js:9:68488</title><rect x="1196.373" y="684" width="17.687" height="17" fill="hsl(45 80% 72%)"/><text x="1198.373" y="696" font-size="10">re</text></g><g><title>(anonymous) — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4249:9
+design-app://app/assets/index-abYaEd8u.js:9:44765</title><rect x="1196.373" y="666" width="17.687" height="17" fill="hsl(30 80% 72%)"/><text x="1198.373" y="678" font-size="10">(a</text></g><g><title>reconcileChildFibersImpl — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4078:11
+design-app://app/assets/index-abYaEd8u.js:9:43382</title><rect x="1196.373" y="648" width="17.687" height="17" fill="hsl(55 80% 72%)"/><text x="1198.373" y="660" font-size="10">re</text></g><g><title>useFiber — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3606:11
+design-app://app/assets/index-abYaEd8u.js:9:39611</title><rect x="1196.373" y="630" width="17.687" height="17" fill="hsl(9 80% 72%)"/><text x="1198.373" y="642" font-size="10">us</text></g><g><title>createWorkInProgress — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:2668:9
+design-app://app/assets/index-abYaEd8u.js:9:28881</title><rect x="1196.373" y="612" width="17.687" height="17" fill="hsl(41 80% 72%)"/><text x="1198.373" y="624" font-size="10">cr</text></g><g><title>attemptEarlyBailoutIfNoScheduledUpdate — 1.502 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7658:9
+design-app://app/assets/index-abYaEd8u.js:9:81429</title><rect x="1214.360" y="684" width="17.651" height="17" fill="hsl(32 80% 72%)"/><text x="1216.360" y="696" font-size="10">at</text></g><g><title>bailoutOnAlreadyFinishedWork — 1.502 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7622:9
+design-app://app/assets/index-abYaEd8u.js:9:80941</title><rect x="1214.360" y="666" width="17.651" height="17" fill="hsl(54 80% 72%)"/><text x="1216.360" y="678" font-size="10">ba</text></g><g><title>createWorkInProgress — 1.502 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:2668:9
+design-app://app/assets/index-abYaEd8u.js:9:28881</title><rect x="1214.360" y="648" width="17.651" height="17" fill="hsl(41 80% 72%)"/><text x="1216.360" y="660" font-size="10">cr</text></g><g><title>performUnitOfWork — 3.040 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12706:9
+design-app://app/assets/index-abYaEd8u.js:9:128385</title><rect x="1232.311" y="702" width="36.033" height="17" fill="hsl(17 80% 72%)"/><text x="1234.311" y="714" font-size="10">perfo</text></g><g><title>beginWork — 3.040 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768:9
+design-app://app/assets/index-abYaEd8u.js:9:82343</title><rect x="1232.311" y="684" width="36.033" height="17" fill="hsl(24 80% 72%)"/><text x="1234.311" y="696" font-size="10">begin</text></g><g><title>updateFunctionComponent — 3.040 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791:9
+design-app://app/assets/index-abYaEd8u.js:9:72009</title><rect x="1232.311" y="666" width="36.033" height="17" fill="hsl(16 80% 72%)"/><text x="1234.311" y="678" font-size="10">updat</text></g><g><title>renderWithHooks — 3.040 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627:9
+design-app://app/assets/index-abYaEd8u.js:9:49071</title><rect x="1232.311" y="648" width="36.033" height="17" fill="hsl(36 80% 72%)"/><text x="1234.311" y="660" font-size="10">rende</text></g><g><title>ProgressiveSurfaceImpl — 1.516 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:367:16
+design-app://app/assets/index-abYaEd8u.js:54:79860</title><rect x="1232.311" y="630" width="17.819" height="17" fill="hsl(40 80% 72%)"/><text x="1234.311" y="642" font-size="10">Pr</text></g><g><title>ln — 1.516 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:2170:20
+design-app://app/assets/index-abYaEd8u.js:54:115766</title><rect x="1232.311" y="612" width="17.819" height="17" fill="hsl(16 80% 72%)"/><text x="1234.311" y="624" font-size="10">ln</text></g><g><title>completeRootWhenReady — 11.189 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12240:9
+design-app://app/assets/index-abYaEd8u.js:9:124631</title><rect x="1268.644" y="738" width="133.426" height="17" fill="hsl(8 80% 72%)"/><text x="1270.644" y="750" font-size="10">completeRootWhenReady</text></g><g><title>completeRoot — 11.189 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12867:9
+design-app://app/assets/index-abYaEd8u.js:9:129653</title><rect x="1268.644" y="720" width="133.426" height="17" fill="hsl(15 80% 72%)"/><text x="1270.644" y="732" font-size="10">completeRoot</text></g><g><title>commitRoot — 11.189 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12906:9
+design-app://app/assets/index-abYaEd8u.js:9:129887</title><rect x="1268.644" y="702" width="133.426" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="714" font-size="10">commitRoot</text></g><g><title>flushLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13110:9
+design-app://app/assets/index-abYaEd8u.js:9:131810</title><rect x="1268.644" y="684" width="124.390" height="17" fill="hsl(16 80% 72%)"/><text x="1270.644" y="696" font-size="10">flushLayoutEffects</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="666" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="678" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="648" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="660" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="630" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="642" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="612" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="624" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="594" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="606" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="576" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="588" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="558" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="570" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="540" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="552" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="522" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="534" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="504" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="516" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="486" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="498" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="468" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="480" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="450" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="462" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="432" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="444" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="414" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="426" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="396" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="408" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="378" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="390" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="360" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="372" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="342" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="354" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="324" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="336" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="306" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="318" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="288" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="300" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="270" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="282" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="252" width="124.390" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="264" font-size="10">recursivelyTraverseL</text></g><g><title>commitLayoutEffectOnFiber — 10.433 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="234" width="124.390" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="246" font-size="10">commitLayoutEffectOn</text></g><g><title>recursivelyTraverseLayoutEffects — 8.926 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="216" width="106.379" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="228" font-size="10">recursivelyTraver</text></g><g><title>commitLayoutEffectOnFiber — 8.926 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="198" width="106.379" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="210" font-size="10">commitLayoutEffec</text></g><g><title>recursivelyTraverseLayoutEffects — 8.926 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117:9
+design-app://app/assets/index-abYaEd8u.js:9:115987</title><rect x="1268.644" y="180" width="106.379" height="17" fill="hsl(47 80% 72%)"/><text x="1270.644" y="192" font-size="10">recursivelyTraver</text></g><g><title>commitLayoutEffectOnFiber — 8.926 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962:9
+design-app://app/assets/index-abYaEd8u.js:9:104645</title><rect x="1268.644" y="162" width="106.379" height="17" fill="hsl(51 80% 72%)"/><text x="1270.644" y="174" font-size="10">commitLayoutEffec</text></g><g><title>commitHookEffectListMount — 8.926 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-abYaEd8u.js:9:95081</title><rect x="1268.644" y="144" width="106.379" height="17" fill="hsl(30 80% 72%)"/><text x="1270.644" y="156" font-size="10">commitHookEffectL</text></g><g><title>(anonymous) — 8.926 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:335:2
+design-app://app/assets/index-abYaEd8u.js:54:69433</title><rect x="1268.644" y="126" width="106.379" height="17" fill="hsl(30 80% 72%)"/><text x="1270.644" y="138" font-size="10">(anonymous)</text></g><g><title>Vb.u.current — 5.979 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:74:10
+design-app://app/assets/index-abYaEd8u.js:54:62489</title><rect x="1268.644" y="108" width="71.158" height="17" fill="hsl(32 80% 72%)"/><text x="1270.644" y="120" font-size="10">Vb.u.curren</text></g><g><title>(anonymous) — 2.976 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ResidentCompositeSurface.tsx:165:9
+design-app://app/assets/index-abYaEd8u.js:54:65273</title><rect x="1268.644" y="90" width="35.268" height="17" fill="hsl(30 80% 72%)"/><text x="1270.644" y="102" font-size="10">(anon</text></g><g><title>residentFrameSignature — 1.496 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/gpu/resident-frame.ts:64:16
+design-app://app/assets/client-DSrI0adz.js:1:31336</title><rect x="1304.211" y="90" width="17.579" height="17" fill="hsl(27 80% 72%)"/><text x="1306.211" y="102" font-size="10">re</text></g><g><title>(anonymous) — 1.496 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/gpu/resident-frame.ts:78:15
+design-app://app/assets/client-DSrI0adz.js:1:31516</title><rect x="1304.211" y="72" width="17.579" height="17" fill="hsl(30 80% 72%)"/><text x="1306.211" y="84" font-size="10">(a</text></g><g><title>prepare — 1.436 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/interaction-renderer.ts:449:2
+design-app://app/assets/index-abYaEd8u.js:54:23781</title><rect x="1340.102" y="108" width="16.862" height="17" fill="hsl(9 80% 72%)"/><text x="1342.102" y="120" font-size="10">pr</text></g><g><title>commitHookEffectListMount — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011:9
+design-app://app/assets/index-abYaEd8u.js:9:95081</title><rect x="1375.323" y="216" width="17.711" height="17" fill="hsl(30 80% 72%)"/><text x="1377.323" y="228" font-size="10">co</text></g><g><title>(anonymous) — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:2125:2
+design-app://app/assets/index-abYaEd8u.js:54:114304</title><rect x="1375.323" y="198" width="17.711" height="17" fill="hsl(30 80% 72%)"/><text x="1377.323" y="210" font-size="10">(a</text></g><g><title>flushMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12986:9
+design-app://app/assets/index-abYaEd8u.js:9:130538</title><rect x="1393.334" y="684" width="8.735" height="17" fill="hsl(37 80% 72%)"/><text x="1395.334" y="696" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="666" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="678" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="648" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="660" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="630" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="642" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="612" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="624" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="594" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="606" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="576" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="588" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="558" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="570" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="540" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="552" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="522" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="534" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="504" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="516" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="486" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="498" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="468" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="480" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="450" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="462" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="432" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="444" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="414" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="426" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="396" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="408" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="378" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="390" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="360" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="372" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="342" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="354" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="324" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="336" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="306" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="318" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="288" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="300" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="270" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="282" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="252" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="264" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="234" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="246" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="216" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="228" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="198" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="210" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="180" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="192" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="162" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="174" font-size="10"></text></g><g><title>recursivelyTraverseMutationEffects — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454:9
+design-app://app/assets/index-abYaEd8u.js:9:109021</title><rect x="1393.334" y="144" width="8.735" height="17" fill="hsl(28 80% 72%)"/><text x="1395.334" y="156" font-size="10"></text></g><g><title>commitMutationEffectsOnFiber — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497:9
+design-app://app/assets/index-abYaEd8u.js:9:109508</title><rect x="1393.334" y="126" width="8.735" height="17" fill="hsl(57 80% 72%)"/><text x="1395.334" y="138" font-size="10"></text></g><g><title>commitHostUpdate — 0.756 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218:9
+design-app://app/assets/index-abYaEd8u.js:9:97182</title><rect x="1393.334" y="108" width="8.735" height="17" fill="hsl(52 80% 72%)"/><text x="1395.334" y="120" font-size="10"></text></g><g><title>scheduleTaskForRootDuringMicrotask — 1.506 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13483:9
+design-app://app/assets/index-abYaEd8u.js:9:135426</title><rect x="1402.369" y="792" width="17.699" height="17" fill="hsl(9 80% 72%)"/><text x="1404.369" y="804" font-size="10">sc</text></g><g><title>e.unstable_scheduleCallback — 1.506 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/scheduler/cjs/scheduler.production.js:272:36
+design-app://app/assets/index-abYaEd8u.js:2:13816</title><rect x="1402.369" y="774" width="17.699" height="17" fill="hsl(28 80% 72%)"/><text x="1404.369" y="786" font-size="10">e.</text></g><g><title>O — 1.506 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/scheduler/cjs/scheduler.production.js:201:37
+design-app://app/assets/index-abYaEd8u.js:2:12877</title><rect x="1402.369" y="756" width="17.699" height="17" fill="hsl(37 80% 72%)"/><text x="1404.369" y="768" font-size="10">O</text></g><g><title>postMessage — 1.506 ms cumulative active samples
+
+:0:0</title><rect x="1402.369" y="738" width="17.699" height="17" fill="hsl(21 80% 72%)"/><text x="1404.369" y="750" font-size="10">po</text></g><g><title>(anonymous) — 3.009 ms cumulative active samples
+
+:0:0</title><rect x="1420.368" y="828" width="35.662" height="17" fill="hsl(30 80% 72%)"/><text x="1422.368" y="840" font-size="10">(anon</text></g><g><title>(garbage collector) — 2.978 ms cumulative active samples
+
+:0:0</title><rect x="1456.331" y="828" width="35.292" height="17" fill="#be92d0"/><text x="1458.331" y="840" font-size="10">(garb</text></g><g><title>t.onmessage — 1.548 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/native-preparation.ts:16:19
+design-app://app/assets/client-DSrI0adz.js:1:33094</title><rect x="1491.922" y="828" width="18.201" height="17" fill="hsl(22 80% 72%)"/><text x="1493.922" y="840" font-size="10">t.</text></g><g><title>(anonymous) — 1.548 ms cumulative active samples
+
+:0:0</title><rect x="1491.922" y="810" width="18.201" height="17" fill="hsl(30 80% 72%)"/><text x="1493.922" y="822" font-size="10">(a</text></g><g><title>request — 1.548 ms cumulative active samples
+
+file:preload.cjs:104:16</title><rect x="1491.922" y="792" width="18.201" height="17" fill="hsl(55 80% 72%)"/><text x="1493.922" y="804" font-size="10">re</text></g><g><title>invoke — 1.548 ms cumulative active samples
+
+node:electron/js2c/sandbox_bundle:2:89986</title><rect x="1491.922" y="774" width="18.201" height="17" fill="hsl(50 80% 72%)"/><text x="1493.922" y="786" font-size="10">in</text></g><g><title>invoke — 1.548 ms cumulative active samples
+
+:0:0</title><rect x="1491.922" y="756" width="18.201" height="17" fill="hsl(50 80% 72%)"/><text x="1493.922" y="768" font-size="10">in</text></g><g><title>c — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/Canvas.tsx:1129:19
+design-app://app/assets/index-abYaEd8u.js:58:34840</title><rect x="1510.423" y="828" width="17.711" height="17" fill="hsl(57 80% 72%)"/><text x="1512.423" y="840" font-size="10">c</text></g><g><title>shortcutTargetOwnsKeyboard — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/editor-shortcuts.ts:6:16
+design-app://app/assets/index-abYaEd8u.js:24:4661</title><rect x="1510.423" y="810" width="17.711" height="17" fill="hsl(25 80% 72%)"/><text x="1512.423" y="822" font-size="10">sh</text></g><g><title>modalOwnsKeyboard — 1.507 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/modal-keyboard.ts:8:16
+design-app://app/assets/index-abYaEd8u.js:10:86884</title><rect x="1510.423" y="792" width="17.711" height="17" fill="hsl(43 80% 72%)"/><text x="1512.423" y="804" font-size="10">mo</text></g><g><title>querySelector — 1.507 ms cumulative active samples
+
+:0:0</title><rect x="1510.423" y="774" width="17.711" height="17" fill="hsl(47 80% 72%)"/><text x="1512.423" y="786" font-size="10">qu</text></g><g><title>ct — 1.506 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/ProgressiveSurface.tsx:1398:16
+design-app://app/assets/index-abYaEd8u.js:54:102980</title><rect x="1528.434" y="828" width="17.699" height="17" fill="hsl(43 80% 72%)"/><text x="1530.434" y="840" font-size="10">ct</text></g><g><title>request — 1.506 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/navigation-refinement.ts:27:8
+design-app://app/assets/index-abYaEd8u.js:24:24317</title><rect x="1528.434" y="810" width="17.699" height="17" fill="hsl(55 80% 72%)"/><text x="1530.434" y="822" font-size="10">re</text></g><g><title>dispatchContinuousEvent — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17890:9
+design-app://app/assets/index-abYaEd8u.js:10:42473</title><rect x="1546.433" y="828" width="17.687" height="17" fill="hsl(19 80% 72%)"/><text x="1548.433" y="840" font-size="10">di</text></g><g><title>dispatchEvent — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17907:9
+design-app://app/assets/index-abYaEd8u.js:10:42572</title><rect x="1546.433" y="810" width="17.687" height="17" fill="hsl(30 80% 72%)"/><text x="1548.433" y="822" font-size="10">di</text></g><g><title>dispatchEventForPluginEventSystem — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13884:9
+design-app://app/assets/index-abYaEd8u.js:9:140136</title><rect x="1546.433" y="792" width="17.687" height="17" fill="hsl(37 80% 72%)"/><text x="1548.433" y="804" font-size="10">di</text></g><g><title>batchedUpdates$1 — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1663:9
+design-app://app/assets/index-abYaEd8u.js:9:15132</title><rect x="1546.433" y="774" width="17.687" height="17" fill="hsl(34 80% 72%)"/><text x="1548.433" y="786" font-size="10">ba</text></g><g><title>(anonymous) — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13931:19
+design-app://app/assets/index-abYaEd8u.js:9:140542</title><rect x="1546.433" y="756" width="17.687" height="17" fill="hsl(30 80% 72%)"/><text x="1548.433" y="768" font-size="10">(a</text></g><g><title>processDispatchQueue — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13748:9
+design-app://app/assets/index-abYaEd8u.js:9:138856</title><rect x="1546.433" y="738" width="17.687" height="17" fill="hsl(38 80% 72%)"/><text x="1548.433" y="750" font-size="10">pr</text></g><g><title>Ie — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/Canvas.tsx:477:28
+design-app://app/assets/index-abYaEd8u.js:58:15410</title><rect x="1546.433" y="720" width="17.687" height="17" fill="hsl(22 80% 72%)"/><text x="1548.433" y="732" font-size="10">Ie</text></g><g><title>run — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/cpu-stage-diagnostics.ts:24:25
+design-app://app/assets/geometry-EtBQcaS9.js:2:21363</title><rect x="1546.433" y="702" width="17.687" height="17" fill="hsl(49 80% 72%)"/><text x="1548.433" y="714" font-size="10">ru</text></g><g><title>c — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/cpu-stage-diagnostics.ts:22:16
+design-app://app/assets/geometry-EtBQcaS9.js:2:21294</title><rect x="1546.433" y="684" width="17.687" height="17" fill="hsl(57 80% 72%)"/><text x="1548.433" y="696" font-size="10">c</text></g><g><title>(anonymous) — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/canvas-action-diagnostics.ts:97:58
+design-app://app/assets/index-abYaEd8u.js:10:83043</title><rect x="1546.433" y="666" width="17.687" height="17" fill="hsl(30 80% 72%)"/><text x="1548.433" y="678" font-size="10">(a</text></g><g><title>record — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/geometry-EtBQcaS9.js:1:25754</title><rect x="1546.433" y="648" width="17.687" height="17" fill="hsl(57 80% 72%)"/><text x="1548.433" y="660" font-size="10">re</text></g><g><title>localRecord — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/geometry-EtBQcaS9.js:1:25122</title><rect x="1546.433" y="630" width="17.687" height="17" fill="hsl(38 80% 72%)"/><text x="1548.433" y="642" font-size="10">lo</text></g><g><title>sanitizeFields — 1.505 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/geometry-EtBQcaS9.js:1:22710</title><rect x="1546.433" y="612" width="17.687" height="17" fill="hsl(38 80% 72%)"/><text x="1548.433" y="624" font-size="10">sa</text></g><g><title>f — 1.490 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/client.ts:821:22
+design-app://app/assets/client-DSrI0adz.js:1:49598</title><rect x="1564.420" y="828" width="17.508" height="17" fill="hsl(10 80% 72%)"/><text x="1566.420" y="840" font-size="10">f</text></g><g><title>request — 1.490 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/client.ts:984:2
+design-app://app/assets/client-DSrI0adz.js:1:53215</title><rect x="1564.420" y="810" width="17.508" height="17" fill="hsl(55 80% 72%)"/><text x="1566.420" y="822" font-size="10">re</text></g><g><title>(anonymous) — 1.490 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/client.ts:991:23
+design-app://app/assets/client-DSrI0adz.js:1:53620</title><rect x="1564.420" y="792" width="17.508" height="17" fill="hsl(30 80% 72%)"/><text x="1566.420" y="804" font-size="10">(a</text></g><g><title>record — 1.490 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/geometry-EtBQcaS9.js:1:25754</title><rect x="1564.420" y="774" width="17.508" height="17" fill="hsl(57 80% 72%)"/><text x="1566.420" y="786" font-size="10">re</text></g><g><title>localRecord — 1.490 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/geometry-EtBQcaS9.js:1:25122</title><rect x="1564.420" y="756" width="17.508" height="17" fill="hsl(38 80% 72%)"/><text x="1566.420" y="768" font-size="10">lo</text></g><g><title>sanitizeFields — 1.490 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/geometry-EtBQcaS9.js:1:22710</title><rect x="1564.420" y="738" width="17.508" height="17" fill="hsl(38 80% 72%)"/><text x="1566.420" y="750" font-size="10">sa</text></g><g><title>flush — 1.487 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-desktop/src/render-terminal-diagnostics.mjs:128:11
+design-app://app/assets/geometry-EtBQcaS9.js:1:25390</title><rect x="1582.228" y="828" width="17.472" height="17" fill="hsl(34 80% 72%)"/><text x="1584.228" y="840" font-size="10">fl</text></g><g><title>batchSink — 1.487 ms cumulative active samples
+../../../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/src/kernel/client.ts:358:15
+design-app://app/assets/client-DSrI0adz.js:1:35685</title><rect x="1582.228" y="810" width="17.472" height="17" fill="hsl(47 80% 72%)"/><text x="1584.228" y="822" font-size="10">ba</text></g></svg>

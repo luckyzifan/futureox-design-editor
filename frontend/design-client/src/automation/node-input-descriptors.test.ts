@@ -89,12 +89,12 @@ describe('Typed native node inputs over real MCP JSON-RPC', () => {
   const patch = update.properties.params.properties.patch
   expect(patch).toEqual(create.properties.params.properties.patch)
   expect(patch.additionalProperties).toBe(false)
-  expect(Object.keys(patch.properties).sort()).toEqual('repeat vectorBrush name transform width height visible locked opacity blend fills strokes effects radii smoothing clip mask maskType points innerRadius network text fontSize textStyle textRuns layout sizing constraints layoutGrid guides arc cornerRadius constrainProportions booleanOperation exportSettings textPath pathOffset connector board'.split(' ').sort())
+  expect(Object.keys(patch.properties).sort()).toEqual('repeat vectorBrush vectorGeometry name transform width height visible locked opacity blend fills strokes effects radii smoothing clip mask maskType points innerRadius network text fontSize textStyle textRuns layout sizing constraints layoutGrid guides arc cornerRadius constrainProportions booleanOperation exportSettings textPath pathOffset connector board'.split(' ').sort())
   for (const descriptor of Object.values(patch.properties) as Json[]) expect(descriptor.type || descriptor.anyOf).toBeTruthy()
   expect(patch.properties.width).toMatchObject({type:'number',minimum:0.000001,maximum:10000000})
   expect(patch.properties.transform).toMatchObject({type:'array',minItems:6,maxItems:6,items:{minimum:-10000000,maximum:10000000}})
   expect(patch.properties.textStyle.anyOf[0].properties.letterSpacing).toMatchObject({minimum:-1000,maximum:1000})
-  expect(patch.properties.fills.items.properties.stops.maxItems).toBe(32)
+  expect(patch.properties.fills.items.properties.stops.maxItems).toBe(64)
  })
  it('accepts negative coordinates/reflections, precise line extents and native nested boundary values', async () => {
   const f=await fixture(); const id='32000000-0000-4000-8000-000000000001', textId='32000000-0000-4000-8000-000000000002'; const created=await f.mutate('node.create',{id,kind:'rectangle',patch:{transform:[-2,0,0,3,-10000000,10000000],width:0.01,height:10000000,opacity:0,radii:[0,1,2,10000000]}})
@@ -116,7 +116,7 @@ describe('Typed native node inputs over real MCP JSON-RPC', () => {
   const f=await fixture(); const id='33000000-0000-4000-8000-000000000001'; const created=await f.mutate('node.create',{id,kind:'rectangle'});expect(created.isError).toBe(false)
   const cases: [string,Json][] = [
    ['negative width',{width:-1}],['zero height',{height:0}],['wrong numeric type',{width:'12px'}],['extent above max',{width:10000001}],
-   ['rectangle below kind minimum',{width:0.000001}],['singular transform',{transform:[0,0,0,0,0,0]}],['short transform',{transform:[1,0,0,1,0]}],['transform above max',{transform:[1,0,0,1,10000001,0]}],
+   ['width below schema minimum',{width:0}],['singular transform',{transform:[0,0,0,0,0,0]}],['short transform',{transform:[1,0,0,1,0]}],['transform above max',{transform:[1,0,0,1,10000001,0]}],
    ['invalid opacity',{opacity:1.0001}],['negative radius',{radii:[0,0,0,-1]}],['null required field',{width:null}],['custom property',{customfields:{anything:1}}],
    ['nested style range',{textStyle:{letterSpacing:-1001}}],['nested style type',{textStyle:{wrap:'yes'}}],['nested unknown style',{textStyle:{arbitrary:1}}],['too many fills',{fills:Array.from({length:17},()=>paint())}],
    ['paint opacity',{fills:[{...paint(),opacity:-0.1}]}],['paint matrix singular',{fills:[{...paint(),transform:[0,0,0,0,0,0]}]}],['stroke width',{strokes:[{...stroke(),width:10001}]}],
@@ -126,7 +126,7 @@ describe('Typed native node inputs over real MCP JSON-RPC', () => {
    const before=f.editor.state.doc, revision=f.editor.state.version
    const result=await f.mutate('node.update',{ids:[id],patch})
    expect(result.isError,label+JSON.stringify(result)).toBe(true)
-   const modelFailures = ['rectangle below kind minimum','singular transform','paint matrix singular','invalid text run']
+   const modelFailures = ['singular transform','paint matrix singular','invalid text run']
    expect(result.structuredContent.error.code,label+JSON.stringify(result)).toBe(modelFailures.includes(label) ? 'commit_failed' : 'invalid_params')
    expect(f.editor.state.doc,label).toBe(before);expect(f.editor.state.version,label).toBe(revision)
    await capture(label,result)

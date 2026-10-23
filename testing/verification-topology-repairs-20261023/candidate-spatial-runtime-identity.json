@@ -1,0 +1,7 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/candidate-spatial-runtime/host",
+  "sourceScope": "combined local source, independent copied binaries",
+  "experimentalFlags": "default off",
+  "nativeSha256": "9d6af2fb05e86954e1db94c6d6f24a8e265191fbc2119923f5a2930b1528e7e2",
+  "wasmSha256": "c3bf0dc28601bd7b51a023b1d6733f335d72cc31a46e083088eef150cbd881cb"
+}

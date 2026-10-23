@@ -198,3 +198,10 @@ vec4 bsCorner4(vec4 a,vec4 b,vec4 c,vec4 d){
 vec4 bsBilinear4(vec4 a,vec4 b,vec4 c,vec4 d,vec2 k,uint wordLimit,uint termCount){
  if(all(equal(floatBitsToUint(k)&uvec2(0x7fffffffu),uvec2(0))))return bsCorner4(a,b,c,d);
  return vec4(bsBilinear(vec4(a.x,b.x,c.x,d.x),k.x,k.y,wordLimit,termCount),bsBilinear(vec4(a.y,b.y,c.y,d.y),k.x,k.y,wordLimit,termCount),bsBilinear(vec4(a.z,b.z,c.z,d.z),k.x,k.y,wordLimit,termCount),bsBilinear(vec4(a.w,b.w,c.w,d.w),k.x,k.y,wordLimit,termCount));}
+
+// BEGIN GENERATED CHANNEL ALPHA
+vec2 bsBilinearChannelAlpha(vec4 a,vec4 b,vec4 c,vec4 d,vec2 k,uint channel,uint wordLimit,uint termCount){
+ if(all(equal((floatBitsToUint(k)&uvec2(0x7fffffffu)),uvec2(0)))){vec4 value=bsCorner4(a,b,c,d);return vec2(value[channel],value.w);}
+ return vec2(bsBilinear(vec4(a[channel],b[channel],c[channel],d[channel]),k.x,k.y,wordLimit,termCount),bsBilinear(vec4(a.w,b.w,c.w,d.w),k.x,k.y,wordLimit,termCount));
+}
+// END GENERATED CHANNEL ALPHA

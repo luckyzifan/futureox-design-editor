@@ -124,6 +124,7 @@ export function resultError(error) {
     status: code === 'CONFLICT' || code === 'WORKSPACE_CONFLICT' ? 'conflict' : 'error',
     code,
     message:
-      (error?.outcomeUnknown ? 'The backend stopped before confirming this change. It may have been applied. Verify the file or session state before trying again.' : messages[code]) || 'The local file operation failed. The current canvas has been preserved.',
+      (error?.outcomeUnknown ? 'The backend stopped before confirming this change. It may have been applied. Verify the file or session state before trying again.' : messages[code]) ||
+      (code === 'LARGE_DOCUMENT_ERROR' && typeof error?.message === 'string' ? `大型文档：${error.message.slice(0, 512)}` : 'The local file operation failed. The current canvas has been preserved.'),
   }
 }

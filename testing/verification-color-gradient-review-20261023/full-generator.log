@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "/Users/Apple/project/design-kernel/design-studio/scripts/generate-rational-glsl.py", line 56, in <module>
+    text=replace_block(text,'MATERIAL MATH','uint materialSelect(uint a,uint b,bool s){return s?b:a;}\n'+translate(source).replace('rfSelect(', 'materialSelect('))
+                                                                                                         ~~~~~~~~~^^^^^^^^
+  File "/Users/Apple/project/design-kernel/design-studio/scripts/generate-rational-glsl.py", line 21, in translate
+    source=re.sub(r'fn (\w+)\(([^)]*)\)->([^\s{]+)',lambda m:kinds[m[3]]+' '+m[1]+'('+','.join(parameter(p)for p in m[2].split(','))+')',source)
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/re/__init__.py", line 208, in sub
+    return _compile(pattern, flags).sub(repl, string, count)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/Apple/project/design-kernel/design-studio/scripts/generate-rational-glsl.py", line 21, in <lambda>
+    source=re.sub(r'fn (\w+)\(([^)]*)\)->([^\s{]+)',lambda m:kinds[m[3]]+' '+m[1]+'('+','.join(parameter(p)for p in m[2].split(','))+')',source)
+                                                                                      ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/Apple/project/design-kernel/design-studio/scripts/generate-rational-glsl.py", line 21, in <genexpr>
+    source=re.sub(r'fn (\w+)\(([^)]*)\)->([^\s{]+)',lambda m:kinds[m[3]]+' '+m[1]+'('+','.join(parameter(p)for p in m[2].split(','))+')',source)
+                                                                                               ~~~~~~~~~^^^
+  File "/Users/Apple/project/design-kernel/design-studio/scripts/generate-rational-glsl.py", line 20, in parameter
+    name,kind=p.split(':');return kinds[kind]+' '+name
+    ^^^^^^^^^
+ValueError: not enough values to unpack (expected 2, got 1)

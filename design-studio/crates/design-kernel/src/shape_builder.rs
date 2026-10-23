@@ -69,7 +69,7 @@ pub fn partition(nodes: &[Node]) -> Result<Vec<Region>, String> {
         if p.iter().any(|(start,segments)| std::iter::once(start).chain(segments.iter().flat_map(|(a,b,c)|[a,b,c])).any(|q| !q.0.is_finite() || !q.1.is_finite() || q.0.abs()>1e8 || q.1.abs()>1e8)) { return Err("Shape Builder coordinates exceed finite geometry limits".into()) }
         edges += p.iter().map(|p|p.1.len()).sum::<usize>();
         if p.is_empty() { return Err("Shape Builder input has no closed filled region".into()) }
-        paths.push(p); rules.push(n.network.as_ref().is_none_or(|g|g.fill_rule=="evenodd"));
+        paths.push(p); rules.push(n.fill_even_odd());
     }
     if edges>8192 { return Err("Shape Builder exceeds 8192 source segments".into()) }
     let mut graph=GraphPath::new();

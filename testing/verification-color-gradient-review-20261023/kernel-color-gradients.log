@@ -1,0 +1,85 @@
+warning: method `over_rgba8_blend` is never used
+   --> crates/design-kernel/src/blend.rs:101:19
+    |
+ 86 | impl Pixel {
+    | ---------- method in this implementation
+...
+101 |     pub(crate) fn over_rgba8_blend(self, source: Self, opacity: f32, mode: &str) -> Self {
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `futureox-design-kernel` (lib) generated 1 warning
+   Compiling futureox-design-kernel v0.1.0 (/Users/Apple/project/design-kernel/design-studio/crates/design-kernel)
+    Finished `desktop-dev` profile [optimized] target(s) in 4.70s
+     Running tests/color.rs (target/desktop-dev/deps/color-23f8db0e8e940850)
+
+running 10 tests
+test gamut_and_white_adaptation_roundtrips_do_not_clip ... ok
+test generated_icc_header_is_canonical_across_native_and_wasm_clocks ... ok
+test linear_blur_preserves_hdr_energy_and_negative_gamut_components ... ok
+test malformed_colors_and_old_schema_are_rejected ... ok
+test managed_animation_interpolates_light_and_metadata_undo_is_atomic ... ok
+test png_hdr_and_rgb_icc_inputs_are_converted_before_sampling ... ok
+test float_tiling_and_pixel_preview_preserve_values_above_sdr ... ok
+test standard_transfer_and_reference_white_anchors ... ok
+test renderer_composites_in_linear_light_without_clipping_hdr ... ok
+test unmanaged_srgb_alpha_preserves_encoded_channels_and_multiplies_opacity_once ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/figma_gradient.rs (target/desktop-dev/deps/figma_gradient-2d1b2d9d47286445)
+
+running 8 tests
+test dither_matches_independent_native_math_readbacks ... ok
+test imported_stop_alpha_enters_the_measured_lookup_as_straight_rgba ... ok
+test invalid_source_inputs_are_errors ... ok
+test eleven_real_figma_gradient_pngs_match_every_rgba_byte ... ok
+test normalized_axis_matrices_share_the_measured_gradient_coordinates ... ok
+test offset_diagonal_gradient_matches_original_export_through_engine ... ok
+test valid_tiny_gradient_uses_general_coordinates_when_fixed_precision_cannot_fit ... ok
+test large_offset_and_isolated_phase_controls_match_all_284121_pixels ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+     Running tests/gradient_grid.rs (target/desktop-dev/deps/gradient_grid-ce69c0a3ddf4728d)
+
+running 2 tests
+test empty_palette_and_parameter_budget_are_explicit ... ok
+test gradient_stop_boundaries_keep_binary64_distinctions_before_interpolation ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/gradient_stop_capacity.rs (target/desktop-dev/deps/gradient_stop_capacity-26fdfd030a7c38f3)
+
+running 2 tests
+test thirty_six_and_sixty_four_stops_roundtrip_without_truncation ... ok
+test gradient_region_chunks_preserve_every_sample_bit_and_domain ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/sketch_adaptable_color.rs (target/desktop-dev/deps/sketch_adaptable_color-c66c8d2aaf214fd9)
+
+running 4 tests
+test adaptable_fill_imports_light_value_and_keeps_raw_dual_values ... ok
+test adaptable_fill_round_trips_verbatim ... ok
+test adaptable_text_run_color_imports_and_round_trips ... ok
+test shared_style_adaptable_colors_ride_container_fidelity ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/sketch_color_profiles.rs (target/desktop-dev/deps/sketch_color_profiles-0545d96b522b315c)
+
+running 9 tests
+test border_shadow_and_text_colors_receive_profile_conversion_and_alpha_once ... ok
+test explicit_srgb_to_p3_uses_f64_coordinates_without_premultiplying ... ok
+test explicit_p3_solid_exports_red_and_roundtrips_profile_and_alpha ... ok
+test hex_and_same_profile_srgb_archive_coordinates_stay_exact ... ok
+test non_solid_node_and_shared_strokes_reject_instead_of_flattening ... ok
+test shared_paint_style_colors_cannot_silently_turn_black ... ok
+test p3_transparent_gradient_has_one_source_profile_after_import_and_reexport ... ok
+test unsupported_profiles_hdr_and_real_gamut_loss_fail_before_archive_creation ... ok
+test solid_node_and_shared_strokes_preserve_exact_legacy_fields ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

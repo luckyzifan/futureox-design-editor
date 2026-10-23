@@ -1,0 +1,23 @@
+{
+  "profile": "desktop-dev",
+  "memoryScope": "isolated native test process; excludes Electron and filesystem cache",
+  "sourceHashes": {
+    "design-studio/crates/design-kernel/src/large_json.rs": "51c1ca03b16995b168b7677c1a48728cb9035972a56e76b33489a0946cbe7f05",
+    "design-studio/crates/design-desktop-backend/src/large_document.rs": "a737ed8eab7e2533385f668ab2c47c9f5ffa98c0ec5dc90cc18ca8a3f1fc10aa",
+    "design-studio/crates/design-desktop-backend/src/large_document/index.rs": "a6f426b28fefdcf727d978e8d257aeefbfe03181d9b6733034790906fd3fb4a7",
+    "design-studio/crates/design-desktop-backend/src/large_document/projection.rs": "d0d93ca9808f08de89e1a1ff18f36499b4c47d6cc24a9424babd4877d595a5a6"
+  },
+  "results": [
+    {
+      "gate": "actual_topology_sketch_json_and_canvas_edits_export_all_members",
+      "exit": 0,
+      "seconds": 80.281,
+      "nativePeakRssBytes": 70893568,
+      "rssLimitBytes": 1610612736,
+      "withinRssLimit": true,
+      "testedExecutableSha256": "dd2c3dca7980047ec127133b33a0217b68031371df3dc7590dabe794bf796d02",
+      "log": "actual_topology_sketch_json_and_canvas_edits_export_all_members.log",
+      "sourceUnchangedDuringRun": true
+    }
+  ]
+}

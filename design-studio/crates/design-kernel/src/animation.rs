@@ -181,6 +181,8 @@ pub struct Pose {
     pub effects: Vec<Effect>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<Network>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_geometry: Option<crate::vector_geometry::VectorGeometry>,
 }
 impl From<&Node> for Pose {
     fn from(n: &Node) -> Self {
@@ -198,6 +200,7 @@ impl From<&Node> for Pose {
             strokes: n.strokes.clone(),
             effects: n.effects.clone(),
             network: n.network.clone(),
+            vector_geometry: n.vector_geometry.clone(),
         }
     }
 }
@@ -215,6 +218,7 @@ impl Pose {
         n.strokes = self.strokes.clone();
         n.effects = self.effects.clone();
         n.network = self.network.clone();
+        n.vector_geometry = self.vector_geometry.clone();
     }
     fn validate(
         &self,
@@ -265,7 +269,7 @@ impl Pose {
                 || p.angle.abs() > 1e7
                 || !crate::blend::valid_mode(&p.blend)
                 || !matches!(p.kind.as_str(), "solid" | "linear" | "radial" | "image")
-                || p.stops.len() > 32
+                || p.stops.len() > crate::scene::MAX_GRADIENT_STOPS
                 || !matches!(p.fit.as_str(), "cover" | "contain" | "stretch")
             {
                 return Err("Invalid animated paint".into());
@@ -315,6 +319,10 @@ impl Pose {
         let mut probe = base.clone();
         self.apply(&mut probe);
         probe.validate_strokes()?;
+        if let Some(geometry)=&self.vector_geometry {
+            if self.kind!="vector" || self.network.is_some() {return Err("Invalid animated vector representation".into());}
+            geometry.validate()?;
+        }
         if let Some(n) = &self.network {
             if n.vertices.len() > 20000
                 || n.edges.len() > 40000
@@ -448,6 +456,7 @@ pub(crate) fn compatible(a: &Pose, b: &Pose) -> bool {
                     == b.texture.as_ref().map(|t| t.clip_to_shape)
         })
         && networks
+        && a.vector_geometry == b.vector_geometry
 }
 pub fn validate(doc: &Document) -> Result<(), String> {
     if doc.schema_version < 8 && crate::stroke::has_markers(doc) {
@@ -537,6 +546,7 @@ pub fn validate(doc: &Document) -> Result<(), String> {
                 previous = Some(key.time_ms);
                 key.easing.validate()?;
                 key.value.validate(base, doc.color_management)?;
+                if key.value.vector_geometry.is_some() && doc.schema_version<16 {return Err("Animated vector render geometry requires schema 16".into());}
                 if let Some(n) = &key.value.network {
                     vertices += n.vertices.len() + n.edges.len();
                     if vertices > 1_000_000 {

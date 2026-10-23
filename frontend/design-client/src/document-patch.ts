@@ -152,6 +152,7 @@ export function nodeFromKernel(n: DesignNode): DesignNode {
   let result = n
   for (const key of [
     'network',
+    'vectorGeometry',
     'layout',
     'sizing',
     'constraints',

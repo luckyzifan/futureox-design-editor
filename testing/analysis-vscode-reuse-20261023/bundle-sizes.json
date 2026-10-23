@@ -1,0 +1,109 @@
+{
+  "typescript": "5.9.3",
+  "bun": "1.4.0",
+  "monaco": "0.57.0",
+  "note": "Isolated minified ESM exports, no host app, CSS included when emitted; gzip sizes are file-wise sums. Not startup/RSS measurements. Monaco language workers are excluded.",
+  "results": [
+    {
+      "name": "lifecycle",
+      "assets": [
+        {
+          "file": "lifecycle-entry.js",
+          "bytes": 14590,
+          "gzipBytes": 4038
+        }
+      ],
+      "totalBytes": 14590,
+      "gzipBytes": 4038
+    },
+    {
+      "name": "async",
+      "assets": [
+        {
+          "file": "async-entry.js",
+          "bytes": 112038,
+          "gzipBytes": 34541
+        }
+      ],
+      "totalBytes": 112038,
+      "gzipBytes": 34541
+    },
+    {
+      "name": "fuzzy",
+      "assets": [
+        {
+          "file": "fuzzy-entry.js",
+          "bytes": 81227,
+          "gzipBytes": 25323
+        }
+      ],
+      "totalBytes": 81227,
+      "gzipBytes": 25323
+    },
+    {
+      "name": "tree",
+      "assets": [
+        {
+          "file": "tree-entry.js",
+          "bytes": 139118,
+          "gzipBytes": 42774
+        }
+      ],
+      "totalBytes": 139118,
+      "gzipBytes": 42774
+    },
+    {
+      "name": "range",
+      "assets": [
+        {
+          "file": "range-entry.js",
+          "bytes": 2164,
+          "gzipBytes": 880
+        }
+      ],
+      "totalBytes": 2164,
+      "gzipBytes": 880
+    },
+    {
+      "name": "diff",
+      "assets": [
+        {
+          "file": "diff-entry.js",
+          "bytes": 89275,
+          "gzipBytes": 27206
+        }
+      ],
+      "totalBytes": 89275,
+      "gzipBytes": 27206
+    },
+    {
+      "name": "monaco",
+      "assets": [
+        {
+          "file": "monaco-entry.js",
+          "bytes": 2757103,
+          "gzipBytes": 713530
+        },
+        {
+          "file": "monaco-entry.css",
+          "bytes": 104287,
+          "gzipBytes": 14379
+        }
+      ],
+      "totalBytes": 2861390,
+      "gzipBytes": 727909
+    },
+    {
+      "name": "monacoWorker",
+      "assets": [
+        {
+          "file": "monacoWorker-entry.js",
+          "bytes": 311935,
+          "gzipBytes": 96788
+        }
+      ],
+      "totalBytes": 311935,
+      "gzipBytes": 96788
+    }
+  ]
+}

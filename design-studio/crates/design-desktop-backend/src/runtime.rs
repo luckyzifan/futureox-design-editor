@@ -1,4 +1,4 @@
-//! One parser, one admitted blocking job, a bounded FIFO, and an async stdio loop.
+//! One parser, independent bounded ordinary/large-source lanes, and async stdio.
 //! Never spawn an unbounded set of tasks waiting for a semaphore. A running job
 //! owns its permit inside the blocking closure, including after caller cancellation.
 use crate::{
@@ -21,6 +21,25 @@ use tokio::{
 };
 
 pub const MAX_PENDING: usize = 8;
+fn large_lane(method: &str) -> bool {
+    method.starts_with("large.")
+        && !matches!(
+            method,
+            "large.read" | "large.children" | "large.status" | "large.progress"
+        )
+}
+async fn scheduling(
+    writer: &mut (impl AsyncWrite + Unpin),
+    id: &Value,
+    phase: &str,
+) -> io::Result<()> {
+    write_encoded(
+        writer,
+        &serde_json::to_vec(&json!({"desktopScheduling":{"id":id,"phase":phase}}))
+            .map_err(io::Error::other)?,
+    )
+    .await
+}
 pub fn max_pending_bytes() -> usize {
     crate::document_transport::transfer_byte_limit().saturating_add(8 * 1024 * 1024)
 }
@@ -218,21 +237,36 @@ where
             tokio::select! { biased; _=stopped.changed()=>break, sent=sender.send(Ok(Input{parsed,bytes}))=>{if sent.is_err(){break;}} }
         }
     });
-    let slots = Arc::new(Semaphore::new(1));
+    let slots = Arc::new(Semaphore::new(2));
     let mut queue = VecDeque::<Job>::new();
     let mut running: Option<Running> = None;
+    let mut large_running: Option<Running> = None;
     let mut pending_bytes = 0usize;
     let mut eof = false;
     let mut failure = None;
     loop {
-        if running.is_none() {
-            if let Some(job) = queue.pop_front() {
+        for (large, lane) in [(false, &mut running), (true, &mut large_running)] {
+            if lane.is_some() {
+                continue;
+            }
+            if let Some(index) = queue
+                .iter()
+                .position(|job| large_lane(&job.request.method) == large)
+            {
+                let job = queue.remove(index).unwrap();
+                if job.request.scheduling {
+                    if let Err(error) = scheduling(&mut writer, &job.request.id, "running").await {
+                        failure = Some(error);
+                        break;
+                    }
+                }
                 let permit = slots
                     .clone()
                     .try_acquire_owned()
-                    .expect("only one running worker");
+                    .expect("at most one worker per lane");
                 let id = job.request.id.clone();
-                let scan = job.request.method == "catalog.scan";
+                let scan = job.request.method == "catalog.scan"
+                    || job.request.method.starts_with("large.");
                 let cancel = Arc::new(AtomicBool::new(false));
                 let worker_cancel = cancel.clone();
                 let worker = handler.clone();
@@ -240,20 +274,40 @@ where
                     let _permit = permit;
                     encode(worker(job.request, &worker_cancel))
                 });
-                running = Some(Running {
+                *lane = Some(Running {
                     id,
                     scan,
                     cancel,
                     bytes: job.bytes,
                     join,
                 });
-            } else if eof {
-                break;
             }
+        }
+        if failure.is_some() {
+            queue.clear();
+            eof = true;
+            let _ = stop.send(true);
+            receiver.close();
+            for job in running.as_ref().into_iter().chain(large_running.as_ref()) {
+                if job.scan {
+                    job.cancel.store(true, Ordering::Release);
+                }
+            }
+        }
+        if eof && running.is_none() && large_running.is_none() && queue.is_empty() {
+            break;
         }
         tokio::select! {
             completed=async { (&mut running.as_mut().unwrap().join).await }, if running.is_some()=> {
                 let job=running.take().unwrap(); pending_bytes-=job.bytes;
+                match completed {
+                    Ok(Ok(bytes))=> { if failure.is_none() { if let Err(e)=write_encoded(&mut writer,&bytes).await {failure=Some(e);} } }
+                    Ok(Err(e))=>{failure=Some(e);}
+                    Err(e)=>{failure=Some(io::Error::other(e));}
+                }
+            }
+            completed=async { (&mut large_running.as_mut().unwrap().join).await }, if large_running.is_some()=> {
+                let job=large_running.take().unwrap(); pending_bytes-=job.bytes;
                 match completed {
                     Ok(Ok(bytes))=> { if failure.is_none() { if let Err(e)=write_encoded(&mut writer,&bytes).await {failure=Some(e);} } }
                     Ok(Err(e))=>{failure=Some(e);}
@@ -268,7 +322,7 @@ where
                         let response=match input.parsed {
                             Err(response)=>Some(response),
                             Ok(request)=> {
-                                if queue.iter().any(|j|j.request.id==request.id) || running.as_ref().is_some_and(|j|j.id==request.id) {
+                                if queue.iter().any(|j|j.request.id==request.id) || running.as_ref().into_iter().chain(large_running.as_ref()).any(|j|j.id==request.id) {
                                     Some(failed(request.id,"DUPLICATE_ID","Request ID is already pending"))
                                 } else if request.method=="cancel" {
                                     #[derive(serde::Deserialize)] #[serde(rename_all="camelCase",deny_unknown_fields)] struct Cancel { request_id:Value }
@@ -278,16 +332,20 @@ where
                                             let mut cancelled=false; let mut active=false;
                                             if let Some(index)=index { let job=queue.remove(index).unwrap(); pending_bytes-=job.bytes; cancelled=true;
                                                 if let Err(e)=reply(&mut writer,failed(job.request.id,"CANCELLED","Queued request cancelled before execution")).await {failure=Some(e);}
-                                            } else if let Some(job)=running.as_ref().filter(|j|j.id==c.request_id) { active=true; if job.scan { job.cancel.store(true,Ordering::Release); } }
+                                            } else if let Some(job)=running.as_ref().into_iter().chain(large_running.as_ref()).find(|j|j.id==c.request_id) { active=true; if job.scan { job.cancel.store(true,Ordering::Release); } }
                                             Some(Response{id:request.id,result:Some(json!({"requestId":c.request_id,"cancelled":cancelled,"running":active})),error:None})
                                         }
                                         _=>Some(failed(request.id,"INVALID_REQUEST","cancel requires a valid requestId")),
                                     }
-                                } else if request.method=="health" {
+                                } else if matches!(request.method.as_str(), "health" | "large.progress") {
                                     Some(protocol::handle_request(&backend,request,&AtomicBool::new(false)))
-                                } else if queue.len()+usize::from(running.is_some())>=max_pending || input.bytes>max_bytes.saturating_sub(pending_bytes) {
+                                } else if queue.len()+usize::from(running.is_some())+usize::from(large_running.is_some())>=max_pending || (large_lane(&request.method) && queue.iter().filter(|j|large_lane(&j.request.method)).count()+usize::from(large_running.is_some())>=2) || input.bytes>max_bytes.saturating_sub(pending_bytes) {
                                     Some(failed(request.id,"BUSY","Request count or aggregate wire-byte budget reached; no work started"))
-                                } else { pending_bytes+=input.bytes;queue.push_back(Job{request,bytes:input.bytes});None }
+                                } else {
+                                    if request.scheduling { if let Err(e)=scheduling(&mut writer,&request.id,"queued").await {failure=Some(e);} }
+                                    if failure.is_none(){pending_bytes+=input.bytes;queue.push_back(Job{request,bytes:input.bytes});}
+                                    None
+                                }
                             }
                         };
                         if let Some(response)=response && failure.is_none() && let Err(e)=reply(&mut writer,response).await {failure=Some(e);}
@@ -302,10 +360,10 @@ where
             eof = true;
             let _ = stop.send(true);
             receiver.close();
-            if let Some(job) = running.as_ref()
-                && job.scan
-            {
-                job.cancel.store(true, Ordering::Release);
+            for job in running.as_ref().into_iter().chain(large_running.as_ref()) {
+                if job.scan {
+                    job.cancel.store(true, Ordering::Release);
+                }
             }
         }
     }
@@ -322,6 +380,99 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn large_lane_does_not_block_ordered_saves_and_remains_cancellable() {
+        let root = std::env::temp_dir().join(format!("large-lanes-{}", crate::unique_id()));
+        let backend = Arc::new(Backend::new(&root).unwrap());
+        let started = Arc::new(tokio::sync::Notify::new());
+        let notify = started.clone();
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = calls.clone();
+        let handler: Handler = Arc::new(move |request, cancel| {
+            if request.method == "large.open" {
+                notify.notify_one();
+                let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+                while !cancel.load(Ordering::Acquire) && std::time::Instant::now() < until {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+            } else {
+                recorded.lock().unwrap().push(request.id.clone());
+            }
+            Response {
+                id: request.id,
+                result: Some(json!({"done":true})),
+                error: None,
+            }
+        });
+        let (mut input, read) = tokio::io::duplex(8192);
+        let (write, output) = tokio::io::duplex(8192);
+        let server = tokio::spawn(serve_impl(backend, read, write, 8, 8192, handler));
+        let mut output = BufReader::new(output);
+        async fn send(
+            input: &mut tokio::io::DuplexStream,
+            id: u32,
+            method: &str,
+            params: Value,
+            scheduling: bool,
+        ) {
+            input
+                .write_all(
+                    format!(
+                        "{}\n",
+                        json!({"id":id,"method":method,"params":params,"scheduling":scheduling})
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+        }
+        async fn read_receipt(output: &mut BufReader<tokio::io::DuplexStream>) -> Value {
+            let mut line = String::new();
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                output.read_line(&mut line),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            serde_json::from_str(&line).unwrap()
+        }
+        send(&mut input, 1, "large.open", json!({}), true).await;
+        assert_eq!(
+            read_receipt(&mut output).await["desktopScheduling"]["phase"],
+            "queued"
+        );
+        assert_eq!(
+            read_receipt(&mut output).await["desktopScheduling"]["phase"],
+            "running"
+        );
+        started.notified().await;
+        send(&mut input, 2, "save", json!({}), false).await;
+        send(&mut input, 3, "save", json!({}), false).await;
+        assert_eq!(read_receipt(&mut output).await["id"], 2);
+        assert_eq!(read_receipt(&mut output).await["id"], 3);
+        assert_eq!(*calls.lock().unwrap(), vec![json!(2), json!(3)]);
+        send(&mut input, 4, "large.export", json!({}), false).await;
+        send(&mut input, 5, "large.open", json!({}), false).await;
+        assert_eq!(read_receipt(&mut output).await["error"]["code"], "BUSY");
+        send(&mut input, 6, "cancel", json!({"requestId":4}), false).await;
+        assert_eq!(
+            read_receipt(&mut output).await["error"]["code"],
+            "CANCELLED"
+        );
+        assert_eq!(read_receipt(&mut output).await["result"]["cancelled"], true);
+        send(&mut input, 7, "cancel", json!({"requestId":1}), false).await;
+        let first = read_receipt(&mut output).await;
+        let second = read_receipt(&mut output).await;
+        assert!(
+            [first, second]
+                .iter()
+                .any(|r| r["id"] == 7 && r["result"]["running"] == true)
+        );
+        input.shutdown().await.unwrap();
+        server.await.unwrap().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[tokio::test]
     async fn async_multipart_failure_never_dispatches_and_releases_reader() {
         use base64::Engine as _;

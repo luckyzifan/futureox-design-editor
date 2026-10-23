@@ -1,0 +1,2140 @@
+[
+  {
+    "key": "1:5",
+    "modelBytes": 29969827,
+    "nodes": 4022,
+    "seconds": 1.603370041,
+    "sourceBytes": 59851792
+  },
+  {
+    "key": "1:4027",
+    "modelBytes": 29970871,
+    "nodes": 4022,
+    "seconds": 1.415166042,
+    "sourceBytes": 59852257
+  },
+  {
+    "key": "1:8049",
+    "modelBytes": 29979663,
+    "nodes": 3990,
+    "seconds": 1.370860042,
+    "sourceBytes": 59671685
+  },
+  {
+    "key": "1:12039",
+    "modelBytes": 29979843,
+    "nodes": 3990,
+    "seconds": 1.352848333,
+    "sourceBytes": 59671775
+  },
+  {
+    "key": "1:16029",
+    "modelBytes": 29519207,
+    "nodes": 13325,
+    "seconds": 1.707177958,
+    "sourceBytes": 40999003
+  },
+  {
+    "key": "1:29354",
+    "modelBytes": 1856317,
+    "nodes": 231,
+    "seconds": 0.033700042,
+    "sourceBytes": 747962
+  },
+  {
+    "key": "1:29585",
+    "modelBytes": 2448179,
+    "nodes": 394,
+    "seconds": 0.052654625,
+    "sourceBytes": 1346511
+  },
+  {
+    "key": "1:29979",
+    "modelBytes": 4489700,
+    "nodes": 894,
+    "seconds": 0.101493916,
+    "sourceBytes": 2716377
+  },
+  {
+    "key": "1:30873",
+    "modelBytes": 1086574,
+    "nodes": 485,
+    "seconds": 0.061714083,
+    "sourceBytes": 1525722
+  },
+  {
+    "key": "1:31358",
+    "modelBytes": 777342,
+    "nodes": 295,
+    "seconds": 0.039791125,
+    "sourceBytes": 1113520
+  },
+  {
+    "key": "1:31653",
+    "modelBytes": 1753034,
+    "nodes": 950,
+    "seconds": 0.166893166,
+    "sourceBytes": 1246364
+  },
+  {
+    "key": "1:32054",
+    "modelBytes": 1771334,
+    "nodes": 962,
+    "seconds": 0.154516875,
+    "sourceBytes": 1251980
+  },
+  {
+    "key": "1:32459",
+    "modelBytes": 939908,
+    "nodes": 506,
+    "seconds": 0.087909833,
+    "sourceBytes": 35475
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=radial, opacity=1, stops=36, transformInvertible=true)",
+    "key": "1:32480",
+    "sourceBytes": 25111641
+  },
+  {
+    "key": "1:40138",
+    "modelBytes": 1451822,
+    "nodes": 333,
+    "seconds": 0.039489375,
+    "sourceBytes": 1181577
+  },
+  {
+    "key": "1:40471",
+    "modelBytes": 5356034,
+    "nodes": 2446,
+    "seconds": 0.2471895,
+    "sourceBytes": 6209240
+  },
+  {
+    "key": "1:42766",
+    "modelBytes": 11682063,
+    "nodes": 2882,
+    "seconds": 0.330658834,
+    "sourceBytes": 9658244
+  },
+  {
+    "key": "1:45636",
+    "modelBytes": 2034764,
+    "nodes": 713,
+    "seconds": 0.092103083,
+    "sourceBytes": 2528940
+  },
+  {
+    "key": "1:46349",
+    "modelBytes": 1967065,
+    "nodes": 688,
+    "seconds": 0.0877415,
+    "sourceBytes": 2435245
+  },
+  {
+    "key": "1:47037",
+    "modelBytes": 5163,
+    "nodes": 1,
+    "seconds": 0.000488875,
+    "sourceBytes": 3236
+  },
+  {
+    "key": "1:47038",
+    "modelBytes": 5161,
+    "nodes": 1,
+    "seconds": 0.000487709,
+    "sourceBytes": 3271
+  },
+  {
+    "key": "1:47039",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000483917,
+    "sourceBytes": 3262
+  },
+  {
+    "key": "1:47040",
+    "modelBytes": 5149,
+    "nodes": 1,
+    "seconds": 0.000431125,
+    "sourceBytes": 3238
+  },
+  {
+    "key": "1:47041",
+    "modelBytes": 5164,
+    "nodes": 1,
+    "seconds": 0.00042425,
+    "sourceBytes": 3238
+  },
+  {
+    "key": "1:47042",
+    "modelBytes": 5162,
+    "nodes": 1,
+    "seconds": 0.000360208,
+    "sourceBytes": 3275
+  },
+  {
+    "key": "1:47043",
+    "modelBytes": 5161,
+    "nodes": 1,
+    "seconds": 0.000308291,
+    "sourceBytes": 3274
+  },
+  {
+    "key": "1:47044",
+    "modelBytes": 5163,
+    "nodes": 1,
+    "seconds": 0.000297625,
+    "sourceBytes": 3239
+  },
+  {
+    "key": "1:47045",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000290917,
+    "sourceBytes": 3247
+  },
+  {
+    "key": "1:47046",
+    "modelBytes": 5141,
+    "nodes": 1,
+    "seconds": 0.000283166,
+    "sourceBytes": 3273
+  },
+  {
+    "key": "1:47047",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.00028425,
+    "sourceBytes": 3274
+  },
+  {
+    "key": "1:47048",
+    "modelBytes": 5143,
+    "nodes": 1,
+    "seconds": 0.000280375,
+    "sourceBytes": 3239
+  },
+  {
+    "key": "1:47049",
+    "modelBytes": 5100,
+    "nodes": 1,
+    "seconds": 0.000283875,
+    "sourceBytes": 3303
+  },
+  {
+    "key": "1:47050",
+    "modelBytes": 5051,
+    "nodes": 1,
+    "seconds": 0.000282,
+    "sourceBytes": 3205
+  },
+  {
+    "key": "1:47051",
+    "modelBytes": 5063,
+    "nodes": 1,
+    "seconds": 0.000283042,
+    "sourceBytes": 3313
+  },
+  {
+    "key": "1:47052",
+    "modelBytes": 5037,
+    "nodes": 1,
+    "seconds": 0.000278583,
+    "sourceBytes": 3193
+  },
+  {
+    "key": "1:47053",
+    "modelBytes": 5142,
+    "nodes": 1,
+    "seconds": 0.000278417,
+    "sourceBytes": 3213
+  },
+  {
+    "key": "1:47054",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000278208,
+    "sourceBytes": 3178
+  },
+  {
+    "key": "1:47055",
+    "modelBytes": 5133,
+    "nodes": 1,
+    "seconds": 0.000277416,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:47056",
+    "modelBytes": 5136,
+    "nodes": 1,
+    "seconds": 0.000278459,
+    "sourceBytes": 3186
+  },
+  {
+    "key": "1:47057",
+    "modelBytes": 5089,
+    "nodes": 1,
+    "seconds": 0.000282583,
+    "sourceBytes": 3328
+  },
+  {
+    "key": "1:47058",
+    "modelBytes": 5050,
+    "nodes": 1,
+    "seconds": 0.000279791,
+    "sourceBytes": 3202
+  },
+  {
+    "key": "1:47059",
+    "modelBytes": 5025,
+    "nodes": 1,
+    "seconds": 0.000274917,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:47060",
+    "modelBytes": 5065,
+    "nodes": 1,
+    "seconds": 0.000279292,
+    "sourceBytes": 3316
+  },
+  {
+    "key": "1:47061",
+    "modelBytes": 5005,
+    "nodes": 1,
+    "seconds": 0.000277958,
+    "sourceBytes": 3170
+  },
+  {
+    "key": "1:47062",
+    "modelBytes": 4999,
+    "nodes": 1,
+    "seconds": 0.000277917,
+    "sourceBytes": 3205
+  },
+  {
+    "key": "1:47063",
+    "modelBytes": 5132,
+    "nodes": 1,
+    "seconds": 0.000276625,
+    "sourceBytes": 3220
+  },
+  {
+    "key": "1:47064",
+    "modelBytes": 5134,
+    "nodes": 1,
+    "seconds": 0.0002755,
+    "sourceBytes": 3185
+  },
+  {
+    "key": "1:47065",
+    "modelBytes": 5068,
+    "nodes": 1,
+    "seconds": 0.000275375,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:47066",
+    "modelBytes": 5043,
+    "nodes": 1,
+    "seconds": 0.000274625,
+    "sourceBytes": 3208
+  },
+  {
+    "key": "1:47067",
+    "modelBytes": 4711,
+    "nodes": 1,
+    "seconds": 0.000269417,
+    "sourceBytes": 2622
+  },
+  {
+    "key": "1:47068",
+    "modelBytes": 4711,
+    "nodes": 1,
+    "seconds": 0.000267,
+    "sourceBytes": 2621
+  },
+  {
+    "key": "1:47069",
+    "modelBytes": 4710,
+    "nodes": 1,
+    "seconds": 0.000265792,
+    "sourceBytes": 2622
+  },
+  {
+    "key": "1:47070",
+    "modelBytes": 4710,
+    "nodes": 1,
+    "seconds": 0.000268791,
+    "sourceBytes": 2621
+  },
+  {
+    "key": "1:47071",
+    "modelBytes": 5078,
+    "nodes": 1,
+    "seconds": 0.000285083,
+    "sourceBytes": 3315
+  },
+  {
+    "key": "1:47072",
+    "modelBytes": 5039,
+    "nodes": 1,
+    "seconds": 0.000278,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:47073",
+    "modelBytes": 5036,
+    "nodes": 1,
+    "seconds": 0.000292375,
+    "sourceBytes": 3202
+  },
+  {
+    "key": "1:47074",
+    "modelBytes": 5075,
+    "nodes": 1,
+    "seconds": 0.000341125,
+    "sourceBytes": 3328
+  },
+  {
+    "key": "1:47075",
+    "modelBytes": 4973,
+    "nodes": 1,
+    "seconds": 0.000301459,
+    "sourceBytes": 3196
+  },
+  {
+    "key": "1:47076",
+    "modelBytes": 5142,
+    "nodes": 1,
+    "seconds": 0.000277958,
+    "sourceBytes": 3098
+  },
+  {
+    "key": "1:47077",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000278917,
+    "sourceBytes": 3119
+  },
+  {
+    "key": "1:47078",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.00027475,
+    "sourceBytes": 3111
+  },
+  {
+    "key": "1:47079",
+    "modelBytes": 4981,
+    "nodes": 1,
+    "seconds": 0.000279125,
+    "sourceBytes": 3207
+  },
+  {
+    "key": "1:47080",
+    "modelBytes": 5050,
+    "nodes": 1,
+    "seconds": 0.000277958,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:47081",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000277875,
+    "sourceBytes": 3123
+  },
+  {
+    "key": "1:47082",
+    "modelBytes": 5036,
+    "nodes": 1,
+    "seconds": 0.000272709,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:47083",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000274375,
+    "sourceBytes": 3165
+  },
+  {
+    "key": "1:47084",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000273792,
+    "sourceBytes": 3200
+  },
+  {
+    "key": "1:47085",
+    "modelBytes": 5130,
+    "nodes": 1,
+    "seconds": 0.000272667,
+    "sourceBytes": 3187
+  },
+  {
+    "key": "1:47086",
+    "modelBytes": 5129,
+    "nodes": 1,
+    "seconds": 0.000280292,
+    "sourceBytes": 3222
+  },
+  {
+    "key": "1:47087",
+    "modelBytes": 4913,
+    "nodes": 1,
+    "seconds": 0.000285833,
+    "sourceBytes": 3167
+  },
+  {
+    "key": "1:47088",
+    "modelBytes": 5158,
+    "nodes": 1,
+    "seconds": 0.000274584,
+    "sourceBytes": 3211
+  },
+  {
+    "key": "1:47089",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000277791,
+    "sourceBytes": 3224
+  },
+  {
+    "key": "1:47090",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.000274459,
+    "sourceBytes": 3152
+  },
+  {
+    "key": "1:47091",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.00027725,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:47092",
+    "modelBytes": 5040,
+    "nodes": 1,
+    "seconds": 0.000273542,
+    "sourceBytes": 3190
+  },
+  {
+    "key": "1:47093",
+    "modelBytes": 5057,
+    "nodes": 1,
+    "seconds": 0.000275083,
+    "sourceBytes": 3208
+  },
+  {
+    "key": "1:47094",
+    "modelBytes": 5140,
+    "nodes": 1,
+    "seconds": 0.00027775,
+    "sourceBytes": 3178
+  },
+  {
+    "key": "1:47095",
+    "modelBytes": 5037,
+    "nodes": 1,
+    "seconds": 0.000282167,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:47096",
+    "modelBytes": 5054,
+    "nodes": 1,
+    "seconds": 0.00028075,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:47097",
+    "modelBytes": 5141,
+    "nodes": 1,
+    "seconds": 0.00028325,
+    "sourceBytes": 3200
+  },
+  {
+    "key": "1:47098",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000279291,
+    "sourceBytes": 3212
+  },
+  {
+    "key": "1:47099",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000275834,
+    "sourceBytes": 3224
+  },
+  {
+    "key": "1:47100",
+    "modelBytes": 4903,
+    "nodes": 1,
+    "seconds": 0.000278625,
+    "sourceBytes": 3179
+  },
+  {
+    "key": "1:47101",
+    "modelBytes": 628077,
+    "nodes": 137,
+    "seconds": 0.020962708,
+    "sourceBytes": 553855
+  },
+  {
+    "key": "1:47238",
+    "modelBytes": 3362070,
+    "nodes": 714,
+    "seconds": 0.135449583,
+    "sourceBytes": 2533453
+  },
+  {
+    "key": "1:47952",
+    "modelBytes": 956408,
+    "nodes": 124,
+    "seconds": 0.038533334,
+    "sourceBytes": 470987
+  },
+  {
+    "key": "1:48076",
+    "modelBytes": 1195961,
+    "nodes": 172,
+    "seconds": 0.060328625,
+    "sourceBytes": 611799
+  },
+  {
+    "key": "1:48248",
+    "modelBytes": 5925,
+    "nodes": 1,
+    "seconds": 0.018449792,
+    "sourceBytes": 3392
+  },
+  {
+    "key": "1:48249",
+    "modelBytes": 5929,
+    "nodes": 1,
+    "seconds": 0.000603958,
+    "sourceBytes": 3445
+  },
+  {
+    "key": "1:48250",
+    "modelBytes": 5917,
+    "nodes": 1,
+    "seconds": 0.012088667,
+    "sourceBytes": 3393
+  },
+  {
+    "key": "1:48251",
+    "modelBytes": 5930,
+    "nodes": 1,
+    "seconds": 0.000412166,
+    "sourceBytes": 3446
+  },
+  {
+    "key": "1:48252",
+    "modelBytes": 5929,
+    "nodes": 1,
+    "seconds": 0.003538416,
+    "sourceBytes": 3445
+  },
+  {
+    "key": "1:48253",
+    "modelBytes": 5925,
+    "nodes": 1,
+    "seconds": 0.005888916,
+    "sourceBytes": 3392
+  },
+  {
+    "key": "1:48254",
+    "modelBytes": 5930,
+    "nodes": 1,
+    "seconds": 0.001663,
+    "sourceBytes": 3446
+  },
+  {
+    "key": "1:48255",
+    "modelBytes": 5917,
+    "nodes": 1,
+    "seconds": 0.001835584,
+    "sourceBytes": 3393
+  },
+  {
+    "key": "1:48256",
+    "modelBytes": 5953,
+    "nodes": 1,
+    "seconds": 0.002060458,
+    "sourceBytes": 3420
+  },
+  {
+    "key": "1:48257",
+    "modelBytes": 5901,
+    "nodes": 1,
+    "seconds": 0.000395958,
+    "sourceBytes": 3417
+  },
+  {
+    "key": "1:48258",
+    "modelBytes": 5945,
+    "nodes": 1,
+    "seconds": 0.000470875,
+    "sourceBytes": 3421
+  },
+  {
+    "key": "1:48259",
+    "modelBytes": 5902,
+    "nodes": 1,
+    "seconds": 0.000336416,
+    "sourceBytes": 3418
+  },
+  {
+    "key": "1:48260",
+    "modelBytes": 5901,
+    "nodes": 1,
+    "seconds": 0.000334,
+    "sourceBytes": 3417
+  },
+  {
+    "key": "1:48261",
+    "modelBytes": 5953,
+    "nodes": 1,
+    "seconds": 0.000416125,
+    "sourceBytes": 3420
+  },
+  {
+    "key": "1:48262",
+    "modelBytes": 5902,
+    "nodes": 1,
+    "seconds": 0.000324208,
+    "sourceBytes": 3418
+  },
+  {
+    "key": "1:48263",
+    "modelBytes": 5945,
+    "nodes": 1,
+    "seconds": 0.000324667,
+    "sourceBytes": 3421
+  },
+  {
+    "key": "1:48264",
+    "modelBytes": 29969828,
+    "nodes": 4022,
+    "seconds": 2.261746917,
+    "sourceBytes": 59851793
+  },
+  {
+    "key": "1:52286",
+    "modelBytes": 29970872,
+    "nodes": 4022,
+    "seconds": 1.375225,
+    "sourceBytes": 59852258
+  },
+  {
+    "key": "1:56308",
+    "modelBytes": 29979664,
+    "nodes": 3990,
+    "seconds": 1.4085197919999999,
+    "sourceBytes": 59671686
+  },
+  {
+    "key": "1:60298",
+    "modelBytes": 29979844,
+    "nodes": 3990,
+    "seconds": 1.397120541,
+    "sourceBytes": 59671776
+  },
+  {
+    "key": "1:64288",
+    "modelBytes": 29519207,
+    "nodes": 13325,
+    "seconds": 1.946806625,
+    "sourceBytes": 40999003
+  },
+  {
+    "key": "1:77613",
+    "modelBytes": 1856317,
+    "nodes": 231,
+    "seconds": 0.041638709,
+    "sourceBytes": 747962
+  },
+  {
+    "key": "1:77844",
+    "modelBytes": 2448179,
+    "nodes": 394,
+    "seconds": 0.057281417,
+    "sourceBytes": 1346511
+  },
+  {
+    "key": "1:78238",
+    "modelBytes": 4489700,
+    "nodes": 894,
+    "seconds": 0.113071292,
+    "sourceBytes": 2716377
+  },
+  {
+    "key": "1:79132",
+    "modelBytes": 1086573,
+    "nodes": 485,
+    "seconds": 0.061904042,
+    "sourceBytes": 1525721
+  },
+  {
+    "key": "1:79617",
+    "modelBytes": 777342,
+    "nodes": 295,
+    "seconds": 0.040426917,
+    "sourceBytes": 1113520
+  },
+  {
+    "key": "1:79912",
+    "modelBytes": 2118946,
+    "nodes": 1142,
+    "seconds": 0.199572458,
+    "sourceBytes": 1766135
+  },
+  {
+    "key": "1:80505",
+    "modelBytes": 5646399,
+    "nodes": 1505,
+    "seconds": 0.364848,
+    "sourceBytes": 8759673
+  },
+  {
+    "key": "1:81453",
+    "modelBytes": 939909,
+    "nodes": 506,
+    "seconds": 0.093150833,
+    "sourceBytes": 35476
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=radial, opacity=1, stops=36, transformInvertible=true)",
+    "key": "1:81474",
+    "sourceBytes": 25111641
+  },
+  {
+    "key": "1:89132",
+    "modelBytes": 1451822,
+    "nodes": 333,
+    "seconds": 0.038995375,
+    "sourceBytes": 1181577
+  },
+  {
+    "key": "1:89465",
+    "modelBytes": 5356033,
+    "nodes": 2446,
+    "seconds": 0.251438458,
+    "sourceBytes": 6209239
+  },
+  {
+    "key": "1:91760",
+    "modelBytes": 11682062,
+    "nodes": 2882,
+    "seconds": 0.325543375,
+    "sourceBytes": 9658243
+  },
+  {
+    "key": "1:94630",
+    "modelBytes": 2034766,
+    "nodes": 713,
+    "seconds": 0.075410666,
+    "sourceBytes": 2528942
+  },
+  {
+    "key": "1:95343",
+    "modelBytes": 1967065,
+    "nodes": 688,
+    "seconds": 0.070952791,
+    "sourceBytes": 2435245
+  },
+  {
+    "key": "1:96031",
+    "modelBytes": 5163,
+    "nodes": 1,
+    "seconds": 0.000634042,
+    "sourceBytes": 3236
+  },
+  {
+    "key": "1:96032",
+    "modelBytes": 5162,
+    "nodes": 1,
+    "seconds": 0.000351625,
+    "sourceBytes": 3272
+  },
+  {
+    "key": "1:96033",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.000271708,
+    "sourceBytes": 3263
+  },
+  {
+    "key": "1:96034",
+    "modelBytes": 5149,
+    "nodes": 1,
+    "seconds": 0.0002995,
+    "sourceBytes": 3238
+  },
+  {
+    "key": "1:96035",
+    "modelBytes": 5164,
+    "nodes": 1,
+    "seconds": 0.000265042,
+    "sourceBytes": 3238
+  },
+  {
+    "key": "1:96036",
+    "modelBytes": 5162,
+    "nodes": 1,
+    "seconds": 0.000263416,
+    "sourceBytes": 3275
+  },
+  {
+    "key": "1:96037",
+    "modelBytes": 5161,
+    "nodes": 1,
+    "seconds": 0.000246208,
+    "sourceBytes": 3274
+  },
+  {
+    "key": "1:96038",
+    "modelBytes": 5163,
+    "nodes": 1,
+    "seconds": 0.000254875,
+    "sourceBytes": 3239
+  },
+  {
+    "key": "1:96039",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000343416,
+    "sourceBytes": 3247
+  },
+  {
+    "key": "1:96040",
+    "modelBytes": 5141,
+    "nodes": 1,
+    "seconds": 0.000297208,
+    "sourceBytes": 3273
+  },
+  {
+    "key": "1:96041",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000263375,
+    "sourceBytes": 3274
+  },
+  {
+    "key": "1:96042",
+    "modelBytes": 5143,
+    "nodes": 1,
+    "seconds": 0.000338875,
+    "sourceBytes": 3239
+  },
+  {
+    "key": "1:96043",
+    "modelBytes": 5100,
+    "nodes": 1,
+    "seconds": 0.000416667,
+    "sourceBytes": 3303
+  },
+  {
+    "key": "1:96044",
+    "modelBytes": 5051,
+    "nodes": 1,
+    "seconds": 0.000320584,
+    "sourceBytes": 3205
+  },
+  {
+    "key": "1:96045",
+    "modelBytes": 5063,
+    "nodes": 1,
+    "seconds": 0.000328458,
+    "sourceBytes": 3313
+  },
+  {
+    "key": "1:96046",
+    "modelBytes": 5037,
+    "nodes": 1,
+    "seconds": 0.000296583,
+    "sourceBytes": 3193
+  },
+  {
+    "key": "1:96047",
+    "modelBytes": 5143,
+    "nodes": 1,
+    "seconds": 0.000238125,
+    "sourceBytes": 3214
+  },
+  {
+    "key": "1:96048",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000253958,
+    "sourceBytes": 3179
+  },
+  {
+    "key": "1:96049",
+    "modelBytes": 5134,
+    "nodes": 1,
+    "seconds": 0.000324834,
+    "sourceBytes": 3222
+  },
+  {
+    "key": "1:96050",
+    "modelBytes": 5137,
+    "nodes": 1,
+    "seconds": 0.000233083,
+    "sourceBytes": 3187
+  },
+  {
+    "key": "1:96051",
+    "modelBytes": 5089,
+    "nodes": 1,
+    "seconds": 0.000424625,
+    "sourceBytes": 3328
+  },
+  {
+    "key": "1:96052",
+    "modelBytes": 5050,
+    "nodes": 1,
+    "seconds": 0.000288291,
+    "sourceBytes": 3202
+  },
+  {
+    "key": "1:96053",
+    "modelBytes": 5025,
+    "nodes": 1,
+    "seconds": 0.000239459,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:96054",
+    "modelBytes": 5065,
+    "nodes": 1,
+    "seconds": 0.000238542,
+    "sourceBytes": 3316
+  },
+  {
+    "key": "1:96055",
+    "modelBytes": 5005,
+    "nodes": 1,
+    "seconds": 0.000257584,
+    "sourceBytes": 3170
+  },
+  {
+    "key": "1:96056",
+    "modelBytes": 5000,
+    "nodes": 1,
+    "seconds": 0.000225375,
+    "sourceBytes": 3206
+  },
+  {
+    "key": "1:96057",
+    "modelBytes": 5133,
+    "nodes": 1,
+    "seconds": 0.000225333,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:96058",
+    "modelBytes": 5134,
+    "nodes": 1,
+    "seconds": 0.000356334,
+    "sourceBytes": 3185
+  },
+  {
+    "key": "1:96059",
+    "modelBytes": 5068,
+    "nodes": 1,
+    "seconds": 0.000269583,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:96060",
+    "modelBytes": 5043,
+    "nodes": 1,
+    "seconds": 0.000264875,
+    "sourceBytes": 3208
+  },
+  {
+    "key": "1:96061",
+    "modelBytes": 4712,
+    "nodes": 1,
+    "seconds": 0.000389125,
+    "sourceBytes": 2623
+  },
+  {
+    "key": "1:96062",
+    "modelBytes": 4711,
+    "nodes": 1,
+    "seconds": 0.000309958,
+    "sourceBytes": 2621
+  },
+  {
+    "key": "1:96063",
+    "modelBytes": 4711,
+    "nodes": 1,
+    "seconds": 0.000270375,
+    "sourceBytes": 2623
+  },
+  {
+    "key": "1:96064",
+    "modelBytes": 4710,
+    "nodes": 1,
+    "seconds": 0.000303667,
+    "sourceBytes": 2621
+  },
+  {
+    "key": "1:96065",
+    "modelBytes": 5078,
+    "nodes": 1,
+    "seconds": 0.000282083,
+    "sourceBytes": 3315
+  },
+  {
+    "key": "1:96066",
+    "modelBytes": 5039,
+    "nodes": 1,
+    "seconds": 0.000283541,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:96067",
+    "modelBytes": 5036,
+    "nodes": 1,
+    "seconds": 0.000265458,
+    "sourceBytes": 3202
+  },
+  {
+    "key": "1:96068",
+    "modelBytes": 5075,
+    "nodes": 1,
+    "seconds": 0.000264708,
+    "sourceBytes": 3328
+  },
+  {
+    "key": "1:96069",
+    "modelBytes": 4973,
+    "nodes": 1,
+    "seconds": 0.000222166,
+    "sourceBytes": 3196
+  },
+  {
+    "key": "1:96070",
+    "modelBytes": 5142,
+    "nodes": 1,
+    "seconds": 0.000255333,
+    "sourceBytes": 3098
+  },
+  {
+    "key": "1:96071",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000257208,
+    "sourceBytes": 3119
+  },
+  {
+    "key": "1:96072",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.000276333,
+    "sourceBytes": 3111
+  },
+  {
+    "key": "1:96073",
+    "modelBytes": 4981,
+    "nodes": 1,
+    "seconds": 0.000256583,
+    "sourceBytes": 3207
+  },
+  {
+    "key": "1:96074",
+    "modelBytes": 5050,
+    "nodes": 1,
+    "seconds": 0.000218917,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:96075",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000228791,
+    "sourceBytes": 3123
+  },
+  {
+    "key": "1:96076",
+    "modelBytes": 5036,
+    "nodes": 1,
+    "seconds": 0.000232667,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:96077",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000232375,
+    "sourceBytes": 3165
+  },
+  {
+    "key": "1:96078",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.0002185,
+    "sourceBytes": 3200
+  },
+  {
+    "key": "1:96079",
+    "modelBytes": 5130,
+    "nodes": 1,
+    "seconds": 0.000219458,
+    "sourceBytes": 3187
+  },
+  {
+    "key": "1:96080",
+    "modelBytes": 5129,
+    "nodes": 1,
+    "seconds": 0.0002195,
+    "sourceBytes": 3222
+  },
+  {
+    "key": "1:96081",
+    "modelBytes": 4914,
+    "nodes": 1,
+    "seconds": 0.000217042,
+    "sourceBytes": 3168
+  },
+  {
+    "key": "1:96082",
+    "modelBytes": 5158,
+    "nodes": 1,
+    "seconds": 0.000217666,
+    "sourceBytes": 3211
+  },
+  {
+    "key": "1:96083",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000218458,
+    "sourceBytes": 3224
+  },
+  {
+    "key": "1:96084",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.000224042,
+    "sourceBytes": 3152
+  },
+  {
+    "key": "1:96085",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.000217167,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:96086",
+    "modelBytes": 5040,
+    "nodes": 1,
+    "seconds": 0.000215625,
+    "sourceBytes": 3190
+  },
+  {
+    "key": "1:96087",
+    "modelBytes": 5057,
+    "nodes": 1,
+    "seconds": 0.000217875,
+    "sourceBytes": 3208
+  },
+  {
+    "key": "1:96088",
+    "modelBytes": 5140,
+    "nodes": 1,
+    "seconds": 0.000231791,
+    "sourceBytes": 3178
+  },
+  {
+    "key": "1:96089",
+    "modelBytes": 5037,
+    "nodes": 1,
+    "seconds": 0.000216458,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:96090",
+    "modelBytes": 5054,
+    "nodes": 1,
+    "seconds": 0.000218292,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:96091",
+    "modelBytes": 5141,
+    "nodes": 1,
+    "seconds": 0.000226625,
+    "sourceBytes": 3200
+  },
+  {
+    "key": "1:96092",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000222209,
+    "sourceBytes": 3212
+  },
+  {
+    "key": "1:96093",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000216417,
+    "sourceBytes": 3224
+  },
+  {
+    "key": "1:96094",
+    "modelBytes": 4904,
+    "nodes": 1,
+    "seconds": 0.000216916,
+    "sourceBytes": 3180
+  },
+  {
+    "key": "1:96095",
+    "modelBytes": 628079,
+    "nodes": 137,
+    "seconds": 0.017395583,
+    "sourceBytes": 553857
+  },
+  {
+    "key": "1:96232",
+    "modelBytes": 3362071,
+    "nodes": 714,
+    "seconds": 0.076363625,
+    "sourceBytes": 2533454
+  },
+  {
+    "key": "1:96946",
+    "modelBytes": 956409,
+    "nodes": 124,
+    "seconds": 0.015930709,
+    "sourceBytes": 470988
+  },
+  {
+    "key": "1:97070",
+    "modelBytes": 1195961,
+    "nodes": 172,
+    "seconds": 0.019876334,
+    "sourceBytes": 611799
+  },
+  {
+    "key": "1:97242",
+    "modelBytes": 5926,
+    "nodes": 1,
+    "seconds": 0.000546125,
+    "sourceBytes": 3393
+  },
+  {
+    "key": "1:97243",
+    "modelBytes": 5930,
+    "nodes": 1,
+    "seconds": 0.000328125,
+    "sourceBytes": 3446
+  },
+  {
+    "key": "1:97244",
+    "modelBytes": 5918,
+    "nodes": 1,
+    "seconds": 0.000297542,
+    "sourceBytes": 3394
+  },
+  {
+    "key": "1:97245",
+    "modelBytes": 5931,
+    "nodes": 1,
+    "seconds": 0.000358208,
+    "sourceBytes": 3447
+  },
+  {
+    "key": "1:97246",
+    "modelBytes": 5930,
+    "nodes": 1,
+    "seconds": 0.000384875,
+    "sourceBytes": 3446
+  },
+  {
+    "key": "1:97247",
+    "modelBytes": 5926,
+    "nodes": 1,
+    "seconds": 0.000334,
+    "sourceBytes": 3393
+  },
+  {
+    "key": "1:97248",
+    "modelBytes": 5931,
+    "nodes": 1,
+    "seconds": 0.000286,
+    "sourceBytes": 3447
+  },
+  {
+    "key": "1:97249",
+    "modelBytes": 5918,
+    "nodes": 1,
+    "seconds": 0.000291459,
+    "sourceBytes": 3394
+  },
+  {
+    "key": "1:97250",
+    "modelBytes": 5954,
+    "nodes": 1,
+    "seconds": 0.000269542,
+    "sourceBytes": 3421
+  },
+  {
+    "key": "1:97251",
+    "modelBytes": 5902,
+    "nodes": 1,
+    "seconds": 0.000254875,
+    "sourceBytes": 3418
+  },
+  {
+    "key": "1:97252",
+    "modelBytes": 5946,
+    "nodes": 1,
+    "seconds": 0.000263459,
+    "sourceBytes": 3422
+  },
+  {
+    "key": "1:97253",
+    "modelBytes": 5903,
+    "nodes": 1,
+    "seconds": 0.00025075,
+    "sourceBytes": 3419
+  },
+  {
+    "key": "1:97254",
+    "modelBytes": 5902,
+    "nodes": 1,
+    "seconds": 0.000259542,
+    "sourceBytes": 3418
+  },
+  {
+    "key": "1:97255",
+    "modelBytes": 5954,
+    "nodes": 1,
+    "seconds": 0.000259917,
+    "sourceBytes": 3421
+  },
+  {
+    "key": "1:97256",
+    "modelBytes": 5903,
+    "nodes": 1,
+    "seconds": 0.00024925,
+    "sourceBytes": 3419
+  },
+  {
+    "key": "1:97257",
+    "modelBytes": 5946,
+    "nodes": 1,
+    "seconds": 0.000384583,
+    "sourceBytes": 3422
+  },
+  {
+    "key": "1:97258",
+    "modelBytes": 48973,
+    "nodes": 18,
+    "seconds": 0.002499916,
+    "sourceBytes": 69786
+  },
+  {
+    "key": "1:97276",
+    "modelBytes": 19271,
+    "nodes": 4,
+    "seconds": 0.000855333,
+    "sourceBytes": 9080
+  },
+  {
+    "key": "1:97280",
+    "modelBytes": 5170654,
+    "nodes": 766,
+    "seconds": 0.168512125,
+    "sourceBytes": 8127572
+  },
+  {
+    "key": "2:5",
+    "modelBytes": 14660585,
+    "nodes": 274,
+    "seconds": 0.064115166,
+    "sourceBytes": 1337670
+  },
+  {
+    "key": "2:279",
+    "modelBytes": 14660580,
+    "nodes": 274,
+    "seconds": 0.061236583,
+    "sourceBytes": 1337665
+  },
+  {
+    "key": "2:553",
+    "modelBytes": 5139800,
+    "nodes": 2916,
+    "seconds": 0.300664083,
+    "sourceBytes": 10858851
+  },
+  {
+    "key": "2:3457",
+    "modelBytes": 5139799,
+    "nodes": 2916,
+    "seconds": 0.275872541,
+    "sourceBytes": 10858850
+  },
+  {
+    "key": "2:6361",
+    "modelBytes": 5139798,
+    "nodes": 2916,
+    "seconds": 0.275508333,
+    "sourceBytes": 10858849
+  },
+  {
+    "key": "2:9265",
+    "modelBytes": 5139798,
+    "nodes": 2916,
+    "seconds": 0.288660584,
+    "sourceBytes": 10858849
+  },
+  {
+    "key": "2:12169",
+    "modelBytes": 5139794,
+    "nodes": 2916,
+    "seconds": 0.287665,
+    "sourceBytes": 10858843
+  },
+  {
+    "key": "2:15073",
+    "modelBytes": 2736483,
+    "nodes": 1586,
+    "seconds": 0.151607833,
+    "sourceBytes": 5295674
+  },
+  {
+    "key": "2:16659",
+    "modelBytes": 2736483,
+    "nodes": 1586,
+    "seconds": 0.15521225,
+    "sourceBytes": 5295674
+  },
+  {
+    "key": "2:18245",
+    "modelBytes": 14099910,
+    "nodes": 1207,
+    "seconds": 0.137275583,
+    "sourceBytes": 4191905
+  },
+  {
+    "key": "2:19452",
+    "modelBytes": 14099905,
+    "nodes": 1207,
+    "seconds": 0.133203042,
+    "sourceBytes": 4191900
+  },
+  {
+    "key": "2:20659",
+    "modelBytes": 13787864,
+    "nodes": 1767,
+    "seconds": 0.181161208,
+    "sourceBytes": 5715689
+  },
+  {
+    "key": "2:22426",
+    "modelBytes": 13787859,
+    "nodes": 1767,
+    "seconds": 0.182557834,
+    "sourceBytes": 5715684
+  },
+  {
+    "key": "2:24193",
+    "modelBytes": 98115,
+    "nodes": 1,
+    "seconds": 0.001028666,
+    "sourceBytes": 2892
+  },
+  {
+    "key": "2:24194",
+    "modelBytes": 98120,
+    "nodes": 1,
+    "seconds": 0.000619916,
+    "sourceBytes": 2897
+  },
+  {
+    "key": "2:24195",
+    "modelBytes": 21167,
+    "nodes": 9,
+    "seconds": 0.001069167,
+    "sourceBytes": 26844
+  },
+  {
+    "key": "2:24204",
+    "modelBytes": 21172,
+    "nodes": 9,
+    "seconds": 0.000993167,
+    "sourceBytes": 26849
+  },
+  {
+    "key": "2:24213",
+    "modelBytes": 16092,
+    "nodes": 6,
+    "seconds": 0.000738,
+    "sourceBytes": 17652
+  },
+  {
+    "key": "2:24219",
+    "modelBytes": 16097,
+    "nodes": 6,
+    "seconds": 0.000723208,
+    "sourceBytes": 17657
+  },
+  {
+    "key": "2:24225",
+    "modelBytes": 15957,
+    "nodes": 6,
+    "seconds": 0.000716584,
+    "sourceBytes": 17661
+  },
+  {
+    "key": "2:24231",
+    "modelBytes": 15962,
+    "nodes": 6,
+    "seconds": 0.000718208,
+    "sourceBytes": 17666
+  },
+  {
+    "key": "2:24237",
+    "modelBytes": 15986,
+    "nodes": 6,
+    "seconds": 0.000708667,
+    "sourceBytes": 17788
+  },
+  {
+    "key": "2:24243",
+    "modelBytes": 15991,
+    "nodes": 6,
+    "seconds": 0.000707334,
+    "sourceBytes": 17793
+  },
+  {
+    "key": "2:24249",
+    "modelBytes": 17522,
+    "nodes": 7,
+    "seconds": 0.000776667,
+    "sourceBytes": 20090
+  },
+  {
+    "key": "2:24256",
+    "modelBytes": 17527,
+    "nodes": 7,
+    "seconds": 0.00077675,
+    "sourceBytes": 20095
+  },
+  {
+    "key": "2:24263",
+    "modelBytes": 17338,
+    "nodes": 7,
+    "seconds": 0.000770083,
+    "sourceBytes": 20037
+  },
+  {
+    "key": "2:24270",
+    "modelBytes": 17343,
+    "nodes": 7,
+    "seconds": 0.000778542,
+    "sourceBytes": 20042
+  },
+  {
+    "key": "2:24277",
+    "modelBytes": 17445,
+    "nodes": 7,
+    "seconds": 0.00077925,
+    "sourceBytes": 19964
+  },
+  {
+    "key": "2:24284",
+    "modelBytes": 17450,
+    "nodes": 7,
+    "seconds": 0.000773834,
+    "sourceBytes": 19969
+  },
+  {
+    "key": "2:24291",
+    "modelBytes": 17633,
+    "nodes": 7,
+    "seconds": 0.000780292,
+    "sourceBytes": 20131
+  },
+  {
+    "key": "2:24298",
+    "modelBytes": 17638,
+    "nodes": 7,
+    "seconds": 0.00078475,
+    "sourceBytes": 20136
+  },
+  {
+    "key": "2:24305",
+    "modelBytes": 19468,
+    "nodes": 8,
+    "seconds": 0.000883375,
+    "sourceBytes": 22974
+  },
+  {
+    "key": "2:24313",
+    "modelBytes": 19473,
+    "nodes": 8,
+    "seconds": 0.000862208,
+    "sourceBytes": 22979
+  },
+  {
+    "key": "2:24321",
+    "modelBytes": 19393,
+    "nodes": 8,
+    "seconds": 0.000863333,
+    "sourceBytes": 22943
+  },
+  {
+    "key": "2:24329",
+    "modelBytes": 19398,
+    "nodes": 8,
+    "seconds": 0.000859125,
+    "sourceBytes": 22948
+  },
+  {
+    "key": "2:24337",
+    "modelBytes": 19639,
+    "nodes": 8,
+    "seconds": 0.000902333,
+    "sourceBytes": 24084
+  },
+  {
+    "key": "2:24345",
+    "modelBytes": 19644,
+    "nodes": 8,
+    "seconds": 0.000898708,
+    "sourceBytes": 24089
+  },
+  {
+    "key": "2:24353",
+    "modelBytes": 21347,
+    "nodes": 9,
+    "seconds": 0.000946,
+    "sourceBytes": 26786
+  },
+  {
+    "key": "2:24362",
+    "modelBytes": 21353,
+    "nodes": 9,
+    "seconds": 0.000935875,
+    "sourceBytes": 26792
+  },
+  {
+    "key": "2:24371",
+    "modelBytes": 16232,
+    "nodes": 6,
+    "seconds": 0.000700208,
+    "sourceBytes": 17778
+  },
+  {
+    "key": "2:24377",
+    "modelBytes": 16238,
+    "nodes": 6,
+    "seconds": 0.00069625,
+    "sourceBytes": 17784
+  },
+  {
+    "key": "2:24383",
+    "modelBytes": 16118,
+    "nodes": 6,
+    "seconds": 0.000697,
+    "sourceBytes": 17830
+  },
+  {
+    "key": "2:24389",
+    "modelBytes": 16124,
+    "nodes": 6,
+    "seconds": 0.000690042,
+    "sourceBytes": 17836
+  },
+  {
+    "key": "2:24395",
+    "modelBytes": 15991,
+    "nodes": 6,
+    "seconds": 0.000689958,
+    "sourceBytes": 17637
+  },
+  {
+    "key": "2:24401",
+    "modelBytes": 15997,
+    "nodes": 6,
+    "seconds": 0.000690125,
+    "sourceBytes": 17643
+  },
+  {
+    "key": "2:24407",
+    "modelBytes": 17763,
+    "nodes": 7,
+    "seconds": 0.000763041,
+    "sourceBytes": 20210
+  },
+  {
+    "key": "2:24414",
+    "modelBytes": 17769,
+    "nodes": 7,
+    "seconds": 0.000760916,
+    "sourceBytes": 20216
+  },
+  {
+    "key": "2:24421",
+    "modelBytes": 17574,
+    "nodes": 7,
+    "seconds": 0.000762291,
+    "sourceBytes": 20128
+  },
+  {
+    "key": "2:24428",
+    "modelBytes": 17579,
+    "nodes": 7,
+    "seconds": 0.000763292,
+    "sourceBytes": 20133
+  },
+  {
+    "key": "2:24435",
+    "modelBytes": 17390,
+    "nodes": 7,
+    "seconds": 0.000767958,
+    "sourceBytes": 20068
+  },
+  {
+    "key": "2:24442",
+    "modelBytes": 17395,
+    "nodes": 7,
+    "seconds": 0.000767958,
+    "sourceBytes": 20073
+  },
+  {
+    "key": "2:24449",
+    "modelBytes": 5789077,
+    "nodes": 540,
+    "seconds": 0.086659083,
+    "sourceBytes": 2905357
+  },
+  {
+    "key": "2:24989",
+    "modelBytes": 5789069,
+    "nodes": 540,
+    "seconds": 0.08597425,
+    "sourceBytes": 2905349
+  },
+  {
+    "key": "2:25529",
+    "modelBytes": 18154,
+    "nodes": 8,
+    "seconds": 0.001170208,
+    "sourceBytes": 21389
+  },
+  {
+    "key": "2:25537",
+    "modelBytes": 18159,
+    "nodes": 8,
+    "seconds": 0.000876083,
+    "sourceBytes": 21394
+  },
+  {
+    "key": "3:5",
+    "modelBytes": 5188,
+    "nodes": 2,
+    "seconds": 0.000567458,
+    "sourceBytes": 4568
+  },
+  {
+    "key": "3:7",
+    "modelBytes": 12793,
+    "nodes": 6,
+    "seconds": 0.001810167,
+    "sourceBytes": 9718
+  },
+  {
+    "key": "3:11",
+    "modelBytes": 7241,
+    "nodes": 3,
+    "seconds": 0.000440708,
+    "sourceBytes": 7560
+  },
+  {
+    "key": "3:14",
+    "modelBytes": 23569,
+    "nodes": 15,
+    "seconds": 0.00316875,
+    "sourceBytes": 35861
+  },
+  {
+    "key": "3:29",
+    "modelBytes": 313224,
+    "nodes": 114,
+    "seconds": 0.012074,
+    "sourceBytes": 346595
+  },
+  {
+    "key": "3:143",
+    "modelBytes": 7261,
+    "nodes": 3,
+    "seconds": 0.0005215,
+    "sourceBytes": 7563
+  },
+  {
+    "key": "3:146",
+    "modelBytes": 5738,
+    "nodes": 2,
+    "seconds": 0.000367333,
+    "sourceBytes": 5405
+  },
+  {
+    "key": "3:148",
+    "modelBytes": 5553,
+    "nodes": 2,
+    "seconds": 0.000330917,
+    "sourceBytes": 5186
+  },
+  {
+    "key": "3:150",
+    "modelBytes": 13127,
+    "nodes": 6,
+    "seconds": 0.002427291,
+    "sourceBytes": 9618
+  },
+  {
+    "key": "3:154",
+    "modelBytes": 5486,
+    "nodes": 2,
+    "seconds": 0.000309833,
+    "sourceBytes": 4092
+  },
+  {
+    "key": "3:156",
+    "modelBytes": 7485,
+    "nodes": 3,
+    "seconds": 0.00044575,
+    "sourceBytes": 8432
+  },
+  {
+    "key": "3:159",
+    "modelBytes": 31191,
+    "nodes": 16,
+    "seconds": 0.002021583,
+    "sourceBytes": 58136
+  },
+  {
+    "key": "3:175",
+    "modelBytes": 147846,
+    "nodes": 85,
+    "seconds": 0.012635542,
+    "sourceBytes": 181002
+  },
+  {
+    "key": "3:243",
+    "modelBytes": 9950,
+    "nodes": 4,
+    "seconds": 0.0005845,
+    "sourceBytes": 12004
+  },
+  {
+    "key": "3:247",
+    "modelBytes": 9097,
+    "nodes": 3,
+    "seconds": 0.000477625,
+    "sourceBytes": 10596
+  },
+  {
+    "key": "3:250",
+    "modelBytes": 87649,
+    "nodes": 62,
+    "seconds": 0.005888625,
+    "sourceBytes": 188121
+  },
+  {
+    "key": "3:312",
+    "modelBytes": 10996,
+    "nodes": 4,
+    "seconds": 0.000578417,
+    "sourceBytes": 12814
+  },
+  {
+    "key": "3:316",
+    "modelBytes": 48779,
+    "nodes": 24,
+    "seconds": 0.002930291,
+    "sourceBytes": 90580
+  },
+  {
+    "key": "3:340",
+    "modelBytes": 31207,
+    "nodes": 16,
+    "seconds": 0.001963333,
+    "sourceBytes": 58155
+  },
+  {
+    "key": "3:356",
+    "modelBytes": 12665,
+    "nodes": 5,
+    "seconds": 0.000689833,
+    "sourceBytes": 12811
+  },
+  {
+    "key": "3:361",
+    "modelBytes": 72873,
+    "nodes": 34,
+    "seconds": 0.006080167,
+    "sourceBytes": 78555
+  },
+  {
+    "key": "3:379",
+    "modelBytes": 45595,
+    "nodes": 22,
+    "seconds": 0.002313708,
+    "sourceBytes": 67852
+  },
+  {
+    "key": "3:401",
+    "modelBytes": 79279,
+    "nodes": 39,
+    "seconds": 0.006624541,
+    "sourceBytes": 79711
+  },
+  {
+    "key": "3:424",
+    "modelBytes": 117074,
+    "nodes": 58,
+    "seconds": 0.007514583,
+    "sourceBytes": 142992
+  },
+  {
+    "key": "3:466",
+    "modelBytes": 31201,
+    "nodes": 16,
+    "seconds": 0.001977709,
+    "sourceBytes": 58147
+  },
+  {
+    "key": "3:482",
+    "modelBytes": 16892,
+    "nodes": 6,
+    "seconds": 0.00093,
+    "sourceBytes": 15309
+  },
+  {
+    "key": "3:488",
+    "modelBytes": 17744,
+    "nodes": 8,
+    "seconds": 0.001177458,
+    "sourceBytes": 28709
+  },
+  {
+    "key": "3:496",
+    "modelBytes": 41390,
+    "nodes": 26,
+    "seconds": 0.002742417,
+    "sourceBytes": 74994
+  },
+  {
+    "key": "3:522",
+    "modelBytes": 116212,
+    "nodes": 57,
+    "seconds": 0.007680333,
+    "sourceBytes": 141567
+  },
+  {
+    "key": "3:563",
+    "modelBytes": 116629,
+    "nodes": 57,
+    "seconds": 0.008105375,
+    "sourceBytes": 141804
+  },
+  {
+    "key": "3:604",
+    "modelBytes": 10131,
+    "nodes": 3,
+    "seconds": 0.000547875,
+    "sourceBytes": 11426
+  },
+  {
+    "key": "3:607",
+    "modelBytes": 39195,
+    "nodes": 19,
+    "seconds": 0.002408917,
+    "sourceBytes": 73019
+  },
+  {
+    "key": "3:626",
+    "modelBytes": 49642,
+    "nodes": 25,
+    "seconds": 0.002969,
+    "sourceBytes": 92003
+  },
+  {
+    "key": "3:651",
+    "modelBytes": 54459,
+    "nodes": 26,
+    "seconds": 0.00684425,
+    "sourceBytes": 4899
+  },
+  {
+    "key": "3:654",
+    "modelBytes": 141144,
+    "nodes": 56,
+    "seconds": 0.008810333,
+    "sourceBytes": 182125
+  },
+  {
+    "key": "3:694",
+    "modelBytes": 76521,
+    "nodes": 41,
+    "seconds": 0.007761792,
+    "sourceBytes": 4877
+  },
+  {
+    "key": "3:697",
+    "modelBytes": 23516,
+    "nodes": 7,
+    "seconds": 0.001250875,
+    "sourceBytes": 36988
+  },
+  {
+    "key": "3:704",
+    "modelBytes": 27208,
+    "nodes": 17,
+    "seconds": 0.001815041,
+    "sourceBytes": 47540
+  },
+  {
+    "key": "3:721",
+    "modelBytes": 14223,
+    "nodes": 6,
+    "seconds": 0.000810709,
+    "sourceBytes": 18382
+  },
+  {
+    "key": "3:727",
+    "modelBytes": 13407,
+    "nodes": 5,
+    "seconds": 0.000808708,
+    "sourceBytes": 17005
+  },
+  {
+    "key": "3:732",
+    "modelBytes": 78326,
+    "nodes": 38,
+    "seconds": 0.006140667,
+    "sourceBytes": 78300
+  },
+  {
+    "key": "3:754",
+    "modelBytes": 48716,
+    "nodes": 24,
+    "seconds": 0.002942125,
+    "sourceBytes": 90516
+  }
+]

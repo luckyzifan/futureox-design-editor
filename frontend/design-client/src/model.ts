@@ -7,6 +7,7 @@ import { validateVectorBrush } from './vector-brush'
 import { validStroke, validProfiles } from './stroke-profile'
 import type { AnimationClip } from './animation'
 import { validColor, validColorSettings, type ColorSettings } from './color'
+export const MAX_GRADIENT_STOPS = 64
 export type Point = { x: number; y: number }
 export type Matrix = [number, number, number, number, number, number]
 export type Bounds = { x: number; y: number; width: number; height: number }
@@ -232,6 +233,8 @@ export const defaultSizing = (): Sizing => ({
   rowSpan: 1,
 })
 export type EllipseArc = { startAngle: number; sweepAngle: number; innerRadius: number }
+export type CurveCommand = {move:[number,number]}|{line:[number,number]}|{quad:[number,number,number,number]}|{cubic:[number,number,number,number,number,number]}|'close'
+export type VectorGeometry = {fillRule:'evenodd'|'nonzero';fill:CurveCommand[];stroke?:CurveCommand[]}
 export type ExportSetting = { id: string; format: 'png' | 'svg' | 'jpeg' | 'webp' | 'pdf' | 'pdf-vector'; scale: number; suffix: string }
 export function exportSuffixHasForbiddenCharacters(value: string): boolean {
   return Array.from(value).some(character => {
@@ -241,6 +244,7 @@ export function exportSuffixHasForbiddenCharacters(value: string): boolean {
 }
 export type ConnectorEndpoint={point:Point;nodeId?:string;anchor?:Point}
 export type DesignNode = {
+  vectorGeometry?: VectorGeometry
   vectorBrush?: import('./vector-brush').VectorBrush
   guides?: RulerGuide[]
   textPath?: {network:Network;offset:number;normal:number;reverse:boolean}
@@ -358,7 +362,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16
   id: string
   name: string
   pages: Page[]
@@ -648,7 +652,7 @@ export function validateVariableModes(d: DesignDocument) {
 export function validateDocument(value: unknown): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -781,7 +785,7 @@ export function validateDocument(value: unknown): DesignDocument {
         )) &&
         Array.isArray(p.stops) &&
         (!['linear', 'radial', 'angular', 'diamond'].includes(p.kind) || p.stops.length >= 2) &&
-        p.stops.length <= 32 &&
+        p.stops.length <= MAX_GRADIENT_STOPS &&
         p.stops.every((s) => finite(s.offset, 0, 1) && color.test(s.color)) &&
         (!p.image || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.image)),
     )
@@ -903,8 +907,10 @@ export function validateDocument(value: unknown): DesignDocument {
       n.transform.length !== 6 ||
       !n.transform.every((v) => finite(v)) ||
       Math.abs(n.transform[0] * n.transform[3] - n.transform[1] * n.transform[2]) < 1e-9 ||
-      !finite(n.width, n.kind === 'vector' || n.kind === 'line' ? 1e-6 : 0.01) ||
-      !finite(n.height, n.kind === 'vector' || n.kind === 'line' ? 1e-6 : 0.01) ||
+      // Import admission follows Rust's positive f64 extent contract. UI
+      // resize minimums must not reject thin source groups/components.
+      !finite(n.width, Number.MIN_VALUE) ||
+      !finite(n.height, Number.MIN_VALUE) ||
       !Array.isArray(n.children) ||
       (!container(n) && !n.booleanOperation && n.children.length) ||
       !paints(n.fills) ||
@@ -1053,6 +1059,16 @@ export function validateDocument(value: unknown): DesignDocument {
         )
       )
         throw new Error('矢量网络引用无效')
+    }
+    if(n.vectorGeometry!==undefined) {
+      const geometry=n.vectorGeometry
+      if(d.schemaVersion<16||n.kind!=='vector'||n.network||n.vectorBrush||!isObject(geometry)||Object.keys(geometry).some(key=>!['fillRule','fill','stroke'].includes(key))||!['evenodd','nonzero'].includes(geometry.fillRule)||!Array.isArray(geometry.fill)||(geometry.stroke!==undefined&&!Array.isArray(geometry.stroke))||geometry.fill.length+(geometry.stroke?.length??0)>131072)throw Error('矢量路径需要版本 16，且必须只有一个权威几何表示')
+      for(const curves of [geometry.fill,geometry.stroke??geometry.fill])for(const curve of curves){
+        if(curve==='close')continue
+        if(!isObject(curve)||Object.keys(curve).length!==1)throw Error('矢量曲线命令无效')
+        const [op,values]=Object.entries(curve)[0],length=({move:2,line:2,quad:4,cubic:6} as Record<string,number>)[op]
+        if(!length||!Array.isArray(values)||values.length!==length||!values.every(v=>finite(v)))throw Error('矢量曲线坐标无效')
+      }
     }
     if (n.component !== undefined) {
       if (

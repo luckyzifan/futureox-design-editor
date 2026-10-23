@@ -1,0 +1,19 @@
+{
+  "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+  "outputSha256": "c823f529c7eb97c0b3f6f9feaad68264c737aeeff0052b12dd754249ed49af71",
+  "outputBytes": 119392886,
+  "memberCount": 64,
+  "byteIdenticalMembers": 63,
+  "changedMembers": [
+    "pages/9A250616-D3C6-4F06-A6C9-F2CE1DA3611D.json"
+  ],
+  "semanticChanges": [
+    "/layers/33/layers/1/frame/width",
+    "/layers/33/layers/1/userInfo"
+  ],
+  "editedNode": "0D747267-A0CA-40C0-BEFD-846C10CD98F2",
+  "widthBefore": 100,
+  "widthAfter": 120,
+  "sourceUnchanged": true,
+  "passed": true
+}

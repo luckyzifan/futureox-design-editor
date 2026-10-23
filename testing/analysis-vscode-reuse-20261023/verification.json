@@ -1,0 +1,40 @@
+{
+  "delivery_audit_notes": [
+    "Initial source-hash audit detected two host transport changes; inspected and documented, preserving measurement baseline. No benchmark input drift.",
+    "Initial npm prefix lock contained machine-specific package paths. Rebuilt portable lock with exact direct versions and verified all five package versions equal those used for probes."
+  ],
+  "reviewed_non_benchmark_source_drift": {
+    "frontend/design-desktop/src/sidecar.mjs": {
+      "baseline_sha256": "aa45affe9eca365e941e14e57c9e46d68ed7eeafd6a2b43548c86941475656cd",
+      "delivery_sha256": "10bf12920f9e01315e9dafed131b6d625c2f6154bcd99c3e324a3c1b00daef9f"
+    },
+    "frontend/design-desktop/src/preparation-worker.mjs": {
+      "baseline_sha256": "7283f7a99cc245e4f471f972471794ca9971aa8bd71f9d94f231c6528d47e130",
+      "delivery_sha256": "52795bdd8975e26a417fa63a6afd75e55eaf85a7327c0be300be9985da5e9d68"
+    }
+  },
+  "benchmark_source_hashes_unchanged": true,
+  "relative_report_links": "passed",
+  "portable_lock": "passed",
+  "isolated_bundles": 8,
+  "tree_comparisons": 12,
+  "behavior_assertions": "passed",
+  "research_script_syntax": "passed",
+  "product_tests": "not run (research only)",
+  "React_Electron_GPU": "not run",
+  "artifact_sha256": {
+    "prepare-upstream.py": "de4f63f394ca726304b1a1f52b282d10c86a139e39934c21b74876bc37742372",
+    "bench-reuse.ts": "e44cae7f3a51245b3c6255e6589a30b75485aefa26fe858dd9b39e8435ff1382",
+    "probe-summary.json": "b2d03aaf544ea70d1f9ffa1a9a2acec5676102f27f6998ef18071e52824f62fb",
+    "tree-summary.json": "d3da359192fb5e8a4029d00c47fc62a6489a0181e94980766718bd11473c725b",
+    "tooling-package-lock.json": "edef1ff176de4a2a39fe42e044f412873a37f92c4f3577ded5b75d70dfac6043",
+    "bundle-sizes.json": "26a1f46ef34df0f1fa62d46e96481d0b1b37c14ada25e80284bac07d89e7359e",
+    "probe-results.json": "3692aa9173df175a2ff1dfa38c2a92f8556bd1b5465ff2f282d3560699c1109c",
+    "build-probes.ts": "027e7c0257f9fc300f7fdf9e71a0364d0550b95a0136ddb66a2431a1fe612e2e",
+    "tooling-package.json": "168b1526dc92b7d48ca4ba0047beda50d3abd329de95b6313d6524d127521041",
+    "manifest.json": "1650c5739565bb437cf5db060c7cfa85734304198a2f1768e3d0145727cabc28",
+    "README.zh-CN.md": "3b646dfb76fd74064e75718fe3f460656a0c5bf88382a1094d842517e5bcc0f5",
+    "upstream.json": "38dbeb1f34c5f668d1dacf752e81d91f306c8eb8c6bb5b1d151187901ad57517",
+    "tree-comparison.json": "7ddb216ae6d36e5757a715bacfaeec809b85eaafa5c47fcd041885a504f93e8c"
+  }
+}

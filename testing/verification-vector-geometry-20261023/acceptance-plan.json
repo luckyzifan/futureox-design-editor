@@ -1,0 +1,17 @@
+{
+  "baselineCommit": "c65ed474141825968cb5e032d6add4cecd584a6d",
+  "baselineState": "Includes the uncommitted source-storage/scheduling and hash-verified c65 package integration from verification-large-document-4gib-20261023.",
+  "referenceCommit": "desigma bb09ba87b1b7e7246b5dfbf916d75e3f12abe870",
+  "sourceCapacity": "4 GiB source indexing/edit/export is independent of admitted scene and GPU capacity.",
+  "precision": "Preserve f64 source curves and existing GPU/effect budgets; native CPU comparison at 1x/3x/32x requires identical linear pixels for equivalent representations.",
+  "gates": [
+    "Native f64 path admission, malformed input rejection, hit tests, CPU pixel equality and format reopening",
+    "One native FIG geometry decoder: segment layout, relative tangents, scale, regions, commands, truncation",
+    "Shared Editor/WASM resize, undo/redo, FD reopen and sparse source transactions",
+    "Real Sketch page-window conversion census: failures are failures, not passed windows",
+    "Real source page edit and full archive export; source point units and untouched raw fields retained",
+    "Rebuilt desktop binary/WASM identities and exclusively owned Electron GUI import/render check"
+  ],
+  "performance": "Conversion census under concurrent builds is functional evidence only. No FPS or whole-app latency claim.",
+  "remainingScope": "Full 4 GiB live scene, arbitrary whole-file text editing, browser source-storage adapter and universal foreign-format fidelity are separate work. Existing experimental GPU flags remain off."
+}

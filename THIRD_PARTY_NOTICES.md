@@ -33,6 +33,10 @@ package source revision remains a release-verification task.
 - moxcms 0.8.1: BSD-3-Clause OR Apache-2.0; both original texts are preserved under
   `vendor/moxcms/` and `public/licenses/moxcms-*.txt`. No new license election is made.
 
+- flo_curves 0.8.1: Apache-2.0; original license in `vendor/flo_curves/LICENSE`
+  and `public/licenses/flo_curves-Apache-2.0.txt`. The local ray-collision ordering
+  correction is documented in `vendor/flo_curves/PATCHES.md`.
+
 ## Release gates
 
 The repository has no selected top-level project license. Rust's 337 lockfile
@@ -55,3 +59,17 @@ contributors. This retirement does not change the terms of those archives.
 No replacement artwork, upstream executable runtime, voice assets or model is
 included in this pending replacement stage. See
 `docs/NOMI_PET_INTEGRATION.zh-CN.md` for current scope and validation limits.
+
+## Desigma architecture and FIG geometry reference
+
+The f64 vector geometry and shared FIG decoding refactor references Desigma
+commit `bb09ba87b1b7e7246b5dfbf916d75e3f12abe870`,
+https://github.com/deepfounder-ai/desigma (MIT OR Apache-2.0). The MIT notice
+is retained in `public/licenses/desigma-MIT.txt` and its hash in the inventory.
+Copyright (c) 2026 Deep Founder and the desigma contributors.
+
+The reference separates render paths from editable networks and documents FIG
+segment/tangent/region and path-command layouts. This project uses its existing
+scene and renderer with f64 geometry, bounded decoding and source-preserving
+storage; it does not embed Desigma's app or renderer. Desigma has no Sketch
+importer in that revision; Sketch continues through this project's own codec.

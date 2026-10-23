@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="414" viewBox="0 0 1600 414" style="font-family:monospace"><title>topology · zoom-3200 · render-worker — timeDeltas weighted active CPU stacks; not a timeline</title><g><title>topology · zoom-3200 · render-worker — 71.573 ms cumulative active samples
+
+</title><rect x="0.000" y="396" width="1599.700" height="17" fill="hsl(21 80% 72%)"/><text x="2.000" y="408" font-size="10">topology · zoom-3200 · render-worker</text></g><g><title>cm.port1.onmessage — 21.567 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:127:19
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:16530</title><rect x="0.000" y="378" width="481.826" height="17" fill="hsl(22 80% 72%)"/><text x="2.000" y="390" font-size="10">cm.port1.onmessage</text></g><g><title>presentFrame — 21.567 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/webgpu.ts:200:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:4132:4092</title><rect x="0.000" y="360" width="481.826" height="17" fill="hsl(8 80% 72%)"/><text x="2.000" y="372" font-size="10">presentFrame</text></g><g><title>draw — 21.567 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/resident-presenter.ts:332:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:2791:7311</title><rect x="0.000" y="342" width="481.826" height="17" fill="hsl(38 80% 72%)"/><text x="2.000" y="354" font-size="10">draw</text></g><g><title>mm — 7.583 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:136:23
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:16647</title><rect x="0.000" y="324" width="169.216" height="17" fill="hsl(46 80% 72%)"/><text x="2.000" y="336" font-size="10">mm</text></g><g><title>record — 7.583 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:52076</title><rect x="0.000" y="306" width="169.216" height="17" fill="hsl(57 80% 72%)"/><text x="2.000" y="318" font-size="10">record</text></g><g><title>localRecord — 7.583 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:51448</title><rect x="0.000" y="288" width="169.216" height="17" fill="hsl(38 80% 72%)"/><text x="2.000" y="300" font-size="10">localRecord</text></g><g><title>sanitizeFields — 6.059 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:49019</title><rect x="0.000" y="270" width="135.148" height="17" fill="hsl(38 80% 72%)"/><text x="2.000" y="282" font-size="10">sanitizeFields</text></g><g><title>presentationQuality — 5.603 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/presentation-quality.ts:8:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:2755:4198</title><rect x="169.516" y="324" width="124.954" height="17" fill="hsl(11 80% 72%)"/><text x="171.516" y="336" font-size="10">presentationQuality</text></g><g><title>draw — 4.096 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/canvas-overlay.ts:100:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:2774:820</title><rect x="294.770" y="324" width="91.265" height="17" fill="hsl(38 80% 72%)"/><text x="296.770" y="336" font-size="10">draw</text></g><g><title>overlayVertices — 2.590 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/canvas-overlay.ts:33:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:2765:3362</title><rect x="294.770" y="306" width="57.599" height="17" fill="hsl(45 80% 72%)"/><text x="296.770" y="318" font-size="10">overlayV</text></g><g><title>line — 2.590 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/canvas-overlay.ts:39:8
+design-app://app/assets/render-worker-aOJ_CMQj.js:2765:3497</title><rect x="294.770" y="288" width="57.599" height="17" fill="hsl(52 80% 72%)"/><text x="296.770" y="300" font-size="10">line</text></g><g><title>writeBuffer — 1.506 ms cumulative active samples
+
+:0:0</title><rect x="352.669" y="306" width="33.366" height="17" fill="hsl(55 80% 72%)"/><text x="354.669" y="318" font-size="10">writ</text></g><g><title>(anonymous) — 13.572 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:574:17
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:29506</title><rect x="482.126" y="378" width="303.099" height="17" fill="hsl(30 80% 72%)"/><text x="484.126" y="390" font-size="10">(anonymous)</text></g><g><title>record — 7.449 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:52076</title><rect x="482.126" y="360" width="166.221" height="17" fill="hsl(57 80% 72%)"/><text x="484.126" y="372" font-size="10">record</text></g><g><title>localRecord — 7.449 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:51448</title><rect x="482.126" y="342" width="166.221" height="17" fill="hsl(38 80% 72%)"/><text x="484.126" y="354" font-size="10">localRecord</text></g><g><title>sanitizeFields — 2.681 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:49019</title><rect x="482.126" y="324" width="59.633" height="17" fill="hsl(38 80% 72%)"/><text x="484.126" y="336" font-size="10">sanitizeF</text></g><g><title>get — 3.095 ms cumulative active samples
+../../frontend/design-client/src/kernel/owner-tile-cache.ts:24:6
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:115892</title><rect x="648.647" y="360" width="68.888" height="17" fill="hsl(38 80% 72%)"/><text x="650.647" y="372" font-size="10">get</text></g><g><title>get — 3.095 ms cumulative active samples
+../../frontend/design-client/src/kernel/exact-tile-cache.ts:36:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:114226</title><rect x="648.647" y="342" width="68.888" height="17" fill="hsl(38 80% 72%)"/><text x="650.647" y="354" font-size="10">get</text></g><g><title>report — 3.095 ms cumulative active samples
+../../frontend/design-client/src/kernel/exact-tile-cache.ts:35:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:114175</title><rect x="648.647" y="324" width="68.888" height="17" fill="hsl(56 80% 72%)"/><text x="650.647" y="336" font-size="10">report</text></g><g><title>(anonymous) — 3.095 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:209:97
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:18588</title><rect x="648.647" y="306" width="68.888" height="17" fill="hsl(30 80% 72%)"/><text x="650.647" y="318" font-size="10">(anonymous</text></g><g><title>record — 1.527 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:52076</title><rect x="648.647" y="288" width="33.836" height="17" fill="hsl(57 80% 72%)"/><text x="650.647" y="300" font-size="10">recor</text></g><g><title>localRecord — 1.527 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:51448</title><rect x="648.647" y="270" width="33.836" height="17" fill="hsl(38 80% 72%)"/><text x="650.647" y="282" font-size="10">local</text></g><g><title>sanitizeFields — 1.527 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:49019</title><rect x="648.647" y="252" width="33.836" height="17" fill="hsl(38 80% 72%)"/><text x="650.647" y="264" font-size="10">sanit</text></g><g><title>record — 3.028 ms cumulative active samples
+../../frontend/design-client/src/kernel/grid-measurements.ts:21:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:68410</title><rect x="717.835" y="360" width="67.390" height="17" fill="hsl(57 80% 72%)"/><text x="719.835" y="372" font-size="10">record</text></g><g><title>renderAttempt — 7.565 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/renderer.ts:5607:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:188:143606</title><rect x="785.525" y="378" width="168.814" height="17" fill="hsl(43 80% 72%)"/><text x="787.525" y="390" font-size="10">renderAttempt</text></g><g><title>finish — 1.534 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/webgpu.ts:2366:8
+design-app://app/assets/render-worker-aOJ_CMQj.js:4205:12628</title><rect x="785.525" y="360" width="33.992" height="17" fill="hsl(49 80% 72%)"/><text x="787.525" y="372" font-size="10">finis</text></g><g><title>canDeferImageTables — 1.534 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/webgpu.ts:320:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:4132:7957</title><rect x="785.525" y="342" width="33.992" height="17" fill="hsl(36 80% 72%)"/><text x="787.525" y="354" font-size="10">canDe</text></g><g><title>imageRetirementFields — 1.534 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/webgpu.ts:304:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:4132:7474</title><rect x="785.525" y="324" width="33.992" height="17" fill="hsl(47 80% 72%)"/><text x="787.525" y="336" font-size="10">image</text></g><g><title>drawBundle — 1.511 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/renderer.ts:3104:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:188:85222</title><rect x="819.818" y="360" width="33.478" height="17" fill="hsl(20 80% 72%)"/><text x="821.818" y="372" font-size="10">draw</text></g><g><title>yieldEncoding — 1.511 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/renderer.ts:185:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:188:4083</title><rect x="819.818" y="342" width="33.478" height="17" fill="hsl(30 80% 72%)"/><text x="821.818" y="354" font-size="10">yiel</text></g><g><title>checkpoint — 1.511 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/encode-yield.ts:8:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:131:3061</title><rect x="819.818" y="324" width="33.478" height="17" fill="hsl(22 80% 72%)"/><text x="821.818" y="336" font-size="10">chec</text></g><g><title>now — 1.511 ms cumulative active samples
+
+:0:0</title><rect x="819.818" y="306" width="33.478" height="17" fill="hsl(28 80% 72%)"/><text x="821.818" y="318" font-size="10">now</text></g><g><title>release — 1.510 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/renderer.ts:961:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:188:26787</title><rect x="853.596" y="360" width="33.456" height="17" fill="hsl(35 80% 72%)"/><text x="855.596" y="372" font-size="10">rele</text></g><g><title>(garbage collector) — 6.144 ms cumulative active samples
+
+:0:0</title><rect x="954.639" y="378" width="137.048" height="17" fill="#be92d0"/><text x="956.639" y="390" font-size="10">(garbage collector)</text></g><g><title>self.onmessage — 6.081 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:440:18
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:25300</title><rect x="1091.987" y="378" width="135.640" height="17" fill="hsl(32 80% 72%)"/><text x="1093.987" y="390" font-size="10">self.onmessage</text></g><g><title>releasePresented — 1.521 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/webgpu.ts:201:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:4132:4136</title><rect x="1091.987" y="360" width="33.702" height="17" fill="hsl(43 80% 72%)"/><text x="1093.987" y="372" font-size="10">relea</text></g><g><title>release — 1.521 ms cumulative active samples
+../../frontend/design-client/src/kernel/gpu/resident-presenter.ts:230:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:2791:3881</title><rect x="1091.987" y="342" width="33.702" height="17" fill="hsl(35 80% 72%)"/><text x="1093.987" y="354" font-size="10">relea</text></g><g><title>t.onmessage — 4.530 ms cumulative active samples
+../../frontend/design-client/src/kernel/preparation-channel.ts:49:21
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:141797</title><rect x="1227.927" y="378" width="100.967" height="17" fill="hsl(22 80% 72%)"/><text x="1229.927" y="390" font-size="10">t.onmessage</text></g><g><title>trace — 4.530 ms cumulative active samples
+../../frontend/design-client/src/kernel/preparation-channel.ts:121:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:144264</title><rect x="1227.927" y="360" width="100.967" height="17" fill="hsl(55 80% 72%)"/><text x="1229.927" y="372" font-size="10">trace</text></g><g><title>record — 4.530 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:478:220
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:26615</title><rect x="1227.927" y="342" width="100.967" height="17" fill="hsl(57 80% 72%)"/><text x="1229.927" y="354" font-size="10">record</text></g><g><title>record — 4.530 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:52076</title><rect x="1227.927" y="324" width="100.967" height="17" fill="hsl(57 80% 72%)"/><text x="1229.927" y="336" font-size="10">record</text></g><g><title>localRecord — 4.530 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:51448</title><rect x="1227.927" y="306" width="100.967" height="17" fill="hsl(38 80% 72%)"/><text x="1229.927" y="318" font-size="10">localRecord</text></g><g><title>sanitizeFields — 1.527 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:49019</title><rect x="1227.927" y="288" width="33.836" height="17" fill="hsl(38 80% 72%)"/><text x="1229.927" y="300" font-size="10">sanit</text></g><g><title>renderTiledPreview — 3.031 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:1773:15
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:58662</title><rect x="1329.194" y="378" width="67.457" height="17" fill="hsl(24 80% 72%)"/><text x="1331.194" y="390" font-size="10">renderTile</text></g><g><title>observe — 1.527 ms cumulative active samples
+../../frontend/design-client/src/kernel/tile-cost-diagnostics.ts:27:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:38186</title><rect x="1329.194" y="360" width="33.836" height="17" fill="hsl(16 80% 72%)"/><text x="1331.194" y="372" font-size="10">obser</text></g><g><title>(anonymous) — 1.504 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:280:9
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:19901</title><rect x="1363.330" y="360" width="33.322" height="17" fill="hsl(30 80% 72%)"/><text x="1365.330" y="372" font-size="10">(ano</text></g><g><title>record — 1.504 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:52076</title><rect x="1363.330" y="342" width="33.322" height="17" fill="hsl(57 80% 72%)"/><text x="1365.330" y="354" font-size="10">reco</text></g><g><title>localRecord — 1.504 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:51448</title><rect x="1363.330" y="324" width="33.322" height="17" fill="hsl(38 80% 72%)"/><text x="1365.330" y="336" font-size="10">loca</text></g><g><title>(anonymous) — 3.025 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:280:9
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:19901</title><rect x="1396.951" y="378" width="67.323" height="17" fill="hsl(30 80% 72%)"/><text x="1398.951" y="390" font-size="10">(anonymous</text></g><g><title>record — 3.025 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:52076</title><rect x="1396.951" y="360" width="67.323" height="17" fill="hsl(57 80% 72%)"/><text x="1398.951" y="372" font-size="10">record</text></g><g><title>localRecord — 3.025 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:51448</title><rect x="1396.951" y="342" width="67.323" height="17" fill="hsl(38 80% 72%)"/><text x="1398.951" y="354" font-size="10">localRecor</text></g><g><title>sanitizeFields — 1.511 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:49019</title><rect x="1396.951" y="324" width="33.478" height="17" fill="hsl(38 80% 72%)"/><text x="1398.951" y="336" font-size="10">sani</text></g><g><title>nextIndex — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:1171:30
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:45017</title><rect x="1464.575" y="378" width="67.077" height="17" fill="hsl(9 80% 72%)"/><text x="1466.575" y="390" font-size="10">nextIndex</text></g><g><title>L — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:1075:32
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:42853</title><rect x="1464.575" y="360" width="67.077" height="17" fill="hsl(34 80% 72%)"/><text x="1466.575" y="372" font-size="10">L</text></g><g><title>compile — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:1078:20
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:42930</title><rect x="1464.575" y="342" width="67.077" height="17" fill="hsl(23 80% 72%)"/><text x="1466.575" y="354" font-size="10">compile</text></g><g><title>compilePacket — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:170:9
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:17795</title><rect x="1464.575" y="324" width="67.077" height="17" fill="hsl(23 80% 72%)"/><text x="1466.575" y="336" font-size="10">compilePac</text></g><g><title>journalCompile — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:158:9
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:17453</title><rect x="1464.575" y="306" width="67.077" height="17" fill="hsl(14 80% 72%)"/><text x="1466.575" y="318" font-size="10">journalCom</text></g><g><title>e — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:163:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:17568</title><rect x="1464.575" y="288" width="67.077" height="17" fill="hsl(9 80% 72%)"/><text x="1466.575" y="300" font-size="10">e</text></g><g><title>e — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:159:24
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:17470</title><rect x="1464.575" y="270" width="67.077" height="17" fill="hsl(9 80% 72%)"/><text x="1466.575" y="282" font-size="10">e</text></g><g><title>failureAttempt — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:82:9
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:15755</title><rect x="1464.575" y="252" width="67.077" height="17" fill="hsl(57 80% 72%)"/><text x="1466.575" y="264" font-size="10">failureAtt</text></g><g><title>run — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-failure-telemetry.ts:168:1
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:75837</title><rect x="1464.575" y="234" width="67.077" height="17" fill="hsl(49 80% 72%)"/><text x="1466.575" y="246" font-size="10">run</text></g><g><title>withRenderFailureStage — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-failure-telemetry.ts:146:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:71112</title><rect x="1464.575" y="216" width="67.077" height="17" fill="hsl(22 80% 72%)"/><text x="1466.575" y="228" font-size="10">withRender</text></g><g><title>(anonymous) — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:171:24
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:17813</title><rect x="1464.575" y="198" width="67.077" height="17" fill="hsl(30 80% 72%)"/><text x="1466.575" y="210" font-size="10">(anonymous</text></g><g><title>prepare_gpu_packet — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-kernel.ts:138:8
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:154848</title><rect x="1464.575" y="180" width="67.077" height="17" fill="hsl(53 80% 72%)"/><text x="1466.575" y="192" font-size="10">prepare_gp</text></g><g><title>compile_gpu_packet — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-kernel.ts:103:8
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:153885</title><rect x="1464.575" y="162" width="67.077" height="17" fill="hsl(37 80% 72%)"/><text x="1466.575" y="174" font-size="10">compile_gp</text></g><g><title>call — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-kernel.ts:57:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:152054</title><rect x="1464.575" y="144" width="67.077" height="17" fill="hsl(40 80% 72%)"/><text x="1466.575" y="156" font-size="10">call</text></g><g><title>request — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/preparation-channel.ts:92:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:143307</title><rect x="1464.575" y="126" width="67.077" height="17" fill="hsl(55 80% 72%)"/><text x="1466.575" y="138" font-size="10">request</text></g><g><title>(anonymous) — 3.014 ms cumulative active samples
+../../frontend/design-client/src/kernel/preparation-channel.ts:97:15
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:143696</title><rect x="1464.575" y="108" width="67.077" height="17" fill="hsl(30 80% 72%)"/><text x="1466.575" y="120" font-size="10">(anonymous</text></g><g><title>trace — 1.511 ms cumulative active samples
+../../frontend/design-client/src/kernel/preparation-channel.ts:121:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:144264</title><rect x="1464.575" y="90" width="33.478" height="17" fill="hsl(55 80% 72%)"/><text x="1466.575" y="102" font-size="10">trac</text></g><g><title>record — 1.511 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:478:220
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:26615</title><rect x="1464.575" y="72" width="33.478" height="17" fill="hsl(57 80% 72%)"/><text x="1466.575" y="84" font-size="10">reco</text></g><g><title>record — 1.511 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:52076</title><rect x="1464.575" y="54" width="33.478" height="17" fill="hsl(57 80% 72%)"/><text x="1466.575" y="66" font-size="10">reco</text></g><g><title>localRecord — 1.511 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:51448</title><rect x="1464.575" y="36" width="33.478" height="17" fill="hsl(38 80% 72%)"/><text x="1466.575" y="48" font-size="10">loca</text></g><g><title>dispatch — 1.503 ms cumulative active samples
+../../frontend/design-client/src/kernel/preparation-channel.ts:134:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:144932</title><rect x="1498.353" y="90" width="33.299" height="17" fill="hsl(56 80% 72%)"/><text x="1500.353" y="102" font-size="10">disp</text></g><g><title>trace — 1.503 ms cumulative active samples
+../../frontend/design-client/src/kernel/preparation-channel.ts:121:2
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:144264</title><rect x="1498.353" y="72" width="33.299" height="17" fill="hsl(55 80% 72%)"/><text x="1500.353" y="84" font-size="10">trac</text></g><g><title>record — 1.503 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:478:220
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:26615</title><rect x="1498.353" y="54" width="33.299" height="17" fill="hsl(57 80% 72%)"/><text x="1500.353" y="66" font-size="10">reco</text></g><g><title>record — 1.503 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:52076</title><rect x="1498.353" y="36" width="33.299" height="17" fill="hsl(57 80% 72%)"/><text x="1500.353" y="48" font-size="10">reco</text></g><g><title>localRecord — 1.503 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:51448</title><rect x="1498.353" y="18" width="33.299" height="17" fill="hsl(38 80% 72%)"/><text x="1500.353" y="30" font-size="10">loca</text></g><g><title>sanitizeFields — 1.503 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:48:16
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:49019</title><rect x="1498.353" y="0" width="33.299" height="17" fill="hsl(38 80% 72%)"/><text x="1500.353" y="12" font-size="10">sani</text></g><g><title>compile_gpu_packet — 1.541 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-kernel.ts:103:8
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:153885</title><rect x="1531.952" y="378" width="34.149" height="17" fill="hsl(37 80% 72%)"/><text x="1533.952" y="390" font-size="10">compi</text></g><g><title>(anonymous) — 1.503 ms cumulative active samples
+../../frontend/design-client/src/kernel/render-worker.ts:163:24
+design-app://app/assets/render-worker-aOJ_CMQj.js:4216:17584</title><rect x="1566.401" y="378" width="33.299" height="17" fill="hsl(30 80% 72%)"/><text x="1568.401" y="390" font-size="10">(ano</text></g><g><title>record — 1.503 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:141:4
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:52076</title><rect x="1566.401" y="360" width="33.299" height="17" fill="hsl(57 80% 72%)"/><text x="1568.401" y="372" font-size="10">reco</text></g><g><title>localRecord — 1.503 ms cumulative active samples
+../../frontend/design-desktop/src/render-terminal-diagnostics.mjs:122:11
+design-app://app/assets/render-worker-aOJ_CMQj.js:1:51448</title><rect x="1566.401" y="342" width="33.299" height="17" fill="hsl(38 80% 72%)"/><text x="1568.401" y="354" font-size="10">loca</text></g></svg>

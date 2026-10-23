@@ -171,6 +171,26 @@ test('large-result reservations prevent small open requests multiplying response
   await Promise.all([pending, health])
   await client.stop()
 })
+test('large JSON responses reserve the escaped RPC envelope before accepting work',async()=>{
+  const fixture=fake()
+  const client=new Sidecar('/trusted/backend','/trusted/recovery',{...fixture,maxPendingBytes:3*1024*1024})
+  await assert.rejects(client.request('large.read',{key:'0:1'}),{code:'BUSY'})
+  await assert.rejects(client.request('large.project',{key:'0:1'}),{code:'BUSY'})
+  assert.equal(client.admittedCount,0)
+  await client.stop()
+})
+test('acknowledged queue wait has its own deadline and execution starts a fresh short timer',async()=>{
+  const fixture=fake({respond:false}),client=new Sidecar('/trusted/backend','/trusted/recovery',{...fixture,timeoutMs:40,queueTimeoutMs:500})
+  const result=client.request('save').catch(error=>error)
+  const id=[...client.pending.keys()][0]
+  fixture.process.stdout.write(JSON.stringify({desktopScheduling:{id,phase:'queued'}})+'\n')
+  await new Promise(resolve=>setTimeout(resolve,90))
+  assert.equal(client.stopped,false,'queued work must not kill the backend at its execution timeout')
+  fixture.process.stdout.write(JSON.stringify({desktopScheduling:{id,phase:'running'}})+'\n')
+  fixture.process.stdout.write(JSON.stringify({id,result:{saved:true}})+'\n')
+  assert.equal((await result).saved,true)
+  await client.stop()
+})
 
 test('lost replies classify every native Sketch mutation as an uncertain outcome', async () => {
   const methods = ['open', 'rename', 'resizeLegacyContainer', 'setTextOverride', 'setLeafFrame', 'undo', 'redo', 'saveAs', 'close']

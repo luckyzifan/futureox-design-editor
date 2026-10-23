@@ -1,0 +1,45 @@
+{
+  "kind": "read-only log diagnosis; current source hashes are not runtime binary proofs",
+  "capturedAt": "2026-10-23T21:36:24.911967+08:00",
+  "sourceHashes": {
+    "frontend/design-client/src/engine.ts": "207e9b087305369b603f87d9b355db37c78cbfdc453561db17c36ee72bec96c8",
+    "frontend/design-client/src/kernel/render-worker.ts": "5ea6b0078cddfb3df0e39c1e2f73e4cc41586061938c4869f8af5e3f56c1701a",
+    "frontend/design-client/src/kernel/owner-tile-cache.ts": "16f0294b24de600a99df861ebd4b1c898920bede712d67334802812c310c6668",
+    "frontend/design-client/src/kernel/preparation-channel.ts": "36ca9fda992c497918e6b429ec8ab46d4fb5812575db4b50a38b87e469fe92f6",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "58c4e51b63a5cb703cecef6aef0d05e98fc1c0339a7a566d752e40d1f1257cb2",
+    "frontend/design-client/src/kernel/render-failure-telemetry.ts": "b0855cfb83e5048ebc456658e54dfa2ea4d240beeb25e108867918cde57e63aa",
+    "frontend/design-client/src/canvas-operation-diagnostics.ts": "be156cf9a4cd097ff4fa537222591adaf6e9e8a22496881e67b22c195a4cfdad",
+    "frontend/design-desktop/src/preparation-worker.mjs": "52795bdd8975e26a417fa63a6afd75e55eaf85a7327c0be300be9985da5e9d68",
+    "design-studio/crates/design-kernel/src/renderer.rs": "662e683bd705a6dbb94bf3bb754ac88b5a53ef3919bc46123f2cbe5098b0cfb6",
+    "docs/CANVAS_FRAME_GRID_DIAGNOSTICS.md": "3e5e88bba63e61473e0246c60c349cdfd036e46bb73468dd30f5b6e89fabcbc7"
+  },
+  "logPrefixes": [
+    {
+      "file": "/Users/Apple/Desktop/core-topology-refactor-gui-fixed-20261023.log",
+      "snapshotBytes": 9472199,
+      "snapshotSha256": "c4bbf1804e0e897a14a78f6afabaee5aea7beef59f1faf5d7b773f8bdb7e0cd2",
+      "period": [
+        "2026-10-23T21:17:04.488000+08:00",
+        "2026-10-23T21:28:54.015000+08:00"
+      ]
+    },
+    {
+      "file": "/Users/Apple/Desktop/core-render-detail13.log",
+      "snapshotBytes": 1656183,
+      "snapshotSha256": "2a9560b5b9e8cbd509d521ebe74c8d14978db2aab6a318894ce48487439aece7",
+      "period": [
+        "2026-10-23T10:23:35.270000+08:00",
+        "2026-10-23T10:26:49.827000+08:00"
+      ]
+    },
+    {
+      "file": "/Users/Apple/Desktop/core-topology-refactor-final-20261023.log",
+      "snapshotBytes": 1647136,
+      "snapshotSha256": "36278c61134f9ca6ed83ec4eb6bdb0510889ddade6624c575672c54af8bf25bb",
+      "period": [
+        "2026-10-23T21:08:23.637000+08:00",
+        "2026-10-23T21:16:46.570000+08:00"
+      ]
+    }
+  ]
+}

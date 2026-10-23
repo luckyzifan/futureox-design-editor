@@ -1,0 +1,50 @@
+{
+  "status": "passed",
+  "scope": "owned isolated Electron; real source import/Canvas/edit/save/export; preset save-dialog destination; visibility recorded explicitly; not physical scanout/FPS",
+  "cases": [
+    {
+      "key": "1:5",
+      "id": "08856B36-020D-46FC-AC59-55F38CDB82BE",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 31199.539125000003,
+      "screenshot": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-5/1-5.png",
+      "screenshotSha256": "2bcc291bff8a4035bcff09e9b02af1de9bea4f2cfea5b69dcdc84b5461c022ee",
+      "guiReopened": true
+    },
+    {
+      "key": "1:32480",
+      "id": "45648D97-7B7E-40F0-8EAB-96DB4F941522",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 64735.82604100001,
+      "screenshot": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-5/1-32480.png",
+      "screenshotSha256": "c3fe877ddbac3e138d29e95c61106049aba66b81ca3cdb2e355051c813681e0b",
+      "guiReopened": true
+    },
+    {
+      "key": "1:81474",
+      "id": "918953D3-4C42-461C-8C03-6F6F011359C0",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 87474.55920799999,
+      "screenshot": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-5/1-81474.png",
+      "screenshotSha256": "4903a35b1613ad2e111038249b3deb8a624a8791365dbe095f505d634099f687",
+      "guiReopened": true
+    }
+  ],
+  "exportFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-5/topology-repaired-verification.sketch",
+  "visibility": "visible",
+  "nativeVisible": true,
+  "exportBytes": 119392728,
+  "closeNotes": [
+    "Error: Owned source GUI close timeout",
+    "Error: Owned source GUI close timeout"
+  ]
+}

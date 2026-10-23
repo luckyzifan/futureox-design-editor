@@ -1,0 +1,158 @@
+{
+  "scope": "CPU isolated: production Node worker and Rust design-prepare; no GPU execution; timings under concurrent system activity, no benchmark acceptance",
+  "inputSourceCodeUnits": 2123373,
+  "inputSha256": "09123238972e8789e4125bb23d0ba64c4eb0debc62fe51fecca799b1631e9dc3",
+  "preparedSha256": "f6220f34293077b7edd74d0d84b0be3261be849ea4b2b6ea5fb2384c0a3627b0",
+  "patchBytes": 639,
+  "nativeSha256": "ef12c59fa4870d8e342148cd831aea3bd2ba6351431d722e2394fd0c2e017f50",
+  "results": [
+    {
+      "label": "warm",
+      "method": "warm_resources",
+      "ms": 1569.298458
+    },
+    {
+      "label": "initialize",
+      "method": "initialize",
+      "ms": 0.48337500000002365
+    },
+    {
+      "label": "load",
+      "method": "load_document",
+      "ms": 77.86654099999987
+    },
+    {
+      "label": "compile-before",
+      "method": "compile_gpu_packet",
+      "ms": 59.35966600000006,
+      "replyBytes": 1252444,
+      "packetSha256": "3ba5e0a2f644dc4ce289dae3c2136851ea88f4e1d410e112a0ae507f267b9c91",
+      "compileStats": {
+        "builds": 149,
+        "bytes": 1180056,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 149,
+        "hits": 0,
+        "pathNodes": 552,
+        "prepareReuses": 0,
+        "preparedNodes": 552,
+        "residentStrokes": {
+          "builds": 10,
+          "bytes": 72152,
+          "entries": 10,
+          "hits": 0
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 0,
+          "entries": 0,
+          "hits": 0,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "label": "patch-instance-width",
+      "method": "apply_document_patch_with_damage",
+      "ms": 21.72462500000006,
+      "damage": {
+        "full": false,
+        "bounds": [
+          2597.2580645161293,
+          2421,
+          124,
+          104
+        ],
+        "rects": [
+          [
+            2597.2580645161293,
+            2421,
+            104,
+            104
+          ],
+          [
+            2597.2580645161293,
+            2421,
+            124,
+            104
+          ]
+        ]
+      }
+    },
+    {
+      "label": "compile-after",
+      "method": "compile_gpu_packet",
+      "ms": 41.53729199999998,
+      "replyBytes": 1252444,
+      "packetSha256": "3ba5e0a2f644dc4ce289dae3c2136851ea88f4e1d410e112a0ae507f267b9c91",
+      "compileStats": {
+        "builds": 149,
+        "bytes": 1180056,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 149,
+        "hits": 149,
+        "pathNodes": 529,
+        "prepareReuses": 1,
+        "preparedNodes": 552,
+        "residentStrokes": {
+          "builds": 10,
+          "bytes": 72152,
+          "entries": 10,
+          "hits": 0
+        },
+        "retainedNodes": 544,
+        "textPaths": {
+          "bytes": 0,
+          "entries": 0,
+          "hits": 0,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "label": "same-camera-repeat",
+      "method": "compile_gpu_packet",
+      "ms": 7.279625000000124,
+      "replyBytes": 1252444,
+      "packetSha256": "3ba5e0a2f644dc4ce289dae3c2136851ea88f4e1d410e112a0ae507f267b9c91",
+      "compileStats": {
+        "builds": 149,
+        "bytes": 1180056,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 149,
+        "hits": 298,
+        "pathNodes": 529,
+        "prepareReuses": 2,
+        "preparedNodes": 552,
+        "residentStrokes": {
+          "builds": 10,
+          "bytes": 72152,
+          "entries": 10,
+          "hits": 0
+        },
+        "retainedNodes": 544,
+        "textPaths": {
+          "bytes": 0,
+          "entries": 0,
+          "hits": 0,
+          "limit": 16777216
+        }
+      }
+    }
+  ]
+}

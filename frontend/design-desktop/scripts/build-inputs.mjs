@@ -15,6 +15,7 @@ export const BUILD_DIRECTORIES = [
   'design-studio/crates/design-gpu/src',
   'design-studio/crates/design-kernel/shaders',
   'vendor/moxcms/src',
+  'vendor/flo_curves/src',
 ]
 export const BUILD_FILES = [
   'frontend/design-client/bun.lock',
@@ -35,6 +36,9 @@ export const BUILD_FILES = [
   'rust-toolchain.toml',
   '.cargo/config.toml',
   'vendor/moxcms/Cargo.toml',
+  'vendor/flo_curves/Cargo.toml',
+  'vendor/flo_curves/LICENSE',
+  'vendor/flo_curves/PATCHES.md',
 ]
 
 export function buildProfile(args) {

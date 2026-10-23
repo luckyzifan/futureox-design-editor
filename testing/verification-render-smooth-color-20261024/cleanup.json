@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-24T05:25:54.471557+08:00",
+  "scope": "Only untracked regenerable Rust target and unused client dist. Active Vite generated bindings and running desktop dist retained.",
+  "removed": [
+    {
+      "path": "/Users/Apple/project/design-kernel/design-studio/target",
+      "sizeKiB": 60526840
+    },
+    {
+      "path": "/Users/Apple/project/design-kernel/frontend/design-client/dist",
+      "sizeKiB": 105560
+    }
+  ],
+  "freeBefore": 113512697856,
+  "freeAfter": 173650173952
+}

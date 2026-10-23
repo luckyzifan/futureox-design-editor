@@ -303,7 +303,7 @@ fn figmaEncodeUnorm8(value:f32)->u32 {
 // HDR and all legacy passes keep this branch disabled.
 // Texture replay keeps its independently verified source/clip-alpha contract.
 // Its Q4 alpha residual table is not a software UNORM8 sampler table.
-fn softwareRasterByte()->bool{let mode=i32(u(4).x);return BYTE_SURFACE&&u(63).y>0.5&&(mode<43||mode>45);}
+fn softwareRasterByte()->bool{let mode:i32=i32(u(4).x);return BYTE_SURFACE&&u(63).y>0.5&&(mode<43||mode>45);}
 fn softwareLerpByte(a:u32,b:u32,weight:u32)->u32{
  let product:i32=(i32(b)-i32(a))*i32(weight);let magnitude:u32=u32(abs(product));
  let quotient:u32=magnitude>>8u;let remainder:u32=magnitude&255u;
@@ -844,10 +844,10 @@ fn linearImageTexel(q:vec2<i32>)->vec4<f32>{
 // W=1 identifies two independent coordinate rows; general affine fields
 // retain the dense address layout. Both carry metadata only, never colours.
 fn byteImageAddress(p:vec2<f32>)->vec4<f32>{
- let pixel=vec2<i32>(floor(p-u(0).xy));
+ let pixel:vec2<i32>=vec2<i32>(floor(p-u(0).xy));
  if(textureLoad(sourceD,vec2<i32>(0),0).w>0.5){
-  let x=textureLoad(sourceD,vec2<i32>(pixel.x,0),0);
-  let y=textureLoad(sourceD,vec2<i32>(pixel.y,1),0);
+  let x:vec4<f32>=textureLoad(sourceD,vec2<i32>(pixel.x,0),0);
+  let y:vec4<f32>=textureLoad(sourceD,vec2<i32>(pixel.y,1),0);
   return vec4<f32>(x.x,y.x,x.z*y.z,1.);
  }
  return textureLoad(sourceD,pixel,0);
@@ -856,8 +856,16 @@ fn linearImage(p:vec2<f32>)->vec4<f32>{
  let grid:vec4<f32>=textureLoad(sourceD,vec2<i32>(floor(p-u(0).xy)),0);let q:vec2<i32>=vec2<i32>(grid.xy);
  return bsBilinear4(linearImageTexel(q),linearImageTexel(q+vec2<i32>(1,0)),linearImageTexel(q+vec2<i32>(0,1)),linearImageTexel(q+vec2<i32>(1,1)),grid.zw,u32(u(63).w),u32(u(63).z));
 }
+fn gradientStop(index:u32)->vec4<f32>{
+ if(u(8).w>32.){return textureLoad(sourceB,vec2<i32>(i32(index),0),0);}
+ return u(13u+index);
+}
+fn gradientStopAlpha(index:u32)->f32{
+ if(u(8).w>32.){return textureLoad(sourceB,vec2<i32>(i32(index),1),0).x;}
+ return u(52u+index/4u)[index%4u];
+}
 fn linearGradientStop(index:u32)->vec4<f32>{
- let color:vec4<f32>=u(13u+index);let alpha:f32=u(52u+index/4u)[index%4u];
+ let color:vec4<f32>=gradientStop(index);let alpha:f32=gradientStopAlpha(index);
  return mulRN4(vec4<f32>(color.yzw,1.),vec4<f32>(alpha));
 }
 fn linearGradient(p:vec2<f32>)->vec4<f32>{
@@ -970,7 +978,7 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
  if(mode==0||mode==14){return a;}
  if(mode==1){let b=at(sourceB,p,u(2)).a;return vec4<f32>(at(sourceA,p,u(1)).a*select(b,1.-b,u(9).x>0.5));}
  if(mode==2||mode==16){let q=local(p+u(46).xy);let kind=i32(u(7).x);let opacity=u(8).x;var paint=vec4<f32>(u(7).yzw*opacity*u(60).y,opacity*u(60).y);if(kind==0&&u(46).z>0.5){paint=u(48);}
-  if((kind==1||kind==2||kind==4||kind==5)&&u(60).x<0.5){let t=gradientT(p,q,kind);let count=u32(u(8).w);if(count>0u){let bytePaint=u(46).w>0.5;let firstAlpha=u(52).x;var rgba=vec4<f32>(u(13).yzw*firstAlpha,firstAlpha);if(bytePaint){rgba=round(rgba*255.);}for(var i=1u;i<32u;i=i+1u){if(i>=count){break;}let l=u(12u+i);let r=u(13u+i);if(t>l.x){let la=u(52u+(i-1u)/4u)[(i-1u)%4u];let ra=u(52u+i/4u)[i%4u];var left=vec4<f32>(l.yzw*la,la);var right=vec4<f32>(r.yzw*ra,ra);if(bytePaint){left=round(left*255.);right=round(right*255.);}let k=clamp((t-l.x)/max(r.x-l.x,1e-8),0.,1.);if(bytePaint){rgba=vec4<f32>(colourMix(left.r,right.r,k),colourMix(left.g,right.g,k),colourMix(left.b,right.b,k),colourMix(left.a,right.a,k));}else{rgba=left+(right-left)*k;}}}paint=rgba*opacity;if(bytePaint){paint=round(rgba*opacity)/255.;}}}
+  if((kind==1||kind==2||kind==4||kind==5)&&u(60).x<0.5){let t=gradientT(p,q,kind);let count=u32(u(8).w);if(count>0u){let bytePaint=u(46).w>0.5;let firstAlpha=gradientStopAlpha(0u);var rgba=vec4<f32>(gradientStop(0u).yzw*firstAlpha,firstAlpha);if(bytePaint){rgba=round(rgba*255.);}for(var i=1u;i<64u;i=i+1u){if(i>=count){break;}let l=gradientStop(i-1u);let r=gradientStop(i);if(t>l.x){let la=gradientStopAlpha(i-1u);let ra=gradientStopAlpha(i);var left=vec4<f32>(l.yzw*la,la);var right=vec4<f32>(r.yzw*ra,ra);if(bytePaint){left=round(left*255.);right=round(right*255.);}let k=clamp((t-l.x)/max(r.x-l.x,1e-8),0.,1.);if(bytePaint){rgba=vec4<f32>(colourMix(left.r,right.r,k),colourMix(left.g,right.g,k),colourMix(left.b,right.b,k),colourMix(left.a,right.a,k));}else{rgba=left+(right-left)*k;}}}paint=rgba*opacity;if(bytePaint){paint=round(rgba*opacity)/255.;}}}
   if(u(60).x>0.5){
    if(kind==0){paint=mulRN4(mulRN4(vec4<f32>(u(7).yzw,1.),vec4<f32>(u(60).y)),vec4<f32>(opacity));}
    if(kind==1||kind==2||kind==4||kind==5){paint=mulRN4(linearGradient(p),vec4<f32>(opacity));}

@@ -1,0 +1,16 @@
+{
+  "runtimeRoot": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/pixels-2/host",
+  "artifacts": {
+    "dist/renderer/assets/topology-repair-check-DSv1mTTb.js": "8f322be2004084b9f0ab113ad34920d44b2967ac707317266bc8ae2fc885038e",
+    "dist/renderer/assets/preparation-worker-B9lpN7lt.js.map": "34c9db8db3f8a821abc3197febf0b6428a93c148f19adc3594388dc891c055ad",
+    "dist/renderer/assets/render-worker-hCXUgFN7.js.map": "6ddd8386fcbf504f195cf4296857cec3d85db6d8268fd1a53a2ed57d737eb5c3",
+    "dist/renderer/assets/design_kernel_bg-CGI3PF6l.wasm": "6b0245c3f0d2d6d1f4fbb418ffe24ecadde5a51c8f7fc0013a4be8cec5944b22",
+    "dist/renderer/assets/document-preparation-worker-Tk7Zntn3.js.map": "4eb177a50172d5588f729fd0162c590f5b927e5db6afd1e4cd15979ac00443ae",
+    "dist/renderer/assets/document-preparation-worker-Tk7Zntn3.js": "32b28063b55795c8ef0373c9d4fba8f550cf560a3801ce7b22c2fa12663867f7",
+    "dist/renderer/assets/render-worker-hCXUgFN7.js": "f4918797889b5727bbf7ac6d852c58cdd942c9732f837ba191ff7b8d2858a23b",
+    "dist/renderer/assets/preparation-worker-B9lpN7lt.js": "700df29ebce81c1a76298dfa5ecbd9541394a00628b4739a4ebc1b2bbe4a31eb",
+    "dist/renderer/assets/topology-repair-check-DSv1mTTb.js.map": "e3242bf095cf6ae15a1bd24bc88bec2ced887e6f723bbf99b8a77804300cbe89",
+    "dist/renderer/kernel/design_kernel_bg.wasm": "6b0245c3f0d2d6d1f4fbb418ffe24ecadde5a51c8f7fc0013a4be8cec5944b22",
+    "dist/bin/design-prepare": "6d23798994cebf9b3b9011406e210e07770b68199c073711af4730fa870b78b9"
+  }
+}

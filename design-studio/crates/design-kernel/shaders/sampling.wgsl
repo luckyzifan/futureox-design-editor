@@ -202,6 +202,6 @@ fn bsBilinear4(a:vec4<f32>,b:vec4<f32>,c:vec4<f32>,d:vec4<f32>,k:vec2<f32>,wordL
 
 // Compute only the requested color and alpha; no discarded RGB accumulators.
 fn bsBilinearChannelAlpha(a:vec4<f32>,b:vec4<f32>,c:vec4<f32>,d:vec4<f32>,k:vec2<f32>,channel:u32,wordLimit:u32,termCount:u32)->vec2<f32>{
- if(all((bitcast<vec2<u32>>(k)&vec2<u32>(0x7fffffffu))==vec2<u32>(0))){let value=bsCorner4(a,b,c,d);return vec2<f32>(value[channel],value.w);}
+ if(all((bitcast<vec2<u32>>(k)&vec2<u32>(0x7fffffffu))==vec2<u32>(0))){let value:vec4<f32>=bsCorner4(a,b,c,d);return vec2<f32>(value[channel],value.w);}
  return vec2<f32>(bsBilinear(vec4<f32>(a[channel],b[channel],c[channel],d[channel]),k.x,k.y,wordLimit,termCount),bsBilinear(vec4<f32>(a.w,b.w,c.w,d.w),k.x,k.y,wordLimit,termCount));
 }

@@ -47,7 +47,7 @@ export function svgGradientParser(xml: Document, color: (value: string) => strin
       if (!result.stops.length) {
         const content = Array.from(item.children).filter(child => !['title', 'desc', 'metadata'].includes(child.localName))
         if (content.some(child => child.localName !== 'stop')) throw new Error('SVG 渐变包含尚不支持的动态或非色标内容')
-        if (content.length > 32) throw new Error('SVG 渐变超过 32 个色标；不能无损缩减')
+        if (content.length > 64) throw new Error('SVG 渐变超过 64 个色标；不能无损缩减')
         result.stops = content
       }
     }

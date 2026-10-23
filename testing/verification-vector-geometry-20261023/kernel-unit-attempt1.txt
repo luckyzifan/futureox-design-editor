@@ -1,0 +1,16 @@
+
+failures:
+
+---- interop::tests::large_source_boolean_is_bounded_for_render_and_exports_original_hierarchy stdout ----
+
+thread 'interop::tests::large_source_boolean_is_bounded_for_render_and_exports_original_hierarchy' (25212282) panicked at crates/design-kernel/src/interop.rs:4712:9:
+assertion `left == right` failed
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    interop::tests::large_source_boolean_is_bounded_for_render_and_exports_original_hierarchy
+
+test result: FAILED. 554 passed; 1 failed; 4 ignored; 0 measured; 0 filtered out; finished in 19.41s
+
+error: test failed, to rerun pass `-p futureox-design-kernel --lib`

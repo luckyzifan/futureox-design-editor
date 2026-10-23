@@ -1,0 +1,45 @@
+{
+  "profile": "desktop-dev",
+  "memoryScope": "isolated native test process; excludes Electron and filesystem cache",
+  "sourceHashes": {
+    "design-studio/crates/design-kernel/src/large_json.rs": "51c1ca03b16995b168b7677c1a48728cb9035972a56e76b33489a0946cbe7f05",
+    "design-studio/crates/design-desktop-backend/src/large_document.rs": "055961d3af6f47599ffaa6027e6d90f4fab8f0c91471408b84519e550032e80c",
+    "design-studio/crates/design-desktop-backend/src/large_document/index.rs": "a6f426b28fefdcf727d978e8d257aeefbfe03181d9b6733034790906fd3fb4a7",
+    "design-studio/crates/design-desktop-backend/src/large_document/projection.rs": "913a4cd23c04c44b97600ed499efd47179509d36de1dd976915bfacbe9227680"
+  },
+  "results": [
+    {
+      "gate": "actual_four_gib_json_edits_exports_and_refuses_one_byte_over",
+      "exit": 0,
+      "seconds": 61.276,
+      "nativePeakRssBytes": 3719168,
+      "rssLimitBytes": 1073741824,
+      "withinRssLimit": true,
+      "testedExecutableSha256": "6585aaf542d4ab6c6c521be1c081429be91fef1b355698dec8eab633f56f927c",
+      "log": "actual_four_gib_json_edits_exports_and_refuses_one_byte_over.log",
+      "sourceUnchangedDuringRun": true
+    },
+    {
+      "gate": "actual_four_gib_structured_json_indexes_and_exports_with_bounded_memory",
+      "exit": 0,
+      "seconds": 127.812,
+      "nativePeakRssBytes": 358924288,
+      "rssLimitBytes": 1073741824,
+      "withinRssLimit": true,
+      "testedExecutableSha256": "6585aaf542d4ab6c6c521be1c081429be91fef1b355698dec8eab633f56f927c",
+      "log": "actual_four_gib_structured_json_indexes_and_exports_with_bounded_memory.log",
+      "sourceUnchangedDuringRun": true
+    },
+    {
+      "gate": "actual_topology_sketch_json_and_canvas_edits_export_all_members",
+      "exit": 0,
+      "seconds": 49.447,
+      "nativePeakRssBytes": 78807040,
+      "rssLimitBytes": 1610612736,
+      "withinRssLimit": true,
+      "testedExecutableSha256": "6585aaf542d4ab6c6c521be1c081429be91fef1b355698dec8eab633f56f927c",
+      "log": "actual_topology_sketch_json_and_canvas_edits_export_all_members.log",
+      "sourceUnchangedDuringRun": true
+    }
+  ]
+}

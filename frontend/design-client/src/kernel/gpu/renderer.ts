@@ -1,3 +1,4 @@
+import { MAX_GRADIENT_STOPS } from '../../model'
 import { MaintenanceResidency } from './maintenance-residency'
 import { prefixAlignedStrip, prefixAlignedRgbStrip } from './prefix-band'
 import { PREFIX_SCRATCH_BYTES } from './texture-prefix'
@@ -79,6 +80,7 @@ import {
   image_byte_sampling_field,
   image_byte_sampling_field_placed,
   gradient_sampling_grid,
+  gradient_sampling_grid_region,
   rational_box_kernel_rgba,
   gaussian_box_radii,
   texture_sampling_grid,
@@ -2178,6 +2180,10 @@ export class GpuRenderer {
    * generated in exact global-coordinate regions, never resampled/downscaled. */
   private paintWithBoundedImageFields(n: GpuNode, p: GpuPaint, mask: Surface): Surface | Promise<Surface> {
     const source = n.previewSource || n
+    if (this.driver.managed && this.driver.name === 'webgpu' && this.driver.captureDisplay &&
+        ['linear','radial','angular','diamond'].includes(p.kind) && n.rect.w*n.rect.h>262_144 &&
+        n.rect.w*n.rect.h<=4_194_304 && source.rect.w===n.rect.w && source.rect.h===n.rect.h)
+      return this.paintWithCooperativeGradient(n,p,mask)
     if (p.kind !== 'image' || !this.driver.managed || this.driver.name !== 'webgpu' || this.imageAtlas ||
         !samplingFieldOverGuard(n.rect) ||
         source.rect.w !== n.rect.w || source.rect.h !== n.rect.h || !exactBlendLattice([n.rect, source.rect]))
@@ -2187,6 +2193,31 @@ export class GpuRenderer {
     const level = this.imageLevel(n, p), image = this.imageFor(p.image || '', level, false, p.adjust)
     if (this.prepareLargeImageAxes(n, p, image, level)) return this.paint(n, p, mask, undefined, true)
     return this.paintImageFieldRegions(n, p, mask, image, level)
+  }
+  private async paintWithCooperativeGradient(n:GpuNode,p:GpuPaint,mask:Surface):Promise<Surface> {
+    const sample=this.sampleIndex??4,source=n.previewSource||n
+    if(this.imageGrids.get(p)?.has(sample))return this.paint(n,p,mask,undefined,true)
+    const parameters={kind:p.kind,color:'#000000',angle:p.angle,transform:p.transform,stops:p.stops.map(s=>({offset:s.offset,color:'#000000'}))}
+    const inputs=['gradient-grid',[n.rect.w,n.rect.h],source.rect,source.matrix,n.size,parameters,sample]
+    const key=JSON.stringify(inputs,(_key,value)=>Object.is(value,-0)?'-0':value)
+    if(this.optimized&&import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS!=='0'&&this.materialFields.get(key,new Uint32Array(0)))
+      return this.paint(n,p,mask,undefined,true)
+    const bytes=n.rect.w*n.rect.h*16
+    if(this.overBudget(bytes,n.rect.w,n.rect.h))throw this.budgetError('GPU 表面内存预算超限',2,3)
+    const values=new Float32Array(n.rect.w*n.rect.h*4),rows=Math.max(1,Math.min(32,Math.floor(65_536/n.rect.w)))
+    const original=JSON.stringify(source.rect),matrix=new Float64Array(source.matrix),size=new Float64Array(n.size),paint=JSON.stringify(parameters)
+    for(let y=0;y<n.rect.h;y+=rows){
+      this.checkFrameCurrent()
+      const started=performance.now(),height=Math.min(rows,n.rect.h-y)
+      const band=gradient_sampling_grid_region(original,JSON.stringify(rect(source.rect.x,source.rect.y+y,n.rect.w,height)),matrix,size,paint,sample)
+      values.set(band,y*n.rect.w*4);this.fieldBuildMs+=performance.now()-started
+      const pause=this.yieldEncoding();if(pause)await pause
+    }
+    this.checkFrameCurrent()
+    if(!this.driver.uploadLinear)throw Error('后端不支持精确渐变参数字段')
+    const surface=this.materialField(inputs,n.rect,()=>values,this.driver.uploadLinear,undefined,bytes,import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS!=='0')
+    let grids=this.imageGrids.get(p);if(!grids){grids=new Map();this.imageGrids.set(p,grids)}grids.set(sample,surface)
+    return this.paint(n,p,mask,undefined,true)
   }
   /** Probe one original phase only. A certified full compact field stays
    * reusable across bands; only its dense fallback needs regional generation. */
@@ -2296,6 +2327,9 @@ export class GpuRenderer {
           ['linear', 'radial', 'angular', 'diamond'].includes(p.kind)
         ? [mask, mask, mask, this.gradientGrid(n, p)]
         : [mask]
+    if (p.stops.length > 32 && ['linear', 'radial', 'angular', 'diamond'].includes(p.kind)) {
+      inputs[1] = this.gradientStopTable(p)
+    }
     const render = () => {
       const out = this.run(2, n.rect, inputs, (u) => {
         this.configurePaint(u, n, p)
@@ -2324,6 +2358,20 @@ export class GpuRenderer {
       !!range?.opaqueAlpha && range.nonnegativeRgb && range.maximum.every(value => value <= 127) &&
       image.rect.x === 0 && image.rect.y === 0 && image.rect.w === image.texture.width && image.rect.h === image.texture.height &&
       exactBlendLattice([n.rect, mask.rect, image.rect])
+  }
+  /** Large stop lists use a bounded exact parameter texture. Source B is unused
+   * by gradient paint; small lists retain their original uniform encoding. */
+  private gradientStopTable(p: GpuPaint): Surface {
+    if (!this.driver.uploadParameters || p.stops.length > MAX_GRADIENT_STOPS) throw Error('无效的渐变色标表')
+    const stops = [...p.stops].sort((a, b) => a.offset - b.offset)
+    const values = new Float32Array(stops.length * 8)
+    stops.forEach((s, i) => {
+      values.set([s.offset, ...this.color(s.color)], i * 4)
+      values[stops.length * 4 + i * 4] = this.alpha(s.color)
+    })
+    // Include resolved color bits: the same authored token can change profile.
+    return this.materialField(['gradient-stops', Array.from(values)], rect(0, 0, stops.length, 2),
+      () => values, this.driver.uploadParameters, undefined, values.byteLength)
   }
   private configurePaint(u: Float32Array, n: GpuNode, p: GpuPaint) {
     this.transform(u, n)
@@ -2357,7 +2405,7 @@ export class GpuRenderer {
       !this.driver.managed && this.scene.coherentSamples && this.sampleIndex !== undefined ? 1 : 0
     if (u[186]) u.set(solidRgba8(this.color(p.color), p.opacity), 192)
     const stops = [...p.stops].sort((a, b) => a.offset - b.offset)
-    if (stops.length > 32) throw new Error('渐变色标超过 32 个')
+    if (stops.length > MAX_GRADIENT_STOPS) throw new Error('渐变色标超过 64 个')
     u.set(
       [
         p.opacity,
@@ -2375,7 +2423,7 @@ export class GpuRenderer {
       u.set([...p.gradientPlane, 1], 200)
       u.set([n.rect.x, n.rect.y, 0, 0], 204)
     }
-    stops.forEach((s, i) => {
+    if (stops.length <= 32) stops.forEach((s, i) => {
       u.set([s.offset, ...this.color(s.color)], (13 + i) * 4)
       u[208 + i] = this.alpha(s.color)
     })
@@ -2392,7 +2440,7 @@ export class GpuRenderer {
       this.driver.managed ||
       n.children.length ||
       n.effects.length ||
-      n.blend !== 'normal'
+      n.blend !== 'normal' || n.fills.some(p => p.stops.length > 32) || n.strokes.some(s => s.paint.stops.length > 32)
     )
       return undefined
     // In the byte-quantized profile layer opacity follows layer materialization.

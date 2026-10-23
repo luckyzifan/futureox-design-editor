@@ -46,6 +46,7 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       document.name = event.data.name || document.name
       self.postMessage({ result: { document, warnings: ['PDF 文本内容未导入；矢量路径与图像已转换为可编辑图层'] } })
     } else if (event.data.format === 'fig') {
+      await initializeKernelModule()
       importStage = 233 // decode
       self.postMessage({ result: importFig(bytes, event.data.name) })
     } else throw new Error('不支持的导入格式')

@@ -1,0 +1,45 @@
+[
+  {
+    "block": "MATERIAL MATH",
+    "zeroArgumentFunctions": [
+      "softwareRasterByte"
+    ],
+    "current": "ValueError: not enough values to unpack (expected 2, got 1)",
+    "emptyArgumentSkipInMemoryOnly": "ValueError: Untranslated construct",
+    "residualWgslDiagnosticOnly": [
+      "bool softwareRasterByte(){let mode=int(u[4].x);return BYTE_SURFACE&&u[63].y>0.5&&(mode<43||mode>45);}",
+      "bool sameRay=!BYTE_SURFACE&&all((bitcast<vec2<u32>>(field.xy)&uvec2(0x7fffffffu))==uvec2(0u))&&dispersion>=0.&&dispersion<=1.&&u[11].z==3.&&u[11].w==8.&&all((bitcast<vec2<u32>>(u[11].xy)&uvec2(0x7fffffffu))<=uvec2(0x7f7fffffu))&&all(bitcast<vec2<u32>>(u[11].xy)!=uvec2(0x80000000u));",
+      "let pixel=ivec2(floor(p-u[0].xy));",
+      "let x=texelFetch(sourceD,ivec2(pixel.x,0),0);",
+      "let y=texelFetch(sourceD,ivec2(pixel.y,1),0);"
+    ]
+  },
+  {
+    "block": "BLEND MATH",
+    "zeroArgumentFunctions": [],
+    "current": "translated (not compiled or validated as GLSL)",
+    "emptyArgumentSkipInMemoryOnly": "translated (not compiled or validated as GLSL)",
+    "residualWgslDiagnosticOnly": []
+  },
+  {
+    "block": "BLEND COMPOSITE",
+    "zeroArgumentFunctions": [],
+    "current": "translated (not compiled or validated as GLSL)",
+    "emptyArgumentSkipInMemoryOnly": "translated (not compiled or validated as GLSL)",
+    "residualWgslDiagnosticOnly": []
+  },
+  {
+    "block": "coverage64",
+    "zeroArgumentFunctions": [],
+    "current": "translated (not compiled or validated as GLSL)",
+    "emptyArgumentSkipInMemoryOnly": "translated (not compiled or validated as GLSL)",
+    "residualWgslDiagnosticOnly": []
+  },
+  {
+    "block": "area",
+    "zeroArgumentFunctions": [],
+    "current": "translated (not compiled or validated as GLSL)",
+    "emptyArgumentSkipInMemoryOnly": "translated (not compiled or validated as GLSL)",
+    "residualWgslDiagnosticOnly": []
+  }
+]

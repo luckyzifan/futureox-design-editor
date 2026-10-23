@@ -6,6 +6,7 @@ use unicode_segmentation::UnicodeSegmentation;
 /// Resize geometry using the old dimensions before publishing the new box.
 /// Callers enforce their own sizing constraints (layout clamps; bindings validate).
 pub(crate) fn resize(n: &mut Node, width: f64, height: f64) {
+    if let Some(geometry)=&mut n.vector_geometry {geometry.scale(width/n.width,height/n.height);}
     if let Some(g) = &mut n.network {
         let sx = width / n.width;
         let sy = height / n.height;

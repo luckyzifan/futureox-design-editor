@@ -10,6 +10,13 @@ export function isAnalyticProgramBudget(error: unknown) {
   return failure.failureCategory === 3 && failure.failureCode === 94
 }
 
+/** Aggregate flattened-scene geometry can be prepared in smaller exact
+ * spatial regions. Per-path limits and unknown failures remain terminal. */
+export function isScenePathBudget(error: unknown) {
+  const failure = renderFailureFields(error)
+  return failure.failureCategory === 3 && failure.failureCode === 131
+}
+
 /** Remember allocation failures only within one unchanged rendering contract.
  * Reusing a smaller exact region changes scheduling, never density or math.
  * A difficult region may conservatively split an easier neighbour as well. */
@@ -22,7 +29,7 @@ export class PreviewAdmission {
   observe(error: unknown, tile: PreviewTile) {
     const message=String(error)
     if (/device lost|GPU device|has been lost|设备已丢失/i.test(message) ||
-        !/GPU surface budget exceeded|GPU 表面内存预算超限/.test(message) && !isAnalyticProgramBudget(error) ||
+        !/GPU surface budget exceeded|GPU 表面内存预算超限/.test(message) && !isAnalyticProgramBudget(error) && !isScenePathBudget(error) ||
         Math.max(tile.width,tile.height)<=64) return
     this.failed=this.failed.filter(size=>size.width<tile.width||size.height<tile.height)
     if(!this.failed.some(size=>size.width<=tile.width&&size.height<=tile.height))
@@ -76,7 +83,7 @@ export async function renderPreviewRegions(
       // reuses the parked (non-lost) device and its compiled pipelines.
       if (
         /device lost|GPU device|has been lost|设备已丢失/i.test(message) ||
-        !/GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(message) && !isAnalyticProgramBudget(error) ||
+        !/GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(message) && !isAnalyticProgramBudget(error) && !isScenePathBudget(error) ||
         Math.max(tile.width, tile.height) <= 64
       )
         throw error

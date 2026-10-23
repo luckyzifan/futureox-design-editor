@@ -1,0 +1,32 @@
+{
+  "status": "failed",
+  "scope": "owned isolated Electron; real source import/Canvas/edit/save/export; preset save-dialog destination; visibility recorded explicitly; not physical scanout/FPS",
+  "cases": [
+    {
+      "key": "1:5",
+      "id": "08856B36-020D-46FC-AC59-55F38CDB82BE",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 38986.374542000005,
+      "screenshot": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-4/1-5.png",
+      "screenshotSha256": "9b75c2997036e4dd6792ff8be52016983b0195a3e5a2d2df71ce7d218c4a6226"
+    },
+    {
+      "key": "1:32480",
+      "id": "45648D97-7B7E-40F0-8EAB-96DB4F941522",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 60623.019417,
+      "screenshot": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-4/1-32480.png",
+      "screenshotSha256": "4903a35b1613ad2e111038249b3deb8a624a8791365dbe095f505d634099f687"
+    }
+  ],
+  "exportFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-4/topology-repaired-verification.sketch",
+  "visibility": "visible",
+  "nativeVisible": true,
+  "error": "Error: expect(locator).toBeVisible() failed\n\nLocator: getByTestId('layer-918953D3-4C42-461C-8C03-6F6F011359C0')\nExpected: visible\nTimeout: 30000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toBeVisible\" getByTestId('layer-918953D3-4C42-461C-8C03-6F6F011359C0') with timeout 30000ms\n  - waiting for getByTestId('layer-918953D3-4C42-461C-8C03-6F6F011359C0')\n"
+}

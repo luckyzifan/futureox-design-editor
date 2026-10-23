@@ -1,0 +1,11 @@
+{
+  "source_hashes_unchanged": true,
+  "ui_operations": 44,
+  "native_operations": 24,
+  "rounds_per_operation": 21,
+  "local_report_links_valid": true,
+  "native_build": "passed",
+  "wasm_target_check": "passed",
+  "product_tests": "not run (analysis only)",
+  "real_browser_gpu": "not run"
+}

@@ -11,6 +11,31 @@ ROOT=Path(__file__).resolve().parents[2]
 SOURCE=ROOT/'design-studio/crates/design-kernel/shaders/rational-filter.wgsl'
 DEST=ROOT/'frontend/design-client/src/kernel/gpu/rational-filter.glsl'
 
+def vector_comparisons(source):
+    """Translate top-level comparisons passed to WGSL all(), with balanced
+    parentheses. GLSL requires equal/lessThan/etc for vector comparisons."""
+    cursor=0
+    operations={'==':'equal','!=':'notEqual','<=':'lessThanEqual','>=':'greaterThanEqual','<':'lessThan','>':'greaterThan'}
+    while True:
+        found=re.search(r'\ball\(',source[cursor:])
+        if not found:return source
+        start=cursor+found.start();body=start+4;depth=1;end=body
+        while end<len(source) and depth:
+            depth+=(source[end]=='(')-(source[end]==')');end+=1
+        if depth:raise ValueError('Unbalanced all() expression')
+        expression=source[body:end-1];level=0;operator=None
+        for index,char in enumerate(expression):
+            if char in '([':level+=1
+            elif char in ')]':level-=1
+            elif level==0:
+                for op in operations:
+                    if expression.startswith(op,index):operator=(index,op);break
+                if operator:break
+        if operator:
+            index,op=operator;replacement='all('+operations[op]+'('+expression[:index]+','+expression[index+len(op):]+'))'
+            source=source[:start]+replacement+source[end:];cursor=start+len(replacement)
+        else:cursor=end
+
 def translate(source):
     kinds={'u32':'uint','i32':'int','f32':'float','bool':'bool',
            'vec2<u32>':'uvec2','vec3<u32>':'uvec3','vec4<u32>':'uvec4','vec2<i32>':'ivec2',
@@ -18,10 +43,10 @@ def translate(source):
            'texture_2d<f32>':'highp sampler2D'}
     def parameter(p):
         name,kind=p.split(':');return kinds[kind]+' '+name
-    source=re.sub(r'fn (\w+)\(([^)]*)\)->([^\s{]+)',lambda m:kinds[m[3]]+' '+m[1]+'('+','.join(parameter(p)for p in m[2].split(','))+')',source)
+    source=re.sub(r'fn (\w+)\(([^)]*)\)->([^\s{]+)',lambda m:kinds[m[3]]+' '+m[1]+'('+','.join(parameter(p)for p in m[2].split(',') if p.strip())+')',source)
     source=re.sub(r'var(?:<private>)? (\w+):array<u32,(\d+)>;',r'uint \1[\2];',source)
     source=re.sub(r'\b(?:let|var) (\w+):([^=;]+)',lambda m:kinds[m[2]]+' '+m[1],source)
-    source=source.replace('bitcast<u32>','floatBitsToUint').replace('bitcast<f32>','uintBitsToFloat')
+    source=source.replace('bitcast<vec2<u32>>','floatBitsToUint').replace('bitcast<u32>','floatBitsToUint').replace('bitcast<f32>','uintBitsToFloat')
     for a,b in sorted(kinds.items(),key=lambda x:-len(x[0])):
         source=re.sub(r'\b'+re.escape(a)+r'\(',b+'(',source)
     source=source.replace('textureLoad(', 'texelFetch(')
@@ -31,6 +56,7 @@ def translate(source):
     # GLSL comparisons of vectors use named builtins.
     source=source.replace('q<ivec2(0)','lessThan(q,ivec2(0))').replace('q>=ivec2(u[1].zw)','greaterThanEqual(q,ivec2(u[1].zw))').replace('q>=ivec2(u[2].zw)','greaterThanEqual(q,ivec2(u[2].zw))')
     source=re.sub(r'all\(([\w.]+)==(uvec[234]\(0u?\))\)',r'all(equal(\1,\2))',source)
+    source=vector_comparisons(source)
     code=re.sub(r'//[^\n]*','',source)
     if re.search(r'\b(fn|var|let|bitcast|array|u32|i32|f32)\b',code):raise ValueError('Untranslated construct')
     return source
@@ -53,7 +79,7 @@ if __name__=='__main__':
     wgsl=(ROOT/'design-studio/crates/design-kernel/shaders/vector.wgsl').read_text()
     vector=ROOT/'frontend/design-client/src/kernel/gpu/vector.glsl';text=vector.read_text()
     source=wgsl.split('// BEGIN GENERATED MATERIAL MATH SOURCE\n',1)[1].split('// END GENERATED MATERIAL MATH SOURCE',1)[0]
-    text=replace_block(text,'MATERIAL MATH','uint materialSelect(uint a,uint b,bool s){return s?b:a;}\n'+translate(source).replace('rfSelect(', 'materialSelect('))
+    text=replace_block(text,'MATERIAL MATH','uint materialSelect(uint a,uint b,bool s){return s?b:a;}\nint materialSelect(int a,int b,bool s){return s?b:a;}\n'+translate(source).replace('rfSelect(', 'materialSelect('))
     source=wgsl.split('// BEGIN GENERATED BLEND MATH SOURCE\n',1)[1].split('// END GENERATED BLEND MATH SOURCE',1)[0]
     text=replace_block(text,'BLEND MATH',translate(source))
     source=wgsl[wgsl.index('fn blendRN('):wgsl.index('fn fixedLinear(')]

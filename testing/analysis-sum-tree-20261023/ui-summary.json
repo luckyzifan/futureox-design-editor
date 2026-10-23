@@ -1,0 +1,398 @@
+[
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "rebuild.all",
+    "p50_ms": 0.04088125000000105,
+    "p95_batch_ms": 0.07760624999999947
+  },
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "rebuild.search",
+    "p50_ms": 0.1691500000000019,
+    "p95_batch_ms": 0.20165000000000077
+  },
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "cache.certified.property",
+    "p50_ms": 0.00005674999999999386,
+    "p95_batch_ms": 0.000557729000000009
+  },
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "cache.uncertified.property",
+    "p50_ms": 0.09357090000000028,
+    "p95_batch_ms": 0.11712079999999787
+  },
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "cache.toggle.branch",
+    "p50_ms": 0.042443749999998205,
+    "p95_batch_ms": 0.06954169999999919
+  },
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "array.collapse.knownRange",
+    "p50_ms": 0.0008332999999993262,
+    "p95_batch_ms": 0.0012729499999991844
+  },
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "select.current.single",
+    "p50_ms": 0.005544579999999826,
+    "p95_batch_ms": 0.006719170000000076
+  },
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "select.current.range40",
+    "p50_ms": 0.006284170000000131,
+    "p95_batch_ms": 0.0070400000000000774
+  },
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "rank.build",
+    "p50_ms": 0.032374999999998974,
+    "p95_batch_ms": 0.0594916000000012
+  },
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "rank.lookup",
+    "p50_ms": 0.000006891600000005837,
+    "p95_batch_ms": 0.00002769159999999715
+  },
+  {
+    "fixture": "real117",
+    "totalNodes": 752,
+    "visibleRows": 752,
+    "collapsedRows": 25,
+    "operation": "viewport.slice40",
+    "p50_ms": 0.000026709000000039395,
+    "p95_batch_ms": 0.00008304099999998015
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "rebuild.all",
+    "p50_ms": 1.1906458499999872,
+    "p95_batch_ms": 1.4646853999999991
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "rebuild.search",
+    "p50_ms": 2.719237499999997,
+    "p95_batch_ms": 3.1558082999999897
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "cache.certified.property",
+    "p50_ms": 0.00005562500000007731,
+    "p95_batch_ms": 0.00006029149999994843
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "cache.uncertified.property",
+    "p50_ms": 3.5485375000000206,
+    "p95_batch_ms": 4.025741599999992
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "cache.toggle.branch",
+    "p50_ms": 0.6748208499999919,
+    "p95_batch_ms": 1.8384541499999956
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "array.collapse.knownRange",
+    "p50_ms": 0.00037914999998065466,
+    "p95_batch_ms": 0.0008479500000021289
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "select.current.single",
+    "p50_ms": 0.16641124999999873,
+    "p95_batch_ms": 0.4018154199999981
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "select.current.range40",
+    "p50_ms": 0.18040750000000116,
+    "p95_batch_ms": 0.22450459000000023
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "rank.build",
+    "p50_ms": 1.5254042000000028,
+    "p95_batch_ms": 1.9630750000000035
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "rank.lookup",
+    "p50_ms": 0.000007583400000021356,
+    "p95_batch_ms": 0.000008283399999982066
+  },
+  {
+    "fixture": "synthetic-wide-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 20000,
+    "operation": "viewport.slice40",
+    "p50_ms": 0.00002766599999995378,
+    "p95_batch_ms": 0.00007024999999998726
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "rebuild.all",
+    "p50_ms": 1.3069020999999794,
+    "p95_batch_ms": 1.7685917000000244
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "rebuild.search",
+    "p50_ms": 2.3257790999999997,
+    "p95_batch_ms": 2.5463041999999403
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "cache.certified.property",
+    "p50_ms": 0.00005752099999972415,
+    "p95_batch_ms": 0.00006649999999990541
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "cache.uncertified.property",
+    "p50_ms": 3.4443208000000594,
+    "p95_batch_ms": 3.6403707999999826
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "cache.toggle.branch",
+    "p50_ms": 1.4364395500000229,
+    "p95_batch_ms": 1.8509854000000359
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "array.collapse.knownRange",
+    "p50_ms": 0.05777500000003784,
+    "p95_batch_ms": 0.07959789999999885
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "select.current.single",
+    "p50_ms": 0.16807624999999463,
+    "p95_batch_ms": 0.1753387500000008
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "select.current.range40",
+    "p50_ms": 0.18763417000000118,
+    "p95_batch_ms": 0.20421500000000378
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "rank.build",
+    "p50_ms": 1.4904916999999842,
+    "p95_batch_ms": 2.0785167
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "rank.lookup",
+    "p50_ms": 0.000006224999999903957,
+    "p95_batch_ms": 0.000007216599999992468
+  },
+  {
+    "fixture": "synthetic-balanced-20000",
+    "totalNodes": 20001,
+    "visibleRows": 20001,
+    "collapsedRows": 84,
+    "operation": "viewport.slice40",
+    "p50_ms": 0.000028667000000496045,
+    "p95_batch_ms": 0.000036750000000211005
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "rebuild.all",
+    "p50_ms": 9.334268750000046,
+    "p95_batch_ms": 11.202506249999896
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "rebuild.search",
+    "p50_ms": 11.897883299999739,
+    "p95_batch_ms": 12.752341700000034
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "cache.certified.property",
+    "p50_ms": 0.00005839550000018789,
+    "p95_batch_ms": 0.00006447949999892444
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "cache.uncertified.property",
+    "p50_ms": 26.024533300000257,
+    "p95_batch_ms": 27.34339169999985
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "cache.toggle.branch",
+    "p50_ms": 9.217987500000163,
+    "p95_batch_ms": 10.52757709999987
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "array.collapse.knownRange",
+    "p50_ms": 0.28288960000008956,
+    "p95_batch_ms": 0.3923208499999419
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "select.current.single",
+    "p50_ms": 0.9555216599999767,
+    "p95_batch_ms": 1.0079429199999868
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "select.current.range40",
+    "p50_ms": 1.0583904099999928,
+    "p95_batch_ms": 1.2489425000000118
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "rank.build",
+    "p50_ms": 7.854724999999962,
+    "p95_batch_ms": 8.91408330000013
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "rank.lookup",
+    "p50_ms": 0.0000062833999996655624,
+    "p95_batch_ms": 0.000006616600000052131
+  },
+  {
+    "fixture": "synthetic-balanced-100000",
+    "totalNodes": 100001,
+    "visibleRows": 100001,
+    "collapsedRows": 84,
+    "operation": "viewport.slice40",
+    "p50_ms": 0.000027791000000433995,
+    "p95_batch_ms": 0.00008291600000120524
+  }
+]

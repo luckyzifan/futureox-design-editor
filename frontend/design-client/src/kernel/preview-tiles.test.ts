@@ -185,3 +185,16 @@ it('current subdivided work still assembles every exact pixel with checkpoints',
   expect(checkpoints).toBe(3)
   expect(result.pixels).toEqual(pixels({ x: 0, y: 0, width: 256, height: 128 }, true))
 })
+
+it('spatial scene geometry admission splits exactly but per-path failures do not retry', async () => {
+  const result=await renderPreviewTiles(256,128,async tile=>{
+    if(tile.width>64)throw Error('Scene path budget exceeded')
+    return pixels(tile,true)
+  },256)
+  expect(result.pixels).toEqual(pixels({x:0,y:0,width:256,height:128},true))
+  for(const message of ['Flattened path budget exceeded','Curve Boolean output budget exceeded','Scene path budget exceeded; device lost']) {
+    const render=vi.fn(async()=>{throw Error(message)})
+    await expect(renderPreviewTiles(256,128,render)).rejects.toThrow(message)
+    expect(render).toHaveBeenCalledOnce()
+  }
+})

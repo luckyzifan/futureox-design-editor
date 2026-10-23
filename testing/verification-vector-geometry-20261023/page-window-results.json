@@ -1,0 +1,2094 @@
+[
+  {
+    "key": "1:5",
+    "modelBytes": 29969827,
+    "nodes": 4022,
+    "seconds": 1.762744584,
+    "sourceBytes": 59851792
+  },
+  {
+    "key": "1:4027",
+    "modelBytes": 29970871,
+    "nodes": 4022,
+    "seconds": 1.566574167,
+    "sourceBytes": 59852257
+  },
+  {
+    "key": "1:8049",
+    "modelBytes": 29979663,
+    "nodes": 3990,
+    "seconds": 1.414604584,
+    "sourceBytes": 59671685
+  },
+  {
+    "key": "1:12039",
+    "modelBytes": 29979843,
+    "nodes": 3990,
+    "seconds": 1.340839833,
+    "sourceBytes": 59671775
+  },
+  {
+    "key": "1:16029",
+    "modelBytes": 29519207,
+    "nodes": 13325,
+    "seconds": 1.536502584,
+    "sourceBytes": 40999003
+  },
+  {
+    "key": "1:29354",
+    "modelBytes": 1856317,
+    "nodes": 231,
+    "seconds": 0.031579833,
+    "sourceBytes": 747962
+  },
+  {
+    "key": "1:29585",
+    "modelBytes": 2448179,
+    "nodes": 394,
+    "seconds": 0.052148334,
+    "sourceBytes": 1346511
+  },
+  {
+    "key": "1:29979",
+    "modelBytes": 4489700,
+    "nodes": 894,
+    "seconds": 0.104553041,
+    "sourceBytes": 2716377
+  },
+  {
+    "key": "1:30873",
+    "modelBytes": 1086574,
+    "nodes": 485,
+    "seconds": 0.062464708,
+    "sourceBytes": 1525722
+  },
+  {
+    "key": "1:31358",
+    "modelBytes": 777342,
+    "nodes": 295,
+    "seconds": 0.039989375,
+    "sourceBytes": 1113520
+  },
+  {
+    "key": "1:31653",
+    "modelBytes": 1753034,
+    "nodes": 950,
+    "seconds": 0.172997833,
+    "sourceBytes": 1246364
+  },
+  {
+    "key": "1:32054",
+    "modelBytes": 1771334,
+    "nodes": 962,
+    "seconds": 0.16148075,
+    "sourceBytes": 1251980
+  },
+  {
+    "key": "1:32459",
+    "modelBytes": 939908,
+    "nodes": 506,
+    "seconds": 0.093920709,
+    "sourceBytes": 35475
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: unsupported lossless conversion: Sketch shapeGroup `67C71247-4EF9-4439-8632-5CF8ED366CA3` requires 1–64 operands",
+    "key": "1:32480",
+    "sourceBytes": 25111641
+  },
+  {
+    "key": "1:40138",
+    "modelBytes": 1451822,
+    "nodes": 333,
+    "seconds": 0.040739041,
+    "sourceBytes": 1181577
+  },
+  {
+    "key": "1:40471",
+    "modelBytes": 5356034,
+    "nodes": 2446,
+    "seconds": 0.254483791,
+    "sourceBytes": 6209240
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: unsupported lossless conversion: Sketch shapeGroup `2874D2D4-97A6-4068-8535-311C6606A634` requires 1–64 operands",
+    "key": "1:42766",
+    "sourceBytes": 9658244
+  },
+  {
+    "key": "1:45636",
+    "modelBytes": 2034764,
+    "nodes": 713,
+    "seconds": 0.091199875,
+    "sourceBytes": 2528940
+  },
+  {
+    "key": "1:46349",
+    "modelBytes": 1967065,
+    "nodes": 688,
+    "seconds": 0.087433084,
+    "sourceBytes": 2435245
+  },
+  {
+    "key": "1:47037",
+    "modelBytes": 5163,
+    "nodes": 1,
+    "seconds": 0.000548291,
+    "sourceBytes": 3236
+  },
+  {
+    "key": "1:47038",
+    "modelBytes": 5161,
+    "nodes": 1,
+    "seconds": 0.000360625,
+    "sourceBytes": 3271
+  },
+  {
+    "key": "1:47039",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000323334,
+    "sourceBytes": 3262
+  },
+  {
+    "key": "1:47040",
+    "modelBytes": 5149,
+    "nodes": 1,
+    "seconds": 0.0003245,
+    "sourceBytes": 3238
+  },
+  {
+    "key": "1:47041",
+    "modelBytes": 5164,
+    "nodes": 1,
+    "seconds": 0.000304,
+    "sourceBytes": 3238
+  },
+  {
+    "key": "1:47042",
+    "modelBytes": 5162,
+    "nodes": 1,
+    "seconds": 0.000305959,
+    "sourceBytes": 3275
+  },
+  {
+    "key": "1:47043",
+    "modelBytes": 5161,
+    "nodes": 1,
+    "seconds": 0.000301625,
+    "sourceBytes": 3274
+  },
+  {
+    "key": "1:47044",
+    "modelBytes": 5163,
+    "nodes": 1,
+    "seconds": 0.000298709,
+    "sourceBytes": 3239
+  },
+  {
+    "key": "1:47045",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000293,
+    "sourceBytes": 3247
+  },
+  {
+    "key": "1:47046",
+    "modelBytes": 5141,
+    "nodes": 1,
+    "seconds": 0.000280583,
+    "sourceBytes": 3273
+  },
+  {
+    "key": "1:47047",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000299167,
+    "sourceBytes": 3274
+  },
+  {
+    "key": "1:47048",
+    "modelBytes": 5143,
+    "nodes": 1,
+    "seconds": 0.00028225,
+    "sourceBytes": 3239
+  },
+  {
+    "key": "1:47049",
+    "modelBytes": 5100,
+    "nodes": 1,
+    "seconds": 0.000298625,
+    "sourceBytes": 3303
+  },
+  {
+    "key": "1:47050",
+    "modelBytes": 5051,
+    "nodes": 1,
+    "seconds": 0.000416,
+    "sourceBytes": 3205
+  },
+  {
+    "key": "1:47051",
+    "modelBytes": 5063,
+    "nodes": 1,
+    "seconds": 0.000388708,
+    "sourceBytes": 3313
+  },
+  {
+    "key": "1:47052",
+    "modelBytes": 5037,
+    "nodes": 1,
+    "seconds": 0.000318208,
+    "sourceBytes": 3193
+  },
+  {
+    "key": "1:47053",
+    "modelBytes": 5142,
+    "nodes": 1,
+    "seconds": 0.000300458,
+    "sourceBytes": 3213
+  },
+  {
+    "key": "1:47054",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000295333,
+    "sourceBytes": 3178
+  },
+  {
+    "key": "1:47055",
+    "modelBytes": 5133,
+    "nodes": 1,
+    "seconds": 0.000295584,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:47056",
+    "modelBytes": 5136,
+    "nodes": 1,
+    "seconds": 0.000293333,
+    "sourceBytes": 3186
+  },
+  {
+    "key": "1:47057",
+    "modelBytes": 5089,
+    "nodes": 1,
+    "seconds": 0.000293458,
+    "sourceBytes": 3328
+  },
+  {
+    "key": "1:47058",
+    "modelBytes": 5050,
+    "nodes": 1,
+    "seconds": 0.000292375,
+    "sourceBytes": 3202
+  },
+  {
+    "key": "1:47059",
+    "modelBytes": 5025,
+    "nodes": 1,
+    "seconds": 0.000282417,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:47060",
+    "modelBytes": 5065,
+    "nodes": 1,
+    "seconds": 0.000287542,
+    "sourceBytes": 3316
+  },
+  {
+    "key": "1:47061",
+    "modelBytes": 5005,
+    "nodes": 1,
+    "seconds": 0.000364125,
+    "sourceBytes": 3170
+  },
+  {
+    "key": "1:47062",
+    "modelBytes": 4999,
+    "nodes": 1,
+    "seconds": 0.000315542,
+    "sourceBytes": 3205
+  },
+  {
+    "key": "1:47063",
+    "modelBytes": 5132,
+    "nodes": 1,
+    "seconds": 0.000298875,
+    "sourceBytes": 3220
+  },
+  {
+    "key": "1:47064",
+    "modelBytes": 5134,
+    "nodes": 1,
+    "seconds": 0.000291416,
+    "sourceBytes": 3185
+  },
+  {
+    "key": "1:47065",
+    "modelBytes": 5068,
+    "nodes": 1,
+    "seconds": 0.000299334,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:47066",
+    "modelBytes": 5043,
+    "nodes": 1,
+    "seconds": 0.000331292,
+    "sourceBytes": 3208
+  },
+  {
+    "key": "1:47067",
+    "modelBytes": 4711,
+    "nodes": 1,
+    "seconds": 0.000300042,
+    "sourceBytes": 2622
+  },
+  {
+    "key": "1:47068",
+    "modelBytes": 4711,
+    "nodes": 1,
+    "seconds": 0.000277584,
+    "sourceBytes": 2621
+  },
+  {
+    "key": "1:47069",
+    "modelBytes": 4710,
+    "nodes": 1,
+    "seconds": 0.000269541,
+    "sourceBytes": 2622
+  },
+  {
+    "key": "1:47070",
+    "modelBytes": 4710,
+    "nodes": 1,
+    "seconds": 0.000272042,
+    "sourceBytes": 2621
+  },
+  {
+    "key": "1:47071",
+    "modelBytes": 5078,
+    "nodes": 1,
+    "seconds": 0.000285208,
+    "sourceBytes": 3315
+  },
+  {
+    "key": "1:47072",
+    "modelBytes": 5039,
+    "nodes": 1,
+    "seconds": 0.000280458,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:47073",
+    "modelBytes": 5036,
+    "nodes": 1,
+    "seconds": 0.000278791,
+    "sourceBytes": 3202
+  },
+  {
+    "key": "1:47074",
+    "modelBytes": 5075,
+    "nodes": 1,
+    "seconds": 0.000299125,
+    "sourceBytes": 3328
+  },
+  {
+    "key": "1:47075",
+    "modelBytes": 4973,
+    "nodes": 1,
+    "seconds": 0.000281375,
+    "sourceBytes": 3196
+  },
+  {
+    "key": "1:47076",
+    "modelBytes": 5142,
+    "nodes": 1,
+    "seconds": 0.000277583,
+    "sourceBytes": 3098
+  },
+  {
+    "key": "1:47077",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000280625,
+    "sourceBytes": 3119
+  },
+  {
+    "key": "1:47078",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.000275792,
+    "sourceBytes": 3111
+  },
+  {
+    "key": "1:47079",
+    "modelBytes": 4981,
+    "nodes": 1,
+    "seconds": 0.00027975,
+    "sourceBytes": 3207
+  },
+  {
+    "key": "1:47080",
+    "modelBytes": 5050,
+    "nodes": 1,
+    "seconds": 0.000285,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:47081",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000280875,
+    "sourceBytes": 3123
+  },
+  {
+    "key": "1:47082",
+    "modelBytes": 5036,
+    "nodes": 1,
+    "seconds": 0.000275125,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:47083",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000275,
+    "sourceBytes": 3165
+  },
+  {
+    "key": "1:47084",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000275125,
+    "sourceBytes": 3200
+  },
+  {
+    "key": "1:47085",
+    "modelBytes": 5130,
+    "nodes": 1,
+    "seconds": 0.0002755,
+    "sourceBytes": 3187
+  },
+  {
+    "key": "1:47086",
+    "modelBytes": 5129,
+    "nodes": 1,
+    "seconds": 0.00027875,
+    "sourceBytes": 3222
+  },
+  {
+    "key": "1:47087",
+    "modelBytes": 4913,
+    "nodes": 1,
+    "seconds": 0.00027675,
+    "sourceBytes": 3167
+  },
+  {
+    "key": "1:47088",
+    "modelBytes": 5158,
+    "nodes": 1,
+    "seconds": 0.000279208,
+    "sourceBytes": 3211
+  },
+  {
+    "key": "1:47089",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000295375,
+    "sourceBytes": 3224
+  },
+  {
+    "key": "1:47090",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.000284125,
+    "sourceBytes": 3152
+  },
+  {
+    "key": "1:47091",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.0002815,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:47092",
+    "modelBytes": 5040,
+    "nodes": 1,
+    "seconds": 0.0002745,
+    "sourceBytes": 3190
+  },
+  {
+    "key": "1:47093",
+    "modelBytes": 5057,
+    "nodes": 1,
+    "seconds": 0.000272459,
+    "sourceBytes": 3208
+  },
+  {
+    "key": "1:47094",
+    "modelBytes": 5140,
+    "nodes": 1,
+    "seconds": 0.000279,
+    "sourceBytes": 3178
+  },
+  {
+    "key": "1:47095",
+    "modelBytes": 5037,
+    "nodes": 1,
+    "seconds": 0.000360583,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:47096",
+    "modelBytes": 5054,
+    "nodes": 1,
+    "seconds": 0.000323042,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:47097",
+    "modelBytes": 5141,
+    "nodes": 1,
+    "seconds": 0.000295584,
+    "sourceBytes": 3200
+  },
+  {
+    "key": "1:47098",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000285458,
+    "sourceBytes": 3212
+  },
+  {
+    "key": "1:47099",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000281625,
+    "sourceBytes": 3224
+  },
+  {
+    "key": "1:47100",
+    "modelBytes": 4903,
+    "nodes": 1,
+    "seconds": 0.000282333,
+    "sourceBytes": 3179
+  },
+  {
+    "key": "1:47101",
+    "modelBytes": 628077,
+    "nodes": 137,
+    "seconds": 0.02627875,
+    "sourceBytes": 553855
+  },
+  {
+    "key": "1:47238",
+    "modelBytes": 3362070,
+    "nodes": 714,
+    "seconds": 0.093053542,
+    "sourceBytes": 2533453
+  },
+  {
+    "key": "1:47952",
+    "modelBytes": 956408,
+    "nodes": 124,
+    "seconds": 0.019287875,
+    "sourceBytes": 470987
+  },
+  {
+    "key": "1:48076",
+    "modelBytes": 1195961,
+    "nodes": 172,
+    "seconds": 0.024576667,
+    "sourceBytes": 611799
+  },
+  {
+    "key": "1:48248",
+    "modelBytes": 5925,
+    "nodes": 1,
+    "seconds": 0.000614375,
+    "sourceBytes": 3392
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:48249",
+    "sourceBytes": 3445
+  },
+  {
+    "key": "1:48250",
+    "modelBytes": 5917,
+    "nodes": 1,
+    "seconds": 0.000402459,
+    "sourceBytes": 3393
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:48251",
+    "sourceBytes": 3446
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:48252",
+    "sourceBytes": 3445
+  },
+  {
+    "key": "1:48253",
+    "modelBytes": 5925,
+    "nodes": 1,
+    "seconds": 0.000344125,
+    "sourceBytes": 3392
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:48254",
+    "sourceBytes": 3446
+  },
+  {
+    "key": "1:48255",
+    "modelBytes": 5917,
+    "nodes": 1,
+    "seconds": 0.000339167,
+    "sourceBytes": 3393
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:48256",
+    "sourceBytes": 3420
+  },
+  {
+    "key": "1:48257",
+    "modelBytes": 5901,
+    "nodes": 1,
+    "seconds": 0.000409083,
+    "sourceBytes": 3417
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:48258",
+    "sourceBytes": 3421
+  },
+  {
+    "key": "1:48259",
+    "modelBytes": 5902,
+    "nodes": 1,
+    "seconds": 0.000334042,
+    "sourceBytes": 3418
+  },
+  {
+    "key": "1:48260",
+    "modelBytes": 5901,
+    "nodes": 1,
+    "seconds": 0.000325791,
+    "sourceBytes": 3417
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:48261",
+    "sourceBytes": 3420
+  },
+  {
+    "key": "1:48262",
+    "modelBytes": 5902,
+    "nodes": 1,
+    "seconds": 0.000315125,
+    "sourceBytes": 3418
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:48263",
+    "sourceBytes": 3421
+  },
+  {
+    "key": "1:48264",
+    "modelBytes": 29969828,
+    "nodes": 4022,
+    "seconds": 1.496075875,
+    "sourceBytes": 59851793
+  },
+  {
+    "key": "1:52286",
+    "modelBytes": 29970872,
+    "nodes": 4022,
+    "seconds": 1.403211417,
+    "sourceBytes": 59852258
+  },
+  {
+    "key": "1:56308",
+    "modelBytes": 29979664,
+    "nodes": 3990,
+    "seconds": 1.432629875,
+    "sourceBytes": 59671686
+  },
+  {
+    "key": "1:60298",
+    "modelBytes": 29979844,
+    "nodes": 3990,
+    "seconds": 1.914014125,
+    "sourceBytes": 59671776
+  },
+  {
+    "key": "1:64288",
+    "modelBytes": 29519207,
+    "nodes": 13325,
+    "seconds": 3.128591666,
+    "sourceBytes": 40999003
+  },
+  {
+    "key": "1:77613",
+    "modelBytes": 1856317,
+    "nodes": 231,
+    "seconds": 0.050987834,
+    "sourceBytes": 747962
+  },
+  {
+    "key": "1:77844",
+    "modelBytes": 2448179,
+    "nodes": 394,
+    "seconds": 0.076346584,
+    "sourceBytes": 1346511
+  },
+  {
+    "key": "1:78238",
+    "modelBytes": 4489700,
+    "nodes": 894,
+    "seconds": 0.1136175,
+    "sourceBytes": 2716377
+  },
+  {
+    "key": "1:79132",
+    "modelBytes": 1086573,
+    "nodes": 485,
+    "seconds": 0.064448083,
+    "sourceBytes": 1525721
+  },
+  {
+    "key": "1:79617",
+    "modelBytes": 777342,
+    "nodes": 295,
+    "seconds": 0.0427215,
+    "sourceBytes": 1113520
+  },
+  {
+    "key": "1:79912",
+    "modelBytes": 2118946,
+    "nodes": 1142,
+    "seconds": 0.217269625,
+    "sourceBytes": 1766135
+  },
+  {
+    "key": "1:80505",
+    "modelBytes": 5646399,
+    "nodes": 1505,
+    "seconds": 0.352885875,
+    "sourceBytes": 8759673
+  },
+  {
+    "key": "1:81453",
+    "modelBytes": 939909,
+    "nodes": 506,
+    "seconds": 0.095676917,
+    "sourceBytes": 35476
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: unsupported lossless conversion: Sketch shapeGroup `1E687BD9-D8E0-4F28-8EA6-4905D846B93C` requires 1–64 operands",
+    "key": "1:81474",
+    "sourceBytes": 25111641
+  },
+  {
+    "key": "1:89132",
+    "modelBytes": 1451822,
+    "nodes": 333,
+    "seconds": 0.041378666,
+    "sourceBytes": 1181577
+  },
+  {
+    "key": "1:89465",
+    "modelBytes": 5356033,
+    "nodes": 2446,
+    "seconds": 0.336521708,
+    "sourceBytes": 6209239
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: unsupported lossless conversion: Sketch shapeGroup `14940116-4085-4EDA-91F6-DFFF5DDD4E59` requires 1–64 operands",
+    "key": "1:91760",
+    "sourceBytes": 9658243
+  },
+  {
+    "key": "1:94630",
+    "modelBytes": 2034766,
+    "nodes": 713,
+    "seconds": 0.164681042,
+    "sourceBytes": 2528942
+  },
+  {
+    "key": "1:95343",
+    "modelBytes": 1967065,
+    "nodes": 688,
+    "seconds": 0.158942334,
+    "sourceBytes": 2435245
+  },
+  {
+    "key": "1:96031",
+    "modelBytes": 5163,
+    "nodes": 1,
+    "seconds": 0.000652375,
+    "sourceBytes": 3236
+  },
+  {
+    "key": "1:96032",
+    "modelBytes": 5162,
+    "nodes": 1,
+    "seconds": 0.000366833,
+    "sourceBytes": 3272
+  },
+  {
+    "key": "1:96033",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.000327292,
+    "sourceBytes": 3263
+  },
+  {
+    "key": "1:96034",
+    "modelBytes": 5149,
+    "nodes": 1,
+    "seconds": 0.000316417,
+    "sourceBytes": 3238
+  },
+  {
+    "key": "1:96035",
+    "modelBytes": 5164,
+    "nodes": 1,
+    "seconds": 0.000302792,
+    "sourceBytes": 3238
+  },
+  {
+    "key": "1:96036",
+    "modelBytes": 5162,
+    "nodes": 1,
+    "seconds": 0.000297292,
+    "sourceBytes": 3275
+  },
+  {
+    "key": "1:96037",
+    "modelBytes": 5161,
+    "nodes": 1,
+    "seconds": 0.000857875,
+    "sourceBytes": 3274
+  },
+  {
+    "key": "1:96038",
+    "modelBytes": 5163,
+    "nodes": 1,
+    "seconds": 0.000577167,
+    "sourceBytes": 3239
+  },
+  {
+    "key": "1:96039",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.001547625,
+    "sourceBytes": 3247
+  },
+  {
+    "key": "1:96040",
+    "modelBytes": 5141,
+    "nodes": 1,
+    "seconds": 0.001168334,
+    "sourceBytes": 3273
+  },
+  {
+    "key": "1:96041",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.001150209,
+    "sourceBytes": 3274
+  },
+  {
+    "key": "1:96042",
+    "modelBytes": 5143,
+    "nodes": 1,
+    "seconds": 0.000769459,
+    "sourceBytes": 3239
+  },
+  {
+    "key": "1:96043",
+    "modelBytes": 5100,
+    "nodes": 1,
+    "seconds": 0.000810417,
+    "sourceBytes": 3303
+  },
+  {
+    "key": "1:96044",
+    "modelBytes": 5051,
+    "nodes": 1,
+    "seconds": 0.004435667,
+    "sourceBytes": 3205
+  },
+  {
+    "key": "1:96045",
+    "modelBytes": 5063,
+    "nodes": 1,
+    "seconds": 0.000828041,
+    "sourceBytes": 3313
+  },
+  {
+    "key": "1:96046",
+    "modelBytes": 5037,
+    "nodes": 1,
+    "seconds": 0.000699166,
+    "sourceBytes": 3193
+  },
+  {
+    "key": "1:96047",
+    "modelBytes": 5143,
+    "nodes": 1,
+    "seconds": 0.0007465,
+    "sourceBytes": 3214
+  },
+  {
+    "key": "1:96048",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000746375,
+    "sourceBytes": 3179
+  },
+  {
+    "key": "1:96049",
+    "modelBytes": 5134,
+    "nodes": 1,
+    "seconds": 0.000574334,
+    "sourceBytes": 3222
+  },
+  {
+    "key": "1:96050",
+    "modelBytes": 5137,
+    "nodes": 1,
+    "seconds": 0.000625958,
+    "sourceBytes": 3187
+  },
+  {
+    "key": "1:96051",
+    "modelBytes": 5089,
+    "nodes": 1,
+    "seconds": 0.000653458,
+    "sourceBytes": 3328
+  },
+  {
+    "key": "1:96052",
+    "modelBytes": 5050,
+    "nodes": 1,
+    "seconds": 0.000577583,
+    "sourceBytes": 3202
+  },
+  {
+    "key": "1:96053",
+    "modelBytes": 5025,
+    "nodes": 1,
+    "seconds": 0.000545083,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:96054",
+    "modelBytes": 5065,
+    "nodes": 1,
+    "seconds": 0.000545833,
+    "sourceBytes": 3316
+  },
+  {
+    "key": "1:96055",
+    "modelBytes": 5005,
+    "nodes": 1,
+    "seconds": 0.000546959,
+    "sourceBytes": 3170
+  },
+  {
+    "key": "1:96056",
+    "modelBytes": 5000,
+    "nodes": 1,
+    "seconds": 0.000528709,
+    "sourceBytes": 3206
+  },
+  {
+    "key": "1:96057",
+    "modelBytes": 5133,
+    "nodes": 1,
+    "seconds": 0.0003455,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:96058",
+    "modelBytes": 5134,
+    "nodes": 1,
+    "seconds": 0.00031625,
+    "sourceBytes": 3185
+  },
+  {
+    "key": "1:96059",
+    "modelBytes": 5068,
+    "nodes": 1,
+    "seconds": 0.000297458,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:96060",
+    "modelBytes": 5043,
+    "nodes": 1,
+    "seconds": 0.000288541,
+    "sourceBytes": 3208
+  },
+  {
+    "key": "1:96061",
+    "modelBytes": 4712,
+    "nodes": 1,
+    "seconds": 0.000287417,
+    "sourceBytes": 2623
+  },
+  {
+    "key": "1:96062",
+    "modelBytes": 4711,
+    "nodes": 1,
+    "seconds": 0.000272208,
+    "sourceBytes": 2621
+  },
+  {
+    "key": "1:96063",
+    "modelBytes": 4711,
+    "nodes": 1,
+    "seconds": 0.000271833,
+    "sourceBytes": 2623
+  },
+  {
+    "key": "1:96064",
+    "modelBytes": 4710,
+    "nodes": 1,
+    "seconds": 0.000269208,
+    "sourceBytes": 2621
+  },
+  {
+    "key": "1:96065",
+    "modelBytes": 5078,
+    "nodes": 1,
+    "seconds": 0.000283458,
+    "sourceBytes": 3315
+  },
+  {
+    "key": "1:96066",
+    "modelBytes": 5039,
+    "nodes": 1,
+    "seconds": 0.000284375,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:96067",
+    "modelBytes": 5036,
+    "nodes": 1,
+    "seconds": 0.000283667,
+    "sourceBytes": 3202
+  },
+  {
+    "key": "1:96068",
+    "modelBytes": 5075,
+    "nodes": 1,
+    "seconds": 0.000278917,
+    "sourceBytes": 3328
+  },
+  {
+    "key": "1:96069",
+    "modelBytes": 4973,
+    "nodes": 1,
+    "seconds": 0.00028,
+    "sourceBytes": 3196
+  },
+  {
+    "key": "1:96070",
+    "modelBytes": 5142,
+    "nodes": 1,
+    "seconds": 0.000281291,
+    "sourceBytes": 3098
+  },
+  {
+    "key": "1:96071",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000281583,
+    "sourceBytes": 3119
+  },
+  {
+    "key": "1:96072",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.000285958,
+    "sourceBytes": 3111
+  },
+  {
+    "key": "1:96073",
+    "modelBytes": 4981,
+    "nodes": 1,
+    "seconds": 0.000292667,
+    "sourceBytes": 3207
+  },
+  {
+    "key": "1:96074",
+    "modelBytes": 5050,
+    "nodes": 1,
+    "seconds": 0.000279208,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:96075",
+    "modelBytes": 5144,
+    "nodes": 1,
+    "seconds": 0.000279416,
+    "sourceBytes": 3123
+  },
+  {
+    "key": "1:96076",
+    "modelBytes": 5036,
+    "nodes": 1,
+    "seconds": 0.000277292,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:96077",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000281042,
+    "sourceBytes": 3165
+  },
+  {
+    "key": "1:96078",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000279375,
+    "sourceBytes": 3200
+  },
+  {
+    "key": "1:96079",
+    "modelBytes": 5130,
+    "nodes": 1,
+    "seconds": 0.000276125,
+    "sourceBytes": 3187
+  },
+  {
+    "key": "1:96080",
+    "modelBytes": 5129,
+    "nodes": 1,
+    "seconds": 0.000275458,
+    "sourceBytes": 3222
+  },
+  {
+    "key": "1:96081",
+    "modelBytes": 4914,
+    "nodes": 1,
+    "seconds": 0.000274875,
+    "sourceBytes": 3168
+  },
+  {
+    "key": "1:96082",
+    "modelBytes": 5158,
+    "nodes": 1,
+    "seconds": 0.000276791,
+    "sourceBytes": 3211
+  },
+  {
+    "key": "1:96083",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000274042,
+    "sourceBytes": 3224
+  },
+  {
+    "key": "1:96084",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.001694042,
+    "sourceBytes": 3152
+  },
+  {
+    "key": "1:96085",
+    "modelBytes": 5146,
+    "nodes": 1,
+    "seconds": 0.000773708,
+    "sourceBytes": 3189
+  },
+  {
+    "key": "1:96086",
+    "modelBytes": 5040,
+    "nodes": 1,
+    "seconds": 0.000618583,
+    "sourceBytes": 3190
+  },
+  {
+    "key": "1:96087",
+    "modelBytes": 5057,
+    "nodes": 1,
+    "seconds": 0.001750916,
+    "sourceBytes": 3208
+  },
+  {
+    "key": "1:96088",
+    "modelBytes": 5140,
+    "nodes": 1,
+    "seconds": 0.001159333,
+    "sourceBytes": 3178
+  },
+  {
+    "key": "1:96089",
+    "modelBytes": 5037,
+    "nodes": 1,
+    "seconds": 0.00073325,
+    "sourceBytes": 3203
+  },
+  {
+    "key": "1:96090",
+    "modelBytes": 5054,
+    "nodes": 1,
+    "seconds": 0.000691208,
+    "sourceBytes": 3221
+  },
+  {
+    "key": "1:96091",
+    "modelBytes": 5141,
+    "nodes": 1,
+    "seconds": 0.000460833,
+    "sourceBytes": 3200
+  },
+  {
+    "key": "1:96092",
+    "modelBytes": 5154,
+    "nodes": 1,
+    "seconds": 0.000351583,
+    "sourceBytes": 3212
+  },
+  {
+    "key": "1:96093",
+    "modelBytes": 5145,
+    "nodes": 1,
+    "seconds": 0.000866458,
+    "sourceBytes": 3224
+  },
+  {
+    "key": "1:96094",
+    "modelBytes": 4904,
+    "nodes": 1,
+    "seconds": 0.002400959,
+    "sourceBytes": 3180
+  },
+  {
+    "key": "1:96095",
+    "modelBytes": 628079,
+    "nodes": 137,
+    "seconds": 0.0358615,
+    "sourceBytes": 553857
+  },
+  {
+    "key": "1:96232",
+    "modelBytes": 3362071,
+    "nodes": 714,
+    "seconds": 0.151472,
+    "sourceBytes": 2533454
+  },
+  {
+    "key": "1:96946",
+    "modelBytes": 956409,
+    "nodes": 124,
+    "seconds": 0.034655875,
+    "sourceBytes": 470988
+  },
+  {
+    "key": "1:97070",
+    "modelBytes": 1195961,
+    "nodes": 172,
+    "seconds": 0.030633875,
+    "sourceBytes": 611799
+  },
+  {
+    "key": "1:97242",
+    "modelBytes": 5926,
+    "nodes": 1,
+    "seconds": 0.000539792,
+    "sourceBytes": 3393
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:97243",
+    "sourceBytes": 3446
+  },
+  {
+    "key": "1:97244",
+    "modelBytes": 5918,
+    "nodes": 1,
+    "seconds": 0.00035075,
+    "sourceBytes": 3394
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:97245",
+    "sourceBytes": 3447
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:97246",
+    "sourceBytes": 3446
+  },
+  {
+    "key": "1:97247",
+    "modelBytes": 5926,
+    "nodes": 1,
+    "seconds": 0.000769958,
+    "sourceBytes": 3393
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:97248",
+    "sourceBytes": 3447
+  },
+  {
+    "key": "1:97249",
+    "modelBytes": 5918,
+    "nodes": 1,
+    "seconds": 0.00276525,
+    "sourceBytes": 3394
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:97250",
+    "sourceBytes": 3421
+  },
+  {
+    "key": "1:97251",
+    "modelBytes": 5902,
+    "nodes": 1,
+    "seconds": 0.0009065,
+    "sourceBytes": 3418
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:97252",
+    "sourceBytes": 3422
+  },
+  {
+    "key": "1:97253",
+    "modelBytes": 5903,
+    "nodes": 1,
+    "seconds": 0.000655791,
+    "sourceBytes": 3419
+  },
+  {
+    "key": "1:97254",
+    "modelBytes": 5902,
+    "nodes": 1,
+    "seconds": 0.000736459,
+    "sourceBytes": 3418
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:97255",
+    "sourceBytes": 3421
+  },
+  {
+    "key": "1:97256",
+    "modelBytes": 5903,
+    "nodes": 1,
+    "seconds": 0.000773542,
+    "sourceBytes": 3419
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: invalid imported document: Invalid paint parameters (kind=linear, opacity=1, stops=2, transformInvertible=true)",
+    "key": "1:97257",
+    "sourceBytes": 3422
+  },
+  {
+    "key": "1:97258",
+    "modelBytes": 48973,
+    "nodes": 18,
+    "seconds": 0.005365333,
+    "sourceBytes": 69786
+  },
+  {
+    "key": "1:97276",
+    "modelBytes": 19271,
+    "nodes": 4,
+    "seconds": 0.003270458,
+    "sourceBytes": 9080
+  },
+  {
+    "key": "1:97280",
+    "modelBytes": 5170654,
+    "nodes": 766,
+    "seconds": 0.372710375,
+    "sourceBytes": 8127572
+  },
+  {
+    "key": "2:5",
+    "modelBytes": 14660585,
+    "nodes": 274,
+    "seconds": 0.149365,
+    "sourceBytes": 1337670
+  },
+  {
+    "key": "2:279",
+    "modelBytes": 14660580,
+    "nodes": 274,
+    "seconds": 0.129960208,
+    "sourceBytes": 1337665
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: unsupported lossless conversion: Sketch shapeGroup `769DB555-E660-49CA-AC6E-7C4C60C1B363` requires 1–64 operands",
+    "key": "2:553",
+    "sourceBytes": 10858851
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: unsupported lossless conversion: Sketch shapeGroup `04E0756B-B86C-4AE1-9895-721DCE82FDEA` requires 1–64 operands",
+    "key": "2:3457",
+    "sourceBytes": 10858850
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: unsupported lossless conversion: Sketch shapeGroup `3B601323-6B6B-4682-81DA-66D4A293962E` requires 1–64 operands",
+    "key": "2:6361",
+    "sourceBytes": 10858849
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: unsupported lossless conversion: Sketch shapeGroup `05DEA556-C6D7-4A6C-8719-FD84FFA2AE49` requires 1–64 operands",
+    "key": "2:9265",
+    "sourceBytes": 10858849
+  },
+  {
+    "error": "LARGE_DOCUMENT_ERROR: unsupported lossless conversion: Sketch shapeGroup `07F5C5CF-361D-4777-B757-643FFCB074B9` requires 1–64 operands",
+    "key": "2:12169",
+    "sourceBytes": 10858843
+  },
+  {
+    "key": "2:15073",
+    "modelBytes": 2736483,
+    "nodes": 1586,
+    "seconds": 0.26989625,
+    "sourceBytes": 5295674
+  },
+  {
+    "key": "2:16659",
+    "modelBytes": 2736483,
+    "nodes": 1586,
+    "seconds": 0.313548875,
+    "sourceBytes": 5295674
+  },
+  {
+    "key": "2:18245",
+    "modelBytes": 14099910,
+    "nodes": 1207,
+    "seconds": 0.37721075,
+    "sourceBytes": 4191905
+  },
+  {
+    "key": "2:19452",
+    "modelBytes": 14099905,
+    "nodes": 1207,
+    "seconds": 0.30608375,
+    "sourceBytes": 4191900
+  },
+  {
+    "key": "2:20659",
+    "modelBytes": 13787864,
+    "nodes": 1767,
+    "seconds": 0.391690166,
+    "sourceBytes": 5715689
+  },
+  {
+    "key": "2:22426",
+    "modelBytes": 13787859,
+    "nodes": 1767,
+    "seconds": 0.300500708,
+    "sourceBytes": 5715684
+  },
+  {
+    "key": "2:24193",
+    "modelBytes": 98115,
+    "nodes": 1,
+    "seconds": 0.002066333,
+    "sourceBytes": 2892
+  },
+  {
+    "key": "2:24194",
+    "modelBytes": 98120,
+    "nodes": 1,
+    "seconds": 0.001382083,
+    "sourceBytes": 2897
+  },
+  {
+    "key": "2:24195",
+    "modelBytes": 21167,
+    "nodes": 9,
+    "seconds": 0.001377084,
+    "sourceBytes": 26844
+  },
+  {
+    "key": "2:24204",
+    "modelBytes": 21172,
+    "nodes": 9,
+    "seconds": 0.002649334,
+    "sourceBytes": 26849
+  },
+  {
+    "key": "2:24213",
+    "modelBytes": 16092,
+    "nodes": 6,
+    "seconds": 0.002087208,
+    "sourceBytes": 17652
+  },
+  {
+    "key": "2:24219",
+    "modelBytes": 16097,
+    "nodes": 6,
+    "seconds": 0.001849833,
+    "sourceBytes": 17657
+  },
+  {
+    "key": "2:24225",
+    "modelBytes": 15957,
+    "nodes": 6,
+    "seconds": 0.001156167,
+    "sourceBytes": 17661
+  },
+  {
+    "key": "2:24231",
+    "modelBytes": 15962,
+    "nodes": 6,
+    "seconds": 0.001646917,
+    "sourceBytes": 17666
+  },
+  {
+    "key": "2:24237",
+    "modelBytes": 15986,
+    "nodes": 6,
+    "seconds": 0.001948709,
+    "sourceBytes": 17788
+  },
+  {
+    "key": "2:24243",
+    "modelBytes": 15991,
+    "nodes": 6,
+    "seconds": 0.000957125,
+    "sourceBytes": 17793
+  },
+  {
+    "key": "2:24249",
+    "modelBytes": 17522,
+    "nodes": 7,
+    "seconds": 0.000962458,
+    "sourceBytes": 20090
+  },
+  {
+    "key": "2:24256",
+    "modelBytes": 17527,
+    "nodes": 7,
+    "seconds": 0.001491584,
+    "sourceBytes": 20095
+  },
+  {
+    "key": "2:24263",
+    "modelBytes": 17338,
+    "nodes": 7,
+    "seconds": 0.001037667,
+    "sourceBytes": 20037
+  },
+  {
+    "key": "2:24270",
+    "modelBytes": 17343,
+    "nodes": 7,
+    "seconds": 0.000979042,
+    "sourceBytes": 20042
+  },
+  {
+    "key": "2:24277",
+    "modelBytes": 17445,
+    "nodes": 7,
+    "seconds": 0.000962834,
+    "sourceBytes": 19964
+  },
+  {
+    "key": "2:24284",
+    "modelBytes": 17450,
+    "nodes": 7,
+    "seconds": 0.000944125,
+    "sourceBytes": 19969
+  },
+  {
+    "key": "2:24291",
+    "modelBytes": 17633,
+    "nodes": 7,
+    "seconds": 0.000938583,
+    "sourceBytes": 20131
+  },
+  {
+    "key": "2:24298",
+    "modelBytes": 17638,
+    "nodes": 7,
+    "seconds": 0.0009415,
+    "sourceBytes": 20136
+  },
+  {
+    "key": "2:24305",
+    "modelBytes": 19468,
+    "nodes": 8,
+    "seconds": 0.001059709,
+    "sourceBytes": 22974
+  },
+  {
+    "key": "2:24313",
+    "modelBytes": 19473,
+    "nodes": 8,
+    "seconds": 0.008446708,
+    "sourceBytes": 22979
+  },
+  {
+    "key": "2:24321",
+    "modelBytes": 19393,
+    "nodes": 8,
+    "seconds": 0.001234833,
+    "sourceBytes": 22943
+  },
+  {
+    "key": "2:24329",
+    "modelBytes": 19398,
+    "nodes": 8,
+    "seconds": 0.001081416,
+    "sourceBytes": 22948
+  },
+  {
+    "key": "2:24337",
+    "modelBytes": 19639,
+    "nodes": 8,
+    "seconds": 0.0011175,
+    "sourceBytes": 24084
+  },
+  {
+    "key": "2:24345",
+    "modelBytes": 19644,
+    "nodes": 8,
+    "seconds": 0.001108291,
+    "sourceBytes": 24089
+  },
+  {
+    "key": "2:24353",
+    "modelBytes": 21347,
+    "nodes": 9,
+    "seconds": 0.001155291,
+    "sourceBytes": 26786
+  },
+  {
+    "key": "2:24362",
+    "modelBytes": 21353,
+    "nodes": 9,
+    "seconds": 0.001143,
+    "sourceBytes": 26792
+  },
+  {
+    "key": "2:24371",
+    "modelBytes": 16232,
+    "nodes": 6,
+    "seconds": 0.0008605,
+    "sourceBytes": 17778
+  },
+  {
+    "key": "2:24377",
+    "modelBytes": 16238,
+    "nodes": 6,
+    "seconds": 0.000846083,
+    "sourceBytes": 17784
+  },
+  {
+    "key": "2:24383",
+    "modelBytes": 16118,
+    "nodes": 6,
+    "seconds": 0.000840833,
+    "sourceBytes": 17830
+  },
+  {
+    "key": "2:24389",
+    "modelBytes": 16124,
+    "nodes": 6,
+    "seconds": 0.000841833,
+    "sourceBytes": 17836
+  },
+  {
+    "key": "2:24395",
+    "modelBytes": 15991,
+    "nodes": 6,
+    "seconds": 0.000834708,
+    "sourceBytes": 17637
+  },
+  {
+    "key": "2:24401",
+    "modelBytes": 15997,
+    "nodes": 6,
+    "seconds": 0.000834833,
+    "sourceBytes": 17643
+  },
+  {
+    "key": "2:24407",
+    "modelBytes": 17763,
+    "nodes": 7,
+    "seconds": 0.000928584,
+    "sourceBytes": 20210
+  },
+  {
+    "key": "2:24414",
+    "modelBytes": 17769,
+    "nodes": 7,
+    "seconds": 0.000928958,
+    "sourceBytes": 20216
+  },
+  {
+    "key": "2:24421",
+    "modelBytes": 17574,
+    "nodes": 7,
+    "seconds": 0.000927625,
+    "sourceBytes": 20128
+  },
+  {
+    "key": "2:24428",
+    "modelBytes": 17579,
+    "nodes": 7,
+    "seconds": 0.000925958,
+    "sourceBytes": 20133
+  },
+  {
+    "key": "2:24435",
+    "modelBytes": 17390,
+    "nodes": 7,
+    "seconds": 0.00291075,
+    "sourceBytes": 20068
+  },
+  {
+    "key": "2:24442",
+    "modelBytes": 17395,
+    "nodes": 7,
+    "seconds": 0.002192583,
+    "sourceBytes": 20073
+  },
+  {
+    "key": "2:24449",
+    "modelBytes": 5789077,
+    "nodes": 540,
+    "seconds": 0.120306208,
+    "sourceBytes": 2905357
+  },
+  {
+    "key": "2:24989",
+    "modelBytes": 5789069,
+    "nodes": 540,
+    "seconds": 0.150523833,
+    "sourceBytes": 2905349
+  },
+  {
+    "key": "2:25529",
+    "modelBytes": 18154,
+    "nodes": 8,
+    "seconds": 0.001403834,
+    "sourceBytes": 21389
+  },
+  {
+    "key": "2:25537",
+    "modelBytes": 18159,
+    "nodes": 8,
+    "seconds": 0.00105975,
+    "sourceBytes": 21394
+  },
+  {
+    "key": "3:5",
+    "modelBytes": 5188,
+    "nodes": 2,
+    "seconds": 0.000468708,
+    "sourceBytes": 4568
+  },
+  {
+    "key": "3:7",
+    "modelBytes": 12793,
+    "nodes": 6,
+    "seconds": 0.003939917,
+    "sourceBytes": 9718
+  },
+  {
+    "key": "3:11",
+    "modelBytes": 7241,
+    "nodes": 3,
+    "seconds": 0.000491541,
+    "sourceBytes": 7560
+  },
+  {
+    "key": "3:14",
+    "modelBytes": 23569,
+    "nodes": 15,
+    "seconds": 0.001549667,
+    "sourceBytes": 35861
+  },
+  {
+    "key": "3:29",
+    "modelBytes": 313224,
+    "nodes": 114,
+    "seconds": 0.035522458,
+    "sourceBytes": 346595
+  },
+  {
+    "key": "3:143",
+    "modelBytes": 7261,
+    "nodes": 3,
+    "seconds": 0.001277083,
+    "sourceBytes": 7563
+  },
+  {
+    "key": "3:146",
+    "modelBytes": 5738,
+    "nodes": 2,
+    "seconds": 0.001008542,
+    "sourceBytes": 5405
+  },
+  {
+    "key": "3:148",
+    "modelBytes": 5553,
+    "nodes": 2,
+    "seconds": 0.0008295,
+    "sourceBytes": 5186
+  },
+  {
+    "key": "3:150",
+    "modelBytes": 13127,
+    "nodes": 6,
+    "seconds": 0.003291125,
+    "sourceBytes": 9618
+  },
+  {
+    "key": "3:154",
+    "modelBytes": 5486,
+    "nodes": 2,
+    "seconds": 0.000394042,
+    "sourceBytes": 4092
+  },
+  {
+    "key": "3:156",
+    "modelBytes": 7485,
+    "nodes": 3,
+    "seconds": 0.001307625,
+    "sourceBytes": 8432
+  },
+  {
+    "key": "3:159",
+    "modelBytes": 31191,
+    "nodes": 16,
+    "seconds": 0.004851292,
+    "sourceBytes": 58136
+  },
+  {
+    "key": "3:175",
+    "modelBytes": 147846,
+    "nodes": 85,
+    "seconds": 0.022463833,
+    "sourceBytes": 181002
+  },
+  {
+    "key": "3:243",
+    "modelBytes": 9950,
+    "nodes": 4,
+    "seconds": 0.003511,
+    "sourceBytes": 12004
+  },
+  {
+    "key": "3:247",
+    "modelBytes": 9097,
+    "nodes": 3,
+    "seconds": 0.000654833,
+    "sourceBytes": 10596
+  },
+  {
+    "key": "3:250",
+    "modelBytes": 87649,
+    "nodes": 62,
+    "seconds": 0.012716292,
+    "sourceBytes": 188121
+  },
+  {
+    "key": "3:312",
+    "modelBytes": 10996,
+    "nodes": 4,
+    "seconds": 0.0007465,
+    "sourceBytes": 12814
+  },
+  {
+    "key": "3:316",
+    "modelBytes": 48779,
+    "nodes": 24,
+    "seconds": 0.00977025,
+    "sourceBytes": 90580
+  },
+  {
+    "key": "3:340",
+    "modelBytes": 31207,
+    "nodes": 16,
+    "seconds": 0.003886792,
+    "sourceBytes": 58155
+  },
+  {
+    "key": "3:356",
+    "modelBytes": 12665,
+    "nodes": 5,
+    "seconds": 0.000928875,
+    "sourceBytes": 12811
+  },
+  {
+    "key": "3:361",
+    "modelBytes": 72873,
+    "nodes": 34,
+    "seconds": 0.008500875,
+    "sourceBytes": 78555
+  },
+  {
+    "key": "3:379",
+    "modelBytes": 45595,
+    "nodes": 22,
+    "seconds": 0.004939625,
+    "sourceBytes": 67852
+  },
+  {
+    "key": "3:401",
+    "modelBytes": 79279,
+    "nodes": 39,
+    "seconds": 0.007222083,
+    "sourceBytes": 79711
+  },
+  {
+    "key": "3:424",
+    "modelBytes": 117074,
+    "nodes": 58,
+    "seconds": 0.010255625,
+    "sourceBytes": 142992
+  },
+  {
+    "key": "3:466",
+    "modelBytes": 31201,
+    "nodes": 16,
+    "seconds": 0.002231125,
+    "sourceBytes": 58147
+  },
+  {
+    "key": "3:482",
+    "modelBytes": 16892,
+    "nodes": 6,
+    "seconds": 0.000900792,
+    "sourceBytes": 15309
+  },
+  {
+    "key": "3:488",
+    "modelBytes": 17744,
+    "nodes": 8,
+    "seconds": 0.001210292,
+    "sourceBytes": 28709
+  },
+  {
+    "key": "3:496",
+    "modelBytes": 41390,
+    "nodes": 26,
+    "seconds": 0.004271917,
+    "sourceBytes": 74994
+  },
+  {
+    "key": "3:522",
+    "modelBytes": 116212,
+    "nodes": 57,
+    "seconds": 0.014939708,
+    "sourceBytes": 141567
+  },
+  {
+    "key": "3:563",
+    "modelBytes": 116629,
+    "nodes": 57,
+    "seconds": 0.017513292,
+    "sourceBytes": 141804
+  },
+  {
+    "key": "3:604",
+    "modelBytes": 10131,
+    "nodes": 3,
+    "seconds": 0.000873833,
+    "sourceBytes": 11426
+  },
+  {
+    "key": "3:607",
+    "modelBytes": 39195,
+    "nodes": 19,
+    "seconds": 0.003586709,
+    "sourceBytes": 73019
+  },
+  {
+    "key": "3:626",
+    "modelBytes": 49642,
+    "nodes": 25,
+    "seconds": 0.003767375,
+    "sourceBytes": 92003
+  },
+  {
+    "key": "3:651",
+    "modelBytes": 54459,
+    "nodes": 26,
+    "seconds": 0.015965791,
+    "sourceBytes": 4899
+  },
+  {
+    "key": "3:654",
+    "modelBytes": 141144,
+    "nodes": 56,
+    "seconds": 0.010487834,
+    "sourceBytes": 182125
+  },
+  {
+    "key": "3:694",
+    "modelBytes": 76521,
+    "nodes": 41,
+    "seconds": 0.00862675,
+    "sourceBytes": 4877
+  },
+  {
+    "key": "3:697",
+    "modelBytes": 23516,
+    "nodes": 7,
+    "seconds": 0.001739791,
+    "sourceBytes": 36988
+  },
+  {
+    "key": "3:704",
+    "modelBytes": 27208,
+    "nodes": 17,
+    "seconds": 0.002393459,
+    "sourceBytes": 47540
+  },
+  {
+    "key": "3:721",
+    "modelBytes": 14223,
+    "nodes": 6,
+    "seconds": 0.000865916,
+    "sourceBytes": 18382
+  },
+  {
+    "key": "3:727",
+    "modelBytes": 13407,
+    "nodes": 5,
+    "seconds": 0.000735,
+    "sourceBytes": 17005
+  },
+  {
+    "key": "3:732",
+    "modelBytes": 78326,
+    "nodes": 38,
+    "seconds": 0.01171275,
+    "sourceBytes": 78300
+  },
+  {
+    "key": "3:754",
+    "modelBytes": 48716,
+    "nodes": 24,
+    "seconds": 0.008391542,
+    "sourceBytes": 90516
+  }
+]

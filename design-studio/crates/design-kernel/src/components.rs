@@ -220,6 +220,7 @@ pub const FIELDS: &[&str] = &[
     "sizing",
     "constraints",
     "network",
+    "vectorGeometry",
     "points",
     "innerRadius",
     "clip",
@@ -562,7 +563,7 @@ fn apply_fields(n: &mut Node, fields: Option<&BTreeMap<String, Value>>) -> Resul
         crate::mutation::reconcile(
             n,
             &mut next,
-            fields.contains_key("network"),
+            fields.contains_key("network") || fields.contains_key("vectorGeometry"),
             fields.contains_key("textRuns"),
         );
         *n = next;
@@ -836,6 +837,9 @@ impl Builder<'_> {
     }
 }
 pub fn resolve(doc: &mut Document) -> Result<(), String> {
+    resolve_roots(doc,None)
+}
+pub(crate) fn resolve_roots(doc:&mut Document, selected:Option<&BTreeSet<String>>)->Result<(),String>{
     if !has_components(doc) {
         return Ok(());
     }
@@ -877,6 +881,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
         .nodes
         .values()
         .filter(|n| n.instance.is_some() && n.instance_origin.is_none() && !owned.contains(&n.id))
+        .filter(|n|selected.is_none_or(|ids|ids.contains(&n.id)))
         .map(|n| n.id.clone())
         .collect();
     let inherited_modes = crate::design_system::node_mode_contexts(&source)?;

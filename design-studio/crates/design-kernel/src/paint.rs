@@ -997,7 +997,22 @@ pub fn gradient_sampling_grid(
     paint: &Paint,
     sample: Option<usize>,
 ) -> Result<Vec<f32>, String> {
-    let coordinates = GradientCoordinates::new(paint, size, matrix, rect)?;
+    gradient_sampling_grid_region(rect, rect, matrix, size, paint, sample)
+}
+/// Chunk computation retains the original inverse-composition domain and
+/// absolute sample coordinates. The full field's existing 64 MiB cap remains.
+pub fn gradient_sampling_grid_region(
+    original: Rect, rect: Rect, matrix: Transform, size: [f64;2], paint: &Paint, sample:Option<usize>,
+) -> Result<Vec<f32>,String> {
+    if u64::from(original.w)*u64::from(original.h)>4_194_304 {
+        return Err("Parameter field exceeds 64 MiB".into());
+    }
+    if rect.x<original.x || rect.y<original.y ||
+        i64::from(rect.x)+i64::from(rect.w)>i64::from(original.x)+i64::from(original.w) ||
+        i64::from(rect.y)+i64::from(rect.h)>i64::from(original.y)+i64::from(original.h) {
+        return Err("Gradient field region exceeds original geometry domain".into());
+    }
+    let coordinates = GradientCoordinates::new(paint, size, matrix, original)?;
     let offset = match sample {
         Some(i) => *crate::fidelity::SAMPLE_OFFSETS
             .get(i)

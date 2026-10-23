@@ -1,4 +1,5 @@
 import { CpuStage, measureCpuStage } from '../cpu-stage-diagnostics'
+import { documentPatch, equalValue } from '../document-patch'
 import {
   hit_test_json,
   hit_test_device_json,
@@ -10,6 +11,8 @@ import {
   snap_pixel_json,
   VectorEngine,
   DocumentHistory,
+  vector_geometry_network_json,
+  vector_geometry_scale_json,
 } from '../generated/design-kernel/design_kernel'
 import { initializeKernelModule, validateKernelDocument, kernelModuleResourceIdentity, kernelResourceSha256 } from './module'
 import { documentStage, DocumentStage } from '../document-lifecycle-diagnostics'
@@ -27,6 +30,14 @@ export function pickingPreparationResources() { return ready ? preparationResour
 // Canvas snapshots must not survive a changed main-thread font environment.
 let geometryEpoch: object = {}
 export const pickingGeometryEpoch = () => geometryEpoch
+export function kernelGeometryNetwork(geometry: NonNullable<DesignNode['vectorGeometry']>) {
+  if(!ready)throw Error('矢量内核尚未就绪')
+  return JSON.parse(vector_geometry_network_json(JSON.stringify(geometry))) as import('../model').Network
+}
+export function kernelScaleGeometry(geometry: NonNullable<DesignNode['vectorGeometry']>, sx:number, sy:number) {
+  if(!ready)throw Error('矢量内核尚未就绪')
+  return JSON.parse(vector_geometry_scale_json(JSON.stringify(geometry),sx,sy)) as NonNullable<DesignNode['vectorGeometry']>
+}
 const initialization = new InitializationGate()
 const cache = new WeakMap<DesignNode, string>()
 const boundsCache = new WeakMap<DesignNode, { key: string; value: Bounds | null }>()
@@ -39,6 +50,15 @@ export function invalidateGeometry(n: DesignNode) {
   svgCache.delete(n)
 }
 let layoutEngine: VectorEngine | undefined
+// Exact published root + engine identity; undo/branch/font switches take the
+// full path unless they still own the native receipt. Not document metadata.
+let componentBase: {document:DesignDocument;engine:VectorEngine;receipt:number}|undefined
+/** Sharing/history may return an equal immutable root with restored identities.
+ * Only complete equality renews the already native-acknowledged result. */
+export function renewComponentResolution(document:DesignDocument){
+  if(componentBase&&componentBase.engine===layoutEngine&&componentBase.document.id===document.id&&
+      equalValue(componentBase.document,document))componentBase={...componentBase,document}
+}
 export function createDocumentHistory(document: DesignDocument) {
   if (!ready) throw new Error('编辑内核尚未就绪')
   return new DocumentHistory(JSON.stringify(document))
@@ -277,6 +297,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
       'constraints',
       'visible',
       'network',
+      'vectorGeometry',
       // Removing the last selection must still resolve bound descendants.
       'variableModes',
     ] as const
@@ -329,6 +350,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
       'constraints',
       'visible',
       'network',
+      'vectorGeometry',
       // Removing the last selection must still resolve bound descendants.
       'variableModes',
     ] as const
@@ -374,18 +396,29 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
   }
   if (!ready || !layoutEngine) throw new Error('布局内核尚未就绪')
   if (components) {
-    const json = measureCpuStage(CpuStage.serialize, () => JSON.stringify(document))
-    const encoded = measureCpuStage(CpuStage.resolveComponents, () => layoutEngine!.resolve_components(json))
-    const changes = measureCpuStage(CpuStage.parse, () => JSON.parse(encoded)) as {
-      nodes: Record<string, DesignNode>
-      removed: string[]
+    const full=()=>{
+      const json=measureCpuStage(CpuStage.serialize,()=>JSON.stringify(document))
+      return measureCpuStage(CpuStage.resolveComponents,()=>layoutEngine!.resolve_components_full(json))
     }
-    if (!Object.keys(changes.nodes).length && !changes.removed.length) return document
+    let encoded:string
+    if(previous&&componentBase?.document===previous&&componentBase.engine===layoutEngine){
+      const base=componentBase
+      const patch=measureCpuStage(CpuStage.serialize,()=>JSON.stringify(documentPatch(previous,document)))
+      try{encoded=measureCpuStage(CpuStage.resolveComponents,()=>layoutEngine!.resolve_components_patch(patch,base.receipt))}
+      catch(error){if(String(error)!=='DERIVED_STATE_STALE')throw error;componentBase=undefined;encoded=full()}
+    }else encoded=full()
+    const changes = measureCpuStage(CpuStage.parse, () => JSON.parse(encoded)) as {
+      nodes: Record<string, DesignNode>;removed:string[];receipt:number
+    }
+    if(!Number.isSafeInteger(changes.receipt)||changes.receipt<1)throw Error('无效的组件派生回执')
+    const bind=(result:DesignDocument)=>{componentBase={document:result,engine:layoutEngine!,receipt:changes.receipt};return result}
+    if (!Object.keys(changes.nodes).length && !changes.removed.length) return bind(document)
     const nodes = { ...document.nodes, ...changes.nodes }
     for (const id of changes.removed) delete nodes[id]
     for (const n of Object.values(changes.nodes)) {
       for (const key of [
         'network',
+      'vectorGeometry',
         'layout',
         'sizing',
         'constraints',
@@ -396,7 +429,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
       ] as const)
         if (n[key] === null) delete n[key]
     }
-    return { ...document, nodes }
+    return bind({ ...document, nodes })
   }
   const json = measureCpuStage(CpuStage.serialize, () => JSON.stringify(document))
   const encoded = measureCpuStage(CpuStage.resolveLayout, () => layoutEngine!.resolve_layout(json))
@@ -408,7 +441,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
   const nodes = { ...document.nodes }
   for (const [id, patch] of Object.entries(patches)) {
     const next = { ...nodes[id], ...patch }
-    for (const key of ['network', 'sizing', 'constraints'] as const)
+    for (const key of ['network', 'vectorGeometry', 'sizing', 'constraints'] as const)
       if (next[key] === null) delete next[key]
     nodes[id] = next
   }
@@ -514,6 +547,7 @@ export function kernelBounds(n: DesignNode, matrix: Matrix = [1, 0, 0, 1, 0, 0])
       width: n.width,
       height: n.height,
       network: n.network,
+      vectorGeometry: n.vectorGeometry,
       vectorBrush: n.vectorBrush,
       radii: n.radii,
       smoothing: n.smoothing,

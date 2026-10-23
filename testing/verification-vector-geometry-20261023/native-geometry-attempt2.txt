@@ -1,0 +1,46 @@
+   Compiling futureox-design-kernel v0.1.0 (/Users/Apple/project/design-kernel/design-studio/crates/design-kernel)
+warning: method `over_rgba8_blend` is never used
+   --> crates/design-kernel/src/blend.rs:101:19
+    |
+ 86 | impl Pixel {
+    | ---------- method in this implementation
+...
+101 |     pub(crate) fn over_rgba8_blend(self, source: Self, opacity: f32, mode: &str) -> Self {
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `futureox-design-kernel` (lib) generated 1 warning
+    Finished `desktop-dev` profile [optimized] target(s) in 57.60s
+     Running tests/fig_geometry.rs (design-studio/target/desktop-dev/deps/fig_geometry-669c0ff16b6e1be4)
+
+running 3 tests
+test precomputed_curve_commands_keep_source_float_values_and_reject_truncation ... ok
+test segment_offsets_relative_tangents_scale_and_regions_share_one_decoder ... ok
+test truncated_or_forged_networks_never_publish_partial_geometry ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/vector_geometry.rs (design-studio/target/desktop-dev/deps/vector_geometry-e58a351fe73414b8)
+
+running 4 tests
+test source_f64_values_and_signed_zero_survive_json_without_f32_rounding ... ok
+test malformed_sequences_nonfinite_and_command_overflow_fail_before_render ... ok
+test render_geometry_preserves_cpu_pixels_hit_and_native_format_export ... FAILED
+test large_render_contour_is_admitted_without_relaxing_edit_network_limits ... ok
+
+failures:
+
+---- render_geometry_preserves_cpu_pixels_hit_and_native_format_export stdout ----
+
+thread 'render_geometry_preserves_cpu_pixels_hit_and_native_format_export' (24860309) panicked at crates/design-kernel/tests/vector_geometry.rs:36:160:
+called `Result::unwrap()` on an `Err` value: InvalidDocument("Color management requires schema 3")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    render_geometry_preserves_cpu_pixels_hit_and_native_format_export
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+error: test failed, to rerun pass `-p futureox-design-kernel --test vector_geometry`

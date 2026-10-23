@@ -221,6 +221,7 @@ vec2 decodePoint(vec4 v){uvec4 q=uvec4(round(v*255.));if(q.x==255u&&q.y==255u)re
 float distanceField(vec2 p){vec2 q=decodePoint(at(sourceB,p,u[2]));return q.x<0.?1000000.:length(p-u[2].xy-.5-q);}
 // BEGIN GENERATED MATERIAL MATH
 uint materialSelect(uint a,uint b,bool s){return s?b:a;}
+int materialSelect(int a,int b,bool s){return s?b:a;}
 // Independently derived bounded RGBA8 sampling arithmetic. Inputs must satisfy
 // the same contracts as design-kernel/src/figma_sampling.rs. No texture data,
 // reference pixels or vendor shader source is embedded here.
@@ -285,8 +286,8 @@ bool softwareRasterByte(){int mode=int(u[4].x);return BYTE_SURFACE&&u[63].y>0.5&
 uint softwareLerpByte(uint a,uint b,uint weight){
  int product=(int(b)-int(a))*int(weight);uint magnitude=uint(abs(product));
  uint quotient=magnitude>>8u;uint remainder=magnitude&255u;
- uint rounded=quotient+((remainder>128u||(remainder==128u&&(quotient&1u)!=0u))?1u:0u);
- return uint(int(a)+(product<0?-int(rounded):int(rounded)));
+ uint rounded=quotient+materialSelect(0u,1u,remainder>128u||(remainder==128u&&(quotient&1u)!=0u));
+ return uint(int(a)+materialSelect(int(rounded),-int(rounded),product<0));
 }
 uvec4 softwareSampleBytes(uvec4 p0,uvec4 p1,uvec4 p2,uvec4 p3,uint wx,uint wy){
  uvec4 result=uvec4(0u);
@@ -304,7 +305,7 @@ vec4 softwareByteValue(uvec4 value){
 uint softwareEncodeByte(float value){
  float scaled=mulRN(clamp(value,0.,1.),255.);uint integral=uint(scaled);
  float remainder=addRN(scaled,-float(integral));
- return integral+((remainder>0.5||(remainder==0.5&&(integral&1u)!=0u))?1u:0u);
+ return integral+materialSelect(0u,1u,remainder>0.5||(remainder==0.5&&(integral&1u)!=0u));
 }
 uvec4 softwareEncodeBytes(vec4 value){
  return uvec4(softwareEncodeByte(value.x),softwareEncodeByte(value.y),softwareEncodeByte(value.z),softwareEncodeByte(value.w));
@@ -691,11 +692,24 @@ vec4 opticalRay(vec2 p,vec2 delta,float factor){
  uvec4 d=uvec4(round(at(sourceA,base+vec2(1,1),u[1])*255.));
  return figmaSampleQ8(a,b,c,d,figmaFractionQ8(k.x),figmaFractionQ8(k.y));
 }
+vec2 opticalRayChannelAlpha(vec2 p,vec2 delta,float factor,uint channel){
+ vec2 offset=vec2(addRN(u[11].x,mulRN(delta.x,factor)),addRN(u[11].y,mulRN(delta.y,factor)));
+ vec2 base=p+floor(offset);vec2 k=offset-floor(offset);
+ return bsBilinearChannelAlpha(at(sourceA,base,u[1]),at(sourceA,base+vec2(1,0),u[1]),at(sourceA,base+vec2(0,1),u[1]),at(sourceA,base+vec2(1,1),u[1]),k,channel,uint(u[63].w),uint(u[63].z));
+}
 vec4 analyticGlass(vec2 p){
- vec4 field=at(sourceB,p,u[2]);if(!BYTE_SURFACE&&u[12].x==2.)field=u[13];float dispersion=u[10].x;
+ // Explicit caller contract: immediate same-pixel mode-3 masked composition.
+ // Its zero-alpha source returns the destination before source RGB is used.
+ // Do not apply to arbitrary unmasked or masked optical outputs.
+ if(!BYTE_SURFACE && u[10].y>0.5 && at(sourceC,p,u[3]).a==0.){return vec4(0);}
+ vec4 field=at(sourceB,p,u[2]);if(!BYTE_SURFACE&&u[12].x==2.){field=u[13];}float dispersion=u[10].x;
  bool capturedSpectrum=BYTE_SURFACE&&u[12].x>0.5;
+ // Flat interior: finite nonnegative ray factors all multiply the exact
+ // zero displacement to the same offset. Keep every weighted accumulation.
+ bool sameRay=!BYTE_SURFACE&&all(equal((floatBitsToUint(field.xy)&uvec2(0x7fffffffu)),uvec2(0u)))&&dispersion>=0.&&dispersion<=1.&&u[11].z==3.&&u[11].w==8.&&all(lessThanEqual((floatBitsToUint(u[11].xy)&uvec2(0x7fffffffu)),uvec2(0x7f7fffffu)))&&all(notEqual(floatBitsToUint(u[11].xy),uvec2(0x80000000u)));
+ vec4 sharedRay=vec4(0);if(dispersion<0.001||sameRay){sharedRay=opticalRay(p,field.xy,1.);}
  vec4 result=vec4(0);
- if(dispersion<0.001){result=opticalRay(p,field.xy,1.);}else{
+ if(dispersion<0.001){result=sharedRay;}else{
   float weights=0.;
   // Keep the eight-ray loop dynamic so Metal does not duplicate the complete
   // exact HDR sampler for every tap during pipeline compilation.
@@ -703,13 +717,20 @@ vec4 analyticGlass(vec2 p){
    float t=0.;
    if(capturedSpectrum){t=fmaRN(float(tap),0.14285715,-0.5);}else{t=addRN(mulRN(float(tap),0.14285715),-0.5);}
    float weight=addRN(1.,-abs(mulRN(t,2.)));
-   vec4 value=vec4(0);
+   vec4 value=sharedRay;
+   if(!sameRay){value=vec4(0);
    // One call site for the exact HDR sampler, also kept dynamic. Three copies
    // of its integer accumulator substantially inflate first-use compilation.
    for(uint channel=0u;channel<uint(u[11].z);channel=channel+1u){
     float phase=addRN(t,addRN(0.5,-mulRN(float(channel),0.5)));
-    vec4 ray=opticalRay(p,field.xy,addRN(1.,mulRN(phase,dispersion)));
-    value[channel]=ray[channel];value.w=max(value.w,ray.w);
+    if(BYTE_SURFACE){
+     vec4 ray=opticalRay(p,field.xy,addRN(1.,mulRN(phase,dispersion)));
+     value[channel]=ray[channel];value.w=max(value.w,ray.w);
+    }else{
+     vec2 ray=opticalRayChannelAlpha(p,field.xy,addRN(1.,mulRN(phase,dispersion)),channel);
+     value[channel]=ray.x;value.w=max(value.w,ray.y);
+    }
+   }
    }
    if(capturedSpectrum){
     result=vec4(fmaRN(value.x,weight,result.x),fmaRN(value.y,weight,result.y),fmaRN(value.z,weight,result.z),fmaRN(value.w,weight,result.w));
@@ -799,11 +820,13 @@ vec4 linearImageTexel(ivec2 q){
  if(any(lessThan(q,ivec2(0)))||any(greaterThanEqual(q,ivec2(u[2].zw)))){return vec4(0);}
  return texelFetch(sourceB,q,0);
 }
-// Independent X/Y metadata rows or the exact dense affine fallback.
+// W=1 identifies two independent coordinate rows; general affine fields
+// retain the dense address layout. Both carry metadata only, never colours.
 vec4 byteImageAddress(vec2 p){
  ivec2 pixel=ivec2(floor(p-u[0].xy));
- if(texelFetch(sourceD,ivec2(0),0).w>.5){
-  vec4 x=texelFetch(sourceD,ivec2(pixel.x,0),0),y=texelFetch(sourceD,ivec2(pixel.y,1),0);
+ if(texelFetch(sourceD,ivec2(0),0).w>0.5){
+  vec4 x=texelFetch(sourceD,ivec2(pixel.x,0),0);
+  vec4 y=texelFetch(sourceD,ivec2(pixel.y,1),0);
   return vec4(x.x,y.x,x.z*y.z,1.);
  }
  return texelFetch(sourceD,pixel,0);
@@ -812,8 +835,16 @@ vec4 linearImage(vec2 p){
  vec4 grid=texelFetch(sourceD,ivec2(floor(p-u[0].xy)),0);ivec2 q=ivec2(grid.xy);
  return bsBilinear4(linearImageTexel(q),linearImageTexel(q+ivec2(1,0)),linearImageTexel(q+ivec2(0,1)),linearImageTexel(q+ivec2(1,1)),grid.zw,uint(u[63].w),uint(u[63].z));
 }
+vec4 gradientStop(uint index){
+ if(u[8].w>32.){return texelFetch(sourceB,ivec2(int(index),0),0);}
+ return u[13u+index];
+}
+float gradientStopAlpha(uint index){
+ if(u[8].w>32.){return texelFetch(sourceB,ivec2(int(index),1),0).x;}
+ return u[52u+index/4u][index%4u];
+}
 vec4 linearGradientStop(uint index){
- vec4 color=u[13u+index];float alpha=u[52u+index/4u][index%4u];
+ vec4 color=gradientStop(index);float alpha=gradientStopAlpha(index);
  return mulRN4(vec4(color.yzw,1.),vec4(alpha));
 }
 vec4 linearGradient(vec2 p){
@@ -894,7 +925,7 @@ vec4 shade(vec2 p){
  if(mode==0||mode==14)return a;
  if(mode==1){float v=at(sourceA,p,u[1]).a,b=at(sourceB,p,u[2]).a;v*=u[9].x>.5?1.-b:b;return vec4(v);}
  if(mode==2||mode==16){vec2 q=local(p+u[46].xy);int kind=int(u[7].x);float opacity=u[8].x;vec4 paint=vec4(u[7].yzw*opacity*u[60].y,opacity*u[60].y);if(kind==0&&u[46].z>.5)paint=u[48];
-  if((kind==1||kind==2||kind==4||kind==5)&&u[60].x<.5){float t=gradientT(p,q,kind);int count=int(u[8].w);if(count>0){bool bytePaint=u[46].w>.5;float firstAlpha=u[52].x;vec4 rgba=vec4(u[13].yzw*firstAlpha,firstAlpha);if(bytePaint)rgba=roundEven(rgba*255.);for(int i=1;i<32;i++){if(i>=count)break;vec4 l=u[12+i],r=u[13+i];if(t>l.x){float la=u[52+(i-1)/4][(i-1)%4],ra=u[52+i/4][i%4];vec4 left=vec4(l.yzw*la,la),right=vec4(r.yzw*ra,ra);if(bytePaint){left=roundEven(left*255.);right=roundEven(right*255.);}float k=clamp((t-l.x)/max(r.x-l.x,1e-8),0.,1.);rgba=bytePaint?vec4(colourMix(left.r,right.r,k),colourMix(left.g,right.g,k),colourMix(left.b,right.b,k),colourMix(left.a,right.a,k)):left+(right-left)*k;}}paint=rgba*opacity;if(bytePaint)paint=roundEven(rgba*opacity)/255.;}}
+  if((kind==1||kind==2||kind==4||kind==5)&&u[60].x<.5){float t=gradientT(p,q,kind);int count=int(u[8].w);if(count>0){bool bytePaint=u[46].w>.5;float firstAlpha=gradientStopAlpha(0u);vec4 rgba=vec4(gradientStop(0u).yzw*firstAlpha,firstAlpha);if(bytePaint)rgba=roundEven(rgba*255.);for(int i=1;i<64;i++){if(i>=count)break;vec4 l=gradientStop(uint(i-1)),r=gradientStop(uint(i));if(t>l.x){float la=gradientStopAlpha(uint(i-1)),ra=gradientStopAlpha(uint(i));vec4 left=vec4(l.yzw*la,la),right=vec4(r.yzw*ra,ra);if(bytePaint){left=roundEven(left*255.);right=roundEven(right*255.);}float k=clamp((t-l.x)/max(r.x-l.x,1e-8),0.,1.);rgba=bytePaint?vec4(colourMix(left.r,right.r,k),colourMix(left.g,right.g,k),colourMix(left.b,right.b,k),colourMix(left.a,right.a,k)):left+(right-left)*k;}}paint=rgba*opacity;if(bytePaint)paint=roundEven(rgba*opacity)/255.;}}
   if(u[60].x>.5){
    if(kind==0)paint=mulRN4(mulRN4(vec4(u[7].yzw,1.),vec4(u[60].y)),vec4(opacity));
    if(kind==1||kind==2||kind==4||kind==5){paint=mulRN4(linearGradient(p),vec4(opacity));}

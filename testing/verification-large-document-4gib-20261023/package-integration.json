@@ -1,0 +1,262 @@
+{
+  "baseline": "c65ed474141825968cb5e032d6add4cecd584a6d",
+  "incomingArchiveSha256": "bcc98b3729529ff81f7b127be70baf736af1c2790dc7d4c08e0cd04208498f68",
+  "duplicateArchiveSha256": "be05c0c639b03779e6bc9b62af52574f9bf0dd34099a147d36bae637e6425826",
+  "duplicateSourcePathsComparedToHEAD": [
+    [
+      "design-studio/crates/design-kernel/src/interop.rs",
+      true
+    ],
+    [
+      "design-studio/crates/design-kernel/src/sketch/archive.rs",
+      true
+    ],
+    [
+      "frontend/design-client/scripts/node-ts-local-resolver.mjs",
+      true
+    ],
+    [
+      "frontend/design-client/src/App.tsx",
+      true
+    ],
+    [
+      "frontend/design-client/src/append-image-files.test.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/append-image-files.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/canvas-action-diagnostics.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/editor-action-route.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-diagnostics.test.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-diagnostics.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-fig-archive.test.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-fig-archive.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-fig.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-file-worker.test.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-file-worker.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-input-policy.test.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-input-policy.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-ownership.test.mjs",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-picker-routing.test.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/import-worker.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/kernel/native-compile-failure-codes.test.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/kernel/render-failure-telemetry.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/operation-status-messages.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/operation-status-producers-next.test.ts",
+      true
+    ],
+    [
+      "frontend/design-client/src/persistence.ts",
+      true
+    ],
+    [
+      "frontend/design-desktop/src/render-terminal-diagnostics.mjs",
+      true
+    ]
+  ],
+  "changes": [
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "previousSha256": "8ac17a3b10c1f0058a2c6c767883011490430b4365be0f3b7570faf512131a24",
+      "sha256": "9325d731cc0182db141529bb725752a68986db4e86f76dcc175eff21ebc35a6f",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/canvas-action-diagnostics.ts",
+      "previousSha256": "a29fb5fb979de69510e9983a7169a4e21f399247a968b778cb8931f95948c40c",
+      "sha256": "b1d4eec712f605790a8a9ac93932ec53dff90adf066286c49993677044d6e2b3",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-layers.ts",
+      "previousSha256": "faefe582646a2c2f6399c7cd48683dfc75ce058981b1ae5153e1023ec6558d6e",
+      "sha256": "4ce26e638cecb5dba2da349d379f45036117e084ba7c15ca106510ca4c7eef75",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.test.ts",
+      "previousSha256": "5248be9815ba695c22666707944dce390bf508e0f4c8a623951d205051a981ac",
+      "sha256": "e91171e29e48ba18acf2a71fe1b3e33e7c237a1b01ec4f5fc9b8965bd49f3c31",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.ts",
+      "previousSha256": "c33941df61d759afb8f086eaa91fc5202ef56fbc46a27675c7ff1cf17fb476f0",
+      "sha256": "8e49783ab9733910535aad6c0dc7f090f649608fc56ec46f29b02cfe65d8c541",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-action-correlation.test.ts",
+      "previousSha256": null,
+      "sha256": "7a1ca0ade223d823522458c37c65dab114f0464e9e2353673073cf6cfa36f4ee",
+      "mode": 420,
+      "previousMode": null
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-action-correlation.ts",
+      "previousSha256": null,
+      "sha256": "8b6ab7b4d2deff80d66821ff7ef815f1eb2e0d7ac88b9226ff9b7777c77cc9fb",
+      "mode": 420,
+      "previousMode": null
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-diagnostics-sampling.test.ts",
+      "previousSha256": null,
+      "sha256": "afe986f9cd7d974daba573dd02d2c593e5c46814aa75ca6900b61f516fac834d",
+      "mode": 420,
+      "previousMode": null
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-diagnostics.ts",
+      "previousSha256": "b59afc657d1184eb2aa209c474c4abc1df3ad2008b72a4d5569cb1e9343960f2",
+      "sha256": "6c89947f25a4cb57418a6276c94809ed3892e2c39ab26d5a3b6d96e3d54d8041",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-desktop/src/render-terminal-diagnostics.mjs",
+      "previousSha256": "68d51346de78eeb4ce034fa4fe4960101e5b0990c81c8b33c1906eebe93eb833",
+      "sha256": "df8b7ba752c87a6ee4da0fdaec6e4586275e5020c50a6076a5f45af6b7346c0c",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/canvas-action-diagnostics.test.ts",
+      "previousSha256": "e35fb7c249f68b48c432bc413e9b6e7954217bcc8f3eb2f250fdf441ba7d5128",
+      "sha256": "dbd154039c43ab2c02daeae59edb177fd791aa6de0ecdf9f3f2d3c8af7f3b658",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/desktop-session.ts",
+      "previousSha256": "1c8458d5e78de95561fdde55502d6185180cc387ee8df62d5de015ded58ecd49",
+      "sha256": "7f9400613fa6a74b982b4be681801a0c76518c9afad52ddf387aa0f1147174d1",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/document-preparation-identity.ts",
+      "previousSha256": null,
+      "sha256": "73336f7016e3d6f57777e5effbc56ca099398d4264cc0bfc2eb9f679081129f2",
+      "mode": 420,
+      "previousMode": null
+    },
+    {
+      "path": "frontend/design-client/src/document-preparation-worker-client.ts",
+      "previousSha256": null,
+      "sha256": "c0d70a20a5e903efe32d2d0b5aac0bf961ed01dbe115f93aa88664bd59668d56",
+      "mode": 420,
+      "previousMode": null
+    },
+    {
+      "path": "frontend/design-client/src/document-preparation-worker-session.test.ts",
+      "previousSha256": null,
+      "sha256": "208bf879777b129d3e2b80039a50b3930bcf78a35e09d88f45e5aada8ddfe6b9",
+      "mode": 420,
+      "previousMode": null
+    },
+    {
+      "path": "frontend/design-client/src/document-preparation-worker.test.ts",
+      "previousSha256": null,
+      "sha256": "a778e46ab562c0ca3ceb64a90905ebfe9b2cc4c5f5fe9ae4c6baf32c9743b124",
+      "mode": 420,
+      "previousMode": null
+    },
+    {
+      "path": "frontend/design-client/src/document-preparation-worker.ts",
+      "previousSha256": null,
+      "sha256": "79c1ade3ce82ec09155580af7194dcbac5b2220d5dac5446f4cd1a47073c4291",
+      "mode": 420,
+      "previousMode": null
+    },
+    {
+      "path": "frontend/design-client/src/kernel/module-lifecycle.test.mjs",
+      "previousSha256": "e0b2111827db1f5d2b921e604c108b87d6de8c050ad9f4e7ad2a45fe221e1b1d",
+      "sha256": "a28f72470800a2146d76f5589bcca8228d5928ace06f7887745daefc12f6936f",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/module.ts",
+      "previousSha256": "0b33f83cff66e4d4bc637dd615dcce44a754a19edb51f7037add4d3f5c1dd9e9",
+      "sha256": "ba40e27af1b3cb6f295a70d62d06da81a24ba3bf247b6442576fee2f5931791c",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/picking.ts",
+      "previousSha256": "73ba6b27bb2f88337b7d7a3962366450ae805c42d5076ffcebba0f74385dce64",
+      "sha256": "44cab05032d3a2179390ca0ca3beb40f31b2b99b6b5e56f4854b99c5c333cd66",
+      "mode": 420,
+      "previousMode": 420
+    },
+    {
+      "path": "frontend/design-client/src/prepared-document.ts",
+      "previousSha256": "7d3780b87f8479e268a2227bac3828c7ee8af4d7af66c0246d8e37954a575eac",
+      "sha256": "e1535496ef618de239064f15260061f14c2fc4cc2b8641bb5ea67b8d7e3656cc",
+      "mode": 420,
+      "previousMode": 420
+    }
+  ],
+  "conflicts": [],
+  "application": "All 21 before/after source hashes verified; no overlapping working changes. Archive scripts were not executed."
+}
