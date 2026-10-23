@@ -288,6 +288,15 @@ export interface Driver {
   /** Finite image paint + transparent normal blend + one exact resolve step. */
   readonly exactImageResolveStep?: boolean
   readonly scalarAlphaFilter?: boolean
+  /** Read-only admission for a complete exact-filter source. Verifies this
+   * driver's private allocation/format record and prepared exact pipelines;
+   * grants no content, finite, opaque, domain or completion certificate. */
+  supportsExactWholeTentSource?(source: Texture): boolean
+  /** Actual live device limit only; absence must retain the old 1D refusal. */
+  readonly exactFilterPacketMaxDimension?: number
+  /** New whole-filter lane only. Input is the unpadded logical packet;
+   * allocation uses the pre-admitted physical row layout, not logical bytes. */
+  uploadExactFilterPacket?(bytes: Uint8Array, width: number, height: number): Texture
   readonly exactShadowOver?: boolean
   readonly scratchBytes?: number
   /** Logically retired table storage still owned until a real completion. */

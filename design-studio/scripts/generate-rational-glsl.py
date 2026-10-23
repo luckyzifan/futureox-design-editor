@@ -25,6 +25,7 @@ def translate(source):
     for a,b in sorted(kinds.items(),key=lambda x:-len(x[0])):
         source=re.sub(r'\b'+re.escape(a)+r'\(',b+'(',source)
     source=source.replace('textureLoad(', 'texelFetch(')
+    source=source.replace('textureDimensions(', 'textureSize(')
     source=re.sub(r'\bu\(([^()]+)\)',r'u[\1]',source)
     source=source.replace('select(', 'rfSelect(')
     # GLSL comparisons of vectors use named builtins.

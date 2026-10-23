@@ -108,6 +108,7 @@ import { presentedPenVertex, remapPointerAnchor } from './canvas-published-input
 import { canvasLayerFeedback } from './canvas-layer-feedback'
 type TextEditEntry = { id: string; session: number; page: string; token: number }
 type Drag = {
+  renderFallbackCount?: number
   actionSamples?: number
   actionToken?: number
   actionRevision?: number
@@ -1827,18 +1828,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // Overlap, reparenting and Option-copy immediately use the regular path.
     if ((d.kind === 'move' && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey ||
         d.kind === 'rotate' || d.kind === 'scale') && patches) {
-      const offset = gpuMove.current?.apply(editor.state.doc, patches)
+      const offset = gpuMove.current?.apply(editor.state.doc, patches, d.actionToken ? actionTrace.token(d.actionToken) : undefined)
       if (offset) {
         if (!gpuMove.current?.feedbackPending?.() && host.current) moveCanvasFeedback(host.current, d.ids, offset, gpuMovedOverlays.current)
-        if (d.actionToken) actionTrace.sample(d.actionToken, { poseSubmittedSequence: gpuMove.current?.inputSequence?.() || 0 })
+        if (d.actionToken) actionTrace.sample(d.actionToken, { renderRouteCode: 1, poseSubmittedSequence: gpuMove.current?.inputSequence?.() || 0 })
         pendingBoardMove.current = [patches, placement]
         return
       }
+      if(d.actionToken) actionTrace.sample(d.actionToken,{renderRouteCode:gpuMove.current?2:3,renderFallbackCount:d.renderFallbackCount=Math.min(1e9,(d.renderFallbackCount||0)+1)})
       if (d.actionToken && gpuMove.current?.previewFailure?.())
         actionTrace.sample(d.actionToken, { poseFallbackReason: gpuMove.current.previewFailure() })
     }
     if (d.kind === 'move' && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey && d.ids.length === 1 &&
       retainedMove.current?.apply(editor.state.doc, d.ids[0], patches[d.ids[0]].transform!)) {
+      if(d.actionToken)actionTrace.sample(d.actionToken,{renderRouteCode:4})
       pendingBoardMove.current = [patches, placement]
       return
     }

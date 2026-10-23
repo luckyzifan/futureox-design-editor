@@ -5,10 +5,12 @@ import { desktopPet } from './desktop-pet'
 import { cancelPendingOperations, commitPendingEdits, hasPendingEdits, subscribePendingEdits } from './pending-edits'
 import type { Editor } from './engine'
 import type { WorkspaceAutomationGuard } from './automation/workspace-bridge'
-import { prepareDocument, prepareDocumentJson, takePreparedDocument, forkPreparedDocument, ensurePreparedDocument, preparedDocumentAdoptionOwner, preparedDocumentEncoding, type PreparedDocument } from './prepared-document'
+import { prepareDocument, prepareDocumentJson, prepareDocumentJsonInWorker, takePreparedDocument, forkPreparedDocument, ensurePreparedDocument, preparedDocumentAdoptionOwner, preparedDocumentEncoding, type PreparedDocument } from './prepared-document'
 import { documentStage, documentStageAsync, DocumentStage } from './document-lifecycle-diagnostics'
 import { blank, type DesignDocument } from './model'
 import { consumeDocumentJsonSyntaxFailure } from './document-admission'
+import { consumeDocumentPreparationSourceFailure } from './document-preparation-worker-client'
+import { documentPreparationRuntime } from './document-preparation-identity'
 import type { DesktopBridge, DesktopFile, DesktopResult, WorkspaceDocument, WorkspaceOpened } from './desktop'
 
 export type LeaveDecision = 'save' | 'discard' | 'cancel'
@@ -166,6 +168,7 @@ export class DesktopSession {
   private conflict = false
   private started = false
   private disposed = false
+  private readonly documentPreparations = new Set<AbortController>()
   private suppressObservation = false
   private recoveryTimer?: ReturnType<typeof setTimeout>
   private recoveryQueue: Promise<void> = Promise.resolve()
@@ -215,6 +218,7 @@ export class DesktopSession {
   }
   private advanceGeneration() {
     this.generation++
+    for (const controller of this.documentPreparations) controller.abort()
     // The cache can only serve its exact generation. Release stale full JSON
     // immediately, including navigation to a custom-codec document with no
     // replacement certificate. Baselines and uncertain idempotent writes own
@@ -536,6 +540,8 @@ export class DesktopSession {
 
   dispose() {
     this.disposed = true
+    for (const controller of this.documentPreparations) controller.abort()
+    this.documentPreparations.clear()
     cancelPendingOperations(this.editor)
     clearTimeout(this.recoveryTimer)
     this.unsubscribe()
@@ -592,6 +598,7 @@ export class DesktopSession {
       await documentStageAsync(DocumentStage.recoveryWait, () => this.recoveryQueue)
       return action()
     }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return false
       trace.result(ActionOutcome.rejected, ActionReason.validation)
       return this.failed({ status: 'error', code: 'RENDERER_ERROR', message: String(error) })
     }).then((result) => { completed = !!result; trace.result(result ? ActionOutcome.observed : this.error ? ActionOutcome.rejected : ActionOutcome.cancelled, result ? ActionReason.none : this.error ? ActionReason.validation : ActionReason.unobserved); return result }).finally(() => {
@@ -616,6 +623,30 @@ export class DesktopSession {
         Object.getOwnPropertyDescriptor(this.bridge, 'version')?.value === 1 &&
         Object.getOwnPropertyDescriptor(codec, 'decoding')?.value === 'json-parse-v1' &&
         typeof Object.getOwnPropertyDescriptor(codec, 'decode')?.value === 'function') {
+      // Production browser workers own the full admission/layout/validation,
+      // not merely JSON.decode. Preserve altered host-prototype semantics and
+      // non-browser hosts on the previous synchronous path. Unknown/dev build
+      // identity, custom assets or absent runtime digests also stay on that path.
+      if (typeof Worker !== 'undefined' && documentPreparationRuntime() && !('toJSON' in Object.prototype) && !('toJSON' in Array.prototype) &&
+          Object.getPrototypeOf(Array.prototype) === Object.prototype) {
+        const generation = this.generation, version = this.editor.state.version
+        const document = this.currentDocument, session = this.editor.sessionGeneration
+        const controller = new AbortController()
+        const current = () => !this.disposed && this.generation === generation && this.currentDocument === document &&
+          this.editor.state.version === version && this.editor.sessionGeneration === session
+        this.documentPreparations.add(controller)
+        try {
+          return await documentStageAsync(DocumentStage.prepare, () =>
+            documentStageAsync(DocumentStage.rawJsonPrepare, () => prepareDocumentJsonInWorker(json,
+              { documentId: document.id, version, generation, session: session ?? null }, controller.signal, current), json.length), json.length)
+        } catch (error) {
+          // Only this controlled worker's attempt-local source failure permits
+          // the installed codec's original error transport. Never admit its graph.
+          if (!controller.signal.aborted && current() && consumeDocumentPreparationSourceFailure(error))
+            await documentStageAsync(DocumentStage.decode, () => codec.decode(json), json.length)
+          throw error
+        } finally { this.documentPreparations.delete(controller) }
+      }
       // Match document-codec-worker's raw UTF-8 bound/error before parsing; the
       // shared admission also checks its canonical serialized byte bound.
       const syntaxFailureAttempt = {}

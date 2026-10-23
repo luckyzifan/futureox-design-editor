@@ -1,3 +1,4 @@
+import type { PoseActionToken } from './pose-action-correlation'
 import type { InteractionPreviewFailure } from './interaction-preview-recovery'
 import { effectsAreKnown } from './render-dependency'
 import type { Bounds, DesignDocument, Matrix } from '../model'
@@ -11,7 +12,7 @@ export type InteractionPlan = { document: DesignDocument; pageId: string; ids: s
 export type InteractionPoseFeedback = { x: number; y: number; matrix?: Matrix }
 export type GpuMoveControl = {
   isActive(): boolean
-  apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>): InteractionPoseFeedback | null
+  apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>, trace?: PoseActionToken): InteractionPoseFeedback | null
   covers(document: DesignDocument, ids: string[], view: CanvasCamera): boolean
   feedbackPending?(): boolean
   inputSequence?(): number

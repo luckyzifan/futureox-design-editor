@@ -1,3 +1,5 @@
+import { captureFailureCause, observedFailureCause, type FailedCaptureCause } from './pose-failed-cause'
+import { PoseActionCorrelation, type PoseActionToken } from './pose-action-correlation'
 import type { OverlayCaptureCohort } from './Surface'
 import { createHandoffTrace, gestureCode, type HandoffTrace } from './handoff-trace'
 import { createPoseDiagnostics, type PoseDiagnostics } from './pose-diagnostics'
@@ -110,12 +112,14 @@ export class InteractionRenderer {
   private poseRetiredThrough=0
   private poseRetiredReason=2
   private poseEndedThrough=0
+  private poseEndSequence:number|undefined
+  private readonly poseActions=new PoseActionCorrelation()
   private readonly poseLog:PoseDiagnostics
-  private poseEvent(stage:number,reason=0,sequence=this.lastInput.sequence,sampleKind=0) {
+  private poseEvent(stage:number,reason=0,sequence=this.lastInput.sequence,sampleKind=0,trace?:PoseActionToken,cause?:Record<string,number>) {
     if(!this.poseLog.enabled)return
-    this.poseLog.record(stage,reason,sequence,{interactionGeneration:this.generation,poseEpoch:this.props?.epoch??0,poseSampleKind:sampleKind,poseDocumentGeneration:this.poseDocumentGeneration,poseActive:Number(!!this.resident?.active),poseReady:Number(!!this.resident?.tiles.length),poseDeferred:Number(this.feedbackDeferred)})
+    this.poseLog.record(stage,reason,sequence,{...this.poseActions.fields(sequence,trace),...cause,interactionGeneration:this.generation,poseEpoch:this.props?.epoch??0,poseSampleKind:sampleKind,poseDocumentGeneration:this.poseDocumentGeneration,poseActive:Number(!!this.resident?.active),poseReady:Number(!!this.resident?.tiles.length),poseDeferred:Number(this.feedbackDeferred)})
   }
-  private clearPoseFeedback(reason:number) { this.pendingPresentedInput=undefined;this.poseEvent(6,reason);this.poseRetiredThrough=this.lastInput.sequence;this.poseRetiredReason=reason;this.poseFeedback.clear();this.poseDocumentGeneration++ }
+  private clearPoseFeedback(reason:number) { this.poseEndSequence=undefined;this.pendingPresentedInput=undefined;this.poseEvent(6,reason);this.poseRetiredThrough=this.lastInput.sequence;this.poseRetiredReason=reason;this.poseFeedback.clear();this.poseDocumentGeneration++ }
   private readonly poseFeedback = new PoseFeedback()
   private lastInput = {sequence:0,at:0}
   private lastPresentedInput = {sequence:0,at:0}
@@ -171,21 +175,21 @@ export class InteractionRenderer {
     this.poseLog=poseDiagnostics??createPoseDiagnostics(this.interactionOwner)
     this.control = {
       isActive: () => !!this.resident?.active,
-      apply: (document, patches) => {
+      apply: (document, patches, trace) => {
         const inputStarted=performance.now()
         this.endedDocument = undefined
         const r = this.resident
-        if (!r || this.error && (!r.tiles.length || r.live && !r.retainedFallback) || Object.keys(patches).some(id => !r.plan.ids.includes(id))) { this.poseEvent(7,!r?11:this.error?5:13);return null }
+        if (!r || this.error && (!r.tiles.length || r.live && !r.retainedFallback) || Object.keys(patches).some(id => !r.plan.ids.includes(id))) { this.poseEvent(7,!r?11:this.error?5:13,0,0,trace);return null }
         const fast=import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'
         const offsets = interactionPatchedOffsets(r.plan, document, patches,fast?this.baseOffsets(r.plan,document):undefined)
         const affineBase = document === r.plan.document || this.affineBase?.plan === r.plan && this.affineBase.document === document
           ? document === r.plan.document || this.affineBase!.valid : interactionTransformsOnly(r.plan, document)
         this.affineBase = { plan: r.plan, document, valid: affineBase }
         const poses = interactionPatchedTransforms(r.plan, document, patches, affineBase)
-        if (!poses || !affineBase) { this.poseEvent(7,13);return null }
+        if (!poses || !affineBase) { this.poseEvent(7,13,0,0,trace);return null }
         const affine = !offsets
         if (affine && !(r.affineEligible ??= interactionAffineEligible(r.plan))) {
-          this.poseEvent(7,13); return null
+          this.poseEvent(7,13,0,0,trace); return null
         }
         // Never affine-transform retained bitmap pixels. The first affine pose
         // promotes to a full-viewport native capture with compiler-owned halos.
@@ -214,6 +218,7 @@ export class InteractionRenderer {
         if (!retainedRebase && offsets) r.offsets = offsets
         r.active = true; this.moves++
         this.lastInput={sequence:this.moves,at:performance.now()}
+        if(this.poseLog.enabled){this.poseActions.bind(this.moves,trace);this.poseEndSequence=this.moves}
         if(this.latestCandidate)this.inputs.set(this.latestCandidate,this.lastInput)
         if (!r.live && !retainedRebase) this.lastPresentedInput = this.lastInput
         this.changed()
@@ -246,6 +251,14 @@ export class InteractionRenderer {
       inputSequence: () => this.lastInput.sequence,
       previewFailure: () => this.error ? 1 : 0,
       end: document => {
+        // Diagnostic-only provenance: consume the last accepted apply once.
+        // Reset/retirement clears eligibility; never read a newer Canvas action.
+        const endPatch=this.poseLog.enabled?this.latestPatch:undefined
+        const endMatches=!!endPatch&&endPatch.document===this.liveAuthored&&document.id===endPatch.document.id&&
+          Object.entries(endPatch.patches).every(([id,patch])=>!!patch.transform&&
+            patch.transform.every((value,index)=>value===document.nodes[id]?.transform[index]))
+        const endSequence=endMatches&&this.poseEndSequence===this.lastInput.sequence?this.poseEndSequence:undefined
+        this.poseEndSequence=undefined
         if (this.recoveryScope) this.retireRecovery()
         this.poseEvent(5)
         this.poseEndedThrough=this.lastInput.sequence
@@ -293,6 +306,7 @@ export class InteractionRenderer {
           // translation and admitted affine poses are freshly native-compiled.
           this.latestCandidate=document;this.liveAuthored=document
           this.lastInput={sequence:++this.moves,at:performance.now()}
+          if(this.poseLog.enabled&&endSequence!==undefined)this.poseActions.inherit(endSequence,this.moves)
           this.sharedClient.moveResidentInteraction(r.tiles[0].gpuTile,
             Object.fromEntries(r.plan.ids.map(id=>[id,document.nodes[id].transform])),this.lastInput)
           this.endedDocument = document
@@ -922,9 +936,11 @@ export class InteractionRenderer {
     const signal = this.sharedClient ? this.captureAbort.signal : undefined
     const current = () => !this.disposed && token === this.generation && this.resident === resident
     let captureSerial = this.recoverySerial, captureHadScope = !!this.recoveryScope
+    let captureCause:FailedCaptureCause|undefined, causePhase=0, causeAttempt=0, causeBranch=0
     void (async () => {
       try {
         while (current() && this.livePending) {
+          captureCause=undefined;causePhase=0;causeAttempt=0;causeBranch=0
           captureSerial = this.recoverySerial; captureHadScope = !!this.recoveryScope
           const started = performance.now()
           const viewportRevision = this.viewportRevision
@@ -933,6 +949,9 @@ export class InteractionRenderer {
           // A capture of an authored baseline is not the latest pointer pose.
           // Never acknowledge a newer input that merely arrived during setup.
           const input = this.inputs.get(document) || { sequence: 0, at: 0 }
+          // Freeze the actual consumed input before any preparation or await.
+          captureCause=this.poseLog.enabled?captureFailureCause(input.sequence,token,this.props?.epoch??0,this.poseActions.fields(input.sequence)):undefined
+          causePhase=1;causeAttempt=0;causeBranch=0
           const offsets = interactionOffsets(resident.plan, document)
           const roots = resident.rootBounds
           let bounds = this.viewport ? { x: -this.viewport.view.x / this.viewport.view.zoom,
@@ -999,6 +1018,7 @@ export class InteractionRenderer {
           this.client ??= this.sharedClient || new KernelClient()
           const client = this.client
           for (let attempt = 0; attempt < 5 && current(); attempt++) {
+            causeAttempt=attempt+1;causePhase=1;causeBranch=0
             // Capture on the world pixel lattice. A fractional capture origin
             // adds a second resampling phase when the final pose joins the page.
             originX = Math.floor(b.x * scale); originY = Math.floor(b.y * scale)
@@ -1010,6 +1030,7 @@ export class InteractionRenderer {
             // resolved snapshot or applying an unscaled interaction window.
             if(this.sharedClient && this.profile==='figma')resident.tiledExact=true
             const renderTiles = async () => {
+              causePhase=1;causeBranch=2
               // Use the settled canvas's computation camera too. Re-anchoring
               // exact geometry at the capture origin changes floating-point
               // operation order, even if the final world position is identical.
@@ -1019,6 +1040,7 @@ export class InteractionRenderer {
               const plan=interactionCaptureTiles(originX,originY,width,height,scale).map(tile=>({...tile,
                 phaseX:raster.phase.x,phaseY:raster.phase.y})), staged:CompositeTile[]=[]
               try {
+                causePhase=2;causeBranch=2
                 const result=await client.render(document,{pageId:resident.plan.pageId,width,height,
                   view:raster.camera,transparent:false,grid:false,rasterProfile:this.profile,
                   interactionOwner:this.interactionOwner,interactionGeneration:token,interactionBranch:2,
@@ -1028,6 +1050,7 @@ export class InteractionRenderer {
                   false,this.backend,false,false,undefined,tile=>{
                     staged.push({...tile,serial:serial--})
                   }, signal)
+                causePhase=3
                 if(!current())throw Error('PREVIEW_CANCELLED')
                 if(staged.length!==plan.length)throw Error('Incomplete exact interaction tile group')
                 capturedTiles=staged
@@ -1045,6 +1068,7 @@ export class InteractionRenderer {
               const worldCapture=!!this.sharedClient && !reduced && this.profile!=='figma' && this.profile!=='figmaSoftware' &&
                 canonical?.camera.x===0 && canonical?.camera.y===0
               phaseX = canonical?.phase.x || 0; phaseY = canonical?.phase.y || 0
+              causePhase=2;causeBranch=3
               result = await client.render(document, { pageId: resident.plan.pageId, width, height,
                 view: { x: worldCapture?0:-originX+phaseX, y: worldCapture?0:-originY+phaseY, zoom: scale }, transparent: false, grid: false,
                 ...(worldCapture?{captureViewport:{x:originX,y:originY,w:width,h:height}}:{}),
@@ -1056,6 +1080,7 @@ export class InteractionRenderer {
                 interactionWindowFixed: !!resident.affine || resident.plan.ids.every(id=>resident.fixedBounds?.has(id)),
                 ...(this.viewport ? { interactionWindow: { x: worldCapture?bounds.x*scale:(bounds.x - b.x) * scale, y: worldCapture?bounds.y*scale:(bounds.y - b.y) * scale,
                   w: bounds.width * scale, h: bounds.height * scale } } : {}) }, false, this.backend, false, false, undefined, undefined, signal)
+              causePhase=3
               break
             } catch (error) {
               if(!reduced && !resident.tiledExact && recoverableInteractionBudget(error)){
@@ -1136,9 +1161,12 @@ export class InteractionRenderer {
             this.sharedClient.moveResidentInteraction(result.gpuTile,
               Object.fromEntries(resident.plan.ids.map(id => [id, pending.nodes[id].transform])), pendingInput)
           }
+          causePhase=4
           this.props?.onReady(); this.changed()
         }
       } catch (error) {
+        // Snapshot before recovery microtasks; latest input may change meanwhile.
+        const failedCause=captureCause, failedPhase=causePhase, failedAttempt=causeAttempt, failedBranch=causeBranch
         if (current()) {
           const idleWarm = this.idleWarmCapture
           const failedIdleWarm = idleWarm?.generation === token && idleWarm.resident === resident &&
@@ -1173,8 +1201,10 @@ export class InteractionRenderer {
               // the editor. A reentrant callback cannot recover this scope twice.
               const failure = { document: scope.document, epoch: scope.epoch, pageId: scope.pageId,
                 sequence: this.lastInput.sequence, ids: [...resident.plan.ids] }
-              this.poseEvent(7,5)
-              this.poseEvent(5,5)
+              const failureDiagnostic=this.poseLog.enabled?
+                observedFailureCause(failedCause,failedPhase,failedAttempt,failedBranch,this.lastInput.sequence,this.generation,this.props?.epoch??0):undefined
+              this.poseEvent(7,5,this.lastInput.sequence,0,undefined,failureDiagnostic)
+              this.poseEvent(5,5,this.lastInput.sequence,0,undefined,failureDiagnostic)
               this.poseEndedThrough=this.lastInput.sequence
               this.retireRecovery()
               if (resident.tiles[0]?.gpuTile) this.sharedClient?.stopResidentInteraction(resident.tiles[0].gpuTile)
