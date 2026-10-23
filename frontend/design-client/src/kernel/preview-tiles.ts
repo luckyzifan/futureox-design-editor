@@ -1,5 +1,14 @@
+import { renderFailureFields } from './render-failure-telemetry'
+
 export type PreviewTile = { x: number; y: number; width: number; height: number }
 export type PreviewPixels = Uint8Array | Float32Array
+
+/** Only the compiler's classified aggregate program admission is spatially
+ * retriable. Unknown text, device loss, and per-path work failures stay errors. */
+export function isAnalyticProgramBudget(error: unknown) {
+  const failure = renderFailureFields(error)
+  return failure.failureCategory === 3 && failure.failureCode === 94
+}
 
 /** Remember allocation failures only within one unchanged rendering contract.
  * Reusing a smaller exact region changes scheduling, never density or math.
@@ -13,7 +22,8 @@ export class PreviewAdmission {
   observe(error: unknown, tile: PreviewTile) {
     const message=String(error)
     if (/device lost|GPU device|has been lost|设备已丢失/i.test(message) ||
-        !/GPU surface budget exceeded|GPU 表面内存预算超限/.test(message) || Math.max(tile.width,tile.height)<=64) return
+        !/GPU surface budget exceeded|GPU 表面内存预算超限/.test(message) && !isAnalyticProgramBudget(error) ||
+        Math.max(tile.width,tile.height)<=64) return
     this.failed=this.failed.filter(size=>size.width<tile.width||size.height<tile.height)
     if(!this.failed.some(size=>size.width<=tile.width&&size.height<=tile.height))
       this.failed.push({width:tile.width,height:tile.height})
@@ -66,7 +76,7 @@ export async function renderPreviewRegions(
       // reuses the parked (non-lost) device and its compiled pipelines.
       if (
         /device lost|GPU device|has been lost|设备已丢失/i.test(message) ||
-        !/GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(message) ||
+        !/GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(message) && !isAnalyticProgramBudget(error) ||
         Math.max(tile.width, tile.height) <= 64
       )
         throw error

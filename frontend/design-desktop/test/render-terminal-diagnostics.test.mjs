@@ -220,3 +220,17 @@ test('retired-kind diagnostics reject bits above the five-bit mask and invalid s
  for (const value of [-1,32,255,.5,Infinity,NaN,'16',true,{},null])
    assert.deepEqual(sanitizeFields({admissionRetiredKinds:value}),{})
 })
+test('resident scratch causal trace retains bounded scalar fields and rejects payloads', () => {
+ const valid = {deviceSubmitSequence:9,deviceCompletedSubmitSequence:7,deviceFenceId:3,
+ deviceFenceSubmitFirst:8,deviceFenceSubmitLast:9,deviceFenceAsync:1,deviceFencePhase:2,
+ deviceFenceOutcome:1,deviceGpuTimingEnabled:0,deviceRetirementBatchCount:3,
+ deviceRetiringScratchBytes:1024,deviceRetiringSourceBytes:2048,deviceSubmitTableCount:2,
+ deviceSubmitTableWidthMax:514,deviceSubmitTableHeightMax:514,deviceRetirementPhase:1,
+ deviceRetirementTableCount:1,deviceRetirementReleasedBytes:512}
+ assert.deepEqual(sanitizeFields({...valid,imageUri:'private',document:{secret:true}}),valid)
+ for(const event of ['gpu-submit','gpu-retirement','fence'])
+  assert.equal(sanitizeRecord({v:1,session:1,seq:1,at:1,source:'worker',event,...valid}).event,event)
+ for(const value of [-1,.5,Infinity,NaN,'1',true,{},null])
+  assert.deepEqual(sanitizeFields(Object.fromEntries(Object.keys(valid).map(key=>[key,value]))),{})
+ assert.deepEqual(sanitizeFields({deviceRetirementBatchCount:4,deviceFencePhase:3,deviceFenceOutcome:4,deviceFenceAsync:2}),{})
+})

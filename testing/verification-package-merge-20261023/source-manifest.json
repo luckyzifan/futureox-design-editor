@@ -1,0 +1,1507 @@
+{
+  "baseline": "518d8ddad6bf7b3865035f1c89ad6548befd4a2d",
+  "uniquePaths": 90,
+  "files": [
+    {
+      "path": ".agents/skills/futureox-rendering-first/SKILL.md",
+      "baselineSha256": null,
+      "sha256": "8e7260133128f0cca73433d99be5e7714ed203c0c0f784d95cee84536a0d0e82",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "8e7260133128f0cca73433d99be5e7714ed203c0c0f784d95cee84536a0d0e82",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "baselineSha256": "758abfb1c20a661dcc89b4f404ccb129802c0c1e167d64b527fa75e00ef1dae8",
+      "sha256": "568eb3f9be6947346c748136c10a73aa0a0c36f01de5f40970b3e498e54f3c09",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "568eb3f9be6947346c748136c10a73aa0a0c36f01de5f40970b3e498e54f3c09",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "design-studio/crates/design-desktop-backend/src/workspace.rs",
+      "baselineSha256": "776ea23fd1fe474dbb3ba326611d3d57a7e058e392919e2f96eb187fd7ed9f47",
+      "sha256": "fd6f1413d0058256cdd0ba90dd1172ac9804ffe67d903bb8d4434b6c2522b49f",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "fd6f1413d0058256cdd0ba90dd1172ac9804ffe67d903bb8d4434b6c2522b49f",
+          "packages": [
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "design-studio/crates/design-desktop-backend/src/workspace_lifetime_tests.rs",
+      "baselineSha256": null,
+      "sha256": "101be37a41d1860d86db25e77a718e15cb76023aa2b52eb14993601c1e6b392b",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "101be37a41d1860d86db25e77a718e15cb76023aa2b52eb14993601c1e6b392b",
+          "packages": [
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "docs/DEVELOPMENT_CONTRACT_V1.md",
+      "baselineSha256": "64759a33b4c476bc3fbd8e3768060053ec5f50d0f006107832311b064c0b45c2",
+      "sha256": "70b87c5a9caadeb9944648f0094db5ffe09c88fbda36932658f0a2bb5d653a15",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "70b87c5a9caadeb9944648f0094db5ffe09c88fbda36932658f0a2bb5d653a15",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "docs/IMAGE_TABLE_RETIREMENT_DIAGNOSTICS_20261022.md",
+      "baselineSha256": null,
+      "sha256": "81cb3b3b5a82a770bf6b5e0f2ee9c8a4b47abff81123f5ec0ad054da967858ce",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "81cb3b3b5a82a770bf6b5e0f2ee9c8a4b47abff81123f5ec0ad054da967858ce",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "docs/PENDING_POOL_ADMISSION_20261022.md",
+      "baselineSha256": null,
+      "sha256": "bd3ddb65e01b29ddb09cf65fa969a56447512883f2ea1f7111bdd49400ab4113",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "bd3ddb65e01b29ddb09cf65fa969a56447512883f2ea1f7111bdd49400ab4113",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "docs/RENDERING_FIRST_ENGINEERING_CONTRACT.zh-CN.md",
+      "baselineSha256": null,
+      "sha256": "7b6737f23ad695a03e414ce51e58157e110c4c0429ce169fc5bb5ad2e8f220b7",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "7b6737f23ad695a03e414ce51e58157e110c4c0429ce169fc5bb5ad2e8f220b7",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/bun.lock",
+      "baselineSha256": "409f80ded2d2e1ea57ed66360ee7263dc7b7f881b0d01283bd0aee074dc4b05e",
+      "sha256": "f71a4cea2b391ee1805b9f529905f828515549adc87d2ecc8226df4314a0a5a6",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "f71a4cea2b391ee1805b9f529905f828515549adc87d2ecc8226df4314a0a5a6",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/package.json",
+      "baselineSha256": "87ea37aac01ea37c4bb6eb38a59baf9fbbc4ef16be21e0f3fc611595859b4ca7",
+      "sha256": "516f57208aca074646d470816d818e43e572d91813ecf3a2986035a0bbb764dc",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "516f57208aca074646d470816d818e43e572d91813ecf3a2986035a0bbb764dc",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/scripts/production-public.mjs",
+      "baselineSha256": "1a0e9adf58109ef46f8296b80363e6fdcb3aff9110a31dbd8b3313a1ed9bc966",
+      "sha256": "d87b1a62d0b57161bad931fc33d1b0622880d7dc3f1ec805abf207ab438f41df",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "d87b1a62d0b57161bad931fc33d1b0622880d7dc3f1ec805abf207ab438f41df",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "baselineSha256": "58240be15fe2e90b11516c4de2df019cf2d89723efb17e3da749f84aa216fc91",
+      "sha256": "8ac17a3b10c1f0058a2c6c767883011490430b4365be0f3b7570faf512131a24",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "14240a85a45e9119e9b2cb2db7f600a31910f117a9c207cc8720cc59f65b949d",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "sha256": "8ac17a3b10c1f0058a2c6c767883011490430b4365be0f3b7570faf512131a24",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/FontManagementPanel.tsx",
+      "baselineSha256": "d09b5066cf343dd0d4fd63d8a1883f2c31e4754798bdb8e7eb18960afde953b4",
+      "sha256": "f719d3e1a1266ab9ad296a5830666375f000dbd6412e8514e5d0dbbab61bdd0e",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "f719d3e1a1266ab9ad296a5830666375f000dbd6412e8514e5d0dbbab61bdd0e",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/SystemFontPicker.tsx",
+      "baselineSha256": "d28feabe924360236ee3dbd477f0d9886c5d4b66f147b79c53863a430c63e493",
+      "sha256": "7f2b51852a2d4d8f20ee30672d3c50a29ede8f5f2448cd05ea68ace0863b5555",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "7f2b51852a2d4d8f20ee30672d3c50a29ede8f5f2448cd05ea68ace0863b5555",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/SystemFontPicker.web.test.tsx",
+      "baselineSha256": null,
+      "sha256": "a439a8a852756416d3f341fa5865be3d4dc3e1c3c7a4041fed1aeceb8e23e928",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "a439a8a852756416d3f341fa5865be3d4dc3e1c3c7a4041fed1aeceb8e23e928",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/canvas-action-diagnostics.ts",
+      "baselineSha256": "71166dc46981fe771ff5f8ca03e1909f56950b53592d018790279e4e017ca4d2",
+      "sha256": "b1da70b62929e98ecdc995df6884b9301d11203867af23fcad218792fb2926b5",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "b1da70b62929e98ecdc995df6884b9301d11203867af23fcad218792fb2926b5",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/canvas-overlay-capture-chain.test.tsx",
+      "baselineSha256": null,
+      "sha256": "34fc944cae5b1b2db12af63e94901705f107b05f7f56776dbac78197a3f1f9c8",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "34fc944cae5b1b2db12af63e94901705f107b05f7f56776dbac78197a3f1f9c8",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/canvas-overlay-commands.ts",
+      "baselineSha256": null,
+      "sha256": "dca39f20a2f6848ed0e1e1a68e595a591fc1a3952be014022af1960cff095077",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "dca39f20a2f6848ed0e1e1a68e595a591fc1a3952be014022af1960cff095077",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/canvas-overlay-ui-ownership.mounted.test.tsx",
+      "baselineSha256": null,
+      "sha256": "bde18ddff817cf86ed05a79e318df706c0dd21ae1494bae9744f9028125dbc77",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "bde18ddff817cf86ed05a79e318df706c0dd21ae1494bae9744f9028125dbc77",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/cpu-stage-diagnostics.test.ts",
+      "baselineSha256": null,
+      "sha256": "0e1c24be3bf5985dd83cdf0323c470b66c31cdc81d76a8072a2c68de8d3b4e14",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "0e1c24be3bf5985dd83cdf0323c470b66c31cdc81d76a8072a2c68de8d3b4e14",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/cpu-stage-diagnostics.ts",
+      "baselineSha256": null,
+      "sha256": "5a08059487eb306200e4613c6fe8f73360cd3980bd6f4eca05d8e970c01f0270",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "5a08059487eb306200e4613c6fe8f73360cd3980bd6f4eca05d8e970c01f0270",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/desktop-session.test.ts",
+      "baselineSha256": "b33d34cd28bc5597971a3f9a833473c7e5f4a8ac8ac9a0018ae2db5e51922e99",
+      "sha256": "b2ef59f636d8cc3190f868af57c2ff0585c2517a23468075aca68eb0d28f7c65",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "b2ef59f636d8cc3190f868af57c2ff0585c2517a23468075aca68eb0d28f7c65",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/desktop-session.ts",
+      "baselineSha256": "c7653262fe38e8bb8606ad64f17597ccd296ae23ef21b1488cd09ad9b6b4bbd8",
+      "sha256": "1c8458d5e78de95561fdde55502d6185180cc387ee8df62d5de015ded58ecd49",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "1c8458d5e78de95561fdde55502d6185180cc387ee8df62d5de015ded58ecd49",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/document-patch.ts",
+      "baselineSha256": "a0f3749ebd3fb2be960e9fdcbf20442059edfac57c31946b8495db7b2c393062",
+      "sha256": "8f436a7af5eea791d76c563c58c02f1ed5a284bd9fc85060526f813098d1dc0b",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "8f436a7af5eea791d76c563c58c02f1ed5a284bd9fc85060526f813098d1dc0b",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/draft.ts",
+      "baselineSha256": "708635bfc60b207af3b2d2e290c3d0322b9b90a0f04233e1943ca3257c83245d",
+      "sha256": "6085bf2a588986957828aa4aab3f1ef1668cdcd6d8d8e47d773d4df5635688e6",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "6085bf2a588986957828aa4aab3f1ef1668cdcd6d8d8e47d773d4df5635688e6",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/engine.ts",
+      "baselineSha256": "b48ffef4d65b399f54eb6b63d683e3b4bd6a927b43d9d8bff37d41967788e00c",
+      "sha256": "52348cbaf5b4080807a257e6d07668ecb07abf79eb0cecbe061ad6c202a369aa",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "62e38c72835e4d614eea217824c27d9ddc7030c2a2a574b850b715ddfb00ab44",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "sha256": "52348cbaf5b4080807a257e6d07668ecb07abf79eb0cecbe061ad6c202a369aa",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/font-management.ts",
+      "baselineSha256": "cc3d9040c53f99cb0b7516932d0242b8b7bf6de4753f6188f4b9d049bc6431e8",
+      "sha256": "db3984858ca5f60db2fefbb884e179f245cdc43e670965b8b01c3cefa6c4b360",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "db3984858ca5f60db2fefbb884e179f245cdc43e670965b8b01c3cefa6c4b360",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/font-matching.ts",
+      "baselineSha256": "adcb9d946c49975eab639b3cb7a084c51e32ba9d17fb1bf4e6dd0e4efa211602",
+      "sha256": "16101f02f166e2743037c5162ac4b3a4a989cfb2c5f629f685c24355ff08981d",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "16101f02f166e2743037c5162ac4b3a4a989cfb2c5f629f685c24355ff08981d",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/font-source-preservation.test.ts",
+      "baselineSha256": null,
+      "sha256": "620c76a0f5a491a7e2bb519ab324b168142942ed58ab9f3e28bfb2a6c0cdf513",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "620c76a0f5a491a7e2bb519ab324b168142942ed58ab9f3e28bfb2a6c0cdf513",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ProgressiveSurface.tsx",
+      "baselineSha256": "9e9af31540c959d41840dfb25a6308f75e86a34bd4c82e31538abbfb2402c0e4",
+      "sha256": "ffd36764816147a9eaba9d265b241619bb1e290df9633eb7b91cef55587dd536",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "dbeeee904f638d447e8f4355fa8495e594cfd2ffdf6241277a05902f05f0896f",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "sha256": "7d25b2388a7e6d7efd955609d1fa0fd1569d7535d25a7d23e63d5ead35189db7",
+          "packages": [
+            4
+          ]
+        },
+        {
+          "sha256": "ffd36764816147a9eaba9d265b241619bb1e290df9633eb7b91cef55587dd536",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ResidentCompositeSurface.tsx",
+      "baselineSha256": "ec91bc46cfa60d7a26f5878c57fe1e77296b4b21145cd7c7c4b508e4cfe0623f",
+      "sha256": "3a42c39ac8fe257a582db6e25fbb19c4e7b1322a587df35ae638cdd48695dd08",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "cb308de44e17a62e1ab04d18d501f895e325e3e400a31cf9886b9ce94e13e587",
+          "packages": [
+            4
+          ]
+        },
+        {
+          "sha256": "3a42c39ac8fe257a582db6e25fbb19c4e7b1322a587df35ae638cdd48695dd08",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/Surface.tsx",
+      "baselineSha256": "4fe8c65a314ce9d5e07ba7fa8e5a19467c1e0e16ebbfdb9913fd2e1bf6bc0331",
+      "sha256": "3338f5384bb06827685918d2193c66cebe8fa7bba9db8935faa5c8b5d4c8cc86",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "3338f5384bb06827685918d2193c66cebe8fa7bba9db8935faa5c8b5d4c8cc86",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/client.ts",
+      "baselineSha256": "caf112cae1e0b054ed8079d455a85cc45f2e4caf2bdb9b694558889c40421a50",
+      "sha256": "677ac2387d5556a042641aeaa714dfd22b3c71b3b120698972d7c83fea7f7776",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "677ac2387d5556a042641aeaa714dfd22b3c71b3b120698972d7c83fea7f7776",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/descriptor-presenter.test-helper.ts",
+      "baselineSha256": null,
+      "sha256": "8719b6275e066072766b176b66fca104d8575e1bc00e2a9d3fa0d49aaeb5ce9a",
+      "mode": "0o644",
+      "finalPackage": 4,
+      "distinctRevisions": [
+        {
+          "sha256": "8719b6275e066072766b176b66fca104d8575e1bc00e2a9d3fa0d49aaeb5ce9a",
+          "packages": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/device-lifecycle-diagnostics.ts",
+      "baselineSha256": "a1a861904b1b8bac4c8688741ba2f4453f25c707ad0d20a5e148a35990ba3c1d",
+      "sha256": "99a0cdc45da539ee4c68d97c3543b4ab2d8656fa5109ff5160122b119f2c51db",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "99a0cdc45da539ee4c68d97c3543b4ab2d8656fa5109ff5160122b119f2c51db",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/gpu-resource-boundary.test.ts",
+      "baselineSha256": "f3e155a858aa224f7c8c9fa85c01849b0937fc436eef28387ff497d0e88666c1",
+      "sha256": "395cbbe20e84fe15d8bcb941fe6ce3eb780fe5e17d4caf7a53028405905323e9",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "395cbbe20e84fe15d8bcb941fe6ce3eb780fe5e17d4caf7a53028405905323e9",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/paint-merge-admission.test.ts",
+      "baselineSha256": "1586a25fef01ba73d5889b7a6a9f27c18798cd1e0283d4b937125be3dd33f753",
+      "sha256": "b62dc791428ed226c03f816269b03d604e68a7c3e47ffb80fcaaa00a4eee0294",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "b62dc791428ed226c03f816269b03d604e68a7c3e47ffb80fcaaa00a4eee0294",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/pending-pool-admission.test.ts",
+      "baselineSha256": null,
+      "sha256": "0b8754bbb26668264b244ebe1ff75dc6d4708df2c8a928d10cb721a53a49a576",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "0b8754bbb26668264b244ebe1ff75dc6d4708df2c8a928d10cb721a53a49a576",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "baselineSha256": "bd677a51939199a68273f23dea7ccac627fdf41ade9f73df80f62bd86fbb8ac7",
+      "sha256": "58c4e51b63a5cb703cecef6aef0d05e98fc1c0339a7a566d752e40d1f1257cb2",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "55526146debf2ca97ce6bc1d96a6b1b4397a27e7b84c3eac513a55acdfa6ab64",
+          "packages": [
+            1
+          ]
+        },
+        {
+          "sha256": "58c4e51b63a5cb703cecef6aef0d05e98fc1c0339a7a566d752e40d1f1257cb2",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-image-retirement.test.ts",
+      "baselineSha256": null,
+      "sha256": "e4aaa01e41c15af15de7452582d1de531040135f5add7594ad85f54f8ec4d166",
+      "mode": "0o644",
+      "finalPackage": 4,
+      "distinctRevisions": [
+        {
+          "sha256": "4333b987d6f5d8ceb200ac0db5fbb8af37a8d42aea7e77be02ff96a2a626ed5e",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "sha256": "e4aaa01e41c15af15de7452582d1de531040135f5add7594ad85f54f8ec4d166",
+          "packages": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-programs.test.ts",
+      "baselineSha256": "ec690efb09376f54dc79388a726721d6d879efc30dadc6d389b167c75f52090f",
+      "sha256": "1ce46312907da1c9d5f64bd899a0ade84cbbc977c776b2689c94f9f7f0920fca",
+      "mode": "0o644",
+      "finalPackage": 4,
+      "distinctRevisions": [
+        {
+          "sha256": "1ce46312907da1c9d5f64bd899a0ade84cbbc977c776b2689c94f9f7f0920fca",
+          "packages": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-programs.ts",
+      "baselineSha256": "10d27604e60aaff50e24d2ac420d74fc1f2c303214d3d9c545e1ad2ffe64e961",
+      "sha256": "345881387f145f15ed94dbe40c3978ea4bac67179d9526abbc8cde80233c0624",
+      "mode": "0o644",
+      "finalPackage": 4,
+      "distinctRevisions": [
+        {
+          "sha256": "345881387f145f15ed94dbe40c3978ea4bac67179d9526abbc8cde80233c0624",
+          "packages": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/types.ts",
+      "baselineSha256": "d72417324e87bf098fa4c0732d35351b8e4f2909f629082ac9edb90af91b5a11",
+      "sha256": "744931c7df603d70cfa3f3c007740fc6dad9e52b4e58d5e139708ce511c64b45",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "744931c7df603d70cfa3f3c007740fc6dad9e52b4e58d5e139708ce511c64b45",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/webgpu.ts",
+      "baselineSha256": "45ae0cac69d27c46a012ee8791fd40e7cb245f4d677a16e6471d40643693a647",
+      "sha256": "e46a4f630045a7ff16f8181c171ac16ca6bf65e83c28f6a3402b4b3275e3ea0a",
+      "mode": "0o644",
+      "finalPackage": 4,
+      "distinctRevisions": [
+        {
+          "sha256": "3a0afc48d92c91f4ea7aa9368cf5a338b408a09b5cce60378b1a77fd17f5efab",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "sha256": "e46a4f630045a7ff16f8181c171ac16ca6bf65e83c28f6a3402b4b3275e3ea0a",
+          "packages": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/graph-history-state.ts",
+      "baselineSha256": "32a6ad8d849b13c3ebfe8710fea333cfd17c1417c2306f96fc2ef4cfd74ce3bb",
+      "sha256": "533a3550d7c81fd1a10c14df24822f8e016e33e1fedb9bbb02a65836b06ff852",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "533a3550d7c81fd1a10c14df24822f8e016e33e1fedb9bbb02a65836b06ff852",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-release-handoff.test.ts",
+      "baselineSha256": "994260be5177978f928f6eecbdeb4eb50015934466219c7fe2c5a238511e1a78",
+      "sha256": "c5145250cd9fdef85c7f38e1db3506e6cd3f29733d690b717fb2b4930f6ef65d",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "c5145250cd9fdef85c7f38e1db3506e6cd3f29733d690b717fb2b4930f6ef65d",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.test.ts",
+      "baselineSha256": "3e10695008c4a3366931037f86469ad81311806e071aaaa9a7b40af0756fe9bd",
+      "sha256": "5248be9815ba695c22666707944dce390bf508e0f4c8a623951d205051a981ac",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "5248be9815ba695c22666707944dce390bf508e0f4c8a623951d205051a981ac",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.ts",
+      "baselineSha256": "0a2c675dba2a8bb9cd2c0f6e4ee3ec879fe8663b860952c4bf0a3edd0eea740f",
+      "sha256": "c33941df61d759afb8f086eaa91fc5202ef56fbc46a27675c7ff1cf17fb476f0",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "d32a7ec3c8a4d67f538cd40be76cbfedc94c3fa954fd10f5f21b350ba9def870",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "sha256": "3f57a5a777e457077910d3cf6c7d29e024abc048231882d7ef4063597bec9243",
+          "packages": [
+            4
+          ]
+        },
+        {
+          "sha256": "c33941df61d759afb8f086eaa91fc5202ef56fbc46a27675c7ff1cf17fb476f0",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-navigation-surface.test.tsx",
+      "baselineSha256": "9eb53deaec844f9913f990bbe61eb7fdd2f9d756b57867f25deed01521e31a2d",
+      "sha256": "a5af632db49e4a0b6442928478f1435dc8a8579af0a5bde5e720ceae074a6081",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "a5af632db49e4a0b6442928478f1435dc8a8579af0a5bde5e720ceae074a6081",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-preparation.ts",
+      "baselineSha256": "0e54b64478839c6cde297c0c41e61daa4d51a5c5b40ff0e6ed1a83037df616bb",
+      "sha256": "a9406d0f8832e619daee595bf9733e830171afa6b8bdd53a09363b0da565651d",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "a9406d0f8832e619daee595bf9733e830171afa6b8bdd53a09363b0da565651d",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-coverage.ts",
+      "baselineSha256": "8c457d655abe7cb79ca13c0985af456f1f6948112169825f7d4bd6065d104f6a",
+      "sha256": "84339978eebcfee0bd20cb320eaeb3ee4585c47c5d3b263e3cdce28f99524e4b",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "84339978eebcfee0bd20cb320eaeb3ee4585c47c5d3b263e3cdce28f99524e4b",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-refinement-surface.test.tsx",
+      "baselineSha256": null,
+      "sha256": "7dfbfbb4fa22c34202abe3740d63e82578d6ca2cf2a2b95ac6d704b6d8fca775",
+      "mode": "0o644",
+      "finalPackage": 4,
+      "distinctRevisions": [
+        {
+          "sha256": "522351ae068e2c1f79ae0fcdd47619827fa1823e7b3c67cadf73a27d96e5e664",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "sha256": "7dfbfbb4fa22c34202abe3740d63e82578d6ca2cf2a2b95ac6d704b6d8fca775",
+          "packages": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-refinement.test.ts",
+      "baselineSha256": null,
+      "sha256": "967658e8e1c7ed1f6d456847a1e0902a84f5f689cd1abe13f3fd9478440d8311",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "967658e8e1c7ed1f6d456847a1e0902a84f5f689cd1abe13f3fd9478440d8311",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-refinement.ts",
+      "baselineSha256": null,
+      "sha256": "fe1fb185aebb732050d504b580e01a90e8a6d81ccec57f7a17839d2609251c0a",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "fe1fb185aebb732050d504b580e01a90e8a6d81ccec57f7a17839d2609251c0a",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/op-sync.ts",
+      "baselineSha256": "f7c14f44cb0ec42fbed84b7efb7cdec43eb0ad3cd1f31401b2ce29cae6a6130f",
+      "sha256": "cbaebab87e59b499e24d223d5c121be41d2b8bee617e91a057bc4636cbd8bbd0",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "cbaebab87e59b499e24d223d5c121be41d2b8bee617e91a057bc4636cbd8bbd0",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/picking.ts",
+      "baselineSha256": "ed435d4881a34e1e471eec9b60dce67194997b7e4c8a40fe907f4038b2cfee14",
+      "sha256": "73ba6b27bb2f88337b7d7a3962366450ae805c42d5076ffcebba0f74385dce64",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "73ba6b27bb2f88337b7d7a3962366450ae805c42d5076ffcebba0f74385dce64",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-boundaries.test.ts",
+      "baselineSha256": "d9207328bc1a7b05dac7746c13b1dec6bd441ce7a5eab3b52331bb17412229df",
+      "sha256": "9a087a93638c7acd0972678a932beb9f6b28f813734fb65f45391bb6e65b5168",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "9a087a93638c7acd0972678a932beb9f6b28f813734fb65f45391bb6e65b5168",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-channel.ts",
+      "baselineSha256": "1b8e2d86701566768bb069da148835020aab0013c1c8e39976285184a30024d8",
+      "sha256": "36ca9fda992c497918e6b429ec8ab46d4fb5812575db4b50a38b87e469fe92f6",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "36ca9fda992c497918e6b429ec8ab46d4fb5812575db4b50a38b87e469fe92f6",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preview-tiles.ts",
+      "baselineSha256": "276b023cc83af21e7fd5eb90bb983dd6cf84b993a0e54f1e8b277c250f1401fc",
+      "sha256": "102f6851bf1f3873219c89feb801c2c925fec49317670639984a7e6673b89a36",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "102f6851bf1f3873219c89feb801c2c925fec49317670639984a7e6673b89a36",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/program-budget-subdivision.test.ts",
+      "baselineSha256": null,
+      "sha256": "9c89a74f35ee9e06378d05f6c5ccee89b2dbe43bad2d4e3cd8d143e5459f2279",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "9c89a74f35ee9e06378d05f6c5ccee89b2dbe43bad2d4e3cd8d143e5459f2279",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/progressive-damage.test.tsx",
+      "baselineSha256": "a1469549346643f3a6e421116ea3ca3f668b14823283de4076acfc32f30f01e8",
+      "sha256": "da12a361b18cd29516dbc7f58f5fbc9febb9a4f53879e16f294d06cba7c0e303",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "da12a361b18cd29516dbc7f58f5fbc9febb9a4f53879e16f294d06cba7c0e303",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/release-overlay-ownership.integration.test.tsx",
+      "baselineSha256": null,
+      "sha256": "dadb0e1e0e6f93468aa1321995b0a6f2240cfb8b74e2e9d30af46756c30c0c6d",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "dadb0e1e0e6f93468aa1321995b0a6f2240cfb8b74e2e9d30af46756c30c0c6d",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-worker.ts",
+      "baselineSha256": "8a583d4ec98748b4dc71210120e8afdb8b5c1ae5e77cdcf5718e8d94512b3476",
+      "sha256": "5ea6b0078cddfb3df0e39c1e2f73e4cc41586061938c4869f8af5e3f56c1701a",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "5ea6b0078cddfb3df0e39c1e2f73e4cc41586061938c4869f8af5e3f56c1701a",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-pose-order.integration.test.tsx",
+      "baselineSha256": null,
+      "sha256": "16f433fb15122efbf47a95eeb656a0be89f138c949c4f96d66a58fbb43c64af6",
+      "mode": "0o644",
+      "finalPackage": 4,
+      "distinctRevisions": [
+        {
+          "sha256": "16f433fb15122efbf47a95eeb656a0be89f138c949c4f96d66a58fbb43c64af6",
+          "packages": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-presentation.test.ts",
+      "baselineSha256": "1f4004ff6e357f3e583dba4785bdf7a10a6ce4c0ed6d98c1b01c1b321ebd424f",
+      "sha256": "b5341ba873ea0b801b2e3032864f56493235d67ded2af1b061b0bce958a27e50",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "b5341ba873ea0b801b2e3032864f56493235d67ded2af1b061b0bce958a27e50",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-presentation.ts",
+      "baselineSha256": "99e63a9eb1847534eed3301025bf1306496e45d9e119ec4eb016faa8dafd8003",
+      "sha256": "9ff57a3cdf32fc5c23c75a5d824a661429dc4252a539898b709df28d474653c5",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "9ff57a3cdf32fc5c23c75a5d824a661429dc4252a539898b709df28d474653c5",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/local-edit-proof.test.ts",
+      "baselineSha256": null,
+      "sha256": "9543e77eb3062b4b47c3bc6f986fe9dbb2a568f75ee1b207cda1c0606517b98a",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "9543e77eb3062b4b47c3bc6f986fe9dbb2a568f75ee1b207cda1c0606517b98a",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/local-edit-proof.ts",
+      "baselineSha256": null,
+      "sha256": "00dfaf83006c2728c91846f039df96ae864727a75f663f52ee6bbcf48afaf11b",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "00dfaf83006c2728c91846f039df96ae864727a75f663f52ee6bbcf48afaf11b",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/local-edit-work.test.ts",
+      "baselineSha256": null,
+      "sha256": "74feeb57e493485540a7ba6dd57467d605dcab67a03be91a13e3a8ff712bc732",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "74feeb57e493485540a7ba6dd57467d605dcab67a03be91a13e3a8ff712bc732",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/src/property-interface-messages.ts",
+      "baselineSha256": "2f48e763bf168b154899fb6f819e149c0d08ef1ff339dcc8626ac1c6eac959a0",
+      "sha256": "6d0f21084d2f57310e61cbfde16f91bf0443509fea3e730626650c2debd3b752",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "6d0f21084d2f57310e61cbfde16f91bf0443509fea3e730626650c2debd3b752",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/verification/zoom-refinement/extra-gates-v2.test.tsx",
+      "baselineSha256": null,
+      "sha256": "f91615b726a70e6f3ff8a49fb901867a5a6a9e8eed4479a62ad8855a93c3028e",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "f91615b726a70e6f3ff8a49fb901867a5a6a9e8eed4479a62ad8855a93c3028e",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/verification/zoom-refinement/v2-flight.test.ts",
+      "baselineSha256": null,
+      "sha256": "dd79cfe7cf8bea6f0eac6a1b56bbcd43e0a84d9dd6af476a8e257e1e3919dcbe",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "dd79cfe7cf8bea6f0eac6a1b56bbcd43e0a84d9dd6af476a8e257e1e3919dcbe",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/verification/zoom-refinement/v2-real-client.test.tsx",
+      "baselineSha256": null,
+      "sha256": "620f9a3d6a8e60f081346c692ddf9e7c714edaebb18603b6db28cd4864a15c39",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "620f9a3d6a8e60f081346c692ddf9e7c714edaebb18603b6db28cd4864a15c39",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/vite.config.ts",
+      "baselineSha256": "0b55a659bdd12a3b54b475e6103d394305f5233c056ca57075e0d9439569ecc9",
+      "sha256": "6548785e65b5e7769f609e3a3f71b73420040e96245e23a80913667d9068c3da",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "6548785e65b5e7769f609e3a3f71b73420040e96245e23a80913667d9068c3da",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/vitest.overlay-chain.config.mts",
+      "baselineSha256": null,
+      "sha256": "9f130e6731975e4422cda2633e3260b2fd29f0749843b9e73eb18fff050385a5",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "9f130e6731975e4422cda2633e3260b2fd29f0749843b9e73eb18fff050385a5",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/vitest.overlay-mounted.config.mts",
+      "baselineSha256": null,
+      "sha256": "da387a493c1f500e8aaf1023d322c6342667d0361d0cbee9218ec22b193bd101",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "da387a493c1f500e8aaf1023d322c6342667d0361d0cbee9218ec22b193bd101",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/vitest.release-overlay.config.mts",
+      "baselineSha256": null,
+      "sha256": "50836934604cad517f74e938f995af52dc6c3deade3135198b15b1313fcd3253",
+      "mode": "0o644",
+      "finalPackage": 6,
+      "distinctRevisions": [
+        {
+          "sha256": "50836934604cad517f74e938f995af52dc6c3deade3135198b15b1313fcd3253",
+          "packages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-client/vitest.zoom-refinement.config.mts",
+      "baselineSha256": null,
+      "sha256": "fc446cd8976d8ca5eb2ef8810a8000b26fa43cec6a0fbf1754d7d068646f5096",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "fc446cd8976d8ca5eb2ef8810a8000b26fa43cec6a0fbf1754d7d068646f5096",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/scripts/render-diagnostic-build.mjs",
+      "baselineSha256": "40a4daffd63615ec9348595097ac123aa439ccbc71a422da77a18de0bf33505e",
+      "sha256": "a681b0385bd07d7beaa5362868f6a9878540b66890e5dd80a8e7dc90e833c9db",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "a681b0385bd07d7beaa5362868f6a9878540b66890e5dd80a8e7dc90e833c9db",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/src/document-transport.mjs",
+      "baselineSha256": "fa9155b455bb843d0b8404c2337f0c348a5d95b498fd0fa4f2b22395fcc70a6e",
+      "sha256": "c0a2b865b61cfe6d1ae02d6054483667b63e3f59bbcd34a3b0b5630582439532",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "c0a2b865b61cfe6d1ae02d6054483667b63e3f59bbcd34a3b0b5630582439532",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/src/preparation-worker.mjs",
+      "baselineSha256": "7283f7a99cc245e4f471f972471794ca9971aa8bd71f9d94f231c6528d47e130",
+      "sha256": "52795bdd8975e26a417fa63a6afd75e55eaf85a7327c0be300be9985da5e9d68",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "52795bdd8975e26a417fa63a6afd75e55eaf85a7327c0be300be9985da5e9d68",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/src/render-terminal-diagnostics.mjs",
+      "baselineSha256": "caf35314e171450a7575b34e9f7bd797e76bcc9494cdb3f71c44d41fa6861fbb",
+      "sha256": "870da5c94e5e87337dc0577ef89c6a89c07f0bafe701286ce227d6cb3d64b9c3",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "870da5c94e5e87337dc0577ef89c6a89c07f0bafe701286ce227d6cb3d64b9c3",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/src/sidecar.mjs",
+      "baselineSha256": "aa45affe9eca365e941e14e57c9e46d68ed7eeafd6a2b43548c86941475656cd",
+      "sha256": "10bf12920f9e01315e9dafed131b6d625c2f6154bcd99c3e324a3c1b00daef9f",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "10bf12920f9e01315e9dafed131b6d625c2f6154bcd99c3e324a3c1b00daef9f",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/test/document-capacity.test.mjs",
+      "baselineSha256": "7ed25a3ab734499d962b753ae5352342763427e5040bdf80dbd44c668eb8bee6",
+      "sha256": "bfd5ae4b52320de22a16f3ef3f1befea3625cbbed0e3309a5cc3b2be8a33627e",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "bfd5ae4b52320de22a16f3ef3f1befea3625cbbed0e3309a5cc3b2be8a33627e",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/test/notice-runtime-versions.test.mjs",
+      "baselineSha256": null,
+      "sha256": "fb1a9ba3a0482d940018922c4ea44708f6554113e5f503c1e6db4b7aa45b8064",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "fb1a9ba3a0482d940018922c4ea44708f6554113e5f503c1e6db4b7aa45b8064",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/test/production-assets.test.mjs",
+      "baselineSha256": "213e02c604af22aac8ab23135d9d3d26697d6ac17f4ecf3751131943665c4fd1",
+      "sha256": "aa87d662a4b6098e409d271ad851f5c0d98fbd348996e50351697d28600af7e5",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "aa87d662a4b6098e409d271ad851f5c0d98fbd348996e50351697d28600af7e5",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/test/render-producer-identity.test.mjs",
+      "baselineSha256": "c13b1304b78d11ae729f3df519cbebc33ee5f14ff1ed780a44cb8a4af417a723",
+      "sha256": "ad874038613503a8f98fe415c175e5491d527874eb768f2d42937d69b8ed2b76",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "ad874038613503a8f98fe415c175e5491d527874eb768f2d42937d69b8ed2b76",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/test/render-runtime-wasm-identity.test.mjs",
+      "baselineSha256": null,
+      "sha256": "624a3aa4b1719c689fb4b404f68035cd6ad10fece32e48a02bd7eb59ec3b634b",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "624a3aa4b1719c689fb4b404f68035cd6ad10fece32e48a02bd7eb59ec3b634b",
+          "packages": [
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/test/render-terminal-diagnostics.test.mjs",
+      "baselineSha256": "ac75c7881fb9d3a34917512d2da0d43f66e85ec5c45533d20c60e4bfdea878d5",
+      "sha256": "5af13cedb199fb52143670ba75754f7759df860864648f12c5591b49dca62034",
+      "mode": "0o644",
+      "finalPackage": 3,
+      "distinctRevisions": [
+        {
+          "sha256": "5af13cedb199fb52143670ba75754f7759df860864648f12c5591b49dca62034",
+          "packages": [
+            1,
+            2,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "path": "frontend/design-desktop/test/sidecar.test.mjs",
+      "baselineSha256": "745cdfb6ff9cf73800abac94eb9880c59098d7052068a0e5e6e7cacc1d83eabd",
+      "sha256": "72789e7fc9633ea9b23746411b2746ebd320cead572b9b48df75a1ca1b459a3f",
+      "mode": "0o644",
+      "finalPackage": 5,
+      "distinctRevisions": [
+        {
+          "sha256": "72789e7fc9633ea9b23746411b2746ebd320cead572b9b48df75a1ca1b459a3f",
+          "packages": [
+            5
+          ]
+        }
+      ]
+    }
+  ]
+}

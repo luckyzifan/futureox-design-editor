@@ -1,0 +1,171 @@
+warning: method `over_rgba8_blend` is never used
+   --> crates/design-kernel/src/blend.rs:101:19
+    |
+ 86 | impl Pixel {
+    | ---------- method in this implementation
+...
+101 |     pub(crate) fn over_rgba8_blend(self, source: Self, opacity: f32, mode: &str) -> Self {
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `futureox-design-kernel` (lib) generated 1 warning
+   Compiling futureox-design-desktop-backend v0.1.0 (<repo>/design-studio/crates/design-desktop-backend)
+    Finished `test` profile [unoptimized] target(s) in 3.10s
+     Running unittests src/lib.rs (target/debug/deps/futureox_design_desktop_backend-4439961970e17b8e)
+
+running 34 tests
+test fonts::tests::mac_collection_face_loads_and_shapes_in_existing_kernel ... ignored, requires installed macOS collection fonts; run explicitly for local acceptance
+test protocol::tests::frame_limit_drains_and_resynchronizes ... ok
+test runtime::tests::async_frame_reader_preserves_final_unterminated_frame ... ok
+test fonts::tests::symlink_files_are_never_imported ... ok
+test fonts::tests::entry_depth_and_total_read_budgets_report_partial_results ... ok
+test runtime::tests::blocking_permit_survives_waiter_abort ... ok
+test fonts::tests::collections_invalid_and_oversized_fonts_are_explicit ... ok
+test runtime::tests::async_multipart_failure_never_dispatches_and_releases_reader ... ok
+test runtime::tests::bounded_queue_bytes_cancel_health_and_eof_drain ... ok
+test font_collection::tests::malformed_offsets_counts_and_signatures_are_rejected ... ok
+test storage::tests::failed_temp_create_does_not_remove_a_colliding_file ... ok
+test catalog::tests::recycled_pool_connection_reinstalls_verified_page_budget ... ok
+test sketch_save::tests::native_save_postpublication_sync_failure_is_explicit_and_links_are_refused ... ok
+test storage::tests::committed_file_returns_warning_if_directory_sync_fails ... ok
+test sketch_save::tests::native_save_new_preserves_bytes_and_refuses_existing_destination ... ok
+test storage::tests::modification_during_write_is_detected_before_replace ... ok
+test storage::tests::write_failure_before_replace_preserves_original_and_removes_temporary ... ok
+test sketch_save::tests::native_save_race_cancel_and_precommit_failure_never_clobber ... ok
+test document_transport::tests::chunks_roundtrip_and_reject_out_of_order ... ok
+test workspace::lifetime_tests::release_keeps_old_head_integrity_check_before_any_write ... ok
+test workspace::lifetime_tests::old_head_is_released_before_new_snapshot_encode ... ok
+test workspace::observe_tests::every_serialized_field_order_and_external_writes_are_authoritative ... ok
+test workspace::observe_tests::overlapping_observes_and_poisoned_cache_keep_exact_hashes ... ok
+test document_transport::tests::malformed_sequences_and_limits_never_complete ... ok
+test workspace::observe_tests::rollback_replay_unknown_outcome_trash_restore_and_restart ... ok
+test workspace::lifetime_tests::release_preserves_conflict_replay_rollback_deleted_and_unknown_fields ... ok
+test workspace::observe_tests::root_isolation_late_publication_and_failed_select_never_reuse_stale_data ... ok
+test protocol::multipart_tests::incomplete_replayed_and_interleaved_transfers_never_publish_a_file ... ok
+test workspace::observe_tests::presence_only_churn_expiry_and_window_limit_stay_fresh ... ok
+test fonts::tests::listed_font_bytes_are_exact_and_paths_are_not_renderer_capabilities ... ok
+test font_collection::tests::two_faces_keep_all_table_data_metrics_and_load_in_existing_kernel ... ok
+test fonts::tests::collection_catalog_selects_the_requested_face_and_rechecks_source_hash ... ok
+test workspace::observe_tests::bounded_cache_and_original_json_limit_and_list_limit_are_preserved ... ok
+test workspace::observe_tests::observe_work_counts_real_sqlite_1_1000_10000_heads ... ok
+
+test result: ok. 33 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 14.37s
+
+     Running unittests src/main.rs (target/debug/deps/futureox_design_desktop_backend-fb0dab879e95ca38)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/automation.rs (target/debug/deps/automation-6feadfb633f57489)
+
+running 13 tests
+test unavailable_workspace_is_explicit_and_does_not_fallback_to_json_files ... ok
+test unknown_fields_paths_and_unbounded_metadata_are_rejected_without_echoing_secrets ... ok
+test edit_history_rejects_missing_identity_content_and_invalid_filters ... ok
+test retention_removes_only_old_metadata_and_keeps_active_task_records ... ok
+test task_target_is_immutable_and_terminal_outcome_cannot_restart ... ok
+test failed_v3_migration_rolls_back_new_tables_and_keeps_prior_database ... ok
+test defaults_and_metadata_survive_restart_without_persisting_authorization ... ok
+test edit_history_persists_sources_and_filters_with_stable_pagination ... ok
+test failed_v4_migration_retains_all_prior_rows_and_schema ... ok
+test v3_migration_preserves_existing_document_and_is_idempotent ... ok
+test v4_migration_preserves_legacy_rows_and_cursor_sequence_even_when_empty ... ok
+test audit_cap_cursor_pagination_and_disable_are_enforced ... ok
+test tasks_are_bounded_and_active_records_are_never_evicted ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+     Running tests/catalog.rs (target/debug/deps/catalog-e980257192d1dd5a)
+
+running 7 tests
+test oversized_catalog_is_rejected_without_truncation ... ok
+test register_sql_failure_rolls_back_project_update ... ok
+test symlinks_and_ancestor_rebind_invalidate_grants ... ok
+test cancelled_scan_rolls_back_and_missing_files_are_removed_on_scan ... ok
+test migration_reopen_idempotence_and_reselection ... ok
+test scan_has_bounded_results_and_stable_file_ids ... ok
+test future_schema_and_corrupt_database_are_preserved ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.33s
+
+     Running tests/desktop_files.rs (target/debug/deps/desktop_files-579c74aa74fb0d37)
+
+running 22 tests
+test legacy_extension_is_not_an_open_or_save_route ... ok
+test protocol_is_correlated_strict_and_recovers_after_invalid_requests ... ok
+test kernel_enforces_schema_six_variable_modes_on_native_boundary ... ok
+test fd_extension_metadata_roundtrips_and_required_semantics_never_replace_original ... ok
+test observed_external_modification_and_create_collision_are_conflicts ... ok
+test corrupt_recovery_is_reported_and_retained_while_other_snapshots_remain_usable ... ok
+test malformed_and_kernel_invalid_documents_preserve_original ... ok
+test recovery_hash_tampering_is_detected_and_not_overwritten ... ok
+test recovery_list_does_not_reflect_untrusted_persisted_warnings ... ok
+test binary_forma_is_default_and_legacy_json_is_still_opened_losslessly ... ok
+test rejects_relative_non_forma_directory_and_bad_hash_inputs ... ok
+test validates_uuid_ids_and_repeated_pages ... ok
+test refuses_leaf_symlinks_and_readonly_originals ... ok
+test stat_captures_explicit_overwrite_baseline_without_parsing_destination ... ok
+test recovery_survives_restart_requires_explicit_restore_and_never_changes_source ... ok
+test recovery_ids_are_not_paths_and_snapshots_are_never_automatically_evicted ... ok
+test unicode_open_save_and_repeated_save_keep_compatible_schema_and_unknown_fields ... ok
+test rejects_oversized_files_before_read_and_oversized_save_before_replacement ... ok
+test startup_requires_an_explicit_app_owned_recovery_directory ... ok
+test actual_stdio_process_returns_only_json_responses_and_exits_on_eof ... ok
+test documents_between_sixteen_and_thirty_two_mib_remain_supported ... ok
+test document_above_former_32_mib_cap_roundtrips_fd_and_recovery_without_losing_authored_bytes ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.09s
+
+     Running tests/runtime_lifecycle.rs (target/debug/deps/runtime_lifecycle-2202fbf24618f816)
+
+running 5 tests
+test real_stdio_cancel_unknown_is_explicit_and_not_a_false_rollback ... ok
+test real_stdio_eof_drains_queued_requests_and_reports_catalog_capabilities ... ok
+test real_stdio_future_catalog_is_preserved_while_files_and_recovery_work ... ok
+test real_stdio_unusable_catalog_path_keeps_files_and_recovery_working ... ok
+test real_stdio_corrupt_catalog_is_preserved_while_files_and_recovery_work ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.38s
+
+     Running tests/workspace.rs (target/debug/deps/workspace-2883649255ded4ac)
+
+running 15 tests
+test real_stdio_process_commits_drains_and_reopens_the_same_workspace ... ok
+test revision_conflicts_and_mutation_reuse_do_not_change_durable_head ... ok
+test protocol_enforces_required_revision_and_reports_optional_store_health ... ok
+test invalid_kernel_input_and_invalid_requests_never_create_documents ... ok
+test database_and_journal_symlinks_are_rejected ... ok
+test future_corrupt_and_unrelated_databases_are_retained_without_reset ... ok
+test commit_restart_history_and_identical_retry_return_original_revision ... ok
+test concurrent_stores_have_only_one_successful_writer_for_a_revision ... ok
+test local_views_publish_peer_cursors_and_change_notifications_across_stores ... ok
+test embedded_resource_strings_and_float_bits_survive_commit_restart_and_restore ... ok
+test snapshot_corruption_is_reported_and_never_overwritten_by_commit_or_restore ... ok
+test failed_sql_commit_rolls_back_snapshot_head_and_idempotency_receipt ... ok
+test trash_undelete_and_history_restore_create_new_revisions_with_cas ... ok
+test cancelled_lock_wait_has_no_partial_revision_and_identical_retry_is_safe ... ok
+test sqlite_busy_is_retryable_and_does_not_block_tokio_or_lose_acknowledged_data ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.30s
+
+     Running tests/workspace_assets.rs (target/debug/deps/workspace_assets-c33b4c9b4062c5e7)
+
+running 8 tests
+test cjk_font_multiple_revision_size_and_time_benchmark ... ignored, explicit local size/time benchmark with the bundled full CJK font
+test references_cannot_reinterpret_unknown_text_fields_as_resource_placeholders ... ok
+test image_resources_in_strokes_instance_overrides_styles_and_animation_poses_share_one_original_string ... ok
+test distinct_resource_contents_remain_isolated_and_failed_transaction_leaves_no_orphan_assets ... ok
+test version_one_upgrade_retains_original_blob_and_all_history_is_readable ... ok
+test missing_or_corrupt_resources_refuse_reads_restores_and_reuse_without_replacing_bytes ... ok
+test repeated_resources_are_single_copy_and_history_export_reconstructs_identical_document_hashes ... ok
+test version_five_resource_migration_preserves_receipts_and_admits_resources_above_32_mib ... ok
+
+test result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 12.47s
+
+   Doc-tests futureox_design_desktop_backend
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

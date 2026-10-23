@@ -1,3 +1,4 @@
+import { CpuStage, measureCpuStage } from '../cpu-stage-diagnostics'
 import { augmentedDocumentJson, compileEditOps } from './op-sync'
 import { documentPatch, shareDocument, type DocumentPatch, type EditResult } from '../document-patch'
 import type { EditScope, Op } from './graph'
@@ -51,27 +52,29 @@ export function createGraphHistoryState(document: DesignDocument, graph: Editing
    * failures atomically and replaceDocument shares the same undo timeline.
    * The edit scope declares the batch's provenance (default: user). */
   const commitOps = (after: DesignDocument, scope: EditScope): void => {
-    const batch = compileEditOps(current, after)
+    const batch = measureCpuStage(CpuStage.historyCompile, () => compileEditOps(current, after))
     if (batch.mode === 'replace') {
-      graph.replaceDocument(augmentedDocumentJson(after), scope)
+      const json = measureCpuStage(CpuStage.serialize, () => augmentedDocumentJson(after))
+      measureCpuStage(CpuStage.historyApply, () => graph.replaceDocument(json, scope))
       mode = 'document'; frameBytes = 0
       return
     }
     // A changed after-state without represented ops must never advance only TS.
     if (!batch.ops.length) {
-      graph.replaceDocument(augmentedDocumentJson(after), scope)
+      const json = measureCpuStage(CpuStage.serialize, () => augmentedDocumentJson(after))
+      measureCpuStage(CpuStage.historyApply, () => graph.replaceDocument(json, scope))
       mode = 'document'; frameBytes = 0
       return
     }
-    const frame = graph.opsFrame(batch.ops, revision + 1, true)
-    const decoded = graph.decodeOpsFrame(frame, true)
+    const frame = measureCpuStage(CpuStage.historyEncode, () => graph.opsFrame(batch.ops, revision + 1, true))
+    const decoded = measureCpuStage(CpuStage.historyDecode, () => graph.decodeOpsFrame(frame, true))
     // Insert ops pass through Rust's typed Node serializer, which expands
     // defaults. Compare the protocol revision; authored field shapes remain
     // owned by the snapshots below, not by that normalized projection.
     if (decoded.revision !== revision + 1) throw Error('同步协议帧版本不一致')
     // Rejection is an editing error, not a reason to silently commit a
     // different operation. GraphApi stages failed batches atomically.
-    graph.applyOps(decoded.ops, scope)
+    measureCpuStage(CpuStage.historyApply, () => graph.applyOps(decoded.ops, scope))
     mode = 'op-batch'; frameBytes = frame.byteLength
   }
 

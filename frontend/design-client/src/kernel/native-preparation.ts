@@ -3,7 +3,7 @@ import type { PreparationMethod } from './preparation-channel'
 
 /** Transport only: the preload sends jobs to a host Node worker + Rust child.
  * Browser builds retain their WASM preparation worker. GPU objects stay local. */
-export function connectNativePreparation(bridge: NonNullable<DesktopBridge['preparation']>, port: MessagePort, onFailure?: (error: Error) => void) {
+export function connectNativePreparation(bridge: NonNullable<DesktopBridge['preparation']>, port: MessagePort, onFailure?: (error: Error) => void, record?: (fields: Record<string, number>) => void) {
   let closed = false
   const failed = (error: unknown) => {
     if (closed) return
@@ -15,8 +15,20 @@ export function connectNativePreparation(bridge: NonNullable<DesktopBridge['prep
   session.catch(failed)
   port.onmessage = async event => {
     const { id, lane, method, args, diagnostics } = event.data as { id: number; lane: string; method: PreparationMethod; args: unknown[]; diagnostics?: { originChannelId: number; requestId: number } }
-    const receivedAt = performance.now()
-    const progress = (boundaryCode: number) => { const elapsed = performance.now() - receivedAt; if (diagnostics && !closed) port.postMessage({ id, progress: { backendCode: 2, boundaryCode, ...(elapsed <= 120000 ? { boundaryDurationMs: elapsed } : {}) } }) }
+    const receivedAt = diagnostics ? performance.now() : 0
+    const boundary = (boundaryCode: number) => {
+      const bridgeBoundaryAt = performance.timeOrigin + performance.now()
+      if (diagnostics && !closed) {
+        try { record?.({ originChannelId: diagnostics.originChannelId, requestId: diagnostics.requestId, preparationId: id,
+          channel: lane === 'interaction' ? 1 : 0, phase: 5, backendCode: 2, boundaryCode, bridgeBoundaryAt }) } catch { /* Diagnostics never fail transport. */ }
+      }
+      return bridgeBoundaryAt
+    }
+    const progress = (boundaryCode: number) => {
+      if (!diagnostics || closed) return
+      const bridgeBoundaryAt = boundary(boundaryCode), elapsed = performance.now() - receivedAt
+      if (diagnostics && !closed) port.postMessage({ id, progress: { backendCode: 2, boundaryCode, bridgeBoundaryAt, ...(elapsed <= 120000 ? { boundaryDurationMs: elapsed } : {}) } })
+    }
     progress(1)
     try {
       const owner = await session
@@ -26,7 +38,9 @@ export function connectNativePreparation(bridge: NonNullable<DesktopBridge['prep
       progress(6)
       if (closed) return
       const transfer = reply.value instanceof Uint8Array || reply.value instanceof Float32Array ? [reply.value.buffer] : []
-      port.postMessage({ ...reply, id }, transfer)
+      const bridgeBoundaryAt = diagnostics ? boundary(13) : undefined
+      port.postMessage({ ...reply, id, ...(bridgeBoundaryAt === undefined ? {} : { bridgeBoundaryAt }) }, transfer)
+      if (diagnostics) boundary(14)
     } catch (error) {
       // Application errors arrive as replies. An IPC rejection means the
       // transport failed: retire the session without replaying this job.

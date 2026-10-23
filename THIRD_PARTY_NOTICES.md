@@ -14,8 +14,8 @@ versions and notice hashes. Keep these texts with distributed copies.
 - immer 11.1.21: MIT; `licenses/immer-LICENSE.txt`.
 - kiwi-schema 0.5.0: MIT; `licenses/kiwi-schema-LICENSE.txt`.
 - lucide-react 1.47.0: ISC; `licenses/lucide-react-LICENSE.txt`.
-- react 19.3.0: MIT; `licenses/react-LICENSE.txt`.
-- react-dom 19.3.0: MIT; `licenses/react-dom-LICENSE.txt`.
+- react 19.3.1: MIT; `licenses/react-LICENSE.txt`.
+- react-dom 19.3.1: MIT; `licenses/react-dom-LICENSE.txt`.
 - scheduler 0.28.0: MIT; `licenses/scheduler-LICENSE.txt`.
 - svg-pathdata 9.0.0: MIT; `licenses/svg-pathdata-LICENSE.txt`.
 

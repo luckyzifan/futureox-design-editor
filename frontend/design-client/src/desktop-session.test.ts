@@ -99,6 +99,53 @@ describe('import adoption ownership', () => {
 })
 
 describe('native document lifecycle', () => {
+  test('a new edit immediately releases stale encoded cache without dropping the exact saved baseline', async () => {
+    const f = fixture(); await f.session.start(); await f.session.save()
+    const session = f.session as any, baseline = session.baselineJson
+    expect(session.serializedJson).toBe(baseline)
+    f.edit('Unsaved edit')
+    expect(session.serializedJson).toBe('')
+    expect(session.serializedGeneration).toBe(-1)
+    expect(session.baselineJson).toBe(baseline)
+    await session.captureSnapshot()
+    expect(session.serializedJson).toContain('Unsaved edit')
+    f.editor.undo()
+    expect(session.serializedJson).toBe('')
+    await session.reconcileBaseline()
+    expect(f.session.dirty).toBe(false)
+    expect(session.baselineJson).toBe(baseline)
+  })
+  test('navigation without an encoding certificate cannot retain the previous document JSON cache', async () => {
+    const f = fixture(); await f.session.start(); await f.session.save()
+    Object.assign(f.bridge, { documentCodec: { encode: async (document: unknown) => JSON.stringify(document), decode: async (json: string) => JSON.parse(json) } })
+    expect((f.session as any).serializedJson).not.toBe('')
+    f.bridge.openDocument.mockResolvedValue(f.opening('Custom codec document'))
+    expect(await f.session.open()).toBe(true)
+    expect((f.session as any).serializedJson).toBe('')
+    expect((f.session as any).serializedGeneration).toBe(-1)
+    expect(f.session.dirty).toBe(false)
+  })
+  test('invalidating the cache preserves an uncertain workspace mutation payload and identity', async () => {
+    const f = fixture(); await f.session.start()
+    const session = f.session as any, snapshot = await session.captureSnapshot()
+    const pending = { documentJson: snapshot.json, expectedRevision: 7, mutationId: 'same-request', generation: snapshot.generation, id: snapshot.document.id }
+    session.workspacePending = pending
+    f.edit('Edit while acknowledgement is uncertain')
+    expect(session.serializedJson).toBe('')
+    expect(session.workspacePending).toBe(pending)
+    expect(session.workspacePending.documentJson).toBe(snapshot.json)
+  })
+  test('an old-generation encode cannot repopulate the invalidated current cache', async () => {
+    const f = fixture(); await f.session.start(); f.edit('Old encoded snapshot')
+    const session = f.session as any, encoded = JSON.stringify(f.editor.state.doc), pending = deferred<string>()
+    Object.assign(f.bridge, { documentCodec: { encode: () => pending.promise, decode: async (json: string) => JSON.parse(json) } })
+    const capture = session.captureSnapshot()
+    f.edit('New edit before encoding resolves')
+    pending.resolve(encoded)
+    expect((await capture).json).toBe(encoded)
+    expect(session.serializedJson).toBe('')
+    expect(session.serializedGeneration).toBe(-1)
+  })
   test('local document codec keeps delayed save acknowledgements scoped to the encoded snapshot', async () => {
     const f=fixture();await f.session.start();f.edit('Encoded snapshot')
     const encoded=JSON.stringify(f.editor.state.doc),pending=deferred<string>()

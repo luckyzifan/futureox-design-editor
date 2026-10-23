@@ -262,6 +262,9 @@ export interface Driver {
   prepareImageTable?(image: Texture, plan: import('./exact-image-x-table').ExactImageXTablePlan, availableBytes: number): Promise<ExactImageTable | undefined>
   resolveImageTable?(target: Texture, table: ExactImageTable, offsetX: number, offsetY: number): void
   retireImageTable?(table: ExactImageTable): Promise<void>
+  /** Synchronously collect completed image-table snapshots inside a scratch
+   * ledger delta. Never interprets submission as completion. */
+  collectCompletedImageTables?(): void
   readonly opaqueTentPasses?: number
   /** Submit encoded work in queue order without waiting or freeing resources.
    * Used at CPU task yields so display and raster submissions can interleave. */
@@ -353,6 +356,9 @@ export interface Driver {
   /** Render-call intent, never a document/scene capability. Omission is exact. */
   prepareScene?(scene: GpuScene, displayOnly?: boolean): Promise<void>
   prepareFilters?(prefixUseful?: boolean): Promise<void>
+  /** Before begin, retire pending prior-frame image leases if geometry may
+   * replace an in-flight buffer. Caller accounts scratch deltas across await. */
+  prepareFrameResources?(vertices: Float32Array, curves?: Float32Array): Promise<void>
   begin(vertices: Float32Array, curves?: Float32Array): void
   /** Complete prior commands before reclaiming frame-local scratch textures. */
   /** Always submit encoded commands. completedPoolEpoch may omit the wait only

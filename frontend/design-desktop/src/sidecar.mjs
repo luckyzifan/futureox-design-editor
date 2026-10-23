@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { MAX_FRAME_BYTES } from './security.mjs'
 import { DOCUMENT_TRANSFER_BYTES, documentChildEnvironment, assertDocumentSerialization } from './document-capacity.mjs'
-import { documentFrames, DocumentFrameAssembler } from './document-transport.mjs'
+import { documentWrites, DocumentFrameAssembler } from './document-transport.mjs'
 
 function failure(code, message) {
   return Object.assign(new Error(message), { code })
@@ -190,7 +190,7 @@ export class Sidecar extends EventEmitter {
       this.pendingBytes += bytes
       this.admittedCount++
       this.pending.set(id, pending)
-      const frames = documentFrames(Buffer.from(frame), id, MAX_FRAME_BYTES)
+      const frames = documentWrites(Buffer.from(frame), id, MAX_FRAME_BYTES)
       this.writeQueue.push({ frames, next: frames.next(), pending })
       this.flushWrites()
     })

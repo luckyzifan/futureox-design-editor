@@ -362,7 +362,7 @@ async fn v3_migration_preserves_existing_document_and_is_idempotent() {
             .fetch_one(&mut conn)
             .await
             .unwrap(),
-        5
+        futureox_design_desktop_backend::workspace::SCHEMA_VERSION
     );
     conn.close().await.unwrap();
 }
@@ -582,7 +582,7 @@ async fn v4_migration_preserves_legacy_rows_and_cursor_sequence_even_when_empty(
                 .fetch_one(&mut connection)
                 .await
                 .unwrap(),
-            5
+            futureox_design_desktop_backend::workspace::SCHEMA_VERSION
         );
         connection.close().await.unwrap();
     }

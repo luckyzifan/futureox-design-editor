@@ -687,6 +687,8 @@ impl WorkspaceStore {
                 return Err(conflict());
             }
         }
+        #[cfg(test)]
+        lifetime_tests::before_encode(document);
         let encoded = crate::workspace_snapshot::encode(document)?;
         for asset in encoded.assets.values() {
             let inserted = sqlx::query("INSERT INTO assets(hash,kind,value,byte_length) VALUES(?,?,?,?) ON CONFLICT(hash) DO NOTHING")
@@ -745,12 +747,17 @@ impl WorkspaceStore {
             return Ok(replayed.entry);
         }
         let old = Self::head(&mut tx, id, expected).await?;
+        #[cfg(test)]
+        let old = lifetime_tests::TrackedHead::new(old);
         if old.as_ref().is_some_and(|r| r.entry.deleted) {
             return Err(BackendError::new(
                 "WORKSPACE_DELETED",
                 "Restore this deleted document before editing it",
             ));
         }
+        // The prior head was fully validated above. Do not retain its authored
+        // graph while encoding the new snapshot; transaction/CAS checks stay intact.
+        drop(old);
         let entry = Self::write_revision(
             &mut tx,
             document,
@@ -965,3 +972,7 @@ impl WorkspaceStore {
 #[cfg(test)]
 #[path = "workspace_observe_tests.rs"]
 mod observe_tests;
+
+#[cfg(test)]
+#[path = "workspace_lifetime_tests.rs"]
+mod lifetime_tests;

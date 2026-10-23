@@ -1,7 +1,7 @@
 import type { Editor } from './engine'
 import { defaultTextStyle, type DesignDocument, type DesignNode } from './model'
 import { commitPendingEdits } from './pending-edits'
-import { sourceFonts, type FontResource } from './font-matching'
+import { preserveUnmatchedSourceRuns, sourceFonts, type FontResource } from './font-matching'
 
 export const FONT_PAGE_SIZE = 40
 export type FontChoice = { id: string; family: string; style?: string; postscript?: string }
@@ -14,8 +14,8 @@ export function searchFontChoices<T extends FontChoice>(fonts: readonly T[], que
     return tokens.every(token => text.includes(token))
   })
 }
-export function documentFontChoices(doc: DesignDocument): FontChoice[] {
-  return [{ id: 'default', family: 'Noto Sans SC', style: '内置' },
+export function documentFontChoices(doc: DesignDocument, locale: 'zh-CN' | 'en' = 'zh-CN'): FontChoice[] {
+  return [{ id: 'default', family: 'Noto Sans SC', style: locale === 'en' ? 'Built-in' : '内置' },
     ...Object.entries(doc.fonts || {}).map(([id, font]) => ({ id, family: font.family, postscript: font.postscript }))]
 }
 export type FontScope = { kind: 'selection'; ids: readonly string[] } | { kind: 'document' }
@@ -151,7 +151,7 @@ export function replaceFontReferences(editor: Editor, scope: FontScope, from: st
 /** Match source identities only on authored fields and existing instance overrides. */
 export function matchSourceFontsInDocument(doc: DesignDocument, matches: Map<string, { id: string; resource: FontResource }>) {
   const targets = fontTargets(doc, { kind: 'document' })
-  let changed = 0
+  let changed = 0, deferredInherited = 0
   const install = (match: { id: string; resource: FontResource }) => {
     doc.fonts ??= {}
     const existing = doc.fonts[match.id]
@@ -167,10 +167,19 @@ export function matchSourceFontsInDocument(doc: DesignDocument, matches: Map<str
     }
     const match = source.style && matches.get(source.style)
     if (target.style && match && original === 'default') {
+      // A style-only instance override cannot author inherited run fields. If
+      // changing its base would retarget another source face, leave the base
+      // unmatched as well rather than creating a new textRuns override.
+      if (!target.runs && Object.entries(source.runs || {}).some(([index, name]) => {
+        const run = n.textRuns?.[Number(index)]
+        return run && typeof name === 'string' && run.fontId === undefined
+      })) { deferredInherited++; continue }
+      // Inherited run fields remain owned by their component master.
+      if (target.runs) preserveUnmatchedSourceRuns(n, source)
       install(match)
       if (n.textStyle) n.textStyle.fontId = match.id
       else n.textStyle = { ...defaultTextStyle(), fontId: match.id }
     }
   }
-  return { ...targets, changed }
+  return { ...targets, changed, deferredInherited }
 }

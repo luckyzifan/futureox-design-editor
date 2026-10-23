@@ -1,3 +1,4 @@
+import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
 import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
@@ -100,7 +101,8 @@ import {
   prepareDocumentForEditing,
   activateDocumentFonts,
 } from './kernel/picking'
-import { shareDocument, type EditResult } from './document-patch'
+import { proveLocalEdit } from './local-edit-proof'
+import { shareDocument, produceDocumentDraft, type EditResult } from './document-patch'
 import { createEditingHistory } from './kernel/graph-history'
 import { ensurePreparedDocument, takePreparedDocument, preparedDocumentEncoding, forgetPreparedDocumentEncoding } from './prepared-document'
 function applyInferredFrame(doc: DesignDocument, id: string, inferred: {direction:string;gap:number|null;padding:[number,number,number,number];bannerChildren:string[];flowOrder:string[]}) {
@@ -575,16 +577,17 @@ export class Editor {
     const operation = this.diagnosticOperation ?? this.operationDiagnostics.begin(this.sessionGeneration, this.state.version, diagnosticCategory, draftIds?.length ?? selection?.length ?? this.state.selection.length)
     const finish = (outcome: 'committed' | 'unchanged' | 'rejected') => { if (!this.transaction) this.operationDiagnostics.finish(operation, outcome, this.sessionGeneration, this.state.version, this.state.doc, this.state.page) }
     try {
-      const components = Object.values(before.doc.nodes).some(
-        (n) => n.component || n.instance || n.instanceOrigin || n.componentSet,
-      )
       // Finalize only the authored mutation before inspecting topology. This
       // keeps the check on plain structurally shared records and prevents any
       // component/connector/layout walk from observing an invalid tree.
-      const authored = produceDraft(before.doc, draft => { fn(draft as DesignDocument) })
-      validateStructure(authored)
+      const authored = produceDocumentDraft(before.doc, draft => { fn(draft as DesignDocument) })
+      const local = proveLocalEdit(before.doc, authored)
+      if (!local) validateStructure(authored)
+      const components = !local && Object.values(before.doc.nodes).some(
+        n => n.component || n.instance || n.instanceOrigin || n.componentSet,
+      )
       let detached = false
-      const d = produceDraft(authored, (draft) => {
+      const d = local ? authored : produceDraft(authored, (draft) => {
         draft.schemaVersion = Math.max(2, draft.schemaVersion) as 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
         if (draft.schemaVersion < 15 && hasSchema15Features(authored)) draft.schemaVersion = 15
         draft.rasterProfile ??= before.doc.rasterProfile || 'analytic'
@@ -644,12 +647,14 @@ export class Editor {
         pruneAnimations(draft as DesignDocument)
         prunePrototypeReferences(before.doc, draft as DesignDocument)
       })
-      for (const n of Object.values(d.nodes))
+      for (const n of local ? local.ids.map(id => d.nodes[id]) : Object.values(d.nodes))
         if (n !== before.doc.nodes[n.id]) invalidateGeometry(n)
-      const resolved = shareDocument(before.doc, kernelLayout(d, before.doc))
-      for (const n of Object.values(resolved.nodes))
+      // Layout-independent edits still restore the correct native font owner.
+      if (local) activateDocumentFonts(d)
+      const resolved = shareDocument(before.doc, local ? d : kernelLayout(d, before.doc))
+      for (const n of local ? local.ids.map(id => resolved.nodes[id]) : Object.values(resolved.nodes))
         if ((n.pathOffset || n.vectorBrush) && n !== before.doc.nodes[n.id]) kernelBounds(n)
-      validateStructure(resolved)
+      if (!local) validateStructure(resolved)
       validateDocument(resolved)
       admitResolved?.(resolved)
       if (resolved === before.doc) { finish('unchanged'); return { status: 'unchanged' as const, revision: this.state.version } }
@@ -865,34 +870,42 @@ export class Editor {
     }
   }
   preview(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
+    return canvasActions(this).cpu.run(CpuStage.preview, () => this.previewCore(patches, move))
+  }
+  private previewCore(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
     if (this.propertyPreview && !this.propertyPreviewWrite) return false
     const previewStarted = performance.now()
     const base = this.transaction?.previewBase || this.transaction?.doc || this.state.doc
     const nodes = { ...base.nodes }
     for (const [id, patch] of Object.entries(patches)) nodes[id] = { ...nodes[id], ...patch }
     try {
-      const candidate = { ...base, nodes }
-      // Ordinary pointer patches preserve the published tree. Explicit
-      // topology/ID edits must be checked before any dependency traversal.
-      if (Object.entries(patches).some(([id, patch]) => !base.nodes[id] ||
-          Object.hasOwn(patch, 'children') || Object.hasOwn(patch, 'id')))
-        validateStructure(candidate)
-      Components.captureOverrides(base, candidate)
-      if (hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
-      if (Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
-      if (hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
-      if(hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15
-      if (hasStrokeMarkers(candidate) || hasLayerExports(candidate)) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
-      const visible=move?this.movePreviewDocument(candidate,move.ids,move.point,move.force,move.preserveParent):candidate
-      if (visible !== candidate) validateStructure(visible)
+      const visible = measureCpuStage(CpuStage.previewPrepare, () => {
+        const candidate = { ...base, nodes }
+        // Ordinary pointer patches preserve the published tree. Explicit
+        // topology/ID edits must be checked before any dependency traversal.
+        if (Object.entries(patches).some(([id, patch]) => !base.nodes[id] ||
+            Object.hasOwn(patch, 'children') || Object.hasOwn(patch, 'id')))
+          validateStructure(candidate)
+        Components.captureOverrides(base, candidate)
+        if (hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
+        if (Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
+        if (hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
+        if(hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15
+        if (hasStrokeMarkers(candidate) || hasLayerExports(candidate)) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
+        const visible=move?this.movePreviewDocument(candidate,move.ids,move.point,move.force,move.preserveParent):candidate
+        if (visible !== candidate) validateStructure(visible)
+        return visible
+      })
       const layoutStarted = performance.now()
-      const resolved=kernelLayout(visible,this.state.doc)
+      const resolved=measureCpuStage(CpuStage.previewLayout, () => kernelLayout(visible,this.state.doc))
       // A failed derived offset must never become the React scene. Scene/hit
       // queries are synchronous: publishing it first can unmount the editor.
-      for(const n of Object.values(resolved.nodes))
-        if((n.pathOffset||n.vectorBrush)&&n!==this.state.doc.nodes[n.id])kernelBounds(n)
+      measureCpuStage(CpuStage.previewBounds, () => {
+        for(const n of Object.values(resolved.nodes))
+          if((n.pathOffset||n.vectorBrush)&&n!==this.state.doc.nodes[n.id])kernelBounds(n)
+      })
       const published = performance.now()
-      this.set({ doc: resolved })
+      measureCpuStage(CpuStage.previewPublish, () => this.set({ doc: resolved }))
       if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, true)
       this.lastPreviewTiming = { prepareMs: layoutStarted - previewStarted, layoutMs: published - layoutStarted, publishMs: performance.now() - published }
       return true
@@ -903,6 +916,9 @@ export class Editor {
     }
   }
   commit() {
+    return canvasActions(this).cpu.run(CpuStage.commit, () => this.commitCore())
+  }
+  private commitCore() {
     if (this.propertyPreview && !this.propertyPreviewWrite) return
     if (!this.transaction) return
     const before = this.transaction
@@ -911,22 +927,22 @@ export class Editor {
     const finish = (outcome: 'committed' | 'unchanged' | 'rejected') => { if (operation !== null) this.operationDiagnostics.finish(operation, outcome, this.sessionGeneration, this.state.version, this.state.doc, this.state.page) }
     this.transaction = null
     try {
-      validateDocument(this.state.doc)
+      measureCpuStage(CpuStage.commitValidate, () => validateDocument(this.state.doc))
     } catch (error) {
       finish('rejected')
       this.set({ doc: before.doc, selection: before.selection, message: String(error) })
       return
     }
     try {
-      const doc = shareDocument(before.doc, this.state.doc)
-      const committed = doc !== before.doc ? this.push(before, doc) : undefined
+      const doc = measureCpuStage(CpuStage.commitShare, () => shareDocument(before.doc, this.state.doc))
+      const committed = doc !== before.doc ? measureCpuStage(CpuStage.commitHistory, () => this.push(before, doc)) : undefined
       if (committed) {
         const editIdentity = { documentId: committed.document.id, session: this.sessionGeneration, revision: this.state.version + 1 }
         const committedPage = this.state.page
         const result = { status: 'committed' as const, revision: editIdentity.revision }
         this.committedEditReceipts.set(result, Object.freeze({ ...editIdentity, document: committed.document, pageId: committedPage,
           selection: Object.freeze([...this.state.selection]), canUndo: this.canUndo, canRedo: this.canRedo }))
-        const notificationFailure = this.publishCommittedState({ doc: committed.document, version: editIdentity.revision, message: before.label })
+        const notificationFailure = measureCpuStage(CpuStage.commitPublish, () => this.publishCommittedState({ doc: committed.document, version: editIdentity.revision, message: before.label }))
         if (operation !== null) this.operationDiagnostics.finish(operation, 'committed', editIdentity.session, editIdentity.revision, committed.document, committedPage)
         this.publishEdit('edit', before.label, 'user', editIdentity)
         if (notificationFailure) reportPostcommitSubscriberError(notificationFailure.error)

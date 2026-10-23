@@ -40,7 +40,7 @@ export function nextDeviceRecoveryId() { return ++nextRecovery }
 export function deviceLostReason(reason: unknown) { return reason === 'destroyed' ? 2 : 1 }
 /** Observers must never replace a GPU error or interrupt cleanup. Existing
  * recordGpuDiagnostic callers have their own policy; keep this guard local. */
-export function recordDeviceDiagnostic(event: 'device-lifecycle' | 'fence', fields: DeviceDiagnosticFields) {
+export function recordDeviceDiagnostic(event: 'device-lifecycle' | 'fence' | 'gpu-submit' | 'gpu-retirement', fields: DeviceDiagnosticFields) {
   try { recordGpuDiagnostic(event, { deviceWorkerScope, ...fields }) } catch { /* diagnostic sink only */ }
 }
 export function recordDeviceLifecycle(owner: object | undefined, phase: number, fields: DeviceDiagnosticFields = {}) {

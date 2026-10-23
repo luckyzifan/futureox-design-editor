@@ -1,0 +1,26 @@
+{
+  "tools": {
+    "node": "v24.12.0",
+    "bun": "1.4.0",
+    "rustc": "rustc 1.96.1 (31fca3adb 2026-06-26)",
+    "cargo": "cargo 1.96.1 (356927216 2026-06-26)",
+    "wasmBindgen": "wasm-bindgen 0.2.128"
+  },
+  "wasm": {
+    "profile": "dev",
+    "simd": false,
+    "wasmOpt": false,
+    "sha256": "6134ad255818046810225c3824106494fb3e62efc8de8ff892034fa746e5517f",
+    "generatedMatchesPublic": true
+  },
+  "nativeBackend": {
+    "profile": "dev",
+    "sha256": "66b641f0a00df825b79b3445e256f8e58cecc5227e27f51954f0ab3ae253921e"
+  },
+  "cargoLockSha256": "fae8615269ddcb937c96454bb0bd84d608a64e6aaeb5171d48ee1a7a1d9cd864",
+  "clientLockSha256": "f71a4cea2b391ee1805b9f529905f828515549adc87d2ecc8226df4314a0a5a6",
+  "vite": "8.3.3",
+  "platform": "macOS arm64",
+  "fonttools": "4.61.1 (isolated venv)",
+  "buildArtifactsCommitted": false
+}

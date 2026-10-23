@@ -82,3 +82,68 @@ test('capture ownership survives acknowledgement retirement without retaining a 
   expect(resolveSnapshot(ack(first,0))?.view.x).toBe(0)
   expect(presentation.resolve(ack(first,0))).toBeUndefined()
 })
+
+
+test('same-document UI generations have distinct ACK identities and late ACKs cannot overwrite the newer UI',()=>{
+ const presentation=new ResidentPresentation(),base={...source(),gpuOverlay:true,gpuOverlayIdentity:'ui-A'}
+ const first=presentation.stage(base)!,second=presentation.stage({...base,gpuOverlayIdentity:'ui-B'})!
+ expect(second).not.toBe(first)
+ const old={...acknowledgement(first),gpuOverlay:true},current={...acknowledgement(second),gpuOverlay:true}
+ expect(presentation.resolve(old)?.gpuOverlayIdentity).toBe('ui-A')
+ expect(presentation.resolve(current)?.gpuOverlayIdentity).toBe('ui-B')
+ expect(presentation.resolve(old)).toBeUndefined()
+})
+
+
+test('completed capture cohorts separate same-UI true-to-true ACKs even when slots are reused',()=>{
+ const tracker=new ResidentPresentation(),base={...source(),preview:true,gpuOverlay:true,gpuOverlayIdentity:'same-ui'}
+ const S={slots:[11]},C={slots:[11]},first=tracker.stage({...base,gpuOverlayCapture:S})!
+ const second=tracker.stage({...base,gpuOverlayCapture:C})!
+ expect(second).not.toBe(first)
+ const actual=(presentationId:string)=>({...acknowledgement(presentationId),interaction:true,gpuOverlay:true,ids:[11,72]})
+ expect(tracker.resolve(actual(first))?.gpuOverlayCapture).toBe(S)
+ expect(tracker.resolve(actual(second))?.gpuOverlayCapture).toBe(C)
+ expect(tracker.resolve(actual(first))).toBeUndefined()
+ // Camera-only repaint of this same cohort still uses the bounded context.
+ for(let x=0;x<200;x++)expect(tracker.stage({...base,view:{...base.view,x},gpuOverlayCapture:C})).toBe(second)
+})
+
+test('capture ACK coverage permits page tiles, ordering and duplicates but rejects a missing capture slot',()=>{
+ const tracker=new ResidentPresentation(),base={...source(),gpuOverlay:true,gpuOverlayIdentity:'same-ui'}
+ const first=tracker.stage({...base,gpuOverlayCapture:{slots:[11]}})!
+ const C={slots:[21,22]},second=tracker.stage({...base,gpuOverlayCapture:C})!
+ const actual=(presentationId:string,ids:number[])=>({...acknowledgement(presentationId),gpuOverlay:true,ids})
+ expect(tracker.resolve(actual(second,[90,21,21]))).toBeUndefined()
+ // Rejection must not advance the acknowledged serial.
+ expect(tracker.resolve(actual(first,[11,90]))).toBeDefined()
+ expect(tracker.resolve(actual(second,[90,22,21,22]))?.gpuOverlayCapture).toBe(C)
+ expect(tracker.resolve(actual(first,[11,90]))).toBeUndefined()
+})
+
+test('historical capture readback keeps its own cohort without advancing or regressing display ACKs',()=>{
+ const tracker=new ResidentPresentation(),base={...source(),gpuOverlay:true,gpuOverlayIdentity:'same-ui'}
+ const S={slots:[11]},C={slots:[21]},first=tracker.stage({...base,gpuOverlayCapture:S})!
+ const resolveSnapshot=tracker.snapshotResolver()
+ const second=tracker.stage({...base,gpuOverlayCapture:C})!
+ const actual=(presentationId:string,ids:number[])=>({...acknowledgement(presentationId),gpuOverlay:true,ids})
+ expect(tracker.resolve(actual(second,[21]))?.gpuOverlayCapture).toBe(C)
+ expect(resolveSnapshot(actual(first,[11]))?.gpuOverlayCapture).toBe(S)
+ expect(resolveSnapshot(actual(first,[21]))).toBeUndefined()
+ expect(resolveSnapshot(actual(second,[21]))).toBeUndefined()
+ expect(tracker.resolve(actual(first,[11]))).toBeUndefined()
+ expect(tracker.resolve(actual(second,[21]))?.gpuOverlayCapture).toBe(C)
+})
+
+
+test('ACK admission rejects only known retired or incomplete capture contexts',()=>{
+ const tracker=new ResidentPresentation(),base={...source(),gpuOverlayCapture:{slots:[11]}}
+ const first=tracker.stage(base)!,second=tracker.stage({...base,gpuOverlayCapture:{slots:[22]}})!
+ const actual=(presentationId:string|undefined,ids:number[])=>({...acknowledgement(presentationId),ids})
+ expect(tracker.rejectsAcknowledgement(actual(undefined,[]))).toBe(false)
+ expect(tracker.rejectsAcknowledgement(actual('untracked-worker-frame',[]))).toBe(false)
+ expect(tracker.rejectsAcknowledgement(actual(second,[11]))).toBe(true)
+ expect(tracker.rejectsAcknowledgement(actual(first,[11]))).toBe(false)
+ tracker.resolve(actual(second,[22]))
+ expect(tracker.rejectsAcknowledgement(actual(first,[11]))).toBe(true)
+ expect(tracker.rejectsAcknowledgement(actual(second,[22,55]))).toBe(false)
+})

@@ -2227,3 +2227,175 @@ test('device replacement discards a late settled coverage result and wakes curre
   await vi.waitFor(() => expect(worker.calls.length).toBeGreaterThan(before + 1))
   expect(worker.calls[before + 1].options.view.zoom).toBe(1)
 })
+
+async function editedViewportPreviewFixture(background = '#ff0000') {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('navigator', { gpu: {} })
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const old = { key: 'old-exact-32x', x: 0, y: 0, width: 1024, height: 512, zoom: 32, gutter: 0, gpuTile: 110 }
+  worker.plan = [old]
+  const h = harness([old]), previous = { backend: 'webgpu', view: { x: 0, y: 0, zoom: 32 } }
+  h.render(previous)
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(1))
+  worker.calls[0].resolve(); await settleRejected()
+  const oldFrame = surfaceParts(h.render(previous)).compositor
+  oldFrame.props.onPresented({ view: previous.view, width: 1024, height: 512, dpr: 1, interaction: false, ids: [110] }, undefined,
+    { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 1 })
+  expect(surfaceParts(h.render(previous)).wrapper.props['data-frame-publication']).toBe('complete')
+  const translucent = makeNode('rectangle'); translucent.opacity = .5
+  const document = { ...h.doc, nodes: { ...h.doc.nodes, [translucent.id]: translucent },
+    pages: h.doc.pages.map(page => ({ ...page, background, children: [...page.children, translucent.id] })) }
+  const next = { ...previous, document, view: { x: 0, y: 0, zoom: .04 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 1, view: next.view } }
+  h.render(next)
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
+  expect(worker.calls[1].options.transparent).toBe(false)
+  expect(worker.calls[1].options.renderIntent).toBe('preview')
+  worker.calls[1].resolve({ backend: 'webgpu', gpuTile: 111 }); await settleRejected()
+  let parts = surfaceParts(h.render(next))
+  const preview = parts.compositor.props.items.find((item: any) => item.tile.viewportPreview).tile
+  parts.compositor.props.onReady(preview.key, preview.serial, false)
+  parts = surfaceParts(h.render(next))
+  return { h, next, preview, parts, document, old }
+}
+
+test('a complete current-revision viewport preview replaces obsolete32x pixels before exact tile completion', async () => {
+  const { next, preview, parts, document } = await editedViewportPreviewFixture()
+  expect(parts.wrapper.props['data-detail-ready']).toBe('false')
+  const draws = compositeDrawPlan(parts.compositor.props.items, next.view, 1024, 512)
+  expect(draws.some(row => row.item.tile === preview)).toBe(true)
+  expect(draws.every(row => (row.item.tile as any).document === document)).toBe(true)
+  // Full viewport composition contains translucent nodes and page background.
+  // The old revision must contribute no fragment or double alpha.
+  expect(draws.reduce((area, row) => area + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)).toBe(1024 * 512)
+  expect(parts.compositor.props.presentation.document).toBe(document)
+  expect(parts.compositor.props.presentation.preview).toBe(true)
+})
+
+
+const acknowledgeRevisionPreview = (fixture: Awaited<ReturnType<typeof editedViewportPreviewFixture>>, change: any = {}) => {
+  const { next, parts, preview } = fixture
+  parts.compositor.props.onPresented({ view: next.view, width: 1024, height: 512, dpr: 1,
+    interaction: false, ids: [preview.gpuTile], ...change.frame },
+    change.source ?? parts.compositor.props.presentation,
+    { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 1, ...change.device })
+}
+
+test('current-revision preview activates only after the actual matching ACK and never certifies exact quality', async () => {
+  const f = await editedViewportPreviewFixture()
+  expect(f.parts.wrapper.props['data-revision']).toBe(1)
+  expect(worker.clients[0].releasePresented.mock.calls.flat(2)).not.toContain(f.old.gpuTile)
+  acknowledgeRevisionPreview(f)
+  const accepted = surfaceParts(f.h.render(f.next))
+  expect(accepted.wrapper.props['data-revision']).toBe(2)
+  expect(accepted.wrapper.props['data-frame-publication']).toBe('preview')
+  expect(accepted.wrapper.props['data-detail-ready']).toBe('false')
+  expect(accepted.wrapper.props['data-native-pixel-ready']).toBe('false')
+  expect(accepted.compositor.props.presentation.document).toBe(f.document)
+  expect(accepted.compositor.props.presentation.preview).toBe(true)
+  // A later camera can reproject this already-ACKed current revision, but it
+  // cannot upgrade its sampling quality or go back to obsolete32x content.
+  const moving = { ...f.next, view: { x: 4, y: 2, zoom: .05 } }
+  worker.navigation = { active: true, suspended: false, sample: { active: true, sequence: 2, view: moving.view } }
+  const later = surfaceParts(f.h.render(moving))
+  expect(later.compositor.props.items.filter((item: any) => item.active).every((item: any) => item.tile.document === f.document)).toBe(true)
+  expect(later.wrapper.props['data-native-pixel-ready']).toBe('false')
+})
+
+test.each(['partial', 'camera', 'revision', 'document', 'contract', 'client', 'generation', 'device', 'precision', 'profile', 'unready', 'backend'] as const)(
+  'new-revision atomic preview rejects %s admission mismatch', async mismatch => {
+    const f = await editedViewportPreviewFixture(), p = f.preview
+    if (mismatch === 'partial') p.width /= 2
+    if (mismatch === 'camera') p.previewSource = { ...p.previewSource, view: { ...p.previewSource.view, x: 1 } }
+    if (mismatch === 'revision') p.revision++
+    if (mismatch === 'document') p.document = f.h.doc
+    if (mismatch === 'contract') p.previewSource = { ...p.previewSource, contract: {} }
+    if (mismatch === 'client') p.previewSource = { ...p.previewSource, client: {} }
+    if (mismatch === 'generation') p.previewSource = { ...p.previewSource, generation: 999 }
+    if (mismatch === 'device') p.previewSource = { ...p.previewSource, device: '11/1/99' }
+    if (mismatch === 'precision') p.previewSource = { ...p.previewSource, precision: 'other' }
+    if (mismatch === 'profile') p.previewSource = { ...p.previewSource, profile: 'other' }
+    if (mismatch === 'unready') f.parts.compositor.props.onGone(p.key, p.serial)
+    if (mismatch === 'backend') p.backend = 'webgl2'
+    const rejected = surfaceParts(f.h.render(f.next))
+    expect(rejected.compositor.props.items.find((item: any) => item.tile === p)?.active).toBe(false)
+    expect(rejected.wrapper.props['data-revision']).toBe(1)
+    expect(rejected.wrapper.props['data-detail-ready']).toBe('false')
+  })
+
+test.each(['camera', 'handle', 'interaction', 'source', 'source-page', 'source-epoch', 'source-exact', 'generation', 'device', 'stale-owner'] as const)(
+  'new-revision preview never publishes a mismatched %s ACK', async mismatch => {
+    const f = await editedViewportPreviewFixture()
+    const change: any = {}
+    if (mismatch === 'camera') change.frame = { view: { ...f.next.view, zoom: .05 } }
+    if (mismatch === 'handle') change.frame = { ids: [f.old.gpuTile] }
+    if (mismatch === 'interaction') change.frame = { interaction: true }
+    if (mismatch === 'source') change.source = { ...f.parts.compositor.props.presentation, document: f.h.doc }
+    if (mismatch === 'source-page') change.source = { ...f.parts.compositor.props.presentation, pageId: 'another-page' }
+    if (mismatch === 'source-epoch') change.source = { ...f.parts.compositor.props.presentation, epoch: 999 }
+    if (mismatch === 'source-exact') change.source = { ...f.parts.compositor.props.presentation, preview: false }
+    if (mismatch === 'generation') f.preview.previewSource = { ...f.preview.previewSource, generation: 999 }
+    if (mismatch === 'device') change.device = { deviceOwner: 2 }
+    const newer = { ...f.next, document: { ...f.document, nodes: { ...f.document.nodes } } }
+    if (mismatch === 'stale-owner') f.h.render(newer)
+    acknowledgeRevisionPreview(f, change)
+    const rejected = surfaceParts(f.h.render(mismatch === 'stale-owner' ? newer : f.next))
+    expect(rejected.wrapper.props['data-revision']).not.toBe(2)
+    expect(rejected.wrapper.props['data-native-pixel-ready']).toBe('false')
+  })
+
+
+test('transparent current-revision viewport replaces old color without drawing both revisions', async () => {
+  const f = await editedViewportPreviewFixture('#00000000')
+  const draws = compositeDrawPlan(f.parts.compositor.props.items, f.next.view, 1024, 512)
+  expect(draws).toHaveLength(1)
+  expect(draws[0].item.tile).toBe(f.preview)
+  expect(draws[0].item.blend).not.toBe(true)
+  // A transparent sample in this replacement leaves the cleared target
+  // transparent. No old-revision color is submitted underneath to leak back.
+  expect(f.parts.compositor.props.items.filter((item: any) => item.active).map((item: any) => item.tile.gpuTile)).toEqual([111])
+  expect(f.parts.wrapper.props['data-revision']).toBe(1) // Old handles still held before ACK.
+  acknowledgeRevisionPreview(f)
+  expect(surfaceParts(f.h.render(f.next)).wrapper.props['data-revision']).toBe(2)
+})
+
+test('cold resident preview accepts its first real device ACK then reveals one exact tile without waiting for the last tile', async () => {
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('navigator', { gpu: {} })
+  worker.plan = planTiles({ x: 0, y: 0, width: 512, height: 256 }, 4)
+  const h = harness(false), options = { backend: 'webgpu', width: 2048, height: 1024, view: { x: 0, y: 0, zoom: 4 } }
+  h.render(options)
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(1)); worker.calls[0].resolve()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(2)); worker.calls[1].resolve({ backend: 'webgpu', gpuTile: 121 })
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(3))
+  let parts = surfaceParts(h.render(options))
+  const preview = parts.compositor.props.items.find((item: any) => item.tile.viewportPreview).tile
+  expect(preview.previewSource.device).toBeUndefined()
+  parts.compositor.props.onReady(preview.key, preview.serial, false)
+  parts = surfaceParts(h.render(options))
+  expect(parts.wrapper.props['data-revision']).toBe(0)
+  expect(parts.compositor.props.presentation.preview).toBe(true)
+  const device = { client: worker.clients[0], deviceWorkerScope: 11, deviceIncarnation: 1, deviceOwner: 1 }
+  parts.compositor.props.onPresented({ view: options.view, width: options.width, height: options.height,
+    dpr: 1, interaction: false, ids: [121] }, parts.compositor.props.presentation, device)
+  parts = surfaceParts(h.render(options))
+  expect(parts.wrapper.props['data-revision']).toBe(1)
+  expect(parts.wrapper.props['data-frame-publication']).toBe('preview')
+  expect(parts.wrapper.props['data-detail-ready']).toBe('false')
+  expect(parts.compositor.props.presentation.preview).toBe(true)
+  const first = worker.calls[2].options.tileViewport[0]
+  worker.calls[2].progress({ ...first, bytes: new Uint8Array(), backend: 'webgpu', gpuTile: 122, cached: false })
+  parts = surfaceParts(h.render(options))
+  const fine = parts.compositor.props.items.find((item: any) => item.tile.gpuTile === 122).tile
+  parts.compositor.props.onReady(fine.key, fine.serial, false)
+  parts = surfaceParts(h.render(options))
+  const draws = compositeDrawPlan(parts.compositor.props.items, options.view, options.width, options.height)
+  expect(draws.some(row => row.item.tile === fine)).toBe(true)
+  expect(draws.some(row => row.item.tile === preview)).toBe(true)
+  expect(draws.every(row => row.item.blend !== true)).toBe(true)
+  // Replacement clips, not source-over of the same translucent content twice.
+  expect(draws.reduce((area, row) => area + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)).toBe(options.width * options.height)
+  expect(parts.wrapper.props['data-detail-ready']).toBe('false')
+  expect(parts.wrapper.props['data-native-pixel-ready']).toBe('false')
+})

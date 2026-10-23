@@ -1,0 +1,116 @@
+✔ ordinary stream writes borrow the whole payload instead of copying it to add a newline (1.589625ms)
+✔ stream writes keep multipart wire bytes and sequence unchanged beyond the frame boundary (6.673291ms)
+✔ startup capacity reflects available memory and cgroup constraints, not a document business quota (0.263834ms)
+✖ the desktop parser accepts a valid document above the former 32 MiB product cap (0.418791ms)
+✔ multipart wire chunks roundtrip beyond an independent frame boundary, including split UTF-8 (10.903042ms)
+✔ oversized totals, reordered/replayed chunks, interruption and noncanonical encodings fail before publication (7.899375ms)
+✔ plain JSON preflight counts escaping/UTF-8 exactly and rejects oversize before serialization (0.522792ms)
+✔ React notice versions agree with exact manifest, lock, inventory and installed packages (8.8755ms)
+✔ actual Vite production build excludes references and preserves font, branding and licenses (124.043292ms)
+✔ asset copier refuses source/output overlap (0.171792ms)
+✔ native font and package paths retain notices and reject stale reference output (1.35975ms)
+✔ distributed notices match installed runtime packages (7.764125ms)
+✔ configuration passes its actual captured WASM identity into the production copy plugin (951.434833ms)
+✔ build identity binds actual source, dictionary, WASM input and optional HEAD separately (1.196083ms)
+✔ missing Git, source, dictionary or unambiguous WASM is explicit unknown without leaking failures (0.406333ms)
+✔ identity sanitizer permits only fixed length digests, optional HEAD and bounded enums (0.159625ms)
+✔ literal-injected producer has immutable identity and survives both relay sanitizers (4.892375ms)
+✔ provenance adds no events or per-frame work and remains on error and dropped-ring summary (29.147958ms)
+✔ serve/HMR deliberately reports unknown and does not hash a stale startup snapshot (0.085833ms)
+✔ public-only archive identity hashes the actual asset copied to runtime URL (16.549334ms)
+✔ JS/type-only generated directory does not hide the public runtime WASM (3.693625ms)
+✔ matching generated/public artifacts have the public runtime identity (3.021834ms)
+✔ generated-only artifact is not a fallback for missing public runtime WASM (3.27925ms)
+✔ mismatched generated/public artifacts never claim a verified WASM identity (5.167917ms)
+✔ unexpected or multiple generated WASM names leave identity unverified (6.244625ms)
+✔ expected public WASM hash survives real production copy (5.332958ms)
+✔ copy rejects a public input changed after expected identity capture (2.432625ms)
+✔ copy rejects generated/public divergence introduced after identity capture (3.471709ms)
+✔ copy without an expected identity preserves the explicit unverified path (2.529375ms)
+✔ post-copy guard checks actual output bytes, not merely the unchanged input (2.876166ms)
+✔ production plugin passes captured identity to its real writeBundle copy (3.23775ms)
+✔ expected identity rejects missing or invalid public WASM rather than silently disabling checks (1.776ms)
+✔ copy rejects output changed after real cp returns (3.506166ms)
+✔ copy rejects source changed after real cp returns (3.358917ms)
+✔ schema rejects arbitrary content, nonfinite numbers and forged enums (1.967958ms)
+✔ tile order correlation retains bounded original indices, signed row deltas and cache measurements (0.767667ms)
+✔ static image blur telemetry contains only five bounded numeric counters (0.419167ms)
+✔ exact X-phase reuse exposes counts and bytes without program words or identities (0.3045ms)
+✔ background region witnesses retain only bounded anonymous frame counters (0.413292ms)
+✔ surface replacement admission exposes bounded numeric ownership counts without identifiers (0.740083ms)
+✔ display image and nested-prefix telemetry never carries document data (0.433584ms)
+✔ disabled path never reads clocks, schedules, serializes payloads, or emits (0.159875ms)
+✔ storm is bounded and latest samples plus suppressed counts are retained (63.296458ms)
+✔ worker structured clone → renderer validation → terminal validation keeps correlation (3.774416ms)
+✔ Electron activation and worker relay are explicitly gated; no added GPU wait (2.170083ms)
+✔ detail retains event timestamps and request lifecycle in batched bounded ring (24.495416ms)
+✔ detail keeps ordinary coverage throttled and explicitly gates per-frame sharp diagnostics (0.700708ms)
+✔ request purpose is scalar and separates transient, settled, coverage and readback work (0.317ms)
+✔ only exact cancellation sentinel is intentional cancellation (0.048584ms)
+✔ capture and physical preparation detail remains numeric and excludes authored content (0.331792ms)
+✔ DETAIL resource context is bounded numeric metadata, never resource content (0.893417ms)
+✔ derivation telemetry admits bounded counts and categories without receipts or authored data (0.399708ms)
+✔ pan eligibility is bounded numeric metadata, never document/profile content (0.176375ms)
+✔ pan eligibility rejects out-of-range numbers, strings, objects and nonfinite values (0.551791ms)
+✔ existing viewport-state detail stream carries eligibility without another event (0.211083ms)
+✔ existing fence transports bounded admission decision metadata only (0.221416ms)
+✔ admission enums, bytes and counts reject forged/nonfinite/noninteger values (0.825959ms)
+✔ retired image-table admission bits survive the existing fence sanitizer (0.354291ms)
+✔ retired-kind diagnostics reject bits above the five-bit mask and invalid scalars (0.255917ms)
+✔ resident scratch causal trace retains bounded scalar fields and rejects payloads (0.996625ms)
+✔ stdio RPC is bounded, shell-free and roundtrips a correlated response (105.371375ms)
+✔ malformed backend output fails closed and reaps child (0.542959ms)
+✔ failed spawn rejects outstanding work without unhandled error (0.303542ms)
+✔ request timeout never retries and escalates unresponsive child termination (1013.635958ms)
+✔ pending queue is bounded and all requests fail after backend loss (52.400375ms)
+✔ split frames are assembled and unknown IDs fail closed (0.579334ms)
+✔ aggregate bytes reject before transport and drain gates queued frames (0.431959ms)
+✔ ordinary payload and delimiter keep one reservation until both writes finish, even with an early reply (101.203834ms)
+✔ graceful stop drains EOF and accepts committed response before close (0.728541ms)
+✔ large-result reservations prevent small open requests multiplying response memory (0.448375ms)
+✔ lost replies classify every native Sketch mutation as an uncertain outcome (1.61725ms)
+✖ large desktop requests and replies cross fixed frames through bounded chunks, retaining one reservation (0.714ms)
+✔ aggregate resource rejection occurs before JSON serialization allocation (101.434833ms)
+ℹ tests 73
+ℹ suites 0
+ℹ pass 71
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1470.447791
+
+✖ failing tests:
+
+test at frontend/design-desktop/test/document-capacity.test.mjs:27:1
+✖ the desktop parser accepts a valid document above the former 32 MiB product cap (0.418791ms)
+  AssertionError [ERR_ASSERTION]: test requires at least 528 MiB admitted working memory
+      at TestContext.<anonymous> (file://<repo>/frontend/design-desktop/test/document-capacity.test.mjs:28:9)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at frontend/design-desktop/test/sidecar.test.mjs:187:1
+✖ large desktop requests and replies cross fixed frames through bounded chunks, retaining one reservation (0.714ms)
+  AssertionError [ERR_ASSERTION]: test requires >64MiB admitted transfer allowance
+      at TestContext.<anonymous> (file://<repo>/frontend/design-desktop/test/sidecar.test.mjs:208:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

@@ -198,7 +198,7 @@ export class DesktopSession {
       const pending = hasPendingEdits(editor)
       const propertyEnded = this.hadPropertyPreview && !editor.propertyPreviewActive
       this.hadPropertyPreview = !!editor.propertyPreviewActive
-      if (pending || this.hadPending) this.generation++
+      if (pending || this.hadPending) this.advanceGeneration()
       this.hadPending = pending
       this.publish()
       // Cancellation may restore the exact saved object without a new revision.
@@ -212,6 +212,15 @@ export class DesktopSession {
   get dirty() { return hasPendingEdits(this.editor) || this.baselineGeneration !== this.generation }
   private encode(document: DesignDocument) {
     return documentStageAsync(DocumentStage.encode, () => this.bridge.documentCodec?.encode(document) ?? Promise.resolve(JSON.stringify(document)))
+  }
+  private advanceGeneration() {
+    this.generation++
+    // The cache can only serve its exact generation. Release stale full JSON
+    // immediately, including navigation to a custom-codec document with no
+    // replacement certificate. Baselines and uncertain idempotent writes own
+    // their separate references and must survive this cache invalidation.
+    this.serializedGeneration = -1
+    this.serializedJson = ''
   }
   private async captureSnapshot() {
     const generation=this.generation, document=this.currentDocument
@@ -538,7 +547,7 @@ export class DesktopSession {
     if (this.suppressObservation || (authored === this.currentDocument && this.editor.state.version === this.currentVersion)) return
     this.currentDocument = authored
     this.currentVersion = this.editor.state.version
-    this.generation++
+    this.advanceGeneration()
     this.publish()
     if (this.started && !this.recoveryPaused && this.operation === 'idle') this.scheduleRecovery()
   }
@@ -672,7 +681,7 @@ export class DesktopSession {
       this.tabsValue = this.tabsValue.filter(t => t.id !== previousId)
     this.currentDocument = this.editor.authoredDocument ?? this.editor.state.doc
     this.currentVersion = this.editor.state.version
-    this.generation++
+    this.advanceGeneration()
     // An imported document is still dirty until storage acknowledges it, but
     // its exact post-layout bytes already exist. Reuse them for the first save
     // instead of cloning the whole object through the desktop codec again.

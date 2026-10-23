@@ -1,0 +1,33 @@
+
+ RUN  v5.0.1 <repo>/frontend/design-client
+
+ ❯ src/SystemFontPicker.web.test.tsx (0 test)
+ ❯ src/font-source-preservation.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/SystemFontPicker.web.test.tsx [ src/SystemFontPicker.web.test.tsx ]
+Error: Real font fixtures could not be generated. Require Python >= 3.10 and fonttools==4.61.1 from testing/font-fixtures-requirements.txt; no installation, fallback or skip occurs. Font fixture generation failed: Missing fontTools. Install the pinned dependency with: python -m pip install -r testing/font-fixtures-requirements.txt (no automatic installation is performed)
+
+ ❯ prepareFontTestFixtures src/font-test-fixtures.ts:24:50
+
+ ❯ Module.fontTestBytes src/font-test-fixtures.ts:44:14
+ ❯ src/SystemFontPicker.web.test.tsx:27:30
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/font-source-preservation.test.ts [ src/font-source-preservation.test.ts ]
+Error: Real font fixtures could not be generated. Require Python >= 3.10 and fonttools==4.61.1 from testing/font-fixtures-requirements.txt; no installation, fallback or skip occurs. Font fixture generation failed: Missing fontTools. Install the pinned dependency with: python -m pip install -r testing/font-fixtures-requirements.txt (no automatic installation is performed)
+
+ ❯ prepareFontTestFixtures src/font-test-fixtures.ts:24:50
+
+ ❯ fontTestBytes src/font-test-fixtures.ts:44:14
+ ❯ src/font-source-preservation.test.ts:14:63
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 34 passed (36)
+      Tests  831 passed | 4 skipped (835)
+   Start at  09:03:01
+   Duration  69.37s (tests 91%, import 4%, transform 3%, setup 1%, environment 1%)
