@@ -1,0 +1,82 @@
+[
+  {
+    "path": "design-studio/crates/design-desktop-backend/src/large_document/checkpoint_io.rs",
+    "beforeSha256": null,
+    "afterSha256": "4866ee87b79d536ce8e3213bb23b0ac5a620caa2ddefa6ec2a94e6a28468af3e"
+  },
+  {
+    "path": "design-studio/crates/design-desktop-backend/src/large_document/checkpoint_tests.rs",
+    "beforeSha256": null,
+    "afterSha256": "2d22b3a4028af036aecc860c8e036557ad26652d5db316b043dec4d811459af8"
+  },
+  {
+    "path": "design-studio/crates/design-desktop-backend/src/large_document/fixtures/new_node_rounded_rectangle.json",
+    "beforeSha256": null,
+    "afterSha256": "0bb4defbfda4eff7664feca9a8cb14458ddaa68dcd6ed97dca79b57b2ddab98d"
+  },
+  {
+    "path": "design-studio/crates/design-desktop-backend/src/large_document/fixtures/new_node_source_page.json",
+    "beforeSha256": null,
+    "afterSha256": "fb9f5473abec40f8a77649888a32b32deca2cc9d3ef543d257119ac801b25dd1"
+  },
+  {
+    "path": "design-studio/crates/design-desktop-backend/src/large_document/fragment_validation_tests.rs",
+    "beforeSha256": null,
+    "afterSha256": "6101a38b8d5fad31cf748fd1a0a4943c882a692c197315ae77529ca5cb019483"
+  },
+  {
+    "path": "design-studio/crates/design-desktop-backend/src/large_document/projection.rs",
+    "beforeSha256": "8a82b0c4fb5b2a7d5c8c7664192b5da2d4d89502777147c4f4e50b721747fdab",
+    "afterSha256": "2ee9ac97f4ae06689dadefabdb396202179352401d7a69548437a3b50bed6a51"
+  },
+  {
+    "path": "design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs",
+    "beforeSha256": "3c04754e36419d9462672969e1bd4f3d38e8b381866922ad38cf2d0576266962",
+    "afterSha256": "e82b1b102aebe680abb1c92d9f6cd87719904017bbfc7dd99e6a7fc9d4e4855c"
+  },
+  {
+    "path": "design-studio/crates/design-desktop-backend/src/large_document.rs",
+    "beforeSha256": "1a9d6814580e5247577278d9461a867b8839068dc4430c6611086f12631606f3",
+    "afterSha256": "b903b9a139b6d427a55fe22716d2c2045857d1a0d665f15e5825f326d348c1df"
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/dirty_region.rs",
+    "beforeSha256": "3a7d88cfc660109a336ff5826b5b0b205a0e208e7c0ad15f1b1aac183caea2b8",
+    "afterSha256": "651b057a2078da7933c6df46a0801aec86cdd649bb3624ff93f33579a5d02a9f"
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/editing.rs",
+    "beforeSha256": "9d20f6d96eb8bd512f9cde683acbabc70464f7fff2964a25696a0adc45e058ea",
+    "afterSha256": "ed0616da2c25e1a715aa0f50f4a46a22cd440eee8b0f78a28f81c03adb3c0f04"
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/interop/source_edit_tests.rs",
+    "beforeSha256": "b32744e883ce1f2d040b0304ba2e0c9a34eb8dcf73b00882d25323b1d7a179da",
+    "afterSha256": "f9b47e194f79b644469979efddfaca841ed649deb1fdb1f98c97084a00900748"
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/interop.rs",
+    "beforeSha256": "cba1d8899a04fb9298e8903d8df60429f60a3d1fd13090db6c9980746717e421",
+    "afterSha256": "e2b4353199e9e6cb42423882575c4c22b63463e361efcac40f5e9c22feacf11e"
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/large_json/fragment_validation_tests.rs",
+    "beforeSha256": null,
+    "afterSha256": "84b7cce8ca5f6d4e12c32407f669d8f7c485b87d44cef4545a8847a04bbea43b"
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/large_json.rs",
+    "beforeSha256": "7ae40deed0d793acd111dfff0a843777b7a7f3b8eb7c129b0481d7c0158bc4d2",
+    "afterSha256": "99ba4386cbe15dffa575dfb62adb83898429a884b81bd7f76bee7222848e0e27"
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/renderer.rs",
+    "beforeSha256": "3e156cc582b3d562116f1febf073a649645b80101582082b6507ac024f3dec99",
+    "afterSha256": "c4b6a10f41ef6a75ba6d7b3b6531b753689877831c48e20b803b68871693f132"
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/renderer_tests/translation_retention.rs",
+    "beforeSha256": "83d0353eb0e9be2c8b2ecfaa6d024bccb6adb83b1d92a2653fb08262bc8d6003",
+    "afterSha256": "811598da5d37cef3d51a47f0b0d2cd9f24fc860e5fe76894b49bc121a9e1bcc1"
+  }
+]

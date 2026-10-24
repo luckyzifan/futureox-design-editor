@@ -9,9 +9,12 @@ function fixture(){
   const dialog={showOpenDialog:async()=>({canceled:false,filePaths:['/approved/sample.json']}),showSaveDialog:async()=>({canceled:false,filePath:'/approved/exported.json'})}
   return {host:new LargeDocumentHost(request,dialog,()=>current),calls,changeWindow:()=>{current={isDestroyed:()=>false}}}
 }
-test('4 GiB summaries are safe Numbers and a larger forged limit/foreign owner is rejected',()=>{
+test('native storage-derived capacity accepts sources above 4 GiB and rejects unsafe byte counts/foreign owners',()=>{
   assert.equal(admitLargeStatus(status(owner)).expandedBytes,4294967296)
   assert.throws(()=>admitLargeStatus({...status(owner),expandedBytes:4294967297}))
+  assert.equal(admitLargeStatus({...status(owner),expandedBytes:5*1024**3,maxExpandedBytes:64*1024**3}).expandedBytes,5*1024**3)
+  for(const maxExpandedBytes of [0,NaN,Infinity,Number.MAX_SAFE_INTEGER+1])
+    assert.throws(()=>admitLargeStatus({...status(owner),maxExpandedBytes}))
   assert.throws(()=>admitLargeStatus(status(owner),{...owner,sessionEpoch:2}))
 })
 test('only native-picked paths enter open/export; renderer paths and stale edit owners fail before RPC',async()=>{

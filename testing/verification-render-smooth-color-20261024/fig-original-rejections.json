@@ -1,0 +1,162 @@
+[
+  {
+    "guid": {
+      "sessionID": 0,
+      "localID": 173
+    },
+    "name": "Fill 1",
+    "type": "VECTOR",
+    "size": {
+      "x": 22,
+      "y": 15
+    },
+    "vectorData": {
+      "vectorNetworkBlob": 72,
+      "normalizedSize": {
+        "x": 22,
+        "y": 15
+      }
+    },
+    "error": "FIG region loop is not connected and closed"
+  },
+  {
+    "guid": {
+      "sessionID": 0,
+      "localID": 174
+    },
+    "name": "Path",
+    "type": "VECTOR",
+    "size": {
+      "x": 7.195159912109375,
+      "y": 3.308201313018799
+    },
+    "vectorData": {
+      "vectorNetworkBlob": 73,
+      "normalizedSize": {
+        "x": 7.195159912109375,
+        "y": 3.308201313018799
+      }
+    },
+    "error": "FIG region loop is not connected and closed"
+  },
+  {
+    "guid": {
+      "sessionID": 0,
+      "localID": 175
+    },
+    "name": "Path",
+    "type": "VECTOR",
+    "size": {
+      "x": 12,
+      "y": 14
+    },
+    "vectorData": {
+      "vectorNetworkBlob": 74,
+      "normalizedSize": {
+        "x": 12,
+        "y": 14
+      }
+    },
+    "error": "FIG region loop is not connected and closed"
+  },
+  {
+    "guid": {
+      "sessionID": 0,
+      "localID": 178
+    },
+    "name": "Fill 5",
+    "type": "VECTOR",
+    "size": {
+      "x": 11,
+      "y": 19
+    },
+    "vectorData": {
+      "vectorNetworkBlob": 75,
+      "normalizedSize": {
+        "x": 11,
+        "y": 19
+      }
+    },
+    "error": "FIG region loop is not connected and closed"
+  },
+  {
+    "guid": {
+      "sessionID": 0,
+      "localID": 179
+    },
+    "name": "Path",
+    "type": "VECTOR",
+    "size": {
+      "x": 7.195159912109375,
+      "y": 3.308201313018799
+    },
+    "vectorData": {
+      "vectorNetworkBlob": 73,
+      "normalizedSize": {
+        "x": 7.195159912109375,
+        "y": 3.308201313018799
+      }
+    },
+    "error": "FIG region loop is not connected and closed"
+  },
+  {
+    "guid": {
+      "sessionID": 0,
+      "localID": 180
+    },
+    "name": "Path",
+    "type": "VECTOR",
+    "size": {
+      "x": 12,
+      "y": 14
+    },
+    "vectorData": {
+      "vectorNetworkBlob": 76,
+      "normalizedSize": {
+        "x": 12,
+        "y": 14
+      }
+    },
+    "error": "FIG region loop is not connected and closed"
+  },
+  {
+    "guid": {
+      "sessionID": 0,
+      "localID": 182
+    },
+    "name": "Fill 9",
+    "type": "VECTOR",
+    "size": {
+      "x": 9,
+      "y": 14
+    },
+    "vectorData": {
+      "vectorNetworkBlob": 77,
+      "normalizedSize": {
+        "x": 9,
+        "y": 14
+      }
+    },
+    "error": "FIG region loop is not connected and closed"
+  },
+  {
+    "guid": {
+      "sessionID": 0,
+      "localID": 184
+    },
+    "name": "Fill 4",
+    "type": "VECTOR",
+    "size": {
+      "x": 10,
+      "y": 10
+    },
+    "vectorData": {
+      "vectorNetworkBlob": 79,
+      "normalizedSize": {
+        "x": 10,
+        "y": 10
+      }
+    },
+    "error": "FIG region loop is not connected and closed"
+  }
+]

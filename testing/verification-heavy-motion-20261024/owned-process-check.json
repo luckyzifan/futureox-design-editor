@@ -1,0 +1,4 @@
+{
+  "scope": "read-only inventory of executable paths under this task private runtime, never signals or kills foreign processes",
+  "matchingProcesses": []
+}

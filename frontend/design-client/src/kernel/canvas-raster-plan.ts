@@ -84,6 +84,18 @@ export function motionRasterScale(view: CanvasCamera, dpr: number, width: number
   catch { return requested }
 }
 
+/** Reuse a quarter-octave world lattice without undersampling or increasing
+ * the current viewport's admission allowance for speculative headroom. */
+export function nativeTileMotionScale(view: CanvasCamera, dpr: number, width: number, height: number) {
+  const requested = view.zoom * dpr, scale = tileLevel(requested)
+  if (!(requested > 0) || !Number.isFinite(requested) || scale < requested ||
+      scale / requested > 2 ** .25 + Number.EPSILON * 8) return requested
+  try {
+    return displayTileBudget(width, height, scale / view.zoom, false) === displayTileBudget(width, height, dpr, false)
+      ? scale : requested
+  } catch { return requested }
+}
+
 /** Density is device pixels per world unit. The viewport must use world
  * units too, so zoom cancels instead of multiplying memory demand twice. */
 export function canvasLodScale(zoom: number, dpr: number, width: number, height: number, maxTiles: number) {

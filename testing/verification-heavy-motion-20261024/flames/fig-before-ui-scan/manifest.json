@@ -1,0 +1,12 @@
+{
+  "scope": "sampled real FIG property edit/undo/redo before UI scan optimization; GPU rendering/SQLite real, V8 main thread only",
+  "results": [
+    {
+      "file": "ui.cpuprofile",
+      "target": {
+        "type": "renderer",
+        "title": "FIG 属性编辑：UI 主线程（优化前）"
+      }
+    }
+  ]
+}

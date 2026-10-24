@@ -1,0 +1,74 @@
+[
+  {
+    "file": "fig-gui-1/original.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/fig-gui-1/original.json",
+    "bytes": 27707759,
+    "sha256": "8d268b9534844321b56f2ccbb34f18fd10c75cd645085511c174003dea1740f7"
+  },
+  {
+    "file": "fig-gui-1/saved.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/fig-gui-1/saved.json",
+    "bytes": 27707761,
+    "sha256": "71cc1cdf96749fd3f4d8748b8cc5a3f76dbee123408c4e1f00e22bd55bfd7b67"
+  },
+  {
+    "file": "fig-gui-profile/original.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/fig-gui-profile/original.json",
+    "bytes": 27707759,
+    "sha256": "8d50c459388103281e3b9f6737e3847f8e5534eb20ea6b2274d1163e5b58823b"
+  },
+  {
+    "file": "fig-gui-profile/saved.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/fig-gui-profile/saved.json",
+    "bytes": 27707761,
+    "sha256": "dc6c757d037d2de57025e9e4ba2b3ff7d5f2040db1d6afa6af167a348336a3e3"
+  },
+  {
+    "file": "fig-gui-seeded/original.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/fig-gui-seeded/original.json",
+    "bytes": 27707759,
+    "sha256": "d242d9af20b06a48f35049688f3a36c28f5bf669ed82dca2ccc3241c9a0381ec"
+  },
+  {
+    "file": "fig-gui-seeded/saved.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/fig-gui-seeded/saved.json",
+    "bytes": 27707761,
+    "sha256": "89ebf1a155f373c482eb468273d18649c68ac8ecb567804d26e9305a9881b1c4"
+  },
+  {
+    "file": "fig-native-1/original.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/fig-native-1/original.json",
+    "bytes": 27707759,
+    "sha256": "3a33f135200757fb01285e9e25be4cca7094228c08dd0d2a14ad403d1d069f18"
+  },
+  {
+    "file": "fig-native-1/saved.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/fig-native-1/saved.json",
+    "bytes": 27707761,
+    "sha256": "d20350c32e74e5af0a0498b20e7153da8ef224fc3e617f0337bb6e214311f6a0"
+  },
+  {
+    "file": "gui-imported-document.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/gui-imported-document.json",
+    "bytes": 27707759,
+    "sha256": "056d1f080350d73cef93c6e286013f699642f963da5c43b89571102c85709f9e"
+  },
+  {
+    "file": "imported-document.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/imported-document.json",
+    "bytes": 22685050,
+    "sha256": "d2a7361452542b924e1f8104098a69c4590034903b7a1625e26b8d0ec8590a97"
+  },
+  {
+    "file": "fig-final-default/original.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/fig-final-default/original.json",
+    "bytes": 27707759,
+    "sha256": "3bb64921e1119e0974ab8f0045f7ce1f752118ce0bf64c965f2cd1ca965ca2a5"
+  },
+  {
+    "file": "fig-final-default/saved.json",
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/large-evidence/fig-final-default/saved.json",
+    "bytes": 27707761,
+    "sha256": "70c9f1d423c560ab8d0504663f3357b2c0a927f3258c7be589a82ae8000678ce"
+  }
+]

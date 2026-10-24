@@ -109,6 +109,22 @@ test('same-camera quiet keeps native work and promotes only after its import and
     expect(bitmap.close).not.toHaveBeenCalled()
   } finally { await act(async () => f.root.unmount()) }
 })
+test('visible-tile candidate starts native regional planning during input without a viewport preview',async()=>{
+  vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION','0');vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX','0')
+  vi.stubEnv('VITE_DESIGN_NATIVE_VISIBLE_TILES','1')
+  const f=await fixture()
+  try{
+    expect(state.pending[0].options.renderIntent).toBe('canvas')
+    expect(state.pending[0].options.livePreview).toBeUndefined()
+    expect(state.pending[0].options.tileViewport).toEqual([])
+    expect(state.plan).toHaveBeenCalled()
+    expect(state.plan.mock.calls[0][1]).toBe(64)
+    expect(f.container.querySelector('[data-native-visible-tiles="true"]')).not.toBeNull()
+    await f.render({view:{x:20,y:-30,zoom:16}})
+    expect(state.plan.mock.calls.at(-1)![1]).toBe(32)
+    expect(state.pending.every(job=>job.options.renderIntent==='canvas')).toBe(true)
+  }finally{await act(async()=>f.root.unmount())}
+})
 test('60 native pan release/restarts keep one running job; queued cameras expire on quiet', async () => {
   const f = await fixture()
   try {

@@ -1,0 +1,14 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/host-combined-quality-2",
+  "configuration": {
+    "VITE_DESIGN_NATIVE_VISIBLE_TILES": "1",
+    "VITE_DESIGN_EXACT_CLAMP_PREFIX": "0",
+    "VITE_DESIGN_MOTION_QUALITY_TRACE": "1"
+  },
+  "artifacts": {
+    "dist/build-manifest.json": "ddc6a2f9f7d2925ffd51702463dfb4653b8f62dbfb26693f1d8cc3764d4eb395",
+    "dist/renderer/kernel/design_kernel_bg.wasm": "b4ec508f144cfd3f3464ae4d08f97ac6dc06dd32f24d74fb5cb4abb8847889a6",
+    "dist/bin/design-prepare": "bea691ac368adb666167b64269dcc60f7e8e64dba6bb9b5159684bd93ae0eccd",
+    "dist/sidecar/futureox-design-desktop-backend": "b71f8987e8c7c2dd856b3cceb44c5c8aeb2feaa2d3ebdacd688286d89e650400"
+  }
+}

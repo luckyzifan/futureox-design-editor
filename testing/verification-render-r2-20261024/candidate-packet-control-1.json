@@ -1,0 +1,17 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/render-r2-20261024-_z77oryb/host-packet-control-1",
+  "configuration": {
+    "VITE_DESIGN_NATIVE_VISIBLE_TILES": "1",
+    "VITE_DESIGN_PARENT_SUFFIX": "1",
+    "VITE_DESIGN_IMAGE_ASSET_RESIDENCY": "1",
+    "VITE_DESIGN_EXACT_CLAMP_PREFIX": "0",
+    "VITE_DESIGN_MOTION_QUALITY_TRACE": "1",
+    "VITE_DESIGN_PACKET_IMAGE_TABLE": "0"
+  },
+  "artifacts": {
+    "dist/build-manifest.json": "1ad6892a715880aca2560ac97affe05b84a3e86e24bb5046216116476a04ba77",
+    "dist/renderer/kernel/design_kernel_bg.wasm": "aff9a82dcc91e07e6fb32a67be7e4f55c90a168131b0c8cf1a7e7a7e3bf44fe9",
+    "dist/bin/design-prepare": "f344f0bf9aedf0021e22a4ce539db7a86323a27db17156e64d70e492b313726a",
+    "dist/sidecar/futureox-design-desktop-backend": "c24216d9c7526f03a8251e426a6237542a9a59c80b28f58a0432a6cd9eb783bd"
+  }
+}

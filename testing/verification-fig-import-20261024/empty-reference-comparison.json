@@ -1,0 +1,42 @@
+[
+  {
+    "run": "empty-reference-baseline",
+    "errors": [
+      "Error: \u663e\u793a\u74e6\u7247\u7f13\u5b58\u9884\u7b97\u8d85\u9650"
+    ],
+    "detailReady": "false",
+    "nativeVisibleTiles": "false",
+    "rejections": 9,
+    "requiredRejections": 4,
+    "maxActiveBytes": 160566112,
+    "maxUsed": 142,
+    "uiStalls": 0,
+    "events": 139
+  },
+  {
+    "run": "empty-reference-native",
+    "errors": [
+      "Error: \u663e\u793a\u74e6\u7247\u7f13\u5b58\u9884\u7b97\u8d85\u9650"
+    ],
+    "detailReady": "false",
+    "nativeVisibleTiles": "true",
+    "rejections": 37,
+    "requiredRejections": 10,
+    "maxActiveBytes": 160631168,
+    "maxUsed": 151,
+    "uiStalls": 0,
+    "events": 139
+  },
+  {
+    "run": "empty-reference-fixed",
+    "errors": [],
+    "detailReady": "true",
+    "nativeVisibleTiles": "false",
+    "rejections": 3,
+    "requiredRejections": 0,
+    "maxActiveBytes": 160566112,
+    "maxUsed": 126,
+    "uiStalls": 0,
+    "events": 139
+  }
+]

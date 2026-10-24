@@ -869,7 +869,12 @@ fn linearGradientStop(index:u32)->vec4<f32>{
  return mulRN4(vec4<f32>(color.yzw,1.),vec4<f32>(alpha));
 }
 fn linearGradient(p:vec2<f32>)->vec4<f32>{
- let grid:vec4<f32>=textureLoad(sourceD,vec2<i32>(floor(p-u(0).xy)),0);
+ var address:vec2<i32>=vec2<i32>(floor(p-u(0).xy));
+ let dimensions:vec2<i32>=vec2<i32>(textureDimensions(sourceD,0));
+ // Only a certified compact field differs from the target extent.
+ if(dimensions.x==1&&u(0).z>1.){address.x=0;}
+ if(dimensions.y==1&&u(0).w>1.){address.y=0;}
+ let grid:vec4<f32>=textureLoad(sourceD,address,0);
  if(grid.x<0.){return mulRN4(vec4<f32>(u(7).yzw,1.),vec4<f32>(u(60).y));}
  let left:vec4<f32>=linearGradientStop(u32(grid.x));
  if(grid.x==grid.y){return left;}

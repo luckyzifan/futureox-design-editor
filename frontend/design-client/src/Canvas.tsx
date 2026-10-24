@@ -1675,7 +1675,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (edge[d.control!]?.x === local.x && edge[d.control!]?.y === local.y) return
         edge[d.control!] = local
       }
-      editor.preview({ [n.id]: { network, kind: 'vector', arc: undefined, cornerRadius: undefined } })
+      // A real point edit replaces precise render curves, never adds a second
+      // authority. d.node retains the authored curves for return-to-origin.
+      editor.preview({ [n.id]: { network, vectorGeometry: undefined, kind: 'vector', arc: undefined, cornerRadius: undefined } })
       return
     }
     let transform: Matrix = translate(p.x - d.start.x, p.y - d.start.y)
@@ -1954,6 +1956,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           additive, toggle: !!d.sketchMarquee && additive, ignoreId: d.marqueeIgnoreId }))
     } else if(d.kind==='pivot') {
       // The origin is an editing handle, not document geometry or undo state.
+    } else if ((d.kind === 'vertex' || d.kind === 'handle') &&
+        release.x === d.screen.x && release.y === d.screen.y) {
+      // Restoring a derived network can leave optional own-properties with
+      // undefined values. The unchanged pointer gesture owns no authored edit;
+      // restore its original snapshot and redo branch instead of committing
+      // that representational difference as an empty history entry.
+      editor.cancel()
+      finishDragTrace(d, ActionOutcome.cancelled, ActionReason.none)
     } else if (d.kind === 'move' && !d.moved) {
       editor.cancel()
       finishDragTrace(d, ActionOutcome.cancelled, ActionReason.belowThreshold)

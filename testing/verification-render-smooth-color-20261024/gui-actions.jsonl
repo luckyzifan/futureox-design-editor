@@ -1,0 +1,6 @@
+{"phase": "controls-zoom-no-sampler", "event": "start", "at": 1792795981300}
+{"phase": "controls-zoom-no-sampler", "event": "end", "at": 1792796038659, "observed": ["3200 input, 25 preset", "400 preset", "50 preset", "fit 12.6"], "note": "preset closes popover; later actions used refreshed AX"}
+{"phase": "v2-controls-wheel-no-sampler", "event": "start", "at": 1792796933645}
+{"phase": "v2-controls-wheel-no-sampler", "event": "end", "at": 1792796955794}
+{"phase": "v4-117-zoom", "event": "start", "at": 1792799406051}
+{"phase": "v4-117-zoom", "event": "end", "at": 1792799509878, "property": "width 1922->1930; undo; redo; saved"}

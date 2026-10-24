@@ -1,0 +1,95 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/tile-regions-3",
+  "status": "failed",
+  "cases": [
+    {
+      "fixture": "117.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 3.5290997520720855
+        },
+        "region": {
+          "x": 511,
+          "y": 2559,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "compileMs": 67.70000004768372,
+      "output": {
+        "x": 511,
+        "y": 2559,
+        "w": 514,
+        "h": 514
+      },
+      "extent": {
+        "x": 509,
+        "y": 2557,
+        "w": 518,
+        "h": 518
+      },
+      "nodes": 11,
+      "certifiedNodes": [
+        {
+          "id": "1AB99304-455A-4A9E-9473-8923A1330FA4",
+          "input": {
+            "x": 473,
+            "y": 2521,
+            "w": 590,
+            "h": 590
+          },
+          "output": [
+            507,
+            2555,
+            522,
+            522
+          ]
+        }
+      ],
+      "runs": []
+    }
+  ],
+  "runtime": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) futureox-desgin/0.0.0 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36",
+    "dpr": 2,
+    "visibility": "visible",
+    "webgpuExposed": true,
+    "executionPolicy": {
+      "cpuOnly": false,
+      "hdrCompositing": false,
+      "imageMips": false,
+      "imageAtlas": false,
+      "desktopFullMath": true,
+      "desktopDisplay": true
+    },
+    "host": {
+      "host": "electron",
+      "electron": "44.7.0",
+      "chromium": "152.0.7977.130",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpuOnly": false,
+      "gpuFeatureStatus": {
+        "2d_canvas": "enabled",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "enabled",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "enabled_on",
+        "rasterization": "enabled",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "enabled_on",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "enabled",
+        "video_encode": "enabled",
+        "webgl": "enabled",
+        "webgpu": "enabled",
+        "webnn": "disabled_off"
+      },
+      "windowVisible": true,
+      "windowFocused": true
+    }
+  },
+  "error": "Error: 后端缺少受管理的浮点图片解码器"
+}

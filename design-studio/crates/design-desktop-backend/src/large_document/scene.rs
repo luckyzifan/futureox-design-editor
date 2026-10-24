@@ -29,7 +29,8 @@ fn instance_resize_only(
 ) -> bool {
     if old.instance == next.instance { return true; }
     let (Some(a), Some(b)) = (&old.instance, &next.instance) else { return false; };
-    if a.component_id != b.component_id || a.property_values != b.property_values { return false; }
+    if a.component_id != b.component_id || a.property_values != b.property_values
+        || a.slot_contents != b.slot_contents { return false; }
     let mut a_overrides = a.overrides.clone();
     let mut b_overrides = b.overrides.clone();
     let a_root = a_overrides.remove("$root").unwrap_or_default();
@@ -50,6 +51,22 @@ fn instance_resize_only(
 mod tests {
     use super::*;
     #[test]
+    fn shared_window_retention_is_conservative_without_recharging_node_values() {
+        let doc:Document=serde_json::from_value(json!({"schemaVersion":16,"id":"source","name":"source","pages":[{"id":"p","name":"page","background":"#ffffff","children":["n"]}],"nodes":{"n":futureox_design_kernel::facet::sample_node("n","frame")}})).unwrap();
+        let bytes=serde_json::to_vec(&doc).unwrap().len();
+        let added=unique_window_bytes(&doc,&doc,bytes).unwrap();
+        assert!(added<bytes);assert!(added>0);
+        // The merged identical scene is still bounded from above, including
+        // every root/optional metadata field serialized by Document itself.
+        assert!(bytes+added>=bytes);
+        let mut other=doc.clone();other.nodes.get_mut("n").unwrap().width+=1.;
+        assert!(unique_window_bytes(&doc,&other,serde_json::to_vec(&other).unwrap().len()).is_err());
+        other.nodes.clear();other.pages[0].children.clear();
+        let standalone=serde_json::to_vec(&other).unwrap().len();
+        assert_eq!(unique_window_bytes(&doc,&other,standalone).unwrap(),standalone);
+    }
+
+    #[test]
     fn instance_resize_keeps_component_identity_and_other_overrides() {
         let mut old=futureox_design_kernel::facet::sample_node("instance", "frame");
         old.instance=Some(serde_json::from_value(json!({"componentId":"master","overrides":{},"propertyValues":{}})).unwrap());
@@ -64,6 +81,8 @@ mod tests {
         let mut bad=next.clone();bad.instance.as_mut().unwrap().overrides.insert("child".into(),BTreeMap::from([("width".into(),json!(120))]));
         assert!(!instance_resize_only(&old,&bad,&patch));
         assert!(instance_resize_only(&next,&old,&BTreeMap::from([("width".into(),json!(old.width))])));
+        let mut bad=next.clone();bad.instance.as_mut().unwrap().slot_contents.insert("slot".into(),vec!["child".into()]);
+        assert!(!instance_resize_only(&old,&bad,&patch));
     }
 }
 fn merge(a: &mut Value, b: Value) -> Result<()> {
@@ -83,6 +102,28 @@ fn merge(a: &mut Value, b: Value) -> Result<()> {
         Err(issue("Conflicting shared source metadata in page windows"))
     }
 }
+// Conservative serialized retention bound. Subtract only the value bytes of
+// exact shared entries; duplicate keys, delimiters and root metadata stay in
+// the bound. Never subtract conflicting references or change memory policy.
+fn unique_window_bytes(full: &Document, window: &Document, bytes: usize) -> Result<usize> {
+    let mut added = bytes;
+    for (id, node) in &window.nodes {
+        if let Some(old) = full.nodes.get(id) {
+            if old != node { return Err(issue("Conflicting source node in page dependency closure")); }
+            added = added.checked_sub(serde_json::to_vec(node).map_err(issue)?.len())
+                .ok_or_else(|| issue("Scene byte accounting underflow"))?;
+        }
+    }
+    for (id, font) in &window.fonts {
+        if let Some(old) = full.fonts.get(id) {
+            if old != font { return Err(issue("Conflicting source font in page dependency closure")); }
+            added = added.checked_sub(serde_json::to_vec(font).map_err(issue)?.len())
+                .ok_or_else(|| issue("Scene byte accounting underflow"))?;
+        }
+    }
+    Ok(added)
+}
+
 pub(super) fn build(
     s: &Session,
     p: usize,
@@ -125,9 +166,15 @@ pub(super) fn build(
     for root in roots {
         check_cancel(cancel).map_err(issue)?;
         let (mut doc, _, notes) = projection::sketch_window(s, p, root, 64 * 1024 * 1024)?;
-        retained = retained
-            .checked_add(serde_json::to_vec(&doc).map_err(issue)?.len())
-            .ok_or_else(|| issue("Scene byte overflow"))?;
+        let window_bytes = serde_json::to_vec(&doc).map_err(issue)?.len();
+        capacity::check_document_bytes(window_bytes).map_err(issue)?;
+        // Each window includes its shared fonts/component dependencies. Charge
+        // their retained values once, while keeping map keys/metadata overhead
+        // conservatively counted. The incoming window is independently bounded.
+        let added = if let Some(full) = &full {
+            unique_window_bytes(full, &doc, window_bytes)?
+        } else { window_bytes };
+        retained = retained.checked_add(added).ok_or_else(|| issue("Scene byte overflow"))?;
         capacity::check_document_bytes(retained).map_err(issue)?;
         warnings.extend(notes);
         if let Some(full) = &mut full {
@@ -265,7 +312,8 @@ pub(super) fn commit_nodes(
             .ok_or_else(|| issue("Select fewer changes for this source transaction (2 MiB)"))?;
         large_json::index(text.as_bytes(), MAX_FRAGMENT_BYTES).map_err(issue)?;
         let updates: BTreeMap<String, NodeEdit> = serde_json::from_str(text).map_err(issue)?;
-        let (p, _) = location(s, request.key.as_deref())?;
+        let (p, root) = location(s, request.key.as_deref())?;
+        let root_id = s.parts[p].index.entries[root].id.clone();
         let mut source_nodes = Vec::new();
         for (id, edit) in &updates {
             let old = baseline
@@ -327,15 +375,19 @@ pub(super) fn commit_nodes(
             scene.document.nodes.insert(id.clone(), node);
         }
         scene.document.validate().map_err(issue)?;
+        let has_authored_changes = scene.document != baseline;
+        if !has_authored_changes {
+            let mut result = status(s);
+            result["key"] = json!(scene.key);
+            return Ok(result);
+        }
         let mut edits = Vec::new();
         let mut added_fields = false;
         for (id, n) in source_nodes {
             check_cancel(cancel).map_err(issue)?;
-            let before =
-                futureox_design_kernel::interop::export_sketch_layer_fields(&baseline, &id)
-                    .map_err(issue)?;
-            let after =
-                futureox_design_kernel::interop::export_sketch_layer_fields(&scene.document, &id)
+            if baseline.nodes[&id] == scene.document.nodes[&id] { continue; }
+            let (before, after) =
+                futureox_design_kernel::interop::export_sketch_layer_edit(&baseline, &scene.document, &id)
                     .map_err(issue)?;
             let (original, omitted) = properties(s, p, n)?;
             let normalized = if before.get("_class").and_then(Value::as_str) == Some("shapePath") {
@@ -393,12 +445,29 @@ pub(super) fn commit_nodes(
                 serde_json::from_str(&original).map_err(issue)?;
             let new: BTreeMap<String, Box<RawValue>> =
                 serde_json::from_slice(&merged).map_err(issue)?;
-            if old.keys().any(|key| !new.contains_key(key)) {
-                return Err(issue(
-                    "This edit removes a source field; use the local subtree editor",
-                ));
-            }
             let entry = s.parts[p].index.entry(n, &s.directory)?;
+            let removed: HashSet<_> = old.keys().filter(|key| !new.contains_key(*key)).collect();
+            if removed.iter().any(|key| matches!(key.as_str(), "do_objectID" | "_class" | "layers")) {
+                return Err(issue("Source hierarchy changed"));
+            }
+            // Remove complete property runs, including exactly one separating
+            // comma. Cold children/points never enter this small DTO or splice.
+            // A full streaming index rebuild validates the virtual JSON before
+            // the transaction or its history receipt can be published.
+            let fields = &entry.fields;
+            let mut i = 0;
+            while i < fields.len() {
+                if !removed.contains(&fields[i].key) { i += 1; continue; }
+                let first = i;
+                while i < fields.len() && removed.contains(&fields[i].key) { i += 1; }
+                let span = if i < fields.len() {
+                    Span { start: fields[first].member.start, end: fields[i].member.start }
+                } else if first > 0 {
+                    Span { start: fields[first-1].value.end, end: fields[i-1].value.end }
+                } else { return Err(issue("Cannot remove every source property")); };
+                edits.push((span, Vec::new()));
+                added_fields = true;
+            }
             let mut appended = Vec::new();
             for (key, value) in new {
                 if old.get(&key).is_some_and(|old| old.get() == value.get()) {
@@ -431,7 +500,7 @@ pub(super) fn commit_nodes(
             }
         }
         if edits.is_empty() {
-            return Ok(status(s));
+            return Err(issue("Source edit has no lossless Sketch representation; keep the draft or save a native document"));
         }
         edits.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
         if edits.windows(2).any(|pair| pair[1].0.end > pair[0].0.start) {
@@ -439,7 +508,7 @@ pub(super) fn commit_nodes(
         }
         let mut next = s.state.clone();
         for (span, bytes) in &edits {
-            if span.start == span.end {
+            if span.start == span.end || bytes.is_empty() {
                 // A member insertion is not a standalone JSON value. The
                 // complete virtual source is scanned below before commit.
                 next.changes[p].splice(*span, bytes.clone(), s.parts[p].base_bytes).map_err(issue)?;
@@ -452,6 +521,16 @@ pub(super) fn commit_nodes(
         } else {
             adjusted_index(s, p, &next.changes[p], &edits, cancel)?
         };
+        // A new object-valued property can shift later catalog ordinals.
+        // Resolve the selected source identity before publishing, never reuse a
+        // stale ordinal or choose an ambiguous duplicate after a successful save.
+        let roots = index.entries.iter().enumerate()
+            .filter(|(_, entry)| !root_id.is_empty() && entry.id.eq_ignore_ascii_case(&root_id))
+            .map(|(n, _)| n).collect::<Vec<_>>();
+        if roots.len() != 1 {
+            return Err(issue("Source canvas identity is ambiguous; reload the source before saving"));
+        }
+        let next_key = format!("{p}:{}", roots[0]);
         let mut undo = s.undo.clone();
         undo.push(s.state.clone());
         while undo.len() > HISTORY_LIMIT
@@ -464,16 +543,23 @@ pub(super) fn commit_nodes(
         {
             undo.remove(0);
         }
-        commit(s, next, undo, Vec::new(), Some((p, index)), cancel)
+        let mut result = commit(s, next, undo, Vec::new(), Some((p, index)), cancel)?;
+        scene.key = next_key;
+        result["key"] = json!(scene.key);
+        Ok(result)
     })();
     if result.is_err() {
         scene.document = baseline;
     } else {
         scene.revision = s.revision;
+        // Only successful edits invalidate the initial chunk DTO. Rejections
+        // preserve the exact scene/read state as well as source/revision/history.
+        if scene.document != baseline { scene.bytes = 0; }
     }
-    // Chunk reads are only for an initial scene adoption. Subsequent source
-    // commits acknowledge the editor's existing scene, not the stale disk DTO.
-    scene.bytes = 0;
     s.scene = Some(scene);
     result
 }
+
+#[cfg(test)]
+#[path = "scene_roundtrip_tests.rs"]
+mod roundtrip_tests;

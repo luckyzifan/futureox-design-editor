@@ -1,0 +1,419 @@
+{
+  "status": "functional-passed-quality-pending",
+  "scope": "owned isolated Electron; real source import/Canvas/edit/save/export; preset save-dialog destination; visibility recorded explicitly; not physical scanout/FPS",
+  "cases": [],
+  "exportFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/pressure-focused-baseline/topology-verified.sketch",
+  "visibility": "visible",
+  "nativeVisible": true,
+  "sourceKey": "3:0",
+  "nativeVisibleTiles": "false",
+  "focusNodeId": "4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+  "motionStart": 1792806238676,
+  "actions": [
+    {
+      "round": 0,
+      "value": 50,
+      "at": 1792806238677
+    },
+    {
+      "round": 0,
+      "value": 200,
+      "at": 1792806238801
+    },
+    {
+      "round": 0,
+      "value": 800,
+      "at": 1792806238913
+    },
+    {
+      "round": 0,
+      "value": 3200,
+      "at": 1792806239043
+    },
+    {
+      "round": 0,
+      "kind": "pan",
+      "dx": 11.25,
+      "dy": -7.5,
+      "at": 1792806239216
+    },
+    {
+      "round": 0,
+      "value": 800,
+      "at": 1792806239216
+    },
+    {
+      "round": 0,
+      "value": 200,
+      "at": 1792806239364
+    },
+    {
+      "round": 0,
+      "value": 50,
+      "at": 1792806239486
+    },
+    {
+      "round": 0,
+      "value": 12.6,
+      "at": 1792806239610
+    },
+    {
+      "round": 1,
+      "value": 50,
+      "at": 1792806239725
+    },
+    {
+      "round": 1,
+      "value": 200,
+      "at": 1792806239843
+    },
+    {
+      "round": 1,
+      "value": 800,
+      "at": 1792806239955
+    },
+    {
+      "round": 1,
+      "value": 3200,
+      "at": 1792806240076
+    },
+    {
+      "round": 1,
+      "kind": "pan",
+      "dx": 11.25,
+      "dy": -7.5,
+      "at": 1792806240250
+    },
+    {
+      "round": 1,
+      "value": 800,
+      "at": 1792806240250
+    },
+    {
+      "round": 1,
+      "value": 200,
+      "at": 1792806240401
+    },
+    {
+      "round": 1,
+      "value": 50,
+      "at": 1792806240516
+    },
+    {
+      "round": 1,
+      "value": 12.6,
+      "at": 1792806240635
+    },
+    {
+      "round": 2,
+      "value": 50,
+      "at": 1792806240754
+    },
+    {
+      "round": 2,
+      "value": 200,
+      "at": 1792806240868
+    },
+    {
+      "round": 2,
+      "value": 800,
+      "at": 1792806240985
+    },
+    {
+      "round": 2,
+      "value": 3200,
+      "at": 1792806241101
+    },
+    {
+      "round": 2,
+      "kind": "pan",
+      "dx": 11.25,
+      "dy": -7.5,
+      "at": 1792806241260
+    },
+    {
+      "round": 2,
+      "value": 800,
+      "at": 1792806241260
+    },
+    {
+      "round": 2,
+      "value": 200,
+      "at": 1792806241406
+    },
+    {
+      "round": 2,
+      "value": 50,
+      "at": 1792806241524
+    },
+    {
+      "round": 2,
+      "value": 12.6,
+      "at": 1792806241647
+    }
+  ],
+  "motionEnd": 1792806242387,
+  "metrics": {
+    "last": 23602.7,
+    "max": 26.100000000002183,
+    "stalls": [],
+    "inputs": [
+      {
+        "at": 19931.200000047684,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 19939.100000023842,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20045.100000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20051.700000047684,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20166.200000047684,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20176.30000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20290,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20298.200000047684,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20391.100000023842,
+        "key": " ",
+        "trusted": true
+      },
+      {
+        "at": 20481.5,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20501.400000035763,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20613.100000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20623.80000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20741.600000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20748.5,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20855,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20864.80000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20970.80000001192,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20981.100000023842,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21086.5,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21094,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21206.900000035763,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21215,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21320.600000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21328.30000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21418.700000047684,
+        "key": " ",
+        "trusted": true
+      },
+      {
+        "at": 21523.900000035763,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21539.5,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21645.80000001192,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21654.80000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21765.900000035763,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21773.900000035763,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21881.700000047684,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21892.400000035763,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21997.700000047684,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22007.700000047684,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 22112,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22122.700000047684,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 22230.900000035763,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22240.80000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 22347.700000047684,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22354.80000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 22446.5,
+        "key": " ",
+        "trusted": true
+      },
+      {
+        "at": 22522.100000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22544.700000047684,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 22653.600000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22663.100000023842,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 22775.400000035763,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22784.30000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 22898.400000035763,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22906,
+        "key": "Escape",
+        "trusted": true
+      }
+    ],
+    "raf": 2197
+  }
+}

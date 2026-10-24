@@ -18,3 +18,26 @@ fn document(count:usize)->Document {
   assert!(gradient_sampling_grid_region(original,Rect::new(-20,37,1,1),m,[80.,90.],&paint,sample).is_err());
  }}
 }
+
+#[test]
+fn fixed_gradient_axis_fields_preserve_all_parameter_bits_and_original_limits(){
+    use futureox_design_kernel::{paint::{gradient_sampling_axes,gradient_sampling_grid},math::{Rect,Transform},scene::Paint};
+    let r=Rect::new(-9,-11,41,29);
+    for matrix in [Transform::default(),Transform([1.,0.,0.,1.,13.25,-4.5]),Transform([-1.,0.,0.,1.,13.25,-4.5]),Transform([0.,1.,-1.,0.,2.125,3.75])]{
+        for angle in [0.,90.,180.,270.]{
+            let p:Paint=serde_json::from_value(serde_json::json!({"kind":"linear","color":"#000000","angle":angle,"stops":[{"offset":0.,"color":"#ffffff"},{"offset":0.5,"color":"#ffffff"},{"offset":0.5,"color":"#000000"},{"offset":1.,"color":"#000000"}]})).unwrap();
+            for sample in [None,Some(0),Some(1),Some(2),Some(3)]{
+                let dense=gradient_sampling_grid(r,matrix,[100.,80.],&p,sample).unwrap();
+                let axes=gradient_sampling_axes(r,matrix,[100.,80.],&p,sample).unwrap();assert!(!axes.is_empty());
+                let(w,h)=(axes[0]as usize,axes[1]as usize);assert!(w==1||h==1);
+                for y in 0..r.h as usize{for x in 0..r.w as usize{for c in 0..4{
+                    let compact=axes[4+(if h==1{0}else{y}*w+if w==1{0}else{x})*4+c];
+                    assert_eq!(compact.to_bits(),dense[(y*r.w as usize+x)*4+c].to_bits());
+                }}}
+            }
+        }
+    }
+    let p:Paint=serde_json::from_value(serde_json::json!({"kind":"linear","color":"#000000","angle":31})).unwrap();
+    assert!(gradient_sampling_axes(r,Transform::default(),[100.,80.],&p,None).unwrap().is_empty());
+    assert!(gradient_sampling_axes(Rect::new(0,0,4097,1024),Transform::default(),[100.,80.],&p,None).is_err());
+}

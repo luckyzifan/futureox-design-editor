@@ -1,0 +1,1158 @@
+{
+  "status": "captured",
+  "kind": "117",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/host-native-viewport-comparison",
+  "scope": "owned visible Electron; native trusted wheel events; Chromium compositor PNG frames and per-submit quality trace; screenshot instrumentation, not physical scanout or sampler-off timing",
+  "frames": [],
+  "instance": {
+    "pid": 76517,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/117-viewport-compare/forma-desktop-manual-70abe0df-7408-447c-971d-656ed848dc79-OdmSY5",
+    "visible": true
+  },
+  "fixture": "/Users/Apple/Downloads/117.sketch",
+  "initial": {
+    "rasterPlanner": "rust",
+    "checkerboard": "false",
+    "samplingMode": "native",
+    "rasterProfile": "figmaSubpixel",
+    "samplingScale": "0.8064516129032258",
+    "samplingDensity": "2",
+    "nativePixelReady": "true",
+    "rasterPhaseExact": "true",
+    "startupPreview": "false",
+    "renderer": "webgpu",
+    "tileCount": "28",
+    "pageCacheBytes": "0",
+    "pageCachePages": "0",
+    "pageCacheHits": "0",
+    "pageCacheMisses": "0",
+    "pageCacheEvictions": "0",
+    "pageCacheTier": "balanced",
+    "pageResidencyEstimatedBudget": "234881024",
+    "cacheHits": "1",
+    "tilesRendered": "28",
+    "viewportTilesRendered": "25",
+    "cacheBytes": "1024",
+    "tileScheduleFrames": "1",
+    "tileScheduleOnscreen": "25",
+    "tileScheduleOffscreen": "0",
+    "tileScheduleDeferred": "0",
+    "tileBudgetCutoffs": "0",
+    "tileBudgetCompletions": "1",
+    "tileBudgetCacheCutoffs": "1",
+    "tileCacheSkippedTiles": "57",
+    "residentBytes": "41771984",
+    "residentBudget": "234881024",
+    "activeResidentBudget": "134217728",
+    "cacheSteadyBudget": "134217728",
+    "cacheStagingLimit": "26419600",
+    "cacheAdmissionBudget": "160637328",
+    "cacheActiveBytes": "41771984",
+    "cacheActiveHighwater": "41771984",
+    "cacheTotalHighwater": "41771984",
+    "refineMs": "922.60",
+    "compileMs": "396.20",
+    "pipelineWallMs": "716.20",
+    "preparationWaitMs": "147.50",
+    "overlappedPreparations": "24",
+    "compiledPacketHits": "0",
+    "compiledPacketBytes": "6191402",
+    "graphMs": "245.60",
+    "finishMs": "254.90",
+    "checkpointMs": "0.00",
+    "detailReady": "true",
+    "framePublication": "complete",
+    "retainedCommit": "false",
+    "lodScale": "0",
+    "lodTiles": "0",
+    "lodCacheBytes": "0",
+    "lodCacheBudget": "16777216",
+    "lodCacheHits": "0",
+    "previewActive": "false",
+    "progressiveTiles": "1",
+    "failedTiles": "0",
+    "cachedPreviewTiles": "0",
+    "overviewTiles": "1",
+    "overviewReuses": "0",
+    "residentEligible": "true",
+    "residentReason": "eligible",
+    "motionPreview": "false",
+    "motionRasterScale": "0.8064516129032258",
+    "cameraMoving": "false",
+    "navigationPendingAgeMs": "0",
+    "navigationZoomActive": "false",
+    "nativeNavigation": "true",
+    "nativeVisibleTiles": "false",
+    "navigationZoomSequence": "0",
+    "viewportPreviewTiles": "0",
+    "nativeCaptureTiles": "0",
+    "displayMode": "single-gpu-canvas",
+    "revision": "1",
+    "cameraX": "205.3225806451613",
+    "cameraY": "55.903225806451644",
+    "cameraZoom": "0.4032258064516129",
+    "requestedCameraX": "205.3225806451613",
+    "requestedCameraY": "55.903225806451644",
+    "requestedCameraZoom": "0.4032258064516129",
+    "requestedRevision": "1",
+    "pixelRatio": "2",
+    "navigationMs": "770.40"
+  },
+  "capture": false,
+  "motionStart": 1792820093665,
+  "dispatch": [
+    0.1102920000002996,
+    15.963166999999885,
+    33.258208000000195,
+    47.66320799999994,
+    64.93574999999964,
+    81.25154199999997,
+    96.4887920000001,
+    112.76879199999985,
+    128.78291699999954,
+    144.66966700000012,
+    160.8049170000004,
+    177.11620800000037,
+    192.30770800000028,
+    207.79370800000015,
+    225.37933299999986,
+    239.6676669999997,
+    256.4840000000004,
+    273.6804169999996,
+    288.8639579999999,
+    305.10954200000015,
+    319.57024999999976,
+    337.236167,
+    352.4897920000003,
+    368.1997080000001,
+    384.4514170000002,
+    400.71550000000025,
+    416.68745800000033,
+    432.4867919999997,
+    448.7002080000002,
+    464.8966250000003,
+    480.27445799999987,
+    496.50025000000005,
+    512.7237919999998,
+    528.9549999999999,
+    544.8875829999997,
+    561.1024170000001,
+    575.4630829999996,
+    592.7393329999995,
+    608.8730420000002,
+    625.1141250000001,
+    640.321833,
+    656.5241249999999,
+    672.7020830000001,
+    688.1005830000004,
+    704.2964579999998,
+    720.448042,
+    736.704917,
+    752.934792,
+    768.4933330000003,
+    783.7985419999995,
+    801.0286669999996,
+    816.2728749999997,
+    831.3054579999998,
+    848.5186249999997,
+    864.7666669999999,
+    881.0148330000002,
+    895.631625,
+    912.7805419999995,
+    928.7562079999998,
+    944.9331249999996,
+    961.1434579999996,
+    975.5126250000003,
+    993.2231249999995,
+    1007.1327920000003,
+    1024.29025,
+    1040.438083,
+    1055.5649999999996,
+    1072.7180419999995,
+    1088.8349170000001,
+    1105.0296669999998,
+    1120.2264169999999,
+    1135.600125,
+    1152.7634170000001,
+    1168.9224169999998,
+    1185.1059169999999,
+    1199.4515419999998,
+    1216.6389170000002,
+    1232.8316249999998,
+    1248.4384579999996,
+    1264.3532500000001,
+    1279.633417,
+    1295.9003330000005,
+    1313.0890420000005,
+    1326.854542,
+    1345.084667,
+    1359.5749999999998,
+    1376.894625,
+    1392.7825829999992,
+    1408.8479579999994,
+    1425.194708,
+    1439.5750830000006,
+    1456.8321669999996,
+    1473.1261669999994,
+    1487.5910830000003,
+    1504.5527499999998,
+    1520.3252079999993,
+    1536.6135000000004,
+    1552.8875830000006,
+    1569.1595000000007,
+    1583.7394169999998,
+    1600.9389579999997,
+    1617.084749999999,
+    1632.0435829999997,
+    1648.3835420000005,
+    1663.6895419999992,
+    1680.5795829999997,
+    1696.390375,
+    1711.5135419999997,
+    1728.7748330000004,
+    1745.0764580000005,
+    1760.3613749999995,
+    1776.5863749999999,
+    1792.9116249999997,
+    1809.1805419999991,
+    1824.3671249999998,
+    1840.629833,
+    1856.924582999999,
+    1873.2200000000003,
+    1888.1762919999992,
+    1903.972417,
+    1921.2769579999995,
+    1935.6734580000002,
+    1952.4169580000007,
+    1967.2412919999997,
+    1983.9219999999996,
+    2000.4293329999991,
+    2016.444124999999,
+    2032.7044579999992,
+    2048.936457999999,
+    2065.1158330000007,
+    2080.2916670000004,
+    2096.4759999999997,
+    2112.0651669999997,
+    2128.2588750000004,
+    2144.4384579999996,
+    2158.7665000000006,
+    2176.9490830000004,
+    2193.1235420000003,
+    2208.365666999999,
+    2224.645707999999,
+    2240.955000000001,
+    2257.2707500000006,
+    2272.540167,
+    2288.841958,
+    2304.779625,
+    2321.0712080000003,
+    2335.85775,
+    2352.76825,
+    2369.04375,
+    2383.7545419999997,
+    2400.6209580000004,
+    2416.6032079999995,
+    2432.63325,
+    2448.950916999999,
+    2465.2464169999994,
+    2480.5263750000004,
+    2496.4938329999995,
+    2512.800875,
+    2528.483583,
+    2543.8834579999993
+  ],
+  "inputStopped": 1792820096214,
+  "motionEnd": 1792820110831,
+  "inputs": [
+    {
+      "at": 1792820093668,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093685,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093701,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093718,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093735,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093751,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093768,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093785,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093801,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093816,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093835,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093851,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093868,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093876,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093947,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093951,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093960,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820093982,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094092,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094115,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094152,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094165,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094406,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094415,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094467,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094479,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094485,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094493,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094502,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094510,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094518,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094527,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094551,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094559,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094568,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094576,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094588,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094593,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094601,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094610,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094618,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094625,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094635,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094643,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094651,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094659,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094668,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094675,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094685,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094693,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094701,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094710,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820094718,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820099722,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820103430,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820104052,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105009,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105020,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105026,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105035,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105043,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105051,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105060,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105068,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105076,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105085,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105093,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105102,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105110,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105118,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105126,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105135,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105143,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105151,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105160,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105832,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105838,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105956,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105982,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105989,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792820105993,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106020,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106026,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106056,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106059,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106161,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106175,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106235,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106243,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106390,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106452,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106460,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106468,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106477,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106485,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106493,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106502,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106510,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106520,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106532,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106541,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106544,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106552,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106569,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106576,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106594,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106602,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106624,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106660,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106698,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106701,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106786,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106835,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106853,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820106971,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107015,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107023,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107027,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107035,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107043,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107052,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107066,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107073,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107082,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107091,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107094,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107108,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107111,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107118,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107313,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820107320,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820108362,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820108389,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820108394,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820108485,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820108489,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109082,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109105,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109110,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109712,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109731,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109738,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109771,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109776,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109785,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109793,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109801,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109810,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109818,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820109827,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820110044,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820110051,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820110060,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820110068,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820110076,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820110085,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820110099,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820110148,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820110153,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792820110165,
+      "dy": 10,
+      "trusted": true
+    }
+  ],
+  "final": {
+    "rasterPlanner": "rust",
+    "checkerboard": "false",
+    "samplingMode": "native",
+    "rasterProfile": "figmaSubpixel",
+    "samplingScale": "0.2366632778549081",
+    "samplingDensity": "2",
+    "nativePixelReady": "true",
+    "rasterPhaseExact": "true",
+    "startupPreview": "false",
+    "renderer": "webgpu",
+    "tileCount": "36",
+    "pageCacheBytes": "0",
+    "pageCachePages": "0",
+    "pageCacheHits": "0",
+    "pageCacheMisses": "0",
+    "pageCacheEvictions": "0",
+    "pageCacheTier": "balanced",
+    "pageResidencyEstimatedBudget": "234881024",
+    "cacheHits": "1",
+    "tilesRendered": "65",
+    "viewportTilesRendered": "55",
+    "cacheBytes": "1024",
+    "tileScheduleFrames": "1",
+    "tileScheduleOnscreen": "30",
+    "tileScheduleOffscreen": "0",
+    "tileScheduleDeferred": "0",
+    "tileBudgetCutoffs": "0",
+    "tileBudgetCompletions": "1",
+    "tileBudgetCacheCutoffs": "0",
+    "tileCacheSkippedTiles": "0",
+    "residentBytes": "118226608",
+    "residentBudget": "234881024",
+    "activeResidentBudget": "134217728",
+    "cacheSteadyBudget": "134217728",
+    "cacheStagingLimit": "31703520",
+    "cacheAdmissionBudget": "165921248",
+    "cacheActiveBytes": "118226608",
+    "cacheActiveHighwater": "155241520",
+    "cacheTotalHighwater": "155241520",
+    "refineMs": "469.10",
+    "compileMs": "140.30",
+    "pipelineWallMs": "441.40",
+    "preparationWaitMs": "95.80",
+    "overlappedPreparations": "53",
+    "compiledPacketHits": "0",
+    "compiledPacketBytes": "6239406",
+    "graphMs": "131.40",
+    "finishMs": "187.70",
+    "checkpointMs": "0.00",
+    "detailReady": "true",
+    "framePublication": "complete",
+    "retainedCommit": "false",
+    "lodScale": "0",
+    "lodTiles": "0",
+    "lodCacheBytes": "0",
+    "lodCacheBudget": "16777216",
+    "lodCacheHits": "0",
+    "previewActive": "false",
+    "progressiveTiles": "30",
+    "failedTiles": "0",
+    "cachedPreviewTiles": "0",
+    "overviewTiles": "1",
+    "overviewReuses": "0",
+    "residentEligible": "true",
+    "residentReason": "eligible",
+    "motionPreview": "false",
+    "motionRasterScale": "0.2366632778549081",
+    "cameraMoving": "false",
+    "navigationPendingAgeMs": "0",
+    "navigationZoomActive": "false",
+    "nativeNavigation": "true",
+    "nativeVisibleTiles": "false",
+    "navigationZoomSequence": "0",
+    "viewportPreviewTiles": "0",
+    "nativeCaptureTiles": "0",
+    "displayMode": "single-gpu-canvas",
+    "revision": "1",
+    "cameraX": "362.65253571870284",
+    "cameraY": "311.7381882431463",
+    "cameraZoom": "0.11833163892745405",
+    "requestedCameraX": "362.65253571870284",
+    "requestedCameraY": "311.7381882431463",
+    "requestedCameraZoom": "0.11833163892745405",
+    "requestedRevision": "1",
+    "pixelRatio": "2",
+    "firstDetailMs": "231.50",
+    "navigationMs": "643.40"
+  }
+}

@@ -1,0 +1,1204 @@
+{
+  "status": "captured",
+  "kind": "117",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/host-combined-native-4",
+  "scope": "owned visible Electron; native trusted wheel events; Chromium compositor PNG frames and per-submit quality trace; screenshot instrumentation, not physical scanout or sampler-off timing",
+  "frames": [],
+  "instance": {
+    "pid": 62781,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/117-integration-profile/forma-desktop-manual-44d9e0ba-2ae4-46d4-8f26-91456dc22330-O0mWrg",
+    "visible": true
+  },
+  "fixture": "/Users/Apple/Downloads/117.sketch",
+  "initial": {
+    "rasterPlanner": "rust",
+    "checkerboard": "false",
+    "samplingMode": "native",
+    "rasterProfile": "figmaSubpixel",
+    "samplingScale": "0.8064516129032258",
+    "samplingDensity": "2",
+    "nativePixelReady": "true",
+    "rasterPhaseExact": "true",
+    "startupPreview": "false",
+    "renderer": "webgpu",
+    "tileCount": "48",
+    "pageCacheBytes": "0",
+    "pageCachePages": "0",
+    "pageCacheHits": "0",
+    "pageCacheMisses": "0",
+    "pageCacheEvictions": "0",
+    "pageCacheTier": "balanced",
+    "pageResidencyEstimatedBudget": "234881024",
+    "cacheHits": "24",
+    "tilesRendered": "48",
+    "viewportTilesRendered": "45",
+    "cacheBytes": "1024",
+    "tileScheduleFrames": "1",
+    "tileScheduleOnscreen": "20",
+    "tileScheduleOffscreen": "0",
+    "tileScheduleDeferred": "0",
+    "tileBudgetCutoffs": "0",
+    "tileBudgetCompletions": "1",
+    "tileBudgetCacheCutoffs": "0",
+    "tileCacheSkippedTiles": "0",
+    "residentBytes": "50725632",
+    "residentBudget": "234881024",
+    "activeResidentBudget": "134217728",
+    "cacheSteadyBudget": "134217728",
+    "cacheStagingLimit": "26419600",
+    "cacheAdmissionBudget": "160637328",
+    "cacheActiveBytes": "50725632",
+    "cacheActiveHighwater": "50725632",
+    "cacheTotalHighwater": "50725632",
+    "refineMs": "1034.30",
+    "compileMs": "375.50",
+    "pipelineWallMs": "781.00",
+    "preparationWaitMs": "83.00",
+    "overlappedPreparations": "43",
+    "compiledPacketHits": "0",
+    "compiledPacketBytes": "9911594",
+    "graphMs": "322.60",
+    "finishMs": "313.10",
+    "checkpointMs": "0.00",
+    "detailReady": "true",
+    "framePublication": "complete",
+    "retainedCommit": "false",
+    "lodScale": "0",
+    "lodTiles": "0",
+    "lodCacheBytes": "0",
+    "lodCacheBudget": "16777216",
+    "lodCacheHits": "0",
+    "previewActive": "false",
+    "progressiveTiles": "20",
+    "failedTiles": "0",
+    "cachedPreviewTiles": "0",
+    "overviewTiles": "20",
+    "overviewReuses": "0",
+    "residentEligible": "true",
+    "residentReason": "eligible",
+    "motionPreview": "false",
+    "motionRasterScale": "0.8064516129032258",
+    "cameraMoving": "false",
+    "navigationPendingAgeMs": "0",
+    "navigationZoomActive": "false",
+    "nativeNavigation": "false",
+    "nativeVisibleTiles": "true",
+    "navigationZoomSequence": "0",
+    "viewportPreviewTiles": "0",
+    "nativeCaptureTiles": "0",
+    "displayMode": "single-gpu-canvas",
+    "revision": "1",
+    "cameraX": "205.3225806451613",
+    "cameraY": "55.903225806451644",
+    "cameraZoom": "0.4032258064516129",
+    "requestedCameraX": "205.3225806451613",
+    "requestedCameraY": "55.903225806451644",
+    "requestedCameraZoom": "0.4032258064516129",
+    "requestedRevision": "1",
+    "pixelRatio": "2",
+    "firstDetailMs": "158.50",
+    "navigationMs": "805.50"
+  },
+  "capture": false,
+  "profiler": {
+    "startedAt": 1792824159160,
+    "workers": [
+      {
+        "attached": true,
+        "browserContextId": "603C2FAF0BF59BFF044F8A01A368CBE6",
+        "canAccessOpener": false,
+        "parentFrameId": "B8D529E90D2F215E2CAEFC45CC787B9F",
+        "parentId": "B8D529E90D2F215E2CAEFC45CC787B9F",
+        "targetId": "85754146BB7EE8F1797D067F92E1D286",
+        "title": "design-app://app/assets/render-worker-DySdRhdc.js",
+        "type": "worker",
+        "url": "design-app://app/assets/render-worker-DySdRhdc.js"
+      }
+    ]
+  },
+  "motionStart": 1792824159160,
+  "dispatch": [
+    0.09679099999993923,
+    15.162874999999985,
+    31.290540999999394,
+    49.41808299999957,
+    65.66295799999989,
+    81.89795799999956,
+    98.05962499999987,
+    113.28745799999979,
+    129.2063330000001,
+    146.25562499999978,
+    160.83408299999974,
+    177.14695800000027,
+    192.39233299999978,
+    208.96579099999963,
+    224.2384579999998,
+    241.4205409999995,
+    260.9754579999999,
+    272.0417499999994,
+    288.66158300000006,
+    305.9523330000002,
+    319.42991600000005,
+    337.62645799999973,
+    351.4979999999996,
+    369.22929099999965,
+    385.469916,
+    399.87083299999995,
+    417.19883299999947,
+    432.70604099999946,
+    449.594916,
+    464.6837909999995,
+    481.87783299999955,
+    498.05033300000014,
+    511.5002909999994,
+    529.8093330000002,
+    544.0736660000002,
+    560.1934579999997,
+    577.4171660000002,
+    592.7934159999995,
+    609.0832909999999,
+    625.3274999999994,
+    640.4798329999994,
+    656.762541,
+    672.9709160000002,
+    690.1498329999995,
+    703.4889579999999,
+    720.9788330000001,
+    735.7697909999997,
+    753.9582499999997,
+    770.1928749999997,
+    783.9835000000003,
+    800.1809579999999,
+    817.8691250000002,
+    832.8814160000002,
+    848.1061659999996,
+    865.2138329999998,
+    879.418791,
+    896.04925,
+    912.6205410000002,
+    927.9169160000001,
+    944.1490409999997,
+    961.3517499999998,
+    976.3516659999996,
+    993.5365000000002,
+    1009.7239579999996,
+    1025.9315829999996,
+    1040.8251249999994,
+    1058.002125,
+    1071.948958,
+    1089.6281250000002,
+    1104.4456249999994,
+    1121.1767909999999,
+    1136.409208,
+    1153.2483750000001,
+    1168.3696250000003,
+    1185.5484999999999,
+    1201.7578329999997,
+    1217.9395829999994,
+    1234.1344159999999,
+    1248.9490409999999,
+    1264.5820409999997,
+    1279.9959579999995,
+    1297.3744159999997,
+    1312.9856659999996,
+    1330.191291,
+    1344.2856249999995,
+    1359.7922079999998,
+    1376.7041659999995,
+    1392.6834159999999,
+    1409.8637079999999,
+    1424.6307909999996,
+    1441.000666,
+    1456.6189999999997,
+    1471.779791,
+    1488.6733749999994,
+    1505.0259580000002,
+    1521.045083,
+    1537.277,
+    1553.468041,
+    1567.6854999999996,
+    1585.876166,
+    1602.0602499999995,
+    1615.8047909999996,
+    1631.8574579999995,
+    1648.493125,
+    1665.7130829999996,
+    1680.7783330000002,
+    1696.8352079999995,
+    1712.3090000000002,
+    1728.2545,
+    1745.5599160000002,
+    1761.762208,
+    1776.9354999999996,
+    1791.595625,
+    1808.1701249999996,
+    1823.695291,
+    1840.2250409999997,
+    1855.7160409999997,
+    1871.7147079999995,
+    1889.6829159999998,
+    1904.3499160000001,
+    1919.2698329999994,
+    1938.0578749999995,
+    1952.2598749999997,
+    1968.4710829999995,
+    1984.8955829999995,
+    2001.261625,
+    2017.2691250000007,
+    2033.6302080000005,
+    2049.7094579999994,
+    2065.951916,
+    2082.158625,
+    2096.2509580000005,
+    2112.7803750000003,
+    2130.129583,
+    2143.8066660000004,
+    2161.2528330000005,
+    2177.5272910000003,
+    2193.2746659999993,
+    2209.7119999999995,
+    2225.9763330000005,
+    2240.870332999999,
+    2257.0713749999995,
+    2272.400625,
+    2287.5711250000004,
+    2303.7667500000007,
+    2321.7282909999994,
+    2336.286582999999,
+    2359.2869580000006,
+    2367.989458,
+    2385.2595409999994,
+    2400.3523750000004,
+    2417.542791,
+    2433.0937080000003,
+    2448.7445829999997,
+    2465.568625,
+    2481.7589160000007,
+    2497.9182500000006,
+    2512.6155830000007,
+    2528.7377500000002,
+    2545.290499999999
+  ],
+  "inputStopped": 1792824161710,
+  "motionEnd": 1792824163063,
+  "profileResult": {
+    "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/host-combined-native-4",
+    "scope": "sampled real Electron native-input integration; UI and existing browser workers, native Rust process and GPU execution are not V8 CPU stacks",
+    "startedAt": 1792824159160,
+    "endedAt": 1792824163088,
+    "results": [
+      {
+        "target": {
+          "type": "renderer",
+          "title": "UI 主线程"
+        },
+        "file": "cpu-0.cpuprofile"
+      },
+      {
+        "target": {
+          "attached": true,
+          "browserContextId": "603C2FAF0BF59BFF044F8A01A368CBE6",
+          "canAccessOpener": false,
+          "parentFrameId": "B8D529E90D2F215E2CAEFC45CC787B9F",
+          "parentId": "B8D529E90D2F215E2CAEFC45CC787B9F",
+          "targetId": "85754146BB7EE8F1797D067F92E1D286",
+          "title": "design-app://app/assets/render-worker-DySdRhdc.js",
+          "type": "worker",
+          "url": "design-app://app/assets/render-worker-DySdRhdc.js"
+        },
+        "file": "cpu-1.cpuprofile"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "at": 1792824159168,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159185,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159202,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159218,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159236,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159254,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159268,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159285,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159293,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159319,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159326,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159343,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159360,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159377,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159392,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159409,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159427,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159437,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159453,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159478,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159484,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159502,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159518,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159535,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159701,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159707,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159711,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159718,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159727,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159979,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159987,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824159994,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160003,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160009,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160361,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160368,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160704,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160710,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160720,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160726,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160735,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160742,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160752,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160760,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160774,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160778,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160784,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160792,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160802,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160810,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160818,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160826,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160837,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160842,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160852,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160860,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160867,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160877,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160885,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160892,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824160902,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161009,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161015,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161019,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161027,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161036,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161045,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161054,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161059,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161069,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161077,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161085,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161096,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161107,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161110,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161118,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161126,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161134,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161143,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161150,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792824161160,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161168,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161181,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161186,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161199,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161203,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161217,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161220,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161232,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161240,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161250,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161253,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161261,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161268,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161277,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161285,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161292,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161302,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161310,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161318,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161327,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161334,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161344,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161352,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161359,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161368,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161377,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161386,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161394,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161403,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161411,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161424,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161428,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161435,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161444,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161454,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161460,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161468,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161482,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161485,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161494,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161502,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161511,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161597,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161603,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161772,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161780,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161788,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161792,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161801,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161810,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161819,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161834,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161838,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161845,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161853,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161893,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161902,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161910,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161918,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161927,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161934,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161944,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161951,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161960,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161968,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161976,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161984,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824161994,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162001,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162010,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162018,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162027,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162035,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162043,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162052,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162060,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162068,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162077,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792824162085,
+      "dy": 10,
+      "trusted": true
+    }
+  ],
+  "final": {
+    "rasterPlanner": "rust",
+    "checkerboard": "false",
+    "samplingMode": "native",
+    "rasterProfile": "figmaSubpixel",
+    "samplingScale": "0.2366632778549081",
+    "samplingDensity": "2",
+    "nativePixelReady": "true",
+    "rasterPhaseExact": "true",
+    "startupPreview": "false",
+    "renderer": "webgpu",
+    "tileCount": "81",
+    "pageCacheBytes": "0",
+    "pageCachePages": "0",
+    "pageCacheHits": "0",
+    "pageCacheMisses": "0",
+    "pageCacheEvictions": "0",
+    "pageCacheTier": "balanced",
+    "pageResidencyEstimatedBudget": "234881024",
+    "cacheHits": "128",
+    "tilesRendered": "81",
+    "viewportTilesRendered": "78",
+    "cacheBytes": "1024",
+    "tileScheduleFrames": "1",
+    "tileScheduleOnscreen": "20",
+    "tileScheduleOffscreen": "0",
+    "tileScheduleDeferred": "0",
+    "tileBudgetCutoffs": "0",
+    "tileBudgetCompletions": "1",
+    "tileBudgetCacheCutoffs": "0",
+    "tileCacheSkippedTiles": "0",
+    "residentBytes": "85599504",
+    "residentBudget": "234881024",
+    "activeResidentBudget": "134217728",
+    "cacheSteadyBudget": "134217728",
+    "cacheStagingLimit": "26419600",
+    "cacheAdmissionBudget": "160637328",
+    "cacheActiveBytes": "85599504",
+    "cacheActiveHighwater": "85599504",
+    "cacheTotalHighwater": "85599504",
+    "refineMs": "530.50",
+    "compileMs": "147.80",
+    "pipelineWallMs": "473.80",
+    "preparationWaitMs": "74.70",
+    "overlappedPreparations": "62",
+    "compiledPacketHits": "0",
+    "compiledPacketBytes": "30825304",
+    "graphMs": "156.10",
+    "finishMs": "215.00",
+    "checkpointMs": "0.00",
+    "detailReady": "true",
+    "framePublication": "complete",
+    "retainedCommit": "false",
+    "lodScale": "0",
+    "lodTiles": "0",
+    "lodCacheBytes": "0",
+    "lodCacheBudget": "16777216",
+    "lodCacheHits": "0",
+    "previewActive": "false",
+    "progressiveTiles": "20",
+    "failedTiles": "0",
+    "cachedPreviewTiles": "0",
+    "overviewTiles": "20",
+    "overviewReuses": "0",
+    "residentEligible": "true",
+    "residentReason": "eligible",
+    "motionPreview": "false",
+    "motionRasterScale": "0.2366632778549081",
+    "cameraMoving": "false",
+    "navigationPendingAgeMs": "0",
+    "navigationZoomActive": "false",
+    "nativeNavigation": "false",
+    "nativeVisibleTiles": "true",
+    "navigationZoomSequence": "0",
+    "viewportPreviewTiles": "0",
+    "nativeCaptureTiles": "0",
+    "displayMode": "single-gpu-canvas",
+    "revision": "1",
+    "cameraX": "362.65253571870284",
+    "cameraY": "311.7381882431463",
+    "cameraZoom": "0.11833163892745405",
+    "requestedCameraX": "362.65253571870284",
+    "requestedCameraY": "311.7381882431463",
+    "requestedCameraZoom": "0.11833163892745405",
+    "requestedRevision": "1",
+    "pixelRatio": "2",
+    "firstDetailMs": "461.20",
+    "navigationMs": "939.10"
+  }
+}

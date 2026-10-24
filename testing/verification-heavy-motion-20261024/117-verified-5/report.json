@@ -1,0 +1,179 @@
+{
+  "status": "passed",
+  "scope": "visible independent Electron; real native input, WebGPU, Editor/WASM, SQLite and external FD; only save-dialog path preset; no physical scanout/FPS claim",
+  "checks": [
+    {
+      "name": "quick-zoom",
+      "uiIntervalMaxMs": 50.099999999999454,
+      "uiStalls": 0
+    },
+    {
+      "name": "property-undo-redo",
+      "uiIntervalMaxMs": 32.899999999999636,
+      "uiStalls": 0
+    }
+  ],
+  "stages": [
+    {
+      "name": "import-original",
+      "ms": 4116.765125
+    },
+    {
+      "name": "read-imported-sqlite",
+      "ms": 1050.0974160000005
+    },
+    {
+      "name": "quick-zoom",
+      "ms": 2766.7828340000005
+    },
+    {
+      "name": "property-undo-redo",
+      "ms": 2394.4307500000014
+    },
+    {
+      "name": "save-sqlite",
+      "ms": 1400.9251249999998
+    },
+    {
+      "name": "save-external-fd",
+      "ms": 270.1508750000012
+    },
+    {
+      "name": "normal-close",
+      "ms": 323.2962090000001
+    },
+    {
+      "name": "reopen-external-fd",
+      "ms": 5517.692291000001
+    }
+  ],
+  "stage": "reopen-external-fd",
+  "fixture": "/Users/Apple/Downloads/117.sketch",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/host-coverage-native-5",
+  "instances": [
+    {
+      "pid": 95764,
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/117-verified-5/forma-desktop-manual-7489b802-7540-4957-94e6-22802d153148-kUXY7C",
+      "visible": true,
+      "versions": {
+        "node": "24.21.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.7",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.28-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.7.0",
+        "chrome": "152.0.7977.130"
+      },
+      "preferences": {
+        "allowRunningInsecureContent": false,
+        "contextIsolation": true,
+        "disableDialogs": false,
+        "disablePopups": false,
+        "enableBlinkFeatures": "",
+        "experimentalFeatures": false,
+        "javascript": true,
+        "nodeIntegration": false,
+        "nodeIntegrationInSubFrames": false,
+        "nodeIntegrationInWorker": false,
+        "safeDialogs": false,
+        "safeDialogsMessage": "",
+        "sandbox": true,
+        "webSecurity": true,
+        "webviewTag": false
+      }
+    },
+    {
+      "pid": 96045,
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/117-verified-5/forma-desktop-manual-bcf9689d-8d7d-43f3-8597-dbbb788effa4-jJZccM",
+      "visible": true,
+      "versions": {
+        "node": "24.21.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.7",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.28-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.7.0",
+        "chrome": "152.0.7977.130"
+      },
+      "preferences": {
+        "allowRunningInsecureContent": false,
+        "contextIsolation": true,
+        "disableDialogs": false,
+        "disablePopups": false,
+        "enableBlinkFeatures": "",
+        "experimentalFeatures": false,
+        "javascript": true,
+        "nodeIntegration": false,
+        "nodeIntegrationInSubFrames": false,
+        "nodeIntegrationInWorker": false,
+        "safeDialogs": false,
+        "safeDialogsMessage": "",
+        "sandbox": true,
+        "webSecurity": true,
+        "webviewTag": false
+      }
+    }
+  ],
+  "motionStart": 1792825705648,
+  "motionEnd": 1792825708414,
+  "propertyStart": 1792825708415,
+  "propertyEnd": 1792825710311,
+  "fd": {
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/117-verified-5/verified-fig.fd",
+    "bytes": 4471007,
+    "sha256": "093eb7285fdb69fd9b2af748ae2327d9619d72c48bb7d7e3e72b74cb74e06a7b"
+  },
+  "importCopyIds": {
+    "saved": "b00c5779-d7b8-4069-a4a9-9beb673cc245",
+    "reopened": "79ecabb8-ddcf-4434-958e-4f72b4bf0a4c"
+  },
+  "reopenExactExceptImportCopyId": true
+}

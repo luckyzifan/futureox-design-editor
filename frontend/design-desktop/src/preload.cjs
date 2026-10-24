@@ -110,6 +110,7 @@ contextBridge.exposeInMainWorld(
       // Versioned exact JSON.parse contract, including the trusted resource-aware input allowance.
       decoding: 'json-parse-v1',
       encode: value => ipcRenderer.invoke('native-document:encode', value),
+      encodeIncremental: value => ipcRenderer.invoke('native-document:encode-incremental', value),
       decode: value => ipcRenderer.invoke('native-document:decode', value),
     }),
     nativeRender: Object.freeze({

@@ -1,0 +1,5332 @@
+[
+  {
+    "self": 20956.11200000112,
+    "total": 21026.541000001132,
+    "name": "getElementLabels :5257"
+  },
+  {
+    "self": 7642.749000000054,
+    "total": 7642.749000000054,
+    "name": "(idle) :0"
+  },
+  {
+    "self": 866.3879999999982,
+    "total": 866.3879999999982,
+    "name": "(program) :0"
+  },
+  {
+    "self": 554.5619999999998,
+    "total": 554.5619999999998,
+    "name": "querySelector :0"
+  },
+  {
+    "self": 194.48700000000008,
+    "total": 194.48700000000008,
+    "name": "(garbage collector) :0"
+  },
+  {
+    "self": 118.2349999999999,
+    "total": 139.83499999999975,
+    "name": "src/model.ts:652 validateDocument"
+  },
+  {
+    "self": 94.76000000000009,
+    "total": 112.78200000000008,
+    "name": "src/model.ts:652 validateDocument"
+  },
+  {
+    "self": 85.19,
+    "total": 93.91,
+    "name": "query :5719"
+  },
+  {
+    "self": 73.61800000000002,
+    "total": 165.47999999999993,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 66.92000000000002,
+    "total": 193.84100000000004,
+    "name": "src/kernel/client.ts:501 e.onmessage"
+  },
+  {
+    "self": 60.58,
+    "total": 99.00800000000004,
+    "name": "src/render-terminal-diagnostics.mjs:112 sanitizeRecord"
+  },
+  {
+    "self": 51.98199999999999,
+    "total": 90.58800000000001,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 41.239,
+    "total": 41.239,
+    "name": "src/Layers.tsx:301 "
+  },
+  {
+    "self": 40.365,
+    "total": 55.44000000000001,
+    "name": "query :5719"
+  },
+  {
+    "self": 36.480999999999995,
+    "total": 36.480999999999995,
+    "name": "getAttribute :0"
+  },
+  {
+    "self": 35.045,
+    "total": 35.045,
+    "name": "src/render-terminal-diagnostics.mjs:48 sanitizeFields"
+  },
+  {
+    "self": 35.015,
+    "total": 108.86100000000003,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 34.855999999999995,
+    "total": 38.606,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406 setProp"
+  },
+  {
+    "self": 34.85200000000001,
+    "total": 43.656000000000006,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 32.308,
+    "total": 32.308,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406 setProp"
+  },
+  {
+    "self": 32.165,
+    "total": 32.165,
+    "name": "querySelector :0"
+  },
+  {
+    "self": 27.722,
+    "total": 72.586,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 25.853000000000005,
+    "total": 67.092,
+    "name": "src/Layers.tsx:51 Layers"
+  },
+  {
+    "self": 24.794999999999998,
+    "total": 39.302,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3905 reconcileChildrenArray"
+  },
+  {
+    "self": 23.843999999999994,
+    "total": 23.843999999999994,
+    "name": "getAttribute :0"
+  },
+  {
+    "self": 21.341999999999995,
+    "total": 23.858999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 20.826999999999998,
+    "total": 36.817,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 20.203999999999997,
+    "total": 41.025,
+    "name": "src/Layers.tsx:51 Layers"
+  },
+  {
+    "self": 18.558999999999997,
+    "total": 18.58,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406 setProp"
+  },
+  {
+    "self": 17.575,
+    "total": 18.836,
+    "name": "src/Canvas.tsx:689 "
+  },
+  {
+    "self": 16.532999999999998,
+    "total": 21043.963000001142,
+    "name": " :7136"
+  },
+  {
+    "self": 16.140000000000004,
+    "total": 52.956999999999994,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 15.075,
+    "total": 15.075,
+    "name": "querySelectorAll :0"
+  },
+  {
+    "self": 15.025000000000002,
+    "total": 42.83200000000001,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 14.786999999999999,
+    "total": 20.821,
+    "name": "src/Layers.tsx:301 "
+  },
+  {
+    "self": 13.296,
+    "total": 13.296,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:2668 createWorkInProgress"
+  },
+  {
+    "self": 12.599,
+    "total": 21151.727000001192,
+    "name": "queryAll :7133"
+  },
+  {
+    "self": 12.556000000000001,
+    "total": 12.556000000000001,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1482 isCustomElement"
+  },
+  {
+    "self": 12.533,
+    "total": 15.99,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406 setProp"
+  },
+  {
+    "self": 12.388,
+    "total": 198.8129999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12706 performUnitOfWork"
+  },
+  {
+    "self": 12.113,
+    "total": 23.994000000000003,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6459 updateMemoComponent"
+  },
+  {
+    "self": 11.881,
+    "total": 11.881,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:2281 shallowEqual"
+  },
+  {
+    "self": 11.261999999999997,
+    "total": 132.2920000000002,
+    "name": "src/engine.ts:564 change"
+  },
+  {
+    "self": 10.195,
+    "total": 49.497,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4078 reconcileChildFibersImpl"
+  },
+  {
+    "self": 10.036999999999999,
+    "total": 10.036999999999999,
+    "name": " :0"
+  },
+  {
+    "self": 9.966,
+    "total": 9.966,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:2281 shallowEqual"
+  },
+  {
+    "self": 9.227,
+    "total": 27.806999999999995,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 8.804,
+    "total": 8.804,
+    "name": "removeAttribute :0"
+  },
+  {
+    "self": 8.789,
+    "total": 8.789,
+    "name": "src/model.ts:747 finite"
+  },
+  {
+    "self": 8.72,
+    "total": 8.72,
+    "name": "querySelectorAll :0"
+  },
+  {
+    "self": 7.544,
+    "total": 57.041000000000004,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4249 "
+  },
+  {
+    "self": 7.521,
+    "total": 177.69899999999996,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768 beginWork"
+  },
+  {
+    "self": 7.33,
+    "total": 7.33,
+    "name": "elementsFromPoint :0"
+  },
+  {
+    "self": 6.271,
+    "total": 30.115,
+    "name": "getAriaLabelledByElements :3671"
+  },
+  {
+    "self": 6.2330000000000005,
+    "total": 11.118,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 6.193999999999999,
+    "total": 16.16,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6459 updateMemoComponent"
+  },
+  {
+    "self": 6.188,
+    "total": 6.188,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3905 reconcileChildrenArray"
+  },
+  {
+    "self": 6.034,
+    "total": 6.034,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react/cjs/react-jsx-runtime.production.js:14 jsxProd"
+  },
+  {
+    "self": 5.101999999999999,
+    "total": 13.890999999999998,
+    "name": "src/model.ts:1070 "
+  },
+  {
+    "self": 5.027,
+    "total": 5.027,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:2668 createWorkInProgress"
+  },
+  {
+    "self": 5.026000000000001,
+    "total": 5.026000000000001,
+    "name": "removeAttribute :0"
+  },
+  {
+    "self": 5.014,
+    "total": 5.014,
+    "name": "focus :0"
+  },
+  {
+    "self": 5.010000000000001,
+    "total": 6.263000000000001,
+    "name": "src/Layers.tsx:174 "
+  },
+  {
+    "self": 5.0029999999999974,
+    "total": 159.7089999999998,
+    "name": "src/engine.ts:564 change"
+  },
+  {
+    "self": 4.996,
+    "total": 4.996,
+    "name": "src/model.ts:747 finite"
+  },
+  {
+    "self": 4.923,
+    "total": 4.923,
+    "name": "requestAnimationFrame :0"
+  },
+  {
+    "self": 4.885,
+    "total": 4.885,
+    "name": "removeAttribute :0"
+  },
+  {
+    "self": 4.577,
+    "total": 9.573,
+    "name": "src/model.ts:1070 "
+  },
+  {
+    "self": 3.9879999999999995,
+    "total": 11.331,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 3.8810000000000002,
+    "total": 59.321000000000005,
+    "name": " :5717"
+  },
+  {
+    "self": 3.8329999999999997,
+    "total": 3.8329999999999997,
+    "name": "normalizeWhiteSpace :464"
+  },
+  {
+    "self": 3.772,
+    "total": 3.772,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 3.7699999999999996,
+    "total": 3.7699999999999996,
+    "name": "elementFromPoint :0"
+  },
+  {
+    "self": 3.7689999999999997,
+    "total": 162.06300000000002,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768 beginWork"
+  },
+  {
+    "self": 3.766,
+    "total": 3.766,
+    "name": "elementsFromPoint :0"
+  },
+  {
+    "self": 3.7529999999999997,
+    "total": 4.997999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 3.75,
+    "total": 3.75,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1457 setValueForStyles"
+  },
+  {
+    "self": 3.7140000000000004,
+    "total": 3.7140000000000004,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3223 propagateParentContextChanges"
+  },
+  {
+    "self": 3.649,
+    "total": 8.679,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 3.596,
+    "total": 3.596,
+    "name": "removeAttribute :0"
+  },
+  {
+    "self": 3.457,
+    "total": 3.457,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1457 setValueForStyles"
+  },
+  {
+    "self": 3.383,
+    "total": 3.383,
+    "name": "src/render-diagnostic-identity.mjs:6 sanitizeProducerIdentity"
+  },
+  {
+    "self": 3.148,
+    "total": 5.372,
+    "name": "src/kernel/ProgressiveSurface.tsx:367 ProgressiveSurfaceImpl"
+  },
+  {
+    "self": 2.8129999999999997,
+    "total": 7.241,
+    "name": " :7163"
+  },
+  {
+    "self": 2.662,
+    "total": 3.936,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 2.593,
+    "total": 2.593,
+    "name": "removeAttribute :0"
+  },
+  {
+    "self": 2.541,
+    "total": 2.541,
+    "name": "src/model.ts:552 A"
+  },
+  {
+    "self": 2.538,
+    "total": 2.538,
+    "name": "src/kernel/frame-measurements.ts:34 raf"
+  },
+  {
+    "self": 2.533,
+    "total": 2.533,
+    "name": "src/kernel/client.ts:358 batchSink"
+  },
+  {
+    "self": 2.53,
+    "total": 14.747,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 2.5279999999999996,
+    "total": 2.5279999999999996,
+    "name": "src/render-terminal-diagnostics.mjs:48 sanitizeFields"
+  },
+  {
+    "self": 2.526,
+    "total": 7.5520000000000005,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 2.5229999999999997,
+    "total": 3.7699999999999996,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 2.52,
+    "total": 7.571,
+    "name": "src/selection-colors.ts:8 i"
+  },
+  {
+    "self": 2.519,
+    "total": 6.224,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:8359 completeWork"
+  },
+  {
+    "self": 2.518,
+    "total": 2.518,
+    "name": "src/geometry.ts:330 allParents"
+  },
+  {
+    "self": 2.517,
+    "total": 2.517,
+    "name": "removeAttribute :0"
+  },
+  {
+    "self": 2.517,
+    "total": 2.517,
+    "name": "src/kernel/interaction-layers.ts:75 "
+  },
+  {
+    "self": 2.517,
+    "total": 5.029999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 2.516,
+    "total": 3.774,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3905 reconcileChildrenArray"
+  },
+  {
+    "self": 2.516,
+    "total": 24.461000000000002,
+    "name": "src/kernel/interaction-renderer.ts:449 prepare"
+  },
+  {
+    "self": 2.5140000000000002,
+    "total": 2.5140000000000002,
+    "name": "src/Canvas.tsx:775 useMemo"
+  },
+  {
+    "self": 2.513,
+    "total": 2.513,
+    "name": "src/commands/selection-command.ts:16 zl"
+  },
+  {
+    "self": 2.512,
+    "total": 2.512,
+    "name": "removeAttribute :0"
+  },
+  {
+    "self": 2.512,
+    "total": 2.512,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 2.51,
+    "total": 6.279,
+    "name": "src/kernel/interaction-layers.ts:72 append"
+  },
+  {
+    "self": 2.508,
+    "total": 3.767,
+    "name": "src/local-edit-proof.ts:22 dependencies"
+  },
+  {
+    "self": 2.5069999999999997,
+    "total": 2.5069999999999997,
+    "name": "getAttribute :0"
+  },
+  {
+    "self": 2.506,
+    "total": 2.506,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:8359 completeWork"
+  },
+  {
+    "self": 2.505,
+    "total": 2.505,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 2.504,
+    "total": 3.7640000000000002,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 2.503,
+    "total": 6.099,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 2.502,
+    "total": 8.725999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12815 completeUnitOfWork"
+  },
+  {
+    "self": 2.499,
+    "total": 8.666,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 2.491,
+    "total": 3.7520000000000002,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3905 reconcileChildrenArray"
+  },
+  {
+    "self": 2.488,
+    "total": 2.488,
+    "name": "querySelector :0"
+  },
+  {
+    "self": 2.453,
+    "total": 2.453,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:8335 bubbleProperties"
+  },
+  {
+    "self": 2.452,
+    "total": 3.4829999999999997,
+    "name": "src/kernel/ResidentCompositeSurface.tsx:74 Tb.u.current"
+  },
+  {
+    "self": 2.434,
+    "total": 556.9959999999998,
+    "name": " :1"
+  },
+  {
+    "self": 2.409,
+    "total": 141.52200000000005,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 2.38,
+    "total": 2.38,
+    "name": "src/geometry.ts:399 update"
+  },
+  {
+    "self": 2.343,
+    "total": 169.491,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12706 performUnitOfWork"
+  },
+  {
+    "self": 2.33,
+    "total": 2.33,
+    "name": "src/kernel/picking.ts:530 kernelBounds"
+  },
+  {
+    "self": 2.316,
+    "total": 2.316,
+    "name": "src/fields.tsx:7 NumberField"
+  },
+  {
+    "self": 2.314,
+    "total": 2.314,
+    "name": "src/ComponentPanel.tsx:52 ComponentPanel"
+  },
+  {
+    "self": 2.2969999999999997,
+    "total": 3.566,
+    "name": "src/kernel/ProgressiveSurface.tsx:367 ProgressiveSurfaceImpl"
+  },
+  {
+    "self": 2.292,
+    "total": 2.292,
+    "name": "src/kernel/interaction-layers.ts:109 interactionOffsets"
+  },
+  {
+    "self": 2.283,
+    "total": 63.076,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6414 reconcileChildren"
+  },
+  {
+    "self": 2.272,
+    "total": 201.0849999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12583 workLoopSync"
+  },
+  {
+    "self": 2.25,
+    "total": 4.63,
+    "name": "src/geometry.ts:393 qa"
+  },
+  {
+    "self": 2.049,
+    "total": 8.321,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 2.0269999999999997,
+    "total": 3.1,
+    "name": "src/kernel/interaction-scene-bounds.ts:25 interactionRootBounds"
+  },
+  {
+    "self": 1.921,
+    "total": 1.921,
+    "name": " :8253"
+  },
+  {
+    "self": 1.6469999999999998,
+    "total": 18.873,
+    "name": "src/canvas-scene-snapshots.ts:43 Gm"
+  },
+  {
+    "self": 1.637,
+    "total": 1.637,
+    "name": "src/canvas-action-diagnostics.ts:19 sanitizeActionFields"
+  },
+  {
+    "self": 1.619,
+    "total": 2.414,
+    "name": "src/model.ts:374 maskChild"
+  },
+  {
+    "self": 1.556,
+    "total": 1.556,
+    "name": "src/render-terminal-diagnostics.mjs:48 sanitizeFields"
+  },
+  {
+    "self": 1.517,
+    "total": 1.517,
+    "name": "src/render-terminal-diagnostics.mjs:48 sanitizeFields"
+  },
+  {
+    "self": 1.301,
+    "total": 1.301,
+    "name": "src/selection-size-label.ts:7 formatLogicalDimension"
+  },
+  {
+    "self": 1.297,
+    "total": 1.297,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12815 completeUnitOfWork"
+  },
+  {
+    "self": 1.289,
+    "total": 1.289,
+    "name": "src/model.ts:1032 "
+  },
+  {
+    "self": 1.288,
+    "total": 25.147,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 1.278,
+    "total": 1.278,
+    "name": "src/render-terminal-diagnostics.mjs:48 sanitizeFields"
+  },
+  {
+    "self": 1.277,
+    "total": 1.277,
+    "name": "src/model.ts:1055 "
+  },
+  {
+    "self": 1.276,
+    "total": 9.979,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 1.275,
+    "total": 1.275,
+    "name": "src/model.ts:573 "
+  },
+  {
+    "self": 1.274,
+    "total": 1.274,
+    "name": "removeAttribute :0"
+  },
+  {
+    "self": 1.274,
+    "total": 1.274,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406 setProp"
+  },
+  {
+    "self": 1.273,
+    "total": 2.534,
+    "name": "src/selection-colors.ts:8 i"
+  },
+  {
+    "self": 1.27,
+    "total": 1.27,
+    "name": "jsonValue :322"
+  },
+  {
+    "self": 1.27,
+    "total": 1.27,
+    "name": "previewNode :7805"
+  },
+  {
+    "self": 1.269,
+    "total": 1.269,
+    "name": "matchMedia :0"
+  },
+  {
+    "self": 1.269,
+    "total": 1.269,
+    "name": "matchMedia :0"
+  },
+  {
+    "self": 1.268,
+    "total": 1.268,
+    "name": "querySelector :0"
+  },
+  {
+    "self": 1.268,
+    "total": 9.947,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 1.267,
+    "total": 1.267,
+    "name": "src/layer-drop.ts:9 a"
+  },
+  {
+    "self": 1.266,
+    "total": 1.266,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1457 setValueForStyles"
+  },
+  {
+    "self": 1.265,
+    "total": 1.265,
+    "name": "querySelector :0"
+  },
+  {
+    "self": 1.265,
+    "total": 1.265,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:493 get"
+  },
+  {
+    "self": 1.265,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 1.265,
+    "total": 2.524,
+    "name": "src/kernel/grid-measurements.ts:27 "
+  },
+  {
+    "self": 1.264,
+    "total": 1.264,
+    "name": "src/kernel/ProgressiveSurface.tsx:1275 onCutoff"
+  },
+  {
+    "self": 1.264,
+    "total": 1.264,
+    "name": "wasm-function[6731] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.264,
+    "total": 19.081,
+    "name": "src/kernel/ResidentCompositeSurface.tsx:238 e.client.onPresentation"
+  },
+  {
+    "self": 1.264,
+    "total": 1.264,
+    "name": "src/geometry.ts:289 "
+  },
+  {
+    "self": 1.264,
+    "total": 1.264,
+    "name": "src/kernel/client.ts:971 cancelPreview"
+  },
+  {
+    "self": 1.264,
+    "total": 1.264,
+    "name": " :1"
+  },
+  {
+    "self": 1.264,
+    "total": 1.264,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 1.264,
+    "total": 1.264,
+    "name": "src/kernel/native-preparation.ts:16 t.onmessage"
+  },
+  {
+    "self": 1.264,
+    "total": 2.542,
+    "name": "src/render-terminal-diagnostics.mjs:122 localRecord"
+  },
+  {
+    "self": 1.263,
+    "total": 2.3449999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 1.263,
+    "total": 1.263,
+    "name": "src/editor-action-route.ts:16 finish"
+  },
+  {
+    "self": 1.263,
+    "total": 1.263,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7622 bailoutOnAlreadyFinishedWork"
+  },
+  {
+    "self": 1.263,
+    "total": 1.263,
+    "name": "src/kernel/presentation.ts:49 presentationContentMatches"
+  },
+  {
+    "self": 1.263,
+    "total": 1.263,
+    "name": "src/model.ts:622 validateVariableModes"
+  },
+  {
+    "self": 1.263,
+    "total": 1.263,
+    "name": "src/kernel/picking.ts:530 kernelBounds"
+  },
+  {
+    "self": 1.262,
+    "total": 1.262,
+    "name": "src/property-units.ts:14 propertyUnits"
+  },
+  {
+    "self": 1.262,
+    "total": 1.262,
+    "name": "wasm-function[308] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.262,
+    "total": 1.262,
+    "name": "wasm-function[3416] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.261,
+    "total": 144.04700000000005,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 1.261,
+    "total": 310.7879999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 1.261,
+    "total": 1.261,
+    "name": "src/selection-colors.ts:12 add"
+  },
+  {
+    "self": 1.261,
+    "total": 1.261,
+    "name": "src/Canvas.tsx:700 "
+  },
+  {
+    "self": 1.261,
+    "total": 1.261,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:2668 createWorkInProgress"
+  },
+  {
+    "self": 1.261,
+    "total": 1.261,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:144 shallowCopy"
+  },
+  {
+    "self": 1.261,
+    "total": 1.261,
+    "name": "src/color.ts:45 validColor"
+  },
+  {
+    "self": 1.261,
+    "total": 1.261,
+    "name": "src/kernel/interaction-layers.ts:141 interactionTransformsOnly"
+  },
+  {
+    "self": 1.26,
+    "total": 1.26,
+    "name": "src/selection-colors.ts:12 add"
+  },
+  {
+    "self": 1.26,
+    "total": 1.26,
+    "name": "src/kernel/picking.ts:530 kernelBounds"
+  },
+  {
+    "self": 1.26,
+    "total": 1.26,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406 setProp"
+  },
+  {
+    "self": 1.26,
+    "total": 1.26,
+    "name": "src/commands/affine.ts:4 multiply"
+  },
+  {
+    "self": 1.26,
+    "total": 1.26,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:18025 getEventPriority"
+  },
+  {
+    "self": 1.259,
+    "total": 1.259,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13748 processDispatchQueue"
+  },
+  {
+    "self": 1.259,
+    "total": 5.0329999999999995,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4078 reconcileChildFibersImpl"
+  },
+  {
+    "self": 1.259,
+    "total": 1.259,
+    "name": "src/LargeDocumentWorkspace.tsx:21 LargeDocumentWorkspace"
+  },
+  {
+    "self": 1.259,
+    "total": 1.46,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react/cjs/react.production.js:548 e.useState"
+  },
+  {
+    "self": 1.259,
+    "total": 1.259,
+    "name": "src/model.ts:1153 visit"
+  },
+  {
+    "self": 1.259,
+    "total": 1.259,
+    "name": "src/model.ts:1070 "
+  },
+  {
+    "self": 1.259,
+    "total": 1.259,
+    "name": "src/render-terminal-diagnostics.mjs:48 sanitizeFields"
+  },
+  {
+    "self": 1.258,
+    "total": 35.97799999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 1.258,
+    "total": 1.481,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1315 initInput"
+  },
+  {
+    "self": 1.258,
+    "total": 8.828999999999999,
+    "name": "src/selection-colors.ts:8 i"
+  },
+  {
+    "self": 1.258,
+    "total": 1.258,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:2668 createWorkInProgress"
+  },
+  {
+    "self": 1.258,
+    "total": 1.258,
+    "name": "src/canvas-scene-snapshots.ts:32 rootOverview"
+  },
+  {
+    "self": 1.258,
+    "total": 10.843,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 1.258,
+    "total": 1.258,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406 setProp"
+  },
+  {
+    "self": 1.258,
+    "total": 1.258,
+    "name": "src/kernel/ProgressiveSurface.tsx:367 ProgressiveSurfaceImpl"
+  },
+  {
+    "self": 1.257,
+    "total": 5.016,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 1.257,
+    "total": 6.273,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 1.257,
+    "total": 8.783999999999999,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 1.257,
+    "total": 2.517,
+    "name": "src/selection-colors.ts:19 paint"
+  },
+  {
+    "self": 1.257,
+    "total": 1.257,
+    "name": "src/color.ts:58 "
+  },
+  {
+    "self": 1.257,
+    "total": 1.257,
+    "name": "src/render-terminal-diagnostics.mjs:48 sanitizeFields"
+  },
+  {
+    "self": 1.256,
+    "total": 1.256,
+    "name": "src/stroke-profile.ts:31 validStroke"
+  },
+  {
+    "self": 1.256,
+    "total": 1.256,
+    "name": "wasm-function[3416] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.256,
+    "total": 13.657,
+    "name": "src/NodeExportPanel.tsx:17 useMemo"
+  },
+  {
+    "self": 1.256,
+    "total": 1.256,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1588 getEventTarget"
+  },
+  {
+    "self": 1.256,
+    "total": 1.256,
+    "name": "src/geometry.ts:333 "
+  },
+  {
+    "self": 1.256,
+    "total": 1.256,
+    "name": "src/kernel/gpu/resident-frame.ts:79 "
+  },
+  {
+    "self": 1.256,
+    "total": 1.256,
+    "name": "src/Canvas.tsx:792 "
+  },
+  {
+    "self": 1.255,
+    "total": 95.16499999999999,
+    "name": "_cached :5500"
+  },
+  {
+    "self": 1.255,
+    "total": 1.255,
+    "name": "src/model.ts:622 validateVariableModes"
+  },
+  {
+    "self": 1.255,
+    "total": 1.255,
+    "name": "src/PageList.tsx:8 PageList"
+  },
+  {
+    "self": 1.255,
+    "total": 1.255,
+    "name": "src/kernel/interaction-renderer.ts:72 nextGeneration"
+  },
+  {
+    "self": 1.255,
+    "total": 1.255,
+    "name": "src/model.ts:552 A"
+  },
+  {
+    "self": 1.255,
+    "total": 1.255,
+    "name": "wasm-function[3446] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.254,
+    "total": 1.254,
+    "name": "querySelector :0"
+  },
+  {
+    "self": 1.254,
+    "total": 7.526999999999999,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 1.254,
+    "total": 1.254,
+    "name": "src/kernel/picking.ts:530 kernelBounds"
+  },
+  {
+    "self": 1.254,
+    "total": 2.508,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 1.254,
+    "total": 1.254,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3834 updateFromMap"
+  },
+  {
+    "self": 1.254,
+    "total": 1.254,
+    "name": "src/kernel/presentation.ts:104 frameTransform"
+  },
+  {
+    "self": 1.254,
+    "total": 1.254,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15482 shouldSetTextContent"
+  },
+  {
+    "self": 1.254,
+    "total": 1.254,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/scheduler/cjs/scheduler.production.js:272 e.unstable_scheduleCallback"
+  },
+  {
+    "self": 1.253,
+    "total": 123.97899999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627 renderWithHooks"
+  },
+  {
+    "self": 1.253,
+    "total": 1.815,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/lucide-react/dist/esm/Icon.mjs:16 forwardRef"
+  },
+  {
+    "self": 1.253,
+    "total": 34.72,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 1.253,
+    "total": 1.253,
+    "name": "src/kernel/interaction-layers.ts:109 interactionOffsets"
+  },
+  {
+    "self": 1.253,
+    "total": 1.253,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:5663 dispatchSetState"
+  },
+  {
+    "self": 1.253,
+    "total": 1.253,
+    "name": "RegExp: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ :0"
+  },
+  {
+    "self": 1.253,
+    "total": 1.253,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15482 shouldSetTextContent"
+  },
+  {
+    "self": 1.252,
+    "total": 1.252,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:8335 bubbleProperties"
+  },
+  {
+    "self": 1.252,
+    "total": 10.767,
+    "name": "src/SelectionColorsPanel.tsx:6 SelectionColorsPanel"
+  },
+  {
+    "self": 1.252,
+    "total": 4.0760000000000005,
+    "name": "focus :0"
+  },
+  {
+    "self": 1.252,
+    "total": 1.252,
+    "name": "src/kernel/interaction-layers.ts:75 "
+  },
+  {
+    "self": 1.252,
+    "total": 1.252,
+    "name": "src/kernel/authored-patch-transition.ts:27 supportsAcknowledgedPropertyPatch"
+  },
+  {
+    "self": 1.252,
+    "total": 1.252,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:2938 popTreeContext"
+  },
+  {
+    "self": 1.251,
+    "total": 1.251,
+    "name": "src/kernel/composite-cache-use.ts:21 visibleCompositeContributors"
+  },
+  {
+    "self": 1.251,
+    "total": 1.251,
+    "name": "src/render-terminal-diagnostics.mjs:48 sanitizeFields"
+  },
+  {
+    "self": 1.251,
+    "total": 116.51900000000003,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 1.251,
+    "total": 3.759,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 1.251,
+    "total": 1.251,
+    "name": "src/render-terminal-diagnostics.mjs:48 sanitizeFields"
+  },
+  {
+    "self": 1.251,
+    "total": 1.251,
+    "name": "src/build/buildLucideIconNode.mjs:14 buildLucideIconNode"
+  },
+  {
+    "self": 1.25,
+    "total": 1.25,
+    "name": "setAttribute :0"
+  },
+  {
+    "self": 1.25,
+    "total": 1.25,
+    "name": "wasm-function[1237] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.25,
+    "total": 1.25,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 1.25,
+    "total": 1.25,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.247,
+    "total": 1.247,
+    "name": "wasm-function[308] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.247,
+    "total": 2.504,
+    "name": "src/color.ts:45 validColor"
+  },
+  {
+    "self": 1.247,
+    "total": 1.247,
+    "name": "src/commands/affine.ts:4 multiply"
+  },
+  {
+    "self": 1.245,
+    "total": 1.245,
+    "name": "removeAttribute :0"
+  },
+  {
+    "self": 1.244,
+    "total": 1.244,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:373 "
+  },
+  {
+    "self": 1.244,
+    "total": 1.244,
+    "name": "src/geometry.ts:333 "
+  },
+  {
+    "self": 1.243,
+    "total": 1.243,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13884 dispatchEventForPluginEventSystem"
+  },
+  {
+    "self": 1.241,
+    "total": 5.013,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 1.239,
+    "total": 1.239,
+    "name": "src/commands/affine.ts:4 multiply"
+  },
+  {
+    "self": 1.238,
+    "total": 1.368,
+    "name": "src/kernel/ProgressiveSurface.tsx:2187 "
+  },
+  {
+    "self": 1.238,
+    "total": 1.238,
+    "name": "wasm-function[3446] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.231,
+    "total": 1.231,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 1.223,
+    "total": 1.223,
+    "name": "src/kernel/gpu/resident-frame.ts:64 residentFrameSignature"
+  },
+  {
+    "self": 1.221,
+    "total": 11.2,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 1.221,
+    "total": 1.221,
+    "name": "src/kernel/render-quality.ts:14 renderQualityContract"
+  },
+  {
+    "self": 1.211,
+    "total": 1.211,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3612 placeChild"
+  },
+  {
+    "self": 1.207,
+    "total": 1.207,
+    "name": "src/kernel/tile-plan-aligned.ts:141 add"
+  },
+  {
+    "self": 1.204,
+    "total": 1.204,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.201,
+    "total": 12.401,
+    "name": "src/export-metadata.ts:23 pdfVectorIssues"
+  },
+  {
+    "self": 1.194,
+    "total": 1.194,
+    "name": "requestAnimationFrame :0"
+  },
+  {
+    "self": 1.165,
+    "total": 1.165,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 1.146,
+    "total": 33.311,
+    "name": "src/LocalWindows.tsx:35 f"
+  },
+  {
+    "self": 1.144,
+    "total": 3.925,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 1.143,
+    "total": 4.907,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 1.138,
+    "total": 3.651,
+    "name": "src/App.tsx:166 App"
+  },
+  {
+    "self": 1.134,
+    "total": 1.134,
+    "name": "src/render-diagnostic-identity.mjs:6 sanitizeProducerIdentity"
+  },
+  {
+    "self": 1.13,
+    "total": 1.13,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13483 scheduleTaskForRootDuringMicrotask"
+  },
+  {
+    "self": 1.125,
+    "total": 1.125,
+    "name": "matchMedia :0"
+  },
+  {
+    "self": 1.118,
+    "total": 1.118,
+    "name": "src/kernel/ProgressiveSurface.tsx:633 displayBudget"
+  },
+  {
+    "self": 1.116,
+    "total": 1.116,
+    "name": "src/commands/affine.ts:4 multiply"
+  },
+  {
+    "self": 1.106,
+    "total": 1.106,
+    "name": "src/kernel/ProgressiveSurface.tsx:2180 pn"
+  },
+  {
+    "self": 1.102,
+    "total": 5.085,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:8359 completeWork"
+  },
+  {
+    "self": 1.098,
+    "total": 6.101000000000001,
+    "name": "wasm-function[756] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 1.093,
+    "total": 1.093,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:2668 createWorkInProgress"
+  },
+  {
+    "self": 1.082,
+    "total": 1.082,
+    "name": "removeAttribute :0"
+  },
+  {
+    "self": 1.075,
+    "total": 1.099,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406 setProp"
+  },
+  {
+    "self": 1.073,
+    "total": 1.073,
+    "name": "src/kernel/interaction-scene-bounds.ts:9 paddedBounds"
+  },
+  {
+    "self": 1.072,
+    "total": 1.072,
+    "name": "src/kernel/pose-diagnostics.ts:43 batchSink"
+  },
+  {
+    "self": 1.07,
+    "total": 76.88900000000001,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627 renderWithHooks"
+  },
+  {
+    "self": 1.043,
+    "total": 1.043,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 1.031,
+    "total": 1.031,
+    "name": "src/render-terminal-diagnostics.mjs:48 sanitizeFields"
+  },
+  {
+    "self": 1.014,
+    "total": 1.014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1784 SyntheticBaseEvent"
+  },
+  {
+    "self": 0.889,
+    "total": 0.889,
+    "name": " :7137"
+  },
+  {
+    "self": 0.856,
+    "total": 0.856,
+    "name": "src/color.ts:45 validColor"
+  },
+  {
+    "self": 0.795,
+    "total": 0.795,
+    "name": "src/model.ts:377 "
+  },
+  {
+    "self": 0.766,
+    "total": 0.766,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9314 insertOrAppendPlacementNode"
+  },
+  {
+    "self": 0.76,
+    "total": 0.76,
+    "name": "src/stroke-profile.ts:80 validProfiles"
+  },
+  {
+    "self": 0.728,
+    "total": 0.728,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0.725,
+    "total": 0.725,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0.67,
+    "total": 0.67,
+    "name": "src/selection-colors.ts:12 add"
+  },
+  {
+    "self": 0.668,
+    "total": 7.438999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6414 reconcileChildren"
+  },
+  {
+    "self": 0.583,
+    "total": 0.583,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3834 updateFromMap"
+  },
+  {
+    "self": 0.562,
+    "total": 0.562,
+    "name": "src/build/buildLucideIconNode.mjs:14 buildLucideIconNode"
+  },
+  {
+    "self": 0.542,
+    "total": 0.542,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0.524,
+    "total": 0.524,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0.509,
+    "total": 0.509,
+    "name": "src/kernel/presentation-ownership.ts:7 retireExcept"
+  },
+  {
+    "self": 0.489,
+    "total": 0.489,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9163 commitNewChildToFragmentInstances"
+  },
+  {
+    "self": 0.411,
+    "total": 0.411,
+    "name": "src/commands/affine.ts:44 bounds"
+  },
+  {
+    "self": 0.223,
+    "total": 0.223,
+    "name": "set value :0"
+  },
+  {
+    "self": 0.201,
+    "total": 0.201,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4852 updateReducerImpl"
+  },
+  {
+    "self": 0.153,
+    "total": 5.151,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0.116,
+    "total": 0.116,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4657 finishRenderingHooks"
+  },
+  {
+    "self": 0.112,
+    "total": 0.112,
+    "name": "src/kernel/ProgressiveSurface.tsx:2170 dn"
+  },
+  {
+    "self": 0.072,
+    "total": 0.072,
+    "name": "src/color.ts:58 "
+  },
+  {
+    "self": 0.062,
+    "total": 0.062,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:382 push"
+  },
+  {
+    "self": 0.057,
+    "total": 0.057,
+    "name": "src/commands/affine.ts:26 apply"
+  },
+  {
+    "self": 0.053,
+    "total": 0.053,
+    "name": "src/model.ts:1053 "
+  },
+  {
+    "self": 0.047,
+    "total": 0.047,
+    "name": "RegExp: ^#[0-9a-f]{6}$ :0"
+  },
+  {
+    "self": 0.045,
+    "total": 0.045,
+    "name": "src/model.ts:1055 "
+  },
+  {
+    "self": 0.037,
+    "total": 8.703,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0.028,
+    "total": 0.028,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7653 checkScheduledUpdateOrContext"
+  },
+  {
+    "self": 0.024,
+    "total": 0.024,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1125 setValueForAttribute"
+  },
+  {
+    "self": 0.023,
+    "total": 1.278,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10909 commitReconciliationEffects"
+  },
+  {
+    "self": 0.021,
+    "total": 0.021,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1145 setValueForKnownAttribute"
+  },
+  {
+    "self": 0.018,
+    "total": 0.018,
+    "name": "src/kernel/ProgressiveSurface.tsx:2174 fn"
+  },
+  {
+    "self": 0.016,
+    "total": 9.514999999999999,
+    "name": "src/selection-colors.ts:8 i"
+  },
+  {
+    "self": 0.013,
+    "total": 12.326999999999998,
+    "name": "src/export-metadata.ts:23 pdfVectorIssues"
+  },
+  {
+    "self": 0,
+    "total": 32029.56300000271,
+    "name": "(root) :0"
+  },
+  {
+    "self": 0,
+    "total": 99.00800000000004,
+    "name": "src/render-terminal-diagnostics.mjs:169 sanitizeBatch"
+  },
+  {
+    "self": 0,
+    "total": 59.321000000000005,
+    "name": "_cached :5500"
+  },
+  {
+    "self": 0,
+    "total": 59.321000000000005,
+    "name": "_queryCSS :5716"
+  },
+  {
+    "self": 0,
+    "total": 66.56200000000001,
+    "name": "queryAll :7155"
+  },
+  {
+    "self": 0,
+    "total": 21218.289000001234,
+    "name": "_queryEngineAll :7058"
+  },
+  {
+    "self": 0,
+    "total": 21218.289000001234,
+    "name": "querySelectorAll :7010"
+  },
+  {
+    "self": 0,
+    "total": 21218.289000001234,
+    "name": " :1"
+  },
+  {
+    "self": 0,
+    "total": 21237.269000001237,
+    "name": "evaluate :305"
+  },
+  {
+    "self": 0,
+    "total": 21237.269000001237,
+    "name": " :1"
+  },
+  {
+    "self": 0,
+    "total": 7.241,
+    "name": " :7163"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/kernel/ProgressiveSurface.tsx:475 useRef"
+  },
+  {
+    "self": 0,
+    "total": 5.053,
+    "name": "src/kernel/ProgressiveSurface.tsx:974 Ue"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "src/kernel/tile-scheduler.ts:307 tick"
+  },
+  {
+    "self": 0,
+    "total": 25.147,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 30.252000000000002,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 30.252000000000002,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 310.7879999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 316.8869999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 316.8869999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 318.1179999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12986 flushMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 332.8869999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12906 commitRoot"
+  },
+  {
+    "self": 0,
+    "total": 332.8869999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12867 completeRoot"
+  },
+  {
+    "self": 0,
+    "total": 332.8869999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12240 completeRootWhenReady"
+  },
+  {
+    "self": 0,
+    "total": 533.9719999999994,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069 performWorkOnRoot"
+  },
+  {
+    "self": 0,
+    "total": 533.9719999999994,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13555 performWorkOnRootViaSchedulerTask"
+  },
+  {
+    "self": 0,
+    "total": 533.9719999999994,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/scheduler/cjs/scheduler.production.js:121 performWorkUntilDeadline"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/render-terminal-diagnostics.mjs:122 localRecord"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/render-terminal-diagnostics.mjs:141 record"
+  },
+  {
+    "self": 0,
+    "total": 11.1,
+    "name": "expectHitTarget :7589"
+  },
+  {
+    "self": 0,
+    "total": 11.1,
+    "name": "setupHitTargetInterceptor :7676"
+  },
+  {
+    "self": 0,
+    "total": 11.1,
+    "name": " :1"
+  },
+  {
+    "self": 0,
+    "total": 123.97899999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791 updateFunctionComponent"
+  },
+  {
+    "self": 0,
+    "total": 169.491,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12583 workLoopSync"
+  },
+  {
+    "self": 0,
+    "total": 169.491,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522 renderRootSync"
+  },
+  {
+    "self": 0,
+    "total": 407.20899999999995,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069 performWorkOnRoot"
+  },
+  {
+    "self": 0,
+    "total": 407.20899999999995,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13574 performSyncWorkOnRoot"
+  },
+  {
+    "self": 0,
+    "total": 407.20899999999995,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13408 flushSyncWorkAcrossRoots_impl"
+  },
+  {
+    "self": 0,
+    "total": 408.33899999999994,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13456 processRootScheduleInMicrotask"
+  },
+  {
+    "self": 0,
+    "total": 408.33899999999994,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13579 "
+  },
+  {
+    "self": 0,
+    "total": 5.085,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12815 completeUnitOfWork"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "wasm-function[500] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "wasm-function[2982] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "wasm-function[1807] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "wasm-function[3358] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "wasm-function[5995] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "js-to-wasm:: wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "src/generated/design-kernel/design_kernel.js:1583 svg_paths"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "src/kernel/picking.ts:87 kernelSvgPaths"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "src/Canvas.tsx:2492 "
+  },
+  {
+    "self": 0,
+    "total": 32.693,
+    "name": "src/Canvas.tsx:224 Canvas"
+  },
+  {
+    "self": 0,
+    "total": 169.47599999999986,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 169.47599999999986,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 171.98799999999986,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 171.98799999999986,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 171.98799999999986,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 171.98799999999986,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 171.98799999999986,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 171.98799999999986,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 172.71599999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12986 flushMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 237.71799999999982,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12906 commitRoot"
+  },
+  {
+    "self": 0,
+    "total": 237.71799999999982,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12867 completeRoot"
+  },
+  {
+    "self": 0,
+    "total": 237.71799999999982,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12240 completeRootWhenReady"
+  },
+  {
+    "self": 0,
+    "total": 116.51900000000003,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 35.97799999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 35.97799999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 35.97799999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 35.97799999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 35.97799999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 54.814000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13110 flushLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 3.766,
+    "name": "expectHitTarget :7589"
+  },
+  {
+    "self": 0,
+    "total": 3.766,
+    "name": "listener :7693"
+  },
+  {
+    "self": 0,
+    "total": 3.766,
+    "name": "listener :7995"
+  },
+  {
+    "self": 0,
+    "total": 1.267,
+    "name": "src/layer-drop.ts:9 a"
+  },
+  {
+    "self": 0,
+    "total": 1.267,
+    "name": "src/layer-drop.ts:9 a"
+  },
+  {
+    "self": 0,
+    "total": 1.267,
+    "name": "src/layer-drop.ts:9 a"
+  },
+  {
+    "self": 0,
+    "total": 1.267,
+    "name": "src/layer-drop.ts:9 a"
+  },
+  {
+    "self": 0,
+    "total": 1.267,
+    "name": "src/layer-drop.ts:9 a"
+  },
+  {
+    "self": 0,
+    "total": 1.267,
+    "name": "src/layer-drop.ts:9 a"
+  },
+  {
+    "self": 0,
+    "total": 1.267,
+    "name": "src/layer-drop.ts:7 orderedLayerRoots"
+  },
+  {
+    "self": 0,
+    "total": 1.267,
+    "name": "src/Layers.tsx:368 onPointerDown"
+  },
+  {
+    "self": 0,
+    "total": 301.18099999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13748 processDispatchQueue"
+  },
+  {
+    "self": 0,
+    "total": 301.18099999999987,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13931 "
+  },
+  {
+    "self": 0,
+    "total": 305.91599999999994,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1663 batchedUpdates$1"
+  },
+  {
+    "self": 0,
+    "total": 305.91599999999994,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13884 dispatchEventForPluginEventSystem"
+  },
+  {
+    "self": 0,
+    "total": 307.1719999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17907 dispatchEvent"
+  },
+  {
+    "self": 0,
+    "total": 307.1719999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17873 dispatchDiscreteEvent"
+  },
+  {
+    "self": 0,
+    "total": 2.488,
+    "name": "src/modal-keyboard.ts:8 modalOwnsKeyboard"
+  },
+  {
+    "self": 0,
+    "total": 2.488,
+    "name": "src/editor-shortcuts.ts:6 shortcutTargetOwnsKeyboard"
+  },
+  {
+    "self": 0,
+    "total": 2.488,
+    "name": "src/Canvas.tsx:1129 c"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13931 "
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1663 batchedUpdates$1"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13884 dispatchEventForPluginEventSystem"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17907 dispatchEvent"
+  },
+  {
+    "self": 0,
+    "total": 3.7619999999999996,
+    "name": "src/Layers.tsx:187 choose"
+  },
+  {
+    "self": 0,
+    "total": 3.7619999999999996,
+    "name": "src/Layers.tsx:403 onClick"
+  },
+  {
+    "self": 0,
+    "total": 1.243,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17907 dispatchEvent"
+  },
+  {
+    "self": 0,
+    "total": 1.243,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17873 dispatchDiscreteEvent"
+  },
+  {
+    "self": 0,
+    "total": 2.508,
+    "name": "focus :0"
+  },
+  {
+    "self": 0,
+    "total": 1.265,
+    "name": "src/modal-keyboard.ts:8 modalOwnsKeyboard"
+  },
+  {
+    "self": 0,
+    "total": 1.265,
+    "name": "src/editor-shortcuts.ts:6 shortcutTargetOwnsKeyboard"
+  },
+  {
+    "self": 0,
+    "total": 1.265,
+    "name": "src/Canvas.tsx:1129 c"
+  },
+  {
+    "self": 0,
+    "total": 5.0329999999999995,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6778 markRef"
+  },
+  {
+    "self": 0,
+    "total": 5.032,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:5454 updateMemo"
+  },
+  {
+    "self": 0,
+    "total": 5.032,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react/cjs/react.production.js:536 e.useMemo"
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "src/Inspector.tsx:368 "
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627 renderWithHooks"
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791 updateFunctionComponent"
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6511 updateSimpleMemoComponent"
+  },
+  {
+    "self": 0,
+    "total": 2.731,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14803 setInitialProperties"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1125 setValueForAttribute"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406 setProp"
+  },
+  {
+    "self": 0,
+    "total": 8.828999999999999,
+    "name": "src/selection-colors.ts:8 i"
+  },
+  {
+    "self": 0,
+    "total": 8.828999999999999,
+    "name": "src/selection-colors.ts:8 i"
+  },
+  {
+    "self": 0,
+    "total": 9.514999999999999,
+    "name": "src/selection-colors.ts:8 i"
+  },
+  {
+    "self": 0,
+    "total": 9.514999999999999,
+    "name": "src/selection-colors.ts:6 selectionColors"
+  },
+  {
+    "self": 0,
+    "total": 1.261,
+    "name": "src/selection-colors.ts:19 paint"
+  },
+  {
+    "self": 0,
+    "total": 1.261,
+    "name": "src/selection-colors.ts:23 "
+  },
+  {
+    "self": 0,
+    "total": 0.67,
+    "name": "src/selection-colors.ts:19 paint"
+  },
+  {
+    "self": 0,
+    "total": 0.67,
+    "name": "src/selection-colors.ts:23 "
+  },
+  {
+    "self": 0,
+    "total": 1.815,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6425 updateForwardRef"
+  },
+  {
+    "self": 0,
+    "total": 9.899999999999999,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 9.899999999999999,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 9.899999999999999,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 9.899999999999999,
+    "name": "src/geometry.ts:324 "
+  },
+  {
+    "self": 0,
+    "total": 9.899999999999999,
+    "name": "src/geometry.ts:278 scene"
+  },
+  {
+    "self": 0,
+    "total": 12.326999999999998,
+    "name": "src/NodeExportPanel.tsx:17 useMemo"
+  },
+  {
+    "self": 0,
+    "total": 12.326999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:5809 useMemo"
+  },
+  {
+    "self": 0,
+    "total": 25.984,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react/cjs/react.production.js:536 e.useMemo"
+  },
+  {
+    "self": 0,
+    "total": 25.984,
+    "name": "src/NodeExportPanel.tsx:12 NodeExportPanel"
+  },
+  {
+    "self": 0,
+    "total": 7.526999999999999,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 7.526999999999999,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 8.783999999999999,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 8.783999999999999,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 0.728,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 27.944,
+    "name": "src/kernel/ResidentCompositeSurface.tsx:335 "
+  },
+  {
+    "self": 0,
+    "total": 27.944,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011 commitHookEffectListMount"
+  },
+  {
+    "self": 0,
+    "total": 32.958,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 32.958,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 32.958,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 32.958,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 33.467,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 34.72,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 34.72,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 34.72,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 34.72,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 18.836,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011 commitHookEffectListMount"
+  },
+  {
+    "self": 0,
+    "total": 1.517,
+    "name": "src/render-terminal-diagnostics.mjs:122 localRecord"
+  },
+  {
+    "self": 0,
+    "total": 1.517,
+    "name": "src/render-terminal-diagnostics.mjs:141 record"
+  },
+  {
+    "self": 0,
+    "total": 1.517,
+    "name": "src/kernel/client.ts:403 recordViewportDiagnostic"
+  },
+  {
+    "self": 0,
+    "total": 1.517,
+    "name": "src/kernel/ProgressiveSurface.tsx:695 "
+  },
+  {
+    "self": 0,
+    "total": 2.7809999999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011 commitHookEffectListMount"
+  },
+  {
+    "self": 0,
+    "total": 2.7809999999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 2.7809999999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 3.925,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 3.925,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 3.925,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 3.925,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 3.925,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 3.925,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 3.925,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 3.925,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 3.925,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11392 recursivelyTraversePassiveMountEffects"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11411 commitPassiveMountOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13229 flushPassiveEffects"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13221 flushPendingEffects"
+  },
+  {
+    "self": 0,
+    "total": 10.187999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13134 flushSpawnedWork"
+  },
+  {
+    "self": 0,
+    "total": 2.493,
+    "name": "src/kernel/ProgressiveSurface.tsx:367 ProgressiveSurfaceImpl"
+  },
+  {
+    "self": 0,
+    "total": 1.043,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 8.698999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12986 flushMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 11.175999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12906 commitRoot"
+  },
+  {
+    "self": 0,
+    "total": 11.175999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12867 completeRoot"
+  },
+  {
+    "self": 0,
+    "total": 11.175999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12240 completeRootWhenReady"
+  },
+  {
+    "self": 0,
+    "total": 17.817,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069 performWorkOnRoot"
+  },
+  {
+    "self": 0,
+    "total": 17.817,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13574 performSyncWorkOnRoot"
+  },
+  {
+    "self": 0,
+    "total": 17.817,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13408 flushSyncWorkAcrossRoots_impl"
+  },
+  {
+    "self": 0,
+    "total": 17.817,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12402 flushSyncWork$1"
+  },
+  {
+    "self": 0,
+    "total": 17.817,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:16914 flushSyncWork"
+  },
+  {
+    "self": 0,
+    "total": 17.817,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom.production.js:89 t.flushSync"
+  },
+  {
+    "self": 0,
+    "total": 3.6050000000000004,
+    "name": "src/render-terminal-diagnostics.mjs:128 flush"
+  },
+  {
+    "self": 0,
+    "total": 4.0760000000000005,
+    "name": "focusNode :7540"
+  },
+  {
+    "self": 0,
+    "total": 4.0760000000000005,
+    "name": " :1"
+  },
+  {
+    "self": 0,
+    "total": 1.268,
+    "name": "src/modal-keyboard.ts:8 modalOwnsKeyboard"
+  },
+  {
+    "self": 0,
+    "total": 1.268,
+    "name": "src/editor-shortcuts.ts:6 shortcutTargetOwnsKeyboard"
+  },
+  {
+    "self": 0,
+    "total": 1.268,
+    "name": "src/Canvas.tsx:1129 c"
+  },
+  {
+    "self": 0,
+    "total": 0.201,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:5996 useState"
+  },
+  {
+    "self": 0,
+    "total": 2.517,
+    "name": "src/selection-colors.ts:23 "
+  },
+  {
+    "self": 0,
+    "total": 1.255,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9314 insertOrAppendPlacementNode"
+  },
+  {
+    "self": 0,
+    "total": 72.43599999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 72.43599999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 0.542,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 56.411000000000016,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 56.411000000000016,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 51.933000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 51.933000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 55.869000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 55.869000000000014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 5.014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9197 commitHostMount"
+  },
+  {
+    "self": 0,
+    "total": 0.062,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:431 pushHostContext"
+  },
+  {
+    "self": 0,
+    "total": 7.461,
+    "name": "src/kernel/client.ts:370 t"
+  },
+  {
+    "self": 0,
+    "total": 93.91,
+    "name": " :5717"
+  },
+  {
+    "self": 0,
+    "total": 95.16499999999999,
+    "name": "_queryCSS :5716"
+  },
+  {
+    "self": 0,
+    "total": 76.88900000000001,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791 updateFunctionComponent"
+  },
+  {
+    "self": 0,
+    "total": 201.0849999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522 renderRootSync"
+  },
+  {
+    "self": 0,
+    "total": 3.7520000000000002,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4078 reconcileChildFibersImpl"
+  },
+  {
+    "self": 0,
+    "total": 2.593,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 0,
+    "total": 2.593,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0,
+    "total": 2.593,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 5.105,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 5.105,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 2.512,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1269 updateInput"
+  },
+  {
+    "self": 0,
+    "total": 2.512,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0,
+    "total": 2.512,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 2.512,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 2.512,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.093,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7658 attemptEarlyBailoutIfNoScheduledUpdate"
+  },
+  {
+    "self": 0,
+    "total": 1.093,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768 beginWork"
+  },
+  {
+    "self": 0,
+    "total": 2.3899999999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12706 performUnitOfWork"
+  },
+  {
+    "self": 0,
+    "total": 2.3899999999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12583 workLoopSync"
+  },
+  {
+    "self": 0,
+    "total": 2.3899999999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522 renderRootSync"
+  },
+  {
+    "self": 0,
+    "total": 2.3899999999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069 performWorkOnRoot"
+  },
+  {
+    "self": 0,
+    "total": 2.3899999999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13574 performSyncWorkOnRoot"
+  },
+  {
+    "self": 0,
+    "total": 2.3899999999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13408 flushSyncWorkAcrossRoots_impl"
+  },
+  {
+    "self": 0,
+    "total": 2.3899999999999997,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12402 flushSyncWork$1"
+  },
+  {
+    "self": 0,
+    "total": 2.3449999999999998,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1596 restoreStateOfTarget"
+  },
+  {
+    "self": 0,
+    "total": 1.27,
+    "name": "safeJson :328"
+  },
+  {
+    "self": 0,
+    "total": 1.27,
+    "name": "_promiseAwareJsonValueNoThrow :327"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/render-terminal-diagnostics.mjs:122 localRecord"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/render-terminal-diagnostics.mjs:141 record"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/canvas-action-diagnostics.ts:92 "
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/canvas-action-diagnostics.ts:43 output"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/canvas-action-diagnostics.ts:49 begin"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/canvas-action-diagnostics.ts:102 event"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/input-diagnostics.ts:17 valid"
+  },
+  {
+    "self": 0,
+    "total": 162.22299999999981,
+    "name": "src/DraftInput.tsx:30 finish"
+  },
+  {
+    "self": 0,
+    "total": 162.22299999999981,
+    "name": "src/DraftInput.tsx:65 onKeyDown"
+  },
+  {
+    "self": 0,
+    "total": 1.265,
+    "name": "src/engine.ts:1336 "
+  },
+  {
+    "self": 0,
+    "total": 1.265,
+    "name": "src/engine.ts:586 "
+  },
+  {
+    "self": 0,
+    "total": 2.509,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:688 Rr.produce"
+  },
+  {
+    "self": 0,
+    "total": 2.509,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:738 Rr.produceWithPatches"
+  },
+  {
+    "self": 0,
+    "total": 2.509,
+    "name": "src/document-patch.ts:111 produceDocumentDraft"
+  },
+  {
+    "self": 0,
+    "total": 160.9719999999998,
+    "name": "src/engine.ts:1324 update"
+  },
+  {
+    "self": 0,
+    "total": 160.9719999999998,
+    "name": "src/Layers.tsx:445 onCommit"
+  },
+  {
+    "self": 0,
+    "total": 1.244,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:310 finalize"
+  },
+  {
+    "self": 0,
+    "total": 1.244,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:280 processResult"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/model.ts:1153 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/model.ts:1153 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/model.ts:1153 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/model.ts:1153 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/model.ts:1153 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/model.ts:1153 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/model.ts:1149 validateStructure"
+  },
+  {
+    "self": 0,
+    "total": 3.767,
+    "name": "src/local-edit-proof.ts:62 proveLocalEdit"
+  },
+  {
+    "self": 0,
+    "total": 1.275,
+    "name": "src/model.ts:573 hasLocalTools"
+  },
+  {
+    "self": 0,
+    "total": 1.256,
+    "name": "src/model.ts:919 "
+  },
+  {
+    "self": 0,
+    "total": 0.119,
+    "name": "src/color.ts:45 validColor"
+  },
+  {
+    "self": 0,
+    "total": 0.119,
+    "name": "src/model.ts:746 test"
+  },
+  {
+    "self": 0,
+    "total": 0.119,
+    "name": "src/model.ts:789 "
+  },
+  {
+    "self": 0,
+    "total": 0.119,
+    "name": "src/model.ts:771 "
+  },
+  {
+    "self": 0,
+    "total": 0.119,
+    "name": "src/model.ts:767 p"
+  },
+  {
+    "self": 0,
+    "total": 1.165,
+    "name": "src/model.ts:1125 "
+  },
+  {
+    "self": 0,
+    "total": 1.165,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.165,
+    "name": "src/model.ts:1125 "
+  },
+  {
+    "self": 0,
+    "total": 1.165,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.165,
+    "name": "src/model.ts:1125 "
+  },
+  {
+    "self": 0,
+    "total": 1.165,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.165,
+    "name": "src/model.ts:1125 "
+  },
+  {
+    "self": 0,
+    "total": 1.165,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.165,
+    "name": "src/model.ts:1141 "
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "wasm-function[292] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "wasm-function[3080] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "wasm-function[5916] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "js-to-wasm:: wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/generated/design-kernel/design_kernel.js:583 ops_frame"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/kernel/graph.ts:207 opsFrame"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/kernel/graph-history-state.ts:69 "
+  },
+  {
+    "self": 0,
+    "total": 7.350999999999999,
+    "name": "src/cpu-stage-diagnostics.ts:16 measureCpuStage"
+  },
+  {
+    "self": 0,
+    "total": 7.350999999999999,
+    "name": "src/kernel/graph-history-state.ts:54 commitOps"
+  },
+  {
+    "self": 0,
+    "total": 7.350999999999999,
+    "name": "src/kernel/graph-history-state.ts:92 apply"
+  },
+  {
+    "self": 0,
+    "total": 7.350999999999999,
+    "name": "src/engine.ts:546 push"
+  },
+  {
+    "self": 0,
+    "total": 6.101000000000001,
+    "name": "wasm-function[3954] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 6.101000000000001,
+    "name": "wasm-function[6153] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 6.101000000000001,
+    "name": "js-to-wasm:: wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 6.101000000000001,
+    "name": "src/generated/design-kernel/design_kernel.js:230 apply_ops_json"
+  },
+  {
+    "self": 0,
+    "total": 6.101000000000001,
+    "name": "src/kernel/graph.ts:202 applyOps"
+  },
+  {
+    "self": 0,
+    "total": 6.101000000000001,
+    "name": "src/kernel/graph-history-state.ts:77 "
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "wasm-function[5508] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "wasm-function[554] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 5.003,
+    "name": "wasm-function[1546] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.262,
+    "name": "wasm-function[554] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 3.7560000000000002,
+    "name": "wasm-function[2914] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.238,
+    "name": "wasm-function[1985] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.238,
+    "name": "wasm-function[5455] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.238,
+    "name": "wasm-function[5050] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.238,
+    "name": "wasm-function[5044] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.238,
+    "name": "wasm-function[5082] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.238,
+    "name": "wasm-function[3051] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.238,
+    "name": "wasm-function[2432] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 2.4939999999999998,
+    "name": "wasm-function[1185] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.244,
+    "name": "src/geometry.ts:330 allParents"
+  },
+  {
+    "self": 0,
+    "total": 1.244,
+    "name": "src/selection-hierarchy.ts:21 interactivePath"
+  },
+  {
+    "self": 0,
+    "total": 1.244,
+    "name": "src/engine.ts:377 setState"
+  },
+  {
+    "self": 0,
+    "total": 1.244,
+    "name": "src/engine.ts:464 publishCommittedState"
+  },
+  {
+    "self": 0,
+    "total": 0.583,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:3905 reconcileChildrenArray"
+  },
+  {
+    "self": 0,
+    "total": 0.583,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4078 reconcileChildFibersImpl"
+  },
+  {
+    "self": 0,
+    "total": 1.263,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7658 attemptEarlyBailoutIfNoScheduledUpdate"
+  },
+  {
+    "self": 0,
+    "total": 1.253,
+    "name": "src/kernel/page-translation.ts:64 delta"
+  },
+  {
+    "self": 0,
+    "total": 1.253,
+    "name": "src/kernel/page-translation.ts:80 covers"
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:324 "
+  },
+  {
+    "self": 0,
+    "total": 12.595999999999998,
+    "name": "src/geometry.ts:278 scene"
+  },
+  {
+    "self": 0,
+    "total": 18.873,
+    "name": "src/canvas-scene-snapshots.ts:109 currentScene"
+  },
+  {
+    "self": 0,
+    "total": 2.518,
+    "name": "src/engine.ts:198 pickContext"
+  },
+  {
+    "self": 0,
+    "total": 2.518,
+    "name": "src/engine.ts:210 parentMap"
+  },
+  {
+    "self": 0,
+    "total": 2.518,
+    "name": "src/Canvas.tsx:742 useMemo"
+  },
+  {
+    "self": 0,
+    "total": 1.258,
+    "name": "src/canvas-scene-snapshots.ts:71 get overview"
+  },
+  {
+    "self": 0,
+    "total": 1.258,
+    "name": "src/canvas-scene-snapshots.ts:138 refineOverview"
+  },
+  {
+    "self": 0,
+    "total": 2.504,
+    "name": "src/ColorInput.tsx:116 validate"
+  },
+  {
+    "self": 0,
+    "total": 2.504,
+    "name": "src/DraftInput.tsx:9 DraftInput"
+  },
+  {
+    "self": 0,
+    "total": 11.2,
+    "name": "src/geometry.ts:324 "
+  },
+  {
+    "self": 0,
+    "total": 11.2,
+    "name": "src/geometry.ts:278 scene"
+  },
+  {
+    "self": 0,
+    "total": 13.657,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:5454 updateMemo"
+  },
+  {
+    "self": 0,
+    "total": 9.979,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 9.979,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 9.979,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 9.979,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 9.979,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 9.979,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 9.979,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 2.512,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0,
+    "total": 2.512,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 14.747,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 3.936,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0,
+    "total": 3.936,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 43.656000000000006,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0,
+    "total": 43.656000000000006,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 51.20800000000001,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 51.20800000000001,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 7.5520000000000005,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0,
+    "total": 7.5520000000000005,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 7.5520000000000005,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 7.5520000000000005,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 3.7699999999999996,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 6.272,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 10.843,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 10.843,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 10.843,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 10.843,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 10.843,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 10.843,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 10.843,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 11.311,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 11.311,
+    "name": "src/geometry.ts:324 "
+  },
+  {
+    "self": 0,
+    "total": 11.311,
+    "name": "src/geometry.ts:278 scene"
+  },
+  {
+    "self": 0,
+    "total": 17.59,
+    "name": "src/kernel/interaction-layers.ts:55 planInteractionLayers"
+  },
+  {
+    "self": 0,
+    "total": 3.1,
+    "name": "src/kernel/interaction-scene-bounds.ts:91 buildInteractionDependencyScope"
+  },
+  {
+    "self": 0,
+    "total": 6.263000000000001,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011 commitHookEffectListMount"
+  },
+  {
+    "self": 0,
+    "total": 1.252,
+    "name": "src/kernel/authored-patch-transition.ts:50 prepareAuthoredPatchTransition"
+  },
+  {
+    "self": 0,
+    "total": 2.386,
+    "name": "src/kernel/client.ts:821 s"
+  },
+  {
+    "self": 0,
+    "total": 1.125,
+    "name": "src/kernel/presentation.ts:164 displayCapabilitySnapshot"
+  },
+  {
+    "self": 0,
+    "total": 1.125,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4980 updateSyncExternalStore"
+  },
+  {
+    "self": 0,
+    "total": 1.125,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react/cjs/react.production.js:551 e.useSyncExternalStore"
+  },
+  {
+    "self": 0,
+    "total": 1.125,
+    "name": "src/kernel/presentation.ts:174 useDisplayCapability"
+  },
+  {
+    "self": 0,
+    "total": 0.509,
+    "name": "src/kernel/ProgressiveSurface.tsx:2125 "
+  },
+  {
+    "self": 0,
+    "total": 0.509,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011 commitHookEffectListMount"
+  },
+  {
+    "self": 0,
+    "total": 1.301,
+    "name": "src/selection-size-label.ts:14 selectionSizeLabel"
+  },
+  {
+    "self": 0,
+    "total": 1.301,
+    "name": "src/Canvas.tsx:224 Canvas"
+  },
+  {
+    "self": 0,
+    "total": 1.014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13931 "
+  },
+  {
+    "self": 0,
+    "total": 1.014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1663 batchedUpdates$1"
+  },
+  {
+    "self": 0,
+    "total": 1.014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13884 dispatchEventForPluginEventSystem"
+  },
+  {
+    "self": 0,
+    "total": 1.014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17907 dispatchEvent"
+  },
+  {
+    "self": 0,
+    "total": 1.014,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17873 dispatchDiscreteEvent"
+  },
+  {
+    "self": 0,
+    "total": 1.014,
+    "name": "select :0"
+  },
+  {
+    "self": 0,
+    "total": 1.014,
+    "name": "selectText :7508"
+  },
+  {
+    "self": 0,
+    "total": 1.014,
+    "name": "fill :7473"
+  },
+  {
+    "self": 0,
+    "total": 1.014,
+    "name": " :1"
+  },
+  {
+    "self": 0,
+    "total": 2.505,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0,
+    "total": 2.505,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 2.505,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 2.505,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 2.505,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 2.505,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10497 commitMutationEffectsOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 7.656,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:10454 recursivelyTraverseMutationEffects"
+  },
+  {
+    "self": 0,
+    "total": 4.997999999999999,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0,
+    "total": 1.263,
+    "name": "src/kernel/Surface.tsx:545 KernelSurface"
+  },
+  {
+    "self": 0,
+    "total": 1.27,
+    "name": " :1"
+  },
+  {
+    "self": 0,
+    "total": 1.256,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17992 findInstanceBlockingEvent"
+  },
+  {
+    "self": 0,
+    "total": 1.261,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:653 prepareCopy"
+  },
+  {
+    "self": 0,
+    "total": 1.261,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:493 get"
+  },
+  {
+    "self": 0,
+    "total": 2.021,
+    "name": "src/engine.ts:1336 "
+  },
+  {
+    "self": 0,
+    "total": 2.021,
+    "name": "src/engine.ts:586 "
+  },
+  {
+    "self": 0,
+    "total": 2.021,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:688 Rr.produce"
+  },
+  {
+    "self": 0,
+    "total": 2.021,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/immer/dist/immer.mjs:738 Rr.produceWithPatches"
+  },
+  {
+    "self": 0,
+    "total": 2.021,
+    "name": "src/document-patch.ts:111 produceDocumentDraft"
+  },
+  {
+    "self": 0,
+    "total": 132.2920000000002,
+    "name": "src/engine.ts:1324 update"
+  },
+  {
+    "self": 0,
+    "total": 132.2920000000002,
+    "name": "src/engine.ts:1358 updateProperties"
+  },
+  {
+    "self": 0,
+    "total": 132.2920000000002,
+    "name": "src/Inspector.tsx:374 update"
+  },
+  {
+    "self": 0,
+    "total": 132.2920000000002,
+    "name": "src/Inspector.tsx:597 onChange"
+  },
+  {
+    "self": 0,
+    "total": 132.2920000000002,
+    "name": "src/fields.tsx:46 finish"
+  },
+  {
+    "self": 0,
+    "total": 132.2920000000002,
+    "name": "src/fields.tsx:142 onKeyDown"
+  },
+  {
+    "self": 0,
+    "total": 0.856,
+    "name": "src/model.ts:746 test"
+  },
+  {
+    "self": 0,
+    "total": 0.856,
+    "name": "src/model.ts:789 "
+  },
+  {
+    "self": 0,
+    "total": 2.117,
+    "name": "src/model.ts:771 "
+  },
+  {
+    "self": 0,
+    "total": 2.117,
+    "name": "src/model.ts:767 p"
+  },
+  {
+    "self": 0,
+    "total": 1.261,
+    "name": "src/model.ts:746 test"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1125 "
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1125 "
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1125 "
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1125 "
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1125 "
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1121 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "src/model.ts:1141 "
+  },
+  {
+    "self": 0,
+    "total": 1.204,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.204,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.204,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.204,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.204,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.204,
+    "name": "wasm-function[554] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "wasm-function[1546] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "wasm-function[756] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "wasm-function[3954] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "wasm-function[6153] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "js-to-wasm:: wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "src/generated/design-kernel/design_kernel.js:230 apply_ops_json"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "src/kernel/graph.ts:202 applyOps"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "src/kernel/graph-history-state.ts:77 "
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "src/cpu-stage-diagnostics.ts:16 measureCpuStage"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "src/kernel/graph-history-state.ts:54 commitOps"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "src/kernel/graph-history-state.ts:92 apply"
+  },
+  {
+    "self": 0,
+    "total": 4.971,
+    "name": "src/engine.ts:546 push"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "wasm-function[1234] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.25,
+    "name": "wasm-function[554] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 3.767,
+    "name": "wasm-function[2914] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.255,
+    "name": "wasm-function[1985] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.255,
+    "name": "wasm-function[5455] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.255,
+    "name": "wasm-function[2043] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.255,
+    "name": "wasm-function[5044] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.255,
+    "name": "wasm-function[5771] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.255,
+    "name": "wasm-function[5044] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.255,
+    "name": "wasm-function[5082] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.255,
+    "name": "wasm-function[3051] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.255,
+    "name": "wasm-function[2432] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 2.517,
+    "name": "wasm-function[1185] wasm://wasm/093b86d2:1"
+  },
+  {
+    "self": 0,
+    "total": 1.256,
+    "name": "src/geometry.ts:333 "
+  },
+  {
+    "self": 0,
+    "total": 1.256,
+    "name": "src/geometry.ts:330 allParents"
+  },
+  {
+    "self": 0,
+    "total": 1.256,
+    "name": "src/selection-hierarchy.ts:21 interactivePath"
+  },
+  {
+    "self": 0,
+    "total": 1.256,
+    "name": "src/engine.ts:377 setState"
+  },
+  {
+    "self": 0,
+    "total": 1.256,
+    "name": "src/engine.ts:464 publishCommittedState"
+  },
+  {
+    "self": 0,
+    "total": 6.188,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4078 reconcileChildFibersImpl"
+  },
+  {
+    "self": 0,
+    "total": 6.188,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4249 "
+  },
+  {
+    "self": 0,
+    "total": 2.292,
+    "name": "src/kernel/interaction-renderer.ts:134 baseOffsets"
+  },
+  {
+    "self": 0,
+    "total": 3.553,
+    "name": "src/kernel/interaction-renderer.ts:247 covers"
+  },
+  {
+    "self": 0,
+    "total": 0.057,
+    "name": "src/geometry.ts:293 "
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "src/geometry.ts:282 visit"
+  },
+  {
+    "self": 0,
+    "total": 1.247,
+    "name": "src/geometry.ts:315 "
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "src/kernel/ProgressiveSurface.tsx:882 "
+  },
+  {
+    "self": 0,
+    "total": 1.207,
+    "name": "src/kernel/tile-plan-aligned.ts:129 viewportHeightPrefetch"
+  },
+  {
+    "self": 0,
+    "total": 1.207,
+    "name": "src/kernel/tile-plan-aligned.ts:46 planTilesWithPrefetchRim"
+  },
+  {
+    "self": 0,
+    "total": 2.428,
+    "name": "src/kernel/ProgressiveSurface.tsx:1398 ft"
+  },
+  {
+    "self": 0,
+    "total": 1.134,
+    "name": "src/render-terminal-diagnostics.mjs:122 localRecord"
+  },
+  {
+    "self": 0,
+    "total": 1.134,
+    "name": "src/render-terminal-diagnostics.mjs:141 record"
+  },
+  {
+    "self": 0,
+    "total": 1.134,
+    "name": "src/kernel/client.ts:991 "
+  },
+  {
+    "self": 0,
+    "total": 1.134,
+    "name": "src/kernel/client.ts:984 request"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "src/render-terminal-diagnostics.mjs:122 localRecord"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "src/render-terminal-diagnostics.mjs:141 record"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "src/canvas-action-diagnostics.ts:92 "
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "src/canvas-action-diagnostics.ts:43 output"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "src/canvas-action-diagnostics.ts:68 finish"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "src/canvas-action-diagnostics.ts:102 event"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "src/input-diagnostics.ts:15 event"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "src/fields.tsx:137 onFocus"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13748 processDispatchQueue"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13931 "
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:1663 batchedUpdates$1"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13884 dispatchEventForPluginEventSystem"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17907 dispatchEvent"
+  },
+  {
+    "self": 0,
+    "total": 1.556,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:17873 dispatchDiscreteEvent"
+  },
+  {
+    "self": 0,
+    "total": 9.947,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 9.947,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 9.947,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 9.947,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 9.947,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 9.947,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 9.947,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 9.947,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 9.947,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 11.203,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13110 flushLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.637,
+    "name": "src/canvas-action-diagnostics.ts:49 begin"
+  },
+  {
+    "self": 0,
+    "total": 1.637,
+    "name": "src/canvas-action-diagnostics.ts:102 event"
+  },
+  {
+    "self": 0,
+    "total": 1.637,
+    "name": "src/input-diagnostics.ts:15 event"
+  },
+  {
+    "self": 0,
+    "total": 1.637,
+    "name": "src/fields.tsx:141 onBlur"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "predicate :3"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": "next :25"
+  },
+  {
+    "self": 0,
+    "total": 1.264,
+    "name": " :1"
+  },
+  {
+    "self": 0,
+    "total": 556.9959999999998,
+    "name": "predicate :3"
+  },
+  {
+    "self": 0,
+    "total": 558.1899999999997,
+    "name": "next :25"
+  },
+  {
+    "self": 0,
+    "total": 6.099,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035 updateProperties"
+  },
+  {
+    "self": 0,
+    "total": 6.099,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 1.221,
+    "name": "src/kernel/render-quality.ts:25 allowsReducedSampling"
+  },
+  {
+    "self": 0,
+    "total": 3.566,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627 renderWithHooks"
+  },
+  {
+    "self": 0,
+    "total": 3.566,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791 updateFunctionComponent"
+  },
+  {
+    "self": 0,
+    "total": 3.566,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768 beginWork"
+  },
+  {
+    "self": 0,
+    "total": 3.566,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12706 performUnitOfWork"
+  },
+  {
+    "self": 0,
+    "total": 3.566,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12583 workLoopSync"
+  },
+  {
+    "self": 0,
+    "total": 3.566,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522 renderRootSync"
+  },
+  {
+    "self": 0,
+    "total": 3.566,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12069 performWorkOnRoot"
+  },
+  {
+    "self": 0,
+    "total": 3.566,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13574 performSyncWorkOnRoot"
+  },
+  {
+    "self": 0,
+    "total": 3.566,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13408 flushSyncWorkAcrossRoots_impl"
+  },
+  {
+    "self": 0,
+    "total": 3.566,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13134 flushSpawnedWork"
+  },
+  {
+    "self": 0,
+    "total": 1.106,
+    "name": "src/kernel/ProgressiveSurface.tsx:2187 "
+  },
+  {
+    "self": 0,
+    "total": 6.641,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627 renderWithHooks"
+  },
+  {
+    "self": 0,
+    "total": 6.641,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6791 updateFunctionComponent"
+  },
+  {
+    "self": 0,
+    "total": 6.641,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7768 beginWork"
+  },
+  {
+    "self": 0,
+    "total": 6.641,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12706 performUnitOfWork"
+  },
+  {
+    "self": 0,
+    "total": 6.641,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12583 workLoopSync"
+  },
+  {
+    "self": 0,
+    "total": 6.641,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12522 renderRootSync"
+  },
+  {
+    "self": 0,
+    "total": 3.7140000000000004,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7622 bailoutOnAlreadyFinishedWork"
+  },
+  {
+    "self": 0,
+    "total": 3.7140000000000004,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:7658 attemptEarlyBailoutIfNoScheduledUpdate"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/render-terminal-diagnostics.mjs:122 localRecord"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/render-terminal-diagnostics.mjs:141 record"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/kernel/client.ts:361 GridMeasurements"
+  },
+  {
+    "self": 0,
+    "total": 1.259,
+    "name": "src/kernel/grid-measurements.ts:29 flush"
+  },
+  {
+    "self": 0,
+    "total": 1.256,
+    "name": "src/kernel/gpu/resident-frame.ts:64 residentFrameSignature"
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "src/kernel/ResidentCompositeSurface.tsx:74 Tb.u.current"
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "src/kernel/ResidentCompositeSurface.tsx:335 "
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011 commitHookEffectListMount"
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "src/kernel/ResidentCompositeSurface.tsx:74 Tb.u.current"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "src/kernel/ResidentCompositeSurface.tsx:335 "
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011 commitHookEffectListMount"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:11117 recursivelyTraverseLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9962 commitLayoutEffectOnFiber"
+  },
+  {
+    "self": 0,
+    "total": 1.223,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13110 flushLayoutEffects"
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "src/commands/selection-command.ts:18 reject"
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "src/commands/selection-command.ts:41 indexSelection"
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "src/commands/selection-command.ts:100 selectionCommandAdmission"
+  },
+  {
+    "self": 0,
+    "total": 2.513,
+    "name": "src/alignment-availability.ts:6 alignmentAvailability"
+  },
+  {
+    "self": 0,
+    "total": 1.256,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9011 commitHookEffectListMount"
+  },
+  {
+    "self": 0,
+    "total": 1.269,
+    "name": "src/kernel/presentation.ts:164 displayCapabilitySnapshot"
+  },
+  {
+    "self": 0,
+    "total": 1.269,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4980 updateSyncExternalStore"
+  },
+  {
+    "self": 0,
+    "total": 1.269,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react/cjs/react.production.js:551 e.useSyncExternalStore"
+  },
+  {
+    "self": 0,
+    "total": 1.269,
+    "name": "src/kernel/presentation.ts:174 useDisplayCapability"
+  },
+  {
+    "self": 0,
+    "total": 1.269,
+    "name": "src/kernel/Surface.tsx:545 KernelSurface"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "src/build/buildLucideIconForReact.mjs:10 buildLucideIconForReact"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/lucide-react/dist/esm/Icon.mjs:16 forwardRef"
+  },
+  {
+    "self": 0,
+    "total": 1.251,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:6425 updateForwardRef"
+  },
+  {
+    "self": 0,
+    "total": 1.231,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218 commitHostUpdate"
+  },
+  {
+    "self": 0,
+    "total": 1.26,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:995 resolveUpdatePriority"
+  },
+  {
+    "self": 0,
+    "total": 1.26,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:12008 requestUpdateLane"
+  },
+  {
+    "self": 0,
+    "total": 1.26,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:5663 dispatchSetState"
+  },
+  {
+    "self": 0,
+    "total": 1.269,
+    "name": "src/kernel/presentation.ts:164 displayCapabilitySnapshot"
+  },
+  {
+    "self": 0,
+    "total": 1.269,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4980 updateSyncExternalStore"
+  },
+  {
+    "self": 0,
+    "total": 1.269,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react/cjs/react.production.js:551 e.useSyncExternalStore"
+  },
+  {
+    "self": 0,
+    "total": 1.269,
+    "name": "src/kernel/presentation.ts:174 useDisplayCapability"
+  },
+  {
+    "self": 0,
+    "total": 1.254,
+    "name": "../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:13389 scheduleCallback$1"
+  },
+  {
+    "self": 0,
+    "total": 2.542,
+    "name": "src/render-terminal-diagnostics.mjs:141 record"
+  },
+  {
+    "self": 0,
+    "total": 2.542,
+    "name": "src/kernel/client.ts:403 recordViewportDiagnostic"
+  },
+  {
+    "self": 0,
+    "total": 2.542,
+    "name": "src/kernel/ProgressiveSurface.tsx:1034 reportAdmission"
+  },
+  {
+    "self": 0,
+    "total": 1.257,
+    "name": "src/kernel/handoff-trace.ts:12 record"
+  },
+  {
+    "self": 0,
+    "total": 1.031,
+    "name": "src/kernel/handoff-trace.ts:12 record"
+  }
+]

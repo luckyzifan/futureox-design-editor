@@ -1,0 +1,228 @@
+{
+  "run": "pressure-native",
+  "scope": "matched source/inputs with native-visible-tiles flag off/on; CPU sampler off; compositor telemetry, not scanout or full G2/G5",
+  "motionMs": 3064,
+  "actions": 24,
+  "uiStalls": 0,
+  "uiIntervalMaxMs": 9.400000000001455,
+  "cameraSubmits": 23,
+  "minCoverage": 1,
+  "maxUpscale": 4,
+  "nonSharpSubmits": 1,
+  "nonNativePhaseSubmits": 1,
+  "surfaceRejectedRecords": 0,
+  "errors": [],
+  "maxPipelineMs": 68.59999996423721,
+  "maxPassAmplification": 23.38191342790958,
+  "maxRendererWorkingBytes": 49564272,
+  "finalScreenshotSha256": "3099af0e74a3a8569028818e6bdd57101a1b1bd692cdfaf0024fa822f40821f1",
+  "samples": [
+    {
+      "at": 1792805988722,
+      "zoom": 2,
+      "coverage": 1,
+      "sharpCoverage": 0.75,
+      "nativePhaseCoverage": 0.75,
+      "maxUpscale": 4,
+      "requestId": null
+    },
+    {
+      "at": 1792805988742,
+      "zoom": 2,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805988838,
+      "zoom": 8,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805988986,
+      "zoom": 32,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805989047,
+      "zoom": 8,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805989181,
+      "zoom": 2,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805989430,
+      "zoom": 0.126,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805989601,
+      "zoom": 0.5,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805989681,
+      "zoom": 2,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805989798,
+      "zoom": 8,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805989923,
+      "zoom": 32,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805990034,
+      "zoom": 8,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805990148,
+      "zoom": 2,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805990264,
+      "zoom": 0.5,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805990395,
+      "zoom": 0.126,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805990515,
+      "zoom": 0.5,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805990639,
+      "zoom": 2,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805990765,
+      "zoom": 8,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805990881,
+      "zoom": 32,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805991006,
+      "zoom": 8,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805991123,
+      "zoom": 2,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805991256,
+      "zoom": 0.5,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805991373,
+      "zoom": 0.126,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "requestId": null
+    }
+  ]
+}

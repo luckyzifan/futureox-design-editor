@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "export": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/sketch-final-default/topology-verified.sketch",
+  "sha256": "4eeae3b850e2807fec1b3d13fc9ed5f4172c1d02ac726828035af8f336918af2",
+  "byteIdenticalToVerifiedExport": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/sketch-native-1/topology-verified.sketch",
+  "semanticVerification": "sketch-native-1-archive.json",
+  "members": 64,
+  "unchangedMembers": 63,
+  "expectedSemanticChanges": 6
+}

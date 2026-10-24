@@ -970,6 +970,9 @@ impl Document {
         nodes: impl IntoIterator<Item = (&'a String, &'a Node)>,
     ) -> Result<(), String> {
         for (id, n) in nodes {
+            if self.schema_version<16 && n.boolean_operation.is_some_and(|op|op.compound_rule().is_some()) {
+                return Err("Compound paths require schema 16".into());
+            }
             if let Some(geometry) = &n.vector_geometry {
                 if self.schema_version < 16 || n.kind != "vector" || n.network.is_some() || n.vector_brush.is_some() {
                     return Err("Vector render geometry requires schema 16 and one authoritative vector representation".into());

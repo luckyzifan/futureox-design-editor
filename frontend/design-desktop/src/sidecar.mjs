@@ -35,6 +35,9 @@ const responseReservation = (method) => responseReservations.get(method) || 4096
 const writeMethods = new Set(['automation.config.set', 'automation.audit.append', 'automation.task.put', 'sketch.session.resizeLegacyContainer', 'sketch.session.setTextOverride', 'sketch.session.setLeafFrame', 'sketch.session.saveAs', 'sketch.session.undo', 'sketch.session.redo', 'sketch.session.open', 'sketch.session.rename', 'sketch.session.close', 'save', 'recovery.write', 'recovery.remove', 'catalog.register', 'catalog.scan', 'workspace.commit', 'workspace.trash', 'workspace.restore'])
 
 for(const method of ['large.open','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo','large.export'])writeMethods.add(method)
+// Keep execution deadlines and cooperative cancellation on the same long-job set.
+// Chunk reads are bounded control/data transfers, not another scene preparation.
+const largeDocumentJobs = new Set(['large.open','large.export','large.project','large.scene','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo'])
 
 export class Sidecar extends EventEmitter {
   constructor(executable, recoveryDir, { timeoutMs = 30_000, queueTimeoutMs = 600_000, spawnProcess = spawn, catalogDb, workspaceDb, maxPendingBytes = MAX_PENDING_BYTES } = {}) {
@@ -188,7 +191,7 @@ export class Sidecar extends EventEmitter {
   }
 
   executionTimeout(method) {
-    return ['large.open','large.export','large.project','large.apply','large.commitCanvas','large.undo','large.redo'].includes(method) ? Math.max(this.timeoutMs, 600_000) : this.timeoutMs
+    return largeDocumentJobs.has(method) ? Math.max(this.timeoutMs, 600_000) : this.timeoutMs
   }
   request(method, params = {}) {
     if (this.stopped || this.closing) return Promise.reject(failure('BACKEND_UNAVAILABLE', 'Backend unavailable'))
@@ -221,8 +224,7 @@ export class Sidecar extends EventEmitter {
   }
 
   async cancelLargeDocument() {
-    const methods = new Set(['large.open','large.project','large.apply','large.commitCanvas','large.undo','large.redo','large.export'])
-    const jobs = [...this.pending].filter(([, pending]) => methods.has(pending.method))
+    const jobs = [...this.pending].filter(([, pending]) => largeDocumentJobs.has(pending.method))
     const results = []
     for (const [requestId] of jobs) results.push(await this.request('cancel', { requestId }))
     return { requested: jobs.length, running: results.some(result => result.running), cancelled: results.some(result => result.cancelled) }

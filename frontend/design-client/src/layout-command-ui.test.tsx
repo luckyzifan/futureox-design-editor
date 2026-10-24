@@ -10,7 +10,8 @@ function find(tree: any, predicate: (v: any) => boolean): any {
 }
 function panel(e: Editor, id: string, ids = [id]) {
   const slots: any[] = []; let cursor = 0
-  const hooks = { useState(initial: any) { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], (v: any) => slots[i] = v] } }
+  const hooks = { useSyncExternalStore(_subscribe: unknown, snapshot: () => unknown) { return snapshot() },
+    useState(initial: any) { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], (v: any) => slots[i] = v] } }
   return () => {
     cursor = 0
     const internals = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, old = internals.H

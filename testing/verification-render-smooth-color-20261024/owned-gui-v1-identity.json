@@ -1,0 +1,8 @@
+{
+  "own": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/render-smooth-gui-FH64ww",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/render-smooth-gui-FH64ww/host",
+  "pid": 22005,
+  "wasmSha256": "973cb1683e19e4c4439e6a139f5860707d8449522d5933f6c18fda7cf9ab414a",
+  "nativeSha256": "e0198d9b331391f2002b355a9dd333ae5381317414f3efd380fd8ba38cb541e8",
+  "backendSha256": "5d9496d56575355fe232c7deb9bd07aca1da687e891ba26520098ff2b6f3ef1f"
+}

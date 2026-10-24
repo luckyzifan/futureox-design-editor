@@ -1,0 +1,421 @@
+[
+  {
+    "thread": "UI 主线程",
+    "sampledWallMs": 3602.708000000001,
+    "idleOrUnassignedMs": 2909.9930000000018,
+    "activeSampleMs": 692.7149999999995,
+    "focus": [
+      {
+        "name": "Canvas · src/Canvas.tsx:224",
+        "selfMs": 12.190999999999999,
+        "inclusiveMs": 40.026999999999994
+      },
+      {
+        "name": "Yx.pt.current · src/Canvas.tsx:724",
+        "selfMs": 0,
+        "inclusiveMs": 32.224
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:736",
+        "selfMs": 0,
+        "inclusiveMs": 30.683
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:2502",
+        "selfMs": 0,
+        "inclusiveMs": 6.05
+      },
+      {
+        "name": "kernelSvgPaths · src/kernel/picking.ts:87",
+        "selfMs": 1.49,
+        "inclusiveMs": 6.05
+      },
+      {
+        "name": "(anonymous) · src/engine.ts:495",
+        "selfMs": 0,
+        "inclusiveMs": 5.793
+      },
+      {
+        "name": "set · src/engine.ts:374",
+        "selfMs": 0,
+        "inclusiveMs": 5.793
+      },
+      {
+        "name": "setState · src/engine.ts:377",
+        "selfMs": 0,
+        "inclusiveMs": 5.793
+      },
+      {
+        "name": "n · src/Canvas.tsx:1153",
+        "selfMs": 1.55,
+        "inclusiveMs": 5.71
+      },
+      {
+        "name": "(anonymous) · src/fields.tsx:112",
+        "selfMs": 0,
+        "inclusiveMs": 4.428
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:605",
+        "selfMs": 0,
+        "inclusiveMs": 3.049
+      },
+      {
+        "name": "an · src/Canvas.tsx:722",
+        "selfMs": 0,
+        "inclusiveMs": 3.049
+      },
+      {
+        "name": "hoverHit · src/engine.ts:1202",
+        "selfMs": 1.506,
+        "inclusiveMs": 3.049
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:2555",
+        "selfMs": 1.532,
+        "inclusiveMs": 3.037
+      },
+      {
+        "name": "suspendNavigationHover · src/Canvas.tsx:600",
+        "selfMs": 0,
+        "inclusiveMs": 3.0140000000000002
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:243",
+        "selfMs": 0,
+        "inclusiveMs": 3.009
+      },
+      {
+        "name": "set · src/Canvas.tsx:203",
+        "selfMs": 1.519,
+        "inclusiveMs": 3.009
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:792",
+        "selfMs": 0,
+        "inclusiveMs": 2.998
+      },
+      {
+        "name": "NumberField · src/fields.tsx:7",
+        "selfMs": 1.28,
+        "inclusiveMs": 2.792
+      },
+      {
+        "name": "ViewControls · src/ViewControls.tsx:7",
+        "selfMs": 2.767,
+        "inclusiveMs": 2.767
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:2551",
+        "selfMs": 1.127,
+        "inclusiveMs": 2.6479999999999997
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:2541",
+        "selfMs": 2.6189999999999998,
+        "inclusiveMs": 2.6189999999999998
+      },
+      {
+        "name": "hit · src/engine.ts:1205",
+        "selfMs": 0,
+        "inclusiveMs": 1.543
+      },
+      {
+        "name": "kernelHitWorld · src/kernel/picking.ts:481",
+        "selfMs": 0,
+        "inclusiveMs": 1.543
+      },
+      {
+        "name": "panelSnapshot · src/engine.ts:363",
+        "selfMs": 1.527,
+        "inclusiveMs": 1.527
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:2553",
+        "selfMs": 1.521,
+        "inclusiveMs": 1.521
+      },
+      {
+        "name": "useMemo · src/Canvas.tsx:764",
+        "selfMs": 0,
+        "inclusiveMs": 1.517
+      },
+      {
+        "name": "discardPendingView · src/engine.ts:514",
+        "selfMs": 1.506,
+        "inclusiveMs": 1.506
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:2560",
+        "selfMs": 1.505,
+        "inclusiveMs": 1.505
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:2457",
+        "selfMs": 0,
+        "inclusiveMs": 1.5
+      }
+    ],
+    "topSelf": [
+      {
+        "name": "sanitizeFields · src/render-terminal-diagnostics.mjs:48",
+        "selfMs": 46.823,
+        "inclusiveMs": 48.375
+      },
+      {
+        "name": "ProgressiveSurfaceImpl · src/kernel/ProgressiveSurface.tsx:367",
+        "selfMs": 30.89,
+        "inclusiveMs": 60.358999999999995
+      },
+      {
+        "name": "getBoundingClientRect",
+        "selfMs": 29.175,
+        "inclusiveMs": 29.175
+      },
+      {
+        "name": "(garbage collector)",
+        "selfMs": 26.023,
+        "inclusiveMs": 26.023
+      },
+      {
+        "name": "nextGeneration · src/kernel/interaction-renderer.ts:72",
+        "selfMs": 24.241,
+        "inclusiveMs": 28.596
+      },
+      {
+        "name": "u.current · src/kernel/ResidentCompositeSurface.tsx:74",
+        "selfMs": 23.599,
+        "inclusiveMs": 73.40500000000002
+      },
+      {
+        "name": "tilesCoverBounds · src/kernel/tile-cache.ts:218",
+        "selfMs": 20.322000000000003,
+        "inclusiveMs": 23.511
+      },
+      {
+        "name": "sanitizeRecord · src/render-terminal-diagnostics.mjs:112",
+        "selfMs": 17.788,
+        "inclusiveMs": 48.33099999999999
+      },
+      {
+        "name": "updateProperties · ../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035",
+        "selfMs": 16.35,
+        "inclusiveMs": 44.92600000000001
+      },
+      {
+        "name": "e.onmessage · src/kernel/client.ts:501",
+        "selfMs": 15.104000000000001,
+        "inclusiveMs": 205.51399999999995
+      },
+      {
+        "name": "(anonymous)",
+        "selfMs": 12.336,
+        "inclusiveMs": 12.336
+      },
+      {
+        "name": "Canvas · src/Canvas.tsx:224",
+        "selfMs": 12.190999999999999,
+        "inclusiveMs": 40.026999999999994
+      },
+      {
+        "name": "renderWithHooks · ../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627",
+        "selfMs": 11.740999999999998,
+        "inclusiveMs": 160.72699999999998
+      },
+      {
+        "name": "commitHostUpdate · ../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218",
+        "selfMs": 11.579999999999998,
+        "inclusiveMs": 54.985
+      },
+      {
+        "name": "setAttribute",
+        "selfMs": 10.244,
+        "inclusiveMs": 10.244
+      },
+      {
+        "name": "localRecord · src/render-terminal-diagnostics.mjs:122",
+        "selfMs": 9.783999999999999,
+        "inclusiveMs": 24.625
+      },
+      {
+        "name": "present · src/kernel/client.ts:412",
+        "selfMs": 9.13,
+        "inclusiveMs": 21.365
+      },
+      {
+        "name": "add · src/kernel/tile-plan-aligned.ts:141",
+        "selfMs": 9.064,
+        "inclusiveMs": 9.064
+      },
+      {
+        "name": "residentFrameSignature · src/kernel/gpu/resident-frame.ts:64",
+        "selfMs": 8.847999999999999,
+        "inclusiveMs": 8.847999999999999
+      },
+      {
+        "name": "KernelSurface · src/kernel/Surface.tsx:545",
+        "selfMs": 8.818999999999999,
+        "inclusiveMs": 19.282000000000007
+      },
+      {
+        "name": "setProp · ../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:14406",
+        "selfMs": 7.589,
+        "inclusiveMs": 25.157999999999994
+      },
+      {
+        "name": "estimatedTileResidencyBytes · src/kernel/page-memory-policy.ts:22",
+        "selfMs": 7.111,
+        "inclusiveMs": 7.111
+      },
+      {
+        "name": "admit · src/kernel/render-mailbox.ts:32",
+        "selfMs": 6.374,
+        "inclusiveMs": 7.869
+      },
+      {
+        "name": "(anonymous) · ../../../../../../../../../Users/Apple/project/design-kernel/frontend/design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4249",
+        "selfMs": 6.078,
+        "inclusiveMs": 12.328
+      },
+      {
+        "name": "matchMedia",
+        "selfMs": 5.862000000000001,
+        "inclusiveMs": 5.862000000000001
+      }
+    ]
+  },
+  {
+    "thread": "design-app://app/assets/render-worker-ByLvVFrl.js",
+    "sampledWallMs": 3524.113999999994,
+    "idleOrUnassignedMs": 2623.252999999997,
+    "activeSampleMs": 900.8609999999986,
+    "focus": [],
+    "topSelf": [
+      {
+        "name": "(garbage collector)",
+        "selfMs": 37.581999999999994,
+        "inclusiveMs": 37.581999999999994
+      },
+      {
+        "name": "sanitizeFields · src/render-terminal-diagnostics.mjs:48",
+        "selfMs": 37.325,
+        "inclusiveMs": 37.325
+      },
+      {
+        "name": "encodePass · src/kernel/gpu/webgpu.ts:2221",
+        "selfMs": 32.432,
+        "inclusiveMs": 156.07399999999996
+      },
+      {
+        "name": "decode",
+        "selfMs": 32.195,
+        "inclusiveMs": 32.195
+      },
+      {
+        "name": "createBindGroup",
+        "selfMs": 31.159,
+        "inclusiveMs": 31.159
+      },
+      {
+        "name": "writeBuffer",
+        "selfMs": 27.622999999999998,
+        "inclusiveMs": 27.622999999999998
+      },
+      {
+        "name": "self.onmessage · src/kernel/render-worker.ts:444",
+        "selfMs": 26.432,
+        "inclusiveMs": 32.117999999999995
+      },
+      {
+        "name": "localRecord · src/render-terminal-diagnostics.mjs:122",
+        "selfMs": 25.786,
+        "inclusiveMs": 64.94800000000001
+      },
+      {
+        "name": "parameters · src/kernel/gpu/types.ts:490",
+        "selfMs": 24.889000000000003,
+        "inclusiveMs": 24.889000000000003
+      },
+      {
+        "name": "decodeScenePacket · src/kernel/gpu/scene-packet.ts:5",
+        "selfMs": 24.778000000000002,
+        "inclusiveMs": 56.973
+      },
+      {
+        "name": "group · src/kernel/gpu/binding-cache.ts:21",
+        "selfMs": 24.141999999999996,
+        "inclusiveMs": 76.81
+      },
+      {
+        "name": "certifyExactImageRange · src/kernel/gpu/exact-image-x-table.ts:15",
+        "selfMs": 20.717,
+        "inclusiveMs": 20.717
+      },
+      {
+        "name": "(anonymous) · src/kernel/render-worker.ts:579",
+        "selfMs": 18.686999999999998,
+        "inclusiveMs": 112.84299999999999
+      },
+      {
+        "name": "create · src/kernel/gpu/webgpu.ts:2132",
+        "selfMs": 18.306,
+        "inclusiveMs": 49.735
+      },
+      {
+        "name": "beginRenderPass",
+        "selfMs": 16.830000000000002,
+        "inclusiveMs": 16.830000000000002
+      },
+      {
+        "name": "put · src/kernel/gpu/coverage-cache.ts:40",
+        "selfMs": 16.76,
+        "inclusiveMs": 18.256
+      },
+      {
+        "name": "set · src/kernel/gpu/reverse-index-map.ts:8",
+        "selfMs": 13.732000000000001,
+        "inclusiveMs": 13.732000000000001
+      },
+      {
+        "name": "sceneIndex · src/kernel/gpu/scene-index.ts:17",
+        "selfMs": 12.771,
+        "inclusiveMs": 12.771
+      },
+      {
+        "name": "drawBundle · src/kernel/gpu/renderer.ts:3156",
+        "selfMs": 12.236,
+        "inclusiveMs": 78.22100000000002
+      },
+      {
+        "name": "createTexture",
+        "selfMs": 12.113,
+        "inclusiveMs": 12.113
+      },
+      {
+        "name": "acquire · src/kernel/gpu/renderer.ts:786",
+        "selfMs": 11.887999999999998,
+        "inclusiveMs": 34.411
+      },
+      {
+        "name": "checkpoint · src/kernel/gpu/encode-yield.ts:8",
+        "selfMs": 11.863999999999999,
+        "inclusiveMs": 14.889
+      },
+      {
+        "name": "tilesCoverBounds · src/kernel/tile-cache.ts:218",
+        "selfMs": 10.309000000000001,
+        "inclusiveMs": 10.741000000000001
+      },
+      {
+        "name": "setBindGroup",
+        "selfMs": 10.175,
+        "inclusiveMs": 10.175
+      },
+      {
+        "name": "get · src/kernel/decoded-image-cache.ts:50",
+        "selfMs": 10.036,
+        "inclusiveMs": 10.036
+      }
+    ]
+  }
+]

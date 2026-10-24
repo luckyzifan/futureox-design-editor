@@ -1,0 +1,25 @@
+{
+  "startedAt": 1792796058162,
+  "endedAt": 1792796119966,
+  "results": [
+    {
+      "file": "0.cpuprofile",
+      "target": {
+        "type": "renderer"
+      }
+    },
+    {
+      "file": "1.cpuprofile",
+      "target": {
+        "attached": true,
+        "browserContextId": "DD5CF53815F08B775F5F367285DF8D89",
+        "canAccessOpener": false,
+        "parentFrameId": "E220E0C853DA9328B3AB504A4031D270",
+        "targetId": "BC6DF7E272083F5DF8A166E8958371CC",
+        "title": "design-app://app/assets/render-worker-Dv2buxjN.js",
+        "type": "worker",
+        "url": "design-app://app/assets/render-worker-Dv2buxjN.js"
+      }
+    }
+  ]
+}

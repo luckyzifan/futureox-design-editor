@@ -2,6 +2,15 @@ import type { GpuNode, GpuScene } from './types'
 type Spans = { length: number; spans: [number, number][]; copies: [number, number, number][] }
 type Update = { base: number; sequence: number; fields: GpuScene | null; nodes: Record<string, GpuNode>; removed: string[]; vertices: Spans; curves: Spans }
 const integer = (n: number) => Number.isSafeInteger(n) && n >= 0
+type Receipt = { owner: object; sequence:number; base:number; changed:ReadonlySet<string>; retained:boolean }
+const receipts = new WeakMap<GpuScene,Receipt>()
+/** Private decoder receipts certify unchanged node addresses AND program words.
+ * A node-only JSON diff cannot establish that proof after buffer compaction. */
+export function retainedSceneChanges(previous:GpuScene,next:GpuScene):ReadonlySet<string>|undefined {
+  const a=receipts.get(previous),b=receipts.get(next)
+  return a&&b&&b.retained&&a.owner===b.owner&&a.sequence===b.base?b.changed:undefined
+}
+export function inheritSceneReceipt(source:GpuScene,target:GpuScene) { const receipt=receipts.get(source);if(receipt)receipts.set(target,receipt) }
 
 /** Atomic decoder for one CPU-engine session. Invalid/out-of-order updates
  * leave the previous scene untouched. Geometry compares and copies raw words. */
@@ -68,6 +77,11 @@ export class SceneDeltaDecoder {
     const scene = { ...fields, nodes, vertices, curves }
     this.scene = scene; this.sequence = update.sequence
     // The renderer may attach per-request policy to its returned root object.
-    return { ...scene }
+    const result = { ...scene }
+    const retained = (shape:Spans, old:number) => shape.length>=old && !shape.copies.length && shape.spans.every(([at])=>at>=old)
+    receipts.set(result,{owner:this,sequence:update.sequence,base:update.base,
+      changed:new Set([...Object.keys(update.nodes),...update.removed]),
+      retained:!!previous&&retained(update.vertices,previous.vertices.length)&&retained(update.curves,previous.curves?.length||0)})
+    return result
   }
 }

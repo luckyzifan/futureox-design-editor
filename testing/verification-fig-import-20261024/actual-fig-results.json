@@ -1,0 +1,42 @@
+{
+  "status": "passed",
+  "scope": "actual FIG bytes; actual Editor/Rust/WASM history and FD codec; actual Node worker admission. No GUI/GPU or physical-presentation claim.",
+  "file": "/Users/Apple/Downloads/01有料素材 (Copy).fig",
+  "sha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+  "bytes": 649304,
+  "nodes": 19949,
+  "pages": 14,
+  "warnings": [
+    "字体 Poppins 尚需匹配，已保留文字内容",
+    "FIG 矢量包含独立顶点或区域样式；几何与区域引用已保留，样式覆盖需要核对",
+    "文字片段 letterSpacing 尚需核对",
+    "实例覆盖需要检查，已按主组件重新解析",
+    "字体 ABeeZee 尚需匹配，已保留文字内容",
+    "文字片段 lineHeight 尚需核对"
+  ],
+  "importedMs": 1517.713625,
+  "editedMs": 619.9839169999996,
+  "requests": [
+    {
+      "install": true,
+      "bytes": 28525879,
+      "nodes": 19949
+    },
+    {
+      "install": false,
+      "bytes": 778942,
+      "nodes": 1
+    },
+    {
+      "install": false,
+      "bytes": 778938,
+      "nodes": 1
+    },
+    {
+      "install": false,
+      "bytes": 778942,
+      "nodes": 1
+    }
+  ],
+  "fdBytes": 11775790
+}

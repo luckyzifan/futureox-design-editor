@@ -1,0 +1,74 @@
+[
+  {
+    "name": "fig-foreground-6",
+    "script": "check-fig-foreground.mjs",
+    "configuration": "native",
+    "startedAt": 1792827366883,
+    "endedAt": 1792827447601,
+    "code": 0,
+    "signal": null
+  },
+  {
+    "name": "117-foreground-6",
+    "script": "check-117-foreground.mjs",
+    "configuration": "native",
+    "startedAt": 1792827447603,
+    "endedAt": 1792827467625,
+    "code": 0,
+    "signal": null
+  },
+  {
+    "name": "sketch-foreground-6",
+    "script": "check-sketch-foreground.mjs",
+    "configuration": "native",
+    "startedAt": 1792827467626,
+    "endedAt": 1792827597112,
+    "code": 0,
+    "signal": null
+  },
+  {
+    "name": "117-foreground-motion-6",
+    "script": "capture-foreground.mjs",
+    "configuration": "quality",
+    "startedAt": 1792827597114,
+    "endedAt": 1792827606833,
+    "code": 0,
+    "signal": null
+  },
+  {
+    "name": "fig-foreground-motion-6",
+    "script": "capture-foreground.mjs",
+    "configuration": "quality",
+    "startedAt": 1792827606834,
+    "endedAt": 1792827622747,
+    "code": 0,
+    "signal": null
+  },
+  {
+    "name": "sketch-foreground-motion-6",
+    "script": "capture-foreground.mjs",
+    "configuration": "quality",
+    "startedAt": 1792827622747,
+    "endedAt": 1792827645360,
+    "code": 0,
+    "signal": null
+  },
+  {
+    "name": "heavy-117-foreground-6",
+    "script": "replay-foreground.mjs",
+    "configuration": "native",
+    "startedAt": 1792827645361,
+    "endedAt": 1792827663954,
+    "code": 0,
+    "signal": null
+  },
+  {
+    "name": "heavy-empty-foreground-6",
+    "script": "replay-foreground.mjs",
+    "configuration": "native",
+    "startedAt": 1792827663955,
+    "endedAt": 1792827673761,
+    "code": 0,
+    "signal": null
+  }
+]

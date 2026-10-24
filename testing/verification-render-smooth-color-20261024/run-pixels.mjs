@@ -1,0 +1,17 @@
+import{readFile,writeFile,mkdir,cp,copyFile,readdir,mkdtemp}from'node:fs/promises'
+import{spawn}from'node:child_process'
+import{tmpdir}from'node:os'
+import path from'node:path'
+const root=process.cwd(),out=path.join(root,'testing/verification-render-smooth-color-20261024'),client=path.join(root,'frontend/design-client'),desktop=path.join(root,'frontend/design-desktop'),own=await mkdtemp(path.join(tmpdir(),'render-smooth-color-pixels-')),host=path.join(own,'host');await mkdir(host)
+for(const dir of ['src','assets'])await cp(path.join(desktop,dir),path.join(host,dir),{recursive:true});for(const dir of ['bin','sidecar','fonts'])await cp(path.join(desktop,'dist',dir),path.join(host,'dist',dir),{recursive:true})
+await writeFile(path.join(host,'package.json'),JSON.stringify({name:'owned-color-check',version:'0.0.0',type:'module',main:'src/main.mjs'}))
+const{build}=await import(path.join(client,'node_modules/vite/dist/node/index.js'));await build({root:out,publicDir:path.join(client,'public'),configFile:path.join(client,'vite.config.ts'),base:'./',build:{outDir:path.join(host,'dist/renderer'),emptyOutDir:true,rolldownOptions:{input:path.join(out,'pixel-check.html')}}})
+// Vite preserves the relative external input path; locate the emitted entry.
+async function locate(dir){for(const name of await readdir(dir,{withFileTypes:true})){const p=path.join(dir,name.name);if(name.isDirectory()){const r=await locate(p);if(r)return r}else if(name.name==='pixel-check.html')return p}}
+const entry=await locate(path.join(host,'dist/renderer'));if(!entry)throw Error('Missing test entry');await copyFile(entry,path.join(host,'dist/renderer/optical-field-check.html'))
+await copyFile(path.join(out,'native-border-fixed.png.json'),path.join(host,'dist/renderer/border-scene.json'))
+const child=spawn(path.join(desktop,'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),[host,'--desktop-isolated-profile','--desktop-render-check=optical','--desktop-render-check-root='+path.join(host,'dist/renderer'),'--desktop-render-check-fixture='+path.join(out,'icon-compound-fixed.png.json')],{env:{...Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='ELECTRON_RUN_AS_NODE')),TMPDIR:own,CORE_DOCUMENT_MEMORY_BYTES:'1317748736',CORE_DOCUMENT_MEMORY_INHERITED:'1'},stdio:['ignore','pipe','pipe']})
+let output='';for(const stream of [child.stdout,child.stderr])stream.on('data',data=>{output+=data.toString()})
+let reportDir,result;const end=Date.now()+180000
+try{while(Date.now()<end){reportDir??=output.match(/DESKTOP_RENDER_CHECK_OUTPUT (.+)/)?.[1]?.trim();if(reportDir){const files=(await readdir(reportDir).catch(()=>[])).filter(n=>n.endsWith('-report.json')).sort();if(files.length){const candidate=JSON.parse(await readFile(path.join(reportDir,files.at(-1)),'utf8'));if(['passed','failed'].includes(candidate.status)){result=candidate;break}}}await new Promise(r=>setTimeout(r,250))}if(!result)throw Error('Hardware check timeout');await writeFile(path.join(out,'pixel-results.json'),JSON.stringify({own,...result},null,2));console.log(JSON.stringify(result));if(result.status!=='passed')process.exitCode=1}
+finally{await writeFile(path.join(out,'pixel-host.log'),output);await writeFile(path.join(out,'pixel-runtime.json'),JSON.stringify({own,host,pid:child.pid,reportDir}));if(child.exitCode===null){child.kill('SIGTERM');await new Promise(r=>setTimeout(r,1000));if(child.exitCode===null)child.kill('SIGKILL')}}

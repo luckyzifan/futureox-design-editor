@@ -3,11 +3,13 @@
 //! Offsets are UTF-8 byte offsets (u64), including on wasm32. Only selected
 //! fragments enter the ordinary typed scene/transaction implementation.
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
 
-pub const MAX_EXPANDED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+/// Exact cross-process byte offsets, not a file-admission allowance. Native
+/// callers supply a storage-derived policy; fragments stay independently bounded.
+pub const MAX_SOURCE_OFFSET: u64 = 9_007_199_254_740_991;
 pub const MAX_FRAGMENT_BYTES: u64 = 4 * 1024 * 1024;
 pub const MAX_INDEX_VALUES: usize = 1_000_000;
 const MAX_DEPTH: usize = 128;
@@ -51,12 +53,50 @@ fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
+// Fragment validation keeps only keys in currently active objects. Decoded
+// UTF-8 key bytes plus their two source quotes cannot exceed the already
+// admitted fragment length. Tracking both payload and key count bounds the
+// BTreeSet bookkeeping by that same input, without imposing a smaller budget.
+// This is a logical allocation bound, not an allocator/RSS measurement.
+struct FragmentKeyBudget {
+    limit: usize,
+    bytes: usize,
+    keys: usize,
+}
+impl FragmentKeyBudget {
+    fn retain(&mut self, bytes: usize) -> io::Result<()> {
+        let next_bytes = self.bytes.checked_add(bytes);
+        let next_keys = self.keys.checked_add(1);
+        let charge = next_keys
+            .and_then(|keys| keys.checked_mul(2))
+            .and_then(|quotes| next_bytes.and_then(|bytes| bytes.checked_add(quotes)));
+        if charge.is_none_or(|charge| charge > self.limit) {
+            return Err(invalid("JSON fragment key working-set limit exceeded"));
+        }
+        self.bytes = next_bytes.unwrap();
+        self.keys = next_keys.unwrap();
+        Ok(())
+    }
+    fn release(&mut self, bytes: usize, keys: usize) -> io::Result<()> {
+        self.bytes = self
+            .bytes
+            .checked_sub(bytes)
+            .ok_or_else(|| invalid("Invalid JSON fragment key accounting"))?;
+        self.keys = self
+            .keys
+            .checked_sub(keys)
+            .ok_or_else(|| invalid("Invalid JSON fragment key accounting"))?;
+        Ok(())
+    }
+}
+
 struct Scanner<R, F> {
     input: BufReader<R>,
     at: u64,
     limit: u64,
     sink: F,
     entries: usize,
+    fragment_keys: Option<FragmentKeyBudget>,
 }
 impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
     fn peek(&mut self) -> io::Result<Option<u8>> {
@@ -303,7 +343,9 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                 return Err(invalid("JSON index working-set limit exceeded"));
             }
             self.entries += 1;
-            Some(Entry {
+            // Keep selection/count/string-limit semantics, but do not allocate
+            // navigation rows or field tables merely to validate a fragment.
+            self.fragment_keys.is_none().then(|| Entry {
                 member: Span::default(),
                 id: format!("json:{start}"),
                 name: label.into(),
@@ -316,12 +358,12 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
         } else {
             None
         };
-        let owner = if entry.is_some() {
-            Some(ordinal)
-        } else {
-            parent
-        };
+        let owner = if select { Some(ordinal) } else { parent };
         let mut keys = HashSet::new();
+        // Exact decoded identity, with no Unicode normalization and no
+        // hash-only equivalence. Same keys in separate objects remain valid.
+        let mut fragment_keys: BTreeSet<Box<str>> = BTreeSet::new();
+        let mut fragment_key_bytes = 0usize;
         let mut field_bytes = 0usize;
         self.whitespace()?;
         if self.peek()? != Some(b'}') {
@@ -329,6 +371,18 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                 self.whitespace()?;
                 let field_start = self.at;
                 let key = self.string(true, MAX_KEY_BYTES)?.unwrap();
+                if let Some(budget) = &mut self.fragment_keys {
+                    if fragment_keys.contains(key.as_str()) {
+                        return Err(invalid("Duplicate JSON object key in edit fragment"));
+                    }
+                    if fragment_keys.len() >= MAX_INDEX_VALUES {
+                        return Err(invalid("Excessive JSON object keys in edit fragment"));
+                    }
+                    budget.retain(key.len())?;
+                    fragment_key_bytes = fragment_key_bytes
+                        .checked_add(key.len())
+                        .ok_or_else(|| invalid("JSON fragment key byte overflow"))?;
+                }
                 if entry.is_some()
                     && (!keys.insert(<[u8; 32]>::from(Sha256::digest(key.as_bytes())))
                         || keys.len() > MAX_INDEX_VALUES)
@@ -339,7 +393,7 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                 self.expect(b':')?;
                 self.whitespace()?;
                 let value_start = self.at;
-                let metadata = entry.is_some()
+                let metadata = select
                     && matches!(
                         key.as_str(),
                         "do_objectID" | "id" | "name" | "_class" | "kind"
@@ -387,6 +441,10 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                             },
                         });
                     }
+                } else if self.fragment_keys.is_some() {
+                    // Until now the local key was counted while its value was
+                    // scanned. Moving it avoids a second retained key copy.
+                    fragment_keys.insert(key.into_boxed_str());
                 }
                 self.whitespace()?;
                 if self.peek()? != Some(b',') {
@@ -396,6 +454,11 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
             }
         }
         self.expect(b'}')?;
+        if let Some(budget) = &mut self.fragment_keys {
+            budget.release(fragment_key_bytes, fragment_keys.len())?;
+        }
+        // On an error the local sets and whole validator are dropped; no
+        // partially validated fragment or accounting state can be reused.
         if let Some(mut item) = entry {
             item.span = Span {
                 start,
@@ -429,7 +492,7 @@ fn scan_at<R: Read, F: FnMut(usize, Entry) -> io::Result<()>>(
     depth: usize,
     sink: F,
 ) -> io::Result<ScanSummary> {
-    if limit == 0 || limit > MAX_EXPANDED_BYTES {
+    if limit == 0 || limit > MAX_SOURCE_OFFSET {
         return Err(invalid("Invalid JSON expanded-byte policy"));
     }
     let mut scanner = Scanner {
@@ -438,6 +501,7 @@ fn scan_at<R: Read, F: FnMut(usize, Entry) -> io::Result<()>>(
         limit,
         sink,
         entries: 0,
+        fragment_keys: None,
     };
     scanner.value(depth, None, true, "JSON", true, None)?;
     scanner.whitespace()?;
@@ -449,6 +513,34 @@ fn scan_at<R: Read, F: FnMut(usize, Entry) -> io::Result<()>>(
         entries: scanner.entries,
     })
 }
+/// Validate bounded new edit/replacement bytes without constructing a Value or
+/// an index. Every object rejects duplicate decoded keys, independently of
+/// navigation selection. Existing whole-source scan/index admission is unchanged.
+/// Strings, arbitrary numeric lexemes, and all original bytes are left untouched.
+pub fn validate_fragment(bytes: &[u8]) -> io::Result<()> {
+    if bytes.len() as u64 > MAX_FRAGMENT_BYTES {
+        return Err(invalid("JSON replacement fragment exceeds 4 MiB"));
+    }
+    let mut scanner = Scanner {
+        input: BufReader::with_capacity(64 * 1024, bytes),
+        at: 0,
+        limit: MAX_FRAGMENT_BYTES,
+        sink: |_, _| Ok(()),
+        entries: 0,
+        fragment_keys: Some(FragmentKeyBudget {
+            limit: bytes.len(),
+            bytes: 0,
+            keys: 0,
+        }),
+    };
+    scanner.value(0, None, true, "JSON", true, None)?;
+    scanner.whitespace()?;
+    if scanner.peek()?.is_some() {
+        return Err(invalid("Trailing JSON content"));
+    }
+    Ok(())
+}
+
 pub fn index<R: Read>(reader: R, limit: u64) -> io::Result<Index> {
     index_subtree(reader, limit, 0)
 }
@@ -566,7 +658,7 @@ impl Changes {
         Ok(additions)
     }
     pub fn replace(&mut self, span: Span, json: Vec<u8>, source_bytes: u64) -> io::Result<()> {
-        index(json.as_slice(), MAX_FRAGMENT_BYTES)?;
+        validate_fragment(json.as_slice())?;
         self.splice(span, json, source_bytes)
     }
     /// Host-verified structural splice. Callers must validate the resulting
@@ -583,7 +675,7 @@ impl Changes {
             .checked_sub(span.len())
             .and_then(|n| n.checked_add(text.len() as u64))
             .ok_or_else(|| invalid("JSON byte overflow"))?;
-        if next_len > MAX_EXPANDED_BYTES {
+        if next_len > MAX_SOURCE_OFFSET {
             return Err(invalid("JSON expanded-byte limit exceeded after edit"));
         }
         let mut pieces = Vec::new();
@@ -676,7 +768,7 @@ impl Changes {
                 return Err(invalid("Invalid JSON piece reference"));
             }
         }
-        if length > MAX_EXPANDED_BYTES {
+        if length > MAX_SOURCE_OFFSET {
             return Err(invalid("JSON piece budget exceeded"));
         }
         Ok(PieceReader {
@@ -761,6 +853,8 @@ impl<R: Read + Seek> Seek for PieceReader<'_, R> {
 
 #[cfg(test)]
 mod tests {
+    // Historical boundary fixture; this is not the production source policy.
+    const MAX_EXPANDED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
     use super::*;
     use std::io::Cursor;
     #[test]
@@ -832,7 +926,10 @@ mod tests {
     fn exact_byte_budget_and_bounded_fragments() {
         assert_eq!(index(b"[0]".as_slice(), 3).unwrap().bytes, 3);
         assert!(index(b"[0] ".as_slice(), 3).is_err());
-        assert_eq!(MAX_EXPANDED_BYTES, 4_294_967_296);
+        // A host policy above the former 4 GiB ceiling is accepted; actual
+        // bytes remain bounded by the passed policy, not by a wasm allocation.
+        assert_eq!(index(b"null".as_slice(), 5 * 1024 * 1024 * 1024).unwrap().bytes, 4);
+        assert!(index(b"null".as_slice(), MAX_SOURCE_OFFSET + 1).is_err());
         assert!(
             read_fragment(
                 &mut Cursor::new([]),
@@ -845,3 +942,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "large_json/fragment_validation_tests.rs"]
+mod fragment_validation_tests;

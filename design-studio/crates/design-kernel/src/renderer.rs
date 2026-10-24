@@ -140,9 +140,33 @@ impl std::ops::DerefMut for SharedDocument {
     fn deref_mut(&mut self) -> &mut Document { Arc::make_mut(&mut self.0) }
 }
 
+// A size receipt is tied to the exact immutable authored allocation, not
+// Document::PartialEq, a caller-supplied revision, or a lossy content hash.
+// Weak does not keep the document alive or add a strong owner. Arc::make_mut
+// detaches even a sole strong owner when a Weak exists, so an unaccounted COW
+// mutation cannot silently retain this identity. Never dereference the pointer.
+#[derive(Clone)]
+struct RetainedSourceSize {
+    source: std::sync::Weak<Document>,
+    serialized_bytes: usize,
+}
+impl RetainedSourceSize {
+    fn new(source: &SharedDocument, serialized_bytes: usize) -> Self {
+        Self { source: Arc::downgrade(&source.0), serialized_bytes }
+    }
+    fn bytes_for(&self, source: &SharedDocument) -> Option<usize> {
+        (self.source.as_ptr() == Arc::as_ptr(&source.0)).then_some(self.serialized_bytes)
+    }
+}
+
 pub struct Engine {
     source_doc: Option<SharedDocument>,
     source_doc_bytes: Option<usize>,
+    // Exact count from the last successful generic retained patch, for this
+    // unchanged authored source only. This is NOT fast-lane eligibility:
+    // keep source_doc_bytes and its original Some/None transitions unchanged.
+    // Only the direct-interaction recount fallback may read this receipt.
+    retained_source_size: Option<RetainedSourceSize>,
     text_base: Option<SharedDocument>,
     animation_base: Option<SharedDocument>,
     animation_sample: Option<crate::animation::Sample>,
@@ -177,6 +201,9 @@ pub struct Engine {
     /// Bumped whenever the document or fonts change the flattened-geometry
     /// lineage, keying the camera-scoped prepare cache in `gpu.rs`.
     pub(crate) geo_revision: u64,
+    // A one-step, engine-owned proof. Arbitrary patches, font changes and
+    // skipped poses cannot borrow it: both revisions must match the consumer.
+    pub(crate) interaction_transform_revision: Option<(u64, u64, Vec<String>)>,
     pub(crate) camera_prepare: Option<crate::gpu::CameraPrepare>,
     // Move, never duplicate, the prior camera until the new derived document
     // is known. Only identical topology/configuration can retain its clean nodes.
@@ -202,6 +229,7 @@ impl Engine {
         Self {
             source_doc: None,
             source_doc_bytes: None,
+            retained_source_size: None,
             text_base: None,
             animation_base: None,
             animation_sample: None,
@@ -220,6 +248,7 @@ impl Engine {
             linear_tiles_order: Vec::new(),
             linear_tiles_options: None,
             geo_revision: 0,
+            interaction_transform_revision: None,
             camera_prepare: None,
             pending_camera: None,
             camera_residency: crate::gpu::CameraResidency::default(),
@@ -294,7 +323,8 @@ impl Engine {
             .source_doc
             .as_ref()
             .ok_or("Load document before applying a patch")?;
-        let next = patch.apply(source).map_err(|e| e.to_string())?;
+        let (next, next_bytes) = patch.apply_with_size(source)
+            .map_err(|e| e.to_string())?.into_parts();
         let mut damage =
             crate::dirty_region::patch_damage_with_fonts(source, &next, patch, &self.fonts);
         if crate::repeat::has_repeats(source) || crate::repeat::has_repeats(&next) {
@@ -313,6 +343,7 @@ impl Engine {
             }
             self.source_doc = Some(next.into());
             self.source_doc_bytes = None;
+            self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
             self.geo_revision += 1;
             if let Some(cache) = &mut self.camera_prepare {
                 cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
@@ -328,6 +359,7 @@ impl Engine {
             }
             self.source_doc = Some(next.into());
             self.source_doc_bytes = None;
+            self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
             self.geo_revision += 1;
             if let Some(cache) = &mut self.camera_prepare {
                 if !bounds_dirty.is_empty() {
@@ -431,7 +463,12 @@ impl Engine {
         let patch = crate::editing::DocumentPatch { nodes, fields: Default::default() };
         if !self.can_retain_interaction(&patch, affine) { return Ok(false); }
         source.validate_nodes(patch.nodes.iter().map(|(id,node)| (id,node.as_ref().unwrap())))?;
-        let mut bytes = match self.source_doc_bytes {
+        // The full apply already counted this exact, still-unchanged source.
+        // Capacity is pinned for the process; keep node validation before this
+        // point and the final adjusted-size admission below exactly as before.
+        // Do not take the receipt until success: rejection must preserve it.
+        let mut bytes = match self.source_doc_bytes.or_else(||
+            self.retained_source_size.as_ref().and_then(|receipt| receipt.bytes_for(source))) {
             Some(bytes) => bytes,
             None => crate::editing::serialized_document_size(source).map_err(|e| e.to_string())?,
         };
@@ -442,13 +479,18 @@ impl Engine {
                 + crate::editing::serialized_size(&next.as_ref().unwrap().transform).map_err(|e| e.to_string())?;
         }
         crate::capacity::check_document_bytes(bytes)?;
+        // All fallible checks have completed. Release the Weak receipt before
+        // mutating so a sole owner need not detach only because of this cache.
+        self.retained_source_size = None;
         for (id, transform) in transforms {
             self.source_doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = *transform;
             self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = *transform;
             if let Some(node) = self.text_base.as_mut().and_then(|doc| doc.nodes.get_mut(id)) { node.transform = *transform; }
         }
         self.source_doc_bytes = Some(bytes);
+        let previous_revision = self.geo_revision;
         self.geo_revision += 1;
+        self.interaction_transform_revision = Some((previous_revision, self.geo_revision, transforms.keys().cloned().collect()));
         if let Some(cache) = &mut self.camera_prepare {
             if affine {
                 cache.transformed(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
@@ -499,6 +541,7 @@ impl Engine {
         };
         let rects: Vec<_> = patch.nodes.iter().flat_map(|(id, next)|
             [rect(&source.nodes[id]), rect(next.as_ref().unwrap())]).collect();
+        self.retained_source_size = None;
         for (id, next) in &patch.nodes {
             let transform = next.as_ref().unwrap().transform;
             self.source_doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = transform;
@@ -541,6 +584,7 @@ impl Engine {
         // Loading historically admits by input size; oversized normalized
         // documents keep that behaviour, but cannot take the local fast path.
         self.source_doc_bytes = crate::editing::serialized_document_size(&doc).ok();
+        self.retained_source_size = None;
         if !retain_index||self.render_index.is_none(){
             self.render_index = Some(Arc::new(crate::render_index::RenderIndex::new(&doc)));
         }
@@ -1702,6 +1746,7 @@ impl Engine {
         Engine {
             source_doc: self.source_doc.clone(),
             source_doc_bytes: self.source_doc_bytes,
+            retained_source_size: self.retained_source_size.clone(),
             text_base: self.text_base.clone(),
             animation_base: self.animation_base.clone(),
             animation_sample: self.animation_sample.clone(),
@@ -1722,6 +1767,7 @@ impl Engine {
             linear_tiles_order: Vec::new(),
             linear_tiles_options: None,
             geo_revision: self.geo_revision,
+            interaction_transform_revision: None,
             camera_prepare: None,
             pending_camera: None,
             camera_residency: crate::gpu::CameraResidency::default(),
@@ -1779,6 +1825,9 @@ impl Engine {
         let source = self.source_doc.as_ref()?;
         (!self.layout_dirty && source.animations.is_empty() && self.animation_sample.is_none())
             .then(|| (self.geo_revision, self.fonts.glyph_origin_quantization(), self.image_mips()))
+    }
+    pub(crate) fn render_parent(&self, id: &str) -> Option<&str> {
+        self.render_index.as_ref()?.parents.get(id).map(String::as_str)
     }
 }
 

@@ -1,0 +1,16 @@
+{
+  "status": "passed",
+  "sameAsFullStreamingVerification": true,
+  "exports": [
+    {
+      "run": "sketch-combined-1",
+      "bytes": 119392758,
+      "sha256": "4eeae3b850e2807fec1b3d13fc9ed5f4172c1d02ac726828035af8f336918af2"
+    },
+    {
+      "run": "sketch-verified-5",
+      "bytes": 119392758,
+      "sha256": "4eeae3b850e2807fec1b3d13fc9ed5f4172c1d02ac726828035af8f336918af2"
+    }
+  ]
+}

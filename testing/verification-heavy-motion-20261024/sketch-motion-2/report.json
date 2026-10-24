@@ -1,0 +1,15 @@
+{
+  "status": "failed",
+  "kind": "sketch",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/host-combined-quality-2",
+  "scope": "owned visible Electron; native trusted wheel events; Chromium compositor PNG frames and per-submit quality trace; screenshot instrumentation, not physical scanout or sampler-off timing",
+  "frames": [],
+  "instance": {
+    "pid": 31567,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/sketch-motion-2/forma-desktop-manual-d83bb03c-99d2-4b9f-b5f0-79b0965d7dd1-NVzVvJ",
+    "visible": true
+  },
+  "fixture": "/Users/Apple/Downloads/拓扑素材.sketch",
+  "error": "Error: expect(locator).toHaveCount(expected) failed\n\nLocator:  locator('.source-workspace-rows > div').filter({ hasText: '完整页面' })\nExpected: 1\nReceived: 0\nTimeout:  5000ms\n\nCall log:\n  - Expect \"toHaveCount\" locator('.source-workspace-rows > div').filter({ hasText: '完整页面' }) with timeout 5000ms\n  - waiting for locator('.source-workspace-rows > div').filter({ hasText: '完整页面' })\n    14 × locator resolved to 0 elements\n       - unexpected value \"0\"\n",
+  "closeError": "Error: owned close timeout"
+}

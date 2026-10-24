@@ -1,0 +1,2350 @@
+--- a/design-studio/crates/design-desktop-backend/src/large_document/projection.rs
++++ b/design-studio/crates/design-desktop-backend/src/large_document/projection.rs
+@@ -813,6 +813,7 @@
+     cancel: &AtomicBool,
+ ) -> Result<Value> {
+     let (p, n) = location(s, request.key.as_deref())?;
++    let root_id = s.parts[p].index.entries[n].id.clone();
+     let projection = s
+         .projection
+         .as_ref()
+@@ -827,10 +828,19 @@
+     let document: Document = serde_json::from_str(text).map_err(issue)?;
+     if s.format == "sketch" {
+         for (id, old) in &projection.document.nodes {
+-            if let Some(next) = document.nodes.get(id) {
+-                preserve_point_order(old, next)?;
+-            }
+-        }
++            if let Some(node) = document.nodes.get(id) {
++                preserve_point_order(old, node)?;
++                if old != node {
++                    interop::export_sketch_layer_edit(&projection.document, &document, id)
++                        .map_err(issue)?;
++                }
++            }
++        }
++        // New subtree nodes retain the existing compatibility-export behavior.
++        // The UI supplies inactive shape/paint defaults and transient paint IDs.
++        // A general semantic/canonicalization contract is separate from this
++        // source-audited missing-field guard on already imported source nodes;
++        // do not regress ordinary creation or claim new-node lossless support.
+     }
+     let mut before = serde_json::to_value(&projection.document).map_err(issue)?;
+     let mut after = serde_json::to_value(&document).map_err(issue)?;
+@@ -975,14 +985,30 @@
+         }
+         rebuild_index(s, p, &next.changes[p], cancel)?
+     };
++    // JSON node-map edits can shift a selected subtree's catalog ordinal too.
++    // Rebind before commit, and refuse missing/ambiguous identities atomically.
++    let roots = index.entries.iter().enumerate()
++        .filter(|(_, entry)| !root_id.is_empty() && if s.format == "sketch" {
++            entry.id.eq_ignore_ascii_case(&root_id)
++        } else {
++            // Shared JSON node IDs are case-sensitive, matching json_projection
++            // and Document validation. Distinct node / Node IDs are not ambiguous.
++            entry.id == root_id
++        })
++        .map(|(n, _)| n).collect::<Vec<_>>();
++    if roots.len() != 1 {
++        return Err(issue("Source canvas identity is ambiguous; reload the source before saving"));
++    }
++    let next_key = format!("{p}:{}", roots[0]);
+     let mut undo = s.undo.clone();
+     undo.push(s.state.clone());
+     if undo.len() > HISTORY_LIMIT {
+         undo.remove(0);
+     }
+-    let value = commit(s, next, undo, Vec::new(), Some((p, index)), cancel)?;
++    let mut value = commit(s, next, undo, Vec::new(), Some((p, index)), cancel)?;
++    value["key"] = json!(next_key);
+     s.projection = Some(Projection {
+-        key: request.key.unwrap(),
++        key: next_key,
+         revision: s.revision,
+         document,
+     });
+--- a/design-studio/crates/design-desktop-backend/src/large_document/scene.rs
++++ b/design-studio/crates/design-desktop-backend/src/large_document/scene.rs
+@@ -29,7 +29,8 @@
+ ) -> bool {
+     if old.instance == next.instance { return true; }
+     let (Some(a), Some(b)) = (&old.instance, &next.instance) else { return false; };
+-    if a.component_id != b.component_id || a.property_values != b.property_values { return false; }
++    if a.component_id != b.component_id || a.property_values != b.property_values
++        || a.slot_contents != b.slot_contents { return false; }
+     let mut a_overrides = a.overrides.clone();
+     let mut b_overrides = b.overrides.clone();
+     let a_root = a_overrides.remove("$root").unwrap_or_default();
+@@ -80,6 +81,8 @@
+         let mut bad=next.clone();bad.instance.as_mut().unwrap().overrides.insert("child".into(),BTreeMap::from([("width".into(),json!(120))]));
+         assert!(!instance_resize_only(&old,&bad,&patch));
+         assert!(instance_resize_only(&next,&old,&BTreeMap::from([("width".into(),json!(old.width))])));
++        let mut bad=next.clone();bad.instance.as_mut().unwrap().slot_contents.insert("slot".into(),vec!["child".into()]);
++        assert!(!instance_resize_only(&old,&bad,&patch));
+     }
+ }
+ fn merge(a: &mut Value, b: Value) -> Result<()> {
+@@ -309,7 +312,8 @@
+             .ok_or_else(|| issue("Select fewer changes for this source transaction (2 MiB)"))?;
+         large_json::index(text.as_bytes(), MAX_FRAGMENT_BYTES).map_err(issue)?;
+         let updates: BTreeMap<String, NodeEdit> = serde_json::from_str(text).map_err(issue)?;
+-        let (p, _) = location(s, request.key.as_deref())?;
++        let (p, root) = location(s, request.key.as_deref())?;
++        let root_id = s.parts[p].index.entries[root].id.clone();
+         let mut source_nodes = Vec::new();
+         for (id, edit) in &updates {
+             let old = baseline
+@@ -371,15 +375,19 @@
+             scene.document.nodes.insert(id.clone(), node);
+         }
+         scene.document.validate().map_err(issue)?;
++        let has_authored_changes = scene.document != baseline;
++        if !has_authored_changes {
++            let mut result = status(s);
++            result["key"] = json!(scene.key);
++            return Ok(result);
++        }
+         let mut edits = Vec::new();
+         let mut added_fields = false;
+         for (id, n) in source_nodes {
+             check_cancel(cancel).map_err(issue)?;
+-            let before =
+-                futureox_design_kernel::interop::export_sketch_layer_fields(&baseline, &id)
+-                    .map_err(issue)?;
+-            let after =
+-                futureox_design_kernel::interop::export_sketch_layer_fields(&scene.document, &id)
++            if baseline.nodes[&id] == scene.document.nodes[&id] { continue; }
++            let (before, after) =
++                futureox_design_kernel::interop::export_sketch_layer_edit(&baseline, &scene.document, &id)
+                     .map_err(issue)?;
+             let (original, omitted) = properties(s, p, n)?;
+             let normalized = if before.get("_class").and_then(Value::as_str) == Some("shapePath") {
+@@ -492,7 +500,7 @@
+             }
+         }
+         if edits.is_empty() {
+-            return Ok(status(s));
++            return Err(issue("Source edit has no lossless Sketch representation; keep the draft or save a native document"));
+         }
+         edits.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
+         if edits.windows(2).any(|pair| pair[1].0.end > pair[0].0.start) {
+@@ -513,6 +521,16 @@
+         } else {
+             adjusted_index(s, p, &next.changes[p], &edits, cancel)?
+         };
++        // A new object-valued property can shift later catalog ordinals.
++        // Resolve the selected source identity before publishing, never reuse a
++        // stale ordinal or choose an ambiguous duplicate after a successful save.
++        let roots = index.entries.iter().enumerate()
++            .filter(|(_, entry)| !root_id.is_empty() && entry.id.eq_ignore_ascii_case(&root_id))
++            .map(|(n, _)| n).collect::<Vec<_>>();
++        if roots.len() != 1 {
++            return Err(issue("Source canvas identity is ambiguous; reload the source before saving"));
++        }
++        let next_key = format!("{p}:{}", roots[0]);
+         let mut undo = s.undo.clone();
+         undo.push(s.state.clone());
+         while undo.len() > HISTORY_LIMIT
+@@ -525,16 +543,23 @@
+         {
+             undo.remove(0);
+         }
+-        commit(s, next, undo, Vec::new(), Some((p, index)), cancel)
++        let mut result = commit(s, next, undo, Vec::new(), Some((p, index)), cancel)?;
++        scene.key = next_key;
++        result["key"] = json!(scene.key);
++        Ok(result)
+     })();
+     if result.is_err() {
+         scene.document = baseline;
+     } else {
+         scene.revision = s.revision;
+-    }
+-    // Chunk reads are only for an initial scene adoption. Subsequent source
+-    // commits acknowledge the editor's existing scene, not the stale disk DTO.
+-    scene.bytes = 0;
++        // Only successful edits invalidate the initial chunk DTO. Rejections
++        // preserve the exact scene/read state as well as source/revision/history.
++        if scene.document != baseline { scene.bytes = 0; }
++    }
+     s.scene = Some(scene);
+     result
+ }
++
++#[cfg(test)]
++#[path = "scene_roundtrip_tests.rs"]
++mod roundtrip_tests;
+--- a/design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs
++++ b/design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs
+@@ -0,0 +1,356 @@
++//! Modeled Sketch source-storage regressions, not real-device/GPU acceptance.
++use super::*;
++use std::sync::atomic::AtomicUsize;
++
++const RECT: &str = "10000000-0000-4000-8000-000000000001";
++const OTHER: &str = "10000000-0000-4000-8000-000000000002";
++const PAGE: &str = "10000000-0000-4000-8000-000000000010";
++const SOURCE_PAGE: &str = r#"{
++  "_class":"page", "do_objectID":"10000000-0000-4000-8000-000000000010",
++  "name":"source page", "privatePage": { "number":1e+02, "signedZero":-0.0 },
++  "layers":[
++    {"_class":"rectangle","do_objectID":"10000000-0000-4000-8000-000000000001","name":"original rectangle","frame":{"x":0,"y":0,"width":100,"height":80},"fixedRadius":0,"userInfo": { "com.vendor.raw": { "bytes":1e+02, "zero":-0.0 }, "com.futureox.design-kernel": { "unknownFutureField": [ 1, 2, 3 ] } }},
++    {"_class":"rectangle","do_objectID":"10000000-0000-4000-8000-000000000002","name":"cold sibling","frame":{"x":120,"y":0,"width":20,"height":20},"privateUnknown": { "bytes":1e+02 }}
++  ]
++}"#;
++
++struct Fixture {
++    root: PathBuf,
++    source: PathBuf,
++    members: BTreeMap<String, Vec<u8>>,
++    sessions: Sessions,
++}
++impl Fixture {
++    fn new(page: &str) -> (Self, Value) {
++        static NEXT: AtomicUsize = AtomicUsize::new(0);
++        let root = std::env::temp_dir().join(format!("futureox-source-roundtrip-{}-{}",
++            std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
++        fs::create_dir(&root).unwrap();
++        let source = root.join("modeled.sketch");
++        let members = BTreeMap::from([
++            ("meta.json".into(), br#"{"version":136,"unknownMeta": [ 1, 2 ]}"#.to_vec()),
++            ("document.json".into(), format!(r#"{{"colorSpace":1,"pages":[{{"_ref":"pages/{PAGE}"}}]}}"#).into_bytes()),
++            (format!("pages/{PAGE}.json"), page.as_bytes().to_vec()),
++            ("user.json".into(), br#"{ "opaque": -0.0 }"#.to_vec()),
++            ("previews/preview.png".into(), vec![0, 1, 255, 128, 17]),
++        ]);
++        let mut zip = zip::ZipWriter::new(File::create(&source).unwrap());
++        for (name, bytes) in &members {
++            zip.start_file(name, zip::write::SimpleFileOptions::default()
++                .compression_method(zip::CompressionMethod::Deflated)).unwrap();
++            zip.write_all(bytes).unwrap();
++        }
++        zip.finish().unwrap();
++        let sessions = Sessions::new(root.join("cache"));
++        let status = sessions.open(Open { path: source.clone(), document_id: "source-test".into(), session_epoch: 1 }, &AtomicBool::new(false)).unwrap();
++        (Self { root, source, members, sessions }, status)
++    }
++    fn request(status: &Value, extra: Value) -> Request {
++        let mut request = json!({"owner":status["owner"], "expectedRevision":status["revision"]});
++        request.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
++        serde_json::from_value(request).unwrap()
++    }
++    fn call(&self, status: &Value, method: &str, extra: Value) -> Result<Value> {
++        self.sessions.dispatch(method, Self::request(status, extra), &AtomicBool::new(false))
++    }
++    fn key(&self, id: &str) -> String {
++        let slot = self.sessions.current.lock().unwrap();
++        let session = slot.as_ref().unwrap();
++        let matches = session.parts.iter().enumerate().flat_map(|(p, part)|
++            part.index.entries.iter().enumerate().filter(move |(_, e)| e.id == id)
++                .map(move |(n, _)| format!("{p}:{n}"))).collect::<Vec<_>>();
++        assert_eq!(matches.len(), 1);
++        matches[0].clone()
++    }
++    fn snapshot(&self) -> (Vec<u8>, Vec<Vec<u8>>, Value) {
++        let slot = self.sessions.current.lock().unwrap();
++        let s = slot.as_ref().unwrap();
++        let files = s.parts.iter().map(|p| fs::read(s.directory.join(&p.file)).unwrap()).collect();
++        let scene = s.scene.as_ref().map(|scene| json!({"key":scene.key,"revision":scene.revision,
++            "document":scene.document,"bytes":scene.bytes,"hash":scene.hash,
++            "initialDto":fs::read(&scene.path).unwrap()})).unwrap_or(Value::Null);
++        (serde_json::to_vec(s).unwrap(), files, scene)
++    }
++    fn export_members(&self, status: &Value, name: &str) -> BTreeMap<String, Vec<u8>> {
++        let output = self.root.join(name);
++        self.call(status, "large.export", json!({"path":output})).unwrap();
++        let mut archive = zip::ZipArchive::new(File::open(output).unwrap()).unwrap();
++        (0..archive.len()).map(|i| {
++            let mut member = archive.by_index(i).unwrap();
++            let name = member.name().to_owned();
++            let mut bytes = Vec::new();
++            member.read_to_end(&mut bytes).unwrap();
++            (name, bytes)
++        }).collect()
++    }
++}
++impl Drop for Fixture {
++    fn drop(&mut self) { let _ = fs::remove_dir_all(&self.root); }
++}
++
++#[test]
++fn rejected_scene_edits_keep_source_revision_history_and_initial_dto_exact() {
++    let (f, status) = Fixture::new(SOURCE_PAGE);
++    let key = f.key(PAGE);
++    f.call(&status, "large.scene", json!({"key":key})).unwrap();
++    let original_archive = fs::read(&f.source).unwrap();
++    for (case, updates) in [
++        json!({RECT:{"patch":{"smoothing":0.6}}}),
++        json!({RECT:{"patch":{"name":"must not save","smoothing":0.6}}}),
++        json!({RECT:{"patch":{"name":"first staged edit"}},OTHER:{"patch":{"smoothing":0.4}}}),
++    ].into_iter().enumerate() {
++        let before = f.snapshot();
++        let error = f.call(&status, "large.sceneCommit", json!({"key":key,
++            "requestId":"reject-source-edit","json":updates.to_string()})).unwrap_err();
++        assert!(error.to_string().contains("Source field smoothing"), "{error}");
++        assert_eq!(f.snapshot(), before, "Rejection must not mutate any source/scene/history state");
++        assert_eq!(fs::read(&f.source).unwrap(), original_archive);
++        assert_eq!(f.export_members(&status, &format!("rejected-{case}.sketch")), f.members);
++    }
++}
++
++#[test]
++fn no_op_returns_current_key_without_invalidating_scene_reads() {
++    let (f, status) = Fixture::new(SOURCE_PAGE);
++    let key = f.key(RECT);
++    f.call(&status, "large.scene", json!({"key":key})).unwrap();
++    let before = f.snapshot();
++    let result = f.call(&status, "large.sceneCommit", json!({"key":key,
++        "requestId":"no-op-source-edit","json":json!({RECT:{"patch":{"smoothing":0}}}).to_string()})).unwrap();
++    assert_eq!(result["key"], key);
++    assert_eq!(result["revision"], status["revision"]);
++    assert_eq!(f.snapshot(), before);
++}
++
++#[test]
++fn native_edit_preserves_all_untouched_bytes_and_undo_redo_roundtrips() {
++    let (f, status) = Fixture::new(SOURCE_PAGE);
++    let key = f.key(RECT);
++    f.call(&status, "large.scene", json!({"key":key})).unwrap();
++    let original_archive = fs::read(&f.source).unwrap();
++    let next = f.call(&status, "large.sceneCommit", json!({"key":key,"requestId":"rename-source-edit",
++        "json":json!({RECT:{"patch":{"name":"saved rectangle"}}}).to_string()})).unwrap();
++    assert_eq!(next["revision"], 1);
++    assert_eq!(next["undoCount"], 1);
++    assert_eq!(next["key"], f.key(RECT));
++    let mut expected = f.members.clone();
++    expected.insert(format!("pages/{PAGE}.json"), SOURCE_PAGE.replace("original rectangle", "saved rectangle").into_bytes());
++    let saved = f.export_members(&next, "saved.sketch");
++    assert_eq!(saved, expected, "Every unaffected source byte/member must remain exact");
++    assert_eq!(fs::read(&f.source).unwrap(), original_archive);
++    let undone = f.call(&next, "large.undo", json!({})).unwrap();
++    assert_eq!(f.export_members(&undone, "undone.sketch"), f.members);
++    let redone = f.call(&undone, "large.redo", json!({})).unwrap();
++    assert_eq!(f.export_members(&redone, "redone.sketch"), expected);
++    let bytes = fs::read(f.root.join("redone.sketch")).unwrap();
++    let reopened = futureox_design_kernel::interop::import_sketch_report(&bytes).unwrap().document;
++    assert_eq!(reopened.nodes[RECT].name, "saved rectangle");
++}
++
++#[test]
++fn legacy_subtree_commit_rejects_the_same_false_save_atomically() {
++    let (f, status) = Fixture::new(SOURCE_PAGE);
++    let key = f.key(RECT);
++    let projection = f.call(&status, "large.project", json!({"key":key,
++        "workingDocumentId":"10000000-0000-4000-8000-000000000099"})).unwrap();
++    let mut document: Document = serde_json::from_str(projection["json"].as_str().unwrap()).unwrap();
++    let node = document.nodes.get_mut(RECT).unwrap();
++    node.smoothing = 0.5;
++    node.name = "must not save".into();
++    document.validate().unwrap();
++    let before = f.snapshot();
++    let error = f.call(&status, "large.commitCanvas", json!({"key":key,
++        "requestId":"legacy-rejected-edit","json":serde_json::to_string(&document).unwrap()})).unwrap_err();
++    assert!(error.to_string().contains("Source field smoothing"), "{error}");
++    assert_eq!(f.snapshot(), before);
++    assert_eq!(f.export_members(&status, "legacy-rejected.sketch"), f.members);
++}
++
++#[test]
++fn supported_dependency_edit_returns_the_selected_identity_for_the_next_save() {
++    let page = json!({"_class":"page","do_objectID":PAGE,"layers":[
++        {"_class":"symbolMaster","do_objectID":RECT,"symbolID":"10000000-0000-4000-8000-000000000020",
++         "name":"dependency","frame":{"x":0,"y":0,"width":100,"height":80},"layers":[]},
++        {"_class":"symbolInstance","do_objectID":OTHER,"symbolID":"10000000-0000-4000-8000-000000000020",
++         "name":"selected instance","frame":{"x":120,"y":0,"width":100,"height":80}}
++    ]}).to_string();
++    let (f, status) = Fixture::new(&page);
++    let key = f.key(OTHER);
++    f.call(&status, "large.scene", json!({"key":key})).unwrap();
++    let next = f.call(&status, "large.sceneCommit", json!({"key":key,"requestId":"rename-dependency",
++        "json":json!({RECT:{"patch":{"name":"renamed dependency"}}}).to_string()})).unwrap();
++    let actual = f.key(OTHER);
++    // Property-only edits retain indexed object cardinality at this baseline.
++    // This test proves receipt identity, not an invented ordinal shift.
++    assert_eq!(actual, key);
++    assert_eq!(next["key"], actual);
++    let noop = f.call(&next, "large.sceneCommit", json!({"key":actual,
++        "requestId":"after-rebind-noop","json":"{}"})).unwrap();
++    assert_eq!(noop["key"], actual);
++}
++
++#[test]
++fn json_subtree_commit_rebinds_root_after_a_preceding_indexed_child_is_removed() {
++    let (f, status) = Fixture::new(SOURCE_PAGE);
++    f.call(&status, "large.close", json!({})).unwrap();
++    let mut child = futureox_design_kernel::facet::sample_node(RECT, "rectangle");
++    child.name = "preceding child".into();
++    let mut root = futureox_design_kernel::facet::sample_node(OTHER, "group");
++    root.children.push(RECT.into());
++    let source = json!({"schemaVersion":8,"id":"json-source","name":"JSON source",
++        "pages":[{"id":PAGE,"name":"page","background":"#ffffff","children":[OTHER]}],
++        "nodes":{RECT:child,OTHER:root},"fonts":{}});
++    let path = f.root.join("source.json");
++    fs::write(&path, serde_json::to_vec(&source).unwrap()).unwrap();
++    let opened = f.sessions.open(Open { path, document_id:"json-source".into(), session_epoch:2 }, &AtomicBool::new(false)).unwrap();
++    let key = f.key(OTHER);
++    let projected = f.call(&opened, "large.project", json!({"key":key,
++        "workingDocumentId":"10000000-0000-4000-8000-000000000099"})).unwrap();
++    let mut document: Document = serde_json::from_str(projected["json"].as_str().unwrap()).unwrap();
++    // The shared JSON nodes collection is physically keyed in BTree order:
++    // RECT precedes OTHER. Deleting this indexed child changes the root ordinal.
++    document.nodes.remove(RECT);
++    document.nodes.get_mut(OTHER).unwrap().children.clear();
++    document.validate().unwrap();
++    let next = f.call(&opened, "large.commitCanvas", json!({"key":key,"requestId":"json-remove-child",
++        "json":serde_json::to_string(&document).unwrap()})).unwrap();
++    let actual = f.key(OTHER);
++    assert_ne!(actual, key);
++    assert_eq!(next["key"], actual);
++    let again = f.call(&next, "large.commitCanvas", json!({"key":actual,"requestId":"json-after-rebind",
++        "json":serde_json::to_string(&document).unwrap()})).unwrap();
++    assert_eq!(again["key"], actual);
++}
++
++#[test]
++fn legacy_subtree_keeps_actual_ui_rectangle_creation_and_reopen_behavior() {
++    let page = json!({"_class":"page","do_objectID":PAGE,"layers":[
++        {"_class":"group","do_objectID":OTHER,"name":"selected group",
++         "frame":{"x":0,"y":0,"width":100,"height":80},"layers":[
++            {"_class":"rectangle","do_objectID":RECT,"name":"original child",
++             "frame":{"x":0,"y":0,"width":20,"height":20}}
++         ]}
++    ]}).to_string();
++    let (f, status) = Fixture::new(&page);
++    let key = f.key(OTHER);
++    let projected = f.call(&status, "large.project", json!({"key":key,
++        "workingDocumentId":"10000000-0000-4000-8000-000000000098"})).unwrap();
++    let mut document: Document = serde_json::from_str(projected["json"].as_str().unwrap()).unwrap();
++    let id = "10000000-0000-4000-8000-000000000099";
++    // Exact constructor defaults from frontend/design-client/src/model.ts
++    // node('rectangle') + paint(), baseline f03197e; UUIDs fixed for repeatability.
++    // These intentionally differ from Rust sample_node's inactive defaults.
++    let node = serde_json::from_value(json!({
++        "id":id,"kind":"rectangle","name":"矩形","transform":[1,0,0,1,0,0],
++        "width":160,"height":120,"children":[],"visible":true,"locked":false,
++        "opacity":1,"blend":"normal","fills":[{
++            "id":"10000000-0000-4000-8000-000000000097","kind":"solid",
++            "color":"#818cf8","opacity":1,"visible":true,"angle":90,
++            "stops":[{"offset":0,"color":"#818cf8"},{"offset":1,"color":"#f5b8dc"}],
++            "fit":"cover","blend":"normal"
++        }],"strokes":[],"effects":[],"radii":[0,0,0,0],"smoothing":0,
++        "clip":false,"mask":false,"points":3,"innerRadius":0.45,
++        "text":"双击编辑文字","fontSize":28
++    })).unwrap();
++    document.nodes.insert(id.into(), node);
++    document.nodes.get_mut(OTHER).unwrap().children.push(id.into());
++    document.validate().unwrap();
++    let next = f.call(&status, "large.commitCanvas", json!({"key":key,"requestId":"add-rectangle",
++        "json":serde_json::to_string(&document).unwrap()})).unwrap();
++    assert_eq!(next["key"], f.key(OTHER));
++    assert_eq!(next["revision"], 1);
++    f.export_members(&next, "added-rectangle.sketch");
++    let reopened = futureox_design_kernel::interop::import_sketch_report(
++        &fs::read(f.root.join("added-rectangle.sketch")).unwrap()).unwrap().document;
++    assert_eq!(reopened.nodes[OTHER].children, vec![RECT.to_owned(), id.to_owned()]);
++    let added = &reopened.nodes[id];
++    assert_eq!(added.name, "矩形");
++    assert_eq!(added.kind, "rectangle");
++    assert_eq!((added.width, added.height), (160., 120.));
++    assert_eq!(added.fills.len(), 1);
++    assert_eq!(added.fills[0].color, "#818cf8");
++    // Deliberately not a byte-identical/new-node-losslessness assertion:
++    // legacy interchange canonicalizes these inactive defaults/paint identity.
++}
++
++#[test]
++fn scene_commit_keeps_actual_ui_fill_and_stroke_insertion_working() {
++    let (f, status) = Fixture::new(SOURCE_PAGE);
++    let key = f.key(RECT);
++    f.call(&status, "large.scene", json!({"key":key})).unwrap();
++    let paint = |id: &str, color: &str| json!({"id":id,"kind":"solid","color":color,
++        "opacity":1,"visible":true,"angle":90,"stops":[
++            {"offset":0,"color":color},{"offset":1,"color":"#f5b8dc"}],
++        "fit":"cover","blend":"normal"});
++    let next = f.call(&status, "large.sceneCommit", json!({"key":key,"requestId":"ui-fill-stroke",
++        "json":json!({RECT:{"patch":{
++            "fills":[paint("ui-fill", "#818cf8")],
++            "strokes":[{"id":"ui-stroke","paint":paint("ui-stroke-paint", "#303344"),
++                "width":2,"align":"center","cap":"round","join":"round","dash":"","visible":true}]
++        }}}).to_string()})).unwrap();
++    assert_eq!(next["revision"], 1);
++    assert_eq!(next["key"], f.key(RECT));
++    let parts = f.export_members(&next, "ui-fill-stroke.sketch");
++    let page = std::str::from_utf8(&parts[&format!("pages/{PAGE}.json")]).unwrap();
++    assert!(page.contains(r#""privateUnknown": { "bytes":1e+02 }"#));
++    assert!(page.contains(r#""com.vendor.raw": { "bytes":1e+02, "zero":-0.0 }"#));
++    let reopened = futureox_design_kernel::interop::import_sketch_report(
++        &fs::read(f.root.join("ui-fill-stroke.sketch")).unwrap()).unwrap().document;
++    let node = &reopened.nodes[RECT];
++    assert_eq!(node.fills.len(), 1);
++    assert_eq!(node.fills[0].color, "#818cf8");
++    assert_eq!(node.strokes.len(), 1);
++    assert_eq!(node.strokes[0].paint.color, "#303344");
++    assert_eq!(node.strokes[0].width, 2.);
++}
++
++#[test]
++fn json_case_distinct_node_ids_keep_exact_identity_across_noop_and_edit() {
++    let (f, status) = Fixture::new(SOURCE_PAGE);
++    f.call(&status, "large.close", json!({})).unwrap();
++    let mut selected = futureox_design_kernel::facet::sample_node("node", "rectangle");
++    selected.name = "selected lowercase".into();
++    let mut other = futureox_design_kernel::facet::sample_node("Node", "rectangle");
++    other.name = "untouched uppercase".into();
++    let source = json!({"schemaVersion":1,"id":"case-source","name":"Case-sensitive JSON",
++        "pages":[{"id":PAGE,"name":"page","background":"#ffffff","children":["node","Node"]}],
++        "nodes":{"node":selected,"Node":other},"fonts":{}});
++    let source_bytes = serde_json::to_vec(&source).unwrap();
++    let untouched_bytes = serde_json::to_vec(&source["nodes"]["Node"]).unwrap();
++    let path = f.root.join("case-source.json");
++    fs::write(&path, &source_bytes).unwrap();
++    let opened = f.sessions.open(Open { path:path.clone(), document_id:"case-source".into(), session_epoch:2 },
++        &AtomicBool::new(false)).unwrap();
++    let key = f.key("node");
++    let other_key = f.key("Node");
++    assert_ne!(key, other_key);
++    let projected = f.call(&opened, "large.project", json!({"key":key,
++        "workingDocumentId":"10000000-0000-4000-8000-000000000099"})).unwrap();
++    let mut document: Document = serde_json::from_str(projected["json"].as_str().unwrap()).unwrap();
++    assert!(document.nodes.contains_key("node"));
++    assert!(!document.nodes.contains_key("Node"));
++    let noop = f.call(&opened, "large.commitCanvas", json!({"key":key,"requestId":"case-noop",
++        "json":serde_json::to_string(&document).unwrap()})).unwrap();
++    assert_eq!(noop["key"], f.key("node"));
++    assert_ne!(noop["key"], f.key("Node"));
++    let noop_path = f.root.join("case-noop.json");
++    f.call(&noop, "large.export", json!({"path":noop_path})).unwrap();
++    assert_eq!(fs::read(noop_path).unwrap(), source_bytes);
++    document.nodes.get_mut("node").unwrap().name = "edited lowercase".into();
++    let edited = f.call(&noop, "large.commitCanvas", json!({"key":noop["key"],"requestId":"case-edit",
++        "json":serde_json::to_string(&document).unwrap()})).unwrap();
++    assert_eq!(edited["key"], f.key("node"));
++    assert_ne!(edited["key"], f.key("Node"));
++    let edited_path = f.root.join("case-edited.json");
++    f.call(&edited, "large.export", json!({"path":edited_path})).unwrap();
++    let bytes = fs::read(edited_path).unwrap();
++    let reopened: Value = serde_json::from_slice(&bytes).unwrap();
++    assert_eq!(reopened["nodes"]["node"]["name"], "edited lowercase");
++    assert_eq!(reopened["nodes"]["Node"], source["nodes"]["Node"]);
++    assert!(bytes.windows(untouched_bytes.len()).any(|window| window == untouched_bytes.as_slice()));
++    assert_eq!(fs::read(path).unwrap(), source_bytes);
++    let again = f.call(&edited, "large.commitCanvas", json!({"key":edited["key"],"requestId":"case-after-edit-noop",
++        "json":serde_json::to_string(&document).unwrap()})).unwrap();
++    assert_eq!(again["key"], f.key("node"));
++    assert_ne!(again["key"], f.key("Node"));
++}
+--- a/design-studio/crates/design-kernel/src/curve_boolean.rs
++++ b/design-studio/crates/design-kernel/src/curve_boolean.rs
+@@ -132,6 +132,42 @@
+     }
+     g
+ }
++// Routing must use the same source-segment unit as `combine`, not serialized
++// commands: Move/Close are not edges, while arcs and smooth corners expand.
++// Avoid building a second full curve graph just to select the representation.
++fn source_segment_count(path: &Path) -> Result<usize, String> {
++    let mut count = 0;
++    let mut start = Point::default();
++    let mut pen = start;
++    for command in &path.commands {
++        match *command {
++            Command::Move(p) => { start = p; pen = p; }
++            Command::Line(p) | Command::Quad(_, p) | Command::Cubic(_, _, p) => {
++                count += 1;
++                pen = p;
++            }
++            Command::Arc { center, radius, start: angle, sweep } => {
++                // Use the existing decomposition and endpoint, including its
++                // degenerate zero-sweep segment and subdivision guard.
++                let pieces = crate::path::rational_arc(
++                    center, radius, angle, sweep, std::f64::consts::FRAC_PI_4,
++                )?;
++                count += pieces.len().max(1);
++                pen = pieces.last().map(|(_, piece)| piece.end).unwrap_or_else(||
++                    center + Point::new(radius.x * angle.cos(), radius.y * angle.sin()));
++            }
++            Command::SmoothCorner(corner) => {
++                for point in corner.legacy_points() { count += 1; pen = point; }
++            }
++            Command::Close => {
++                if (pen - start).length() > 1e-10 { count += 1; }
++                pen = start;
++            }
++        }
++    }
++    Ok(count)
++}
++
+ pub fn combine(inputs: &[(Path, Transform, bool)], op: Operation) -> Result<Network, String> {
+     if inputs.is_empty() || inputs.len() > 64 {
+         return Err("Select 1–64 curve operands".into());
+@@ -319,7 +355,9 @@
+                 let node=doc.nodes.get_mut(id).unwrap();node.network=None;node.vector_geometry=Some(geometry);
+                 return Ok(());
+             }
+-            let segments:usize=inputs.iter().map(|(p,_,_)|p.commands.len()).sum();
++            let segments = inputs.iter().try_fold(0usize, |count, (path, _, _)| {
++                source_segment_count(path).map(|segments| count + segments)
++            }).map_err(|error| format!("Boolean node {id}: {error}"))?;
+             if segments > 8192 {
+                 if doc.schema_version < 16 { return Err("Dense Boolean render geometry requires schema 16".into()); }
+                 let key=crate::curve_boolean_cache::Cache::key(&inputs,op);
+@@ -402,4 +440,82 @@
+         assert!(admit_dense_paths(&[storm]).unwrap_err().contains("work budget"));
+     }
+ 
+-}
++    #[test]
++    fn source_segment_count_matches_curve_expansion_and_closure() {
++        use crate::path::SmoothCorner;
++        let origin = Point::default();
++        let explicit = Path { commands: vec![
++            Command::Move(origin), Command::Line(Point::new(10., 0.)),
++            Command::Line(origin), Command::Close,
++        ] };
++        let implicit = Path { commands: vec![
++            Command::Move(origin), Command::Line(Point::new(10., 0.)), Command::Close,
++        ] };
++        assert_eq!(source_segment_count(&explicit).unwrap(), 2);
++        assert_eq!(source_segment_count(&implicit).unwrap(), 2);
++        let mut multiple = explicit.clone(); multiple.commands.extend(implicit.commands.clone());
++        assert_eq!(source_segment_count(&multiple).unwrap(), 4);
++        let cubic = Path { commands: vec![Command::Move(origin),
++            Command::Quad(Point::new(2., 3.), Point::new(5., 0.)),
++            Command::Cubic(Point::new(6., 1.), Point::new(6., 2.), origin), Command::Close] };
++        let smooth = Path { commands: vec![Command::Move(origin),
++            Command::SmoothCorner(SmoothCorner { center: origin, radius: 5., power: 4., quadrant: 1 }), Command::Close] };
++        let arcs = [0., std::f64::consts::FRAC_PI_2, -std::f64::consts::TAU].map(|sweep| Path {
++            commands: vec![Command::Move(Point::new(5., 0.)), Command::Arc {
++                center: origin, radius: Point::new(5., 5.), start: 0., sweep,
++            }, Command::Close],
++        });
++        for path in [explicit, implicit, multiple, cubic, smooth].into_iter().chain(arcs) {
++            let actual: usize = curves(&path, Transform::default()).unwrap().iter().map(|(_, pieces)| pieces.len()).sum();
++            assert_eq!(source_segment_count(&path).unwrap(), actual);
++        }
++    }
++
++    fn legacy_ring_document(segments: usize) -> Document {
++        let vertices: Vec<_> = (0..segments).map(|i| {
++            let angle = std::f64::consts::TAU * i as f64 / segments as f64;
++            serde_json::json!({"id": i.to_string(), "x": 100. + 100. * angle.cos(), "y": 100. + 100. * angle.sin()})
++        }).collect();
++        let edges: Vec<_> = (0..segments).map(|i| serde_json::json!({
++            "id": i.to_string(), "from": i.to_string(), "to": ((i + 1) % segments).to_string(),
++        })).collect();
++        serde_json::from_value(serde_json::json!({
++            "schemaVersion": 15, "id": "legacy", "name": "legacy segment limit",
++            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["result"]}],
++            "nodes": {
++                "result": {"id": "result", "kind": "vector", "width": 200, "height": 200,
++                    "booleanOperation": "union", "children": ["source"]},
++                "source": {"id": "source", "kind": "vector", "width": 200, "height": 200,
++                    "network": {"vertices": vertices, "edges": edges, "fillRule": "nonzero"}},
++            },
++        })).unwrap()
++    }
++
++    #[test]
++    fn old_schema_accepts_8191_and_8192_source_segments_despite_move_and_close() {
++        for segments in [8191, 8192] {
++            let mut doc = legacy_ring_document(segments);
++            doc.validate().unwrap();
++            let source = doc.nodes["source"].clone();
++            let path = source.paths().unwrap().0;
++            assert!(path.commands.len() > 8192, "this must hit the former false dense route");
++            assert_eq!(source_segment_count(&path).unwrap(), segments);
++            resolve_cached(&mut doc, false).unwrap();
++            doc.validate().unwrap();
++            assert_eq!(doc.schema_version, 15);
++            assert_eq!(doc.nodes["source"], source);
++            assert!(doc.nodes["result"].vector_geometry.is_none());
++            assert!(!doc.nodes["result"].network.as_ref().unwrap().edges.is_empty());
++        }
++    }
++
++    #[test]
++    fn old_schema_still_rejects_8193_actual_source_segments_without_mutation() {
++        let mut doc = legacy_ring_document(8193);
++        doc.validate().unwrap();
++        let before = doc.clone();
++        assert!(resolve_cached(&mut doc, false).unwrap_err().contains("requires schema 16"));
++        assert_eq!(doc, before);
++    }
++
++}
+--- a/design-studio/crates/design-kernel/src/interop.rs
++++ b/design-studio/crates/design-kernel/src/interop.rs
+@@ -4394,6 +4394,43 @@
+     export_layer_impl(doc, id, &mut images, false)
+ }
+ 
++/// Existing-source edits for which the current native Sketch codec has no
++/// representation must fail before storage can acknowledge them. This is a
++/// source-audited missing-codec guard, not a general roundtrip/format capability
++/// oracle. Preserve ordinary paint/stroke/effect and new-subtree behavior until
++/// their kind-specific semantic and identity contracts are separately proven.
++#[cfg(not(target_arch = "wasm32"))]
++pub fn export_sketch_layer_edit(before: &Document, after: &Document, id: &str) -> Result<(Value, Value)> {
++    let old = before.nodes.get(id).ok_or_else(|| Error::MissingPart("Existing source node".into()))?;
++    let next = after.nodes.get(id).ok_or_else(|| Error::MissingPart("Edited source node".into()))?;
++    let unsupported = if old.smoothing != next.smoothing
++        && matches!(next.kind.as_str(), "rectangle" | "rect" | "frame" | "section" | "slice") {
++        // Neither Importer::layer nor export_layer_impl has a smoothing codec.
++        Some("smoothing")
++    } else if old.clip != next.clip {
++        // hasClippingMask maps Node.mask, not the distinct Node.clip property.
++        Some("clip")
++    } else if old.arc != next.arc && next.kind == "ellipse" {
++        Some("arc")
++    } else if old.corner_radius != next.corner_radius
++        && matches!(next.kind.as_str(), "polygon" | "star") {
++        // Rectangle cornerRadius point fields encode Node.radii, not the
++        // polygon/star fillet property Node.corner_radius.
++        Some("cornerRadius")
++    } else if old.radii != next.radii && matches!(next.kind.as_str(), "frame" | "section" | "slice") {
++        // Only the rectangle class emits fixedRadius and four curve-point radii.
++        Some("radii")
++    } else if old.export_settings != next.export_settings {
++        // Import reads exportFormats; export currently always writes [].
++        Some("exportSettings")
++    } else { None };
++    if let Some(field) = unsupported {
++        // Fixed schema field names only: no arbitrary nested keys or source text.
++        return Err(Error::Unsupported(format!("Source field {field} is not supported by the Sketch save codec; keep the draft or save a native document")));
++    }
++    Ok((export_sketch_layer_fields(before, id)?, export_sketch_layer_fields(after, id)?))
++}
++
+ /// Export the kernel document as a `.sketch` bundle Sketch can open.
+ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
+     let source=boolean_worksets::source_view(doc)?;
+@@ -6444,3 +6481,7 @@
+         assert!(note.contains("maintainScrollPosition"), "{note}");
+     }
+ }
++
++#[cfg(all(test, not(target_arch = "wasm32")))]
++#[path = "interop/source_edit_tests.rs"]
++mod source_edit_tests;
+--- a/design-studio/crates/design-kernel/src/interop/source_edit_tests.rs
++++ b/design-studio/crates/design-kernel/src/interop/source_edit_tests.rs
+@@ -0,0 +1,115 @@
++//! Source-save integrity tests. These exercise the production Sketch codec;
++//! they do not assert native Sketch visual fidelity for unsupported properties.
++use super::*;
++
++const RECT: &str = "10000000-0000-4000-8000-000000000001";
++const ELLIPSE: &str = "10000000-0000-4000-8000-000000000002";
++const FRAME: &str = "10000000-0000-4000-8000-000000000003";
++const POLYGON: &str = "10000000-0000-4000-8000-000000000004";
++
++fn modeled_sketch() -> Document {
++    let layers = [(RECT, "rectangle"), (ELLIPSE, "oval"), (FRAME, "artboard"), (POLYGON, "polygon")]
++        .into_iter().map(|(id, class)| {
++            let mut layer = json!({"_class":class,"do_objectID":id,"name":class,
++                "frame":{"x":5,"y":10,"width":100,"height":80},
++                "fixedRadius":0,"numberOfPoints":5,"innerRadius":0.5});
++            if class == "artboard" {
++                layer["groupLayout"] = json!({"_class":"MSImmutableFlexGroupLayout","flexDirection":0,"allGuttersGap":2});
++                layer["layers"] = json!([]);
++            }
++            layer
++        }).collect::<Vec<_>>();
++    let files = BTreeMap::from([
++        ("meta.json".into(), br#"{"version":136}"#.to_vec()),
++        ("document.json".into(), br#"{"colorSpace":1,"pages":[{"_ref":"pages/p"}]}"#.to_vec()),
++        ("pages/p.json".into(), serde_json::to_vec(&json!({"_class":"page","do_objectID":"p","layers":layers})).unwrap()),
++    ]);
++    let mut document = import_sketch_source_window(&files).unwrap().document;
++    document.schema_version = document.schema_version.max(8);
++    document.validate().unwrap();
++    document
++}
++
++#[test]
++fn unsupported_authored_fields_are_rejected_even_beside_a_supported_change() {
++    let baseline = modeled_sketch();
++    for (id, field, value) in [
++        (RECT, "smoothing", json!(0.6)),
++        (FRAME, "clip", json!(true)),
++        (FRAME, "radii", json!([1.,2.,3.,4.])),
++        (ELLIPSE, "arc", json!({"startAngle":0.25,"sweepAngle":1.5,"innerRadius":0.25})),
++        (POLYGON, "cornerRadius", json!(4.)),
++        (RECT, "exportSettings", json!([{"id":"sketch-export-0","format":"png","scale":2.,"suffix":"@2x"}])),
++    ] {
++        for mixed in [false, true] {
++            let mut edited = baseline.clone();
++            let mut node = serde_json::to_value(&edited.nodes[id]).unwrap();
++            node[field] = value.clone();
++            if mixed { node["name"] = json!("supported sibling change"); }
++            edited.nodes.insert(id.into(), serde_json::from_value(node).unwrap());
++            edited.validate().unwrap();
++            let error = export_sketch_layer_edit(&baseline, &edited, id).unwrap_err().to_string();
++            assert!(error.contains(&format!("Source field {field}")), "{error}");
++        }
++    }
++}
++
++#[test]
++fn admitted_native_properties_save_and_reopen_without_unrelated_field_comparison() {
++    let baseline = modeled_sketch();
++    let mut edited = baseline.clone();
++    let node = edited.nodes.get_mut(RECT).unwrap();
++    node.name = "saved rectangle".into();
++    node.visible = false;
++    node.locked = true;
++    node.opacity = 0.5;
++    node.radii = [1.,2.,3.,4.];
++    node.width = 125.;
++    node.height = 75.;
++    node.transform.0[4] = 13.5;
++    node.constrain_proportions = true;
++    edited.validate().unwrap();
++    export_sketch_layer_edit(&baseline, &edited, RECT).unwrap();
++    let roundtrip = import_sketch_report(&export_sketch(&edited).unwrap()).unwrap().document;
++    let expected = serde_json::to_value(&edited.nodes[RECT]).unwrap();
++    let actual = serde_json::to_value(&roundtrip.nodes[RECT]).unwrap();
++    for key in ["name", "visible", "locked", "opacity", "radii", "width", "height", "transform", "constrainProportions"] {
++        assert_eq!(actual.get(key), expected.get(key), "{key}");
++    }
++}
++
++
++#[test]
++fn actual_ui_fill_stroke_and_shadow_defaults_keep_the_existing_codec_path() {
++    // frontend/design-client/src/model.ts paint(), stroke(), effect('shadow')
++    // at f03197e. Keep their transient IDs and inactive defaults in the input;
++    // a sample_node-only fixture would miss ordinary UI insertion regressions.
++    let baseline = modeled_sketch();
++    let mut edited = baseline.clone();
++    let paint = |id: &str, color: &str| json!({"id":id,"kind":"solid","color":color,
++        "opacity":1,"visible":true,"angle":90,"stops":[
++            {"offset":0,"color":color},{"offset":1,"color":"#f5b8dc"}],
++        "fit":"cover","blend":"normal"});
++    let node = edited.nodes.get_mut(RECT).unwrap();
++    node.fills.push(serde_json::from_value(paint("ui-fill", "#818cf8")).unwrap());
++    node.strokes.push(serde_json::from_value(json!({"id":"ui-stroke",
++        "paint":paint("ui-stroke-paint", "#303344"),"width":2,"align":"center",
++        "cap":"round","join":"round","dash":"","visible":true})).unwrap());
++    node.effects.push(serde_json::from_value(json!({"id":"ui-shadow","kind":"shadow",
++        "visible":true,"radius":8,"x":0,"y":8,"spread":0,"color":"#172033",
++        "opacity":0.25,"amount":0.65})).unwrap());
++    edited.validate().unwrap();
++    export_sketch_layer_edit(&baseline, &edited, RECT).unwrap();
++    let reopened = import_sketch_report(&export_sketch(&edited).unwrap()).unwrap().document;
++    let node = &reopened.nodes[RECT];
++    assert_eq!(node.fills.len(), 1);
++    assert_eq!(node.fills[0].color, "#818cf8");
++    assert_eq!(node.strokes.len(), 1);
++    assert_eq!(node.strokes[0].paint.color, "#303344");
++    assert_eq!(node.strokes[0].width, 2.);
++    assert_eq!(node.effects.len(), 1);
++    assert_eq!(node.effects[0].kind, "shadow");
++    assert_eq!((node.effects[0].radius, node.effects[0].y, node.effects[0].opacity), (8., 8., 0.25));
++    // This regression is native active-field preservation, not a claim that
++    // transient IDs or all dormant UI values persist through foreign formats.
++}
+--- a/docs/WEB_SUPPORT_BOUNDARIES_2026-10-24.md
++++ b/docs/WEB_SUPPORT_BOUNDARIES_2026-10-24.md
+@@ -0,0 +1,48 @@
++# Web support: bounded source fix and remaining large-source architecture
++
++Baseline: f03197eddba5da8d6c53d4c9a655c0e007695b16. This is a source candidate, not a tested browser release or a 4 GiB browser implementation.
++
++## Actual browser path
++
++- The browser uses the same App, Editor/domain operations, Rust/WASM admission/layout/codecs, render workers, GPU/CPU handoff, authored model, undo/redo and export paths. It does not require a fabricated `window.coreDesktop` bridge. Electron-only source workspaces remain capability-guarded.
++- `build-web.py` builds the real Rust kernel and generated bindings, then publishes the WASM asset. `vite.config.ts` verifies production public WASM identity. Main and worker initialization load the real same-origin `/kernel/design_kernel_bg.wasm`; fonts also use same-origin assets. Browser deployment currently assumes the origin-root asset/API routes, not an arbitrary subdirectory deployment contract.
++- FIG/Sketch/PDF import uses a fresh owned module worker. Ordinary FD/JSON and SVG have different paths. The browser persists full admitted documents and up to 50 binary revision snapshots in IndexedDB; existing outbox/remote stores preserve the browser synchronization path.
++- The 1 GiB encoded-input cap is business admission only. Decoded/expanded data, pinned document memory, Rust archive protections, image pixels, GPU/device budgets and export bounds remain independent. JSON/FD decoding still includes main-thread work. No unbounded or streaming normal document model is implemented here.
++- The native large-document bridge is implemented by the desktop host/Rust backend. Its 4 GiB source indexing and source-preserving streaming export are not implemented in browser WASM/OPFS. The browser must not expose that native command with a fake bridge or market it as existing browser capacity.
++
++## Candidate changes
++
++### Owned selected-file reading
++
++Previously `readDesignFile()` materialized the complete FIG/Sketch/PDF input with `file.arrayBuffer()` on the UI side before creating the worker. Superseding the import could reject adoption only after that read resolved; the 30-second worker deadline and worker termination did not own the pending read.
++
++Now selected File objects are structured-cloned to the fresh worker without a transfer list. The worker rechecks input size before reading and checks actual byte count before decoding. A single existing 30-second worker lifetime now includes that file read. Failure retains read-stage attribution; cancel/timeout terminates the worker, rejects the request once and ignores late stage/success replies. ArrayBuffer callers retain the existing transfer-list route. Generic worker crashes or message-decoding failures remain unknown worker failures, not file-read failures just because a read was pending; explicit empty-message read rejections retain read attribution. Late failures cannot replace cancellation.
++
++This removes an explicit UI-side whole-file ArrayBuffer allocation. It does not promise zero-copy browser internals, cancellable physical disk I/O, lower measured RSS, faster decode, or bounded decompression beyond the unchanged codec policy. Full input and decoded results still exist in worker/application memory. File reading is not streaming decoding, and a slow read can now consume the existing deadline before decode starts.
++
++### History enumeration
++
++Previously `listRevisions()` used `getAll()` to materialize and retain every binary snapshot before mapping to metadata. It now uses a document-scoped descending value cursor and accumulates only revision metadata. Errors reject instead of publishing partial history; connection close remains owned by the existing transaction helper. Revision ordering, retention, save atomicity, restore/CAS semantics, schema version and existing data are unchanged.
++
++A value cursor still clones one full snapshot per step. No storage migration is included, and GC timing/browser internals prevent claiming an exact one-snapshot RSS ceiling. A future metadata index/store is a separate migration/recovery task.
++
++## Required architecture before claiming browser large-source parity
++
++1. Factor streaming source indexing, token/geometry parsing, immutable source descriptors, bounded projection and edit validation into reusable Rust domain code. Native filesystem access becomes a host adapter; TypeScript must not grow a second parser/mutation engine. The ordinary Editor and existing Rust semantics remain the only editable workset model.
++2. Use a dedicated browser source worker with a Rust/WASM instance and a bounded request queue. Keep document ID, session epoch, source revision, root key/hash and operation ID on every command and response. Reject stale adoption after close, switch, cancellation, structural reindex or worker restart. Cancellation before commit and cancellation after durable commit must remain distinct.
++3. Provide a real browser storage adapter around OPFS and bounded read/write chunks. JS handles browser I/O and ownership, not source semantics. Keep complete source bytes cold in storage and supply bounded slices to Rust; do not represent a 4 GiB source as one WASM allocation, JS string, JSON object or Blob assembled from all chunks. 64-bit source offsets require checked lossless protocol encoding independent of wasm32 pointers.
++4. Journal immutable source chunks, sparse indexes, revision head and commit receipts with a documented recovery protocol. Do not assume atomic cross-API OPFS/IndexedDB transactions or filesystem rename semantics. Coordinate concurrent tabs/workers, orphan cleanup, disk-full, interrupted writes and recoverable previous head before advertising durable save. Eviction/quota failure must preserve the current in-memory workset and clearly report that storage did not commit.
++5. Detect actual browser/worker/storage capabilities and available quota. Quota estimates are advisory; capability availability does not certify a 4 GiB document. Missing OPFS or storage permission must retain the ordinary editor and produce an explicit unsupported-large-source result, never a fake native implementation or silent fallback to whole-file memory.
++6. Project bounded source worksets through the shared Rust admission/Editor/Canvas path. Preserve cold-source attributes, HDR/float precision, topology, undo/redo, dirty-input/close decisions and immutable export snapshots. Export must use a real bounded writable destination path, not concatenate the full source in memory.
++7. Validate same-source JSON/Sketch parity with native adapters, inclusive byte boundaries, decompression bombs, stale keys/revisions, cancellation/late messages, quota/disk-full, tab contention, worker crash, reopen/recovery, export byte preservation and current document isolation. Actual browser worker/storage/pixel tests remain separate from source and mocked protocol tests.
++
++## Verification status
++
++Only static source inspection, patch construction, path/hash inventory and whitespace checks are permitted for this candidate. Added tests are not executed. No typecheck, project suite, Rust/WASM build, browser/GUI/GPU test, measured performance/RSS or durable browser persistence evidence is claimed. Experimental flags, render configuration, HDR/export precision, synchronization semantics, existing admission limits and device budgets are unchanged.
++
++Suggested later checks, only in an authorized complete source/runtime environment:
++
++- Frontend typecheck; focused `local-revisions.test.ts`, `local-store-revision-list.test.ts`, `import-file-worker.test.ts`, `import-worker-file-read.test.ts`, `import-input-policy.test.ts`, import diagnostics/capacity and ownership suites.
++- Real browser File structured-clone, cancelled pending read, timeout, read failure and late-response isolation for FIG/Sketch/PDF; compatibility export and regular FD/JSON/SVG paths.
++- Real IndexedDB existing-version data, 50-revision large-document listing, descending order, transaction failure, reopen, quota failure and restore CAS; compare allocation/retention without asserting an unmeasured RSS guarantee.
++- Browser normal-editor edit/undo/redo/save/reopen/synchronization/export and existing HDR/device-loss gates. Desktop ordinary imports also use this shared importer and require regression coverage.
+--- a/frontend/design-client/src/Canvas.tsx
++++ b/frontend/design-client/src/Canvas.tsx
+@@ -1675,7 +1675,9 @@
+         if (edge[d.control!]?.x === local.x && edge[d.control!]?.y === local.y) return
+         edge[d.control!] = local
+       }
+-      editor.preview({ [n.id]: { network, kind: 'vector', arc: undefined, cornerRadius: undefined } })
++      // A real point edit replaces precise render curves, never adds a second
++      // authority. d.node retains the authored curves for return-to-origin.
++      editor.preview({ [n.id]: { network, vectorGeometry: undefined, kind: 'vector', arc: undefined, cornerRadius: undefined } })
+       return
+     }
+     let transform: Matrix = translate(p.x - d.start.x, p.y - d.start.y)
+--- a/frontend/design-client/src/LargeDocumentDialog.editing.test.tsx
++++ b/frontend/design-client/src/LargeDocumentDialog.editing.test.tsx
+@@ -10,6 +10,7 @@
+ import { defaultColorSettings } from './color'
+ import { hasPendingEdits } from './pending-edits'
+ import type { LargeDocumentBridge } from './desktop'
++const binding=vi.hoisted(()=>({editor:null as Editor|null}))
+ const bootstrap=await vi.hoisted(async()=>{
+  // @ts-expect-error jsdom runtime dependency
+  const {JSDOM}=await import('jsdom');const dom=new JSDOM('<html><body></body></html>')
+@@ -17,7 +18,7 @@
+  return dom
+ })
+ bootstrap.window.close()
+-vi.mock('./Canvas',()=>({Canvas:()=> <div aria-label="Graphics boundary"/>}))
++vi.mock('./Canvas',()=>({Canvas:({editor}:{editor:Editor})=>{binding.editor=editor;return <div aria-label="Graphics boundary"/>}}))
+ let dom:any,root:Root,parent:Editor
+ beforeEach(()=>{
+  dom=new JSDOM('<html><body><div id="root"></div></body></html>',{url:'https://design.invalid'})
+@@ -28,7 +29,7 @@
+  vi.stubGlobal('requestAnimationFrame',()=>1);vi.stubGlobal('cancelAnimationFrame',()=>{})
+  parent=new Editor(blank('Unchanged parent'));root=createRoot(document.getElementById('root')!)
+ })
+-afterEach(async()=>{await act(async()=>root.unmount());parent.dispose();dom.window.close();vi.unstubAllGlobals()})
++afterEach(async()=>{await act(async()=>root.unmount());parent.dispose();dom.window.close();vi.unstubAllGlobals();binding.editor=null})
+ const button=(label:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent===label&&!b.disabled)!
+ const width=()=>document.querySelector<HTMLInputElement>('input[aria-label="W"]')!
+ test('managed adoption supports property edits, owns drafts/history, and preserves the parent',async()=>{
+@@ -36,7 +37,7 @@
+  doc.schemaVersion=4;doc.colorManagement=defaultColorSettings();delete doc.rasterProfile
+  const originalParent=JSON.stringify(parent.authoredDocument)
+  const status={owner:{documentId:'source',sessionEpoch:1},revision:0,name:'source.sketch',format:'sketch',expandedBytes:831806447,maxExpandedBytes:4294967296,indexedObjects:124399,dirty:false,undoCount:0,redoCount:0}
+- const committed=vi.fn(async(_value:{json:string})=>({status:'ok',...status,revision:1,dirty:true,undoCount:1}))
++ const committed=vi.fn(async(_value:{json:string})=>({status:'ok',...status,revision:1,dirty:true,undoCount:1,key:'0:1'}))
+  const bridge={open:async()=>({status:'ok',...status}),children:async()=>({status:'ok',items:[{key:'0:1',id:layer.id,name:layer.name,kind:'rectangle',bytes:4096,part:'page.json',hasChildren:false}],total:1,hasMore:false}),read:async()=>({status:'ok',json:'{"name":"Working layer"}',hash:'a'.repeat(64),omittedFields:[]}),project:async()=>({status:'ok',json:JSON.stringify(doc),warnings:[]}),commitCanvas:committed} as unknown as LargeDocumentBridge
+  await act(async()=>root.render(<LargeDocumentDialog bridge={bridge} parentEditor={parent} onClose={()=>{}}/>))
+  await act(async()=>button('Working layerrectangle').click())
+@@ -58,3 +59,45 @@
+  expect(JSON.stringify(parent.authoredDocument)).toBe(originalParent)
+  expect(hasPendingEdits(parent)).toBe(false)
+ })
++
++test.each(['newer edit','undo to initial'] as const)('edits during a subtree save survive and cannot be discarded by source refresh: %s',async(mode)=>{
++ const doc=blank('Working source'),layer=node('rectangle',0,0,140,140);layer.name='Working layer';doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
++ const status={owner:{documentId:'source',sessionEpoch:1},revision:0,name:'source.sketch',format:'sketch',expandedBytes:100,maxExpandedBytes:4294967296,indexedObjects:5,dirty:false,undoCount:0,redoCount:0}
++ const group={key:'0:1',id:'group',name:'Group',kind:'group',bytes:100,part:'page.json',hasChildren:true}
++ let complete!:(value:unknown)=>void
++ const open=vi.fn(async()=>({status:'ok',...status}))
++ const children=vi.fn(async({key}:{key?:string})=>({status:'ok',items:key?[{...group,key:'0:2',id:layer.id,name:layer.name,kind:'rectangle',hasChildren:false}]:[group],total:1,hasMore:false}))
++ const committed=vi.fn((_value:unknown)=>new Promise(resolve=>{complete=resolve})),closed=vi.fn()
++ const bridge={open,children,read:async()=>({status:'ok',json:'{"name":"Working layer"}',hash:'a'.repeat(64),omittedFields:[]}),project:async()=>({status:'ok',json:JSON.stringify(doc),warnings:[]}),commitCanvas:committed} as unknown as LargeDocumentBridge
++ await act(async()=>root.render(<LargeDocumentDialog bridge={bridge} parentEditor={parent} onClose={closed} keepSession/>))
++ await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="展开 Group"]')!.click())
++ await act(async()=>button('Working layerrectangle').click())
++ await act(async()=>button('在画布中编辑此对象').click())
++ const loaded=binding.editor!,initial=JSON.stringify(loaded.authoredDocument),expectedWidth=mode==='undo to initial'?140:190
++ await act(async()=>loaded.updateProperties([layer.id],node=>{node.width=180}))
++ await act(async()=>button('应用画布修改').click())
++ expect(JSON.parse((committed.mock.calls[0][0] as {json:string}).json).nodes[layer.id].width).toBe(180)
++ if(mode==='undo to initial'){
++  await act(async()=>button('撤销画布修改').click())
++  expect(JSON.stringify(loaded.authoredDocument)).toBe(initial)
++ }else await act(async()=>loaded.updateProperties([layer.id],node=>{node.width=190}))
++ await act(async()=>complete({status:'ok',...status,revision:1,dirty:true,undoCount:1,key:'0:7'}))
++ expect(loaded.authoredDocument.nodes[layer.id].width).toBe(expectedWidth)
++ expect(loaded.canUndo||loaded.canRedo).toBe(true)
++ expect(document.querySelector('[aria-label="Graphics boundary"]')).not.toBeNull()
++ expect(document.querySelector('[role=alert]')!.textContent).toContain('当前画布草稿已保留')
++ expect(children.mock.calls.at(-1)![0]).toMatchObject({expectedRevision:1,key:undefined})
++ expect(hasPendingEdits(parent)).toBe(true)
++ await act(async()=>button('关闭').click())
++ expect(closed).not.toHaveBeenCalled()
++ await act(async()=>button('刷新会话状态').click())
++ expect(open).toHaveBeenCalledTimes(1)
++ expect(loaded.authoredDocument.nodes[layer.id].width).toBe(expectedWidth)
++ expect(hasPendingEdits(parent)).toBe(true)
++ await act(async()=>button('应用画布修改').click())
++ expect(committed.mock.calls[1][0]).toMatchObject({key:'0:7',expectedRevision:1})
++ expect(JSON.parse((committed.mock.calls[1][0] as {json:string}).json).nodes[layer.id].width).toBe(expectedWidth)
++ await act(async()=>complete({status:'ok',...status,revision:2,dirty:true,undoCount:2,key:'0:7'}))
++ expect(document.querySelector('[aria-label="Graphics boundary"]')).toBeNull()
++ expect(hasPendingEdits(parent)).toBe(false)
++})
+--- a/frontend/design-client/src/LargeDocumentDialog.test.tsx
++++ b/frontend/design-client/src/LargeDocumentDialog.test.tsx
+@@ -51,3 +51,31 @@
+   expect(onClose).not.toHaveBeenCalled()
+   expect(document.body.textContent).toContain('Refresh the source revision')
+ })
++
++test('source history invalidates ordinal breadcrumbs and stale selection before fetching the new revision',async()=>{
++  const old={key:'0:10',id:'parent',name:'Old parent',kind:'group',bytes:100,part:'page.json',hasChildren:true}
++  const child={...old,key:'0:11',id:'child',name:'Old child',hasChildren:false}
++  const children=vi.fn(async({key}:{key?:string})=>({status:'ok',items:key?[child]:[old],total:1,hasMore:false}))
++  const undo=vi.fn(async()=>({status:'ok',...status,revision:2,undoCount:0,redoCount:1}))
++  const bridge={open:async()=>({status:'ok',...status,revision:1,undoCount:1}),children,undo,read:async()=>({status:'ok',json:'{"name":"Old child"}',hash:'a'.repeat(64),omittedFields:[]})} as unknown as LargeDocumentBridge
++  await act(async()=>root.render(<LargeDocumentDialog bridge={bridge} parentEditor={parent} onClose={()=>{}}/>))
++  await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="展开 Old parent"]')!.click())
++  await act(async()=>button('Old childgroup').click())
++  await act(async()=>button('撤销已应用修改').click())
++  expect(children.mock.calls.at(-1)![0]).toMatchObject({expectedRevision:2,key:undefined,offset:0})
++  expect(document.querySelector('textarea')).toBeNull()
++  expect([...document.querySelectorAll('nav button')].map(b=>b.textContent)).toEqual(['全部文件'])
++})
++
++test('pending source navigation clears old clickable rows and ignores the superseded reply',async()=>{
++  const old={key:'0:10',id:'parent',name:'Old parent',kind:'group',bytes:100,part:'page.json',hasChildren:true}
++  let finish!:(value:unknown)=>void
++  const children=vi.fn(async({key}:{key?:string})=>key?new Promise(resolve=>{finish=resolve}):{status:'ok',items:[old],total:1,hasMore:false})
++  const bridge={open:async()=>({status:'ok',...status}),children} as unknown as LargeDocumentBridge
++  await act(async()=>root.render(<LargeDocumentDialog bridge={bridge} parentEditor={parent} onClose={()=>{}}/>))
++  await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="展开 Old parent"]')!.click())
++  expect([...document.querySelectorAll('.large-document-rows button')]).toHaveLength(0)
++  await act(async()=>button('全部文件').click())
++  await act(async()=>finish({status:'ok',items:[{...old,name:'Stale child',key:'0:11'}],total:1,hasMore:false}))
++  expect(document.querySelector('.large-document-rows')!.textContent).not.toContain('Stale child')
++})
+--- a/frontend/design-client/src/LargeDocumentDialog.tsx
++++ b/frontend/design-client/src/LargeDocumentDialog.tsx
+@@ -19,7 +19,8 @@
+   const [parents,setParents]=useState<LargeDocumentRow[]>([]),[offset,setOffset]=useState(0),[query,setQuery]=useState(''),[filter,setFilter]=useState('')
+   const [selected,setSelected]=useState<LargeDocumentRow|null>(null),[source,setSource]=useState(''),[draft,setDraft]=useState(''),[hash,setHash]=useState(''),[omitted,setOmitted]=useState<string[]>([])
+   const [pending,setPending]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
+-  const [working,setWorking]=useState<{editor:Editor;key:string;version:number}|null>(null),[workingDirty,setWorkingDirty]=useState(false)
++  const [working,setWorking]=useState<{editor:Editor;key:string;baseline:string}|null>(null),[workingDirty,setWorkingDirty]=useState(false)
++  const pendingRef=useRef(false),statusRef=useRef<LargeDocumentStatus|null>(null)
+   const alive=useRef(true),generation=useRef(0),panel=useRef<HTMLElement>(null),opened=useRef(false),started=useRef(false)
+   const dirty=draft!==source
+   const unsaved=dirty||workingDirty
+@@ -31,17 +32,28 @@
+     panel.current?.focus()
+     return()=>{alive.current=false;generation.current++;for(const[node,value]of others){if(value===null)node.removeAttribute('inert');else node.setAttribute('inert',value)}if(previous instanceof HTMLElement&&previous.isConnected)previous.focus()}
+   },[])
+-  const run=async(work:()=>Promise<void>)=>{if(pending)return;setPending(true);setError('');try{await work()}catch(e){if(alive.current)setError(e instanceof Error?e.message:String(e))}finally{if(alive.current)setPending(false)}}
++  const updateStatus=(next:LargeDocumentStatus)=>{
++    const previous=statusRef.current
++    if(!previous||previous.owner.documentId!==next.owner.documentId||previous.owner.sessionEpoch!==next.owner.sessionEpoch||previous.revision!==next.revision){
++      // A source-index key is revision scoped, including breadcrumb keys.
++      generation.current++;setRows([]);setParents([]);setOffset(0);setTotal(0);setQuery('');setFilter('')
++    }
++    statusRef.current=next;setStatus(next)
++  }
++  const clearSelection=()=>{setWorking(null);setWorkingDirty(false);setSelected(null);setSource('');setDraft('');setHash('');setOmitted([])}
++  const run=async(work:()=>Promise<void>)=>{if(pendingRef.current)return;pendingRef.current=true;setPending(true);setError('');try{await work()}catch(e){if(alive.current)setError(e instanceof Error?e.message:String(e))}finally{pendingRef.current=false;if(alive.current)setPending(false)}}
+   const open=()=>run(async()=>{
++    if(unsaved)throw Error('请先应用或还原当前修改，再刷新源文件状态。')
+     const useFile=initialFile&&!opened.current;opened.current=true
+     const result=await (useFile?bridge.openFile(initialFile!):bridge.open())
+     if(result.status==='cancelled')return
+-    if(alive.current){setStatus(admitted(result));setNotice('完整源文件保存在本机；这里按对象加载属性，导出包含未加载内容。')}
++    if(alive.current){updateStatus(admitted(result));clearSelection();setNotice('完整源文件保存在本机；这里按对象加载属性，导出包含未加载内容。')}
+   })
+   useEffect(()=>{if(!started.current){started.current=true;void open()}},[])
+   useEffect(()=>{
+     if(!status)return
+     const ticket=++generation.current
++    setRows([])
+     void bridge.children({...request(),key:filter?undefined:parents.at(-1)?.key,offset,limit:100,...(filter?{query:filter}:{})}).then(result=>{
+       if(!alive.current||ticket!==generation.current)return
+       const value=admitted(result);setRows(value.items);setTotal(value.total)
+@@ -56,13 +68,13 @@
+     if(!selected)return
+     const next=admitted(await bridge.apply({...request(),key:selected.key,json:draft,expectedHash:hash}))
+     if(!alive.current)return
+-    setStatus(next)
++    updateStatus(next)
+     const result=admitted(await bridge.read({owner:next.owner,expectedRevision:next.revision,key:selected.key}))
+     if(alive.current){setSource(result.json);setDraft(result.json);setHash(result.hash);setNotice(next.saveWarning||'修改已保存到本机缓存；导出完整文件可交付或重新打开。')}
+   })
+   const history=(kind:'undo'|'redo')=>run(async()=>{
+     if(unsaved)throw Error('请先应用或还原当前修改。')
+-    const next=admitted(await bridge[kind](request()));if(alive.current){setStatus(next);setWorking(null);setWorkingDirty(false);setSelected(null);setSource('');setDraft('')}
++    const next=admitted(await bridge[kind](request()));if(alive.current){updateStatus(next);clearSelection()}
+   })
+   const close=()=>{if(pending)return;if(unsaved){setError('请先应用或还原当前修改，再关闭。');return}void run(async()=>{if(status&&!keepSession)admitted(await bridge.close(request()));onClose()})}
+   useEffect(()=>{const release=registerPendingEdit(parentEditor,{dirty:()=>unsaved,commit:()=>!unsaved});pendingEditsChanged(parentEditor);return release},[parentEditor,unsaved])
+@@ -75,7 +87,7 @@
+         <button type="button" disabled={!status||pending||!status.redoCount||unsaved} onClick={()=>void history('redo')}>重做</button>
+         <button type="button" disabled={!status||pending||unsaved} onClick={()=>void run(async()=>{
+           const result=await bridge.export(request());if(result.status==='cancelled')return
+-          const next=admitted(result);if(alive.current){setStatus(next);setNotice(next.saveWarning||`完整文件已导出：${next.displayName}`)}
++          const next=admitted(result);if(alive.current){updateStatus(next);setNotice(next.saveWarning||`完整文件已导出：${next.displayName}`)}
+         })}>导出完整文件…</button>
+       </div>
+       {error&&<p role="alert">{error} <button type="button" disabled={pending} onClick={()=>void open()}>刷新会话状态</button></p>}
+@@ -96,13 +108,26 @@
+             <div><button type="button" disabled={pending||!dirty} onClick={()=>void apply()}>应用 JSON 修改</button><button type="button" disabled={pending||!dirty} onClick={()=>setDraft(source)}>还原草稿</button>
+             <button type="button" disabled={pending||dirty} onClick={()=>void run(async()=>{
+               const result=admitted(await bridge.project({...request(),key:selected.key}));const document=prepareDocumentJsonForEditing(result.json);
+-              if(alive.current){setWorking({editor:new Editor(document),key:selected.key,version:0});setWorkingDirty(false);setNotice(result.warnings.join(' '))}
++              if(alive.current){const editor=new Editor(document);setWorking({editor,key:selected.key,baseline:JSON.stringify(editor.authoredDocument)});setWorkingDirty(false);setNotice(result.warnings.join(' '))}
+             })}>在画布中编辑此对象</button></div>
+           </>}
+-          {working&&<PendingEditContext.Provider value={working.editor}><WorkingCanvas editor={working.editor} onDirty={setWorkingDirty} onSave={()=>void run(async()=>{
++          {working&&<PendingEditContext.Provider value={working.editor}><WorkingCanvas editor={working.editor} baseline={working.baseline} onDirty={setWorkingDirty} onSave={()=>void run(async()=>{
+             if(!commitPendingEdits(working.editor)||working.editor.interactionActive)throw Error('请先结束画布操作。')
+-            const next=admitted(await bridge.commitCanvas({...request(),key:working.key,json:JSON.stringify(working.editor.authoredDocument)}));
+-            if(alive.current){setStatus(next);setWorkingDirty(false);setWorking(null);setSelected(null);setSource('');setDraft('');setNotice('画布修改已保存回完整源文件，可继续选择对象或导出完整文件。')}
++            const current=working.editor.authoredDocument,json=JSON.stringify(current)
++            const next=admitted(await bridge.commitCanvas({...request(),key:working.key,json}));
++            if(alive.current){
++              if(typeof next.key!=='string'||!/^\d{1,5}:\d{1,7}$/.test(next.key))throw Error('保存回执缺少有效的源对象位置；当前画布草稿已保留，请勿重复提交。')
++              updateStatus(next)
++              if(working.editor.authoredDocument!==current||hasPendingEdits(working.editor)||working.editor.interactionActive){
++                // The ACK persisted this submitted snapshot, not the initial
++                // projection or any newer draft (including undo to the initial).
++                setWorking({...working,key:next.key,baseline:json})
++                setWorkingDirty(hasPendingEdits(working.editor)||JSON.stringify(working.editor.authoredDocument)!==json)
++                if(selected)setSelected({...selected,key:next.key})
++                throw Error('保存期间产生了新修改，当前画布草稿已保留，请再次保存。')
++              }
++              clearSelection();setNotice('画布修改已保存回完整源文件，可继续选择对象或导出完整文件。')
++            }
+           })} onCancel={()=>{setWorking(null);setWorkingDirty(false)}}/></PendingEditContext.Provider>}
+         </main>
+       </div>}
+@@ -110,10 +135,10 @@
+   </div>,document.body)
+ }
+ 
+-function WorkingCanvas({editor,onDirty,onSave,onCancel}:{editor:Editor;onDirty:(value:boolean)=>void;onSave:()=>void;onCancel:()=>void}) {
+-  const state=useSyncExternalStore(editor.subscribe,editor.panelSnapshot),host=useRef<HTMLDivElement>(null),initial=useRef(JSON.stringify(editor.authoredDocument))
++function WorkingCanvas({editor,baseline,onDirty,onSave,onCancel}:{editor:Editor;baseline:string;onDirty:(value:boolean)=>void;onSave:()=>void;onCancel:()=>void}) {
++  const state=useSyncExternalStore(editor.subscribe,editor.panelSnapshot),host=useRef<HTMLDivElement>(null)
+   const pending=useSyncExternalStore(listener=>subscribePendingEdits(editor,listener),()=>hasPendingEdits(editor))
+-  useEffect(()=>{onDirty(pending||JSON.stringify(editor.authoredDocument)!==initial.current)},[state.version,pending,onDirty,editor])
++  useEffect(()=>{onDirty(pending||JSON.stringify(editor.authoredDocument)!==baseline)},[state.version,pending,baseline,onDirty,editor])
+   useLayoutEffect(()=>{
+     const node=editor.state.doc.nodes[editor.state.doc.pages[0].children[0]],element=host.current
+     if(node&&element){const zoom=Math.min(2,Math.max(.02,Math.min((element.clientWidth-80)/Math.max(1,node.width),(element.clientHeight-80)/Math.max(1,node.height))))
+--- a/frontend/design-client/src/LargeDocumentWorkspace.test.tsx
++++ b/frontend/design-client/src/LargeDocumentWorkspace.test.tsx
+@@ -34,7 +34,7 @@
+  const doc=blank('Page'),layer=node('rectangle',0,0,140,140);doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
+  const original=JSON.stringify(parent.authoredDocument)
+  const status={owner:{documentId:'source',sessionEpoch:1},revision:0,name:'source.sketch',format:'sketch',expandedBytes:831806447,maxExpandedBytes:4294967296,indexedObjects:124399,dirty:false,undoCount:0,redoCount:0}
+- const sceneCommit=vi.fn(async(_request:{json:string;key:string})=>({status:'ok',...status,revision:1,dirty:true,undoCount:1})),exported=vi.fn(async()=>({status:'ok',...status,revision:1,exported:true,displayName:'complete.sketch'}))
++ const sceneCommit=vi.fn(async(_request:{json:string;key:string})=>({status:'ok',...status,revision:1,dirty:true,undoCount:1,key:'1:0'})),exported=vi.fn(async()=>({status:'ok',...status,revision:1,exported:true,displayName:'complete.sketch'}))
+  const scene=vi.fn(async({key}:{key:string})=>({status:'ok',json:key==='2:0'?'{}':JSON.stringify(doc),warnings:[],nodes:1,bytes:2048}))
+  const bridge={open:async()=>({status:'ok',...status}),children:async()=>({status:'ok',items:[{key:'1:0',id:doc.pages[0].id,name:'Full page',kind:'page',bytes:699402701,part:'page.json',hasChildren:true},{key:'2:0',id:'unadmitted',name:'Unadmitted page',kind:'page',bytes:100,part:'other.json',hasChildren:false}],total:2,hasMore:false}),scene,sceneCommit,export:exported} as unknown as LargeDocumentBridge
+  await act(async()=>root.render(<LargeDocumentWorkspace bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+@@ -92,3 +92,100 @@
+  expect(document.querySelector('.source-workspace-status')!.textContent).toContain('当前画布已保留')
+  expect(scene.mock.calls.map(([r])=>r.key)).toEqual(['1:0','1:1','1:0'])
+ })
++
++function sourceFixture(){
++ const doc=blank('Page'),layer=node('rectangle',0,0,140,140);doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
++ let live={owner:{documentId:'source',sessionEpoch:1},revision:1,name:'source.sketch',format:'sketch',expandedBytes:100,maxExpandedBytes:4294967296,indexedObjects:4,dirty:true,undoCount:1,redoCount:0}
++ const parentRow={key:'1:3',id:'parent',name:'Source parent',kind:'group',bytes:100,part:'page.json',hasChildren:true}
++ const pageRow={...parentRow,key:'1:4',id:doc.pages[0].id,name:'Full page',kind:'page',hasChildren:false}
++ const otherRow={...pageRow,key:'1:6',id:'other',name:'Other page'}
++ const children=vi.fn(async({key}:{key?:string})=>({status:'ok',items:key?[pageRow,otherRow]:[parentRow],total:key?2:1,hasMore:false}))
++ const scene=vi.fn(async(_value:{key:string;expectedRevision:number})=>({status:'ok',json:JSON.stringify(doc),warnings:[],nodes:1,bytes:2048}))
++ const sceneCommit=vi.fn(async(_value:{key:string;expectedRevision:number;json:string})=>({status:'ok',...live,revision:++live.revision,key:'1:9'}))
++ const close=vi.fn(async()=>({status:'ok'}))
++ const bridge={open:async()=>({status:'ok',...live}),children,scene,sceneCommit,close,
++  undo:async()=>({status:'ok',...live,revision:++live.revision,redoCount:++live.redoCount}),redo:async()=>({status:'ok',...live,revision:++live.revision,redoCount:--live.redoCount})} as unknown as LargeDocumentBridge
++ return {bridge,children,scene,sceneCommit,close,doc,layer,get live(){return live}}
++}
++async function loadFixture(f:ReturnType<typeof sourceFixture>,onExit=()=>{}){
++ await act(async()=>root.render(<LargeDocumentWorkspace bridge={f.bridge} parentEditor={parent} onExit={onExit} onWindowClose={async()=>{}}/>))
++ await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="展开 Source parent"]')!.click())
++ await act(async()=>button('Full page完整页面').click())
++ return binding.editor!
++}
++
++test('returning from structural JSON history never reloads the old ordinal under the new revision',async()=>{
++ const f=sourceFixture(),loaded=await loadFixture(f)
++ await act(async()=>button('JSON 属性').click())
++ await act(async()=>button('撤销已应用修改').click())
++ await act(async()=>button('关闭').click())
++ expect(f.scene.mock.calls).toHaveLength(1)
++ expect(document.querySelector('[aria-label="Shared canvas boundary"]')).toBeNull()
++ expect(f.children.mock.calls.at(-1)![0]).toMatchObject({key:undefined,expectedRevision:2,offset:0})
++ expect([...document.querySelectorAll('.source-workspace-navigation nav')].at(-1)!.textContent).toBe('全部文件')
++ expect(loaded.authoredDocument.nodes[f.layer.id].width).toBe(140)
++ expect(document.body.textContent).toContain('请重新选择页面或对象')
++})
++
++test('dirty edits made while JSON is open are retained and prevent stale canvas adoption',async()=>{
++ const f=sourceFixture(),loaded=await loadFixture(f)
++ await act(async()=>button('JSON 属性').click())
++ await act(async()=>button('撤销已应用修改').click())
++ await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=190}))
++ await act(async()=>button('关闭').click())
++ expect(f.scene.mock.calls).toHaveLength(1)
++ expect(loaded.authoredDocument.nodes[f.layer.id].width).toBe(190)
++ expect(loaded.canUndo).toBe(true)
++ expect(document.querySelector('[aria-label="Shared canvas boundary"]')).not.toBeNull()
++ expect(document.querySelector('[role=alert]')!.textContent).toContain('当前画布已保留')
++ expect(f.sceneCommit).not.toHaveBeenCalled()
++})
++
++test('source undo and redo invalidate active ordinals without reloading a different object',async()=>{
++ const f=sourceFixture();await loadFixture(f)
++ await act(async()=>button('撤销已保存修改').click())
++ expect(f.scene.mock.calls).toHaveLength(1)
++ expect(f.children.mock.calls.at(-1)![0]).toMatchObject({key:undefined,expectedRevision:2})
++ expect(document.querySelector('[aria-label="Shared canvas boundary"]')).toBeNull()
++ await act(async()=>button('重做已保存修改').click())
++ expect(f.scene.mock.calls).toHaveLength(1)
++ expect(f.children.mock.calls.at(-1)![0]).toMatchObject({key:undefined,expectedRevision:3})
++})
++
++test('a save while navigating fences the clicked row and retains the remapped root receipt for the next save and close',async()=>{
++ const f=sourceFixture(),onExit=vi.fn(),loaded=await loadFixture(f,onExit)
++ await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=180}))
++ await act(async()=>button('源文件 / 页面').click())
++ await act(async()=>button('Other page完整页面').click())
++ expect(f.sceneCommit.mock.calls[0][0]).toMatchObject({key:'1:4',expectedRevision:1})
++ expect(f.scene.mock.calls).toHaveLength(1)
++ expect(document.querySelector('[role=alert]')!.textContent).toContain('从刷新后的列表重新选择')
++ expect(loaded.authoredDocument.nodes[f.layer.id].width).toBe(180)
++ await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=190}))
++ await act(async()=>button('返回设计').click())
++ expect(f.sceneCommit.mock.calls[1][0]).toMatchObject({key:'1:9',expectedRevision:2})
++ expect(f.close).toHaveBeenCalledWith({owner:f.live.owner,expectedRevision:3})
++ expect(onExit).toHaveBeenCalledTimes(1)
++})
++
++test('failed save blocks navigation and close without dropping dirty Editor history',async()=>{
++ const f=sourceFixture(),onExit=vi.fn(),loaded=await loadFixture(f,onExit)
++ f.sceneCommit.mockRejectedValue(Error('Native source commit rejected'))
++ await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=180}))
++ await act(async()=>button('返回设计').click())
++ expect(f.close).not.toHaveBeenCalled();expect(onExit).not.toHaveBeenCalled()
++ expect(loaded.authoredDocument.nodes[f.layer.id].width).toBe(180)
++ expect(loaded.canUndo).toBe(true)
++ expect(document.querySelector('[role=alert]')!.textContent).toContain('Native source commit rejected')
++})
++
++test('a commit receipt without a fresh root key cannot rebind or close the dirty canvas',async()=>{
++ const f=sourceFixture(),onExit=vi.fn(),loaded=await loadFixture(f,onExit)
++ f.sceneCommit.mockResolvedValue({status:'ok',...f.live,revision:2} as never)
++ await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=180}))
++ await act(async()=>button('返回设计').click())
++ expect(f.sceneCommit).toHaveBeenCalledTimes(1)
++ expect(f.close).not.toHaveBeenCalled();expect(onExit).not.toHaveBeenCalled()
++ expect(loaded.authoredDocument.nodes[f.layer.id].width).toBe(180)
++ expect(document.querySelector('[role=alert]')!.textContent).toContain('保存回执缺少有效的源对象位置')
++})
+--- a/frontend/design-client/src/LargeDocumentWorkspace.tsx
++++ b/frontend/design-client/src/LargeDocumentWorkspace.tsx
+@@ -16,6 +16,7 @@
+ import { sourceNodeEdit,type SourceNodeEdit } from './source-scene-patch'
+ 
+ const admitted=<T,>(result:DesktopResult<T>):T=>{if(result.status!=='ok')throw Error(result.status==='cancelled'?'操作已取消':result.message);return result as T}
++const sameSource=(a:LargeDocumentStatus|null,b:LargeDocumentStatus|null)=>!!a&&!!b&&a.owner.documentId===b.owner.documentId&&a.owner.sessionEpoch===b.owner.sessionEpoch&&a.revision===b.revision
+ /** Source-backed storage adapter around the shared Editor/Canvas/Inspector.
+  * A loaded page is never passed to the ordinary whole-document FD autosaver. */
+ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,onWindowClose}:{bridge:LargeDocumentBridge;initialFile?:File;parentEditor:Editor;onExit:()=>void;onWindowClose:(requestId:string)=>Promise<void>}) {
+@@ -30,7 +31,23 @@
+   const queuedLoad=useRef<LargeDocumentRow|null>(null),drainingLoads=useRef(false),preparingSource=useRef(false)
+   const alive=useRef(true),started=useRef(false),baseline=useRef<DesignDocument|null>(null),canvas=useRef<HTMLDivElement>(null),abort=useRef<AbortController|null>(null)
+   const activeRef=useRef(active);activeRef.current=active
+-  const updateStatus=(next:LargeDocumentStatus)=>{statusRef.current=next;setStatus(next)}
++  const clearNavigation=()=>{setRows([]);setParents([]);setOffset(0);setTotal(0);setFilter('');setQuery('')}
++  const updateStatus=(next:LargeDocumentStatus)=>{
++    // Keys are source-index ordinals, not stable object IDs. Never carry a
++    // breadcrumb or a previously listed row into a newly indexed revision.
++    if(!sameSource(statusRef.current,next))clearNavigation()
++    statusRef.current=next;setStatus(next)
++  }
++  const requireCleanCanvas=()=>{
++    if((activeRef.current&&editor.authoredDocument!==baseline.current)||hasPendingEdits(editor)||editor.interactionActive)
++      throw Error('源文件已变化，但当前画布还有未保存修改；请先撤销这些修改，当前画布已保留。')
++  }
++  const invalidateCanvas=()=>{
++    // Call only after saving/dirty checks. Keep the Editor and its history in
++    // memory; a new source selection is required before any further source edit.
++    baseline.current=null;activeRef.current=null;setActive(null);setViewTab('source')
++    setNotice('源文件版本已变化。请重新选择页面或对象，避免使用旧的源对象位置。')
++  }
+   const request=()=>{const value=statusRef.current;if(!value)throw Error('源文件尚未打开');return {owner:value.owner,expectedRevision:value.revision}}
+   const run=async(work:()=>Promise<void>,lockEditor=false)=>{
+     if(busyRef.current)return;busyRef.current=true;setBusy(true);setEditorLocked(lockEditor);setError('')
+@@ -53,7 +70,9 @@
+     const original=baseline.current,current=editor.authoredDocument,row=activeRef.current
+     if(!row||!original||current===original)return
+     if(statusRef.current?.format==='json') {
+-      updateStatus(admitted(await bridge.commitCanvas({...request(),key:row.key,json:JSON.stringify(current)})))
++      const next=admitted(await bridge.commitCanvas({...request(),key:row.key,json:JSON.stringify(current)}))
++      if(typeof next.key!=='string'||!/^\d{1,5}:\d{1,7}$/.test(next.key))throw Error('保存回执缺少有效的源对象位置；当前画布已保留，请刷新源文件状态后重选。')
++      updateStatus(next);const rebound={...row,key:next.key};activeRef.current=rebound;setActive(rebound)
+       baseline.current=current
+       if(editor.authoredDocument!==current||hasPendingEdits(editor))throw Error('保存期间产生了新修改，请再次保存。')
+       return
+@@ -67,7 +86,13 @@
+     }
+     const json=JSON.stringify(changes)
+     if(new TextEncoder().encode(json).length>2*1024**2)throw Error('本次修改超过 2 MiB，请减少同时修改的图层。')
+-    if(Object.keys(changes).length)updateStatus(admitted(await bridge.sceneCommit({...request(),key:row.key,json})))
++    if(Object.keys(changes).length){
++      const next=admitted(await bridge.sceneCommit({...request(),key:row.key,json}))
++      // Native returns the root resolved in the newly built index. A missing
++      // receipt must not bind an old ordinal to the new source revision.
++      if(typeof next.key!=='string'||!/^\d{1,5}:\d{1,7}$/.test(next.key))throw Error('保存回执缺少有效的源对象位置；当前画布已保留，请刷新源文件状态后重选。')
++      updateStatus(next);const rebound={...row,key:next.key};activeRef.current=rebound;setActive(rebound)
++    }
+     baseline.current=current
+     if(editor.authoredDocument!==current||hasPendingEdits(editor))throw Error('保存期间产生了新修改，请再次保存。')
+     setNotice('画布修改已保存到源文件缓存。导出会包含全部未加载内容。')
+@@ -80,8 +105,10 @@
+     editor.set({view:{x:(host.clientWidth-box.width*zoom)/2-box.x*zoom,y:(host.clientHeight-box.height*zoom)/2-box.y*zoom,zoom}})
+   }
+   const load=async(row:LargeDocumentRow)=>{
++    const selectedSource=statusRef.current
+     await save()
+     if(queuedLoad.current)return
++    if(!sameSource(selectedSource,statusRef.current))throw Error('修改已保存，源对象位置已更新。请从刷新后的列表重新选择页面或对象。')
+     const previous=editor.authoredDocument
+     const previousRow=activeRef.current
+     const owner=request();setNotice(`正在准备 ${row.name}…`);preparingSource.current=true
+@@ -120,8 +147,9 @@
+   useEffect(()=>{
+     if(!status)return
+     let current=true
++    const listedSource=status
+     setRows([])
+-    void bridge.children({...request(),key:filter?undefined:parents.at(-1)?.key,offset,limit:100,...(filter?{query:filter}:{})}).then(result=>{if(current&&alive.current){const value=admitted(result);setRows(value.items);setTotal(value.total)}}).catch(error=>{if(current&&alive.current)setError(String(error))})
++    void bridge.children({...request(),key:filter?undefined:parents.at(-1)?.key,offset,limit:100,...(filter?{query:filter}:{})}).then(result=>{if(current&&alive.current&&sameSource(listedSource,statusRef.current)){const value=admitted(result);setRows(value.items);setTotal(value.total)}}).catch(error=>{if(current&&alive.current)setError(String(error))})
+     return()=>{current=false}
+   },[status,parents,offset,filter])
+   useEffect(()=>{const release=registerPendingEdit(parentEditor,{dirty:()=>true,commit:()=>false});pendingEditsChanged(parentEditor);return release},[parentEditor])
+@@ -140,7 +168,11 @@
+     const close=desktop?.onCloseRequested(({requestId})=>{void run(async()=>{await save();if(statusRef.current)admitted(await bridge.close(request()));flushSync(onExit);await onWindowClose(requestId)},true).then(()=>{if(alive.current)void desktop.respondToClose({requestId,allow:false})})})
+     return()=>{off?.();close?.();window.removeEventListener('keydown',key)}
+   },[editor,bridge,jsonOpen,onExit,onWindowClose])
+-  const history=(kind:'undo'|'redo')=>run(async()=>{await save();updateStatus(admitted(await bridge[kind](request())));baseline.current=null;const row=activeRef.current;if(row)await load(row)},true)
++  const history=(kind:'undo'|'redo')=>run(async()=>{
++    await save();requireCleanCanvas()
++    const next=admitted(await bridge[kind](request()))
++    requireCleanCanvas();updateStatus(next);invalidateCanvas()
++  },true)
+   const openJson=()=>run(async()=>{await save();setJsonOpen(true)},true)
+   return <PendingEditContext.Provider value={editor}><div className="source-workspace">
+     <header className="source-workspace-header"><button type="button" disabled={busy} onClick={()=>void leave()}>返回设计</button><strong>{status?.name||'正在打开大型源文件'}</strong><span>{status?`${(status.expandedBytes/1024**2).toFixed(1)} MiB · ${status.indexedObjects.toLocaleString()} 个源对象`:''}</span><button disabled={busy||!active} onClick={()=>void run(save)}>保存修改</button><button disabled={busy||!status} onClick={()=>void exportFile()}>导出完整文件…</button><button disabled={busy||!status} onClick={()=>void openJson()}>JSON 属性</button></header>
+@@ -156,6 +188,11 @@
+       </div>
+       <aside className="source-workspace-inspector" inert={editorLocked||jsonOpen||undefined}>{active?<Inspector editor={editor}/>:<p>源文件保存在磁盘，页面按需进入共享画布。</p>}<p role="status">{state.message}</p><button disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}>撤销已保存修改</button><button disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}>重做已保存修改</button></aside>
+     </main>
+-    {jsonOpen&&<LargeDocumentDialog bridge={bridge} parentEditor={editor} keepSession onClose={()=>{setJsonOpen(false);void run(async()=>{updateStatus(admitted(await bridge.open()));baseline.current=null;if(activeRef.current)await load(activeRef.current)})}}/>}
++    {jsonOpen&&<LargeDocumentDialog bridge={bridge} parentEditor={editor} keepSession onClose={()=>{setJsonOpen(false);void run(async()=>{
++      const next=admitted(await bridge.open());requireCleanCanvas()
++      const changed=!sameSource(statusRef.current,next);updateStatus(next)
++      if(changed)invalidateCanvas()
++      else if(activeRef.current)await load(activeRef.current)
++    })}}/>}
+   </div></PendingEditContext.Provider>
+ }
+--- a/frontend/design-client/src/canvas-vector-authority.test.tsx
++++ b/frontend/design-client/src/canvas-vector-authority.test.tsx
+@@ -0,0 +1,157 @@
++// Actual mounted Canvas/event propagation + Editor/WASM. Only the render-device
++// boundary is replaced; no native browser, GPU, or pixel-quality claim.
++// @ts-expect-error jsdom is a test-only runtime dependency.
++import { JSDOM } from 'jsdom'
++import React, { act } from 'react'
++import { createRoot, type Root } from 'react-dom/client'
++import { afterEach, beforeEach, expect, test, vi } from 'vitest'
++import { Canvas } from './Canvas'
++import { Editor } from './engine'
++import { blank, node, paint } from './model'
++import { shortcutPreference } from './shortcut-preference'
++import { editableNetwork } from './editable-network'
++
++// React must detect DOM input event support before its module is evaluated.
++// Match the existing real-text integration harness without suppressing errors.
++const bootstrapDom = await vi.hoisted(async () => {
++  // @ts-expect-error jsdom is a test-only runtime dependency.
++  const { JSDOM } = await import('jsdom')
++  const initial = new JSDOM('<!doctype html><html><body></body></html>')
++  for (const name of ['window', 'document', 'navigator'])
++    vi.stubGlobal(name, name === 'window' ? initial.window : initial.window[name])
++  return initial
++})
++bootstrapDom.window.close()
++
++vi.mock('./kernel/Surface', async () => {
++  const { useLayoutEffect } = await import('react')
++  return { KernelSurface(props: import('./kernel/Surface').SurfaceProps) {
++    useLayoutEffect(() => {
++      props.onPresentation?.({ ...props, epoch: props.presentationEpoch!, pixelRatio: 1, managed: false })
++    }, [props.document, props.pageId, props.view, props.width, props.height, props.presentationEpoch, props.onPresentation])
++    return <div data-testid="surface-boundary" />
++  } }
++})
++let dom: any, root: Root, mount: HTMLDivElement, editor: Editor, errors: unknown[][]
++let frames: Map<number, FrameRequestCallback>, frameId: number
++beforeEach(() => {
++  dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
++  for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLCanvasElement', 'Element', 'Node', 'Event', 'MouseEvent', 'WheelEvent', 'KeyboardEvent', 'FocusEvent', 'localStorage'])
++    vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
++  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
++  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.stubGlobal('devicePixelRatio', 1)
++  vi.stubGlobal('CSS', { escape: (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, character => `\\${character}`) })
++  dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
++  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
++  frames = new Map(); frameId = 0
++  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { frames.set(++frameId, fn); return frameId })
++  vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id))
++  Object.defineProperties(dom.window.HTMLElement.prototype, {
++    clientWidth: { configurable: true, get: () => 1000 }, clientHeight: { configurable: true, get: () => 800 },
++  })
++  vi.spyOn(dom.window.HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, right: 1000, bottom: 800, width: 1000, height: 800, x: 0, y: 0, toJSON() {} })
++  dom.window.HTMLElement.prototype.setPointerCapture = () => {}
++  dom.window.HTMLElement.prototype.hasPointerCapture = () => false
++  dom.window.HTMLElement.prototype.releasePointerCapture = () => {}
++  vi.spyOn(dom.window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
++  errors = []; const error = console.error.bind(console)
++  vi.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args); error(...args) })
++  localStorage.clear(); shortcutPreference.set('sketch-like')
++  editor = new Editor(blank()); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
++  mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
++})
++afterEach(async () => {
++  await act(async () => root.unmount()); editor.dispose(); dom.window.close()
++  vi.unstubAllGlobals(); vi.restoreAllMocks(); expect(errors).toEqual([])
++})
++const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
++async function renderPreciseShape() {
++  const doc = blank('Canvas precise editing'), shape = node('vector', 100, 100, 100, 80)
++  doc.schemaVersion = 16; shape.strokes = []; shape.fills = [paint('#426bdf')]
++  shape.vectorGeometry = { fillRule: 'nonzero', fill: [
++    { move: [0, 0] }, { cubic: [25, 0, 75, 0, 100, 0] },
++    { line: [100, 80] }, { line: [0, 80] }, { line: [0, 0] }, 'close',
++  ] }
++  doc.nodes = { [shape.id]: shape }; doc.pages[0].children = [shape.id]
++  editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
++  await act(async () => { root.render(<Canvas editor={editor} />); for (let i = 0; i < 6; i++) await Promise.resolve() })
++  await act(async () => { editor.select([shape.id]); editor.set({ tool: 'vector' }) })
++  host().focus(); return shape.id
++}
++function pointer(type: string, x: number, y: number, options: MouseEventInit = {}, target: Element = host(), pointerId = 7) {
++  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, ...options })
++  Object.defineProperties(event, { pointerId: { value: pointerId }, isPrimary: { value: true }, pointerType: { value: 'mouse' } })
++  target.dispatchEvent(event); return event
++}
++function key(value: string, options: KeyboardEventInit = {}, type = 'keydown', target: EventTarget = host()) {
++  const event = new KeyboardEvent(type, { key: value, code: value.length === 1 ? `Key${value.toUpperCase()}` : value, bubbles: true, cancelable: true, ...options })
++  target.dispatchEvent(event); return event
++}
++async function moveTo(x: number, y: number) {
++  await act(async () => {
++    pointer('pointermove', x, y)
++    // Drain one actual RAF batch so assertions inspect the preview, not only release.
++    const pending = [...frames.values()]; frames.clear()
++    for (const frame of pending) frame(performance.now())
++  })
++}
++function target(kind: 'vertex' | 'handle') {
++  const element = mount.querySelector(kind === 'vertex' ? '[data-testid="vector-anchor"]' : 'circle[r="3.5"]')
++  expect(element).not.toBeNull(); return element!
++}
++const cases = [
++  { kind: 'vertex' as const, start: [100, 100], finish: [112, 107] },
++  { kind: 'handle' as const, start: [125, 100], finish: [137, 107] },
++]
++function untouched(before: typeof editor.state.doc, id: string, canRedo = false) {
++  expect(editor.state.doc).toEqual(before)
++  expect(editor.state.doc.nodes[id].vectorGeometry).toEqual(before.nodes[id].vectorGeometry)
++  expect(editor.state.doc.nodes[id].network).toBeUndefined()
++  expect(editor.canUndo).toBe(false); expect(editor.canRedo).toBe(canRedo)
++}
++test.each(cases)('$kind drag replaces precise authority and commits one undo/redo transaction', async ({ kind, start, finish }) => {
++  const id = await renderPreciseShape(), before = editor.state.doc, originalNetwork = editableNetwork(before.nodes[id])
++  await act(async () => pointer('pointerdown', start[0], start[1], {}, target(kind)))
++  await moveTo(finish[0], finish[1])
++  const preview = editor.state.doc.nodes[id]
++  expect(preview.network, editor.state.message).toBeDefined(); expect(preview.vectorGeometry).toBeUndefined()
++  expect(editor.canUndo).toBe(false)
++  await act(async () => pointer('pointerup', finish[0], finish[1]))
++  const after = editor.state.doc, edited = after.nodes[id]
++  expect(edited.vectorGeometry).toBeUndefined(); expect(editor.canUndo).toBe(true)
++  expect(edited.transform).toEqual(before.nodes[id].transform); expect(edited.fills).toEqual(before.nodes[id].fills)
++  if (kind === 'vertex') {
++    expect(edited.network!.vertices[0]).toEqual({ ...originalNetwork.vertices[0], x: 12, y: 7 })
++    expect(edited.network!.vertices.slice(1)).toEqual(originalNetwork.vertices.slice(1))
++  } else {
++    expect(edited.network!.vertices).toEqual(originalNetwork.vertices)
++    expect(edited.network!.edges[0].c1).toEqual({ x: 37, y: 7 })
++    expect(edited.network!.edges[0].c2).toEqual(originalNetwork.edges[0].c2)
++  }
++  expect(before.nodes[id].vectorGeometry).toBeDefined(); expect(before.nodes[id].network).toBeUndefined()
++  await act(async () => editor.undo()); untouched(before, id, true)
++  await act(async () => editor.redo()); expect(editor.state.doc).toEqual(after)
++})
++test.each(cases)('$kind no-motion and return-to-origin preserve authored curves without history', async ({ kind, start, finish }) => {
++  const id = await renderPreciseShape(), before = editor.state.doc
++  await act(async () => pointer('pointerdown', start[0], start[1], {}, target(kind)))
++  await act(async () => pointer('pointerup', start[0], start[1])); untouched(before, id)
++  await act(async () => pointer('pointerdown', start[0], start[1], {}, target(kind)))
++  await moveTo(finish[0], finish[1]); expect(editor.state.doc.nodes[id].vectorGeometry).toBeUndefined()
++  await moveTo(start[0], start[1])
++  await act(async () => pointer('pointerup', start[0], start[1])); untouched(before, id)
++})
++test.each(cases)('$kind pointer cancellation discards converted previews and ignores late release', async ({ kind, start, finish }) => {
++  const id = await renderPreciseShape(), before = editor.state.doc
++  await act(async () => pointer('pointerdown', start[0], start[1], {}, target(kind)))
++  await moveTo(finish[0], finish[1]); expect(editor.state.doc.nodes[id].vectorGeometry).toBeUndefined()
++  await act(async () => pointer('pointercancel', finish[0], finish[1])); untouched(before, id)
++  await act(async () => pointer('pointerup', finish[0] + 5, finish[1] + 5)); untouched(before, id)
++})
++test.each(cases)('$kind Escape cancellation restores authored curves before a late pointer release', async ({ kind, start, finish }) => {
++  const id = await renderPreciseShape(), before = editor.state.doc
++  await act(async () => pointer('pointerdown', start[0], start[1], {}, target(kind)))
++  await moveTo(finish[0], finish[1]); expect(editor.state.doc.nodes[id].vectorGeometry).toBeUndefined()
++  await act(async () => key('Escape')); untouched(before, id)
++  await act(async () => pointer('pointerup', finish[0], finish[1])); untouched(before, id)
++})
+--- a/frontend/design-client/src/commands/selection-command.ts
++++ b/frontend/design-client/src/commands/selection-command.ts
+@@ -145,7 +145,7 @@
+     const n = doc.nodes[id], m = multiply(basis, matrix(id))
+     let result: Bounds
+     if (n.kind === 'group' && n.children.length) result = unionBounds(n.children.map(measure))
+-    else if (n.network || n.textPath || n.pathOffset || n.vectorBrush || n.booleanOperation) {
++    else if (n.network || n.vectorGeometry || n.textPath || n.pathOffset || n.vectorBrush || n.booleanOperation) {
+       // Never use a mutable draft node as the WeakMap key in kernelBounds.
+       // The private shallow record is stable for this synchronous measurement.
+       const stable = { ...n }
+--- a/frontend/design-client/src/commands/selection-geometry.test.ts
++++ b/frontend/design-client/src/commands/selection-geometry.test.ts
+@@ -4,7 +4,7 @@
+ import * as picking from '../kernel/picking'
+ import * as geometry from '../geometry'
+ import { blank, node } from '../model'
+-import { prepareSelectionWrap, selectionCommandAdmission, prepareSelectionUnwrap, applySelectionUnwrap } from './selection-command'
++import { prepareSelectionArrangement, prepareSelectionWrap, selectionCommandAdmission, prepareSelectionUnwrap, applySelectionUnwrap } from './selection-command'
+ import { unionBounds } from './affine'
+ 
+ test('mutable simple batch vectors never reuse an old WeakMap node key or trigger whole-document layout', () => {
+@@ -53,3 +53,44 @@
+   expect(unionBounds(rectangles)).toEqual({ x: 0, y: -149999, width: 150001, height: 150001 })
+   expect(unionBounds([{ x: 5, y: 7, width: -2, height: -3 }])).toEqual({ x: 3, y: 4, width: 2, height: 3 })
+ })
++
++// The cubic's maximum y is 45 at t=1/2, independent of its stored size.
++// These assertions use that analytic extremum, not kernelBounds as their oracle.
++function preciseSelectionFixture() {
++  const doc = blank(), shape = node('vector', 10, 20, 200, 200), other = node('rectangle', 300, 200, 20, 30)
++  doc.schemaVersion = 16; shape.strokes = []
++  shape.transform = [2, 0, 0, 3, 10, 20]
++  shape.vectorGeometry = { fillRule: 'nonzero', fill: [
++    { move: [0, 0] }, { cubic: [0, 60, 60, 60, 60, 0] }, { line: [0, 0] }, 'close',
++  ] }
++  doc.nodes = { [shape.id]: shape, [other.id]: other }; doc.pages[0].children = [shape.id, other.id]
++  return { doc, shape, other }
++}
++test('precise render curves use true transformed extrema for wrap and alignment', () => {
++  const { doc, shape, other } = preciseSelectionFixture()
++  const wrapped = prepareSelectionWrap(doc, [shape.id], { fresh: false })
++  expect(wrapped.transform).toEqual([1, 0, 0, 1, 10, 20])
++  expect(wrapped.width).toBeCloseTo(120, 9); expect(wrapped.height).toBeCloseTo(135, 9)
++  const aligned = prepareSelectionArrangement(doc, [shape.id, other.id], 'y', 'end', { fresh: false })
++  // other ends at y=230; the cubic ends at y=155, so only it moves by 75.
++  expect(aligned.patches).toEqual([{ id: shape.id, transform: [2, 0, 0, 3, 10, 95] }])
++})
++test('mutable precise curves get new exact-bound keys after edits, without layout', () => {
++  const { doc, shape } = preciseSelectionFixture()
++  const bounds = vi.spyOn(picking, 'kernelBounds'), layout = vi.spyOn(picking, 'kernelLayout')
++  try {
++    const before = prepareSelectionWrap(doc, [shape.id], { fresh: false })
++    const cubic = shape.vectorGeometry!.fill[1] as { cubic: [number, number, number, number, number, number] }
++    cubic.cubic[1] = cubic.cubic[3] = 80
++    const after = prepareSelectionWrap(doc, [shape.id], { fresh: false })
++    expect(before.height).toBeCloseTo(135, 9); expect(after.height).toBeCloseTo(180, 9)
++    expect(bounds).toHaveBeenCalledTimes(2)
++    expect(bounds.mock.calls[0][0]).not.toBe(shape); expect(bounds.mock.calls[1][0]).not.toBe(shape)
++    expect(bounds.mock.calls[0][0]).not.toBe(bounds.mock.calls[1][0]); expect(layout).not.toHaveBeenCalled()
++  } finally { bounds.mockRestore(); layout.mockRestore() }
++})
++test('precise selection geometry fails closed when the kernel is unavailable', () => {
++  const { doc, shape } = preciseSelectionFixture(), bounds = vi.spyOn(picking, 'kernelBounds').mockReturnValue(null)
++  try { expect(() => prepareSelectionWrap(doc, [shape.id], { fresh: false })).toThrow('Exact selection geometry is unavailable') }
++  finally { bounds.mockRestore() }
++})
+--- a/frontend/design-client/src/component-override-fields.test.ts
++++ b/frontend/design-client/src/component-override-fields.test.ts
+@@ -5,6 +5,7 @@
+ import { insertInstance, overrideFields, stampKeys } from './components'
+ import { admitDocumentSync } from './document-admission'
+ import { Editor } from './engine'
++import { editableNetwork } from './editable-network'
+ import { kernelLayout } from './kernel/picking'
+ import { blank, node, paint, type DesignDocument } from './model'
+ 
+@@ -163,3 +164,52 @@
+   check(e, 'exclude', 'exclude', false)
+   expectCanonical(e.state.doc)
+ })
++
++test('precise vector descendant overrides and network conversion survive regeneration, history and reset', () => {
++    const doc = blank('Precise component overrides'), main = node('frame', 0, 0, 100, 80)
++    const shape = node('vector', 0, 0, 100, 80)
++    doc.schemaVersion = 16; main.component = { variants: {}, properties: {} }
++    shape.strokes = []; shape.fills = [paint('#818cf8')]
++    shape.vectorGeometry = { fillRule: 'nonzero', fill: [
++      { move: [0, 0] }, { cubic: [25.123456789012345, 0, 75, 0, 100, 0] },
++      { line: [100, 80] }, { line: [0, 80] }, { line: [0, 0] }, 'close',
++    ] }
++    main.children = [shape.id]
++    doc.nodes = { [main.id]: main, [shape.id]: shape }; doc.pages[0].children = [main.id]; stampKeys(doc, main.id)
++    const a = insertInstance(doc, main.id, doc.pages[0].id, { x: 200, y: 0 })
++    const b = insertInstance(doc, main.id, doc.pages[0].id, { x: 400, y: 0 })
++    const e = new Editor(doc), key = shape.id
++    const layer = (editor: Editor, owner: string) => originNode(editor.state.doc, owner, key)
++    let reopened: Editor | undefined
++    try {
++      const id = layer(e, a).id, original = structuredClone(shape.vectorGeometry), changed = structuredClone(original)
++      ;(changed.fill[1] as { cubic: number[] }).cubic[1] = 12.125
++      e.update([id], { vectorGeometry: changed })
++      expect(layer(e, a).vectorGeometry, e.state.message).toEqual(changed)
++      expect(e.state.doc.nodes[a].instance!.overrides[key]?.vectorGeometry).toEqual(changed)
++      expect(layer(e, b).vectorGeometry).toEqual(original); expect(e.state.doc.nodes[shape.id].vectorGeometry).toEqual(original)
++      e.undo(); expect(layer(e, a).vectorGeometry).toEqual(original)
++      e.redo(); expect(layer(e, a).vectorGeometry).toEqual(changed)
++      e.update([shape.id], { name: 'Regenerated precise default' })
++      expect(layer(e, a).vectorGeometry).toEqual(changed); expect(layer(e, b).vectorGeometry).toEqual(original)
++      e.begin('Edit precise instance point')
++      const network = editableNetwork(layer(e, a)); network.vertices[0].x += 5
++      expect(e.preview({ [id]: { network, vectorGeometry: undefined } })).toBe(true)
++      e.commit()
++      expect(layer(e, a).network, e.state.message).toEqual(network); expect(layer(e, a).vectorGeometry).toBeUndefined()
++      expect(e.state.doc.nodes[a].instance!.overrides[key]?.vectorGeometry).toBeNull()
++      expect(e.state.doc.nodes[a].instance!.overrides[key]?.network).toEqual(network)
++      e.undo(); expect(layer(e, a).vectorGeometry).toEqual(changed); expect(layer(e, a).network).toBeUndefined()
++      e.redo(); expect(layer(e, a).network).toEqual(network); expect(layer(e, a).vectorGeometry).toBeUndefined()
++      e.update([shape.id], { name: 'Regenerated after point edit' })
++      expect(layer(e, a).network).toEqual(network); expect(layer(e, a).vectorGeometry).toBeUndefined()
++      expect(layer(e, b).vectorGeometry).toEqual(original); expect(layer(e, b).network).toBeUndefined()
++      reopened = new Editor(JSON.parse(JSON.stringify(e.state.doc)))
++      expect(layer(reopened, a).network).toEqual(network); expect(layer(reopened, a).vectorGeometry).toBeUndefined()
++      expectCanonical(reopened.state.doc)
++      e.resetInstance(id)
++      expect(layer(e, a).vectorGeometry).toEqual(original); expect(layer(e, a).network).toBeUndefined()
++      e.undo(); expect(layer(e, a).network).toEqual(network); expect(layer(e, a).vectorGeometry).toBeUndefined()
++      e.redo(); expect(layer(e, a).vectorGeometry).toEqual(original); expectCanonical(e.state.doc)
++    } finally { reopened?.dispose(); e.dispose() }
++})
+--- a/frontend/design-client/src/desktop.ts
++++ b/frontend/design-client/src/desktop.ts
+@@ -68,8 +68,8 @@
+   apply(request:LargeDocumentRequest&{key:string;json:string;expectedHash:string}):Promise<DesktopResult<LargeDocumentStatus>>
+   project(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[]}>>
+   scene(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[];nodes:number;bytes:number}>>
+-  sceneCommit(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus>>
+-  commitCanvas(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus>>
++  sceneCommit(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus&{key:string}>>
++  commitCanvas(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus&{key:string}>>
+   undo(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus>>
+   redo(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus>>
+   export(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus&{exported:true;displayName:string}>>
+--- a/frontend/design-client/src/import-file-worker.test.ts
++++ b/frontend/design-client/src/import-file-worker.test.ts
+@@ -3,6 +3,7 @@
+ import { blank } from './model'
+ import { exportSketchInWorker, importFileInWorker } from './import-file-worker'
+ import { readDesignFile } from './persistence'
++import { beginImportDiagnostic, ImportFailure, ImportStage } from './import-diagnostics'
+ 
+ class ImportWorker {
+   static instances: ImportWorker[] = []
+@@ -136,3 +137,101 @@
+   ImportWorker.instances[0].reply({ result: { document: blank(), ...report } })
+   await rejected
+ })
++
++
++test.each(['fig', 'sketch', 'pdf'] as const)('selected %s File is owned by its worker before reading', async format => {
++  installWorker()
++  const file = new File([new Uint8Array([1, 2, 3])], `local.${format}`)
++  const read = vi.spyOn(file, 'arrayBuffer')
++  const result = readDesignFile(file)
++  const worker = ImportWorker.instances[0]
++  expect(read).not.toHaveBeenCalled()
++  expect(worker.postMessage).toHaveBeenCalledWith({ file, name: 'local', format,
++    memoryBytes: documentCapacity().memoryBytes }, [])
++  worker.reply({ kind: 'import-stage', importStage: 231 })
++  worker.reply({ kind: 'import-stage', importStage: 238 })
++  expect(worker.terminate).not.toHaveBeenCalled()
++  worker.reply({ result: { document: blank('local'), warnings: [] } })
++  expect((await result).document.name).toBe('local')
++  expect(worker.terminate).toHaveBeenCalledOnce()
++})
++
++test.each(['cancel', 'timeout'] as const)('a selected File waiting to read is reclaimed on %s', async reason => {
++  installWorker(); vi.useFakeTimers()
++  const file = new File(['pending'], 'local.fig')
++  const read = vi.spyOn(file, 'arrayBuffer')
++  const controller = new AbortController()
++  const result = readDesignFile(file, controller.signal)
++  const rejected = expect(result).rejects.toThrow()
++  const worker = ImportWorker.instances[0]
++  worker.reply({ kind: 'import-stage', importStage: 231 })
++  if (reason === 'cancel') controller.abort()
++  else await vi.advanceTimersByTimeAsync(30_000)
++  await rejected
++  worker.reply({ result: { document: blank('late'), warnings: [] } })
++  expect(read).not.toHaveBeenCalled()
++  expect(worker.terminate).toHaveBeenCalledOnce()
++})
++
++test('worker file-read failure retains read-stage attribution and rejects without adoption', async () => {
++  installWorker()
++  const file = new File(['x'], 'local.fig')
++  const diagnostic = beginImportDiagnostic(file, 'open', { actionId: 1, actionOwner: 1 })
++  const result = readDesignFile(file, undefined, diagnostic).catch(error => error)
++  ImportWorker.instances[0].reply({ importStage: ImportStage.read, error: 'cannot read file' })
++  const error = await result
++  expect(error).toBeInstanceOf(Error)
++  expect(error.message).toBe('cannot read file')
++  expect(diagnostic.fail(error)).toBe(ImportFailure.read)
++  expect(ImportWorker.instances[0].terminate).toHaveBeenCalledOnce()
++})
++
++
++test.each(['onerror', 'onmessageerror'] as const)('generic %s during file reading stays an unknown worker failure', async callback => {
++  installWorker()
++  const file = new File(['x'], 'local.fig')
++  const diagnostic = beginImportDiagnostic(file, 'open', { actionId: 2, actionOwner: 1 })
++  const result = readDesignFile(file, undefined, diagnostic).catch(error => error)
++  const worker = ImportWorker.instances[0]
++  worker.reply({ kind: 'import-stage', importStage: ImportStage.read })
++  if (callback === 'onerror') worker.onerror?.({ message: 'worker crashed' })
++  else worker.onmessageerror?.()
++  const error = await result
++  expect(error).toBeInstanceOf(Error)
++  expect(diagnostic.fail(error)).toBe(ImportFailure.unknown)
++  expect(worker.terminate).toHaveBeenCalledOnce()
++})
++
++test('an explicit empty read-error message remains a read failure with bounded fallback text', async () => {
++  installWorker()
++  const file = new File(['x'], 'local.fig')
++  const diagnostic = beginImportDiagnostic(file, 'open', { actionId: 3, actionOwner: 1 })
++  const result = readDesignFile(file, undefined, diagnostic).catch(error => error)
++  const worker = ImportWorker.instances[0]
++  worker.reply({ kind: 'import-stage', importStage: ImportStage.read })
++  worker.reply({ importStage: ImportStage.read, error: '' })
++  const error = await result
++  expect(error).toBeInstanceOf(Error)
++  expect(error.message).toBe('文件导入失败')
++  expect(diagnostic.fail(error)).toBe(ImportFailure.read)
++  expect(worker.terminate).toHaveBeenCalledOnce()
++})
++
++test.each(['onerror', 'onmessageerror', 'read-error'] as const)('late %s cannot replace cancellation after a pending file read', async callback => {
++  installWorker()
++  const controller = new AbortController()
++  const file = new File(['x'], 'local.fig')
++  const diagnostic = beginImportDiagnostic(file, 'open', { actionId: 4, actionOwner: 1 })
++  diagnostic.bindRequest({ signal: controller.signal, isCurrent: () => true })
++  const result = readDesignFile(file, controller.signal, diagnostic).catch(error => error)
++  const worker = ImportWorker.instances[0]
++  worker.reply({ kind: 'import-stage', importStage: ImportStage.read })
++  controller.abort()
++  if (callback === 'onerror') worker.onerror?.({ message: 'late worker crash' })
++  else if (callback === 'onmessageerror') worker.onmessageerror?.()
++  else worker.reply({ importStage: ImportStage.read, error: '' })
++  const error = await result
++  expect(error).toMatchObject({ name: 'AbortError' })
++  expect(diagnostic.fail(error)).toBe(ImportFailure.cancelled)
++  expect(worker.terminate).toHaveBeenCalledOnce()
++})
+--- a/frontend/design-client/src/import-file-worker.ts
++++ b/frontend/design-client/src/import-file-worker.ts
+@@ -9,14 +9,19 @@
+ 
+ /** One owned worker per import, reclaimed on completion, failure or cancellation. */
+ export function importFileInWorker(
+-  bytes: ArrayBuffer,
++  input: ArrayBuffer | File,
+   name: string,
+   format: WorkerImportFormat,
+   signal?: AbortSignal,
+   diagnostic?: ImportDiagnostic,
+ ): Promise<ImportedDesign> {
+-  assertImportInputBytes(bytes.byteLength)
+-  return runFileWorker({ bytes, name, format }, [bytes], format.toUpperCase(), (message) => {
++  const isBuffer = 'byteLength' in input
++  assertImportInputBytes(isBuffer ? input.byteLength : input.size)
++  // A selected File is structured-cloned as a Blob, not eagerly read in the UI.
++  // The owned worker's termination also cancels adoption after a pending read.
++  // This does not promise zero-copy browser internals or streaming decoding.
++  const payload = isBuffer ? { bytes: input, name, format } : { file: input, name, format }
++  return runFileWorker(payload, isBuffer ? [input] : [], format.toUpperCase(), (message) => {
+     const result = message.result as ImportedDesign
+     diagnostic?.stage(ImportStage.validate)
+     validateDocument(result.document)
+@@ -72,14 +77,27 @@
+     const abort = () => finish(signal?.reason || new DOMException('文件导入已取消', 'AbortError'))
+     const timeout = setTimeout(() => finish(new Error(`${label} 处理超过 30 秒预算；请拆分文件`)), 30_000)
+     signal?.addEventListener('abort', abort, { once: true })
+-    worker.onerror = (event) => finish(new Error(event.message || '文件导入进程失败'))
+-    worker.onmessageerror = () => finish(new Error('文件导入响应无法读取'))
++    const failWorker = (error: Error) => {
++      if (settled) return
++      // A pending File read does not prove that a generic worker/transport
++      // failure came from file I/O. Keep unknown worker failures unknown.
++      diagnostic?.stage(ImportStage.worker)
++      finish(error)
++    }
++    worker.onerror = (event) => failWorker(new Error(event.message || '文件导入进程失败'))
++    worker.onmessageerror = () => failWorker(new Error('文件导入响应无法读取'))
+     worker.onmessage = (event) => {
+       if (settled) return
+       try {
+-        if (event.data.error) {
+-          if ([ImportStage.initialize, ImportStage.decode].includes(event.data.importStage)) diagnostic?.stage(event.data.importStage)
+-          throw new Error(event.data.error)
++        if (event.data?.kind === 'import-stage') {
++          if (![ImportStage.read, ImportStage.initialize].includes(event.data.importStage))
++            throw new Error('文件导入阶段响应无效')
++          diagnostic?.stage(event.data.importStage)
++          return
++        }
++        if (typeof event.data?.error === 'string') {
++          if ([ImportStage.read, ImportStage.initialize, ImportStage.decode].includes(event.data.importStage)) diagnostic?.stage(event.data.importStage)
++          throw new Error(event.data.error || '文件导入失败')
+         }
+         finish(undefined, decode(event.data))
+       } catch (error) { finish(error) }
+--- a/frontend/design-client/src/import-input-policy.test.ts
++++ b/frontend/design-client/src/import-input-policy.test.ts
+@@ -1,9 +1,44 @@
+-import { expect, test, vi } from 'vitest'
++import { afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
+ import { assertImportInputBytes, IMPORT_INPUT_MAX_BYTES, importInputStatus } from './import-input-policy'
+ import { readDesignFile } from './persistence'
++import { documentCapacity } from './document-capacity'
+ import { figArchive } from './import-fig-archive'
+ import { decodeFig } from './import-fig'
+ import { operationStatusText } from './operation-status-messages'
++// Controlled message transport, but the file-reading handler below is the
++// production import-worker. It stops at a sentinel read rejection, before a
++// codec or any large allocation. This is not a real browser Worker test.
++const workerScope: { onmessage?: (event: MessageEvent) => Promise<void>; postMessage(data: unknown): void } = {
++ postMessage() {},
++}
++let readingInWorker = false
++class PickerWorker {
++ static instances: PickerWorker[] = []
++ onmessage?: (event: { data: unknown }) => void
++ onerror?: (event: { message: string }) => void
++ onmessageerror?: () => void
++ terminate = vi.fn()
++ postMessage = vi.fn((data: unknown, _transfer: Transferable[]) => {
++  queueMicrotask(async () => {
++   workerScope.postMessage = reply => this.onmessage?.({ data: reply })
++   readingInWorker = true
++   try { await workerScope.onmessage!({ data } as MessageEvent) }
++   finally { readingInWorker = false }
++  })
++ })
++ constructor() { PickerWorker.instances.push(this) }
++}
++beforeAll(async () => {
++ vi.stubGlobal('self', workerScope)
++ await import('./import-worker')
++})
++beforeEach(() => {
++ PickerWorker.instances = []
++ readingInWorker = false
++ vi.stubGlobal('self', workerScope)
++ vi.stubGlobal('Worker', PickerWorker)
++})
++afterEach(() => vi.unstubAllGlobals())
+ const admitted=[0,32*1024**2-1,32*1024**2,32*1024**2+1,1024**3-1,1024**3]
+ test.each(admitted)('encoded input policy admits %s bytes without allocating that payload',bytes=>{
+  expect(()=>assertImportInputBytes(bytes)).not.toThrow()
+@@ -11,15 +46,26 @@
+ test.each([1024**3+1,-1,Infinity,NaN,1.5])('encoded input policy rejects invalid/overlimit %s',bytes=>{
+  expect(()=>assertImportInputBytes(bytes)).toThrow()
+ })
+-test.each(admitted)('actual Sketch picker admission reaches read at %s declared bytes',async size=>{
+- const sentinel=Error('intentional read stop, no large buffer allocated'),arrayBuffer=vi.fn(async()=>{throw sentinel})
+- await expect(readDesignFile({name:'fixture.SKETCH',size,arrayBuffer} as unknown as File)).rejects.toBe(sentinel)
++test.each(admitted)('actual Sketch picker admits %s declared bytes to its worker-owned read',async size=>{
++ const sentinel=Error('intentional read stop, no large buffer allocated')
++ const arrayBuffer=vi.fn(async()=>{expect(readingInWorker).toBe(true);throw sentinel})
++ const file={name:'fixture.SKETCH',size,arrayBuffer} as unknown as File
++ const result=readDesignFile(file)
++ // Reading must not happen on the picker/UI side before the worker dispatch.
++ expect(arrayBuffer).not.toHaveBeenCalled()
++ expect(PickerWorker.instances).toHaveLength(1)
++ const worker=PickerWorker.instances[0]
++ expect(worker.postMessage).toHaveBeenCalledWith({file,name:'fixture',format:'sketch',memoryBytes:documentCapacity().memoryBytes},[])
++ // Worker messages preserve the error text, not cross-realm Error identity.
++ await expect(result).rejects.toThrow(sentinel.message)
+  expect(arrayBuffer).toHaveBeenCalledOnce()
++ expect(worker.terminate).toHaveBeenCalledOnce()
+ })
+ test.each([IMPORT_INPUT_MAX_BYTES+1,Infinity,NaN,-1])('actual picker rejects %s before read',async size=>{
+  const arrayBuffer=vi.fn()
+  await expect(readDesignFile({name:'fixture.sketch',size,arrayBuffer} as unknown as File)).rejects.toThrow()
+  expect(arrayBuffer).not.toHaveBeenCalled()
++ expect(PickerWorker.instances).toHaveLength(0)
+ })
+ test.each([figArchive,decodeFig])('direct FIG entry rejects >1GiB before reading bytes',entry=>{
+  const bytes={length:IMPORT_INPUT_MAX_BYTES+1} as Uint8Array
+--- a/frontend/design-client/src/import-worker-file-read.test.ts
++++ b/frontend/design-client/src/import-worker-file-read.test.ts
+@@ -0,0 +1,42 @@
++import { afterAll, beforeAll, expect, test, vi } from 'vitest'
++
++type WorkerScope = { onmessage?: (event: MessageEvent) => Promise<void>; postMessage: ReturnType<typeof vi.fn> }
++const scope: WorkerScope = { postMessage: vi.fn() }
++beforeAll(async () => {
++  vi.stubGlobal('self', scope)
++  await import('./import-worker')
++})
++afterAll(() => vi.unstubAllGlobals())
++
++// Invokes the production worker handler. The source File-like read boundary is
++// controlled; these tests do not claim a browser Worker or a new codec pass.
++test('a selected File is checked in the worker before its first byte read', async () => {
++  scope.postMessage.mockClear()
++  const arrayBuffer = vi.fn()
++  await scope.onmessage!({ data: { file: { size: 1024 ** 3 + 1, arrayBuffer }, name: 'too-large', format: 'fig' } } as MessageEvent)
++  expect(arrayBuffer).not.toHaveBeenCalled()
++  expect(scope.postMessage).toHaveBeenCalledOnce()
++  expect(scope.postMessage.mock.calls[0][0].error).toContain('1 GiB')
++})
++
++test('a File read failure is returned as a read failure, not a decode success', async () => {
++  scope.postMessage.mockClear()
++  const arrayBuffer = vi.fn(async () => { throw new Error('read denied') })
++  await scope.onmessage!({ data: { file: { size: 1, arrayBuffer }, name: 'unreadable', format: 'sketch' } } as MessageEvent)
++  expect(arrayBuffer).toHaveBeenCalledOnce()
++  expect(scope.postMessage.mock.calls.map(call => call[0])).toEqual([
++    { kind: 'import-stage', importStage: 231 },
++    { importStage: 231, error: 'read denied' },
++  ])
++})
++
++test('actual File read byte count is checked again before any codec runs', async () => {
++  scope.postMessage.mockClear()
++  // No gigabyte allocation: this controlled malformed read result exercises
++  // only byte admission, which must reject before constructing a Uint8Array.
++  const arrayBuffer = vi.fn(async () => ({ byteLength: 1024 ** 3 + 1 }))
++  await scope.onmessage!({ data: { file: { size: 1, arrayBuffer }, name: 'mismatched', format: 'pdf' } } as MessageEvent)
++  expect(arrayBuffer).toHaveBeenCalledOnce()
++  expect(scope.postMessage.mock.calls.at(-1)![0].error).toContain('1 GiB')
++  expect(scope.postMessage.mock.calls.some(call => 'result' in call[0])).toBe(false)
++})
+--- a/frontend/design-client/src/import-worker.ts
++++ b/frontend/design-client/src/import-worker.ts
+@@ -3,7 +3,7 @@
+ import { importFig } from './import-fig'
+ import { initializeKernelModule } from './kernel/module'
+ import { uid, type DesignDocument } from './model'
+-type FileJob = { bytes: ArrayBuffer; name: string; format: 'fig' | 'sketch' | 'pdf' }
++type FileJob = { name: string; format: 'fig' | 'sketch' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
+   | { document: DesignDocument; format: 'sketch-export' }
+ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>) => {
+   let importStage = 238 // initialize
+@@ -16,8 +16,19 @@
+       self.postMessage({ bytes }, { transfer: [bytes] })
+       return
+     }
+-    assertImportInputBytes(event.data.bytes.byteLength)
+-    const bytes = new Uint8Array(event.data.bytes)
++    let source: ArrayBuffer
++    if ('file' in event.data) {
++      // Recheck in this realm before allocating. File/Blob is not transferable;
++      // only the eventual ArrayBuffer exists as a JS-owned buffer in this worker.
++      assertImportInputBytes(event.data.file.size)
++      importStage = 231 // read
++      self.postMessage({ kind: 'import-stage', importStage })
++      source = await event.data.file.arrayBuffer()
++      importStage = 238 // initialize
++      self.postMessage({ kind: 'import-stage', importStage })
++    } else source = event.data.bytes
++    assertImportInputBytes(source.byteLength)
++    const bytes = new Uint8Array(source)
+     if (event.data.format === 'sketch') {
+       await initializeKernelModule()
+       const { import_sketch_json } = await import('./generated/design-kernel/design_kernel')
+--- a/frontend/design-client/src/kernel/gpu/webgpu.ts
++++ b/frontend/design-client/src/kernel/gpu/webgpu.ts
+@@ -529,6 +529,7 @@
+     const driver = new WebGpuDriver(managed, hdr, linearLight, managed && certified && import.meta.env.VITE_DESIGN_CERTIFIED_FILTER !== '0', displayMath)
+     try {
+       await driver.initialize()
++      if (driver.terminal) throw new Error('WebGPU 设备已丢失')
+       driver.poolKey = poolKey
+       driver.prefixEnabled = managed && certified && import.meta.env.VITE_DESIGN_EXACT_PREFIX !== '0'
+       return driver
+@@ -924,6 +925,7 @@
+     this.clear(this.blank)
+     this.submitEncoder()
+     await this.waitForQueue('initialization')
++    if (this.terminal) throw new Error('WebGPU 设备已丢失')
+     this.initialized = true
+     this.submittedBoundaryReady = true
+   }
+--- a/frontend/design-client/src/local-revisions.test.ts
++++ b/frontend/design-client/src/local-revisions.test.ts
+@@ -86,6 +86,26 @@
+                   .map(([, value]) => structuredClone(value))
+                 request.onsuccess?.()
+               }),
++            openCursor: (range?: any, direction = 'next') => {
++              const values = [...store.entries()]
++                .map(([stored, value]) => [decodeStoredKey(stored), value] as [unknown, unknown])
++                .filter(([key]) => inRange(key, range))
++                .sort(([a], [b]) => direction === 'prev' ? cmp(b, a) : cmp(a, b))
++              const request: any = {}
++              let index = 0
++              const advance = () => {
++                pending++
++                queueMicrotask(() => {
++                  const entry = values[index++]
++                  request.result = entry ? { value: structuredClone(entry[1]), continue: advance } : null
++                  request.onsuccess?.()
++                  pending--
++                  settle()
++                })
++              }
++              advance()
++              return request
++            },
+             getAllKeys: (range?: any) =>
+               tracked((request: any) => {
+                 request.result = [...store.keys()]
+--- a/frontend/design-client/src/local-store-revision-list.test.ts
++++ b/frontend/design-client/src/local-store-revision-list.test.ts
+@@ -0,0 +1,73 @@
++import { afterEach, expect, test, vi } from 'vitest'
++import { listRevisions, type LocalRevisionEntry } from './local-store'
++
++// Storage protocol double only. It checks cursor API use, returned metadata
++// and transaction ownership, not retained-object counts, GC, browser RSS or
++// actual IndexedDB clone cost/durable persistence.
++function revisionDatabase(rows: LocalRevisionEntry[], failure?: 'cursor' | 'transaction' | 'continue') {
++  const getAll = vi.fn(() => { throw new Error('History must not read all binary snapshots') })
++  const snapshotAccess = vi.fn(() => { throw new Error('Listing must not retain snapshot payloads') })
++  const tx: any = { error: new Error('transaction aborted'), abort: vi.fn(() => tx.onabort?.()) }
++  const openCursor = vi.fn((_range: unknown, direction: string) => {
++    expect(direction).toBe('prev')
++    const request: any = {}
++    let position = 0
++    const advance = () => queueMicrotask(() => {
++      if (failure === 'cursor' && position === 1) {
++        request.error = new Error('cursor failed')
++        request.onerror?.()
++        return
++      }
++      const row = rows[position++]
++      request.result = row ? {
++        value: Object.defineProperty({ ...row }, 'bytes', { get: snapshotAccess }),
++        continue() {
++          if (failure === 'continue') throw new Error('cursor inactive')
++          advance()
++        },
++      } : null
++      request.onsuccess?.()
++      if (!row) queueMicrotask(() => failure === 'transaction' ? tx.onabort?.() : tx.oncomplete?.())
++    })
++    advance()
++    return request
++  })
++  tx.objectStore = vi.fn(() => ({ getAll, openCursor }))
++  const database = { transaction: vi.fn(() => tx), close: vi.fn(), onversionchange: undefined }
++  vi.stubGlobal('IDBKeyRange', { bound: (lower: unknown, upper: unknown) => ({ lower, upper }) })
++  vi.stubGlobal('indexedDB', { open: () => {
++    const request: any = {}
++    queueMicrotask(() => { request.result = database; request.onsuccess?.() })
++    return request
++  } })
++  return { database, tx, getAll, snapshotAccess, openCursor }
++}
++afterEach(() => vi.unstubAllGlobals())
++
++test('revision listing uses a document-scoped newest-first cursor and returns metadata only', async () => {
++  const rows = [
++    { documentId: 'doc', revision: 50, createdAt: 500, summary: 'latest' },
++    { documentId: 'doc', revision: 49, createdAt: 490 },
++  ]
++  const fixture = revisionDatabase(rows)
++  expect(await listRevisions('doc')).toEqual(rows)
++  expect(fixture.database.transaction).toHaveBeenCalledWith(['revisions'], 'readonly')
++  expect(fixture.openCursor).toHaveBeenCalledWith({ lower: ['doc', -Infinity], upper: ['doc', Infinity] }, 'prev')
++  expect(fixture.getAll).not.toHaveBeenCalled()
++  expect(fixture.snapshotAccess).not.toHaveBeenCalled()
++  expect(fixture.database.close).toHaveBeenCalledOnce()
++})
++
++test('an empty history remains empty and closes its transaction connection', async () => {
++  const fixture = revisionDatabase([])
++  expect(await listRevisions('missing')).toEqual([])
++  expect(fixture.database.close).toHaveBeenCalledOnce()
++})
++
++test.each([
++  ['cursor', 'cursor failed'], ['transaction', 'transaction aborted'], ['continue', 'cursor inactive'],
++] as const)('%s failure never publishes a partial history', async (failure, message) => {
++  const fixture = revisionDatabase([{ documentId: 'doc', revision: 2, createdAt: 20 }], failure)
++  await expect(listRevisions('doc')).rejects.toThrow(message)
++  expect(fixture.database.close).toHaveBeenCalledOnce()
++})
+--- a/frontend/design-client/src/local-store.ts
++++ b/frontend/design-client/src/local-store.ts
+@@ -215,25 +215,23 @@
+ }
+ /** Newest-first revision list of one local document, without snapshot payloads. */
+ export async function listRevisions(documentId: string): Promise<LocalRevisionEntry[]> {
+-  const db = await openLocalDatabase()
+-  try {
+-    const tx = db.transaction('revisions'),
+-      done = completed(tx)
+-    const records = (await request(
+-      tx.objectStore('revisions').getAll(revisionRange(documentId)),
+-    )) as LocalRevisionRecord[]
+-    await done
+-    return records
+-      .sort((a, b) => b.revision - a.revision)
+-      .map(({ documentId: id, revision, summary, createdAt }) => ({
+-        documentId: id,
+-        revision,
+-        summary,
+-        createdAt,
+-      }))
+-  } finally {
+-    db.close()
+-  }
++  return localTransaction(['revisions'], 'readonly', (tx) => new Promise<LocalRevisionEntry[]>((resolve, reject) => {
++    const entries: LocalRevisionEntry[] = []
++    // A value cursor still clones one stored snapshot per step. Retain only its
++    // metadata, never an array of all 50 binary snapshots as getAll() would.
++    // Compound-key ordering already gives newest-first history for this document.
++    const cursor = tx.objectStore('revisions').openCursor(revisionRange(documentId), 'prev')
++    cursor.onerror = () => reject(cursor.error)
++    cursor.onsuccess = () => {
++      try {
++        const row = cursor.result
++        if (!row) { resolve(entries); return }
++        const { documentId: id, revision, summary, createdAt } = row.value as LocalRevisionRecord
++        entries.push({ documentId: id, revision, summary, createdAt })
++        row.continue()
++      } catch (error) { reject(error) }
++    }
++  }))
+ }
+ /** Loads one revision snapshot through the same admission path as a local open. */
+ export async function getRevision(
+--- a/frontend/design-client/src/persistence.ts
++++ b/frontend/design-client/src/persistence.ts
+@@ -32,10 +32,8 @@
+   const nativeFile = /\.(fd|json)$/i.test(file.name)
+   if (nativeFile) assertDocumentBytes(file.size)
+   if (/\.(fig|sketch|pdf)$/i.test(file.name)) {
+-    const bytes = await (diagnostic ? diagnostic.wait(ImportStage.read, () => file.arrayBuffer()) : file.arrayBuffer())
+-    signal?.throwIfAborted()
+     const format = /\.sketch$/i.test(file.name) ? 'sketch' : /\.pdf$/i.test(file.name) ? 'pdf' : 'fig'
+-    return importFileInWorker(bytes, file.name.replace(/\.(fig|sketch|pdf)$/i, ''), format, signal, diagnostic)
++    return importFileInWorker(file, file.name.replace(/\.(fig|sketch|pdf)$/i, ''), format, signal, diagnostic)
+   }
+   if (!/\.(fd|json|svg|svgz)$/i.test(file.name)) throw new Error('请选择 .fd、Sketch、JSON、SVG、FIG 或 PDF 文件')
+   if(/\.svgz?$/i.test(file.name)) {
+--- a/frontend/design-desktop/src/sidecar.mjs
++++ b/frontend/design-desktop/src/sidecar.mjs
+@@ -35,6 +35,9 @@
+ const writeMethods = new Set(['automation.config.set', 'automation.audit.append', 'automation.task.put', 'sketch.session.resizeLegacyContainer', 'sketch.session.setTextOverride', 'sketch.session.setLeafFrame', 'sketch.session.saveAs', 'sketch.session.undo', 'sketch.session.redo', 'sketch.session.open', 'sketch.session.rename', 'sketch.session.close', 'save', 'recovery.write', 'recovery.remove', 'catalog.register', 'catalog.scan', 'workspace.commit', 'workspace.trash', 'workspace.restore'])
+ 
+ for(const method of ['large.open','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo','large.export'])writeMethods.add(method)
++// Keep execution deadlines and cooperative cancellation on the same long-job set.
++// Chunk reads are bounded control/data transfers, not another scene preparation.
++const largeDocumentJobs = new Set(['large.open','large.export','large.project','large.scene','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo'])
+ 
+ export class Sidecar extends EventEmitter {
+   constructor(executable, recoveryDir, { timeoutMs = 30_000, queueTimeoutMs = 600_000, spawnProcess = spawn, catalogDb, workspaceDb, maxPendingBytes = MAX_PENDING_BYTES } = {}) {
+@@ -188,7 +191,7 @@
+   }
+ 
+   executionTimeout(method) {
+-    return ['large.open','large.export','large.project','large.apply','large.commitCanvas','large.undo','large.redo'].includes(method) ? Math.max(this.timeoutMs, 600_000) : this.timeoutMs
++    return largeDocumentJobs.has(method) ? Math.max(this.timeoutMs, 600_000) : this.timeoutMs
+   }
+   request(method, params = {}) {
+     if (this.stopped || this.closing) return Promise.reject(failure('BACKEND_UNAVAILABLE', 'Backend unavailable'))
+@@ -221,8 +224,7 @@
+   }
+ 
+   async cancelLargeDocument() {
+-    const methods = new Set(['large.open','large.project','large.apply','large.commitCanvas','large.undo','large.redo','large.export'])
+-    const jobs = [...this.pending].filter(([, pending]) => methods.has(pending.method))
++    const jobs = [...this.pending].filter(([, pending]) => largeDocumentJobs.has(pending.method))
+     const results = []
+     for (const [requestId] of jobs) results.push(await this.request('cancel', { requestId }))
+     return { requested: jobs.length, running: results.some(result => result.running), cancelled: results.some(result => result.cancelled) }
+--- a/frontend/design-desktop/test/sidecar.test.mjs
++++ b/frontend/design-desktop/test/sidecar.test.mjs
+@@ -247,3 +247,141 @@
+   assert.equal(serialized,false);assert.equal(client.pendingBytes,0);assert.equal(client.pending.size,0)
+  }finally{await client.stop()}
+ })
++
++test('scene preparation and commit share long-job deadlines before and after scheduling receipts', async () => {
++  for (const method of ['large.scene', 'large.sceneCommit']) {
++    const fixture = fake({ respond: false })
++    const client = new Sidecar('/trusted/backend', '/trusted/recovery', { ...fixture, timeoutMs: 20 })
++    const pending = client.request(method).catch(error => error)
++    const id = [...client.pending.keys()][0]
++    try {
++      assert.equal(client.executionTimeout(method), 600_000)
++      assert.equal(client.executionTimeout('large.sceneRead'), 20)
++      await new Promise(resolve => setTimeout(resolve, 50))
++      assert.equal(client.stopped, false, `${method}: submission must not use the ordinary timeout`)
++      fixture.process.stdout.write(JSON.stringify({ desktopScheduling: { id, phase: 'queued' } }) + '\n')
++      fixture.process.stdout.write(JSON.stringify({ desktopScheduling: { id, phase: 'running' } }) + '\n')
++      await new Promise(resolve => setTimeout(resolve, 50))
++      assert.equal(client.stopped, false, `${method}: running must retain the long-job timeout`)
++      fixture.process.stdout.write(JSON.stringify({ id, result: { completed: true } }) + '\n')
++      assert.equal((await pending).completed, true)
++      assert.deepEqual(fixture.process.signals, [])
++    } finally {
++      client.fail(Object.assign(new Error('Test end'), { code: 'BACKEND_UNAVAILABLE' }))
++      await pending
++      await client.stop()
++    }
++  }
++})
++
++test('scene cancellation uses the reserved control slot without admitting a ninth data job or replaying writes', async () => {
++  const fixture = fake({ respond: false })
++  const sent = []
++  let input = '', requestWrites = []
++  // Control the write-completion boundary explicitly. A backend response ACK
++  // may precede stdin callbacks, so it does not itself release a reservation.
++  fixture.process.stdin.write = (frame, callback) => {
++    requestWrites.push({ callback, completed: false })
++    input += frame.toString()
++    let end
++    while ((end = input.indexOf('\n')) >= 0) {
++      const request = JSON.parse(input.slice(0, end)); input = input.slice(end + 1)
++      sent.push({ ...request, writes: requestWrites, pending: client.pending.get(request.id) })
++      requestWrites = []
++      if (request.method === 'cancel') queueMicrotask(() => fixture.process.stdout.write(JSON.stringify({ id: request.id, result: { running: true, cancelled: false } }) + '\n'))
++    }
++    return true
++  }
++  const completeWrite = write => {
++    assert.equal(write.completed, false, 'each stdin completion is delivered exactly once')
++    const callback = write.callback
++    write.callback = undefined
++    write.completed = true
++    callback()
++  }
++  const client = new Sidecar('/trusted/backend', '/trusted/recovery', fixture)
++  const scene = client.request('large.scene').catch(error => error)
++  const commit = client.request('large.sceneCommit').catch(error => error)
++  const ordinary = Array.from({ length: 6 }, () => client.request('health').catch(error => error))
++  let testFailure
++  try {
++    assert.equal(client.admittedCount, 8)
++    assert.equal(sent.length, 8)
++    for (const request of sent) for (const write of request.writes) completeWrite(write)
++    const dataBytes = client.pendingBytes
++    assert.equal(client.admittedCount, 8, 'completed data writes still await their responses')
++    const jobs = [...client.pending].filter(([, value]) => ['large.scene', 'large.sceneCommit'].includes(value.method)).map(([id]) => id)
++    await assert.rejects(client.request('health'), { code: 'BUSY' })
++    assert.deepEqual(await client.cancelLargeDocument(), { requested: 2, running: true, cancelled: false })
++    const controls = sent.filter(request => request.method === 'cancel')
++    assert.deepEqual(controls.map(request => request.params.requestId), jobs)
++    assert.equal(client.pending.size, 8, 'both cancellation responses have been consumed')
++    for (const control of controls) {
++      assert.equal(control.pending.completed, true)
++      assert.equal(control.pending.allQueued, true)
++      assert.equal(control.pending.written, false)
++      assert.equal(control.pending.outstandingWrites, control.writes.length)
++      assert.ok(control.writes.length > 0)
++    }
++    assert.equal(client.admittedCount, 8 + controls.length, 'ACKed controls remain reserved until all writes complete')
++    assert.equal(client.pendingBytes, dataBytes + controls.reduce((bytes, control) => bytes + control.pending.bytes, 0))
++    await assert.rejects(client.request('health'), { code: 'BUSY' })
++    for (const control of controls) {
++      const countBefore = client.admittedCount, bytesBefore = client.pendingBytes
++      for (let i = 0; i < control.writes.length; i++) {
++        completeWrite(control.writes[i])
++        const finalWrite = i === control.writes.length - 1
++        assert.equal(client.admittedCount, countBefore - (finalWrite ? 1 : 0))
++        assert.equal(client.pendingBytes, bytesBefore - (finalWrite ? control.pending.bytes : 0))
++      }
++      assert.equal(control.pending.written, true)
++      assert.equal(control.pending.released, true)
++      assert.equal(control.pending.outstandingWrites, 0)
++    }
++    assert.equal(client.admittedCount, 8)
++    assert.equal(client.pendingBytes, dataBytes)
++    await assert.rejects(client.request('health'), { code: 'BUSY' })
++    client.fail(Object.assign(new Error('Reply lost'), { code: 'BACKEND_UNAVAILABLE' }))
++    assert.equal((await scene).outcomeUnknown, false)
++    assert.equal((await commit).outcomeUnknown, true)
++    assert.equal(sent.filter(request => request.method === 'large.sceneCommit').length, 1)
++    assert.equal(client.pendingBytes, 0)
++  } catch (error) {
++    testFailure = error
++  } finally {
++    let cleanupFailure
++    const retainCleanupFailure = error => { cleanupFailure ??= error }
++    try { client.fail(Object.assign(new Error('Test end'), { code: 'BACKEND_UNAVAILABLE' })) }
++    catch (error) { retainCleanupFailure(error) }
++    const heldWrites = [...new Set([...sent.flatMap(request => request.writes), ...requestWrites])]
++    for (const write of heldWrites) {
++      if (!write.completed) {
++        try { completeWrite(write) } catch (error) { retainCleanupFailure(error) }
++      }
++    }
++    try {
++      assert.equal(client.stopped, true)
++      assert.equal(client.pendingBytes, 0, 'late completions cannot underflow the cleared byte ledger')
++      assert.equal(client.admittedCount, 0, 'late completions cannot underflow the cleared count ledger')
++      assert.ok(heldWrites.every(write => write.completed && write.callback === undefined))
++    } catch (error) { retainCleanupFailure(error) }
++    finally {
++      sent.length = 0
++      requestWrites = []
++      input = ''
++      heldWrites.length = 0
++    }
++    try { await Promise.all([scene, commit, ...ordinary]) }
++    catch (error) { retainCleanupFailure(error) }
++    finally {
++      try { await client.stop() } catch (error) { retainCleanupFailure(error) }
++    }
++    // Preserve the original assertion if cleanup also found a problem.
++    if (cleanupFailure) console.error('SIDECAR_TEST_CLEANUP_FAILED', cleanupFailure)
++    if (testFailure) {
++      if (cleanupFailure && testFailure instanceof Error && !testFailure.cause) testFailure.cause = cleanupFailure
++      throw testFailure
++    }
++    if (cleanupFailure) throw cleanupFailure
++  }
++})

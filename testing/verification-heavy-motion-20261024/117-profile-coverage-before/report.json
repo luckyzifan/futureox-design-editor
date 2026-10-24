@@ -1,0 +1,1204 @@
+{
+  "status": "captured",
+  "kind": "117",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/host-combined-quality-4",
+  "scope": "owned visible Electron; native trusted wheel events; Chromium compositor PNG frames and per-submit quality trace; screenshot instrumentation, not physical scanout or sampler-off timing",
+  "frames": [],
+  "instance": {
+    "pid": 85317,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/117-profile-coverage-before/forma-desktop-manual-c3ee1989-39f6-4344-b1ec-5d46eeca1025-Z5WdPb",
+    "visible": true
+  },
+  "fixture": "/Users/Apple/Downloads/117.sketch",
+  "initial": {
+    "rasterPlanner": "rust",
+    "checkerboard": "false",
+    "samplingMode": "native",
+    "rasterProfile": "figmaSubpixel",
+    "samplingScale": "0.8064516129032258",
+    "samplingDensity": "2",
+    "nativePixelReady": "true",
+    "rasterPhaseExact": "true",
+    "startupPreview": "false",
+    "renderer": "webgpu",
+    "tileCount": "48",
+    "pageCacheBytes": "0",
+    "pageCachePages": "0",
+    "pageCacheHits": "0",
+    "pageCacheMisses": "0",
+    "pageCacheEvictions": "0",
+    "pageCacheTier": "balanced",
+    "pageResidencyEstimatedBudget": "234881024",
+    "cacheHits": "24",
+    "tilesRendered": "48",
+    "viewportTilesRendered": "45",
+    "cacheBytes": "1024",
+    "tileScheduleFrames": "1",
+    "tileScheduleOnscreen": "20",
+    "tileScheduleOffscreen": "0",
+    "tileScheduleDeferred": "0",
+    "tileBudgetCutoffs": "0",
+    "tileBudgetCompletions": "1",
+    "tileBudgetCacheCutoffs": "0",
+    "tileCacheSkippedTiles": "0",
+    "residentBytes": "50725632",
+    "residentBudget": "234881024",
+    "activeResidentBudget": "134217728",
+    "cacheSteadyBudget": "134217728",
+    "cacheStagingLimit": "26419600",
+    "cacheAdmissionBudget": "160637328",
+    "cacheActiveBytes": "50725632",
+    "cacheActiveHighwater": "50725632",
+    "cacheTotalHighwater": "50725632",
+    "refineMs": "1033.70",
+    "compileMs": "380.20",
+    "pipelineWallMs": "766.40",
+    "preparationWaitMs": "79.50",
+    "overlappedPreparations": "43",
+    "compiledPacketHits": "0",
+    "compiledPacketBytes": "9911594",
+    "graphMs": "329.40",
+    "finishMs": "296.90",
+    "checkpointMs": "0.00",
+    "detailReady": "true",
+    "framePublication": "complete",
+    "retainedCommit": "false",
+    "lodScale": "0",
+    "lodTiles": "0",
+    "lodCacheBytes": "0",
+    "lodCacheBudget": "16777216",
+    "lodCacheHits": "0",
+    "previewActive": "false",
+    "progressiveTiles": "20",
+    "failedTiles": "0",
+    "cachedPreviewTiles": "0",
+    "overviewTiles": "20",
+    "overviewReuses": "0",
+    "residentEligible": "true",
+    "residentReason": "eligible",
+    "motionPreview": "false",
+    "motionRasterScale": "0.8064516129032258",
+    "cameraMoving": "false",
+    "navigationPendingAgeMs": "0",
+    "navigationZoomActive": "false",
+    "nativeNavigation": "false",
+    "nativeVisibleTiles": "true",
+    "navigationZoomSequence": "0",
+    "viewportPreviewTiles": "0",
+    "nativeCaptureTiles": "0",
+    "displayMode": "single-gpu-canvas",
+    "revision": "1",
+    "cameraX": "205.3225806451613",
+    "cameraY": "55.903225806451644",
+    "cameraZoom": "0.4032258064516129",
+    "requestedCameraX": "205.3225806451613",
+    "requestedCameraY": "55.903225806451644",
+    "requestedCameraZoom": "0.4032258064516129",
+    "requestedRevision": "1",
+    "pixelRatio": "2",
+    "firstDetailMs": "153.10",
+    "navigationMs": "782.20"
+  },
+  "capture": false,
+  "profiler": {
+    "startedAt": 1792825222790,
+    "workers": [
+      {
+        "attached": true,
+        "browserContextId": "64F0F89CFC25B6C9C51C53FFE52A8106",
+        "canAccessOpener": false,
+        "parentFrameId": "B91562CA0EB78933B6BAE7BBF454D0FF",
+        "parentId": "B91562CA0EB78933B6BAE7BBF454D0FF",
+        "targetId": "E1D6BB687406ADDD2FEF6DDFB050DBF5",
+        "title": "design-app://app/assets/render-worker-BxLFl6NT.js",
+        "type": "worker",
+        "url": "design-app://app/assets/render-worker-BxLFl6NT.js"
+      }
+    ]
+  },
+  "motionStart": 1792825222791,
+  "dispatch": [
+    0.08100000000013097,
+    17.39887499999986,
+    32.31758400000035,
+    49.600250000000415,
+    65.87116700000024,
+    82.14320899999984,
+    97.42362500000036,
+    113.68212500000027,
+    128.4657500000003,
+    143.96362500000032,
+    160.93395899999996,
+    178.1715839999997,
+    193.3702089999997,
+    209.39170900000045,
+    225.6022499999999,
+    241.8411670000005,
+    258.0088340000002,
+    270.7977499999997,
+    290.5731249999999,
+    305.9067500000001,
+    321.30766700000004,
+    336.13887499999964,
+    351.91812500000015,
+    369.40083400000003,
+    384.2956670000003,
+    401.49404200000026,
+    417.5174999999999,
+    433.7462919999998,
+    449.63208399999985,
+    464.5110420000001,
+    481.76274999999987,
+    498.0083340000001,
+    515.5843340000001,
+    529.8534170000003,
+    546.0127920000004,
+    561.2214169999997,
+    577.4002090000004,
+    593.5986670000002,
+    609.7727089999998,
+    625.9762920000003,
+    642.1632499999996,
+    656.8038749999996,
+    673.4096250000002,
+    688.247875,
+    704.3898339999996,
+    720.0933750000004,
+    737.2660420000002,
+    753.4816250000003,
+    767.8119999999999,
+    785.7855840000002,
+    800.1004590000002,
+    817.2682500000001,
+    832.3719590000001,
+    849.5797089999996,
+    864.2409170000001,
+    881.786709,
+    897.9506670000001,
+    913.1540839999998,
+    928.243125,
+    944.7567920000001,
+    961.918334,
+    978.086875,
+    992.8548339999998,
+    1010.0455000000002,
+    1023.3110839999999,
+    1040.6724590000003,
+    1055.9644589999998,
+    1072.2326249999996,
+    1089.4839590000001,
+    1105.2440420000003,
+    1121.5061249999999,
+    1136.000709,
+    1150.9547920000005,
+    1167.1422920000005,
+    1184.805542,
+    1199.8175840000004,
+    1217.5828339999998,
+    1232.2508340000004,
+    1249.4449999999997,
+    1263.6378750000003,
+    1280.1746670000002,
+    1296.1367090000003,
+    1312.1937090000001,
+    1328.320584,
+    1345.497042,
+    1361.6968749999996,
+    1376.0151670000005,
+    1392.191167,
+    1409.3654999999999,
+    1424.0799589999997,
+    1440.2534999999998,
+    1457.6476670000002,
+    1473.8125419999997,
+    1488.011375,
+    1503.8447919999999,
+    1520.2475839999997,
+    1537.44175,
+    1552.1334589999997,
+    1568.2995,
+    1584.5109169999996,
+    1601.2778340000004,
+    1616.9403750000001,
+    1633.366959,
+    1650.3884170000001,
+    1663.8649169999999,
+    1681.2195000000002,
+    1696.3342089999996,
+    1711.3863339999998,
+    1728.6099999999997,
+    1744.0144170000003,
+    1760.7566669999997,
+    1775.4184590000004,
+    1792.7214999999997,
+    1808.8762500000003,
+    1823.8848749999997,
+    1840.423417,
+    1856.0995839999996,
+    1873.2138340000001,
+    1888.3459169999996,
+    1904.760209,
+    1922.9144999999999,
+    1937.2286249999997,
+    1953.2438340000008,
+    1969.7083750000002,
+    1985.914584,
+    2002.2185420000005,
+    2016.0175839999993,
+    2032.8231250000008,
+    2049.912791999999,
+    2066.351375,
+    2080.0758339999993,
+    2097.3109170000007,
+    2113.744917,
+    2129.304875,
+    2145.5135840000003,
+    2159.961792,
+    2181.0382499999996,
+    2190.7968340000007,
+    2208.9856249999993,
+    2226.117709,
+    2240.9746670000004,
+    2257.0466670000005,
+    2271.797917,
+    2289.9902500000007,
+    2305.652959000001,
+    2321.8130419999998,
+    2338.0016670000005,
+    2351.3218749999996,
+    2369.5175839999993,
+    2385.720625,
+    2399.9961669999993,
+    2417.2082090000004,
+    2432.5649589999994,
+    2447.8057499999995,
+    2465.977666999999,
+    2480.8960000000006,
+    2496.190042,
+    2513.7857920000006,
+    2529.352084,
+    2544.1359169999996
+  ],
+  "inputStopped": 1792825225340,
+  "motionEnd": 1792825226157,
+  "profileResult": {
+    "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/host-combined-quality-4",
+    "scope": "sampled real Electron native-input integration; UI and existing browser workers, native Rust process and GPU execution are not V8 CPU stacks",
+    "startedAt": 1792825222790,
+    "endedAt": 1792825226181,
+    "results": [
+      {
+        "target": {
+          "type": "renderer",
+          "title": "UI 主线程"
+        },
+        "file": "cpu-0.cpuprofile"
+      },
+      {
+        "target": {
+          "attached": true,
+          "browserContextId": "64F0F89CFC25B6C9C51C53FFE52A8106",
+          "canAccessOpener": false,
+          "parentFrameId": "B91562CA0EB78933B6BAE7BBF454D0FF",
+          "parentId": "B91562CA0EB78933B6BAE7BBF454D0FF",
+          "targetId": "E1D6BB687406ADDD2FEF6DDFB050DBF5",
+          "title": "design-app://app/assets/render-worker-BxLFl6NT.js",
+          "type": "worker",
+          "url": "design-app://app/assets/render-worker-BxLFl6NT.js"
+        },
+        "file": "cpu-1.cpuprofile"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "at": 1792825222797,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222820,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222829,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222845,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222862,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222878,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222895,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222912,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222931,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222945,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222962,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222979,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825222995,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223012,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223020,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223036,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223054,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223078,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223087,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223104,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223119,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223137,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223221,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223233,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223237,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223244,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223409,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223415,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223420,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223427,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223436,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223831,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223839,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223845,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223854,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223862,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223870,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223879,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223886,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223895,
+      "dy": -14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223904,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223912,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223920,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223927,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223935,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223944,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223952,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223961,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223970,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223978,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223987,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825223995,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224003,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224205,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224213,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224390,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224399,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224405,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224412,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224420,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224434,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224437,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224445,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224453,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224462,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224508,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224512,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224519,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224529,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224538,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224551,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224554,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224562,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224570,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224577,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224586,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224595,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224606,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224614,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224620,
+      "dy": 14,
+      "trusted": true
+    },
+    {
+      "at": 1792825224629,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224636,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224644,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224659,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224667,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224675,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224678,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224686,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224699,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224708,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224718,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224721,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224729,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224737,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224745,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224753,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224762,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224769,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224777,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224786,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224795,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224803,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224810,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224818,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224829,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224837,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224845,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224852,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224861,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224870,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224877,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224887,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224895,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224903,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224912,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224919,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224928,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224937,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224945,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224953,
+      "dy": -10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224962,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224969,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224977,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825224987,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225106,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225112,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225123,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225128,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225137,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225257,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225264,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225275,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225279,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225287,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225295,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225351,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225357,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225368,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225372,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225379,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225388,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225394,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225404,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225412,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225425,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225428,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225443,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225447,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225454,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225462,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225469,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225478,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225488,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225497,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225510,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225514,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225520,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225529,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225537,
+      "dy": 10,
+      "trusted": true
+    },
+    {
+      "at": 1792825225545,
+      "dy": 10,
+      "trusted": true
+    }
+  ],
+  "final": {
+    "rasterPlanner": "rust",
+    "checkerboard": "false",
+    "samplingMode": "native",
+    "rasterProfile": "figmaSubpixel",
+    "samplingScale": "0.2366632778549081",
+    "samplingDensity": "2",
+    "nativePixelReady": "true",
+    "rasterPhaseExact": "true",
+    "startupPreview": "false",
+    "renderer": "webgpu",
+    "tileCount": "81",
+    "pageCacheBytes": "0",
+    "pageCachePages": "0",
+    "pageCacheHits": "0",
+    "pageCacheMisses": "0",
+    "pageCacheEvictions": "0",
+    "pageCacheTier": "balanced",
+    "pageResidencyEstimatedBudget": "234881024",
+    "cacheHits": "119",
+    "tilesRendered": "81",
+    "viewportTilesRendered": "78",
+    "cacheBytes": "1024",
+    "tileScheduleFrames": "1",
+    "tileScheduleOnscreen": "20",
+    "tileScheduleOffscreen": "0",
+    "tileScheduleDeferred": "0",
+    "tileBudgetCutoffs": "0",
+    "tileBudgetCompletions": "1",
+    "tileBudgetCacheCutoffs": "0",
+    "tileCacheSkippedTiles": "0",
+    "residentBytes": "85599504",
+    "residentBudget": "234881024",
+    "activeResidentBudget": "134217728",
+    "cacheSteadyBudget": "134217728",
+    "cacheStagingLimit": "26419600",
+    "cacheAdmissionBudget": "160637328",
+    "cacheActiveBytes": "85599504",
+    "cacheActiveHighwater": "85599504",
+    "cacheTotalHighwater": "85599504",
+    "refineMs": "533.90",
+    "compileMs": "150.20",
+    "pipelineWallMs": "471.00",
+    "preparationWaitMs": "69.00",
+    "overlappedPreparations": "62",
+    "compiledPacketHits": "0",
+    "compiledPacketBytes": "33484966",
+    "graphMs": "146.50",
+    "finishMs": "223.70",
+    "checkpointMs": "0.00",
+    "detailReady": "true",
+    "framePublication": "complete",
+    "retainedCommit": "false",
+    "lodScale": "0",
+    "lodTiles": "0",
+    "lodCacheBytes": "0",
+    "lodCacheBudget": "16777216",
+    "lodCacheHits": "0",
+    "previewActive": "false",
+    "progressiveTiles": "20",
+    "failedTiles": "0",
+    "cachedPreviewTiles": "0",
+    "overviewTiles": "20",
+    "overviewReuses": "0",
+    "residentEligible": "true",
+    "residentReason": "eligible",
+    "motionPreview": "false",
+    "motionRasterScale": "0.2366632778549081",
+    "cameraMoving": "false",
+    "navigationPendingAgeMs": "0",
+    "navigationZoomActive": "false",
+    "nativeNavigation": "false",
+    "nativeVisibleTiles": "true",
+    "navigationZoomSequence": "0",
+    "viewportPreviewTiles": "0",
+    "nativeCaptureTiles": "0",
+    "displayMode": "single-gpu-canvas",
+    "revision": "1",
+    "cameraX": "362.65253571870284",
+    "cameraY": "311.7381882431463",
+    "cameraZoom": "0.11833163892745405",
+    "requestedCameraX": "362.65253571870284",
+    "requestedCameraY": "311.7381882431463",
+    "requestedCameraZoom": "0.11833163892745405",
+    "requestedRevision": "1",
+    "pixelRatio": "2",
+    "firstDetailMs": "91.60",
+    "navigationMs": "568.10"
+  }
+}

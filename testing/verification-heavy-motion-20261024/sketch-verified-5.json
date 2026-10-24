@@ -1,0 +1,102 @@
+{
+  "status": "passed",
+  "scope": "owned isolated Electron; real source import/Canvas/edit/save/export; preset save-dialog destination; visibility recorded explicitly; not physical scanout/FPS",
+  "cases": [
+    {
+      "uiStalls": 0,
+      "uiIntervalMaxMs": 157.90000000000146,
+      "propertyUndoRedo": true,
+      "quickZoom": true,
+      "key": "1:5",
+      "id": "08856B36-020D-46FC-AC59-55F38CDB82BE",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 20455.777958,
+      "screenshot": "/Users/Apple/project/design-kernel/testing/verification-heavy-motion-20261024/sketch-verified-5/1-5.png",
+      "screenshotSha256": "dc7585d6a218a5402bda0a8eb9613096ae46cb0fa5a1768cecffa61a97eee5e4",
+      "guiReopened": true
+    },
+    {
+      "uiStalls": 0,
+      "uiIntervalMaxMs": 133.1999999999971,
+      "propertyUndoRedo": true,
+      "quickZoom": true,
+      "key": "1:32480",
+      "id": "45648D97-7B7E-40F0-8EAB-96DB4F941522",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 15617.436540999995,
+      "screenshot": "/Users/Apple/project/design-kernel/testing/verification-heavy-motion-20261024/sketch-verified-5/1-32480.png",
+      "screenshotSha256": "e049fd8e7be860f4a4836e733c43fbbb333297415e50ac93a10e56f1cd34b560",
+      "guiReopened": true
+    },
+    {
+      "uiStalls": 0,
+      "uiIntervalMaxMs": 133.39999999999418,
+      "propertyUndoRedo": true,
+      "quickZoom": true,
+      "key": "1:81474",
+      "id": "918953D3-4C42-461C-8C03-6F6F011359C0",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 14246.942374999999,
+      "screenshot": "/Users/Apple/project/design-kernel/testing/verification-heavy-motion-20261024/sketch-verified-5/1-81474.png",
+      "screenshotSha256": "e049fd8e7be860f4a4836e733c43fbbb333297415e50ac93a10e56f1cd34b560",
+      "guiReopened": true
+    }
+  ],
+  "exportFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/sketch-verified-5/topology-verified.sketch",
+  "visibility": "visible",
+  "nativeVisible": true,
+  "layouts": [
+    {
+      "key": "1:5",
+      "mountedRows": 23,
+      "listHeight": 349,
+      "scrollHeight": 128704,
+      "navigationHeight": 814
+    },
+    {
+      "key": "1:32480",
+      "mountedRows": 24,
+      "listHeight": 363,
+      "scrollHeight": 245184,
+      "navigationHeight": 814
+    },
+    {
+      "key": "1:81474",
+      "mountedRows": 24,
+      "listHeight": 363,
+      "scrollHeight": 245184,
+      "navigationHeight": 814
+    },
+    {
+      "key": "1:5",
+      "mountedRows": 23,
+      "listHeight": 340,
+      "scrollHeight": 128704,
+      "navigationHeight": 814
+    },
+    {
+      "key": "1:32480",
+      "mountedRows": 23,
+      "listHeight": 351,
+      "scrollHeight": 245184,
+      "navigationHeight": 814
+    },
+    {
+      "key": "1:81474",
+      "mountedRows": 23,
+      "listHeight": 351,
+      "scrollHeight": 245184,
+      "navigationHeight": 814
+    }
+  ],
+  "exportBytes": 119392758
+}

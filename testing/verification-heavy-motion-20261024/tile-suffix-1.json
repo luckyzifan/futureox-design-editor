@@ -1,0 +1,6458 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/tile-suffix-1",
+  "status": "passed",
+  "cases": [
+    {
+      "fixture": "117.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 3.5290997520720855
+        },
+        "region": {
+          "x": 511,
+          "y": 2559,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "compileMs": 65.39999997615814,
+      "output": {
+        "x": 511,
+        "y": 2559,
+        "w": 514,
+        "h": 514
+      },
+      "extent": {
+        "x": 509,
+        "y": 2557,
+        "w": 518,
+        "h": 518
+      },
+      "nodes": 11,
+      "certifiedNodes": [],
+      "runs": [
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 755.5,
+          "graphMs": 671.0999999642372,
+          "finishMs": 79.69999998807907,
+          "pixels": 8623965,
+          "workingBytes": 94575616,
+          "uploads": 142592,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "47:EF510653-2B9F-43A4-9046-DC3712164FCB",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "0:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "0:",
+              {
+                "calls": 1,
+                "pixels": 264196
+              }
+            ],
+            [
+              "0:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 22500
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 56.89999997615814,
+          "graphMs": 6.599999964237213,
+          "finishMs": 48.10000002384186,
+          "pixels": 8623965,
+          "workingBytes": 94575616,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "47:EF510653-2B9F-43A4-9046-DC3712164FCB",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "0:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "0:",
+              {
+                "calls": 1,
+                "pixels": 264196
+              }
+            ],
+            [
+              "0:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 22500
+              }
+            ],
+            [
+              "0:38006ECF-A99E-402F-8B21-EC4F0AFF885D",
+              {
+                "calls": 4,
+                "pixels": 22200
+              }
+            ],
+            [
+              "47:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 21904
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 55.59999996423721,
+          "graphMs": 4.900000035762787,
+          "finishMs": 48.39999997615814,
+          "pixels": 8623965,
+          "workingBytes": 94575616,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "47:EF510653-2B9F-43A4-9046-DC3712164FCB",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "0:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 22,
+                "pixels": 9553120
+              }
+            ],
+            [
+              "0:",
+              {
+                "calls": 3067,
+                "pixels": 26855404
+              }
+            ],
+            [
+              "0:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 22500
+              }
+            ],
+            [
+              "0:38006ECF-A99E-402F-8B21-EC4F0AFF885D",
+              {
+                "calls": 4,
+                "pixels": 22200
+              }
+            ],
+            [
+              "47:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 21904
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 148.39999997615814,
+          "graphMs": 90.60000002384186,
+          "finishMs": 54.69999998807907,
+          "pixels": 8623965,
+          "workingBytes": 94575616,
+          "uploads": 142592,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "47:EF510653-2B9F-43A4-9046-DC3712164FCB",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "0:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "0:",
+              {
+                "calls": 1,
+                "pixels": 264196
+              }
+            ],
+            [
+              "0:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 22500
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 56.5,
+          "graphMs": 4.899999976158142,
+          "finishMs": 49.60000002384186,
+          "pixels": 8623965,
+          "workingBytes": 94575616,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "47:EF510653-2B9F-43A4-9046-DC3712164FCB",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "0:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "0:",
+              {
+                "calls": 1,
+                "pixels": 264196
+              }
+            ],
+            [
+              "0:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 22500
+              }
+            ],
+            [
+              "0:38006ECF-A99E-402F-8B21-EC4F0AFF885D",
+              {
+                "calls": 4,
+                "pixels": 22200
+              }
+            ],
+            [
+              "47:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 21904
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 62.60000002384186,
+          "graphMs": 4.400000035762787,
+          "finishMs": 48.69999998807907,
+          "pixels": 8623965,
+          "workingBytes": 94575616,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "47:EF510653-2B9F-43A4-9046-DC3712164FCB",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "0:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 19,
+                "pixels": 572908
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 19,
+                "pixels": 8748148
+              }
+            ],
+            [
+              "0:",
+              {
+                "calls": 2971,
+                "pixels": 24153160
+              }
+            ],
+            [
+              "0:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 22500
+              }
+            ],
+            [
+              "0:38006ECF-A99E-402F-8B21-EC4F0AFF885D",
+              {
+                "calls": 4,
+                "pixels": 22200
+              }
+            ],
+            [
+              "47:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 21904
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 556.7999999523163,
+          "graphMs": 533.1999999880791,
+          "finishMs": 13.199999988079071,
+          "pixels": 10856988,
+          "workingBytes": 214115520,
+          "uploads": 39985664,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 696200
+              }
+            ],
+            [
+              "23:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 348100
+              }
+            ],
+            [
+              "12:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 49.299999952316284,
+          "graphMs": 30.69999998807907,
+          "finishMs": 15.899999976158142,
+          "pixels": 10856988,
+          "workingBytes": 214115520,
+          "uploads": 8853632,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 696200
+              }
+            ],
+            [
+              "23:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 348100
+              }
+            ],
+            [
+              "12:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "0:",
+              {
+                "calls": 1,
+                "pixels": 264196
+              }
+            ],
+            [
+              "0:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 26244
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 48.89999997615814,
+          "graphMs": 32.59999996423721,
+          "finishMs": 14.5,
+          "pixels": 10856988,
+          "workingBytes": 214115520,
+          "uploads": 8853632,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 696200
+              }
+            ],
+            [
+              "23:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 348100
+              }
+            ],
+            [
+              "12:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "0:",
+              {
+                "calls": 1,
+                "pixels": 264196
+              }
+            ],
+            [
+              "0:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 26244
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 480.80000001192093,
+          "graphMs": 469.60000002384186,
+          "finishMs": 9.600000023841858,
+          "pixels": 10856988,
+          "workingBytes": 214115520,
+          "uploads": 39985664,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 696200
+              }
+            ],
+            [
+              "23:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 348100
+              }
+            ],
+            [
+              "12:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 44.5,
+          "graphMs": 30.5,
+          "finishMs": 12.199999988079071,
+          "pixels": 10856988,
+          "workingBytes": 214115520,
+          "uploads": 8853632,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 696200
+              }
+            ],
+            [
+              "23:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 348100
+              }
+            ],
+            [
+              "12:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "0:",
+              {
+                "calls": 1,
+                "pixels": 264196
+              }
+            ],
+            [
+              "0:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 26244
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 47.19999998807907,
+          "graphMs": 30.599999964237213,
+          "finishMs": 14.900000035762787,
+          "pixels": 10856988,
+          "workingBytes": 214115520,
+          "uploads": 8853632,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1392400
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 696200
+              }
+            ],
+            [
+              "23:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 348100
+              }
+            ],
+            [
+              "12:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "12:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 268324
+              }
+            ],
+            [
+              "0:",
+              {
+                "calls": 1,
+                "pixels": 264196
+              }
+            ],
+            [
+              "0:2929628D-6126-4E2A-9648-E778BC74774A",
+              {
+                "calls": 4,
+                "pixels": 26244
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "117.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 1
+        },
+        "region": {
+          "x": -1,
+          "y": 1023,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "compileMs": 31.19999998807907,
+      "output": {
+        "x": -1,
+        "y": 1023,
+        "w": 514,
+        "h": 514
+      },
+      "extent": {
+        "x": -38,
+        "y": 986,
+        "w": 588,
+        "h": 588
+      },
+      "nodes": 140,
+      "certifiedNodes": [],
+      "runs": [
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 233.0999999642372,
+          "graphMs": 128.5999999642372,
+          "finishMs": 101.60000002384186,
+          "pixels": 17830952,
+          "workingBytes": 132277408,
+          "uploads": 361536,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "47:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "48:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1065456
+              }
+            ],
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1065456
+              }
+            ],
+            [
+              "47:902E8BA4-1DD4-48E1-B71A-81F33DEFE18A",
+              {
+                "calls": 4,
+                "pixels": 1047444
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 851424
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 105.39999997615814,
+          "graphMs": 29.100000023841858,
+          "finishMs": 74.09999996423721,
+          "pixels": 17830952,
+          "workingBytes": 132277408,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "47:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "48:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "47:902E8BA4-1DD4-48E1-B71A-81F33DEFE18A",
+              {
+                "calls": 4,
+                "pixels": 1047444
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 557424
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 345744
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 279888
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 99.5,
+          "graphMs": 24.899999976158142,
+          "finishMs": 72.80000001192093,
+          "pixels": 17830952,
+          "workingBytes": 132277408,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "47:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "48:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "47:902E8BA4-1DD4-48E1-B71A-81F33DEFE18A",
+              {
+                "calls": 4,
+                "pixels": 1047444
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 557424
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 16,
+                "pixels": 7788336
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 279888
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 218.10000002384186,
+          "graphMs": 127.69999998807907,
+          "finishMs": 88.60000002384186,
+          "pixels": 17830952,
+          "workingBytes": 132277408,
+          "uploads": 361536,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "47:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "48:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1065456
+              }
+            ],
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1065456
+              }
+            ],
+            [
+              "47:902E8BA4-1DD4-48E1-B71A-81F33DEFE18A",
+              {
+                "calls": 4,
+                "pixels": 1047444
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 851424
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 102.89999997615814,
+          "graphMs": 27.600000023841858,
+          "finishMs": 73.39999997615814,
+          "pixels": 17830952,
+          "workingBytes": 132277408,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "47:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "48:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "47:902E8BA4-1DD4-48E1-B71A-81F33DEFE18A",
+              {
+                "calls": 4,
+                "pixels": 1047444
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 557424
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 345744
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 279888
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 98.89999997615814,
+          "graphMs": 26.100000023841858,
+          "finishMs": 71.09999996423721,
+          "pixels": 17830952,
+          "workingBytes": 132277408,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "47:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "48:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "47:902E8BA4-1DD4-48E1-B71A-81F33DEFE18A",
+              {
+                "calls": 4,
+                "pixels": 1047444
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 557424
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 13,
+                "pixels": 6751104
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 279888
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 767.0999999642372,
+          "graphMs": 758.5999999642372,
+          "finishMs": 6.300000011920929,
+          "pixels": 17790579,
+          "workingBytes": 226697184,
+          "uploads": 31708992,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "3:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "2:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1067808
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1065456
+              }
+            ],
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1065456
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 851424
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 557424
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 82.59999996423721,
+          "graphMs": 33.90000003576279,
+          "finishMs": 46.299999952316284,
+          "pixels": 17790579,
+          "workingBytes": 226811424,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "3:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "2:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1067808
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 557424
+              }
+            ],
+            [
+              "12:",
+              {
+                "calls": 1,
+                "pixels": 345744
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 345744
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 279888
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 85.90000003576279,
+          "graphMs": 25.19999998807907,
+          "finishMs": 58.89999997615814,
+          "pixels": 17790579,
+          "workingBytes": 226811424,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "3:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "2:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1067808
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 557424
+              }
+            ],
+            [
+              "12:",
+              {
+                "calls": 1,
+                "pixels": 345744
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 345744
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 279888
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 736.0999999642372,
+          "graphMs": 727.0999999642372,
+          "finishMs": 7.300000011920929,
+          "pixels": 17790579,
+          "workingBytes": 226697184,
+          "uploads": 31708992,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "3:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "2:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1067808
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1065456
+              }
+            ],
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1065456
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 851424
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 557424
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 85.80000001192093,
+          "graphMs": 32,
+          "finishMs": 52,
+          "pixels": 17790579,
+          "workingBytes": 226811424,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "3:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "2:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1067808
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 557424
+              }
+            ],
+            [
+              "12:",
+              {
+                "calls": 1,
+                "pixels": 345744
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 345744
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 279888
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 87.30000001192093,
+          "graphMs": 25.5,
+          "finishMs": 60.10000002384186,
+          "pixels": 17790579,
+          "workingBytes": 226811424,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 1382976
+              }
+            ],
+            [
+              "3:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "25:8AECA82C-50F9-42CE-BC3C-2CC8FF632177",
+              {
+                "calls": 4,
+                "pixels": 1119552
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 1114848
+              }
+            ],
+            [
+              "2:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 1067808
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 858480
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 853776
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 2,
+                "pixels": 557424
+              }
+            ],
+            [
+              "12:",
+              {
+                "calls": 1,
+                "pixels": 345744
+              }
+            ],
+            [
+              "23:",
+              {
+                "calls": 1,
+                "pixels": 345744
+              }
+            ],
+            [
+              "3:8BFDCDB8-4B75-4B4C-BB5F-24C8B0B95172",
+              {
+                "calls": 1,
+                "pixels": 279888
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "117.json",
+      "sample": {
+        "view": {
+          "x": 137.99050400455386,
+          "y": -3282.5842223116624,
+          "zoom": 5.150237399886167
+        },
+        "region": {
+          "x": -376,
+          "y": 1324,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "compileMs": 16.600000023841858,
+      "output": {
+        "x": -376,
+        "y": 1324,
+        "w": 514,
+        "h": 514
+      },
+      "extent": {
+        "x": -566,
+        "y": 1134,
+        "w": 894,
+        "h": 894
+      },
+      "nodes": 22,
+      "certifiedNodes": [
+        {
+          "id": "3E16DFE4-A4E9-4F17-AEC6-2C0019D03E15",
+          "input": {
+            "x": -204,
+            "y": 1425,
+            "w": 532,
+            "h": 10
+          },
+          "output": [
+            -384,
+            1280,
+            576,
+            576
+          ]
+        },
+        {
+          "id": "A148B303-7F01-46CE-AB18-C104E01EB025",
+          "input": {
+            "x": -147,
+            "y": 1318,
+            "w": 46,
+            "h": 58
+          },
+          "output": [
+            -384,
+            1280,
+            576,
+            576
+          ]
+        },
+        {
+          "id": "AEA79F74-57CE-40B3-A455-C59C414B174A",
+          "input": {
+            "x": -62,
+            "y": 1494,
+            "w": 390,
+            "h": 95
+          },
+          "output": [
+            -384,
+            1280,
+            576,
+            576
+          ]
+        },
+        {
+          "id": "AEA79F74-57CE-40B3-A455-C59C414B174A:text-span:0",
+          "input": {
+            "x": -60,
+            "y": 1496,
+            "w": 388,
+            "h": 91
+          },
+          "output": [
+            -62,
+            1494,
+            254,
+            95
+          ]
+        },
+        {
+          "id": "B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+          "input": {
+            "x": -497,
+            "y": 1449,
+            "w": 467,
+            "h": 467
+          },
+          "output": [
+            -448,
+            1280,
+            640,
+            576
+          ]
+        },
+        {
+          "id": "CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+          "input": {
+            "x": -566,
+            "y": 1201,
+            "w": 894,
+            "h": 827
+          },
+          "output": [
+            -448,
+            1280,
+            640,
+            576
+          ]
+        },
+        {
+          "id": "ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+          "input": {
+            "x": -566,
+            "y": 1134,
+            "w": 894,
+            "h": 894
+          },
+          "output": [
+            -384,
+            1280,
+            576,
+            576
+          ]
+        },
+        {
+          "id": "FB3B83F7-9C69-458E-A9AB-D01F57C8707C",
+          "input": {
+            "x": -55,
+            "y": 1324,
+            "w": 277,
+            "h": 95
+          },
+          "output": [
+            -448,
+            1280,
+            640,
+            576
+          ]
+        },
+        {
+          "id": "FB3B83F7-9C69-458E-A9AB-D01F57C8707C:text-span:0",
+          "input": {
+            "x": -53,
+            "y": 1326,
+            "w": 273,
+            "h": 91
+          },
+          "output": [
+            -55,
+            1324,
+            247,
+            95
+          ]
+        }
+      ],
+      "runs": [
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 251.19999998807907,
+          "graphMs": 112,
+          "finishMs": 136.4000000357628,
+          "pixels": 47566953,
+          "workingBytes": 288878264,
+          "uploads": 270912,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "47:C00E1B79-7C40-4E95-B7CF-F66E6456A2DF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "47:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ],
+            [
+              "2:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 2349432
+              }
+            ],
+            [
+              "31:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 2345856
+              }
+            ],
+            [
+              "47:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 2159904
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 152,
+          "graphMs": 18.30000001192093,
+          "finishMs": 131.69999998807907,
+          "pixels": 47566953,
+          "workingBytes": 276090488,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "47:C00E1B79-7C40-4E95-B7CF-F66E6456A2DF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "47:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ],
+            [
+              "2:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 2349432
+              }
+            ],
+            [
+              "47:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 2159904
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 28,
+                "pixels": 1598472
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 142.60000002384186,
+          "graphMs": 8.099999964237213,
+          "finishMs": 132.69999998807907,
+          "pixels": 47566953,
+          "workingBytes": 268272472,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "47:C00E1B79-7C40-4E95-B7CF-F66E6456A2DF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "47:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ],
+            [
+              "2:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 2349432
+              }
+            ],
+            [
+              "31:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 2345856
+              }
+            ],
+            [
+              "47:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 2159904
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 449.5,
+          "graphMs": 113.90000003576279,
+          "finishMs": 333.5999999642372,
+          "pixels": 42105261,
+          "workingBytes": 344608504,
+          "uploads": 270912,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "47:C00E1B79-7C40-4E95-B7CF-F66E6456A2DF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "47:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ],
+            [
+              "2:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 2349432
+              }
+            ],
+            [
+              "31:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 2345856
+              }
+            ],
+            [
+              "47:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 2159904
+              }
+            ],
+            [
+              "31:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 2152752
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 28,
+                "pixels": 1598472
+              }
+            ],
+            [
+              "0:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 28,
+                "pixels": 1598472
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 147.89999997615814,
+          "graphMs": 17.69999998807907,
+          "finishMs": 128.30000001192093,
+          "pixels": 42105261,
+          "workingBytes": 331820728,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "47:C00E1B79-7C40-4E95-B7CF-F66E6456A2DF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "47:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ],
+            [
+              "2:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 2349432
+              }
+            ],
+            [
+              "47:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 2159904
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 28,
+                "pixels": 1598472
+              }
+            ],
+            [
+              "0:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 28,
+                "pixels": 1598472
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 1474560
+              }
+            ],
+            [
+              "3:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 1474560
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 144.19999998807907,
+          "graphMs": 7.300000011920929,
+          "finishMs": 135,
+          "pixels": 42105261,
+          "workingBytes": 314411880,
+          "uploads": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "47:C00E1B79-7C40-4E95-B7CF-F66E6456A2DF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "47:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ],
+            [
+              "2:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 2349432
+              }
+            ],
+            [
+              "31:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 2345856
+              }
+            ],
+            [
+              "47:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 2159904
+              }
+            ],
+            [
+              "31:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 4,
+                "pixels": 2152752
+              }
+            ],
+            [
+              "22:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 28,
+                "pixels": 1598472
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 906.3999999761581,
+          "graphMs": 892.8000000119209,
+          "finishMs": 10.899999976158142,
+          "pixels": 60702668,
+          "workingBytes": 530632688,
+          "uploads": 102344256,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 8,
+                "pixels": 6154296
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 8,
+                "pixels": 5356848
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ],
+            [
+              "3:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 12,
+                "pixels": 2617068
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 274.89999997615814,
+          "graphMs": 240.89999997615814,
+          "finishMs": 32.19999998807907,
+          "pixels": 60702668,
+          "workingBytes": 466334256,
+          "uploads": 76768704,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 8,
+                "pixels": 6154296
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 8,
+                "pixels": 5356848
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ],
+            [
+              "3:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 12,
+                "pixels": 2617068
+              }
+            ],
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 3,
+                "pixels": 2397708
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 268,
+          "graphMs": 233.69999998807907,
+          "finishMs": 32.59999996423721,
+          "pixels": 60702668,
+          "workingBytes": 464188816,
+          "uploads": 76768704,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 8,
+                "pixels": 6154296
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 8,
+                "pixels": 5356848
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 893.8999999761581,
+          "graphMs": 876,
+          "finishMs": 16.19999998807907,
+          "pixels": 60702668,
+          "workingBytes": 530632688,
+          "uploads": 102344256,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 8,
+                "pixels": 6154296
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 8,
+                "pixels": 5356848
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ],
+            [
+              "3:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 12,
+                "pixels": 2617068
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 270.60000002384186,
+          "graphMs": 236.10000002384186,
+          "finishMs": 32.69999998807907,
+          "pixels": 60702668,
+          "workingBytes": 466334256,
+          "uploads": 76768704,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 8,
+                "pixels": 6154296
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 8,
+                "pixels": 5356848
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ],
+            [
+              "3:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 12,
+                "pixels": 2617068
+              }
+            ],
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 3,
+                "pixels": 2397708
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 269.10000002384186,
+          "graphMs": 234.39999997615814,
+          "finishMs": 33,
+          "pixels": 60702668,
+          "workingBytes": 464188816,
+          "uploads": 76768704,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 8,
+                "pixels": 6154296
+              }
+            ],
+            [
+              "3:4C0B977B-850C-425C-8C76-701DCCF91AD8",
+              {
+                "calls": 8,
+                "pixels": 5356848
+              }
+            ],
+            [
+              "31:56351796-3F96-4D6F-9D60-AE6DFD55FE2E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:1AB99304-455A-4A9E-9473-8923A1330FA4",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "29:5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "31:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:46A2E289-A22C-4F75-9CAA-9B4DBEC928B7",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:DDB8FBB9-8B9A-4FBA-9BF1-589D8C71218B",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:CAA3DF72-A8A6-42B9-95C1-52076A51858E",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "25:B94EEA71-9B5D-45D9-B097-1CFC19BE0BBF",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "3:ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+              {
+                "calls": 4,
+                "pixels": 3196944
+              }
+            ],
+            [
+              "2:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2957352
+              }
+            ],
+            [
+              "31:CA4B2179-0325-4BC2-AE08-89D3A5B19100",
+              {
+                "calls": 4,
+                "pixels": 2953776
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "controls.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 16
+        },
+        "region": {
+          "x": 41983,
+          "y": 22527,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "compileMs": 55.10000002384186,
+      "output": {
+        "x": 41983,
+        "y": 22527,
+        "w": 514,
+        "h": 514
+      },
+      "extent": {
+        "x": 41981,
+        "y": 22525,
+        "w": 518,
+        "h": 518
+      },
+      "nodes": 11,
+      "certifiedNodes": [],
+      "runs": [
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 199.5999999642372,
+          "graphMs": 136.60000002384186,
+          "finishMs": 60.69999998807907,
+          "pixels": 21027403,
+          "workingBytes": 179492288,
+          "uploads": 62563456,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 8,
+                "pixels": 1731856
+              }
+            ],
+            [
+              "31:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "47:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "48:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "3:013F0F15-31A5-4F19-A6DB-A4DA020859A6",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "31:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1119264
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "50:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 122.20000004768372,
+          "graphMs": 62.19999998807907,
+          "finishMs": 57.80000001192093,
+          "pixels": 21027403,
+          "workingBytes": 179492288,
+          "uploads": 31779424,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 8,
+                "pixels": 1731856
+              }
+            ],
+            [
+              "31:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "47:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "48:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "3:013F0F15-31A5-4F19-A6DB-A4DA020859A6",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "50:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": false,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 118,
+          "graphMs": 60.80000001192093,
+          "finishMs": 55.59999996423721,
+          "pixels": 21027403,
+          "workingBytes": 179492288,
+          "uploads": 31779424,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 8,
+                "pixels": 1731856
+              }
+            ],
+            [
+              "31:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "47:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "48:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "3:013F0F15-31A5-4F19-A6DB-A4DA020859A6",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "50:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 171.5,
+          "graphMs": 111,
+          "finishMs": 58.80000001192093,
+          "pixels": 21027403,
+          "workingBytes": 179492288,
+          "uploads": 62563456,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 8,
+                "pixels": 1731856
+              }
+            ],
+            [
+              "31:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "47:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "48:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "3:013F0F15-31A5-4F19-A6DB-A4DA020859A6",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "31:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1119264
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "50:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 107.20000004768372,
+          "graphMs": 60.40000003576279,
+          "finishMs": 45,
+          "pixels": 21027403,
+          "workingBytes": 179492288,
+          "uploads": 31779424,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 8,
+                "pixels": 1731856
+              }
+            ],
+            [
+              "31:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "47:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "48:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "3:013F0F15-31A5-4F19-A6DB-A4DA020859A6",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "50:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgpu",
+          "enabled": true,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 98.79999995231628,
+          "graphMs": 58.69999998807907,
+          "finishMs": 38.39999997615814,
+          "pixels": 21027403,
+          "workingBytes": 179492288,
+          "uploads": 31779424,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 8,
+                "pixels": 1731856
+              }
+            ],
+            [
+              "31:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "47:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "48:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 28,
+                "pixels": 1142736
+              }
+            ],
+            [
+              "3:013F0F15-31A5-4F19-A6DB-A4DA020859A6",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "50:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 477.89999997615814,
+          "graphMs": 421.80000001192093,
+          "finishMs": 53.60000002384186,
+          "pixels": 22033556,
+          "workingBytes": 263060672,
+          "uploads": 62563456,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 12,
+                "pixels": 2828960
+              }
+            ],
+            [
+              "2:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "31:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1119264
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "6:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "31:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 818520
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 106.70000004768372,
+          "graphMs": 49.700000047683716,
+          "finishMs": 55.19999998807907,
+          "pixels": 22033556,
+          "workingBytes": 263060672,
+          "uploads": 31779424,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 12,
+                "pixels": 2828960
+              }
+            ],
+            [
+              "2:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "6:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "2:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 818088
+              }
+            ],
+            [
+              "2:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 743328
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": false,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 95.89999997615814,
+          "graphMs": 46.89999997615814,
+          "finishMs": 47.30000001192093,
+          "pixels": 22033556,
+          "workingBytes": 263060672,
+          "uploads": 31779424,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 12,
+                "pixels": 2828960
+              }
+            ],
+            [
+              "2:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "6:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "2:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 818088
+              }
+            ],
+            [
+              "2:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 743328
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 0,
+          "cold": true,
+          "wallMs": 466.10000002384186,
+          "graphMs": 412.10000002384186,
+          "finishMs": 52.30000001192093,
+          "pixels": 22033556,
+          "workingBytes": 263060672,
+          "uploads": 62563456,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 12,
+                "pixels": 2828960
+              }
+            ],
+            [
+              "2:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "31:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1119264
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "6:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "31:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 818520
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 1,
+          "cold": false,
+          "wallMs": 97.39999997615814,
+          "graphMs": 47.59999996423721,
+          "finishMs": 47.90000003576279,
+          "pixels": 22033556,
+          "workingBytes": 263060672,
+          "uploads": 31779424,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 12,
+                "pixels": 2828960
+              }
+            ],
+            [
+              "2:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "6:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "2:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 818088
+              }
+            ],
+            [
+              "2:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 743328
+              }
+            ]
+          ]
+        },
+        {
+          "backend": "webgl2",
+          "enabled": true,
+          "iteration": 2,
+          "cold": false,
+          "wallMs": 97.39999997615814,
+          "graphMs": 47.90000003576279,
+          "finishMs": 47.69999998807907,
+          "pixels": 22033556,
+          "workingBytes": 263060672,
+          "uploads": 31779424,
+          "words": 1056784,
+          "mismatches": 0,
+          "passes": [
+            [
+              "3:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 12,
+                "pixels": 2828960
+              }
+            ],
+            [
+              "2:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:BEEE5973-AB43-42EB-B726-03F4DEA23EB0",
+              {
+                "calls": 4,
+                "pixels": 1148800
+              }
+            ],
+            [
+              "3:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "3:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 1123600
+              }
+            ],
+            [
+              "2:A9F75201-078C-4FBD-9A14-FDA5A36CAD80",
+              {
+                "calls": 4,
+                "pixels": 1121400
+              }
+            ],
+            [
+              "3:192354A0-C4F3-44F2-BE2C-6439088EB34E",
+              {
+                "calls": 4,
+                "pixels": 1106704
+              }
+            ],
+            [
+              "2:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "6:5597F451-D02B-4B36-8265-C89930CA0749",
+              {
+                "calls": 4,
+                "pixels": 1097104
+              }
+            ],
+            [
+              "3:4D6C5D0F-F72A-4027-B5D9-175739F2BFE4",
+              {
+                "calls": 4,
+                "pixels": 1089936
+              }
+            ],
+            [
+              "3:9097E27B-3E25-43B0-A932-19A321FBA480",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:EEDA964D-E06F-4291-A7FE-F47DEEE861E9",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "3:4F1BF005-CF98-4296-8A6B-9194F5146DAD",
+              {
+                "calls": 4,
+                "pixels": 1073296
+              }
+            ],
+            [
+              "2:802C8138-6A73-40F4-BA26-12CC2E7E70DC",
+              {
+                "calls": 4,
+                "pixels": 818088
+              }
+            ],
+            [
+              "2:05FC531F-0923-451B-9BD9-D358E46499E3",
+              {
+                "calls": 4,
+                "pixels": 743328
+              }
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "runtime": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) futureox-desgin/0.0.0 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36",
+    "dpr": 2,
+    "visibility": "visible",
+    "webgpuExposed": true,
+    "executionPolicy": {
+      "cpuOnly": false,
+      "hdrCompositing": false,
+      "imageMips": false,
+      "imageAtlas": false,
+      "desktopFullMath": true,
+      "desktopDisplay": true
+    },
+    "host": {
+      "host": "electron",
+      "electron": "44.7.0",
+      "chromium": "152.0.7977.130",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpuOnly": false,
+      "gpuFeatureStatus": {
+        "2d_canvas": "enabled",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "enabled",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "enabled_on",
+        "rasterization": "enabled",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "enabled_on",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "enabled",
+        "video_encode": "enabled",
+        "webgl": "enabled",
+        "webgpu": "enabled",
+        "webnn": "disabled_off"
+      },
+      "windowVisible": true,
+      "windowFocused": true
+    }
+  }
+}

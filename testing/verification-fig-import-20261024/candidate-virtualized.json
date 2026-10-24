@@ -1,0 +1,8 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/host-virtualized-2",
+  "artifacts": {
+    "dist/renderer/kernel/design_kernel_bg.wasm": "ac22b6019db4411838418beb0ab655e403b6b921e9ae59e76cf2bd1b8ae3239d",
+    "dist/bin/design-prepare": "7aa81ac4cf8572004a29eeeb29d082e63feea02824eecee2d748f4c86f727925",
+    "dist/sidecar/futureox-design-desktop-backend": "0c6683de8c73433ab466565c94e88c1167a332f3b43fc8b56193dac2cf629f04"
+  }
+}

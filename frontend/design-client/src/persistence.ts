@@ -32,10 +32,8 @@ export async function readDesignFile(file:File, signal?:AbortSignal, diagnostic?
   const nativeFile = /\.(fd|json)$/i.test(file.name)
   if (nativeFile) assertDocumentBytes(file.size)
   if (/\.(fig|sketch|pdf)$/i.test(file.name)) {
-    const bytes = await (diagnostic ? diagnostic.wait(ImportStage.read, () => file.arrayBuffer()) : file.arrayBuffer())
-    signal?.throwIfAborted()
     const format = /\.sketch$/i.test(file.name) ? 'sketch' : /\.pdf$/i.test(file.name) ? 'pdf' : 'fig'
-    return importFileInWorker(bytes, file.name.replace(/\.(fig|sketch|pdf)$/i, ''), format, signal, diagnostic)
+    return importFileInWorker(file, file.name.replace(/\.(fig|sketch|pdf)$/i, ''), format, signal, diagnostic)
   }
   if (!/\.(fd|json|svg|svgz)$/i.test(file.name)) throw new Error('请选择 .fd、Sketch、JSON、SVG、FIG 或 PDF 文件')
   if(/\.svgz?$/i.test(file.name)) {

@@ -1,0 +1,3167 @@
+--- current/design-studio/crates/design-desktop-backend/src/large_document/checkpoint_io.rs
++++ candidate/design-studio/crates/design-desktop-backend/src/large_document/checkpoint_io.rs
+@@ -0,0 +1,146 @@
++//! Exact checkpoint-byte budget, independent of document and serde types.
++use std::io::{self, Write};
++
++// Writer and recovery admission must agree; this is the existing reader limit.
++pub(crate) const MAX_CHECKPOINT_BYTES: u64 = 16 * 1024 * 1024;
++
++// Count the exact UTF-8 JSON stream without allocating a complete checkpoint.
++// The same guard also wraps the actual writer, before its buffered bytes can be
++// published. Partial underlying writes count only bytes accepted by that writer.
++pub(crate) struct CheckpointWriter<W> {
++    inner: W,
++    written: u64,
++}
++impl<W> CheckpointWriter<W> {
++    pub(crate) fn new(inner: W) -> Self {
++        Self { inner, written: 0 }
++    }
++    pub(crate) fn get_ref(&self) -> &W {
++        &self.inner
++    }
++    #[cfg(test)]
++    pub(crate) fn written_bytes(&self) -> u64 {
++        self.written
++    }
++}
++impl<W: Write> Write for CheckpointWriter<W> {
++    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
++        if self
++            .written
++            .checked_add(bytes.len() as u64)
++            .is_none_or(|total| total > MAX_CHECKPOINT_BYTES)
++        {
++            return Err(io::Error::new(
++                io::ErrorKind::InvalidData,
++                "Local checkpoint exceeds the 16 MiB recovery limit",
++            ));
++        }
++        let written = self.inner.write(bytes)?;
++        self.written += written as u64;
++        Ok(written)
++    }
++    fn flush(&mut self) -> io::Result<()> {
++        self.inner.flush()
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn checkpoint_writer_accepts_exact_limit_and_rejects_next_byte() {
++        let mut writer = CheckpointWriter::new(Vec::new());
++        writer.written = MAX_CHECKPOINT_BYTES - 2;
++        writer.write_all(b"ab").unwrap();
++        assert_eq!(writer.written, MAX_CHECKPOINT_BYTES);
++        assert_eq!(writer.inner, b"ab");
++        let error = writer.write(b"c").unwrap_err();
++        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
++        assert!(error.to_string().contains("16 MiB recovery limit"));
++        assert_eq!(writer.inner, b"ab");
++        assert_eq!(writer.write(b"").unwrap(), 0);
++
++        writer.written = u64::MAX;
++        assert!(writer.write(b"x").is_err());
++        assert_eq!(writer.inner, b"ab");
++    }
++
++    #[test]
++    fn checkpoint_writer_accounts_for_partial_writes_and_forwards_io_failures() {
++        #[derive(Default)]
++        struct ShortWriter {
++            bytes: Vec<u8>,
++            fail: bool,
++        }
++        impl Write for ShortWriter {
++            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
++                if self.fail {
++                    return Err(io::Error::other("injected write failure"));
++                }
++                let n = bytes.len().min(2);
++                self.bytes.extend_from_slice(&bytes[..n]);
++                Ok(n)
++            }
++            fn flush(&mut self) -> io::Result<()> {
++                if self.fail {
++                    Err(io::Error::other("injected flush failure"))
++                } else {
++                    Ok(())
++                }
++            }
++        }
++        let mut writer = CheckpointWriter::new(ShortWriter::default());
++        writer.written = MAX_CHECKPOINT_BYTES - 4;
++        assert_eq!(writer.write(b"abcd").unwrap(), 2);
++        assert_eq!(writer.written, MAX_CHECKPOINT_BYTES - 2);
++        writer.write_all(b"cd").unwrap();
++        assert_eq!(writer.inner.bytes, b"abcd");
++        assert!(writer.write(b"e").is_err());
++        assert_eq!(writer.inner.bytes, b"abcd");
++
++        let mut failing = CheckpointWriter::new(ShortWriter {
++            fail: true,
++            ..ShortWriter::default()
++        });
++        assert!(failing.write(b"x").unwrap_err().to_string().contains("injected"));
++        assert_eq!(failing.written, 0);
++        assert!(failing.flush().unwrap_err().to_string().contains("injected"));
++    }
++
++    #[test]
++    fn checkpoint_writer_preserves_write_zero_and_interrupted_contracts() {
++        struct Zero;
++        impl Write for Zero {
++            fn write(&mut self, _: &[u8]) -> io::Result<usize> { Ok(0) }
++            fn flush(&mut self) -> io::Result<()> { Ok(()) }
++        }
++        let mut zero = CheckpointWriter::new(Zero);
++        assert_eq!(zero.write_all(b"x").unwrap_err().kind(), io::ErrorKind::WriteZero);
++        assert_eq!(zero.written_bytes(), 0);
++
++        #[derive(Default)]
++        struct InterruptedOnce { interrupted: bool, bytes: Vec<u8> }
++        impl Write for InterruptedOnce {
++            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
++                if !self.interrupted {
++                    self.interrupted = true;
++                    return Err(io::Error::from(io::ErrorKind::Interrupted));
++                }
++                self.bytes.extend_from_slice(bytes);
++                Ok(bytes.len())
++            }
++            fn flush(&mut self) -> io::Result<()> { Ok(()) }
++        }
++        let mut direct = CheckpointWriter::new(InterruptedOnce::default());
++        assert_eq!(direct.write(b"x").unwrap_err().kind(), io::ErrorKind::Interrupted);
++        assert_eq!(direct.written_bytes(), 0);
++        direct.write_all(b"x").unwrap();
++        assert_eq!(direct.written_bytes(), 1);
++        assert_eq!(direct.get_ref().bytes, b"x");
++        let mut retry = CheckpointWriter::new(InterruptedOnce::default());
++        retry.write_all(b"abc").unwrap();
++        assert_eq!(retry.written_bytes(), 3);
++        assert_eq!(retry.get_ref().bytes, b"abc");
++    }
++}
+--- current/design-studio/crates/design-desktop-backend/src/large_document/checkpoint_tests.rs
++++ candidate/design-studio/crates/design-desktop-backend/src/large_document/checkpoint_tests.rs
+@@ -0,0 +1,330 @@
++//! Scope-A regression drafts. These tests have NOT BEEN RUN for this candidate.
++use super::*;
++use std::sync::atomic::AtomicUsize;
++
++const SOURCE: &[u8] =
++    br#"{"name":"before","unknown":-0.0,"big":9007199254740993}"#;
++
++struct Fixture {
++    root: PathBuf,
++    source: PathBuf,
++    sessions: Sessions,
++    status: Value,
++}
++impl Fixture {
++    fn new() -> Self {
++        static NEXT: AtomicUsize = AtomicUsize::new(0);
++        let root = std::env::temp_dir().join(format!(
++            "futureox-checkpoint-cap-{}-{}",
++            std::process::id(),
++            NEXT.fetch_add(1, Ordering::Relaxed)
++        ));
++        fs::create_dir(&root).unwrap();
++        let source = root.join("source.json");
++        fs::write(&source, SOURCE).unwrap();
++        let sessions = Sessions::new(root.join("cache"));
++        let status = sessions
++            .open(
++                Open {
++                    path: source.clone(),
++                    document_id: "checkpoint-test".into(),
++                    session_epoch: 1,
++                },
++                &AtomicBool::new(false),
++            )
++            .unwrap();
++        Self {
++            root,
++            source,
++            sessions,
++            status,
++        }
++    }
++    fn request(&self, extra: Value) -> Request {
++        request(&self.status, extra)
++    }
++}
++impl Drop for Fixture {
++    fn drop(&mut self) {
++        let _ = fs::remove_dir_all(&self.root);
++    }
++}
++fn request(status: &Value, extra: Value) -> Request {
++    let mut value = json!({"owner":status["owner"],"expectedRevision":status["revision"]});
++    value
++        .as_object_mut()
++        .unwrap()
++        .extend(extra.as_object().unwrap().clone());
++    serde_json::from_value(value).unwrap()
++}
++
++// Only test metadata is padded. Authored source fixtures stay tiny and exact.
++// All original names and the replacement contain ASCII needing no JSON escape.
++fn pad_checkpoint(s: &mut Session, target: u64) {
++    persist(s).unwrap();
++    let current = fs::metadata(s.directory.join("journal.json")).unwrap().len();
++    let overhead = current - s.name.len() as u64;
++    s.name = "p".repeat((target - overhead) as usize);
++}
++
++#[test]
++fn checkpoint_writer_counts_serialized_utf8_and_escapes_not_characters() {
++    let value = json!({"name":"é😀\n\"\\\u{0000}","revision":u64::MAX});
++    let expected = serde_json::to_vec(&value).unwrap();
++    let mut counter = CheckpointWriter::new(io::sink());
++    serde_json::to_writer(&mut counter, &value).unwrap();
++    assert_eq!(counter.written_bytes(), expected.len() as u64);
++    let mut writer = CheckpointWriter::new(Vec::new());
++    serde_json::to_writer(&mut writer, &value).unwrap();
++    assert_eq!(writer.get_ref(), &expected);
++    assert_eq!(writer.written_bytes(), counter.written_bytes());
++}
++
++#[test]
++fn serde_checkpoint_writer_propagates_io_failure_as_error() {
++    struct FailingWriter;
++    impl Write for FailingWriter {
++        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
++            Err(io::Error::other("injected checkpoint write failure"))
++        }
++        fn flush(&mut self) -> io::Result<()> {
++            Ok(())
++        }
++    }
++    let mut writer = CheckpointWriter::new(FailingWriter);
++    let error = serde_json::to_writer(&mut writer, &json!({"revision":1})).unwrap_err();
++    assert!(error.is_io());
++    assert!(error.to_string().contains("injected checkpoint write failure"));
++    assert_eq!(writer.written_bytes(), 0);
++}
++
++#[test]
++fn oversize_preflight_does_not_create_index_or_touch_either_journal() {
++    let f = Fixture::new();
++    let mut slot = f.sessions.current.lock().unwrap();
++    let s = slot.as_mut().unwrap();
++    let journal = s.directory.join("journal.json");
++    let previous = fs::read(&journal).unwrap();
++    let next = s.directory.join("journal.next");
++    fs::write(&next, b"retain-existing-temporary").unwrap();
++    let index = s.directory.join("index.json");
++    fs::remove_file(&index).unwrap();
++    s.name = "p".repeat(MAX_CHECKPOINT_BYTES as usize);
++    let error = persist(s).unwrap_err();
++    assert!(error.message.contains("16 MiB recovery limit"));
++    assert!(!index.exists());
++    assert_eq!(fs::read(&journal).unwrap(), previous);
++    assert_eq!(fs::read(&next).unwrap(), b"retain-existing-temporary");
++    fs::remove_file(&next).unwrap();
++    assert!(persist(s).is_err());
++    assert!(!next.exists());
++    assert!(!index.exists());
++    assert_eq!(fs::read(&f.source).unwrap(), SOURCE);
++}
++
++#[test]
++fn exact_limit_publishes_and_recovers_but_one_byte_over_does_not_replace_it() {
++    let f = Fixture::new();
++    let mut slot = f.sessions.current.lock().unwrap();
++    let s = slot.as_mut().unwrap();
++    pad_checkpoint(s, MAX_CHECKPOINT_BYTES);
++    persist(s).unwrap();
++    let journal = s.directory.join("journal.json");
++    assert_eq!(fs::metadata(&journal).unwrap().len(), MAX_CHECKPOINT_BYTES);
++    let previous_hash = hash_file(&journal, &AtomicBool::new(false)).unwrap();
++    s.name.push('x');
++    assert!(persist(s).unwrap_err().message.contains("16 MiB recovery limit"));
++    assert_eq!(hash_file(&journal, &AtomicBool::new(false)).unwrap(), previous_hash);
++    assert!(!s.directory.join("journal.next").exists());
++    let recovered = recover(
++        &f.root.join("cache"),
++        &f.root.join("not-a-session"),
++        &s.source_hash,
++        &AtomicBool::new(false),
++    )
++    .unwrap()
++    .unwrap();
++    assert_eq!(recovered.revision, s.revision);
++    assert_eq!(recovered.name.len() + 1, s.name.len());
++}
++
++#[test]
++fn rejected_apply_preserves_revision_history_index_source_and_recoverable_journal() {
++    let f = Fixture::new();
++    let cancel = AtomicBool::new(false);
++    let read = f
++        .sessions
++        .dispatch("large.read", f.request(json!({"key":"0:0"})), &cancel)
++        .unwrap();
++    let (directory, source_hash, journal_hash, state, undo, redo, index, additions) = {
++        let mut slot = f.sessions.current.lock().unwrap();
++        let s = slot.as_mut().unwrap();
++        pad_checkpoint(s, MAX_CHECKPOINT_BYTES);
++        persist(s).unwrap();
++        (
++            s.directory.clone(),
++            s.source_hash.clone(),
++            hash_file(&s.directory.join("journal.json"), &cancel).unwrap(),
++            serde_json::to_vec(&s.state).unwrap(),
++            serde_json::to_vec(&s.undo).unwrap(),
++            serde_json::to_vec(&s.redo).unwrap(),
++            serde_json::to_vec(&s.parts[0].index).unwrap(),
++            serde_json::to_vec(&s.parts[0].additions).unwrap(),
++        )
++    };
++    let changed = read["json"].as_str().unwrap().replace("before", "after-longer");
++    let error = f
++        .sessions
++        .dispatch(
++            "large.apply",
++            f.request(json!({"key":"0:0","json":changed,"expectedHash":read["hash"],"requestId":"cap-reject"})),
++            &cancel,
++        )
++        .unwrap_err();
++    assert!(error.message.contains("16 MiB recovery limit"));
++    {
++        let slot = f.sessions.current.lock().unwrap();
++        let s = slot.as_ref().unwrap();
++        assert_eq!(s.revision, 0);
++        assert_eq!(s.saved_revision, 0);
++        assert_eq!(serde_json::to_vec(&s.state).unwrap(), state);
++        assert_eq!(serde_json::to_vec(&s.undo).unwrap(), undo);
++        assert_eq!(serde_json::to_vec(&s.redo).unwrap(), redo);
++        assert_eq!(serde_json::to_vec(&s.parts[0].index).unwrap(), index);
++        assert_eq!(serde_json::to_vec(&s.parts[0].additions).unwrap(), additions);
++    }
++    assert_eq!(hash_file(&directory.join("journal.json"), &cancel).unwrap(), journal_hash);
++    assert_eq!(fs::read(&f.source).unwrap(), SOURCE);
++    // Scope A preserves the committed prefix, not guaranteed physical tail length.
++    let mut prefix = vec![0; SOURCE.len()];
++    File::open(directory.join("source")).unwrap().read_exact(&mut prefix).unwrap();
++    assert_eq!(prefix, SOURCE);
++    assert_eq!(
++        f.sessions
++            .dispatch("large.read", f.request(json!({"key":"0:0"})), &cancel)
++            .unwrap()["json"],
++        read["json"]
++    );
++    let recovered = recover(
++        &f.root.join("cache"),
++        &f.root.join("not-a-session"),
++        &source_hash,
++        &cancel,
++    )
++    .unwrap()
++    .unwrap();
++    assert_eq!(recovered.revision, 0);
++    assert_eq!(serde_json::to_vec(&recovered.state).unwrap(), state);
++}
++
++#[test]
++fn prepublication_io_failure_still_preserves_the_previous_journal() {
++    let f = Fixture::new();
++    let slot = f.sessions.current.lock().unwrap();
++    let s = slot.as_ref().unwrap();
++    let journal = s.directory.join("journal.json");
++    let previous = fs::read(&journal).unwrap();
++    // File::create must fail for this directory on supported host platforms.
++    fs::create_dir(s.directory.join("journal.next")).unwrap();
++    assert!(persist(s).is_err());
++    assert_eq!(fs::read(journal).unwrap(), previous);
++}
++
++fn assert_history_size_failure(method: &str) {
++    let mut f = Fixture::new();
++    let cancel = AtomicBool::new(false);
++    let (directory, previous_hash, state, undo, redo, index) = {
++        let mut slot = f.sessions.current.lock().unwrap();
++        let s = slot.as_mut().unwrap();
++        // Moving one identical state between history stacks preserves its byte
++        // count. Advancing revision 9 to 10 is the sole extra serialized byte.
++        s.revision = 9;
++        if method == "large.undo" {
++            s.undo.push(s.state.clone());
++        } else {
++            s.redo.push(s.state.clone());
++        }
++        pad_checkpoint(s, MAX_CHECKPOINT_BYTES);
++        persist(s).unwrap();
++        (
++            s.directory.clone(),
++            hash_file(&s.directory.join("journal.json"), &cancel).unwrap(),
++            serde_json::to_vec(&s.state).unwrap(),
++            serde_json::to_vec(&s.undo).unwrap(),
++            serde_json::to_vec(&s.redo).unwrap(),
++            serde_json::to_vec(&s.parts[0].index).unwrap(),
++        )
++    };
++    f.status["revision"] = json!(9);
++    let error = f.sessions.dispatch(method, f.request(json!({})), &cancel).unwrap_err();
++    assert!(error.message.contains("16 MiB recovery limit"));
++    let slot = f.sessions.current.lock().unwrap();
++    let s = slot.as_ref().unwrap();
++    assert_eq!(s.revision, 9);
++    assert_eq!(serde_json::to_vec(&s.state).unwrap(), state);
++    assert_eq!(serde_json::to_vec(&s.undo).unwrap(), undo);
++    assert_eq!(serde_json::to_vec(&s.redo).unwrap(), redo);
++    assert_eq!(serde_json::to_vec(&s.parts[0].index).unwrap(), index);
++    assert_eq!(hash_file(&directory.join("journal.json"), &cancel).unwrap(), previous_hash);
++    assert_eq!(fs::read(&f.source).unwrap(), SOURCE);
++}
++
++#[test]
++fn rejected_undo_preserves_both_history_stacks_and_index() {
++    assert_history_size_failure("large.undo");
++}
++
++#[test]
++fn rejected_redo_preserves_both_history_stacks_and_index() {
++    assert_history_size_failure("large.redo");
++}
++
++#[test]
++fn published_export_keeps_success_and_saved_marker_warning_if_checkpoint_grows_over_limit() {
++    let mut f = Fixture::new();
++    let cancel = AtomicBool::new(false);
++    let (directory, source_hash, previous_hash) = {
++        let mut slot = f.sessions.current.lock().unwrap();
++        let s = slot.as_mut().unwrap();
++        // A two-digit saved revision adds exactly one byte to the checkpoint.
++        s.revision = 10;
++        s.saved_revision = 0;
++        pad_checkpoint(s, MAX_CHECKPOINT_BYTES);
++        persist(s).unwrap();
++        (
++            s.directory.clone(),
++            s.source_hash.clone(),
++            hash_file(&s.directory.join("journal.json"), &cancel).unwrap(),
++        )
++    };
++    f.status["revision"] = json!(10);
++    let output = f.root.join("output.json");
++    let result = f
++        .sessions
++        .dispatch("large.export", f.request(json!({"path":output})), &cancel)
++        .unwrap();
++    assert_eq!(result["exported"], true);
++    assert_eq!(result["exportedRevision"], 10);
++    assert_eq!(result["document"]["dirty"], false);
++    assert!(result["warning"].as_str().unwrap().contains("Export was published"));
++    assert_eq!(fs::read(&output).unwrap(), SOURCE);
++    assert_eq!(fs::read(&f.source).unwrap(), SOURCE);
++    assert_eq!(
++        hash_file(&directory.join("journal.json"), &cancel).unwrap(),
++        previous_hash
++    );
++    assert_eq!(
++        f.sessions.current.lock().unwrap().as_ref().unwrap().saved_revision,
++        10
++    );
++    let recovered = recover(
++        &f.root.join("cache"),
++        &f.root.join("not-a-session"),
++        &source_hash,
++        &cancel,
++    )
++    .unwrap()
++    .unwrap();
++    assert_eq!(recovered.revision, 10);
++    assert_eq!(recovered.saved_revision, 0);
++}
+--- current/design-studio/crates/design-desktop-backend/src/large_document/fixtures/new_node_rounded_rectangle.json
++++ candidate/design-studio/crates/design-desktop-backend/src/large_document/fixtures/new_node_rounded_rectangle.json
+@@ -0,0 +1,34 @@
++{
++  "id": "10000000-0000-4000-8000-000000000099",
++  "kind": "rectangle",
++  "name": "new smoothed rectangle",
++  "transform": [1, 0, 0, 1, 20, 20],
++  "width": 160,
++  "height": 120,
++  "children": [],
++  "visible": true,
++  "locked": false,
++  "opacity": 1,
++  "blend": "normal",
++  "fills": [{
++    "id": "10000000-0000-4000-8000-000000000097",
++    "kind": "solid",
++    "color": "#818cf8",
++    "opacity": 1,
++    "visible": true,
++    "angle": 90,
++    "stops": [{"offset": 0, "color": "#818cf8"}, {"offset": 1, "color": "#f5b8dc"}],
++    "fit": "cover",
++    "blend": "normal"
++  }],
++  "strokes": [],
++  "effects": [],
++  "radii": [8, 8, 8, 8],
++  "smoothing": 0.6,
++  "clip": false,
++  "mask": false,
++  "points": 3,
++  "innerRadius": 0.45,
++  "text": "双击编辑文字",
++  "fontSize": 28
++}
+--- current/design-studio/crates/design-desktop-backend/src/large_document/fixtures/new_node_source_page.json
++++ candidate/design-studio/crates/design-desktop-backend/src/large_document/fixtures/new_node_source_page.json
+@@ -0,0 +1,17 @@
++{
++  "_class": "page",
++  "do_objectID": "10000000-0000-4000-8000-000000000010",
++  "name": "new-node static fixture",
++  "layers": [{
++    "_class": "group",
++    "do_objectID": "10000000-0000-4000-8000-000000000002",
++    "name": "selected root",
++    "frame": {"x": 0, "y": 0, "width": 400, "height": 300},
++    "layers": [{
++      "_class": "slice",
++      "do_objectID": "10000000-0000-4000-8000-000000000001",
++      "name": "schema-10 seed",
++      "frame": {"x": 250, "y": 200, "width": 20, "height": 20}
++    }]
++  }]
++}
+--- current/design-studio/crates/design-desktop-backend/src/large_document/fragment_validation_tests.rs
++++ candidate/design-studio/crates/design-desktop-backend/src/large_document/fragment_validation_tests.rs
+@@ -0,0 +1,212 @@
++//! Authored source regressions only. All tests in this file are NOT_RUN.
++//! The shared parent requires the UNDELIVERED journal scope-A candidate.
++use super::*;
++use std::sync::atomic::AtomicUsize;
++
++const SOURCE: &[u8] = br#"{ "edit" : {"name":"before","payload":0}, "cold":1844674407370955161600000, "signed":-0.0 }"#;
++
++struct Fixture {
++    root: PathBuf,
++    source: PathBuf,
++    sessions: Sessions,
++    status: Value,
++}
++impl Fixture {
++    fn new(source_bytes: &[u8]) -> Self {
++        static NEXT: AtomicUsize = AtomicUsize::new(0);
++        let root = std::env::temp_dir().join(format!(
++            "futureox-fragment-duplicates-{}-{}",
++            std::process::id(),
++            NEXT.fetch_add(1, Ordering::Relaxed)
++        ));
++        fs::create_dir(&root).unwrap();
++        let source = root.join("source.json");
++        fs::write(&source, source_bytes).unwrap();
++        let sessions = Sessions::new(root.join("cache"));
++        let status = sessions.open(
++            Open { path: source.clone(), document_id: "fragment-test".into(), session_epoch: 1 },
++            &AtomicBool::new(false),
++        ).unwrap();
++        Self { root, source, sessions, status }
++    }
++    fn request(&self, extra: Value) -> Request {
++        let mut value = json!({"owner":self.status["owner"],"expectedRevision":self.status["revision"]});
++        value.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
++        serde_json::from_value(value).unwrap()
++    }
++    fn call(&self, method: &str, extra: Value) -> Value {
++        self.sessions.dispatch(method, self.request(extra), &AtomicBool::new(false)).unwrap()
++    }
++    fn read(&self) -> Value {
++        self.call("large.read", json!({"key":"0:1"}))
++    }
++    fn apply(&mut self, text: &str, request_id: &str) {
++        let read = self.read();
++        self.status = self.call("large.apply", json!({
++            "key":"0:1", "json":text, "expectedHash":read["hash"], "requestId":request_id
++        }));
++    }
++    fn snapshot(&self) -> (Vec<u8>, BTreeMap<PathBuf, Vec<u8>>) {
++        let slot = self.sessions.current.lock().unwrap();
++        let session = slot.as_ref().unwrap();
++        (serde_json::to_vec(session).unwrap(), directory_bytes(&session.directory))
++    }
++}
++impl Drop for Fixture {
++    fn drop(&mut self) {
++        let _ = fs::remove_dir_all(&self.root);
++    }
++}
++
++fn directory_bytes(directory: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
++    fn visit(root: &Path, path: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
++        for entry in fs::read_dir(path).unwrap() {
++            let entry = entry.unwrap();
++            let kind = entry.file_type().unwrap();
++            if kind.is_dir() {
++                visit(root, &entry.path(), files);
++            } else {
++                assert!(kind.is_file(), "test session unexpectedly contains a non-file");
++                files.insert(entry.path().strip_prefix(root).unwrap().to_owned(), fs::read(entry.path()).unwrap());
++            }
++        }
++    }
++    let mut result = BTreeMap::new();
++    visit(directory, directory, &mut result);
++    result
++}
++
++fn assert_duplicate_refusal(f: &Fixture, text: &str, request_id: &str) {
++    let read = f.read();
++    let state_and_files = f.snapshot();
++    let draft = text.to_owned();
++    let original = fs::read(&f.source).unwrap();
++    let error = f.sessions.dispatch(
++        "large.apply",
++        f.request(json!({"key":"0:1","json":draft,"expectedHash":read["hash"],"requestId":request_id})),
++        &AtomicBool::new(false),
++    ).unwrap_err();
++    assert_eq!(error.code, "LARGE_DOCUMENT_ERROR");
++    assert_eq!(error.message, "Duplicate JSON object key in edit fragment");
++    assert_eq!(draft, text, "validation must not rewrite the submitted draft");
++    // Includes current/undo/redo, revision, saved marker, index locators and
++    // additions; every source/spool/index/journal byte and filename is compared.
++    assert_eq!(f.snapshot(), state_and_files);
++    assert_eq!(fs::read(&f.source).unwrap(), original);
++    assert_eq!(f.read(), read);
++    assert_eq!(f.call("large.status", json!({})), f.status);
++}
++
++#[test]
++fn unindexed_duplicate_rejects_before_map_collapse_and_any_publication() {
++    let mut f = Fixture::new(SOURCE);
++    f.apply(r#"{"name":"one","payload":0}"#, "prepare-one");
++    f.apply(r#"{"name":"two","payload":0}"#, "prepare-two");
++    f.status = f.call("large.undo", json!({}));
++    assert_eq!(f.status["undoCount"], 1);
++    assert_eq!(f.status["redoCount"], 1);
++    let before_export = f.root.join("before.json");
++    f.call("large.export", json!({"path":before_export}));
++    f.status = f.call("large.status", json!({}));
++    let draft = r#"{"name":"one","payload":{"outer":{"inner":{"x":1,"\u0078":2}}}}"#;
++    // Prove this valid JSON reaches the new rule, not an unrelated old parse,
++    // key-set, identity, size, or navigation admission error.
++    large_json::index(draft.as_bytes(), MAX_FRAGMENT_BYTES).unwrap();
++    let raw: BTreeMap<String, Box<RawValue>> = serde_json::from_str(draft).unwrap();
++    assert_eq!(raw.keys().map(String::as_str).collect::<Vec<_>>(), vec!["name", "payload"]);
++    let collapsed: Value = serde_json::from_str(raw["payload"].get()).unwrap();
++    assert_eq!(collapsed["outer"]["inner"]["x"], 2);
++    assert_duplicate_refusal(&f, draft, "reject-nested");
++    let after_export = f.root.join("after.json");
++    f.call("large.export", json!({"path":after_export}));
++    assert_eq!(fs::read(before_export).unwrap(), fs::read(after_export).unwrap());
++    assert_eq!(fs::read(&f.source).unwrap(), SOURCE);
++    let slot = f.sessions.current.lock().unwrap();
++    let s = slot.as_ref().unwrap();
++    let recovered = recover(&f.root.join("cache"), &f.root.join("not-a-session"), &s.source_hash, &AtomicBool::new(false)).unwrap().unwrap();
++    assert_eq!(recovered.revision, s.revision);
++    assert_eq!(serde_json::to_vec(&recovered.state).unwrap(), serde_json::to_vec(&s.state).unwrap());
++    assert_eq!(serde_json::to_vec(&recovered.undo).unwrap(), serde_json::to_vec(&s.undo).unwrap());
++    assert_eq!(serde_json::to_vec(&recovered.redo).unwrap(), serde_json::to_vec(&s.redo).unwrap());
++}
++
++#[test]
++fn duplicate_top_level_property_refuses_before_raw_map_can_choose_one() {
++    let f = Fixture::new(SOURCE);
++    let draft = r#"{"name":"before","payload":1,"pay\u006coad":2}"#;
++    let collapsed: BTreeMap<String, Box<RawValue>> = serde_json::from_str(draft).unwrap();
++    assert_eq!(collapsed.len(), 2);
++    assert_eq!(collapsed["payload"].get(), "2");
++    assert_duplicate_refusal(&f, draft, "reject-top");
++}
++
++#[test]
++fn duplicate_rule_diagnostics_do_not_echo_arbitrary_key_or_value_content() {
++    let f = Fixture::new(SOURCE);
++    let draft = r#"{"name":"before","payload":{"private-key-never-echo":"private-value-one","private-key-never-echo":"private-value-two"}}"#;
++    assert_duplicate_refusal(&f, draft, "reject-private");
++}
++
++#[test]
++fn legacy_duplicate_source_opens_but_resubmitted_ambiguous_fragment_refuses() {
++    let legacy = br#"{"edit":{"name":"before","payload":{"deep":{"x":1,"\u0078":2}}},"cold":-0.0}"#;
++    let f = Fixture::new(legacy);
++    let draft = f.read()["json"].as_str().unwrap().replace("before", "after");
++    // The unchanged duplicate-bearing value is deliberately not normalized or
++    // silently dropped merely to allow the surrounding property edit.
++    assert_duplicate_refusal(&f, &draft, "reject-legacy-resubmit");
++    let output = f.root.join("legacy-copy.json");
++    f.call("large.export", json!({"path":output}));
++    assert_eq!(fs::read(output).unwrap(), legacy);
++    assert_eq!(fs::read(&f.source).unwrap(), legacy);
++}
++
++#[test]
++fn valid_nested_raw_numbers_and_escapes_survive_apply_history_export_and_reopen() {
++    let mut f = Fixture::new(SOURCE);
++    let payload = r#"{"\u0078":[-0,1E+00,9007199254740993,1844674407370955161600000,1e999999,1e-999999],"雪":"\u96ea\/😀","a":{"x":1},"b":{"\u0078":2}}"#;
++    let draft = format!(r#"{{"name":"before","payload":{payload}}}"#);
++    f.apply(&draft, "lexical-edit");
++    f.status = f.call("large.undo", json!({}));
++    let undone = f.root.join("undone.json");
++    f.call("large.export", json!({"path":undone}));
++    assert_eq!(fs::read(undone).unwrap(), SOURCE);
++    f.status = f.call("large.redo", json!({}));
++    let output = f.root.join("edited.json");
++    f.call("large.export", json!({"path":output}));
++    let expected = std::str::from_utf8(SOURCE).unwrap().replace("\"payload\":0", &format!("\"payload\":{payload}"));
++    assert_eq!(fs::read(&output).unwrap(), expected.as_bytes());
++    assert_eq!(fs::read(&f.source).unwrap(), SOURCE);
++    f.call("large.close", json!({}));
++    f.status = f.sessions.open(Open { path: output.clone(), document_id: "fragment-reopen".into(), session_epoch: 2 }, &AtomicBool::new(false)).unwrap();
++    let reopened_output = f.root.join("reopened-copy.json");
++    f.call("large.export", json!({"path":reopened_output}));
++    assert_eq!(fs::read(reopened_output).unwrap(), expected.as_bytes());
++    assert_eq!(fs::read(output).unwrap(), expected.as_bytes());
++}
++
++#[test]
++fn two_mib_edit_limit_is_inclusive_and_oversize_refusal_is_atomic() {
++    let mut f = Fixture::new(SOURCE);
++    let prefix = r#"{"name":"before","payload":""#;
++    let suffix = "\"}";
++    let limit = (MAX_FRAGMENT_BYTES / 2) as usize;
++    let exact = format!("{prefix}{}{suffix}", "v".repeat(limit - prefix.len() - suffix.len()));
++    assert_eq!(exact.len(), limit);
++    let over = format!("{exact} ");
++    let read = f.read();
++    let before = f.snapshot();
++    let error = f.sessions.dispatch("large.apply", f.request(json!({
++        "key":"0:1","json":over,"expectedHash":read["hash"],"requestId":"size-over"
++    })), &AtomicBool::new(false)).unwrap_err();
++    assert_eq!(error.message, "JSON edit fragment exceeds 2 MiB");
++    assert_eq!(f.snapshot(), before);
++    assert_eq!(fs::read(&f.source).unwrap(), SOURCE);
++    f.apply(&exact, "size-exact");
++    assert_eq!(f.status["revision"], 1);
++    let output = f.root.join("exact-size.json");
++    f.call("large.export", json!({"path":output}));
++    let payload = &exact[prefix.len() - 1..exact.len() - 1];
++    let expected = std::str::from_utf8(SOURCE).unwrap().replace("\"payload\":0", &format!("\"payload\":{payload}"));
++    assert_eq!(fs::read(output).unwrap(), expected.as_bytes());
++}
+--- current/design-studio/crates/design-desktop-backend/src/large_document/projection.rs
++++ candidate/design-studio/crates/design-desktop-backend/src/large_document/projection.rs
+@@ -5,6 +5,7 @@
+ use futureox_design_kernel::{interop, scene::Document};
+ use std::collections::HashMap;
+ 
++#[cfg_attr(test, derive(Clone, Debug, PartialEq))]
+ pub(super) struct Projection {
+     key: String,
+     revision: u64,
+@@ -827,6 +828,13 @@
+     futureox_design_kernel::validate_document_json(text).map_err(issue)?;
+     let document: Document = serde_json::from_str(text).map_err(issue)?;
+     if s.format == "sketch" {
++        // Check every new ID, including descendants, before the existing-node
++        // encoder, any source serialization, index construction or mutation.
++        for (id, node) in &document.nodes {
++            if !projection.document.nodes.contains_key(id) {
++                interop::validate_sketch_new_layer_for_source_save(node).map_err(issue)?;
++            }
++        }
+         for (id, old) in &projection.document.nodes {
+             if let Some(node) = document.nodes.get(id) {
+                 preserve_point_order(old, node)?;
+@@ -836,11 +844,6 @@
+                 }
+             }
+         }
+-        // New subtree nodes retain the existing compatibility-export behavior.
+-        // The UI supplies inactive shape/paint defaults and transient paint IDs.
+-        // A general semantic/canonicalization contract is separate from this
+-        // source-audited missing-field guard on already imported source nodes;
+-        // do not regress ordinary creation or claim new-node lossless support.
+     }
+     let mut before = serde_json::to_value(&projection.document).map_err(issue)?;
+     let mut after = serde_json::to_value(&document).map_err(issue)?;
+--- current/design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs
++++ candidate/design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs
+@@ -62,14 +62,26 @@
+         assert_eq!(matches.len(), 1);
+         matches[0].clone()
+     }
+-    fn snapshot(&self) -> (Vec<u8>, Vec<Vec<u8>>, Value) {
++    fn snapshot(&self) -> (Vec<u8>, BTreeMap<PathBuf, Vec<u8>>, Value, Option<projection::Projection>) {
++        fn collect(root: &Path, directory: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
++            for entry in fs::read_dir(directory).unwrap() {
++                let path = entry.unwrap().path();
++                if path.is_dir() {
++                    collect(root, &path, files);
++                } else {
++                    files.insert(path.strip_prefix(root).unwrap().to_owned(), fs::read(path).unwrap());
++                }
++            }
++        }
+         let slot = self.sessions.current.lock().unwrap();
+         let s = slot.as_ref().unwrap();
+-        let files = s.parts.iter().map(|p| fs::read(s.directory.join(&p.file)).unwrap()).collect();
++        // Include index/checkpoint/spill files, not only the original part spools.
++        let mut files = BTreeMap::new();
++        collect(&s.directory, &s.directory, &mut files);
+         let scene = s.scene.as_ref().map(|scene| json!({"key":scene.key,"revision":scene.revision,
+             "document":scene.document,"bytes":scene.bytes,"hash":scene.hash,
+             "initialDto":fs::read(&scene.path).unwrap()})).unwrap_or(Value::Null);
+-        (serde_json::to_vec(s).unwrap(), files, scene)
++        (serde_json::to_vec(s).unwrap(), files, scene, s.projection.clone())
+     }
+     fn export_members(&self, status: &Value, name: &str) -> BTreeMap<String, Vec<u8>> {
+         let output = self.root.join(name);
+@@ -354,3 +366,259 @@
+     assert_eq!(again["key"], f.key("node"));
+     assert_ne!(again["key"], f.key("Node"));
+ }
++
++const NEW_NODE: &str = "10000000-0000-4000-8000-000000000099";
++const NEW_SIBLING: &str = "10000000-0000-4000-8000-000000000095";
++const NEW_PARENT: &str = "10000000-0000-4000-8000-000000000096";
++const NEW_NODE_SOURCE: &str = include_str!("fixtures/new_node_source_page.json");
++const NEW_ROUNDED_RECTANGLE: &str = include_str!("fixtures/new_node_rounded_rectangle.json");
++
++fn project_new_node_fixture(f: &Fixture, status: &Value) -> (String, Document) {
++    let key = f.key(OTHER);
++    f.call(status, "large.scene", json!({"key":key})).unwrap();
++    let projected = f.call(status, "large.project", json!({"key":key,
++        "workingDocumentId":"10000000-0000-4000-8000-000000000098"})).unwrap();
++    let document: Document = serde_json::from_str(projected["json"].as_str().unwrap()).unwrap();
++    // The actual original archive contains a slice BEFORE import/projection.
++    // Never raise schemaVersion in the submitted draft: that exercises the
++    // unrelated document-metadata refusal instead of the new-node save guard.
++    assert_eq!(document.nodes[RECT].kind, "slice");
++    assert!(document.schema_version >= 10);
++    (key, document)
++}
++
++fn ui_new_source_node(id: &str, kind: &str) -> futureox_design_kernel::scene::Node {
++    // Same node()/paint() defaults as f03197e model.ts, with fixed UUIDs. The
++    // supplied meaningful smoothing fixture becomes the actual constructor
++    // default here only by restoring its two deliberately authored properties.
++    let mut node: futureox_design_kernel::scene::Node = serde_json::from_str(NEW_ROUNDED_RECTANGLE).unwrap();
++    node.id = id.into();
++    node.kind = kind.into();
++    node.name = format!("new {kind}");
++    node.radii = [0.; 4];
++    node.smoothing = 0.;
++    node.clip = kind == "frame";
++    node.points = if kind == "star" { 5 } else { 3 };
++    if matches!(kind, "slice" | "group") {
++        node.fills.clear();
++    } else if kind == "frame" {
++        node.fills[0].color = "#ffffff".into();
++        node.fills[0].stops[0].color = "#ffffff".into();
++    } else if kind == "section" {
++        node.fills[0].color = "#e7e8ef".into();
++        node.fills[0].stops[0].color = "#e7e8ef".into();
++    }
++    node
++}
++
++fn add_new_source_node(document: &mut Document, parent: &str, node: futureox_design_kernel::scene::Node) {
++    let id = node.id.clone();
++    assert!(!document.nodes.contains_key(&id));
++    document.nodes.insert(id.clone(), node);
++    document.nodes.get_mut(parent).unwrap().children.push(id);
++}
++
++fn assert_new_source_rejection(f: &Fixture, status: &Value, key: &str, document: &Document, field: &str, export_name: &str) {
++    document.validate().unwrap();
++    let text = serde_json::to_string(document).unwrap();
++    // The same production JSON validator must admit the input before the
++    // missing-field guard is expected to refuse source serialization.
++    futureox_design_kernel::validate_document_json(&text).unwrap();
++    let dto = f.call(status, "large.sceneRead", json!({"key":key})).unwrap();
++    let source_dto = f.call(status, "large.read", json!({"key":key})).unwrap();
++    let original_archive = fs::read(&f.source).unwrap();
++    let status_before = f.call(status, "large.status", json!({})).unwrap();
++    let before = f.snapshot();
++    let error = f.call(status, "large.commitCanvas", json!({"key":key,
++        "requestId":"new-source-rejection","json":text})).unwrap_err();
++    assert_eq!(error.code, "LARGE_DOCUMENT_ERROR");
++    assert_eq!(error.message, format!("unsupported lossless conversion: Source field {field} is not supported by the Sketch save codec; keep the draft or save a native document"));
++    assert_eq!(f.snapshot(), before, "Session, every spool/index/checkpoint, scene DTO and projection must remain unchanged");
++    assert_eq!(f.call(status, "large.status", json!({})).unwrap(), status_before);
++    assert_eq!(f.call(status, "large.sceneRead", json!({"key":key})).unwrap(), dto);
++    assert_eq!(f.call(status, "large.read", json!({"key":key})).unwrap(), source_dto);
++    assert_eq!(f.key(OTHER), key);
++    assert_eq!(fs::read(&f.source).unwrap(), original_archive);
++    assert_eq!(f.export_members(status, export_name), f.members);
++}
++
++#[test]
++fn new_source_nodes_reject_all_six_omissions_atomically_without_schema_edits() {
++    let (f, status) = Fixture::new(NEW_NODE_SOURCE);
++    let (key, baseline) = project_new_node_fixture(&f, &status);
++    for (case, (kind, field, value)) in [
++        ("rectangle", "smoothing", json!(0.6)),
++        ("frame", "smoothing", json!(0.6)),
++        ("section", "smoothing", json!(0.6)),
++        ("slice", "smoothing", json!(0.6)),
++        ("group", "clip", json!(true)),
++        ("ellipse", "arc", json!({"startAngle":0.25,"sweepAngle":1.5,"innerRadius":0.25})),
++        ("ellipse", "arc", json!({"startAngle":0.,"sweepAngle":std::f64::consts::TAU,"innerRadius":0.})),
++        ("ellipse", "arc", json!({"startAngle":0.,"sweepAngle":0.,"innerRadius":0.})),
++        ("polygon", "cornerRadius", json!(4.)),
++        ("star", "cornerRadius", json!(4.)),
++        ("frame", "radii", json!([1.,2.,3.,4.])),
++        ("section", "radii", json!([1.,2.,3.,4.])),
++        ("slice", "radii", json!([1.,2.,3.,4.])),
++        ("rectangle", "exportSettings", json!([{"id":"export","format":"png","scale":2.,"suffix":"@2x"}])),
++        ("slice", "exportSettings", json!([{"id":"export","format":"pdf","scale":1.,"suffix":""}])),
++    ].into_iter().enumerate() {
++        for visible in [true, false] {
++            let mut document = baseline.clone();
++            let mut value_node = serde_json::to_value(ui_new_source_node(NEW_NODE, kind)).unwrap();
++            value_node["clip"] = json!(false); // isolate each field, not a hidden UI default whitelist
++            value_node[field] = value.clone();
++            value_node["visible"] = json!(visible);
++            if kind == "rectangle" && field == "smoothing" {
++                value_node["radii"] = json!([8.,8.,8.,8.]); // visibly meaningful unsaturated corners
++            }
++            add_new_source_node(&mut document, OTHER, serde_json::from_value(value_node).unwrap());
++            assert_eq!(document.schema_version, baseline.schema_version);
++            assert_new_source_rejection(&f, &status, &key, &document, field,
++                &format!("new-rejected-{case}-{visible}.sketch"));
++        }
++    }
++}
++
++#[test]
++fn new_source_rejection_is_atomic_for_mixed_batches_and_new_grandchildren() {
++    let (f, status) = Fixture::new(NEW_NODE_SOURCE);
++    let (key, baseline) = project_new_node_fixture(&f, &status);
++    for mode in 0..3 {
++        let mut document = baseline.clone();
++        let bad = serde_json::from_str(NEW_ROUNDED_RECTANGLE).unwrap();
++        if mode == 0 {
++            document.nodes.get_mut(OTHER).unwrap().name = "must not save this supported rename".into();
++            add_new_source_node(&mut document, OTHER, bad);
++        } else if mode == 1 {
++            // A lexically earlier new ID is valid, but no portion may publish.
++            add_new_source_node(&mut document, OTHER, ui_new_source_node(NEW_SIBLING, "ellipse"));
++            add_new_source_node(&mut document, OTHER, bad);
++        } else {
++            add_new_source_node(&mut document, OTHER, ui_new_source_node(NEW_PARENT, "group"));
++            add_new_source_node(&mut document, NEW_PARENT, bad);
++        }
++        assert_new_source_rejection(&f, &status, &key, &document, "smoothing",
++            &format!("new-rejected-mixed-{mode}.sketch"));
++    }
++}
++
++#[test]
++fn new_source_clipped_ui_frames_reject_even_when_empty_or_invisible() {
++    let (f, status) = Fixture::new(NEW_NODE_SOURCE);
++    let (key, baseline) = project_new_node_fixture(&f, &status);
++    for visible in [true, false] {
++        for overflow in [true, false] {
++            let mut document = baseline.clone();
++            let mut frame = ui_new_source_node(NEW_PARENT, "frame");
++            assert!(frame.clip, "Retain the real UI default instead of whitelisting or clearing it");
++            frame.visible = visible;
++            add_new_source_node(&mut document, OTHER, frame);
++            if overflow {
++                let mut child = ui_new_source_node(NEW_NODE, "rectangle");
++                child.transform.0[4] = 140.;
++                child.width = 100.;
++                add_new_source_node(&mut document, NEW_PARENT, child);
++            }
++            assert_new_source_rejection(&f, &status, &key, &document, "clip",
++                &format!("new-clipped-{visible}-{overflow}.sketch"));
++        }
++    }
++}
++
++#[test]
++fn new_source_supported_ui_insertions_export_and_reopen() {
++    for (case, kind) in ["rectangle", "ellipse", "slice", "frame", "rectangle", "rectangle"].into_iter().enumerate() {
++        let (f, status) = Fixture::new(NEW_NODE_SOURCE);
++        let (key, mut document) = project_new_node_fixture(&f, &status);
++        let mut node = ui_new_source_node(NEW_NODE, kind);
++        if kind == "frame" { node.clip = false; } // explicitly unclipped, not the UI default
++        if case == 4 { node.radii = [1.,2.,3.,4.]; }
++        if case == 5 {
++            let paint = |id: &str, color: &str| json!({"id":id,"kind":"solid","color":color,
++                "opacity":1,"visible":true,"angle":90,"stops":[
++                    {"offset":0,"color":color},{"offset":1,"color":"#f5b8dc"}],
++                "fit":"cover","blend":"normal"});
++            node.strokes.push(serde_json::from_value(json!({"id":"ui-stroke",
++                "paint":paint("ui-stroke-paint", "#303344"),"width":2,"align":"center",
++                "cap":"round","join":"round","dash":"","visible":true})).unwrap());
++            node.effects.push(serde_json::from_value(json!({"id":"ui-shadow","kind":"shadow",
++                "visible":true,"radius":8,"x":0,"y":8,"spread":0,"color":"#172033",
++                "opacity":0.25,"amount":0.65})).unwrap());
++        }
++        let expected = node.clone();
++        add_new_source_node(&mut document, OTHER, node);
++        document.validate().unwrap();
++        let original_archive = fs::read(&f.source).unwrap();
++        let next = f.call(&status, "large.commitCanvas", json!({"key":key,
++            "requestId":"new-supported-source","json":serde_json::to_string(&document).unwrap()})).unwrap();
++        assert_eq!(next["key"], f.key(OTHER));
++        assert_eq!(next["revision"], 1);
++        assert_eq!(next["undoCount"], 1);
++        let filename = format!("new-supported-{case}.sketch");
++        let saved = f.export_members(&next, &filename);
++        for (member, bytes) in &f.members {
++            if member != &format!("pages/{PAGE}.json") { assert_eq!(&saved[member], bytes); }
++        }
++        assert_eq!(fs::read(&f.source).unwrap(), original_archive);
++        let reopened = futureox_design_kernel::interop::import_sketch_report(
++            &fs::read(f.root.join(filename)).unwrap()).unwrap().document;
++        assert_eq!(reopened.nodes[OTHER].children, vec![RECT.to_owned(), NEW_NODE.to_owned()]);
++        let added = &reopened.nodes[NEW_NODE];
++        assert_eq!(added.kind, expected.kind);
++        assert_eq!(added.name, expected.name);
++        assert_eq!((added.width, added.height), (expected.width, expected.height));
++        assert_eq!(added.radii, expected.radii);
++        assert_eq!(added.smoothing, 0.);
++        assert!(!added.clip);
++        assert!(added.arc.is_none());
++        assert_eq!(added.corner_radius, 0.);
++        assert!(added.export_settings.is_empty());
++        assert_eq!(added.fills.len(), expected.fills.len());
++        if let Some(fill) = expected.fills.first() { assert_eq!(added.fills[0].color, fill.color); }
++        if case == 5 {
++            assert_eq!(added.strokes.len(), 1);
++            assert_eq!(added.strokes[0].width, 2.);
++            assert_eq!(added.strokes[0].paint.color, "#303344");
++            assert_eq!(added.effects.len(), 1);
++            assert_eq!(added.effects[0].kind, "shadow");
++            assert_eq!((added.effects[0].radius, added.effects[0].y, added.effects[0].opacity), (8.,8.,0.25));
++        }
++        // Assert active supported fields, never transient paint IDs, dormant
++        // points/text/innerRadius, native-preview equivalence or whole-node losslessness.
++        let undone = f.call(&next, "large.undo", json!({})).unwrap();
++        assert_eq!(f.export_members(&undone, &format!("new-undone-{case}.sketch")), f.members);
++        let redone = f.call(&undone, "large.redo", json!({})).unwrap();
++        assert_eq!(f.export_members(&redone, &format!("new-redone-{case}.sketch")), saved);
++    }
++}
++
++#[test]
++fn new_source_refusal_preserves_populated_undo_and_redo_history() {
++    let (mut f, status) = Fixture::new(NEW_NODE_SOURCE);
++    let (key, _) = project_new_node_fixture(&f, &status);
++    let first = f.call(&status, "large.sceneCommit", json!({"key":key,
++        "requestId":"history-first","json":json!({OTHER:{"patch":{"name":"first rename"}}}).to_string()})).unwrap();
++    let second = f.call(&first, "large.sceneCommit", json!({"key":first["key"],
++        "requestId":"history-second","json":json!({OTHER:{"patch":{"name":"second rename"}}}).to_string()})).unwrap();
++    let undone = f.call(&second, "large.undo", json!({})).unwrap();
++    assert_eq!(undone["revision"], 3);
++    assert_eq!(undone["undoCount"], 1);
++    assert_eq!(undone["redoCount"], 1);
++    // This case's source baseline is an already-edited archive, not the
++    // original fixture. The common rejection helper must preserve that state.
++    f.members = f.export_members(&undone, "new-history-baseline.sketch");
++    let (key, mut document) = project_new_node_fixture(&f, &undone);
++    assert_eq!(document.nodes[OTHER].name, "first rename");
++    document.nodes.get_mut(OTHER).unwrap().name = "must not overwrite history".into();
++    add_new_source_node(&mut document, OTHER, serde_json::from_str(NEW_ROUNDED_RECTANGLE).unwrap());
++    assert_new_source_rejection(&f, &undone, &key, &document, "smoothing", "new-history-rejected.sketch");
++    // An actual redo remains available after rejection and restores the prior
++    // supported second rename, never the rejected draft.
++    let redone = f.call(&undone, "large.redo", json!({})).unwrap();
++    f.export_members(&redone, "new-history-redone.sketch");
++    let reopened = futureox_design_kernel::interop::import_sketch_report(
++        &fs::read(f.root.join("new-history-redone.sketch")).unwrap()).unwrap().document;
++    assert_eq!(reopened.nodes[OTHER].name, "second rename");
++    assert!(!reopened.nodes.contains_key(NEW_NODE));
++}
+--- current/design-studio/crates/design-desktop-backend/src/large_document.rs
++++ candidate/design-studio/crates/design-desktop-backend/src/large_document.rs
+@@ -20,10 +20,17 @@
+ 
+ const HISTORY_LIMIT: usize = 32;
+ const HISTORY_BYTES: usize = 64 * 1024 * 1024;
++mod checkpoint_io;
++#[cfg(test)]
++mod checkpoint_tests;
+ mod index;
+ mod capacity;
+ mod projection;
+ mod scene;
++#[cfg(test)]
++#[path = "large_document/fragment_validation_tests.rs"]
++mod fragment_validation_tests;
++use checkpoint_io::{CheckpointWriter, MAX_CHECKPOINT_BYTES};
+ use index::DiskIndex;
+ fn issue(error: impl std::fmt::Display) -> BackendError {
+     BackendError::new("LARGE_DOCUMENT_ERROR", error.to_string())
+@@ -741,8 +748,9 @@
+         return Err(issue("JSON edit fragment exceeds 2 MiB"));
+     }
+     let old: BTreeMap<String, Box<RawValue>> = serde_json::from_str(&before).map_err(issue)?;
+-    // The streaming parser rejects duplicate keys before serde's map conversion.
+-    large_json::index(text.as_bytes(), MAX_FRAGMENT_BYTES).map_err(issue)?;
++    // Check every object before serde's map conversion can collapse duplicate
++    // keys, even when that object is not selected for source navigation.
++    large_json::validate_fragment(text.as_bytes()).map_err(issue)?;
+     let new: BTreeMap<String, Box<RawValue>> = serde_json::from_str(text).map_err(issue)?;
+     if old.keys().ne(new.keys()) {
+         return Err(issue(
+@@ -978,7 +986,7 @@
+         }
+         let path = entry.path().join("journal.json");
+         if let Ok(metadata) = fs::symlink_metadata(&path) {
+-            if metadata.is_file() && metadata.len() <= 16 * 1024 * 1024 {
++            if metadata.is_file() && metadata.len() <= MAX_CHECKPOINT_BYTES {
+                 candidates.push((metadata.modified().ok(), entry.path()));
+             }
+         }
+@@ -1129,20 +1137,6 @@
+     Ok(None)
+ }
+ fn persist(s: &Session) -> Result<Option<&'static str>> {
+-    // Indexes are immutable and written once, rather than serialized on edits.
+-    let index_path = s.directory.join("index.json");
+-    if !index_path.exists() {
+-        let mut out = BufWriter::new(
+-            OpenOptions::new()
+-                .create_new(true)
+-                .write(true)
+-                .open(&index_path)
+-                .map_err(issue)?,
+-        );
+-        serde_json::to_writer(&mut out, &s.parts).map_err(issue)?;
+-        out.flush().map_err(issue)?;
+-        out.get_ref().sync_all().map_err(issue)?;
+-    }
+     let metadata = Checkpoint {
+         version: s.version,
+         owner: &s.owner,
+@@ -1157,13 +1151,35 @@
+         redo: &s.redo,
+         additions: s.parts.iter().map(|p| p.additions.as_slice()).collect(),
+     };
++    // Reject oversize metadata before creating index.json or touching journal.next.
++    // commit() may already have spilled source additions; its existing rollback
++    // remains responsible for those. This is not a no-append transaction plan.
++    serde_json::to_writer(&mut CheckpointWriter::new(io::sink()), &metadata).map_err(issue)?;
++    // Indexes are immutable and written once, rather than serialized on edits.
++    let index_path = s.directory.join("index.json");
++    if !index_path.exists() {
++        let mut out = BufWriter::new(
++            OpenOptions::new()
++                .create_new(true)
++                .write(true)
++                .open(&index_path)
++                .map_err(issue)?,
++        );
++        serde_json::to_writer(&mut out, &s.parts).map_err(issue)?;
++        out.flush().map_err(issue)?;
++        out.get_ref().sync_all().map_err(issue)?;
++    }
+     let temporary = s.directory.join("journal.next");
+     let final_path = s.directory.join("journal.json");
+-    let mut file = BufWriter::new(File::create(&temporary).map_err(issue)?);
++    let mut file = CheckpointWriter::new(BufWriter::new(
++        File::create(&temporary).map_err(issue)?,
++    ));
+     serde_json::to_writer(&mut file, &metadata).map_err(issue)?;
+     file.flush().map_err(issue)?;
+-    file.get_ref().sync_all().map_err(issue)?;
++    file.get_ref().get_ref().sync_all().map_err(issue)?;
+     fs::rename(temporary, final_path).map_err(issue)?;
++    // Rename is the commit point. Directory-sync failure remains a committed
++    // warning, not an error that could roll the already-published state back.
+     Ok(File::open(&s.directory)
+         .and_then(|f| f.sync_all())
+         .err()
+--- current/design-studio/crates/design-kernel/src/dirty_region.rs
++++ candidate/design-studio/crates/design-kernel/src/dirty_region.rs
+@@ -336,8 +336,16 @@
+     }
+ }
+ 
++#[cfg(test)]
++std::thread_local! {
++    // A source-construction counter, not physical allocation or elapsed time.
++    static PARENT_MAP_CONSTRUCTIONS: std::cell::Cell<usize> = std::cell::Cell::new(0);
++}
++
+ /// child id -> parent id, from page children lists and node children lists.
+ fn parent_map(doc: &Document) -> BTreeMap<&str, &str> {
++    #[cfg(test)]
++    PARENT_MAP_CONSTRUCTIONS.with(|count| count.set(count.get() + 1));
+     fn add<'a>(map: &mut BTreeMap<&'a str, &'a str>, children: &'a [String], parent: &'a str) {
+         for child in children {
+             map.insert(child.as_str(), parent);
+@@ -356,23 +364,29 @@
+     map
+ }
+ 
+-/// Effect bleed margin in page units, mirroring the compiler's `halo` plus
+-/// its stroke allowance: any pixel a node can influence outside its geometry.
+-fn bleed_margin(n: &Node, m: Transform) -> f64 {
+-    let halo: f64 = n
+-        .effects
++/// Effect support in page units, using the compiler's existing halo policy.
++/// Effects consume the completed subtree, not just the node's own geometry.
++fn effect_margin(n: &Node, m: Transform) -> f64 {
++    n.effects
+         .iter()
+         .filter(|e| e.visible)
+         .map(|e| e.blur_radius() * 2. + e.spread.abs() + e.x.abs() + e.y.abs() + e.material_halo())
+         .sum::<f64>()
+-        * m.max_scale();
+-    let strokes = n
+-        .strokes
+-        .iter()
+-        .filter(|s| s.visible)
+-        .map(|s| crate::stroke::maximum_width(s) * 4. * m.max_scale())
+-        .fold(0., f64::max);
+-    halo + strokes + 2.
++        * m.max_scale()
++}
++
++/// Stroke allowance belongs only to this node's paths. Keep it separate from
++/// effect support so neutral ancestors do not pad every descendant again.
++fn stroke_margin(n: &Node, m: Transform) -> f64 {
++    let mut strokes: f64 = 0.;
++    for stroke in n.strokes.iter().filter(|s| s.visible) {
++        let width = crate::stroke::maximum_width(stroke) * 4. * m.max_scale();
++        if !width.is_finite() {
++            return f64::NAN;
++        }
++        strokes = strokes.max(width);
++    }
++    strokes
+ }
+ 
+ fn union_box(a: &mut [f64; 4], b: [f64; 4]) {
+@@ -382,9 +396,9 @@
+     a[3] = a[3].max(b[3]);
+ }
+ 
+-/// World-space bounds of `id`'s whole subtree (the node box plus every
+-/// descendant box, each expanded by its own bleed margin), in the revision
+-/// `doc`. Invisible nodes still contribute bounds when they might become the
++/// World-space bounds of `id`'s whole subtree in the revision `doc`. Each
++/// node's effects expand the union of its own geometry and completed children.
++/// Invisible nodes still contribute bounds when they might become the
+ /// difference between revisions; the caller unions both revisions.
+ fn subtree_bounds(
+     doc: &Document,
+@@ -396,17 +410,16 @@
+         doc: &Document,
+         id: &str,
+         matrix: Transform,
+-        out: &mut [f64; 4],
+         fonts: Option<&Fonts>,
+-    ) -> bool {
++    ) -> Option<[f64; 4]> {
+         let Some(node) = doc.nodes.get(id) else {
+-            return false;
++            return None;
+         };
+         let m = matrix.concat(node.transform);
+         if !m.0.iter().all(|v| v.is_finite())
+             || ![node.width, node.height].iter().all(|v| v.is_finite())
+         {
+-            return false;
++            return None;
+         }
+         let corners = [
+             m.point(crate::math::Point::new(0., 0.)),
+@@ -414,7 +427,13 @@
+             m.point(crate::math::Point::new(0., node.height)),
+             m.point(crate::math::Point::new(node.width, node.height)),
+         ];
+-        let margin = bleed_margin(node, m);
++        let halo = effect_margin(node, m);
++        // Preserve the original operation order for this node's geometry,
++        // including leaves: p +/- ((halo + strokes) + 2).
++        let margin = halo + stroke_margin(node, m) + 2.;
++        if !margin.is_finite() || !halo.is_finite() || halo < 0. {
++            return None;
++        }
+         let mut bounds = [
+             f64::INFINITY,
+             f64::INFINITY,
+@@ -422,6 +441,9 @@
+             f64::NEG_INFINITY,
+         ];
+         for p in corners {
++            if !p.finite() {
++                return None;
++            }
+             bounds[0] = bounds[0].min(p.x - margin);
+             bounds[1] = bounds[1].min(p.y - margin);
+             bounds[2] = bounds[2].max(p.x + margin);
+@@ -434,16 +456,16 @@
+                 None
+             } else {
+                 let Some(fonts) = fonts else {
+-                    return false;
++                    return None;
+                 };
+                 let Ok(path) = fonts.node_path_shared(node) else {
+-                    return false;
++                    return None;
+                 };
+                 Some(crate::path::LocalPaths::Text(path))
+             }
+         } else {
+             let Ok(paths) = node.paths() else {
+-                return false;
++                return None;
+             };
+             Some(crate::path::LocalPaths::Owned(paths))
+         };
+@@ -458,19 +480,47 @@
+                         actual.y + actual.height + margin,
+                     ];
+                     if !b.iter().all(|v| v.is_finite()) {
+-                        return false;
++                        return None;
+                     }
+                     union_box(&mut bounds, b);
+                 }
+             }
+         }
+-        union_box(out, bounds);
++        if !bounds.iter().all(|v| v.is_finite()) {
++            return None;
++        }
++        // Preserve conservative clip handling: do not crop to a logical box,
++        // which need not enclose the actual clip path. Children are already
++        // in world units, including their own effects; never transform twice.
++        let mut children: Option<[f64; 4]> = None;
+         for child in &node.children {
+-            if !visit(doc, child, m, out, fonts) {
+-                return false;
++            let child = visit(doc, child, m, fonts)?;
++            if let Some(children) = &mut children {
++                union_box(children, child);
++            } else {
++                children = Some(child);
+             }
+         }
+-        true
++        // Rendering composites children before applying foreground effects.
++        // The own geometry already has this halo; only the completed child
++        // union still needs it. Expansion distributes over union, without
++        // changing the original leaf arithmetic or adding ancestor stroke/AA.
++        // None avoids expanding an empty +/-infinity child sentinel.
++        if let Some(children) = children {
++            let expanded = [
++                children[0] - halo,
++                children[1] - halo,
++                children[2] + halo,
++                children[3] + halo,
++            ];
++            if !expanded.iter().all(|v| v.is_finite()) {
++                return None;
++            }
++            union_box(&mut bounds, expanded);
++        }
++        ((bounds[2] - bounds[0]).is_finite()
++            && (bounds[3] - bounds[1]).is_finite())
++            .then_some(bounds)
+     }
+     let mut ancestors = Vec::new();
+     let mut cursor = id;
+@@ -488,17 +538,7 @@
+         .into_iter()
+         .rev()
+         .fold(Transform::default(), Transform::concat);
+-    let mut out = [
+-        f64::INFINITY,
+-        f64::INFINITY,
+-        f64::NEG_INFINITY,
+-        f64::NEG_INFINITY,
+-    ];
+-    if visit(doc, id, matrix, &mut out, fonts) {
+-        Some(out)
+-    } else {
+-        None
+-    }
++    visit(doc, id, matrix, fonts)
+ }
+ 
+ type BoundsCache = BTreeMap<String, Option<[f64; 4]>>;
+@@ -525,13 +565,14 @@
+ /// fixed-point propagation may over-report, but never misses a read chain.
+ /// The same subtree/bleed bounds enclose the capture geometry and finite
+ /// filter support; each candidate activates at most once.
+-fn propagate_background_reads(
+-    before: &Document,
+-    after: &Document,
++fn propagate_background_reads<'a>(
++    before: &'a Document,
++    after: &'a Document,
+     region: &mut DirtyRegion,
+     fonts: Option<&Fonts>,
+     ops: &[Op],
+     caches: &mut [BoundsCache; 2],
++    parent_maps: Option<[&BTreeMap<&'a str, &'a str>; 2]>,
+ ) -> bool {
+     if region
+         .world_bounds
+@@ -540,7 +581,15 @@
+         return true;
+     }
+     let docs = [before, after];
+-    let parents = [parent_map(before), parent_map(after)];
++    // Reuse only this call's maps of these exact revisions. The separate
++    // parent_index excludes page sentinels and is not interchangeable.
++    let owned_parents;
++    let parents = if let Some(parents) = parent_maps {
++        parents
++    } else {
++        owned_parents = [parent_map(before), parent_map(after)];
++        [&owned_parents[0], &owned_parents[1]]
++    };
+     let mut candidates = Vec::new();
+     for (revision, doc) in docs.iter().enumerate() {
+         for (id, node) in &doc.nodes {
+@@ -640,7 +689,7 @@
+     }
+     if doc.nodes.values().any(|n|n.backdrop_effect().is_some()) {
+         let ops:Vec<_>=ids.into_iter().map(|id|Op::SetTransform{id,matrix:Transform::default().0}).collect();
+-        if !propagate_background_reads(doc,doc,&mut region,Some(fonts),&ops,&mut Default::default()) {
++        if !propagate_background_reads(doc,doc,&mut region,Some(fonts),&ops,&mut Default::default(),None) {
+             return full("unbounded-background-read");
+         }
+     }
+@@ -724,7 +773,8 @@
+     if missing {
+         return DirtyRegion::everything("op target missing from both revisions");
+     }
+-    if !propagate_background_reads(before, after, &mut region, fonts, ops, &mut caches) {
++    if !propagate_background_reads(before, after, &mut region, fonts, ops, &mut caches,
++        Some([&before_parents, &after_parents])) {
+         return DirtyRegion::everything("unbounded background-blur dependency");
+     }
+     let Some(mut bounds) = region.world_bounds else {
+@@ -1608,6 +1658,260 @@
+         );
+     }
+ 
++    // Geometry-certificate regressions, deliberately independent of raster
++    // execution. Pixel output and the host's retained-tile path need a separate
++    // renderer/integration oracle; these tests prove only dirty coverage.
++    fn ancestor_effect_document(effects: serde_json::Value) -> Document {
++        serde_json::from_value(json!({
++            "schemaVersion": 2, "id": "d", "name": "ancestor effects",
++            "pages": [{"id": "p", "name": "p", "children": ["g"],
++                       "background": "#ffffff"}],
++            "nodes": {
++                "g": {"id": "g", "kind": "group", "width": 100., "height": 100.,
++                      "transform": [1., 0., 0., 1., 0., 0.], "fills": [],
++                      "clip": false, "children": ["c"], "effects": effects},
++                "c": {"id": "c", "kind": "rectangle", "width": 20., "height": 20.,
++                      "transform": [1., 0., 0., 1., 480., 20.], "opacity": 1.,
++                      "fills": [{"kind": "solid", "color": "#ff0000"}]}
++            }
++        }))
++        .unwrap()
++    }
++
++    fn ancestor_shadow_document() -> Document {
++        ancestor_effect_document(json!([{
++            "kind": "shadow", "x": 64., "y": 0., "radius": 0.,
++            "spread": 0., "opacity": 1., "color": "#000000"
++        }]))
++    }
++
++    fn ancestor_opacity_change(before: &Document) -> (Document, DirtyRegion) {
++        let mut after = before.clone();
++        after.nodes.get_mut("c").unwrap().opacity = 0.5;
++        let damage = dirty_region(
++            before, &after,
++            &[Op::SetOpacity { id: "c".into(), opacity: 0.5 }],
++            &grid(), [0., 0., 2048., 2048.],
++        );
++        (after, damage)
++    }
++
++    fn assert_ancestor_damage_covers(damage: &DirtyRegion, point: [f64; 2]) {
++        assert!(!damage.full, "bounded effect must stay local: {damage:?}");
++        let contains = |b: &[f64; 4]| {
++            point[0] >= b[0] && point[0] < b[0] + b[2]
++                && point[1] >= b[1] && point[1] < b[1] + b[3]
++        };
++        assert!(contains(&damage.world_bounds.unwrap()), "{point:?}: {damage:?}");
++        assert!(damage.world_rects.iter().any(contains),
++            "paint-rectangle certificate missed {point:?}: {damage:?}");
++    }
++
++    #[test]
++    fn ancestor_shadow_on_outside_child_covers_output_and_next_tile() {
++        let before = ancestor_shadow_document();
++        let (after, damage) = ancestor_opacity_change(&before);
++        // Static witness: the child ends at x=500; its zero-radius parent
++        // shadow ends at x=564. Baseline ended at x=502 and omitted tile 1.
++        assert_ancestor_damage_covers(&damage, [563., 30.]);
++        let b = damage.world_bounds.unwrap();
++        assert!(b[0] + b[2] >= 564.);
++        assert!(damage.tiles.contains(&[1, 0]), "{damage:?}");
++        assert!(b[2] < 1024., "do not replace a local proof with canvas-wide damage");
++        let patch_damage = patch_damage(&before, &after, &patch(&before, &after));
++        assert!(!patch_damage.full);
++        let b = patch_damage.bounds.unwrap();
++        assert!(b[0] + b[2] >= 564.);
++        assert!(patch_damage.rects.unwrap().iter()
++            .any(|r| r[0] <= 563. && r[0] + r[2] > 563.
++                && r[1] <= 30. && r[1] + r[3] > 30.));
++    }
++
++    #[test]
++    fn ancestor_effects_compose_in_post_order_through_nested_groups() {
++        let mut before = ancestor_shadow_document();
++        before.nodes.insert("outer".into(), serde_json::from_value(json!({
++            "id": "outer", "kind": "group", "width": 100., "height": 100.,
++            "fills": [], "children": ["g"],
++            "effects": [{"kind": "shadow", "x": 48., "radius": 0.,
++                         "opacity": 1., "color": "#000000"}]
++        })).unwrap());
++        before.pages[0].children = vec!["outer".into()];
++        let (_, damage) = ancestor_opacity_change(&before);
++        // The outer shadow includes the inner shadow: 500 + 64 + 48 = 612.
++        assert_ancestor_damage_covers(&damage, [611., 30.]);
++        let b = damage.world_bounds.unwrap();
++        assert!(b[0] + b[2] >= 612.);
++        assert!(b[2] < 1024.);
++    }
++
++    #[test]
++    fn ancestor_blur_support_expands_completed_child_bounds() {
++        let before = ancestor_effect_document(json!([{
++            "kind": "blur", "radius": 12., "color": "#000000", "opacity": 1.
++        }]));
++        let (_, damage) = ancestor_opacity_change(&before);
++        // Assert the established 2*radius conservative support policy, not
++        // a newly invented kernel extent or a claim about changed pixels.
++        assert_ancestor_damage_covers(&damage, [523., 30.]);
++        let b = damage.world_bounds.unwrap();
++        assert!(b[0] + b[2] >= 500. + 2. * 12.);
++    }
++
++    #[test]
++    fn ancestor_effects_use_composed_world_scale_without_double_transform() {
++        let mut before = ancestor_shadow_document();
++        before.nodes.get_mut("g").unwrap().transform =
++            Transform([0., 2., -3., 0., 1200., 0.]);
++        let (_, damage) = ancestor_opacity_change(&before);
++        // The rotated anisotropic parent maps the shadow offset to (0,128).
++        // Its child plus shadow reaches y=1128; max_scale=3 is conservative.
++        assert_ancestor_damage_covers(&damage, [1110., 1127.]);
++        let b = damage.world_bounds.unwrap();
++        assert!(b[1] + b[3] >= 1128.);
++        assert!(b[1] + b[3] <= 1200., "world coordinates applied twice: {b:?}");
++        assert!(damage.tiles.contains(&[2, 2]));
++    }
++
++    #[test]
++    fn ancestor_effects_keep_conservative_clip_semantics() {
++        let mut before = ancestor_shadow_document();
++        before.nodes.get_mut("g").unwrap().kind = "frame".into();
++        before.nodes.get_mut("g").unwrap().clip = true;
++        before.nodes.get_mut("c").unwrap().transform.0[4] = 90.;
++        let (_, damage) = ancestor_opacity_change(&before);
++        // Clip consumes child content before the parent's shadow, so the
++        // shadow of visible content can still extend beyond the clip edge.
++        assert_ancestor_damage_covers(&damage, [163., 30.]);
++        // Bounds deliberately retain the pre-existing conservative policy
++        // of not cropping to logical clip boxes, including fully outside
++        // children. This is allowed overinvalidation, not a clip precision test.
++        before.nodes.get_mut("c").unwrap().transform.0[4] = 480.;
++        let (_, outside) = ancestor_opacity_change(&before);
++        assert_ancestor_damage_covers(&outside, [563., 30.]);
++        assert!(outside.world_bounds.unwrap()[2] < 1024.);
++    }
++
++    #[test]
++    fn ancestor_effect_free_groups_do_not_accumulate_stroke_or_aa_padding() {
++        let mut before = ancestor_effect_document(json!([]));
++        for i in 0..4 {
++            let id = format!("outer-{i}");
++            let child = before.pages[0].children[0].clone();
++            before.nodes.insert(id.clone(), serde_json::from_value(json!({
++                "id": id, "kind": "group", "width": 100., "height": 100.,
++                "fills": [], "children": [child],
++                "strokes": [{"width": 2., "visible": true,
++                             "paint": {"kind": "solid", "color": "#000000"}}]
++            })).unwrap());
++            before.pages[0].children = vec![id];
++        }
++        let (_, damage) = ancestor_opacity_change(&before);
++        assert_eq!(damage.world_bounds, Some([478., 18., 24., 24.]));
++        assert!(!damage.tiles.contains(&[1, 0]));
++        let parents = parent_map(&before);
++        let b = subtree_bounds(&before, &parents, "outer-3", None).unwrap();
++        assert_eq!(b, [-10., -10., 502., 110.]);
++    }
++
++    #[test]
++    fn ancestor_effect_leaf_preserves_original_margin_arithmetic() {
++        for (x, y, offset, width) in [
++            (0.1, 0.3, 0.1, 0.2),
++            (1e12 + 0.125, -1e12 + 0.25, 0.7, 0.3),
++            (-1e12 + 0.125, 1e12 + 0.25, 0.1, 0.2),
++        ] {
++            let mut doc = ancestor_shadow_document();
++            let node = doc.nodes.get_mut("g").unwrap();
++            node.children.clear();
++            node.transform = Transform([1., 0., 0., 1., x, y]);
++            node.effects[0].x = offset;
++            node.strokes = vec![serde_json::from_value(json!({
++                "width": width, "visible": true,
++                "paint": {"kind": "solid", "color": "#000000"}
++            })).unwrap()];
++            // Explicit original arithmetic for this identity-scale, 100x100
++            // logical group, whose own path is empty. Do not call the new
++            // margin helpers to calculate the reference under test.
++            let halo = offset;
++            let strokes = width * 4.;
++            let margin = (halo + strokes) + 2.;
++            let expected = [
++                x - margin, y - margin,
++                (100. + x) + margin, (100. + y) + margin,
++            ];
++            let actual = subtree_bounds(&doc, &parent_map(&doc), "g", None).unwrap();
++            assert_eq!(actual.map(f64::to_bits), expected.map(f64::to_bits),
++                "leaf arithmetic changed for x={x}, y={y}, offset={offset}, width={width}");
++        }
++    }
++
++    #[test]
++    fn ancestor_effect_move_keeps_old_and_new_shadow_footprints() {
++        let before = ancestor_shadow_document();
++        let mut after = before.clone();
++        after.nodes.get_mut("c").unwrap().transform.0[4] = 960.;
++        let damage = dirty_region(
++            &before, &after,
++            &[Op::SetTransform { id: "c".into(), matrix: after.nodes["c"].transform.0 }],
++            &grid(), [0., 0., 2048., 2048.],
++        );
++        assert_ancestor_damage_covers(&damage, [563., 30.]);
++        assert_ancestor_damage_covers(&damage, [1043., 30.]);
++        assert!(damage.tiles.contains(&[2, 0]));
++    }
++
++    #[test]
++    fn ancestor_effect_delete_keeps_prior_shadow_footprint() {
++        let before = ancestor_shadow_document();
++        let mut after = before.clone();
++        after.nodes.remove("c");
++        after.nodes.get_mut("g").unwrap().children.clear();
++        let damage = dirty_region(
++            &before, &after, &[Op::RemoveNode { id: "c".into() }],
++            &grid(), VIEWPORT,
++        );
++        assert_ancestor_damage_covers(&damage, [563., 30.]);
++        assert!(damage.tiles.contains(&[1, 0]));
++    }
++
++    #[test]
++    fn ancestor_effect_hide_keeps_prior_shadow_footprint() {
++        let before = ancestor_shadow_document();
++        let mut after = before.clone();
++        after.nodes.get_mut("c").unwrap().visible = false;
++        let damage = dirty_region(
++            &before, &after, &[Op::SetVisible { id: "c".into(), visible: false }],
++            &grid(), VIEWPORT,
++        );
++        assert_ancestor_damage_covers(&damage, [563., 30.]);
++        assert!(damage.tiles.contains(&[1, 0]));
++    }
++
++    #[test]
++    fn ancestor_effect_nonfinite_support_fails_closed() {
++        for invalid in [f64::NAN, f64::INFINITY, 1e308] {
++            let before = ancestor_shadow_document();
++            let mut after = before.clone();
++            // 1e308 has finite extrema but an overflowing expanded extent.
++            after.nodes.get_mut("g").unwrap().effects[0].x = invalid;
++            let damage = dirty_region(
++                &before, &after, &[Op::SetOpacity { id: "c".into(), opacity: 0.5 }],
++                &grid(), VIEWPORT,
++            );
++            assert!(damage.full, "invalid support {invalid}: {damage:?}");
++            assert_eq!(damage.reason, Some("non-finite geometry in updated revision"));
++        }
++        let before = ancestor_shadow_document();
++        let mut after = before.clone();
++        after.nodes.get_mut("g").unwrap().transform.0[0] = 1e308;
++        let damage = dirty_region(
++            &before, &after, &[Op::SetOpacity { id: "c".into(), opacity: 0.5 }],
++            &grid(), VIEWPORT,
++        );
++        assert!(damage.full, "finite matrix can overflow composed corners/scale");
++    }
++
+     #[test]
+     fn insert_reports_new_footprint_and_removal_reports_old() {
+         let before = document(json!(["a"]));
+@@ -1729,3 +2033,91 @@
+         assert_eq!(region.reason, Some("visible tile budget exceeded"));
+     }
+ }
++
++
++#[cfg(test)]
++mod parent_map_reuse_tests {
++    use super::*;
++    use serde_json::json;
++
++    fn source() -> Document {
++        serde_json::from_value(json!({
++            "schemaVersion": 2, "id": "map-reuse", "name": "map-reuse",
++            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["frame", "blur"]}],
++            "nodes": {
++                "frame": {"id": "frame", "kind": "frame", "width": 80, "height": 60,
++                    "children": ["leaf"], "effects": [{"kind": "blur", "radius": 4, "visible": true, "color": "#000000"}]},
++                "leaf": {"id": "leaf", "kind": "rectangle", "width": 16, "height": 20,
++                    "transform": [1, 0, 0, 1, 10, 10], "fills": [{"kind": "solid", "color": "#cc3366"}]},
++                "blur": {"id": "blur", "kind": "frame", "width": 48, "height": 48,
++                    "transform": [1, 0, 0, 1, 20, 0],
++                    "effects": [{"kind": "background-blur", "radius": 6, "visible": true, "color": "#000000"}]}
++            }
++        })).unwrap()
++    }
++
++    fn constructions() -> usize { PARENT_MAP_CONSTRUCTIONS.with(|count| count.get()) }
++    fn reset_constructions() { PARENT_MAP_CONSTRUCTIONS.with(|count| count.set(0)); }
++
++    #[test]
++    fn bounded_patch_builds_only_its_existing_parent_map_pair() {
++        let before = source();
++        before.validate().unwrap();
++        let mut after = before.clone();
++        after.nodes.get_mut("leaf").unwrap().transform.0[4] = 14.375;
++        let patch = crate::editing::DocumentPatch::between(&before, &after).unwrap();
++        reset_constructions();
++        let damage = patch_damage(&before, &after, &patch);
++        assert!(!damage.full, "this case must reach bounded background-read propagation");
++        assert_eq!(constructions(), 2, "parent_index has distinct semantics and is not counted");
++    }
++
++    #[test]
++    fn supplied_maps_match_owned_maps_for_background_closure_and_empty_damage() {
++        let before = source();
++        let mut after = before.clone();
++        after.nodes.get_mut("leaf").unwrap().transform.0[4] = 14.375;
++        let ops = [Op::SetTransform { id: "leaf".into(), matrix: after.nodes["leaf"].transform.0 }];
++        let before_parents = parent_map(&before);
++        let after_parents = parent_map(&after);
++        for rects in [vec![[10., 10., 20., 24.]], Vec::new()] {
++            let mut owned = full();
++            for rect in rects {
++                let bounds = [rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3]];
++                add_paint_rect(&mut owned, bounds);
++                union_box(owned.world_bounds.as_mut().unwrap(), bounds);
++            }
++            let mut supplied = owned.clone();
++            let owned_result = propagate_background_reads(&before, &after, &mut owned, None, &ops,
++                &mut Default::default(), None);
++            reset_constructions();
++            let supplied_result = propagate_background_reads(&before, &after, &mut supplied, None, &ops,
++                &mut Default::default(), Some([&before_parents, &after_parents]));
++            assert_eq!(supplied_result, owned_result);
++            assert_eq!(supplied, owned, "same arithmetic, activation order and output damage");
++            assert_eq!(constructions(), 0, "borrowed exact maps are not reconstructed");
++        }
++    }
++
++    #[test]
++    fn standalone_clipped_translation_keeps_its_owned_maps() {
++        let document = source();
++        let fonts = Fonts::new();
++        reset_constructions();
++        let damage = clipped_translation_damage(&document, vec![[0., 0., 30., 30.]],
++            vec!["frame".into()], &fonts);
++        assert!(!damage.full);
++        assert_eq!(constructions(), 2, "the standalone entry has no supplied maps");
++    }
++
++    #[test]
++    fn page_parent_sentinels_are_not_replaced_by_parent_index() {
++        let document = source();
++        let map = parent_map(&document);
++        let index = parent_index(&document);
++        assert_eq!(map.get("frame"), Some(&"p"));
++        assert_eq!(index.get("frame"), None);
++        assert_eq!(map.get("leaf"), Some(&"frame"));
++        assert_eq!(index.get("leaf"), Some(&"frame"));
++    }
++}
+--- current/design-studio/crates/design-kernel/src/editing.rs
++++ candidate/design-studio/crates/design-kernel/src/editing.rs
+@@ -20,6 +20,19 @@
+     #[serde(default)]
+     pub fields: BTreeMap<String, serde_json::Value>,
+ }
++/// A successful patch and the exact serialized size checked for that same
++/// document. Fields stay private; consuming the result transfers the document
++/// and its receipt together. It certifies no later mutation of the document.
++pub(crate) struct AppliedDocument {
++    document: Document,
++    serialized_bytes: usize,
++}
++impl AppliedDocument {
++    pub(crate) fn into_parts(self) -> (Document, usize) {
++        (self.document, self.serialized_bytes)
++    }
++}
++
+ #[derive(Clone, Debug, Serialize, PartialEq)]
+ #[serde(rename_all = "camelCase")]
+ pub struct EditError {
+@@ -41,7 +54,17 @@
+ fn check_document_size(document: &Document) -> Result<(), EditError> {
+     serialized_document_size(document).map(|_| ())
+ }
++#[cfg(test)]
++std::thread_local! {
++    static DOCUMENT_SIZE_COUNT_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
++}
++#[cfg(test)]
++pub(crate) fn document_size_count_calls() -> usize {
++    DOCUMENT_SIZE_COUNT_CALLS.with(std::cell::Cell::get)
++}
+ pub(crate) fn serialized_document_size(document: &Document) -> Result<usize, EditError> {
++    #[cfg(test)]
++    DOCUMENT_SIZE_COUNT_CALLS.with(|calls| calls.set(calls.get() + 1));
+     count_json_bytes(document, crate::capacity::document_byte_limit()).map_err(|e| error("document_budget", e.to_string()))
+ }
+ /// Exact wire size without allocating a discarded JSON byte buffer.
+@@ -150,6 +173,9 @@
+         Ok(Self { nodes, fields })
+     }
+     pub(crate) fn apply(&self, before: &Document) -> Result<Document, EditError> {
++        self.apply_with_size(before).map(|applied| applied.into_parts().0)
++    }
++    pub(crate) fn apply_with_size(&self, before: &Document) -> Result<AppliedDocument, EditError> {
+         let mut result = before.clone();
+         for (id, node) in &self.nodes {
+             if let Some(node) = node {
+@@ -206,13 +232,13 @@
+         result
+             .validate()
+             .map_err(|e| error("invalid_document", e))?;
+-        check_document_size(&result)?;
++        let serialized_bytes = serialized_document_size(&result)?;
+         if self.fields.contains_key("fonts") {
+             crate::font::Fonts::new()
+                 .with_resources(&result.fonts)
+                 .map_err(|e| error("invalid_font", e))?;
+         }
+-        Ok(result)
++        Ok(AppliedDocument { document: result, serialized_bytes })
+     }
+     fn empty(&self) -> bool {
+         self.nodes.is_empty() && self.fields.is_empty()
+@@ -469,3 +495,162 @@
+         self.publish(candidate)
+     }
+ }
++
++
++#[cfg(test)]
++mod applied_document_size_tests {
++    use super::*;
++    use serde_json::json;
++
++    fn source() -> Document {
++        serde_json::from_value(json!({
++            "schemaVersion": 2, "id": "size-receipt", "name": "size",
++            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["n"]}],
++            "nodes": {"n": {"id": "n", "kind": "rectangle", "width": 16, "height": 20}}
++        })).unwrap()
++    }
++
++    fn check(before: &Document, patch: &DocumentPatch) -> Document {
++        let original = serde_json::to_vec(before).unwrap();
++        let (document, bytes) = patch.apply_with_size(before).unwrap().into_parts();
++        assert_eq!(bytes, serde_json::to_vec(&document).unwrap().len());
++        assert!(bytes > 0, "an unchanged document is not a zero-byte receipt");
++        assert_eq!(patch.apply(before).unwrap(), document, "the existing wrapper stays identical");
++        assert_eq!(serde_json::to_vec(before).unwrap(), original, "application does not mutate the base");
++        document
++    }
++
++    #[test]
++    fn checked_receipt_covers_noop_escaping_schema_and_numeric_lengths() {
++        let before = source();
++        assert_eq!(check(&before, &DocumentPatch::default()), before);
++        let mut next = before.clone();
++        next.name = "引号\"\n反斜杠\\🦀".into();
++        next.schema_version = 16;
++        for x in [0.0, -0.0, -123456.875, 0.000000125, 9999999.25] {
++            next.nodes.get_mut("n").unwrap().transform.0[4] = x;
++            // Explicitly include the node: f64 PartialEq considers +0 and -0
++            // equal, so `between` alone is not evidence that -0 was applied.
++            let mut patch = DocumentPatch::between(&before, &next).unwrap();
++            patch.nodes.insert("n".into(), Some(next.nodes["n"].clone()));
++            let actual = check(&before, &patch);
++            assert_eq!(actual.nodes["n"].transform.0[4].to_bits(), x.to_bits());
++            assert_eq!(serde_json::to_vec(&actual).unwrap(), serde_json::to_vec(&next).unwrap());
++        }
++    }
++
++    #[test]
++    fn checked_receipt_matches_actual_document_after_removal() {
++        let before = source();
++        let mut next = before.clone();
++        next.nodes.remove("n");
++        next.pages[0].children.clear();
++        assert_eq!(check(&before, &DocumentPatch::between(&before, &next).unwrap()), next);
++    }
++
++    #[test]
++    fn checked_receipt_errors_match_wrapper_and_leave_base_unchanged() {
++        let before = source();
++        let original = serde_json::to_vec(&before).unwrap();
++        let mut invalid_node = before.nodes["n"].clone();
++        invalid_node.transform.0[4] = f64::NAN;
++        let patches = [
++            DocumentPatch { nodes: [("n".into(), Some(invalid_node))].into(), fields: BTreeMap::new() },
++            DocumentPatch { nodes: BTreeMap::new(), fields: [("schemaVersion".into(), json!(0))].into() },
++            DocumentPatch { nodes: BTreeMap::new(), fields: [("unknownReceiptField".into(), json!(1))].into() },
++            DocumentPatch { nodes: [("n".into(), None)].into(), fields: BTreeMap::new() },
++        ];
++        for patch in patches {
++            let checked = patch.apply_with_size(&before).err().expect("must not issue a receipt");
++            assert_eq!(checked, patch.apply(&before).unwrap_err());
++            assert_eq!(serde_json::to_vec(&before).unwrap(), original);
++        }
++    }
++
++    #[test]
++    fn exact_counter_preserves_inclusive_byte_budget_boundary() {
++        let document = source();
++        let bytes = serde_json::to_vec(&document).unwrap().len();
++        assert_eq!(count_json_bytes(&document, bytes).unwrap(), bytes);
++        assert!(count_json_bytes(&document, bytes - 1).is_err());
++    }
++
++    #[test]
++    fn wrapper_history_undo_redo_keeps_exact_document_accounting() {
++        let before = source();
++        let mut next = before.clone();
++        next.name = "renamed \"文档\"".into();
++        next.nodes.get_mut("n").unwrap().transform.0[4] = -1234.875;
++        let mut editor = DocumentEditor::new(before.clone()).unwrap();
++        editor.apply(0, DocumentPatch::between(&before, &next).unwrap()).unwrap();
++        assert_eq!(editor.document(), &next);
++        assert_eq!(editor.document_bytes, serde_json::to_vec(editor.document()).unwrap().len());
++        editor.undo().unwrap();
++        assert_eq!(editor.document(), &before);
++        assert_eq!(editor.document_bytes, serde_json::to_vec(editor.document()).unwrap().len());
++        editor.redo().unwrap();
++        assert_eq!(editor.document(), &next);
++        assert_eq!(editor.document_bytes, serde_json::to_vec(editor.document()).unwrap().len());
++    }
++}
++
++#[cfg(test)]
++mod receipt_failure_boundary_tests {
++    use super::*;
++    use serde_json::json;
++
++    fn source() -> Document {
++        serde_json::from_value(json!({
++            "schemaVersion": 2, "id": "receipt-failures", "name": "before",
++            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["n"]}],
++            "nodes": {"n": {"id": "n", "kind": "rectangle", "width": 16, "height": 20}}
++        })).unwrap()
++    }
++
++    #[test]
++    fn invalid_font_never_issues_a_receipt_and_keeps_error_order() {
++        let before = source();
++        let serialized = serde_json::to_vec(&before).unwrap();
++        let patch = DocumentPatch {
++            nodes: Default::default(),
++            fields: [("fonts".into(), json!({"bad": {"family": "Broken", "data": "!"}}))].into(),
++        };
++        let error = patch.apply_with_size(&before).err().unwrap();
++        assert_eq!(error.code, "invalid_font");
++        assert_eq!(error, patch.apply(&before).unwrap_err());
++        assert_eq!(serde_json::to_vec(&before).unwrap(), serialized);
++        let mut invalid = patch;
++        invalid.fields.insert("schemaVersion".into(), json!(0));
++        assert_eq!(invalid.apply_with_size(&before).err().unwrap().code, "invalid_document");
++    }
++
++    // This test changes the pinned process capacity. Run ALONE in a fresh
++    // process with the exact filter documented in TEST-PLAN.md, never in the
++    // ordinary parallel suite or alongside another ignored capacity test.
++    #[test]
++    #[ignore = "isolated process only: pins exact document capacity"]
++    fn full_apply_receipt_preserves_exact_budget_boundary() {
++        let before = source();
++        let mut at_limit = before.clone();
++        at_limit.name = "x".repeat(100);
++        let exact = serde_json::to_vec(&at_limit).unwrap().len();
++        crate::capacity::configure(exact as u64 * crate::capacity::REPRESENTATION_RESERVE).unwrap();
++        assert_eq!(crate::capacity::document_byte_limit(), exact);
++        let patch = DocumentPatch::between(&before, &at_limit).unwrap();
++        let (actual, bytes) = patch.apply_with_size(&before).unwrap().into_parts();
++        assert_eq!(bytes, exact);
++        assert_eq!(actual, at_limit);
++        let mut over = at_limit.clone();
++        over.name.push('x');
++        assert_eq!(serde_json::to_vec(&over).unwrap().len(), exact + 1);
++        let rejected = DocumentPatch::between(&before, &over).unwrap();
++        let error = rejected.apply_with_size(&before).err().unwrap();
++        assert_eq!(error.code, "document_budget");
++        assert_eq!(error, rejected.apply(&before).unwrap_err());
++        assert_eq!(before.name, "before");
++        let mut both = rejected;
++        both.fields.insert("fonts".into(), json!({"bad": {"family": "Broken", "data": "!"}}));
++        assert_eq!(both.apply_with_size(&before).err().unwrap().code, "document_budget",
++            "the original byte-budget-before-font failure ordering is retained");
++    }
++}
+--- current/design-studio/crates/design-kernel/src/interop/source_edit_tests.rs
++++ candidate/design-studio/crates/design-kernel/src/interop/source_edit_tests.rs
+@@ -113,3 +113,96 @@
+     // This regression is native active-field preservation, not a claim that
+     // transient IDs or all dormant UI values persist through foreign formats.
+ }
++
++#[test]
++fn new_source_layer_rejects_each_proven_omission_with_a_fixed_error() {
++    for (kind, field, value) in [
++        ("rectangle", "smoothing", json!(0.6)),
++        ("rect", "smoothing", json!(0.6)),
++        ("frame", "smoothing", json!(0.6)),
++        ("section", "smoothing", json!(0.6)),
++        ("slice", "smoothing", json!(0.6)),
++        ("frame", "clip", json!(true)),
++        ("group", "clip", json!(true)),
++        ("rectangle", "clip", json!(true)),
++        ("ellipse", "arc", json!({"startAngle":0.25,"sweepAngle":1.5,"innerRadius":0.25})),
++        ("ellipse", "arc", json!({"startAngle":0.,"sweepAngle":std::f64::consts::TAU,"innerRadius":0.})),
++        ("ellipse", "arc", json!({"startAngle":0.,"sweepAngle":0.,"innerRadius":0.})),
++        ("polygon", "cornerRadius", json!(4.)),
++        ("star", "cornerRadius", json!(4.)),
++        ("frame", "radii", json!([1.,2.,3.,4.])),
++        ("section", "radii", json!([1.,2.,3.,4.])),
++        ("slice", "radii", json!([1.,2.,3.,4.])),
++        ("rectangle", "exportSettings", json!([{"id":"export","format":"png","scale":2.,"suffix":"@2x"}])),
++        ("slice", "exportSettings", json!([{"id":"export","format":"pdf","scale":1.,"suffix":""}])),
++    ] {
++        for visible in [true, false] {
++            let mut value_node = serde_json::to_value(crate::facet::sample_node("new", kind)).unwrap();
++            value_node[field] = value.clone();
++            value_node["visible"] = json!(visible);
++            // No children/paint, and zero radii for smoothing, still retain
++            // authored state. Current visible pixels are not an admission rule.
++            let node: Node = serde_json::from_value(value_node).unwrap();
++            let before = node.clone();
++            let error = validate_sketch_new_layer_for_source_save(&node).unwrap_err();
++            assert_eq!(error.to_string(), format!("unsupported lossless conversion: Source field {field} is not supported by the Sketch save codec; keep the draft or save a native document"));
++            assert_eq!(node, before);
++        }
++    }
++}
++
++#[test]
++fn new_source_layer_allows_zero_defaults_and_supported_rectangle_radii() {
++    for kind in ["rectangle", "rect", "ellipse", "frame", "section", "slice", "polygon", "star", "group"] {
++        let mut node = crate::facet::sample_node("new", kind);
++        // These are UI dormant defaults, not import-canonicalized replacements.
++        node.points = if kind == "star" { 5 } else { 3 };
++        node.inner_radius = 0.45;
++        node.text = "双击编辑文字".into();
++        for zero in [0., -0.] {
++            node.smoothing = zero;
++            node.corner_radius = zero;
++            node.radii = [zero; 4];
++            validate_sketch_new_layer_for_source_save(&node).unwrap();
++        }
++        if matches!(kind, "rectangle" | "rect") {
++            node.radii = [1., 2., 3., 4.];
++            validate_sketch_new_layer_for_source_save(&node).unwrap();
++        }
++    }
++    // Helper admission is deliberately not a claim that section kind or star
++    // innerRadius (known separate codec gaps) survive foreign interchange.
++}
++
++#[test]
++fn new_source_guard_stays_kind_scoped_not_a_generic_leaf_oracle() {
++    let mut ellipse = crate::facet::sample_node("new", "ellipse");
++    // These rectangle-only controls are dormant on an ordinary no-arc ellipse.
++    ellipse.smoothing = 0.6;
++    ellipse.radii = [8.; 4];
++    validate_sketch_new_layer_for_source_save(&ellipse).unwrap();
++    let mut group = crate::facet::sample_node("new", "group");
++    group.smoothing = 0.6;
++    group.radii = [8.; 4];
++    validate_sketch_new_layer_for_source_save(&group).unwrap();
++}
++
++#[test]
++fn new_source_guard_retains_fixed_field_precedence() {
++    let mut frame = crate::facet::sample_node("new", "frame");
++    frame.smoothing = 0.6;
++    frame.clip = true;
++    frame.radii = [8.; 4];
++    frame.export_settings = serde_json::from_value(json!([{"id":"export","format":"png","scale":1.,"suffix":""}])).unwrap();
++    for expected in ["smoothing", "clip", "radii", "exportSettings"] {
++        let error = validate_sketch_new_layer_for_source_save(&frame).unwrap_err();
++        assert_eq!(error.to_string(), format!("unsupported lossless conversion: Source field {expected} is not supported by the Sketch save codec; keep the draft or save a native document"));
++        match expected {
++            "smoothing" => frame.smoothing = 0.,
++            "clip" => frame.clip = false,
++            "radii" => frame.radii = [0.; 4],
++            _ => frame.export_settings.clear(),
++        }
++    }
++    validate_sketch_new_layer_for_source_save(&frame).unwrap();
++}
+--- current/design-studio/crates/design-kernel/src/interop.rs
++++ candidate/design-studio/crates/design-kernel/src/interop.rs
+@@ -4431,6 +4431,40 @@
+     Ok((export_sketch_layer_fields(before, id)?, export_sketch_layer_fields(after, id)?))
+ }
+ 
++/// Admit the six source-proven omissions for a newly authored source layer.
++/// The caller must first validate the document and check that this ID is new.
++/// This is not a whole-model roundtrip oracle: transient paint identities and
++/// unrelated dormant UI defaults remain on the existing compatibility path.
++#[cfg(not(target_arch = "wasm32"))]
++pub fn validate_sketch_new_layer_for_source_save(node: &Node) -> Result<()> {
++    let unsupported = if node.smoothing != 0.
++        && matches!(node.kind.as_str(), "rectangle" | "rect" | "frame" | "section" | "slice") {
++        // Preserve authored smoothing even with zero radii or no visible pixels.
++        Some("smoothing")
++    } else if node.clip {
++        // The editing importer initializes clip=false, including artboards.
++        // UI frame clip=true is not a safe default-equivalent substitution.
++        Some("clip")
++    } else if node.arc.is_some() && node.kind == "ellipse" {
++        // Even an explicit full-circle arc is authored state, unlike None.
++        Some("arc")
++    } else if node.corner_radius != 0.
++        && matches!(node.kind.as_str(), "polygon" | "star") {
++        Some("cornerRadius")
++    } else if node.radii.iter().any(|radius| *radius != 0.)
++        && matches!(node.kind.as_str(), "frame" | "section" | "slice") {
++        // Rectangle radii have a native mapping and remain admissible.
++        Some("radii")
++    } else if !node.export_settings.is_empty() {
++        Some("exportSettings")
++    } else { None };
++    if let Some(field) = unsupported {
++        // Match the existing-node guard's fixed, actionable error contract.
++        return Err(Error::Unsupported(format!("Source field {field} is not supported by the Sketch save codec; keep the draft or save a native document")));
++    }
++    Ok(())
++}
++
+ /// Export the kernel document as a `.sketch` bundle Sketch can open.
+ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
+     let source=boolean_worksets::source_view(doc)?;
+--- current/design-studio/crates/design-kernel/src/large_json/fragment_validation_tests.rs
++++ candidate/design-studio/crates/design-kernel/src/large_json/fragment_validation_tests.rs
+@@ -0,0 +1,292 @@
++//! Authored source regressions only. All tests in this file are NOT_RUN.
++use super::*;
++use std::io::Cursor;
++
++fn assert_duplicate(bytes: &[u8]) {
++    let error = validate_fragment(bytes).unwrap_err();
++    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
++    assert_eq!(error.to_string(), "Duplicate JSON object key in edit fragment");
++}
++
++fn export(changes: &Changes, source: &[u8]) -> Vec<u8> {
++    let mut out = Vec::new();
++    changes
++        .export(&mut Cursor::new(source), &mut out, source.len() as u64)
++        .unwrap();
++    out
++}
++
++#[test]
++fn fragment_rejects_unindexed_duplicate_without_changing_source_index_admission() {
++    let source = br#"{"outer":{"inner":{"x":1,"\u0078":2}}}"#;
++    // This is intentionally a legacy whole-source control, not new admission.
++    assert!(index(source.as_slice(), MAX_EXPANDED_BYTES).is_ok());
++    assert_duplicate(source);
++}
++
++#[test]
++fn duplicates_reject_at_every_admitted_object_depth() {
++    for depth in 0..MAX_DEPTH {
++        let text = format!(
++            "{}{{\"x\":1,\"\\u0078\":2}}{}",
++            "{\"outer\":".repeat(depth),
++            "}".repeat(depth)
++        );
++        assert_duplicate(text.as_bytes());
++    }
++}
++
++#[test]
++fn nested_arrays_do_not_disable_duplicate_key_validation() {
++    for text in [
++        r#"[{"x":1,"x":2}]"#,
++        r#"{"a":[[{"b":[{"x":1,"\u0078":2}]}]]}"#,
++        r#"{"nodes":{"a":{"payload":[{"x":1,"x":2}]}}}"#,
++        r#"{"layers":[{"layers":[{"payload":{"x":1,"x":2}}]}]}"#,
++    ] {
++        assert_duplicate(text.as_bytes());
++    }
++}
++
++#[test]
++fn decoded_escape_identity_is_exact_and_not_hash_only() {
++    for text in [
++        r#"{"x":1,"\u0078":2}"#,
++        r#"{"/":1,"\/":2}"#,
++        r#"{"\"":1,"\u0022":2}"#,
++        r#"{"\\":1,"\u005c":2}"#,
++        r#"{"\n":1,"\u000a":2}"#,
++        r#"{"😀":1,"\uD83D\uDE00":2}"#,
++        r#"{"雪":1,"\u96ea":2}"#,
++        r#"{"":1,"":2}"#,
++    ] {
++        assert_duplicate(text.as_bytes());
++    }
++}
++
++#[test]
++fn separate_objects_case_and_non_normalized_unicode_keys_remain_distinct() {
++    for text in [
++        r#"{"a":{"x":1},"b":{"\u0078":2}}"#,
++        r#"[{"x":1},{"x":2},{"x":{"x":3}}]"#,
++        r#"{"x":1,"X":2}"#,
++        r#"{"é":1,"e\u0301":2}"#,
++        r#"{"😀":1,"😃":2}"#,
++        r#"{"\u0000":1,"":2}"#,
++    ] {
++        validate_fragment(text.as_bytes()).unwrap();
++    }
++}
++
++#[test]
++fn arbitrary_numeric_lexemes_are_validated_without_numeric_conversion() {
++    let mut tokens = vec![
++        "0".to_owned(), "-0".to_owned(), "-0.0".to_owned(),
++        "1".to_owned(), "1.0".to_owned(), "1e0".to_owned(), "1E+00".to_owned(),
++        "9007199254740993".to_owned(), "18446744073709551616".to_owned(),
++        "-9223372036854775809".to_owned(), "1e999999".to_owned(),
++        "1e-999999".to_owned(), "4.9406564584124654e-324".to_owned(),
++        "1.7976931348623157e308".to_owned(),
++    ];
++    tokens.push("9".repeat(64 * 1024 + 1));
++    tokens.push(format!("1e+{}", "9".repeat(64 * 1024 + 1)));
++    tokens.push(format!("0.{}1", "0".repeat(64 * 1024 + 1)));
++    for token in tokens {
++        assert!(index(token.as_bytes(), MAX_FRAGMENT_BYTES).is_ok());
++        let mut changes = Changes::default();
++        changes
++            .replace(Span { start: 1, end: 2 }, token.as_bytes().to_vec(), 3)
++            .unwrap();
++        assert_eq!(export(&changes, b"[0]"), format!("[{token}]").as_bytes());
++    }
++}
++
++#[test]
++fn replacement_retains_raw_keys_strings_numbers_and_outside_bytes() {
++    let source = br#"{ "left" : -0.0, "target":0, "cold":1844674407370955161600000 }"#;
++    let span = index(source.as_slice(), MAX_EXPANDED_BYTES).unwrap().entries[0]
++        .fields.iter().find(|field| field.key == "target").unwrap().value;
++    let text = " {\"\\u0078\": [1E+00,-0,1e-999999],\"雪\":\"\\u96ea\\/😀\"} ";
++    let mut changes = Changes::default();
++    changes.replace(span, text.as_bytes().to_vec(), source.len() as u64).unwrap();
++    let mut expected = source[..span.start as usize].to_vec();
++    expected.extend_from_slice(text.as_bytes());
++    expected.extend_from_slice(&source[span.end as usize..]);
++    assert_eq!(export(&changes, source), expected);
++}
++
++#[test]
++fn malformed_grammar_and_surrogate_policy_remain_unchanged() {
++    for text in [
++        b"[01]".as_slice(), b"[-01]", b"[1.]", b"[1e]", b"[+1]", b"[.1]",
++        b"[NaN]", b"[Infinity]", b"[true,]", b"{\"a\":1,}", b"true false",
++        br#""\uD800""#, br#""\uDC00""#, br#""\uD800\u0041""#,
++        br#""\uD800\uD800""#, br#""\x41""#, b"\"\xff\"", b"\"\xc0\x80\"",
++        b"\"\xed\xa0\x80\"", b"\"\xf4\x90\x80\x80\"", b"\"\x00\"", b"",
++    ] {
++        assert!(index(text, MAX_FRAGMENT_BYTES).is_err(), "{text:?}");
++        assert!(validate_fragment(text).is_err(), "{text:?}");
++    }
++    for text in [r#""\uD83D\uDE00""#, "\"😀\"", r#""\u0000""#, "[]", "{}"] {
++        validate_fragment(text.as_bytes()).unwrap();
++    }
++}
++
++#[test]
++fn utf8_and_escaped_keys_cross_internal_buffer_boundaries() {
++    // Place the raw supplementary key across each split of a 64 KiB refill.
++    for tail in 0..8 {
++        let prefix = format!("{{\"pad\":\"{}\",\"", "a".repeat(64 * 1024 - 11 - tail));
++        let text = format!("{prefix}😀\":0,\"\\uD83D\\uDE00\":1}}");
++        assert_duplicate(text.as_bytes());
++    }
++    let text = r#"{"outer":{"😀":1,"\uD83D\uDE00":2}}"#.as_bytes();
++    for capacity in 1..=16 {
++        let mut scanner = Scanner {
++            input: BufReader::with_capacity(capacity, text),
++            at: 0,
++            limit: MAX_FRAGMENT_BYTES,
++            sink: |_, _| panic!("fragment validation emitted a navigation row"),
++            entries: 0,
++            fragment_keys: Some(FragmentKeyBudget { limit: text.len(), bytes: 0, keys: 0 }),
++        };
++        assert_eq!(
++            scanner.value(0, None, true, "JSON", true, None).unwrap_err().to_string(),
++            "Duplicate JSON object key in edit fragment"
++        );
++    }
++}
++
++#[test]
++fn exact_depth_limit_and_first_overflow_match_existing_scanner() {
++    for depth in [MAX_DEPTH, MAX_DEPTH + 1] {
++        let text = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
++        assert_eq!(index(text.as_bytes(), MAX_FRAGMENT_BYTES).is_ok(), depth == MAX_DEPTH);
++        assert_eq!(validate_fragment(text.as_bytes()).is_ok(), depth == MAX_DEPTH);
++    }
++}
++
++#[test]
++fn key_and_selected_metadata_limits_are_preserved() {
++    for length in [MAX_KEY_BYTES, MAX_KEY_BYTES + 1] {
++        let key = format!("{{\"{}\":0}}", "k".repeat(length));
++        let metadata = format!("{{\"name\":\"{}\"}}", "m".repeat(length));
++        for text in [key, metadata] {
++            assert_eq!(index(text.as_bytes(), MAX_FRAGMENT_BYTES).is_ok(), length == MAX_KEY_BYTES);
++            assert_eq!(validate_fragment(text.as_bytes()).is_ok(), length == MAX_KEY_BYTES);
++        }
++    }
++    // Non-selected metadata and ordinary string values retain their old policy.
++    let text = format!("{{\"outer\":{{\"inner\":{{\"name\":\"{}\"}}}}}}", "v".repeat(MAX_KEY_BYTES + 1));
++    assert!(index(text.as_bytes(), MAX_FRAGMENT_BYTES).is_ok());
++    validate_fragment(text.as_bytes()).unwrap();
++}
++
++#[test]
++fn exact_four_mib_fragment_admits_and_next_byte_rejects() {
++    let limit = MAX_FRAGMENT_BYTES as usize;
++    let mut text = format!("\"{}\"", "a".repeat(limit - 2)).into_bytes();
++    validate_fragment(&text).unwrap();
++    text.push(b' ');
++    assert_eq!(validate_fragment(&text).unwrap_err().to_string(), "JSON replacement fragment exceeds 4 MiB");
++    let mut changes = Changes::default();
++    assert!(changes.replace(Span { start: 0, end: 1 }, text, 1).is_err());
++    assert_eq!(export(&changes, b"0"), b"0");
++}
++
++#[test]
++fn active_key_sets_release_after_children_and_do_not_emit_index_rows() {
++    let text = format!("[{}]", (0..2000).map(|_| r#"{"x":{"x":1},"y":2}"#).collect::<Vec<_>>().join(","));
++    let mut scanner = Scanner {
++        input: BufReader::with_capacity(64 * 1024, text.as_bytes()),
++        at: 0,
++        limit: MAX_FRAGMENT_BYTES,
++        sink: |_, _| panic!("fragment validation emitted a navigation row"),
++        entries: 0,
++        fragment_keys: Some(FragmentKeyBudget { limit: text.len(), bytes: 0, keys: 0 }),
++    };
++    scanner.value(0, None, true, "JSON", true, None).unwrap();
++    let budget = scanner.fragment_keys.as_ref().unwrap();
++    assert_eq!((budget.bytes, budget.keys), (0, 0));
++    assert!(scanner.entries > 0, "legacy selection counting was accidentally disabled");
++}
++
++#[test]
++fn key_bookkeeping_is_checked_and_never_wraps() {
++    let mut budget = FragmentKeyBudget { limit: 7, bytes: 0, keys: 0 };
++    budget.retain(3).unwrap();
++    budget.retain(0).unwrap();
++    assert_eq!((budget.bytes, budget.keys), (3, 2));
++    assert!(budget.retain(0).is_err());
++    assert_eq!((budget.bytes, budget.keys), (3, 2));
++    budget.release(3, 2).unwrap();
++    assert_eq!((budget.bytes, budget.keys), (0, 0));
++    let mut overflow = FragmentKeyBudget { limit: usize::MAX, bytes: usize::MAX, keys: 0 };
++    assert!(overflow.retain(1).is_err());
++    let mut overflow = FragmentKeyBudget { limit: usize::MAX, bytes: 0, keys: usize::MAX };
++    assert!(overflow.retain(0).is_err());
++}
++
++#[test]
++fn rejected_duplicate_replacement_preserves_existing_pieces_and_exact_output() {
++    let source = br#"{"edit":0,"untouched":1E+00}"#;
++    let span = Span { start: 8, end: 9 };
++    let mut changes = Changes::default();
++    changes.replace(span, b"-0".to_vec(), source.len() as u64).unwrap();
++    let previous_state = serde_json::to_vec(&changes).unwrap();
++    let previous_output = export(&changes, source);
++    let duplicate = br#"{"outer":{"inner":{"x":1,"\u0078":2}}}"#.to_vec();
++    let error = changes.replace(Span { start: 8, end: 10 }, duplicate, source.len() as u64).unwrap_err();
++    assert_eq!(error.to_string(), "Duplicate JSON object key in edit fragment");
++    assert_eq!(serde_json::to_vec(&changes).unwrap(), previous_state);
++    assert_eq!(export(&changes, source), previous_output);
++    assert_eq!(source, br#"{"edit":0,"untouched":1E+00}"#);
++}
++
++#[test]
++fn wide_objects_and_escaped_decoded_key_limit_do_not_require_field_tables() {
++    let text = format!("{{{}}}", (0..20_000).map(|n| format!("\"k{n}\":0")).collect::<Vec<_>>().join(","));
++    validate_fragment(text.as_bytes()).unwrap();
++    let text = format!("{{\"{}\":0}}", "\\u006b".repeat(MAX_KEY_BYTES));
++    assert!(text.len() > MAX_KEY_BYTES);
++    validate_fragment(text.as_bytes()).unwrap();
++    let over = format!("{{\"{}\":0}}", "\\u006b".repeat(MAX_KEY_BYTES + 1));
++    assert!(validate_fragment(over.as_bytes()).is_err());
++}
++
++#[test]
++fn fragment_mode_keeps_the_existing_selected_entry_count_guard() {
++    let text = b"{}".as_slice();
++    let mut scanner = Scanner {
++        input: BufReader::with_capacity(64 * 1024, text),
++        at: 0,
++        limit: MAX_FRAGMENT_BYTES,
++        sink: |_, _| panic!("fragment validation emitted a navigation row"),
++        entries: MAX_INDEX_VALUES,
++        fragment_keys: Some(FragmentKeyBudget { limit: text.len(), bytes: 0, keys: 0 }),
++    };
++    assert_eq!(
++        scanner.value(0, None, true, "JSON", true, None).unwrap_err().to_string(),
++        "JSON index working-set limit exceeded"
++    );
++}
++
++#[test]
++fn legacy_index_keeps_selected_rows_parents_metadata_and_field_ranges() {
++    let source = br#"{"outer":{"name":"child","inner":{"x":1}},"layers":[{"id":"layer","name":"Layer"}]}"#;
++    let indexed = index(source.as_slice(), MAX_EXPANDED_BYTES).unwrap();
++    assert_eq!(indexed.bytes, source.len() as u64);
++    assert_eq!(indexed.entries.len(), 3);
++    assert_eq!(indexed.entries.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), vec!["json:0", "json:9", "layer"]);
++    assert_eq!(indexed.entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), vec!["JSON", "child", "Layer"]);
++    assert_eq!(indexed.entries.iter().map(|e| e.parent).collect::<Vec<_>>(), vec![None, Some(0), Some(0)]);
++    assert_eq!(indexed.entries.iter().map(|e| e.depth).collect::<Vec<_>>(), vec![0, 1, 2]);
++    assert_eq!(indexed.entries[0].span, Span { start: 0, end: source.len() as u64 });
++    assert_eq!(indexed.entries[0].fields.iter().map(|f| f.key.as_str()).collect::<Vec<_>>(), vec!["outer", "layers"]);
++    assert_eq!(indexed.entries[1].fields.iter().map(|f| f.key.as_str()).collect::<Vec<_>>(), vec!["name", "inner"]);
++    let inner = indexed.entries[1].fields.iter().find(|f| f.key == "inner").unwrap();
++    assert_eq!(&source[inner.value.start as usize..inner.value.end as usize], br#"{"x":1}"#);
++    assert_eq!(&source[inner.member.start as usize..inner.member.end as usize], br#""inner":{"x":1}"#);
++    let layer = &indexed.entries[2];
++    assert_eq!(&source[layer.span.start as usize..layer.span.end as usize], br#"{"id":"layer","name":"Layer"}"#);
++}
+--- current/design-studio/crates/design-kernel/src/large_json.rs
++++ candidate/design-studio/crates/design-kernel/src/large_json.rs
+@@ -3,7 +3,7 @@
+ //! Offsets are UTF-8 byte offsets (u64), including on wasm32. Only selected
+ //! fragments enter the ordinary typed scene/transaction implementation.
+ use serde::{Deserialize, Serialize};
+-use std::collections::{HashMap, HashSet};
++use std::collections::{BTreeSet, HashMap, HashSet};
+ use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+ use std::sync::Arc;
+ 
+@@ -53,12 +53,50 @@
+     io::Error::new(io::ErrorKind::InvalidData, message)
+ }
+ 
++// Fragment validation keeps only keys in currently active objects. Decoded
++// UTF-8 key bytes plus their two source quotes cannot exceed the already
++// admitted fragment length. Tracking both payload and key count bounds the
++// BTreeSet bookkeeping by that same input, without imposing a smaller budget.
++// This is a logical allocation bound, not an allocator/RSS measurement.
++struct FragmentKeyBudget {
++    limit: usize,
++    bytes: usize,
++    keys: usize,
++}
++impl FragmentKeyBudget {
++    fn retain(&mut self, bytes: usize) -> io::Result<()> {
++        let next_bytes = self.bytes.checked_add(bytes);
++        let next_keys = self.keys.checked_add(1);
++        let charge = next_keys
++            .and_then(|keys| keys.checked_mul(2))
++            .and_then(|quotes| next_bytes.and_then(|bytes| bytes.checked_add(quotes)));
++        if charge.is_none_or(|charge| charge > self.limit) {
++            return Err(invalid("JSON fragment key working-set limit exceeded"));
++        }
++        self.bytes = next_bytes.unwrap();
++        self.keys = next_keys.unwrap();
++        Ok(())
++    }
++    fn release(&mut self, bytes: usize, keys: usize) -> io::Result<()> {
++        self.bytes = self
++            .bytes
++            .checked_sub(bytes)
++            .ok_or_else(|| invalid("Invalid JSON fragment key accounting"))?;
++        self.keys = self
++            .keys
++            .checked_sub(keys)
++            .ok_or_else(|| invalid("Invalid JSON fragment key accounting"))?;
++        Ok(())
++    }
++}
++
+ struct Scanner<R, F> {
+     input: BufReader<R>,
+     at: u64,
+     limit: u64,
+     sink: F,
+     entries: usize,
++    fragment_keys: Option<FragmentKeyBudget>,
+ }
+ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
+     fn peek(&mut self) -> io::Result<Option<u8>> {
+@@ -305,7 +343,9 @@
+                 return Err(invalid("JSON index working-set limit exceeded"));
+             }
+             self.entries += 1;
+-            Some(Entry {
++            // Keep selection/count/string-limit semantics, but do not allocate
++            // navigation rows or field tables merely to validate a fragment.
++            self.fragment_keys.is_none().then(|| Entry {
+                 member: Span::default(),
+                 id: format!("json:{start}"),
+                 name: label.into(),
+@@ -318,12 +358,12 @@
+         } else {
+             None
+         };
+-        let owner = if entry.is_some() {
+-            Some(ordinal)
+-        } else {
+-            parent
+-        };
++        let owner = if select { Some(ordinal) } else { parent };
+         let mut keys = HashSet::new();
++        // Exact decoded identity, with no Unicode normalization and no
++        // hash-only equivalence. Same keys in separate objects remain valid.
++        let mut fragment_keys: BTreeSet<Box<str>> = BTreeSet::new();
++        let mut fragment_key_bytes = 0usize;
+         let mut field_bytes = 0usize;
+         self.whitespace()?;
+         if self.peek()? != Some(b'}') {
+@@ -331,6 +371,18 @@
+                 self.whitespace()?;
+                 let field_start = self.at;
+                 let key = self.string(true, MAX_KEY_BYTES)?.unwrap();
++                if let Some(budget) = &mut self.fragment_keys {
++                    if fragment_keys.contains(key.as_str()) {
++                        return Err(invalid("Duplicate JSON object key in edit fragment"));
++                    }
++                    if fragment_keys.len() >= MAX_INDEX_VALUES {
++                        return Err(invalid("Excessive JSON object keys in edit fragment"));
++                    }
++                    budget.retain(key.len())?;
++                    fragment_key_bytes = fragment_key_bytes
++                        .checked_add(key.len())
++                        .ok_or_else(|| invalid("JSON fragment key byte overflow"))?;
++                }
+                 if entry.is_some()
+                     && (!keys.insert(<[u8; 32]>::from(Sha256::digest(key.as_bytes())))
+                         || keys.len() > MAX_INDEX_VALUES)
+@@ -341,7 +393,7 @@
+                 self.expect(b':')?;
+                 self.whitespace()?;
+                 let value_start = self.at;
+-                let metadata = entry.is_some()
++                let metadata = select
+                     && matches!(
+                         key.as_str(),
+                         "do_objectID" | "id" | "name" | "_class" | "kind"
+@@ -389,6 +441,10 @@
+                             },
+                         });
+                     }
++                } else if self.fragment_keys.is_some() {
++                    // Until now the local key was counted while its value was
++                    // scanned. Moving it avoids a second retained key copy.
++                    fragment_keys.insert(key.into_boxed_str());
+                 }
+                 self.whitespace()?;
+                 if self.peek()? != Some(b',') {
+@@ -398,6 +454,11 @@
+             }
+         }
+         self.expect(b'}')?;
++        if let Some(budget) = &mut self.fragment_keys {
++            budget.release(fragment_key_bytes, fragment_keys.len())?;
++        }
++        // On an error the local sets and whole validator are dropped; no
++        // partially validated fragment or accounting state can be reused.
+         if let Some(mut item) = entry {
+             item.span = Span {
+                 start,
+@@ -440,6 +501,7 @@
+         limit,
+         sink,
+         entries: 0,
++        fragment_keys: None,
+     };
+     scanner.value(depth, None, true, "JSON", true, None)?;
+     scanner.whitespace()?;
+@@ -451,6 +513,34 @@
+         entries: scanner.entries,
+     })
+ }
++/// Validate bounded new edit/replacement bytes without constructing a Value or
++/// an index. Every object rejects duplicate decoded keys, independently of
++/// navigation selection. Existing whole-source scan/index admission is unchanged.
++/// Strings, arbitrary numeric lexemes, and all original bytes are left untouched.
++pub fn validate_fragment(bytes: &[u8]) -> io::Result<()> {
++    if bytes.len() as u64 > MAX_FRAGMENT_BYTES {
++        return Err(invalid("JSON replacement fragment exceeds 4 MiB"));
++    }
++    let mut scanner = Scanner {
++        input: BufReader::with_capacity(64 * 1024, bytes),
++        at: 0,
++        limit: MAX_FRAGMENT_BYTES,
++        sink: |_, _| Ok(()),
++        entries: 0,
++        fragment_keys: Some(FragmentKeyBudget {
++            limit: bytes.len(),
++            bytes: 0,
++            keys: 0,
++        }),
++    };
++    scanner.value(0, None, true, "JSON", true, None)?;
++    scanner.whitespace()?;
++    if scanner.peek()?.is_some() {
++        return Err(invalid("Trailing JSON content"));
++    }
++    Ok(())
++}
++
+ pub fn index<R: Read>(reader: R, limit: u64) -> io::Result<Index> {
+     index_subtree(reader, limit, 0)
+ }
+@@ -568,7 +658,7 @@
+         Ok(additions)
+     }
+     pub fn replace(&mut self, span: Span, json: Vec<u8>, source_bytes: u64) -> io::Result<()> {
+-        index(json.as_slice(), MAX_FRAGMENT_BYTES)?;
++        validate_fragment(json.as_slice())?;
+         self.splice(span, json, source_bytes)
+     }
+     /// Host-verified structural splice. Callers must validate the resulting
+@@ -852,3 +942,7 @@
+         );
+     }
+ }
++
++#[cfg(test)]
++#[path = "large_json/fragment_validation_tests.rs"]
++mod fragment_validation_tests;
+--- current/design-studio/crates/design-kernel/src/renderer.rs
++++ candidate/design-studio/crates/design-kernel/src/renderer.rs
+@@ -140,9 +140,33 @@
+     fn deref_mut(&mut self) -> &mut Document { Arc::make_mut(&mut self.0) }
+ }
+ 
++// A size receipt is tied to the exact immutable authored allocation, not
++// Document::PartialEq, a caller-supplied revision, or a lossy content hash.
++// Weak does not keep the document alive or add a strong owner. Arc::make_mut
++// detaches even a sole strong owner when a Weak exists, so an unaccounted COW
++// mutation cannot silently retain this identity. Never dereference the pointer.
++#[derive(Clone)]
++struct RetainedSourceSize {
++    source: std::sync::Weak<Document>,
++    serialized_bytes: usize,
++}
++impl RetainedSourceSize {
++    fn new(source: &SharedDocument, serialized_bytes: usize) -> Self {
++        Self { source: Arc::downgrade(&source.0), serialized_bytes }
++    }
++    fn bytes_for(&self, source: &SharedDocument) -> Option<usize> {
++        (self.source.as_ptr() == Arc::as_ptr(&source.0)).then_some(self.serialized_bytes)
++    }
++}
++
+ pub struct Engine {
+     source_doc: Option<SharedDocument>,
+     source_doc_bytes: Option<usize>,
++    // Exact count from the last successful generic retained patch, for this
++    // unchanged authored source only. This is NOT fast-lane eligibility:
++    // keep source_doc_bytes and its original Some/None transitions unchanged.
++    // Only the direct-interaction recount fallback may read this receipt.
++    retained_source_size: Option<RetainedSourceSize>,
+     text_base: Option<SharedDocument>,
+     animation_base: Option<SharedDocument>,
+     animation_sample: Option<crate::animation::Sample>,
+@@ -205,6 +229,7 @@
+         Self {
+             source_doc: None,
+             source_doc_bytes: None,
++            retained_source_size: None,
+             text_base: None,
+             animation_base: None,
+             animation_sample: None,
+@@ -298,7 +323,8 @@
+             .source_doc
+             .as_ref()
+             .ok_or("Load document before applying a patch")?;
+-        let next = patch.apply(source).map_err(|e| e.to_string())?;
++        let (next, next_bytes) = patch.apply_with_size(source)
++            .map_err(|e| e.to_string())?.into_parts();
+         let mut damage =
+             crate::dirty_region::patch_damage_with_fonts(source, &next, patch, &self.fonts);
+         if crate::repeat::has_repeats(source) || crate::repeat::has_repeats(&next) {
+@@ -317,6 +343,7 @@
+             }
+             self.source_doc = Some(next.into());
+             self.source_doc_bytes = None;
++            self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
+             self.geo_revision += 1;
+             if let Some(cache) = &mut self.camera_prepare {
+                 cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
+@@ -332,6 +359,7 @@
+             }
+             self.source_doc = Some(next.into());
+             self.source_doc_bytes = None;
++            self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
+             self.geo_revision += 1;
+             if let Some(cache) = &mut self.camera_prepare {
+                 if !bounds_dirty.is_empty() {
+@@ -435,7 +463,12 @@
+         let patch = crate::editing::DocumentPatch { nodes, fields: Default::default() };
+         if !self.can_retain_interaction(&patch, affine) { return Ok(false); }
+         source.validate_nodes(patch.nodes.iter().map(|(id,node)| (id,node.as_ref().unwrap())))?;
+-        let mut bytes = match self.source_doc_bytes {
++        // The full apply already counted this exact, still-unchanged source.
++        // Capacity is pinned for the process; keep node validation before this
++        // point and the final adjusted-size admission below exactly as before.
++        // Do not take the receipt until success: rejection must preserve it.
++        let mut bytes = match self.source_doc_bytes.or_else(||
++            self.retained_source_size.as_ref().and_then(|receipt| receipt.bytes_for(source))) {
+             Some(bytes) => bytes,
+             None => crate::editing::serialized_document_size(source).map_err(|e| e.to_string())?,
+         };
+@@ -446,6 +479,9 @@
+                 + crate::editing::serialized_size(&next.as_ref().unwrap().transform).map_err(|e| e.to_string())?;
+         }
+         crate::capacity::check_document_bytes(bytes)?;
++        // All fallible checks have completed. Release the Weak receipt before
++        // mutating so a sole owner need not detach only because of this cache.
++        self.retained_source_size = None;
+         for (id, transform) in transforms {
+             self.source_doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = *transform;
+             self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = *transform;
+@@ -505,6 +541,7 @@
+         };
+         let rects: Vec<_> = patch.nodes.iter().flat_map(|(id, next)|
+             [rect(&source.nodes[id]), rect(next.as_ref().unwrap())]).collect();
++        self.retained_source_size = None;
+         for (id, next) in &patch.nodes {
+             let transform = next.as_ref().unwrap().transform;
+             self.source_doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = transform;
+@@ -547,6 +584,7 @@
+         // Loading historically admits by input size; oversized normalized
+         // documents keep that behaviour, but cannot take the local fast path.
+         self.source_doc_bytes = crate::editing::serialized_document_size(&doc).ok();
++        self.retained_source_size = None;
+         if !retain_index||self.render_index.is_none(){
+             self.render_index = Some(Arc::new(crate::render_index::RenderIndex::new(&doc)));
+         }
+@@ -1708,6 +1746,7 @@
+         Engine {
+             source_doc: self.source_doc.clone(),
+             source_doc_bytes: self.source_doc_bytes,
++            retained_source_size: self.retained_source_size.clone(),
+             text_base: self.text_base.clone(),
+             animation_base: self.animation_base.clone(),
+             animation_sample: self.animation_sample.clone(),
+--- current/design-studio/crates/design-kernel/src/renderer_tests/translation_retention.rs
++++ candidate/design-studio/crates/design-kernel/src/renderer_tests/translation_retention.rs
+@@ -277,3 +277,376 @@
+     drop(owner);
+     assert_eq!(worker.render(&options()).unwrap(), reference.render(&options()).unwrap());
+ }
++
++// A2 receipt tests. Source drafts only until the matching kernel is built/run.
++fn retained_receipt_bytes(engine: &Engine) -> Option<usize> {
++    engine.source_doc.as_ref().and_then(|source|
++        engine.retained_source_size.as_ref().and_then(|receipt| receipt.bytes_for(source)))
++}
++fn retained_painted_engine(original: Document) -> Engine {
++    let mut engine = Engine::new();
++    engine.install_document(original.clone()).unwrap();
++    engine.render(&options()).unwrap();
++    let mut painted = original.clone();
++    painted.nodes.get_mut("child").unwrap().opacity = 0.625;
++    let patch = crate::editing::DocumentPatch::between(&original, &painted).unwrap();
++    assert!(engine.retainable_paint_changes(&patch).is_some());
++    engine.apply_document_patch_with_damage(&patch).unwrap();
++    assert_eq!(engine.source_doc_bytes, None, "receipt storage cannot grant legacy eligibility");
++    assert_eq!(retained_receipt_bytes(&engine), Some(serde_json::to_vec(&painted).unwrap().len()));
++    engine
++}
++fn assert_retained_receipt_matches_fresh(engine: &mut Engine) {
++    let mut fresh = Engine::new();
++    fresh.install_document(engine.source_doc.clone().unwrap()).unwrap();
++    assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),
++        fresh.compile_gpu(&options()).unwrap().into_packet().unwrap());
++    assert_eq!(engine.render(&options()).unwrap(), fresh.render(&options()).unwrap());
++}
++
++#[test]
++fn retained_patch_direct_interaction_avoids_whole_document_recount() {
++    // This exact test uses only legacy Engine APIs/fields plus the identical
++    // cfg(test) counter seam. It is also supplied as the old-red control.
++    for seed in ["paint", "nested-translation"] {
++        let original = source();
++        let mut engine = Engine::new();
++        engine.install_document(original.clone()).unwrap();
++        engine.render(&options()).unwrap();
++        let mut next = original.clone();
++        if seed == "paint" { next.nodes.get_mut("child").unwrap().opacity = 0.625; }
++        else { next.nodes.get_mut("child").unwrap().transform.0[4] = -1234.875; }
++        engine.apply_document_patch(&crate::editing::DocumentPatch::between(&original, &next).unwrap()).unwrap();
++        assert_eq!(engine.source_doc_bytes, None);
++        let mut transform = next.nodes["child"].transform;
++        transform.0[4] = 11.125;
++        let before_count = crate::editing::document_size_count_calls();
++        assert!(engine.apply_interaction_transforms(&[("child".into(), transform)].into()).unwrap());
++        assert_eq!(crate::editing::document_size_count_calls() - before_count, 0,
++            "old baseline recounts once after {seed}; A2 reuses the checked receipt");
++        next.nodes.get_mut("child").unwrap().transform = transform;
++        assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(&next).unwrap().len()));
++        let mut fresh = Engine::new();
++        fresh.install_document(next).unwrap();
++        assert_eq!(engine.render(&options()).unwrap(), fresh.render(&options()).unwrap());
++    }
++}
++
++#[test]
++fn missing_private_receipt_retains_legacy_recount_fallback() {
++    let mut engine = retained_painted_engine(source());
++    engine.retained_source_size = None; // Deliberate cache-miss injection.
++    let mut transform = engine.source_doc.as_ref().unwrap().nodes["child"].transform;
++    transform.0[4] = 12.375;
++    let before_count = crate::editing::document_size_count_calls();
++    assert!(engine.apply_interaction_transforms(&[("child".into(), transform)].into()).unwrap());
++    assert_eq!(crate::editing::document_size_count_calls() - before_count, 1);
++    assert!(engine.retained_source_size.is_none());
++    assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap().len()));
++    assert_retained_receipt_matches_fresh(&mut engine);
++}
++
++#[test]
++fn retained_patch_does_not_advance_clipped_root_eligibility() {
++    for seed in ["paint", "nested-translation"] {
++        let original = source();
++        let mut engine = Engine::new();
++        engine.install_document(original.clone()).unwrap();
++        engine.render(&options()).unwrap();
++        let mut next = original.clone();
++        if seed == "paint" { next.nodes.get_mut("child").unwrap().opacity = 0.625; }
++        else { next.nodes.get_mut("child").unwrap().transform.0[4] += 0.375; }
++        engine.apply_document_patch(&crate::editing::DocumentPatch::between(&original, &next).unwrap()).unwrap();
++        for dx in [13.375, -9.125] {
++            assert_eq!(engine.source_doc_bytes, None);
++            let before = engine.source_doc.clone().unwrap();
++            let mut moved = before.clone();
++            moved.nodes.get_mut("frame").unwrap().transform.0[4] += dx;
++            let patch = crate::editing::DocumentPatch::between(&before, &moved).unwrap();
++            assert!(engine.can_retain_translation(&patch));
++            assert!(engine.apply_clipped_root_translation(&patch).unwrap().is_none(),
++                "the private receipt must not authorize the root fast lane");
++            let mut expected = crate::dirty_region::patch_damage_with_fonts(&before, &moved, &patch, &engine.fonts);
++            expected.translation_only = Some(true);
++            let before_count = crate::editing::document_size_count_calls();
++            let actual = engine.apply_document_patch_with_damage(&patch).unwrap();
++            assert_eq!(crate::editing::document_size_count_calls() - before_count, 1,
++                "generic apply, including validation and its count, still runs");
++            assert_eq!(serde_json::to_value(actual).unwrap(), serde_json::to_value(expected).unwrap());
++            assert_eq!(engine.source_doc_bytes, None);
++            assert_eq!(retained_receipt_bytes(&engine), Some(serde_json::to_vec(&moved).unwrap().len()));
++            assert_retained_receipt_matches_fresh(&mut engine);
++        }
++        // Exactly the old transition: a successful explicit interaction can
++        // set source_doc_bytes and authorize a later root fast lane.
++        let mut transform = engine.source_doc.as_ref().unwrap().nodes["child"].transform;
++        transform.0[4] += 0.25;
++        assert!(engine.apply_interaction_transforms(&[("child".into(), transform)].into()).unwrap());
++        assert!(engine.retained_source_size.is_none());
++        let before = engine.source_doc.clone().unwrap();
++        let mut moved = before.clone();
++        moved.nodes.get_mut("frame").unwrap().transform.0[4] += 2.125;
++        let patch = crate::editing::DocumentPatch::between(&before, &moved).unwrap();
++        let before_count = crate::editing::document_size_count_calls();
++        engine.apply_document_patch_with_damage(&patch).unwrap();
++        assert_eq!(crate::editing::document_size_count_calls() - before_count, 0);
++        assert!(engine.source_doc_bytes.is_some());
++        assert!(engine.retained_source_size.is_none());
++        assert_retained_receipt_matches_fresh(&mut engine);
++    }
++}
++
++#[test]
++fn retained_paint_does_not_advance_glass_eligibility() {
++    let mut original = source();
++    original.schema_version = 5;
++    let frame = original.nodes.get_mut("frame").unwrap();
++    frame.fills[0].opacity = 0.2;
++    frame.effects = vec![serde_json::from_value(json!({
++        "kind":"glass","visible":true,"radius":4,"color":"#000000","opacity":0.5,"amount":14,
++        "glass":{"depth":8,"refraction":0.5,"dispersion":0.3,"lightAngle":45,"lightIntensity":0.5}
++    })).unwrap()];
++    let mut engine = retained_painted_engine(original);
++    for id in ["frame", "child", "frame"] {
++        let before = engine.source_doc.clone().unwrap();
++        let mut moved = before.clone();
++        moved.nodes.get_mut(id).unwrap().transform.0[4] += 3.375;
++        let patch = crate::editing::DocumentPatch::between(&before, &moved).unwrap();
++        let before_count = crate::editing::document_size_count_calls();
++        let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
++        assert_eq!(crate::editing::document_size_count_calls() - before_count, 1);
++        assert!(damage.full);
++        assert_eq!(damage.reason, Some("glass-effect"));
++        assert_eq!(damage.translation_only, Some(true));
++        assert_eq!(engine.source_doc_bytes, None);
++        assert_eq!(retained_receipt_bytes(&engine), Some(serde_json::to_vec(&moved).unwrap().len()));
++        assert_retained_receipt_matches_fresh(&mut engine);
++    }
++    let mut transform = engine.source_doc.as_ref().unwrap().nodes["child"].transform;
++    transform.0[4] += 0.25;
++    let before_count = crate::editing::document_size_count_calls();
++    assert!(engine.apply_interaction_transforms(&[("child".into(), transform)].into()).unwrap());
++    assert_eq!(crate::editing::document_size_count_calls() - before_count, 0);
++    assert!(engine.retained_source_size.is_none());
++    let before = engine.source_doc.clone().unwrap();
++    let mut moved = before.clone();
++    moved.nodes.get_mut("frame").unwrap().transform.0[4] += 2.125;
++    let patch = crate::editing::DocumentPatch::between(&before, &moved).unwrap();
++    let before_count = crate::editing::document_size_count_calls();
++    assert!(engine.apply_document_patch_with_damage(&patch).unwrap().full);
++    assert_eq!(crate::editing::document_size_count_calls() - before_count, 0);
++    assert!(engine.source_doc_bytes.is_some());
++    assert!(engine.retained_source_size.is_none());
++    assert_retained_receipt_matches_fresh(&mut engine);
++}
++
++#[test]
++fn rejected_edits_preserve_private_receipt_and_render_state() {
++    let mut engine = retained_painted_engine(source());
++    engine.compile_gpu(&options()).unwrap();
++    let original = engine.source_doc.clone().unwrap();
++    let source_bytes = serde_json::to_vec(&original).unwrap();
++    let derived_bytes = serde_json::to_vec(engine.doc.as_ref().unwrap()).unwrap();
++    let exact = retained_receipt_bytes(&engine);
++    let revision = engine.geo_revision;
++    let prepared = engine.camera_prepare.as_ref().unwrap().prepared.clone();
++    let index = engine.render_index.clone().unwrap();
++    let mut invalid = original.nodes["child"].clone();
++    invalid.transform.0[4] = f64::NAN;
++    let patches = [
++        crate::editing::DocumentPatch { nodes: [("child".into(), Some(invalid))].into(), fields: Default::default() },
++        crate::editing::DocumentPatch { nodes: Default::default(), fields: [("fonts".into(), json!({"bad": {"family":"Broken","data":"!"}}))].into() },
++        crate::editing::DocumentPatch { nodes: Default::default(), fields: [("schemaVersion".into(), json!(0))].into() },
++    ];
++    for patch in patches {
++        let expected = patch.apply(&original).unwrap_err().to_string();
++        assert_eq!(engine.apply_document_patch_with_damage(&patch).err().unwrap(), expected);
++        assert_eq!(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap(), source_bytes);
++        assert_eq!(serde_json::to_vec(engine.doc.as_ref().unwrap()).unwrap(), derived_bytes);
++        assert_eq!(engine.source_doc_bytes, None);
++        assert_eq!(retained_receipt_bytes(&engine), exact);
++        assert_eq!(engine.geo_revision, revision);
++        assert!(Arc::ptr_eq(&prepared, &engine.camera_prepare.as_ref().unwrap().prepared));
++        assert!(Arc::ptr_eq(&index, engine.render_index.as_ref().unwrap()));
++    }
++    for transforms in [
++        [("child".into(), Transform([1.,0.,0.,1.,f64::NAN,10.]))].into(),
++        [("missing".into(), Transform::default())].into(),
++        std::collections::BTreeMap::new(),
++    ] {
++        let before_count = crate::editing::document_size_count_calls();
++        assert!(engine.apply_interaction_transforms(&transforms).is_err());
++        assert_eq!(crate::editing::document_size_count_calls(), before_count);
++        assert_eq!(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap(), source_bytes);
++        assert_eq!(engine.source_doc_bytes, None);
++        assert_eq!(retained_receipt_bytes(&engine), exact);
++        assert_eq!(engine.geo_revision, revision);
++    }
++    assert_retained_receipt_matches_fresh(&mut engine);
++}
++
++#[test]
++fn generic_install_and_load_replace_receipt_without_changing_old_accounting() {
++    for (field, value) in [
++        ("name", json!("changed name")),
++        ("schemaVersion", json!(16)),
++        ("rasterProfile", json!("figma")),
++        ("fonts", json!({})),
++    ] {
++        let mut engine = retained_painted_engine(source());
++        let patch = crate::editing::DocumentPatch { nodes: Default::default(), fields: [(field.into(), value)].into() };
++        let before_count = crate::editing::document_size_count_calls();
++        engine.apply_document_patch_with_damage(&patch).unwrap();
++        assert_eq!(crate::editing::document_size_count_calls() - before_count, 2,
++            "generic apply plus install still recount; this candidate does not change that path");
++        assert!(engine.retained_source_size.is_none());
++        assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap().len()));
++        assert_retained_receipt_matches_fresh(&mut engine);
++    }
++    let mut engine = retained_painted_engine(source());
++    let mut replacement = source();
++    replacement.id = "new-document".into();
++    replacement.name = "loaded separately".into();
++    engine.load_document(&serde_json::to_string(&replacement).unwrap()).unwrap();
++    assert!(engine.retained_source_size.is_none());
++    assert_eq!(engine.source_doc.as_deref(), Some(&replacement));
++    assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(&replacement).unwrap().len()));
++    assert_retained_receipt_matches_fresh(&mut engine);
++}
++
++#[test]
++fn private_receipt_is_bound_to_allocation_not_document_equality() {
++    for change_content in [false, true] {
++        let mut engine = retained_painted_engine(source());
++        let previous_receipt = engine.retained_source_size.as_ref().unwrap().clone();
++        if change_content {
++            // Defense-in-depth fault injection, not a production mutation:
++            // even sole-owner COW detaches while this Weak receipt exists.
++            engine.source_doc.as_mut().unwrap().name.push_str(" changed");
++        } else {
++            let equal_document: Document = (**engine.source_doc.as_ref().unwrap()).clone();
++            engine.source_doc = Some(equal_document.into());
++        }
++        assert!(previous_receipt.bytes_for(engine.source_doc.as_ref().unwrap()).is_none());
++        assert_eq!(retained_receipt_bytes(&engine), None);
++        let mut transform = engine.source_doc.as_ref().unwrap().nodes["child"].transform;
++        transform.0[4] += 0.375;
++        let before_count = crate::editing::document_size_count_calls();
++        assert!(engine.apply_interaction_transforms(&[("child".into(), transform)].into()).unwrap());
++        assert_eq!(crate::editing::document_size_count_calls() - before_count, 1,
++            "a mismatched receipt must take the existing exact recount fallback");
++        assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap().len()));
++        assert!(engine.retained_source_size.is_none());
++    }
++}
++
++#[test]
++fn retained_receipts_follow_shared_snapshot_identity_and_detach_independently() {
++    let mut owner = retained_painted_engine(source());
++    let mut worker = owner.snapshot_worker();
++    let original = serde_json::to_vec(worker.source_doc.as_ref().unwrap()).unwrap();
++    assert_eq!(retained_receipt_bytes(&owner), retained_receipt_bytes(&worker));
++    assert!(worker.retained_source_size.as_ref().unwrap().bytes_for(owner.source_doc.as_ref().unwrap()).is_some());
++    let mut owner_transform = owner.source_doc.as_ref().unwrap().nodes["child"].transform;
++    owner_transform.0[4] = -1234.875;
++    let before_count = crate::editing::document_size_count_calls();
++    assert!(owner.apply_interaction_transforms(&[("child".into(), owner_transform)].into()).unwrap());
++    assert_eq!(crate::editing::document_size_count_calls() - before_count, 0);
++    assert!(owner.retained_source_size.is_none());
++    assert_eq!(worker.source_doc_bytes, None);
++    assert_eq!(retained_receipt_bytes(&worker), Some(original.len()));
++    assert_eq!(serde_json::to_vec(worker.source_doc.as_ref().unwrap()).unwrap(), original);
++    let mut worker_transform = worker.source_doc.as_ref().unwrap().nodes["child"].transform;
++    worker_transform.0[4] = 22.125;
++    let before_count = crate::editing::document_size_count_calls();
++    assert!(worker.apply_interaction_transforms(&[("child".into(), worker_transform)].into()).unwrap());
++    assert_eq!(crate::editing::document_size_count_calls() - before_count, 0);
++    assert_eq!(owner.source_doc.as_ref().unwrap().nodes["child"].transform.0[4].to_bits(), (-1234.875f64).to_bits());
++    assert!(worker.retained_source_size.is_none());
++    assert_retained_receipt_matches_fresh(&mut owner);
++    drop(owner);
++    assert_retained_receipt_matches_fresh(&mut worker);
++}
++
++#[test]
++fn retained_paint_then_generic_root_move_preserves_backdrop_damage() {
++    let mut original = source();
++    original.nodes.insert("backdrop".into(), serde_json::from_value(json!({
++        "id":"backdrop","kind":"frame","clip":true,"width":55,"height":65,
++        "transform":[1,0,0,1,61,15],"blend":"multiply","opacity":0.8,
++        "fills":[{"kind":"solid","color":"#88aacc","opacity":0.1}],
++        "effects":[{"kind":"background-blur","radius":6,"color":"#000000","visible":true}]
++    })).unwrap());
++    original.pages[0].children.push("backdrop".into());
++    let mut engine = retained_painted_engine(original);
++    let opts = options();
++    let before_pixels = engine.render(&opts).unwrap();
++    let before = engine.source_doc.clone().unwrap();
++    let mut moved = before.clone();
++    moved.nodes.get_mut("frame").unwrap().transform.0[4] += 13.375;
++    let patch = crate::editing::DocumentPatch::between(&before, &moved).unwrap();
++    let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
++    assert!(!damage.full);
++    assert_eq!(damage.translation_only, Some(true));
++    assert_eq!(engine.source_doc_bytes, None);
++    let after_pixels = engine.render(&opts).unwrap();
++    assert_retained_receipt_matches_fresh(&mut engine);
++    let regions = damage.rects.unwrap();
++    let mut changed = 0;
++    for (index, (a, b)) in before_pixels.chunks_exact(4).zip(after_pixels.chunks_exact(4)).enumerate() {
++        if a == b { continue; }
++        changed += 1;
++        let x = ((index % opts.width as usize) as f64 + 0.5 - opts.view.x) / opts.view.zoom;
++        let y = ((index / opts.width as usize) as f64 + 0.5 - opts.view.y) / opts.view.zoom;
++        assert!(regions.iter().any(|r| x >= r[0] && y >= r[1] && x <= r[0] + r[2] && y <= r[1] + r[3]),
++            "unreported changed pixel {x},{y}");
++    }
++    assert!(changed > 0);
++}
++
++// Run this ignored test ALONE in a fresh process. It pins global capacity.
++#[test]
++#[ignore = "isolated process only: pins exact document capacity"]
++fn receipt_interaction_budget_rejection_preserves_state_and_can_retry() {
++    let original = source();
++    let mut painted = original.clone();
++    painted.nodes.get_mut("child").unwrap().opacity = 0.625;
++    let mut over = painted.clone();
++    over.nodes.get_mut("child").unwrap().transform.0[4] = -123456.875;
++    let exact = serde_json::to_vec(&over).unwrap().len();
++    let limit = exact - 1;
++    assert!(serde_json::to_vec(&painted).unwrap().len() <= limit);
++    crate::capacity::configure(limit as u64 * crate::capacity::REPRESENTATION_RESERVE).unwrap();
++    let mut engine = retained_painted_engine(original);
++    let before = serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap();
++    let derived = serde_json::to_vec(engine.doc.as_ref().unwrap()).unwrap();
++    let revision = engine.geo_revision;
++    let count = crate::editing::document_size_count_calls();
++    let error = engine.apply_interaction_transforms(&[("child".into(), over.nodes["child"].transform)].into()).unwrap_err();
++    assert_eq!(error, crate::capacity::check_document_bytes(exact).unwrap_err());
++    assert_eq!(crate::editing::document_size_count_calls(), count);
++    assert_eq!(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap(), before);
++    assert_eq!(serde_json::to_vec(engine.doc.as_ref().unwrap()).unwrap(), derived);
++    assert_eq!(engine.geo_revision, revision);
++    assert_eq!(engine.source_doc_bytes, None);
++    assert_eq!(retained_receipt_bytes(&engine), Some(before.len()));
++    let mut retry = painted.nodes["child"].transform;
++    retry.0[4] = 11.;
++    assert!(engine.apply_interaction_transforms(&[("child".into(), retry)].into()).unwrap());
++    assert_eq!(crate::editing::document_size_count_calls(), count);
++    assert!(engine.retained_source_size.is_none());
++    assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap().len()));
++}
++
++#[test]
++fn retained_receipt_preserves_affine_interaction_and_exact_packets() {
++    let mut engine = retained_painted_engine(source());
++    engine.compile_gpu(&options()).unwrap();
++    let transform = Transform([0., -1., 1., 0., 12.25, 10.375]);
++    let before_count = crate::editing::document_size_count_calls();
++    assert!(engine.apply_interaction_transforms(&[("child".into(), transform)].into()).unwrap());
++    assert_eq!(crate::editing::document_size_count_calls() - before_count, 0);
++    assert!(engine.retained_source_size.is_none());
++    assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap().len()));
++    assert_retained_receipt_matches_fresh(&mut engine);
++}

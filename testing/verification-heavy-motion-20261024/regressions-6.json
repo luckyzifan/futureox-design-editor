@@ -1,0 +1,76 @@
+[
+  {
+    "name": "client-regressions-6",
+    "cwd": "/Users/Apple/project/design-kernel/frontend/design-client",
+    "command": "bunx",
+    "args": [
+      "vitest",
+      "run",
+      "--maxWorkers=2",
+      "src/LargeDocumentDialog.editing.test.tsx",
+      "src/LargeDocumentDialog.test.tsx",
+      "src/LargeDocumentWorkspace.test.tsx",
+      "src/canvas-vector-authority.test.tsx",
+      "src/component-override-fields.test.ts",
+      "src/document-baseline-certificate.test.ts",
+      "src/document-patch.test.ts",
+      "src/import-file-worker.test.ts",
+      "src/import-worker-file-read.test.ts",
+      "src/import-input-policy.test.ts",
+      "src/local-revisions.test.ts",
+      "src/local-store-revision-list.test.ts",
+      "src/resident-document-encoder.test.ts",
+      "src/vector-geometry.test.ts",
+      "src/number-field-session-boundaries.test.tsx",
+      "src/source-scene-patch.test.ts",
+      "src/kernel/interaction-layers.test.ts",
+      "src/kernel/native-navigation-surface.test.tsx",
+      "src/kernel/native-tile-motion-scale.test.ts",
+      "src/kernel/overview-coverage.test.ts",
+      "src/kernel/prepared-tile-fallback.test.ts",
+      "src/kernel/progressive-quality.test.ts",
+      "src/kernel/tile-admission.test.ts",
+      "src/kernel/tile-cache.test.ts",
+      "src/kernel/tile-cache-boundaries.test.ts",
+      "src/kernel/tile-coverage-sweep.test.ts",
+      "src/kernel/scene-image-hydration.test.ts",
+      "src/kernel/gpu/fresh-initialize-controls.test.ts",
+      "src/kernel/gpu/fresh-initialize-create-gap.test.ts",
+      "src/kernel/gpu/fresh-initialize-held-fence.test.ts",
+      "src/kernel/gpu/image-asset-residency.test.ts",
+      "src/kernel/gpu/gpu-resource-boundary.test.ts",
+      "src/kernel/gpu/reclaim-maintenance.test.ts",
+      "src/kernel/gpu/painter-stage.test.ts",
+      "src/kernel/gpu/scene-packet.test.ts"
+    ],
+    "startedAt": 1792827683055,
+    "endedAt": 1792827700058,
+    "code": 0
+  },
+  {
+    "name": "maintenance-regressions-6",
+    "cwd": "/Users/Apple/project/design-kernel/frontend/design-client",
+    "command": "/Users/Apple/.nvm/versions/node/v24.12.0/bin/node",
+    "args": [
+      "--test",
+      "src/kernel/gpu/maintenance-residency.test.mjs"
+    ],
+    "startedAt": 1792827700060,
+    "endedAt": 1792827700206,
+    "code": 0
+  },
+  {
+    "name": "host-regressions-6",
+    "cwd": "/Users/Apple/project/design-kernel/frontend/design-desktop",
+    "command": "/Users/Apple/.nvm/versions/node/v24.12.0/bin/node",
+    "args": [
+      "--test",
+      "test/large-document.test.mjs",
+      "test/sidecar.test.mjs",
+      "src/resident-document-codec.test.mjs"
+    ],
+    "startedAt": 1792827700207,
+    "endedAt": 1792827703345,
+    "code": 0
+  }
+]

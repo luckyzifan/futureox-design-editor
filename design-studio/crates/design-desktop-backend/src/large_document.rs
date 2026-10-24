@@ -2,7 +2,7 @@
 //! fragments; paths are supplied only by the trusted native-dialog host.
 use crate::{BackendError, Result};
 use futureox_design_kernel::large_json::{
-    self, Addition, Changes, MAX_EXPANDED_BYTES, MAX_FRAGMENT_BYTES, Span,
+    self, Addition, Changes, MAX_FRAGMENT_BYTES, Span,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
@@ -20,9 +20,17 @@ use std::{
 
 const HISTORY_LIMIT: usize = 32;
 const HISTORY_BYTES: usize = 64 * 1024 * 1024;
+mod checkpoint_io;
+#[cfg(test)]
+mod checkpoint_tests;
 mod index;
+mod capacity;
 mod projection;
 mod scene;
+#[cfg(test)]
+#[path = "large_document/fragment_validation_tests.rs"]
+mod fragment_validation_tests;
+use checkpoint_io::{CheckpointWriter, MAX_CHECKPOINT_BYTES};
 use index::DiskIndex;
 fn issue(error: impl std::fmt::Display) -> BackendError {
     BackendError::new("LARGE_DOCUMENT_ERROR", error.to_string())
@@ -135,6 +143,8 @@ struct Session {
     revision: u64,
     saved_revision: u64,
     expanded_bytes: u64,
+    #[serde(skip)]
+    max_expanded_bytes: u64,
     parts: Vec<Part>,
     state: State,
     undo: Vec<State>,
@@ -302,9 +312,12 @@ impl Sessions {
             "validate",
         );
         let before = fs::symlink_metadata(&request.path).map_err(issue)?;
-        if !before.is_file() || before.len() > MAX_EXPANDED_BYTES {
-            return Err(issue("Choose a regular JSON/Sketch file within 4 GiB"));
+        fs::create_dir_all(&self.root).map_err(issue)?;
+        let source_limit = capacity::source_limit(&self.root)?;
+        if !before.is_file() || before.len() > source_limit {
+            return Err(issue("Source exceeds the backing storage capacity or is not a regular file"));
         }
+        capacity::require_space(&self.root, before.len())?;
         let extension = request
             .path
             .extension()
@@ -333,12 +346,12 @@ impl Sessions {
                 .open(&original)
                 .map_err(issue)?;
             let copied = io::copy(
-                &mut source.by_ref().take(MAX_EXPANDED_BYTES + 1),
+                &mut source.by_ref().take(source_limit + 1),
                 &mut destination,
             )
             .map_err(issue)?;
             if copied != before.len() {
-                return Err(issue("Source changed or exceeded 4 GiB while reading"));
+                return Err(issue("Source changed or exceeded storage capacity while reading"));
             }
             destination.sync_all().map_err(issue)?;
             let after = source.inner.metadata().map_err(issue)?;
@@ -347,7 +360,7 @@ impl Sessions {
             }
             self.progress.phase("validate", 0);
             let source_hash = hash_file(&original, cancel).map_err(issue)?;
-            if let Some(mut recovered) = recover(&self.root, &directory, &source_hash, cancel)? {
+            if let Some(mut recovered) = recover(&self.root, &directory, &source_hash, source_limit, cancel)? {
                 recovered.owner = Owner {
                     document_id: request.document_id.clone(),
                     session_epoch: request.session_epoch,
@@ -364,7 +377,7 @@ impl Sessions {
                     cancel,
                     progress: Some(&self.progress),
                 };
-                let index = DiskIndex::build(reader, MAX_EXPANDED_BYTES, &directory)?;
+                let index = DiskIndex::build(reader, source_limit, &directory)?;
                 expanded_bytes = index.bytes;
                 parts.push(Part {
                     name: "document.json".into(),
@@ -396,7 +409,7 @@ impl Sessions {
                     if entry.is_dir() {
                         continue;
                     }
-                    if entry.size() > MAX_EXPANDED_BYTES.saturating_sub(expanded_bytes)
+                    if entry.size() > source_limit.saturating_sub(expanded_bytes)
                         || entry.size()
                             > entry.compressed_size().max(1).saturating_mul(200).max(4096)
                     {
@@ -405,6 +418,7 @@ impl Sessions {
                     let declared = entry.size();
                     self.progress.phase("expand", declared);
                     if name.ends_with(".json") {
+                        capacity::require_space(&directory, declared)?;
                         let file = format!("part-{}", parts.len());
                         let mut target = File::create(directory.join(&file)).map_err(issue)?;
                         let mut reader = CheckedReader {
@@ -427,7 +441,7 @@ impl Sessions {
                         self.progress.phase("index", declared);
                         let index = DiskIndex::build(
                             reader,
-                            MAX_EXPANDED_BYTES - expanded_bytes,
+                            source_limit - expanded_bytes,
                             &directory,
                         )?;
                         if parts
@@ -484,6 +498,7 @@ impl Sessions {
                 revision: 0,
                 saved_revision: 0,
                 expanded_bytes,
+                max_expanded_bytes: source_limit,
                 state: State {
                     changes: vec![Changes::default(); parts.len()],
                 },
@@ -606,10 +621,10 @@ fn status(s: &Session) -> Value {
         .map(|(p, part)| {
             s.state.changes[p]
                 .output_bytes(part.base_bytes)
-                .unwrap_or(MAX_EXPANDED_BYTES)
+                .unwrap_or(s.max_expanded_bytes)
         })
         .sum();
-    json!({"owner":s.owner,"revision":s.revision,"name":s.name,"format":s.format,"expandedBytes":s.expanded_bytes-json_bytes+changed,"maxExpandedBytes":MAX_EXPANDED_BYTES,"indexedObjects":s.parts.iter().map(|p| p.index.entries.len()).sum::<usize>(),"dirty":s.revision!=s.saved_revision,"undoCount":s.undo.len(),"redoCount":s.redo.len()})
+    json!({"owner":s.owner,"revision":s.revision,"name":s.name,"format":s.format,"expandedBytes":s.expanded_bytes-json_bytes+changed,"maxExpandedBytes":s.max_expanded_bytes,"indexedObjects":s.parts.iter().map(|p| p.index.entries.len()).sum::<usize>(),"dirty":s.revision!=s.saved_revision,"undoCount":s.undo.len(),"redoCount":s.redo.len()})
 }
 fn location(s: &Session, key: Option<&str>) -> Result<(usize, usize)> {
     let (part, node) = key
@@ -733,8 +748,9 @@ fn apply(s: &mut Session, request: Request, cancel: &AtomicBool) -> Result<Value
         return Err(issue("JSON edit fragment exceeds 2 MiB"));
     }
     let old: BTreeMap<String, Box<RawValue>> = serde_json::from_str(&before).map_err(issue)?;
-    // The streaming parser rejects duplicate keys before serde's map conversion.
-    large_json::index(text.as_bytes(), MAX_FRAGMENT_BYTES).map_err(issue)?;
+    // Check every object before serde's map conversion can collapse duplicate
+    // keys, even when that object is not selected for source navigation.
+    large_json::validate_fragment(text.as_bytes()).map_err(issue)?;
     let new: BTreeMap<String, Box<RawValue>> = serde_json::from_str(text).map_err(issue)?;
     if old.keys().ne(new.keys()) {
         return Err(issue(
@@ -830,7 +846,7 @@ fn rebuild_index(
     let reader = changes
         .reader(&mut file, s.parts[p].base_bytes)
         .map_err(issue)?;
-    DiskIndex::build(reader, MAX_EXPANDED_BYTES, &s.directory)
+    DiskIndex::build(reader, s.max_expanded_bytes, &s.directory)
 }
 
 fn commit(
@@ -861,9 +877,9 @@ fn commit(
                 .map(|n| sum + n)
         })
         .map_err(issue)?;
-    if current_json > MAX_EXPANDED_BYTES.saturating_sub(s.expanded_bytes - source_json) {
+    if current_json > s.max_expanded_bytes.saturating_sub(s.expanded_bytes - source_json) {
         return Err(issue(
-            "Total expanded JSON/asset budget exceeds 4 GiB after edit",
+            "Total expanded JSON/assets exceed backing storage capacity after edit",
         ));
     }
     check_cancel(cancel).map_err(issue)?;
@@ -959,6 +975,7 @@ fn recover(
     root: &Path,
     new_directory: &Path,
     source_hash: &str,
+    source_limit: u64,
     cancel: &AtomicBool,
 ) -> Result<Option<Session>> {
     let mut candidates = Vec::new();
@@ -969,7 +986,7 @@ fn recover(
         }
         let path = entry.path().join("journal.json");
         if let Ok(metadata) = fs::symlink_metadata(&path) {
-            if metadata.is_file() && metadata.len() <= 16 * 1024 * 1024 {
+            if metadata.is_file() && metadata.len() <= MAX_CHECKPOINT_BYTES {
                 candidates.push((metadata.modified().ok(), entry.path()));
             }
         }
@@ -987,7 +1004,7 @@ fn recover(
             continue;
         }
         if checkpoint.version != 1
-            || checkpoint.expanded_bytes > MAX_EXPANDED_BYTES
+            || checkpoint.expanded_bytes > source_limit
             || !identity(&checkpoint.owner.document_id)
             || !matches!(checkpoint.format.as_str(), "json" | "sketch")
             || checkpoint.undo.len() > HISTORY_LIMIT
@@ -1017,6 +1034,14 @@ fn recover(
         {
             return Err(issue("Retained history part count mismatch"));
         }
+        let source_json = parts.iter().try_fold(0u64, |bytes, part| bytes.checked_add(part.base_bytes))
+            .filter(|bytes| *bytes <= checkpoint.expanded_bytes)
+            .ok_or_else(|| issue("Retained source byte totals are invalid"))?;
+        let current_json = parts.iter().enumerate().try_fold(0u64, |bytes, (p, part)| {
+            checkpoint.state.changes[p].output_bytes(part.base_bytes).ok().and_then(|size| bytes.checked_add(size))
+        }).filter(|bytes| *bytes <= source_limit.saturating_sub(checkpoint.expanded_bytes - source_json))
+            .ok_or_else(|| issue("Retained source changes exceed backing storage capacity"))?;
+        let _ = current_json;
         let original = directory.join("source");
         if !fs::symlink_metadata(&original).map_err(issue)?.is_file() {
             return Err(issue("Retained original source is invalid"));
@@ -1056,7 +1081,7 @@ fn recover(
             part.additions = checkpoint.additions[p].clone();
             let file = directory.join(&part.file);
             if !fs::symlink_metadata(&file).map_err(issue)?.is_file()
-                || part.base_bytes > MAX_EXPANDED_BYTES
+                || part.base_bytes > source_limit
                 || hash_range(
                     &file,
                     Span {
@@ -1086,7 +1111,7 @@ fn recover(
                 checkpoint.state.changes[p]
                     .reader(&mut reader, part.base_bytes)
                     .map_err(issue)?,
-                MAX_EXPANDED_BYTES,
+                source_limit,
                 &directory,
             )?;
         }
@@ -1099,6 +1124,7 @@ fn recover(
             revision: checkpoint.revision,
             saved_revision: checkpoint.saved_revision,
             expanded_bytes: checkpoint.expanded_bytes,
+            max_expanded_bytes: source_limit,
             parts,
             state: checkpoint.state,
             undo: checkpoint.undo,
@@ -1111,20 +1137,6 @@ fn recover(
     Ok(None)
 }
 fn persist(s: &Session) -> Result<Option<&'static str>> {
-    // Indexes are immutable and written once, rather than serialized on edits.
-    let index_path = s.directory.join("index.json");
-    if !index_path.exists() {
-        let mut out = BufWriter::new(
-            OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&index_path)
-                .map_err(issue)?,
-        );
-        serde_json::to_writer(&mut out, &s.parts).map_err(issue)?;
-        out.flush().map_err(issue)?;
-        out.get_ref().sync_all().map_err(issue)?;
-    }
     let metadata = Checkpoint {
         version: s.version,
         owner: &s.owner,
@@ -1139,13 +1151,35 @@ fn persist(s: &Session) -> Result<Option<&'static str>> {
         redo: &s.redo,
         additions: s.parts.iter().map(|p| p.additions.as_slice()).collect(),
     };
+    // Reject oversize metadata before creating index.json or touching journal.next.
+    // commit() may already have spilled source additions; its existing rollback
+    // remains responsible for those. This is not a no-append transaction plan.
+    serde_json::to_writer(&mut CheckpointWriter::new(io::sink()), &metadata).map_err(issue)?;
+    // Indexes are immutable and written once, rather than serialized on edits.
+    let index_path = s.directory.join("index.json");
+    if !index_path.exists() {
+        let mut out = BufWriter::new(
+            OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&index_path)
+                .map_err(issue)?,
+        );
+        serde_json::to_writer(&mut out, &s.parts).map_err(issue)?;
+        out.flush().map_err(issue)?;
+        out.get_ref().sync_all().map_err(issue)?;
+    }
     let temporary = s.directory.join("journal.next");
     let final_path = s.directory.join("journal.json");
-    let mut file = BufWriter::new(File::create(&temporary).map_err(issue)?);
+    let mut file = CheckpointWriter::new(BufWriter::new(
+        File::create(&temporary).map_err(issue)?,
+    ));
     serde_json::to_writer(&mut file, &metadata).map_err(issue)?;
     file.flush().map_err(issue)?;
-    file.get_ref().sync_all().map_err(issue)?;
+    file.get_ref().get_ref().sync_all().map_err(issue)?;
     fs::rename(temporary, final_path).map_err(issue)?;
+    // Rename is the commit point. Directory-sync failure remains a committed
+    // warning, not an error that could roll the already-published state back.
     Ok(File::open(&s.directory)
         .and_then(|f| f.sync_all())
         .err()
@@ -1413,6 +1447,8 @@ fn write_export(
 
 #[cfg(test)]
 mod tests {
+    // Keep the historical large-fixture size independent of host capacity.
+    const MAX_EXPANDED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
     use super::*;
     use std::sync::atomic::AtomicUsize;
     #[test]
@@ -1755,16 +1791,17 @@ mod tests {
         assert!(text.contains("-0.0"));
     }
     #[test]
-    #[ignore = "explicit local 4 GiB disk/index/edit/export acceptance; writes about 12 GiB temporarily"]
-    fn actual_four_gib_json_edits_exports_and_refuses_one_byte_over() {
+    #[ignore = "explicit local 5 GiB disk/index/edit/export acceptance; writes about 15 GiB temporarily"]
+    fn actual_five_gib_json_edits_exports_and_refuses_storage_overflow() {
+        const SOURCE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
         let f = Fixture::new();
-        let path = f.root.join("four-gib.json");
+        let path = f.root.join("five-gib.json");
         let head = br#"{"edit":{"name":"before","n":-0.0},"payload":""#;
         let tail = b"\"}";
         let mut file = BufWriter::new(File::create(&path).unwrap());
         file.write_all(head).unwrap();
         let bytes = [b'x'; 1024 * 1024];
-        let mut remaining = MAX_EXPANDED_BYTES - head.len() as u64 - tail.len() as u64;
+        let mut remaining = SOURCE_BYTES - head.len() as u64 - tail.len() as u64;
         while remaining > 0 {
             let count = remaining.min(bytes.len() as u64) as usize;
             file.write_all(&bytes[..count]).unwrap();
@@ -1774,9 +1811,9 @@ mod tests {
         file.flush().unwrap();
         file.get_ref().sync_all().unwrap();
         drop(file);
-        assert_eq!(fs::metadata(&path).unwrap().len(), 4_294_967_296);
+        assert_eq!(fs::metadata(&path).unwrap().len(), 5_368_709_120);
         let status = f.open(path.clone());
-        assert_eq!(status["expandedBytes"], 4_294_967_296u64);
+        assert_eq!(status["expandedBytes"], 5_368_709_120u64);
         let read = call(&f, &status, "large.read", json!({"key":"0:1"}));
         let name_span = field_span(&f, "0:1", "name");
         let changed = read["json"].as_str().unwrap().replace("before", "after!");
@@ -1788,19 +1825,19 @@ mod tests {
         );
         let output = f.root.join("exported.json");
         call(&f, &status, "large.export", json!({"path":output}));
-        assert_eq!(fs::metadata(&output).unwrap().len(), MAX_EXPANDED_BYTES);
+        assert_eq!(fs::metadata(&output).unwrap().len(), SOURCE_BYTES);
         equal_outside(&path, &output, name_span);
         let mut input = File::open(&output).unwrap();
         let mut prefix = [0u8; 80];
         input.read_exact(&mut prefix).unwrap();
         assert!(String::from_utf8_lossy(&prefix).contains("after!"));
         assert!(String::from_utf8_lossy(&prefix).contains("-0.0"));
-        let index = large_json::index(File::open(&output).unwrap(), MAX_EXPANDED_BYTES).unwrap();
-        assert_eq!(index.bytes, MAX_EXPANDED_BYTES);
+        let index = large_json::index(File::open(&output).unwrap(), SOURCE_BYTES).unwrap();
+        assert_eq!(index.bytes, SOURCE_BYTES);
         let over = f.root.join("over.json");
         File::create(&over)
             .unwrap()
-            .set_len(MAX_EXPANDED_BYTES + 1)
+            .set_len(capacity::source_limit(&f.root).unwrap() + 1)
             .unwrap();
         let sessions = Sessions::new(f.root.join("over-cache"));
         assert!(
@@ -1815,10 +1852,10 @@ mod tests {
                 )
                 .unwrap_err()
                 .message
-                .contains("4 GiB")
+                .contains("storage capacity")
         );
         println!(
-            "4GiB acceptance: exact input/output=4294967296; small property edit; untouched large string streamed; +1-byte admission rejected"
+            "5GiB source accepted, edited and exported; actual backing-volume capacity +1 byte rejected before copy"
         );
     }
     #[test]
@@ -1912,6 +1949,31 @@ mod tests {
             "structured 4GiB acceptance: {} indexed objects; five copies of original page JSON including about ten million curve points; exact 4294967296-byte export",
             summary.entries
         );
+    }
+    #[test]
+    fn scene_layout_can_be_saved_removed_and_saved_again_without_losing_source_members() {
+        let f=Fixture::new();let input=f.root.join("layout.sketch");
+        let page=json!({"_class":"page","do_objectID":"p","name":"Page","layers":[{"_class":"artboard","do_objectID":"n","name":"Layout target","frame":{"width":200,"height":120},"unknown":{"keep":[1,2,3]},"layers":[]}]});
+        let mut zip=zip::ZipWriter::new(File::create(&input).unwrap());
+        for(name,value)in[("meta.json",json!({"version":136})),("document.json",json!({"pages":[{"_ref":"pages/p"}]})),("pages/p.json",page.clone())]{zip.start_file(name,zip::write::SimpleFileOptions::default()).unwrap();zip.write_all(&serde_json::to_vec(&value).unwrap()).unwrap();}zip.finish().unwrap();
+        let opened=f.open(input);let rows=call(&f,&opened,"large.children",json!({"query":"Layout target"}));let key=rows["items"][0]["key"].as_str().unwrap();
+        call(&f,&opened,"large.scene",json!({"key":key}));
+        let with_layout=call(&f,&opened,"large.sceneCommit",json!({"key":key,"json":json!({"n":{"patch":{"layout":{"mode":"vertical","gap":12,"padding":[16,16,16,16]}}}}).to_string(),"requestId":"layout-add"}));
+        let without=call(&f,&with_layout,"large.sceneCommit",json!({"key":key,"json":json!({"n":{"patch":{"layout":null}}}).to_string(),"requestId":"layout-remove"}));
+        let read=call(&f,&without,"large.read",json!({"key":key}));let node:Value=serde_json::from_str(read["json"].as_str().unwrap()).unwrap();
+        assert_eq!(node["unknown"],page["layers"][0]["unknown"]);
+        let output=f.root.join("layout-removed.sketch");call(&f,&without,"large.export",json!({"path":output}));
+        let mut archive=zip::ZipArchive::new(File::open(output).unwrap()).unwrap();assert_eq!(archive.len(),3);
+        let mut bytes=Vec::new();archive.by_name("pages/p.json").unwrap().read_to_end(&mut bytes).unwrap();
+        let final_page:Value=serde_json::from_slice(&bytes).unwrap();
+        // The existing compatibility exporter adds its stable identity marker
+        // on the first layout edit. Removing layout must remove only the layout
+        // semantics; neither opaque source data nor that identity is discarded.
+        let mut expected=page;expected["layers"][0]["userInfo"]=json!({"com.futureox.design-kernel":{"originalId":"n"}});
+        assert_eq!(final_page,expected);
+        let undo=call(&f,&without,"large.undo",json!({"requestId":"undo-remove"}));
+        let redo=call(&f,&undo,"large.redo",json!({"requestId":"redo-remove"}));
+        let read=call(&f,&redo,"large.read",json!({"key":key}));assert_eq!(serde_json::from_str::<Value>(read["json"].as_str().unwrap()).unwrap(),node);
     }
     #[test]
     fn scene_scale_updates_only_frame_when_source_points_exceed_fragment_budget() {

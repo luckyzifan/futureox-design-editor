@@ -1,0 +1,40 @@
+[
+  {
+    "run": "pressure-baseline",
+    "scope": "matched source/inputs with native-visible-tiles flag off/on; CPU sampler off; compositor telemetry, not scanout or full G2/G5",
+    "motionMs": 2925,
+    "actions": 24,
+    "uiStalls": 0,
+    "uiIntervalMaxMs": 9.400000000001455,
+    "cameraSubmits": 10,
+    "minCoverage": 1,
+    "maxUpscale": 8,
+    "nonSharpSubmits": 7,
+    "nonNativePhaseSubmits": 10,
+    "surfaceRejectedRecords": 0,
+    "errors": [],
+    "maxPipelineMs": 19.80000001192093,
+    "maxPassAmplification": 1.01562854850187,
+    "maxRendererWorkingBytes": 75085772,
+    "finalScreenshotSha256": "3099af0e74a3a8569028818e6bdd57101a1b1bd692cdfaf0024fa822f40821f1"
+  },
+  {
+    "run": "pressure-native",
+    "scope": "matched source/inputs with native-visible-tiles flag off/on; CPU sampler off; compositor telemetry, not scanout or full G2/G5",
+    "motionMs": 3064,
+    "actions": 24,
+    "uiStalls": 0,
+    "uiIntervalMaxMs": 9.400000000001455,
+    "cameraSubmits": 23,
+    "minCoverage": 1,
+    "maxUpscale": 4,
+    "nonSharpSubmits": 1,
+    "nonNativePhaseSubmits": 1,
+    "surfaceRejectedRecords": 0,
+    "errors": [],
+    "maxPipelineMs": 68.59999996423721,
+    "maxPassAmplification": 23.38191342790958,
+    "maxRendererWorkingBytes": 49564272,
+    "finalScreenshotSha256": "3099af0e74a3a8569028818e6bdd57101a1b1bd692cdfaf0024fa822f40821f1"
+  }
+]

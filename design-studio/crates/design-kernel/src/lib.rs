@@ -446,6 +446,12 @@ mod wasm {
         serde_json::to_string(&commands).map_err(|e|JsValue::from_str(&e.to_string()))
     }
     #[wasm_bindgen]
+    pub fn decode_fig_fill_commands_json(bytes:&[u8])->Result<String,JsValue>{
+        let path=fig_geometry::decode_fill_commands(bytes).map_err(|e|JsValue::from_str(&e))?;
+        let commands=vector_geometry::encode(&path).map_err(|e|JsValue::from_str(&e))?;
+        serde_json::to_string(&commands).map_err(|e|JsValue::from_str(&e.to_string()))
+    }
+    #[wasm_bindgen]
     pub fn network_geometry_json(json:&str)->Result<String,JsValue>{
         capacity::check_document_bytes(json.len()).map_err(|e|JsValue::from_str(&e))?;
         let network:scene::Network=serde_json::from_str(json).map_err(|e|JsValue::from_str(&e.to_string()))?;
@@ -639,6 +645,16 @@ mod wasm {
             (sample < 4).then_some(sample as usize),
         )
         .map_err(|e| JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn gradient_sampling_axes(rect:&str,matrix:&[f64],size:&[f64],paint:&str,sample:u32)->Result<Vec<f32>,JsValue>{
+        let compute=||->Result<Vec<f32>,String>{
+            if sample>4{return Err("Invalid gradient sample index".into());}
+            crate::paint::gradient_sampling_axes(serde_json::from_str(rect).map_err(|e|format!("{e}"))?,
+                math::Transform(matrix.try_into().map_err(|_|"Invalid gradient transform")?),
+                size.try_into().map_err(|_|"Invalid gradient dimensions")?,
+                &serde_json::from_str(paint).map_err(|e|format!("{e}"))?,(sample<4).then_some(sample as usize))
+        };compute().map_err(|e|JsValue::from_str(&e))
     }
     #[wasm_bindgen]
     pub fn gradient_sampling_grid_region(original:&str, region:&str, matrix:&[f64], size:&[f64], paint:&str, sample:u32) -> Result<Vec<f32>,JsValue> {
@@ -1827,7 +1843,7 @@ mod wasm {
             })
         }
         pub fn compile_gpu_packet(&mut self, options: &str) -> Result<Vec<u8>, JsValue> {
-            self.inner.compile_gpu_request(options).and_then(|scene| scene.into_packet())
+            self.inner.compile_gpu_request(options).and_then(|scene| scene.into_packet_for_request(options))
                 .map_err(|e| JsValue::from_str(&e))
         }
     }

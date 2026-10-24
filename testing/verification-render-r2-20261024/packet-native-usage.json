@@ -1,0 +1,44 @@
+[
+  {
+    "run": "117-packet-ab-1-control",
+    "packets": 54,
+    "versions": {
+      "1": 54
+    },
+    "metadataBytes": 144802651,
+    "packetBytes": 162204708,
+    "compileDurationMs": 780.3000001907349
+  },
+  {
+    "run": "117-packet-ab-2-candidate",
+    "packets": 46,
+    "versions": {
+      "2": 28,
+      "1": 18
+    },
+    "metadataBytes": 2975187,
+    "packetBytes": 126548860,
+    "compileDurationMs": 997.9999998807907
+  },
+  {
+    "run": "117-packet-ab-3-candidate",
+    "packets": 50,
+    "versions": {
+      "2": 31,
+      "1": 19
+    },
+    "metadataBytes": 2735087,
+    "packetBytes": 139438860,
+    "compileDurationMs": 743.1999998092651
+  },
+  {
+    "run": "117-packet-ab-4-control",
+    "packets": 47,
+    "versions": {
+      "1": 47
+    },
+    "metadataBytes": 116792716,
+    "packetBytes": 130385004,
+    "compileDurationMs": 620.4999999403954
+  }
+]

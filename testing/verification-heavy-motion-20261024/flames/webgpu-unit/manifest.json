@@ -1,0 +1,12 @@
+{
+  "scope": "isolated real FIG/117/topology fixtures; WebGPU only, CPU sampler on; production managed image loader/cache owner, no optional disk persistence; no whole-app performance claim",
+  "results": [
+    {
+      "file": "unit.cpuprofile",
+      "target": {
+        "type": "renderer",
+        "title": "真实瓦片：WebGPU 路径 CPU 采样"
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/heavy-motion-20261024-hjpt7asv/host-coverage-native-5",
+  "scope": "sampled real Electron native-input integration; UI and existing browser workers, native Rust process and GPU execution are not V8 CPU stacks",
+  "startedAt": 1792826206270,
+  "endedAt": 1792826218209,
+  "results": [
+    {
+      "target": {
+        "type": "renderer",
+        "title": "UI 主线程"
+      },
+      "file": "cpu-0.cpuprofile"
+    },
+    {
+      "target": {
+        "attached": true,
+        "browserContextId": "63F1B92CAEFC09D9A9E50507A912BECA",
+        "canAccessOpener": false,
+        "parentFrameId": "2AC02EC53077FA05A4EE173401F9B0B6",
+        "parentId": "2AC02EC53077FA05A4EE173401F9B0B6",
+        "targetId": "D87A0DB275726C069FE59D090FCBF29A",
+        "title": "design-app://app/assets/render-worker-DpCSn527.js",
+        "type": "worker",
+        "url": "design-app://app/assets/render-worker-DpCSn527.js"
+      },
+      "file": "cpu-1.cpuprofile"
+    }
+  ]
+}

@@ -9,32 +9,36 @@ fn parents(doc:&Document)->BTreeMap<String,String>{doc.nodes.iter().flat_map(|(i
 fn ancestors(id:&str,parents:&BTreeMap<String,String>)->Vec<String>{let mut out=vec![id.to_owned()];while let Some(p)=parents.get(out.last().unwrap()){out.push(p.clone());}out}
 pub(crate) fn plan(before:&Document,after:&Document)->Result<Option<Plan>,String>{
  let patch=DocumentPatch::between(before,after).map_err(|e|e.to_string())?;
- if !patch.fields.is_empty()||before.id!=after.id||!after.animations.is_empty()||patch.nodes.len()>4096{return Ok(None)}
- if after.nodes.values().any(|n|n.connector.is_some()||n.text_path.is_some()||n.repeat.is_some()||n.board.as_ref().is_some_and(|b|b.kind=="code-block")||!n.bindings.is_empty()||!n.style_refs.is_empty()||!n.variable_modes.is_empty()||n.instance.as_ref().is_some_and(|i|!i.slot_contents.is_empty())||n.component.as_ref().is_some_and(|c|!c.properties.is_empty()||!c.slots.is_empty())){return Ok(None)}
+ plan_patch(before,&patch)
+}
+fn plan_patch(before:&Document,patch:&DocumentPatch)->Result<Option<Plan>,String>{
+ if !patch.fields.is_empty()||!before.animations.is_empty()||patch.nodes.len()>4096{return Ok(None)}
  for(id,next)in &patch.nodes{let(Some(old),Some(next))=(before.nodes.get(id),next)else{return Ok(None)};
   if old.children!=next.children||old.kind!=next.kind||old.component!=next.component||old.component_set!=next.component_set||old.component_key!=next.component_key||old.instance_origin!=next.instance_origin{return Ok(None)}
  }
- let parent=parents(after);let mut definitions=BTreeSet::new();let mut instances=BTreeSet::new();let mut roots=BTreeSet::new();
+ let next=|id:&str|patch.nodes.get(id).and_then(Option::as_ref).unwrap_or(&before.nodes[id]);
+ if before.nodes.keys().map(|id|next(id)).any(|n|n.connector.is_some()||n.text_path.is_some()||n.repeat.is_some()||n.board.as_ref().is_some_and(|b|b.kind=="code-block")||!n.bindings.is_empty()||!n.style_refs.is_empty()||!n.variable_modes.is_empty()||n.instance.as_ref().is_some_and(|i|!i.slot_contents.is_empty())||n.component.as_ref().is_some_and(|c|!c.properties.is_empty()||!c.slots.is_empty())){return Ok(None)}
+ let parent=parents(before);let mut definitions=BTreeSet::new();let mut instances=BTreeSet::new();let mut roots=BTreeSet::new();
  for id in patch.nodes.keys(){let chain=ancestors(id,&parent);if let Some(root)=chain.last(){roots.insert(root.clone());}
-  for id in chain{let n=&after.nodes[&id];if n.component.is_some(){definitions.insert(id.clone());}
+  for id in chain{let n=next(&id);if n.component.is_some(){definitions.insert(id.clone());}
    if n.instance.is_some(){instances.insert(n.instance_origin.as_ref().map_or(id.clone(),|o|o.owner.clone()));}
    if let Some(origin)=&n.instance_origin{instances.insert(origin.owner.clone());}
   }
  }
- // A template can contain another instance. Propagate definition dependencies
- // until closed, under the same nesting bound as the authoritative Builder.
  for depth in 0..=32{let count=definitions.len();
-  for(id,n)in &after.nodes{if n.instance.as_ref().is_some_and(|i|definitions.contains(&i.component_id)){
+  for id in before.nodes.keys(){let n=next(id);if n.instance.as_ref().is_some_and(|i|definitions.contains(&i.component_id)){
    instances.insert(n.instance_origin.as_ref().map_or(id.clone(),|o|o.owner.clone()));
-   for ancestor in ancestors(id,&parent){if after.nodes[&ancestor].component.is_some(){definitions.insert(ancestor);}}
+   for ancestor in ancestors(id,&parent){if next(&ancestor).component.is_some(){definitions.insert(ancestor);}}
   }}
   if definitions.len()==count{break}if depth==32{return Ok(None)}
  }
- for id in &instances{if !after.nodes.contains_key(id){return Ok(None)}if let Some(root)=ancestors(id,&parent).last(){roots.insert(root.clone());}}
+ for id in &instances{if !before.nodes.contains_key(id){return Ok(None)}if let Some(root)=ancestors(id,&parent).last(){roots.insert(root.clone());}}
  Ok(Some(Plan{instances,roots}))
 }
 pub(crate) fn resolve_plan(doc:&mut Document,fonts:&Fonts,plan:&Plan)->Result<(),String>{
- design_system::resolve_authored(doc)?;
+ // plan_patch rejects all bindings/styles/modes and definition defaults.
+ // Resolving authored bindings therefore has no work and must not walk cold
+ // islands (or multiply unrelated Boolean children by an identity resize).
  components::resolve_roots(doc,Some(&plan.instances))?;
  layout::resolve_roots(doc,fonts,Some(&plan.roots))?;
  curve_boolean::resolve_roots(doc,Some(&plan.roots))?;
@@ -67,11 +71,45 @@ impl State{
  pub fn patch(&mut self,json:&str,receipt:u32,fonts:&Fonts)->Result<String,String>{
   if receipt!=self.receipt||self.document.is_none(){return Err("DERIVED_STATE_STALE".into())}
   crate::capacity::check_document_bytes(json.len())?;let patch:DocumentPatch=serde_json::from_str(json).map_err(|e|e.to_string())?;
-  let previous=self.document.as_ref().unwrap();let mut doc=patch.apply(previous).map_err(|e|e.to_string())?;
+  let previous=self.document.as_ref().unwrap();
+  if let Some(scope)=plan_patch(previous,&patch)? { return self.patch_scoped(patch,scope,fonts); }
+  let mut doc=patch.apply(previous).map_err(|e|e.to_string())?;
   let scope=plan(previous,&doc)?;let before=doc.clone();let fonts=fonts.with_resources(&doc.fonts)?;
   if let Some(scope)=&scope{resolve_plan(&mut doc,&fonts,scope)?}else{resolve_full(&mut doc,&fonts)?}
   self.finish(&before,doc,scope.as_ref())
  }
+ fn patch_scoped(&mut self,patch:DocumentPatch,scope:Plan,fonts:&Fonts)->Result<String,String>{
+  let receipt=self.receipt.checked_add(1).ok_or("DERIVED_STATE_EXHAUSTED")?;
+  let previous=self.document.as_ref().unwrap();
+  let fonts=fonts.with_resources(&previous.fonts)?;
+  fn collect(doc:&Document,roots:&BTreeSet<String>)->BTreeSet<String>{
+   let mut result=BTreeSet::new();let mut stack:Vec<_>=roots.iter().cloned().collect();
+   while let Some(id)=stack.pop(){if result.insert(id.clone()) {if let Some(n)=doc.nodes.get(&id){stack.extend(n.children.iter().cloned());}}}result
+  }
+  // Only complete affected islands are copied for rollback. Font/image payloads
+  // and cold nodes keep their original resident allocation. Global validation
+  // and byte admission still run before committing the next receipt.
+  let ids=collect(previous,&scope.roots);
+  let backup:BTreeMap<_,_>=ids.iter().map(|id|(id.clone(),previous.nodes[id].clone())).collect();
+  let mut doc=self.document.take().unwrap();
+  for(id,node)in &patch.nodes {doc.nodes.insert(id.clone(),node.as_ref().unwrap().clone());}
+  let result=(||{
+   doc.validate()?;crate::capacity::check_document_bytes(crate::editing::serialized_document_size(&doc).map_err(|e|e.to_string())?)?;
+   resolve_plan(&mut doc,&fonts,&scope)?;
+   let current=collect(&doc,&scope.roots);
+   let candidate=|id:&str|patch.nodes.get(id).and_then(Option::as_ref).or_else(||backup.get(id));
+   let reply=Reply{nodes:current.iter().filter_map(|id|doc.nodes.get(id).filter(|n|candidate(id)!=Some(*n)).map(|n|(id.clone(),n.clone()))).collect(),
+    removed:ids.iter().filter(|id|!doc.nodes.contains_key(*id)).cloned().collect(),receipt,
+    stats:Stats{scoped:true,instance_roots:scope.instances.len(),layout_roots:scope.roots.len(),total_nodes:doc.nodes.len()}};
+   serde_json::to_string(&reply).map_err(|e|e.to_string())
+  })();
+  if result.is_err(){
+   for id in collect(&doc,&scope.roots){doc.nodes.remove(&id);}
+   doc.nodes.extend(backup);
+  }else{self.receipt=receipt;}
+  self.document=Some(doc);result
+ }
+
 }
 
 #[cfg(test)]

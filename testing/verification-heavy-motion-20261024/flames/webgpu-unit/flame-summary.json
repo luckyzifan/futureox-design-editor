@@ -1,0 +1,152 @@
+[
+  {
+    "thread": "真实瓦片：WebGPU 路径 CPU 采样",
+    "sampledWallMs": 7131.87600000003,
+    "idleOrUnassignedMs": 3171.2889999999998,
+    "activeSampleMs": 3960.587000000009,
+    "focus": [
+      {
+        "name": "(anonymous) · src/kernel/picking.ts:130",
+        "selfMs": 0,
+        "inclusiveMs": 435.6039999999998
+      },
+      {
+        "name": "initializePicking · src/kernel/picking.ts:129",
+        "selfMs": 0,
+        "inclusiveMs": 1.511
+      },
+      {
+        "name": "(anonymous) · src/kernel/picking.ts:138",
+        "selfMs": 0,
+        "inclusiveMs": 1.495
+      }
+    ],
+    "topSelf": [
+      {
+        "name": "wasm-function[71] · 093bfb96:1",
+        "selfMs": 622.3159999999991,
+        "inclusiveMs": 625.3299999999992
+      },
+      {
+        "name": "wasm-function[905] · 093bfb96:1",
+        "selfMs": 307.99299999999977,
+        "inclusiveMs": 307.99299999999977
+      },
+      {
+        "name": "certifyExactImageRange · src/kernel/gpu/exact-image-x-table.ts:15",
+        "selfMs": 236.6679999999998,
+        "inclusiveMs": 236.6679999999998
+      },
+      {
+        "name": "wasm-function[3805] · 093bfb96:1",
+        "selfMs": 161.72299999999998,
+        "inclusiveMs": 161.72299999999998
+      },
+      {
+        "name": "wasm-function[1777] · 093bfb96:1",
+        "selfMs": 138.55599999999995,
+        "inclusiveMs": 138.55599999999995
+      },
+      {
+        "name": "(anonymous) · tile-check-CnijUA7F.js:1",
+        "selfMs": 137.658,
+        "inclusiveMs": 1735.134999999998
+      },
+      {
+        "name": "wasm-function[966] · 093bfb96:1",
+        "selfMs": 117.86500000000004,
+        "inclusiveMs": 129.93
+      },
+      {
+        "name": "wasm-function[1493] · 093bfb96:1",
+        "selfMs": 94.72800000000001,
+        "inclusiveMs": 211.27399999999994
+      },
+      {
+        "name": "passStringToWasm0 · src/generated/design-kernel/design_kernel.js:3857",
+        "selfMs": 91.30699999999997,
+        "inclusiveMs": 95.74599999999998
+      },
+      {
+        "name": "get · src/kernel/gpu/coverage-cache.ts:30",
+        "selfMs": 88.48200000000007,
+        "inclusiveMs": 125.45200000000004
+      },
+      {
+        "name": "compare · ../../../../../../../../../../Users/Apple/project/design-kernel/testing/verification-heavy-motion-20261024/tile-check.ts:10",
+        "selfMs": 70.79900000000002,
+        "inclusiveMs": 70.79900000000002
+      },
+      {
+        "name": "wasm-function[5597] · 093bfb96:1",
+        "selfMs": 64.97500000000001,
+        "inclusiveMs": 64.97500000000001
+      },
+      {
+        "name": "wasm-function[3636] · 093bfb96:1",
+        "selfMs": 55.396,
+        "inclusiveMs": 115.63600000000001
+      },
+      {
+        "name": "uploadLinear · src/kernel/gpu/webgpu.ts:1624",
+        "selfMs": 52.715,
+        "inclusiveMs": 289.3829999999998
+      },
+      {
+        "name": "(garbage collector)",
+        "selfMs": 51.410999999999994,
+        "inclusiveMs": 51.410999999999994
+      },
+      {
+        "name": "wasm-function[3804] · 093bfb96:1",
+        "selfMs": 49.65100000000002,
+        "inclusiveMs": 49.65100000000002
+      },
+      {
+        "name": "encodePass · src/kernel/gpu/webgpu.ts:2221",
+        "selfMs": 48.369000000000014,
+        "inclusiveMs": 117.26400000000004
+      },
+      {
+        "name": "wasm-function[309] · 093bfb96:1",
+        "selfMs": 46.771,
+        "inclusiveMs": 82.98599999999996
+      },
+      {
+        "name": "kernelResourceSha256 · src/kernel/module.ts:17",
+        "selfMs": 43.733000000000004,
+        "inclusiveMs": 43.733000000000004
+      },
+      {
+        "name": "(anonymous) · src/kernel/gpu/coverage-cache.ts:32",
+        "selfMs": 36.970000000000006,
+        "inclusiveMs": 36.970000000000006
+      },
+      {
+        "name": "wasm-function[5325] · 093bfb96:1",
+        "selfMs": 36.215,
+        "inclusiveMs": 36.215
+      },
+      {
+        "name": "finish · src/kernel/gpu/webgpu.ts:2392",
+        "selfMs": 31.997,
+        "inclusiveMs": 49.317
+      },
+      {
+        "name": "create · src/kernel/gpu/webgpu.ts:2132",
+        "selfMs": 29.113000000000003,
+        "inclusiveMs": 29.113000000000003
+      },
+      {
+        "name": "wasm-function[2125] · 093bfb96:1",
+        "selfMs": 28.602000000000007,
+        "inclusiveMs": 28.602000000000007
+      },
+      {
+        "name": "wasm-function[197] · 093bfb96:1",
+        "selfMs": 28.37,
+        "inclusiveMs": 166.147
+      }
+    ]
+  }
+]

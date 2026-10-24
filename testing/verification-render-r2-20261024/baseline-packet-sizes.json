@@ -1,0 +1,25 @@
+{
+  "scope": "pre-merge source6 WASM, payload sizes only; no simultaneous-build latency claim",
+  "rows": [
+    {
+      "name": "117",
+      "packetBytes": 5296252,
+      "metadataBytes": 3980468,
+      "images": 2,
+      "uniqueImages": 2,
+      "imageStringBytes": 3937508,
+      "uniqueImageStringBytes": 3937508,
+      "nodes": 22
+    },
+    {
+      "name": "fig",
+      "packetBytes": 8919852,
+      "metadataBytes": 2346481,
+      "images": 2,
+      "uniqueImages": 1,
+      "imageStringBytes": 116156,
+      "uniqueImageStringBytes": 58078,
+      "nodes": 2293
+    }
+  ]
+}

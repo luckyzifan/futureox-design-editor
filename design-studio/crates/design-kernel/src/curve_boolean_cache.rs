@@ -8,7 +8,7 @@ struct Entry { value:Value, bytes:usize, used:u64 }
 pub(crate) struct Cache { entries: HashMap<Vec<u64>, Entry>, bytes: usize, clock:u64, pub hits: usize }
 impl Cache {
     pub fn key(inputs: &[(Path, Transform, bool)], op: Operation) -> Vec<u64> {
-        let mut words=vec![match op { Operation::Union=>0,Operation::Subtract=>1,Operation::Intersect=>2,Operation::Exclude=>3 },inputs.len() as u64];
+        let mut words=vec![match op { Operation::Union=>0,Operation::Subtract=>1,Operation::Intersect=>2,Operation::Exclude=>3,Operation::CompoundNonzero=>4,Operation::CompoundEvenodd=>5 },inputs.len() as u64];
         for (path,m,rule) in inputs {
             words.extend(m.0.map(f64::to_bits)); words.push(*rule as u64);words.push(path.commands.len() as u64);
             for command in &path.commands {

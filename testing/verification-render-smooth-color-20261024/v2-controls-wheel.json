@@ -1,0 +1,21 @@
+{
+  "windowStart": 1792796933645,
+  "records": 895,
+  "uiStalls": 0,
+  "uiIntervalMaxMs": 9.5,
+  "pendingInputAgeMaxMs": 0,
+  "inputPresentCount": 4,
+  "inputPresentMaxMs": 3.39990234375,
+  "pipelineWallMaxMs": 683.9000000357628,
+  "errors": [],
+  "zoomCameras": [
+    0.1262151394422311,
+    1.45970247077796,
+    32,
+    0.12621513944223106,
+    2.91940494155592,
+    33.76348214027876,
+    0.2524302788844621,
+    16.88174107013938
+  ]
+}

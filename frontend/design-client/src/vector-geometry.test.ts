@@ -56,3 +56,20 @@ test('thin imported groups retain their precise extent in both validators',()=>{
     expect(()=>validate_document_json(JSON.stringify(doc))).toThrow()
   }
 })
+test('curve admission still checks distinct strokes, mutations, opcodes and shared-carrier capacity',()=>{
+  const {doc,shape}=fixture()
+  expect(validateDocument(doc)).toBe(doc)
+  shape.vectorGeometry!.stroke=[{move:[0,0]},{line:[Infinity,1]}]
+  expect(()=>validateDocument(doc)).toThrow(/坐标/)
+  shape.vectorGeometry!.stroke=[{move:[0,0]},{quad:[1,2,3,4]}]
+  expect(validateDocument(doc)).toBe(doc)
+  ;(shape.vectorGeometry!.fill[1] as {cubic:number[]}).cubic[0]=NaN
+  expect(()=>validateDocument(doc)).toThrow(/坐标/)
+  shape.vectorGeometry=geometry()
+  for(const curve of [{move:[0,0],line:[1,1]},{unknown:[0,0]},{quad:[1,2]},{toString:[1,2]}]){
+    shape.vectorGeometry.fill=[curve as any];expect(()=>validateDocument(doc)).toThrow(/曲线/)
+  }
+  const fill=Array.from({length:65537},()=>({line:[0,0] as [number,number]}))
+  shape.vectorGeometry={fillRule:'nonzero',fill,stroke:fill}
+  expect(()=>validateDocument(doc)).toThrow(/权威几何/)
+})

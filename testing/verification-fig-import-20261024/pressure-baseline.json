@@ -1,0 +1,382 @@
+{
+  "status": "functional-passed-quality-pending",
+  "scope": "owned isolated Electron; real source import/Canvas/edit/save/export; preset save-dialog destination; visibility recorded explicitly; not physical scanout/FPS",
+  "cases": [],
+  "exportFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/pressure-baseline/topology-verified.sketch",
+  "visibility": "visible",
+  "nativeVisible": true,
+  "sourceKey": "3:0",
+  "nativeVisibleTiles": "false",
+  "motionStart": 1792805918185,
+  "actions": [
+    {
+      "round": 0,
+      "value": 50,
+      "at": 1792805918186
+    },
+    {
+      "round": 0,
+      "value": 200,
+      "at": 1792805918304
+    },
+    {
+      "round": 0,
+      "value": 800,
+      "at": 1792805918421
+    },
+    {
+      "round": 0,
+      "value": 3200,
+      "at": 1792805918543
+    },
+    {
+      "round": 0,
+      "value": 800,
+      "at": 1792805918664
+    },
+    {
+      "round": 0,
+      "value": 200,
+      "at": 1792805918773
+    },
+    {
+      "round": 0,
+      "value": 50,
+      "at": 1792805918884
+    },
+    {
+      "round": 0,
+      "value": 12.6,
+      "at": 1792805918999
+    },
+    {
+      "round": 1,
+      "value": 50,
+      "at": 1792805919113
+    },
+    {
+      "round": 1,
+      "value": 200,
+      "at": 1792805919226
+    },
+    {
+      "round": 1,
+      "value": 800,
+      "at": 1792805919338
+    },
+    {
+      "round": 1,
+      "value": 3200,
+      "at": 1792805919455
+    },
+    {
+      "round": 1,
+      "value": 800,
+      "at": 1792805919576
+    },
+    {
+      "round": 1,
+      "value": 200,
+      "at": 1792805919694
+    },
+    {
+      "round": 1,
+      "value": 50,
+      "at": 1792805919817
+    },
+    {
+      "round": 1,
+      "value": 12.6,
+      "at": 1792805919937
+    },
+    {
+      "round": 2,
+      "value": 50,
+      "at": 1792805920053
+    },
+    {
+      "round": 2,
+      "value": 200,
+      "at": 1792805920171
+    },
+    {
+      "round": 2,
+      "value": 800,
+      "at": 1792805920289
+    },
+    {
+      "round": 2,
+      "value": 3200,
+      "at": 1792805920409
+    },
+    {
+      "round": 2,
+      "value": 800,
+      "at": 1792805920529
+    },
+    {
+      "round": 2,
+      "value": 200,
+      "at": 1792805920646
+    },
+    {
+      "round": 2,
+      "value": 50,
+      "at": 1792805920767
+    },
+    {
+      "round": 2,
+      "value": 12.6,
+      "at": 1792805920887
+    }
+  ],
+  "motionEnd": 1792805921110,
+  "metrics": {
+    "last": 22464.2,
+    "max": 9.400000000001455,
+    "stalls": [],
+    "inputs": [
+      {
+        "at": 19570,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 19577.19999998808,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 19684,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 19694,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 19808.19999998808,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 19815.80000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 19929.100000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 19936.5,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20040.30000001192,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20046.19999998808,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20149.100000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20156.5,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20266.100000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20271.600000023842,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20380.80000001192,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20387.19999998808,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20490.69999998808,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20496.600000023842,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20605.600000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20611.899999976158,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20720.69999998808,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20727.69999998808,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20840.80000001192,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20848.899999976158,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 20958.100000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 20968.399999976158,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21076.899999976158,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21088.30000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21202.600000023842,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21210.399999976158,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21318.899999976158,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21326.100000023842,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21434.69999998808,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21443.69999998808,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21551.399999976158,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21562.100000023842,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21674.399999976158,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21682.100000023842,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21793,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21802.100000023842,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 21910.899999976158,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 21919.30000001192,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 22024.30000001192,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22039.69999998808,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 22151.5,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22160.100000023842,
+        "key": "Escape",
+        "trusted": true
+      },
+      {
+        "at": 22269.5,
+        "key": "Enter",
+        "trusted": true
+      },
+      {
+        "at": 22276.600000023842,
+        "key": "Escape",
+        "trusted": true
+      }
+    ],
+    "raf": 1826
+  }
+}

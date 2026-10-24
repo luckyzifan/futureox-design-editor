@@ -1,0 +1,122 @@
+[
+  {
+    "log": "testing/verification-render-smooth-color-20261024/owned-gui.log",
+    "scope": "whole log; positive surfaceReserveBytes identifies foreground only in the frozen viewport configuration",
+    "rejects": [
+      {
+        "line": 16496,
+        "reserve": 0,
+        "proposed": 140986592,
+        "budget": 134217728
+      },
+      {
+        "line": 16496,
+        "reserve": 0,
+        "proposed": 140986592,
+        "budget": 134217728
+      },
+      {
+        "line": 16594,
+        "reserve": 0,
+        "proposed": 142788928,
+        "budget": 134217728
+      },
+      {
+        "line": 16607,
+        "reserve": 26419600,
+        "proposed": 161065488,
+        "budget": 160637328
+      }
+    ]
+  },
+  {
+    "log": "testing/verification-fig-import-20261024/heavy-empty-pressure-6/host.log",
+    "scope": "whole log; positive surfaceReserveBytes identifies foreground only in the frozen viewport configuration",
+    "rejects": [
+      {
+        "line": 1011,
+        "reserve": 0,
+        "proposed": 135268352,
+        "budget": 134217728
+      },
+      {
+        "line": 1012,
+        "reserve": 0,
+        "proposed": 136325136,
+        "budget": 134217728
+      },
+      {
+        "line": 1012,
+        "reserve": 0,
+        "proposed": 136325136,
+        "budget": 134217728
+      },
+      {
+        "line": 1012,
+        "reserve": 0,
+        "proposed": 136325136,
+        "budget": 134217728
+      },
+      {
+        "line": 1013,
+        "reserve": 0,
+        "proposed": 138438704,
+        "budget": 134217728
+      },
+      {
+        "line": 1226,
+        "reserve": 0,
+        "proposed": 135268352,
+        "budget": 134217728
+      },
+      {
+        "line": 1227,
+        "reserve": 0,
+        "proposed": 135268352,
+        "budget": 134217728
+      },
+      {
+        "line": 1227,
+        "reserve": 0,
+        "proposed": 135268352,
+        "budget": 134217728
+      },
+      {
+        "line": 1228,
+        "reserve": 0,
+        "proposed": 138438704,
+        "budget": 134217728
+      },
+      {
+        "line": 1228,
+        "reserve": 0,
+        "proposed": 138438704,
+        "budget": 134217728
+      },
+      {
+        "line": 1228,
+        "reserve": 0,
+        "proposed": 136325136,
+        "budget": 134217728
+      },
+      {
+        "line": 1228,
+        "reserve": 0,
+        "proposed": 139495488,
+        "budget": 134217728
+      },
+      {
+        "line": 1228,
+        "reserve": 0,
+        "proposed": 138438704,
+        "budget": 134217728
+      },
+      {
+        "line": 1229,
+        "reserve": 0,
+        "proposed": 141609056,
+        "budget": 134217728
+      }
+    ]
+  }
+]

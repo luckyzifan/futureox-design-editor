@@ -1,0 +1,111 @@
+{
+  "run": "pressure-baseline",
+  "scope": "matched source/inputs with native-visible-tiles flag off/on; CPU sampler off; compositor telemetry, not scanout or full G2/G5",
+  "motionMs": 2925,
+  "actions": 24,
+  "uiStalls": 0,
+  "uiIntervalMaxMs": 9.400000000001455,
+  "cameraSubmits": 10,
+  "minCoverage": 1,
+  "maxUpscale": 8,
+  "nonSharpSubmits": 7,
+  "nonNativePhaseSubmits": 10,
+  "surfaceRejectedRecords": 0,
+  "errors": [],
+  "maxPipelineMs": 19.80000001192093,
+  "maxPassAmplification": 1.01562854850187,
+  "maxRendererWorkingBytes": 75085772,
+  "finalScreenshotSha256": "3099af0e74a3a8569028818e6bdd57101a1b1bd692cdfaf0024fa822f40821f1",
+  "samples": [
+    {
+      "at": 1792805918455,
+      "zoom": 8,
+      "coverage": 1,
+      "sharpCoverage": 0,
+      "nativePhaseCoverage": 0,
+      "maxUpscale": 8,
+      "requestId": null
+    },
+    {
+      "at": 1792805918795,
+      "zoom": 2,
+      "coverage": 1,
+      "sharpCoverage": 0.17708333333333334,
+      "nativePhaseCoverage": 0.11458333333333333,
+      "maxUpscale": 2,
+      "requestId": null
+    },
+    {
+      "at": 1792805919128,
+      "zoom": 0.126,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 0,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805919379,
+      "zoom": 8,
+      "coverage": 1,
+      "sharpCoverage": 0.08333333333333333,
+      "nativePhaseCoverage": 0.08333333333333333,
+      "maxUpscale": 2,
+      "requestId": null
+    },
+    {
+      "at": 1792805919723,
+      "zoom": 2,
+      "coverage": 1,
+      "sharpCoverage": 0.3958333333333333,
+      "nativePhaseCoverage": 0.3333333333333333,
+      "maxUpscale": 2,
+      "requestId": null
+    },
+    {
+      "at": 1792805919978,
+      "zoom": 0.126,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 0,
+      "maxUpscale": 1,
+      "requestId": null
+    },
+    {
+      "at": 1792805920321,
+      "zoom": 8,
+      "coverage": 1,
+      "sharpCoverage": 0.14583333333333334,
+      "nativePhaseCoverage": 0.14583333333333334,
+      "maxUpscale": 2,
+      "requestId": null
+    },
+    {
+      "at": 1792805920572,
+      "zoom": 8,
+      "coverage": 1,
+      "sharpCoverage": 0.2708333333333333,
+      "nativePhaseCoverage": 0.20833333333333334,
+      "maxUpscale": 2,
+      "requestId": null
+    },
+    {
+      "at": 1792805920886,
+      "zoom": 0.5,
+      "coverage": 1,
+      "sharpCoverage": 0.0625,
+      "nativePhaseCoverage": 0,
+      "maxUpscale": 2,
+      "requestId": null
+    },
+    {
+      "at": 1792805921086,
+      "zoom": 0.126,
+      "coverage": 1,
+      "sharpCoverage": 1,
+      "nativePhaseCoverage": 0.9166666666666666,
+      "maxUpscale": 1,
+      "requestId": null
+    }
+  ]
+}

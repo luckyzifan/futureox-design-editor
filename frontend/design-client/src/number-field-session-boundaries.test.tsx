@@ -8,7 +8,8 @@ import { beforeEach, afterEach, test, expect, vi } from 'vitest'
 import { NumberField } from './fields'
 import { Editor } from './engine'
 import { blank, node, type DesignDocument } from './model'
-import { hasPendingEdits, subscribePendingEdits } from './pending-edits'
+import { hasPendingEdits, subscribePendingEdits, commitPendingEdits } from './pending-edits'
+import { ViewControls } from './ViewControls'
 import { PendingEditContext } from './pending-edit-context'
 import { interfacePreference, useInterfacePreferences } from './interface-preference'
 const bootstrap = await vi.hoisted(async()=>{
@@ -129,4 +130,17 @@ test('pending-edit completion subscriber new draft keeps focus and is not auto-c
     await act(async()=>editor.undo());expect(editor.state.doc).toEqual(first);await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before)
     await act(async()=>editor.redo());expect(editor.state.doc).toEqual(first);await act(async()=>editor.redo());expect(editor.state.doc).toEqual(second)
   } finally {unsubscribe()}
+})
+
+test('actual zoom control inside source workspace context never becomes an authored draft or blocks save',async()=>{
+ function ViewHarness(){useSyncExternalStore(editor.subscribe,editor.snapshot);return <PendingEditContext.Provider value={editor}><ViewControls editor={editor} size={{width:800,height:600}} fit={()=>{}}/></PendingEditContext.Provider>}
+ await act(async()=>root.render(<ViewHarness/>))
+ const before=editor.state.doc,version=editor.state.version
+ await type('3200');await key('Enter')
+ expect(editor.state.view.zoom).toBe(32);expect(editor.state.doc).toBe(before);expect(editor.state.version).toBe(version)
+ expect(hasPendingEdits(editor)).toBe(false);expect(commitPendingEdits(editor)).toBe(true);expect(editor.canUndo).toBe(false)
+ await type('invalid');await blur()
+ expect(editor.state.doc).toBe(before);expect(hasPendingEdits(editor)).toBe(false);expect(commitPendingEdits(editor)).toBe(true)
+ await key('Escape');await type('50');await key('Enter')
+ expect(editor.state.view.zoom).toBe(.5);expect(input().validity.customError).toBe(false)
 })

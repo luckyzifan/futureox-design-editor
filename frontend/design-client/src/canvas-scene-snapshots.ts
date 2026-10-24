@@ -1,6 +1,7 @@
 import type { Bounds, DesignDocument } from './model'
 import { scene, SpatialIndex, unionBounds, type SceneEntry } from './geometry'
 import { pickingGeometryEpoch } from './kernel/picking'
+import { documentPatch } from './document-patch'
 
 type SnapshotKey = {
   document: DesignDocument
@@ -37,8 +38,33 @@ class CanvasSceneSnapshot {
   private spatialIndex?: SpatialIndex
   private rootBounds?: Bounds
   private readonly sceneEntries: SceneEntry[]
-  constructor(readonly key: SnapshotKey) {
-    this.sceneEntries = scene(key.document, key.pageId)
+  private readonly rootForId = new Map<string,string>()
+  private readonly islands = new Map<string,SceneEntry[]>()
+  constructor(readonly key: SnapshotKey, previous?: CanvasSceneSnapshot) {
+    const incremental = previous && previous.key.pageId===key.pageId && previous.key.pages===key.pages &&
+      previous.key.fonts===key.fonts && previous.key.geometryEpoch===key.geometryEpoch
+        ? this.changedRoots(previous) : undefined
+    if (incremental && previous) {
+      const rebuilt = scene(key.document,key.pageId,incremental), islands = new Map<string,SceneEntry[]>()
+      for(const entry of rebuilt){const root=entry.ancestors[0]||entry.id;const list=islands.get(root)||[];list.push(entry);islands.set(root,list)}
+      this.sceneEntries = key.document.pages.find(p=>p.id===key.pageId)!.children.flatMap(root =>
+        incremental.has(root) ? islands.get(root)||[] : previous.islands.get(root)||[])
+      if(previous.spatialIndex)this.spatialIndex=new SpatialIndex(this.sceneEntries,previous.spatialIndex)
+    } else this.sceneEntries = scene(key.document, key.pageId)
+    for(const entry of this.sceneEntries){const root=entry.ancestors[0]||entry.id;this.rootForId.set(entry.id,root);const list=this.islands.get(root)||[];list.push(entry);this.islands.set(root,list)}
+  }
+  private changedRoots(previous:CanvasSceneSnapshot):Set<string>|undefined {
+    const before=previous.key.document, after=this.key.document
+    if(before.id!==after.id)return
+    const patch=documentPatch(before,after)
+    if(Object.keys(patch.fields).some(key=>!['name','schemaVersion'].includes(key)))return
+    const roots=new Set<string>()
+    for(const id of Object.keys(patch.nodes)){
+      const a=before.nodes[id],b=after.nodes[id],root=previous.rootForId.get(id)
+      if(!a||!b||!root||a.children.length!==b.children.length||a.children.some((child,i)=>child!==b.children[i]))return
+      roots.add(root)
+    }
+    return roots
   }
   get entries(): readonly SceneEntry[] { return this.sceneEntries }
   get index() { return this.spatialIndex ??= new SpatialIndex(this.sceneEntries) }
@@ -84,7 +110,7 @@ export class CanvasSceneSnapshots {
     const next = key(document, pageId)
     // Publish only a completely built scene. A throwing build leaves no partial
     // scene or index available to another owner.
-    return this.current = this.find(next) ?? new CanvasSceneSnapshot(next)
+    return this.current = this.find(next) ?? new CanvasSceneSnapshot(next,this.current)
   }
 
   /** Borrow only a scene already built for this published current document.

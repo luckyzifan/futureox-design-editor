@@ -1,0 +1,46 @@
+{
+  "reason": "User steered priority to complete presentation coverage and existing continuity; unverified native-reference transport is parked, not adopted",
+  "directory": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/render-r2-20261024-_z77oryb/parked-resource-v3",
+  "files": [
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu.rs",
+      "sha256": "998fe01c358339dd0890383ea7e9eafd355e3b9bb0146df90a6f9901679e1bcf"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu/packet.rs",
+      "sha256": "c50b15a789f3d1cca60bec3f552bf1e8fb2332b8491e9e65909dd7b280cc4865"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer.rs",
+      "sha256": "d5aa2cdf46d30403a9d37b39667c3b0662b4c06bf96e27ecfb0eaadd557a7ac3"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/preparation.rs",
+      "sha256": "321a16c0a4a683a4bdc6e800b2cf073b7a4dcef7107e2d48dc312bee59fa9991"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/client.ts",
+      "sha256": "d2b770003a2c5c416d55615ff3301f3f2a4fdf6ab8b3acc85e58360a8c3cd71b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-kernel.ts",
+      "sha256": "2a8fb40a1ed7b09cd0307abe1fb08b8289dd68110ba1495c5147eba21f2a8c40"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-worker.ts",
+      "sha256": "20d22856cd1c0c4ca920314eae7603c48a47a04585d146521c90e72f66394c8b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-packet.ts",
+      "sha256": "abe9f8805ad0bb298a532d517cb296f32f5da65159436ca238e4aadc2f447b74"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-packet-resources.test.ts",
+      "sha256": "9493852b03cff3fc2ef7750bfec242aa3d99b5b38c1a8821086fe7dc3a8194e7"
+    },
+    {
+      "path": "frontend/design-desktop/src/render-terminal-diagnostics.mjs",
+      "sha256": "42032c13c979ba6845884d20d83fad77578560b9a8693f4d8950a5c5f5fe22f4"
+    }
+  ]
+}

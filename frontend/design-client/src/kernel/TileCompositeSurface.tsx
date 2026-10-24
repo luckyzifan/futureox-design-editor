@@ -6,12 +6,14 @@ import type { InteractionProps } from './interaction-layers'
 import type { DesignDocument } from '../model'
 import type { KernelOptions } from './client'
 import type { BackendPreference } from './gpu/types'
+import type { PresentedFrame } from './Surface'
 
 export function TileCompositeSurface({ items, view, width, height, dpr, onReady, onGone, onError, onFailure,
-  interaction, pageId, rasterProfile, backend, settledDocument }:
+  interaction, pageId, rasterProfile, backend, settledDocument, presentation, onComposited }:
   { items: CompositeItem[]; view: CanvasCamera; width: number; height: number; dpr: number;
     interaction?: InteractionProps; pageId: string; rasterProfile: KernelOptions['rasterProfile']; backend: BackendPreference;
     settledDocument?: DesignDocument;
+    presentation?: PresentedFrame | null; onComposited?: (frame: PresentedFrame | null) => void;
     onReady: (key: string, serial: number, managed: boolean) => void;
     onGone: (key: string, serial: number) => void;
     onError: (key: string, serial: number, message: string) => void;
@@ -21,8 +23,8 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
   const published = useRef(new Map<number, string>())
   const interactionRenderer = useRef<InteractionRenderer | null>(null)
   const repaint = useRef<() => void>(() => {})
-  const latest = useRef({ items, view, width, height, dpr })
-  latest.current = { items, view, width, height, dpr }
+  const latest = useRef({ items, view, width, height, dpr, presentation, onComposited })
+  latest.current = { items, view, width, height, dpr, presentation, onComposited }
   const callbacks = useRef({ onReady, onGone, onError, onFailure })
   callbacks.current = { onReady, onGone, onError, onFailure }
   useLayoutEffect(() => {
@@ -48,7 +50,7 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
   repaint.current = () => {
     const renderer = compositor.current
     if (!renderer) return
-    const { items, view, width, height, dpr } = latest.current
+    const { items, view, width, height, dpr, presentation, onComposited } = latest.current
     const moving = interactionRenderer.current
     const keep = new Set([...items.map(item => item.tile.serial), ...(moving?.tiles.map(tile => tile.serial) || [])])
     renderer.retain(keep)
@@ -70,7 +72,9 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
         renderer.upload(tile); tile.bytes = new Uint8Array(); tile.bitmap?.close(); tile.bitmap = undefined
       }
       const moved = moving?.items(view)
-      renderer.draw(moved && moving?.mode === 'live-kernel' ? [...items, ...moved.map(item => ({...item,layer:4}))] : moved || items, view, width, height, dpr)
+      const submitted = renderer.draw(moved && moving?.mode === 'live-kernel' ? [...items, ...moved.map(item => ({...item,layer:4}))] : moved || items,
+        view, width, height, dpr, !!moved && moving?.mode !== 'live-kernel')
+      if (submitted) onComposited?.(presentation || null)
       if (canvas.current) {
         canvas.current.dataset.interactionReady = String(!!moving?.ready)
         canvas.current.dataset.interactionActive = String(!!moving?.items(view))
@@ -79,7 +83,7 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
         canvas.current.dataset.interactionMoves = String(moving?.moves || 0)
         // The bitmap route also acknowledges the input whose pixels were
         // actually drawn; requested pointer positions are not completion.
-        canvas.current.dataset.contentSequence = String(moving?.presentedInput.sequence || 0)
+        if (submitted) canvas.current.dataset.contentSequence = String(moving?.presentedInput.sequence || 0)
         canvas.current.dataset.interactionEnd = moving?.lastEnd || ''
         canvas.current.dataset.interactionMode = moving?.mode || ''
         canvas.current.dataset.interactionSamples = String(moving?.samples || 0)

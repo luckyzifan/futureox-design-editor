@@ -336,8 +336,16 @@ fn full() -> DirtyRegion {
     }
 }
 
+#[cfg(test)]
+std::thread_local! {
+    // A source-construction counter, not physical allocation or elapsed time.
+    static PARENT_MAP_CONSTRUCTIONS: std::cell::Cell<usize> = std::cell::Cell::new(0);
+}
+
 /// child id -> parent id, from page children lists and node children lists.
 fn parent_map(doc: &Document) -> BTreeMap<&str, &str> {
+    #[cfg(test)]
+    PARENT_MAP_CONSTRUCTIONS.with(|count| count.set(count.get() + 1));
     fn add<'a>(map: &mut BTreeMap<&'a str, &'a str>, children: &'a [String], parent: &'a str) {
         for child in children {
             map.insert(child.as_str(), parent);
@@ -356,23 +364,29 @@ fn parent_map(doc: &Document) -> BTreeMap<&str, &str> {
     map
 }
 
-/// Effect bleed margin in page units, mirroring the compiler's `halo` plus
-/// its stroke allowance: any pixel a node can influence outside its geometry.
-fn bleed_margin(n: &Node, m: Transform) -> f64 {
-    let halo: f64 = n
-        .effects
+/// Effect support in page units, using the compiler's existing halo policy.
+/// Effects consume the completed subtree, not just the node's own geometry.
+fn effect_margin(n: &Node, m: Transform) -> f64 {
+    n.effects
         .iter()
         .filter(|e| e.visible)
         .map(|e| e.blur_radius() * 2. + e.spread.abs() + e.x.abs() + e.y.abs() + e.material_halo())
         .sum::<f64>()
-        * m.max_scale();
-    let strokes = n
-        .strokes
-        .iter()
-        .filter(|s| s.visible)
-        .map(|s| crate::stroke::maximum_width(s) * 4. * m.max_scale())
-        .fold(0., f64::max);
-    halo + strokes + 2.
+        * m.max_scale()
+}
+
+/// Stroke allowance belongs only to this node's paths. Keep it separate from
+/// effect support so neutral ancestors do not pad every descendant again.
+fn stroke_margin(n: &Node, m: Transform) -> f64 {
+    let mut strokes: f64 = 0.;
+    for stroke in n.strokes.iter().filter(|s| s.visible) {
+        let width = crate::stroke::maximum_width(stroke) * 4. * m.max_scale();
+        if !width.is_finite() {
+            return f64::NAN;
+        }
+        strokes = strokes.max(width);
+    }
+    strokes
 }
 
 fn union_box(a: &mut [f64; 4], b: [f64; 4]) {
@@ -382,9 +396,9 @@ fn union_box(a: &mut [f64; 4], b: [f64; 4]) {
     a[3] = a[3].max(b[3]);
 }
 
-/// World-space bounds of `id`'s whole subtree (the node box plus every
-/// descendant box, each expanded by its own bleed margin), in the revision
-/// `doc`. Invisible nodes still contribute bounds when they might become the
+/// World-space bounds of `id`'s whole subtree in the revision `doc`. Each
+/// node's effects expand the union of its own geometry and completed children.
+/// Invisible nodes still contribute bounds when they might become the
 /// difference between revisions; the caller unions both revisions.
 fn subtree_bounds(
     doc: &Document,
@@ -396,17 +410,16 @@ fn subtree_bounds(
         doc: &Document,
         id: &str,
         matrix: Transform,
-        out: &mut [f64; 4],
         fonts: Option<&Fonts>,
-    ) -> bool {
+    ) -> Option<[f64; 4]> {
         let Some(node) = doc.nodes.get(id) else {
-            return false;
+            return None;
         };
         let m = matrix.concat(node.transform);
         if !m.0.iter().all(|v| v.is_finite())
             || ![node.width, node.height].iter().all(|v| v.is_finite())
         {
-            return false;
+            return None;
         }
         let corners = [
             m.point(crate::math::Point::new(0., 0.)),
@@ -414,7 +427,13 @@ fn subtree_bounds(
             m.point(crate::math::Point::new(0., node.height)),
             m.point(crate::math::Point::new(node.width, node.height)),
         ];
-        let margin = bleed_margin(node, m);
+        let halo = effect_margin(node, m);
+        // Preserve the original operation order for this node's geometry,
+        // including leaves: p +/- ((halo + strokes) + 2).
+        let margin = halo + stroke_margin(node, m) + 2.;
+        if !margin.is_finite() || !halo.is_finite() || halo < 0. {
+            return None;
+        }
         let mut bounds = [
             f64::INFINITY,
             f64::INFINITY,
@@ -422,6 +441,9 @@ fn subtree_bounds(
             f64::NEG_INFINITY,
         ];
         for p in corners {
+            if !p.finite() {
+                return None;
+            }
             bounds[0] = bounds[0].min(p.x - margin);
             bounds[1] = bounds[1].min(p.y - margin);
             bounds[2] = bounds[2].max(p.x + margin);
@@ -434,16 +456,16 @@ fn subtree_bounds(
                 None
             } else {
                 let Some(fonts) = fonts else {
-                    return false;
+                    return None;
                 };
                 let Ok(path) = fonts.node_path_shared(node) else {
-                    return false;
+                    return None;
                 };
                 Some(crate::path::LocalPaths::Text(path))
             }
         } else {
             let Ok(paths) = node.paths() else {
-                return false;
+                return None;
             };
             Some(crate::path::LocalPaths::Owned(paths))
         };
@@ -458,19 +480,47 @@ fn subtree_bounds(
                         actual.y + actual.height + margin,
                     ];
                     if !b.iter().all(|v| v.is_finite()) {
-                        return false;
+                        return None;
                     }
                     union_box(&mut bounds, b);
                 }
             }
         }
-        union_box(out, bounds);
+        if !bounds.iter().all(|v| v.is_finite()) {
+            return None;
+        }
+        // Preserve conservative clip handling: do not crop to a logical box,
+        // which need not enclose the actual clip path. Children are already
+        // in world units, including their own effects; never transform twice.
+        let mut children: Option<[f64; 4]> = None;
         for child in &node.children {
-            if !visit(doc, child, m, out, fonts) {
-                return false;
+            let child = visit(doc, child, m, fonts)?;
+            if let Some(children) = &mut children {
+                union_box(children, child);
+            } else {
+                children = Some(child);
             }
         }
-        true
+        // Rendering composites children before applying foreground effects.
+        // The own geometry already has this halo; only the completed child
+        // union still needs it. Expansion distributes over union, without
+        // changing the original leaf arithmetic or adding ancestor stroke/AA.
+        // None avoids expanding an empty +/-infinity child sentinel.
+        if let Some(children) = children {
+            let expanded = [
+                children[0] - halo,
+                children[1] - halo,
+                children[2] + halo,
+                children[3] + halo,
+            ];
+            if !expanded.iter().all(|v| v.is_finite()) {
+                return None;
+            }
+            union_box(&mut bounds, expanded);
+        }
+        ((bounds[2] - bounds[0]).is_finite()
+            && (bounds[3] - bounds[1]).is_finite())
+            .then_some(bounds)
     }
     let mut ancestors = Vec::new();
     let mut cursor = id;
@@ -488,17 +538,7 @@ fn subtree_bounds(
         .into_iter()
         .rev()
         .fold(Transform::default(), Transform::concat);
-    let mut out = [
-        f64::INFINITY,
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-        f64::NEG_INFINITY,
-    ];
-    if visit(doc, id, matrix, &mut out, fonts) {
-        Some(out)
-    } else {
-        None
-    }
+    visit(doc, id, matrix, fonts)
 }
 
 type BoundsCache = BTreeMap<String, Option<[f64; 4]>>;
@@ -525,13 +565,14 @@ fn subtree_retemplates(node: &Node) -> bool {
 /// fixed-point propagation may over-report, but never misses a read chain.
 /// The same subtree/bleed bounds enclose the capture geometry and finite
 /// filter support; each candidate activates at most once.
-fn propagate_background_reads(
-    before: &Document,
-    after: &Document,
+fn propagate_background_reads<'a>(
+    before: &'a Document,
+    after: &'a Document,
     region: &mut DirtyRegion,
     fonts: Option<&Fonts>,
     ops: &[Op],
     caches: &mut [BoundsCache; 2],
+    parent_maps: Option<[&BTreeMap<&'a str, &'a str>; 2]>,
 ) -> bool {
     if region
         .world_bounds
@@ -540,7 +581,15 @@ fn propagate_background_reads(
         return true;
     }
     let docs = [before, after];
-    let parents = [parent_map(before), parent_map(after)];
+    // Reuse only this call's maps of these exact revisions. The separate
+    // parent_index excludes page sentinels and is not interchangeable.
+    let owned_parents;
+    let parents = if let Some(parents) = parent_maps {
+        parents
+    } else {
+        owned_parents = [parent_map(before), parent_map(after)];
+        [&owned_parents[0], &owned_parents[1]]
+    };
     let mut candidates = Vec::new();
     for (revision, doc) in docs.iter().enumerate() {
         for (id, node) in &doc.nodes {
@@ -640,7 +689,7 @@ pub(crate) fn clipped_translation_damage(doc: &Document, rects: Vec<[f64;4]>, id
     }
     if doc.nodes.values().any(|n|n.backdrop_effect().is_some()) {
         let ops:Vec<_>=ids.into_iter().map(|id|Op::SetTransform{id,matrix:Transform::default().0}).collect();
-        if !propagate_background_reads(doc,doc,&mut region,Some(fonts),&ops,&mut Default::default()) {
+        if !propagate_background_reads(doc,doc,&mut region,Some(fonts),&ops,&mut Default::default(),None) {
             return full("unbounded-background-read");
         }
     }
@@ -724,7 +773,8 @@ fn dirty_region_with_fonts(
     if missing {
         return DirtyRegion::everything("op target missing from both revisions");
     }
-    if !propagate_background_reads(before, after, &mut region, fonts, ops, &mut caches) {
+    if !propagate_background_reads(before, after, &mut region, fonts, ops, &mut caches,
+        Some([&before_parents, &after_parents])) {
         return DirtyRegion::everything("unbounded background-blur dependency");
     }
     let Some(mut bounds) = region.world_bounds else {
@@ -1608,6 +1658,260 @@ mod tests {
         );
     }
 
+    // Geometry-certificate regressions, deliberately independent of raster
+    // execution. Pixel output and the host's retained-tile path need a separate
+    // renderer/integration oracle; these tests prove only dirty coverage.
+    fn ancestor_effect_document(effects: serde_json::Value) -> Document {
+        serde_json::from_value(json!({
+            "schemaVersion": 2, "id": "d", "name": "ancestor effects",
+            "pages": [{"id": "p", "name": "p", "children": ["g"],
+                       "background": "#ffffff"}],
+            "nodes": {
+                "g": {"id": "g", "kind": "group", "width": 100., "height": 100.,
+                      "transform": [1., 0., 0., 1., 0., 0.], "fills": [],
+                      "clip": false, "children": ["c"], "effects": effects},
+                "c": {"id": "c", "kind": "rectangle", "width": 20., "height": 20.,
+                      "transform": [1., 0., 0., 1., 480., 20.], "opacity": 1.,
+                      "fills": [{"kind": "solid", "color": "#ff0000"}]}
+            }
+        }))
+        .unwrap()
+    }
+
+    fn ancestor_shadow_document() -> Document {
+        ancestor_effect_document(json!([{
+            "kind": "shadow", "x": 64., "y": 0., "radius": 0.,
+            "spread": 0., "opacity": 1., "color": "#000000"
+        }]))
+    }
+
+    fn ancestor_opacity_change(before: &Document) -> (Document, DirtyRegion) {
+        let mut after = before.clone();
+        after.nodes.get_mut("c").unwrap().opacity = 0.5;
+        let damage = dirty_region(
+            before, &after,
+            &[Op::SetOpacity { id: "c".into(), opacity: 0.5 }],
+            &grid(), [0., 0., 2048., 2048.],
+        );
+        (after, damage)
+    }
+
+    fn assert_ancestor_damage_covers(damage: &DirtyRegion, point: [f64; 2]) {
+        assert!(!damage.full, "bounded effect must stay local: {damage:?}");
+        let contains = |b: &[f64; 4]| {
+            point[0] >= b[0] && point[0] < b[0] + b[2]
+                && point[1] >= b[1] && point[1] < b[1] + b[3]
+        };
+        assert!(contains(&damage.world_bounds.unwrap()), "{point:?}: {damage:?}");
+        assert!(damage.world_rects.iter().any(contains),
+            "paint-rectangle certificate missed {point:?}: {damage:?}");
+    }
+
+    #[test]
+    fn ancestor_shadow_on_outside_child_covers_output_and_next_tile() {
+        let before = ancestor_shadow_document();
+        let (after, damage) = ancestor_opacity_change(&before);
+        // Static witness: the child ends at x=500; its zero-radius parent
+        // shadow ends at x=564. Baseline ended at x=502 and omitted tile 1.
+        assert_ancestor_damage_covers(&damage, [563., 30.]);
+        let b = damage.world_bounds.unwrap();
+        assert!(b[0] + b[2] >= 564.);
+        assert!(damage.tiles.contains(&[1, 0]), "{damage:?}");
+        assert!(b[2] < 1024., "do not replace a local proof with canvas-wide damage");
+        let patch_damage = patch_damage(&before, &after, &patch(&before, &after));
+        assert!(!patch_damage.full);
+        let b = patch_damage.bounds.unwrap();
+        assert!(b[0] + b[2] >= 564.);
+        assert!(patch_damage.rects.unwrap().iter()
+            .any(|r| r[0] <= 563. && r[0] + r[2] > 563.
+                && r[1] <= 30. && r[1] + r[3] > 30.));
+    }
+
+    #[test]
+    fn ancestor_effects_compose_in_post_order_through_nested_groups() {
+        let mut before = ancestor_shadow_document();
+        before.nodes.insert("outer".into(), serde_json::from_value(json!({
+            "id": "outer", "kind": "group", "width": 100., "height": 100.,
+            "fills": [], "children": ["g"],
+            "effects": [{"kind": "shadow", "x": 48., "radius": 0.,
+                         "opacity": 1., "color": "#000000"}]
+        })).unwrap());
+        before.pages[0].children = vec!["outer".into()];
+        let (_, damage) = ancestor_opacity_change(&before);
+        // The outer shadow includes the inner shadow: 500 + 64 + 48 = 612.
+        assert_ancestor_damage_covers(&damage, [611., 30.]);
+        let b = damage.world_bounds.unwrap();
+        assert!(b[0] + b[2] >= 612.);
+        assert!(b[2] < 1024.);
+    }
+
+    #[test]
+    fn ancestor_blur_support_expands_completed_child_bounds() {
+        let before = ancestor_effect_document(json!([{
+            "kind": "blur", "radius": 12., "color": "#000000", "opacity": 1.
+        }]));
+        let (_, damage) = ancestor_opacity_change(&before);
+        // Assert the established 2*radius conservative support policy, not
+        // a newly invented kernel extent or a claim about changed pixels.
+        assert_ancestor_damage_covers(&damage, [523., 30.]);
+        let b = damage.world_bounds.unwrap();
+        assert!(b[0] + b[2] >= 500. + 2. * 12.);
+    }
+
+    #[test]
+    fn ancestor_effects_use_composed_world_scale_without_double_transform() {
+        let mut before = ancestor_shadow_document();
+        before.nodes.get_mut("g").unwrap().transform =
+            Transform([0., 2., -3., 0., 1200., 0.]);
+        let (_, damage) = ancestor_opacity_change(&before);
+        // The rotated anisotropic parent maps the shadow offset to (0,128).
+        // Its child plus shadow reaches y=1128; max_scale=3 is conservative.
+        assert_ancestor_damage_covers(&damage, [1110., 1127.]);
+        let b = damage.world_bounds.unwrap();
+        assert!(b[1] + b[3] >= 1128.);
+        assert!(b[1] + b[3] <= 1200., "world coordinates applied twice: {b:?}");
+        assert!(damage.tiles.contains(&[2, 2]));
+    }
+
+    #[test]
+    fn ancestor_effects_keep_conservative_clip_semantics() {
+        let mut before = ancestor_shadow_document();
+        before.nodes.get_mut("g").unwrap().kind = "frame".into();
+        before.nodes.get_mut("g").unwrap().clip = true;
+        before.nodes.get_mut("c").unwrap().transform.0[4] = 90.;
+        let (_, damage) = ancestor_opacity_change(&before);
+        // Clip consumes child content before the parent's shadow, so the
+        // shadow of visible content can still extend beyond the clip edge.
+        assert_ancestor_damage_covers(&damage, [163., 30.]);
+        // Bounds deliberately retain the pre-existing conservative policy
+        // of not cropping to logical clip boxes, including fully outside
+        // children. This is allowed overinvalidation, not a clip precision test.
+        before.nodes.get_mut("c").unwrap().transform.0[4] = 480.;
+        let (_, outside) = ancestor_opacity_change(&before);
+        assert_ancestor_damage_covers(&outside, [563., 30.]);
+        assert!(outside.world_bounds.unwrap()[2] < 1024.);
+    }
+
+    #[test]
+    fn ancestor_effect_free_groups_do_not_accumulate_stroke_or_aa_padding() {
+        let mut before = ancestor_effect_document(json!([]));
+        for i in 0..4 {
+            let id = format!("outer-{i}");
+            let child = before.pages[0].children[0].clone();
+            before.nodes.insert(id.clone(), serde_json::from_value(json!({
+                "id": id, "kind": "group", "width": 100., "height": 100.,
+                "fills": [], "children": [child],
+                "strokes": [{"width": 2., "visible": true,
+                             "paint": {"kind": "solid", "color": "#000000"}}]
+            })).unwrap());
+            before.pages[0].children = vec![id];
+        }
+        let (_, damage) = ancestor_opacity_change(&before);
+        assert_eq!(damage.world_bounds, Some([478., 18., 24., 24.]));
+        assert!(!damage.tiles.contains(&[1, 0]));
+        let parents = parent_map(&before);
+        let b = subtree_bounds(&before, &parents, "outer-3", None).unwrap();
+        assert_eq!(b, [-10., -10., 502., 110.]);
+    }
+
+    #[test]
+    fn ancestor_effect_leaf_preserves_original_margin_arithmetic() {
+        for (x, y, offset, width) in [
+            (0.1, 0.3, 0.1, 0.2),
+            (1e12 + 0.125, -1e12 + 0.25, 0.7, 0.3),
+            (-1e12 + 0.125, 1e12 + 0.25, 0.1, 0.2),
+        ] {
+            let mut doc = ancestor_shadow_document();
+            let node = doc.nodes.get_mut("g").unwrap();
+            node.children.clear();
+            node.transform = Transform([1., 0., 0., 1., x, y]);
+            node.effects[0].x = offset;
+            node.strokes = vec![serde_json::from_value(json!({
+                "width": width, "visible": true,
+                "paint": {"kind": "solid", "color": "#000000"}
+            })).unwrap()];
+            // Explicit original arithmetic for this identity-scale, 100x100
+            // logical group, whose own path is empty. Do not call the new
+            // margin helpers to calculate the reference under test.
+            let halo = offset;
+            let strokes = width * 4.;
+            let margin = (halo + strokes) + 2.;
+            let expected = [
+                x - margin, y - margin,
+                (100. + x) + margin, (100. + y) + margin,
+            ];
+            let actual = subtree_bounds(&doc, &parent_map(&doc), "g", None).unwrap();
+            assert_eq!(actual.map(f64::to_bits), expected.map(f64::to_bits),
+                "leaf arithmetic changed for x={x}, y={y}, offset={offset}, width={width}");
+        }
+    }
+
+    #[test]
+    fn ancestor_effect_move_keeps_old_and_new_shadow_footprints() {
+        let before = ancestor_shadow_document();
+        let mut after = before.clone();
+        after.nodes.get_mut("c").unwrap().transform.0[4] = 960.;
+        let damage = dirty_region(
+            &before, &after,
+            &[Op::SetTransform { id: "c".into(), matrix: after.nodes["c"].transform.0 }],
+            &grid(), [0., 0., 2048., 2048.],
+        );
+        assert_ancestor_damage_covers(&damage, [563., 30.]);
+        assert_ancestor_damage_covers(&damage, [1043., 30.]);
+        assert!(damage.tiles.contains(&[2, 0]));
+    }
+
+    #[test]
+    fn ancestor_effect_delete_keeps_prior_shadow_footprint() {
+        let before = ancestor_shadow_document();
+        let mut after = before.clone();
+        after.nodes.remove("c");
+        after.nodes.get_mut("g").unwrap().children.clear();
+        let damage = dirty_region(
+            &before, &after, &[Op::RemoveNode { id: "c".into() }],
+            &grid(), VIEWPORT,
+        );
+        assert_ancestor_damage_covers(&damage, [563., 30.]);
+        assert!(damage.tiles.contains(&[1, 0]));
+    }
+
+    #[test]
+    fn ancestor_effect_hide_keeps_prior_shadow_footprint() {
+        let before = ancestor_shadow_document();
+        let mut after = before.clone();
+        after.nodes.get_mut("c").unwrap().visible = false;
+        let damage = dirty_region(
+            &before, &after, &[Op::SetVisible { id: "c".into(), visible: false }],
+            &grid(), VIEWPORT,
+        );
+        assert_ancestor_damage_covers(&damage, [563., 30.]);
+        assert!(damage.tiles.contains(&[1, 0]));
+    }
+
+    #[test]
+    fn ancestor_effect_nonfinite_support_fails_closed() {
+        for invalid in [f64::NAN, f64::INFINITY, 1e308] {
+            let before = ancestor_shadow_document();
+            let mut after = before.clone();
+            // 1e308 has finite extrema but an overflowing expanded extent.
+            after.nodes.get_mut("g").unwrap().effects[0].x = invalid;
+            let damage = dirty_region(
+                &before, &after, &[Op::SetOpacity { id: "c".into(), opacity: 0.5 }],
+                &grid(), VIEWPORT,
+            );
+            assert!(damage.full, "invalid support {invalid}: {damage:?}");
+            assert_eq!(damage.reason, Some("non-finite geometry in updated revision"));
+        }
+        let before = ancestor_shadow_document();
+        let mut after = before.clone();
+        after.nodes.get_mut("g").unwrap().transform.0[0] = 1e308;
+        let damage = dirty_region(
+            &before, &after, &[Op::SetOpacity { id: "c".into(), opacity: 0.5 }],
+            &grid(), VIEWPORT,
+        );
+        assert!(damage.full, "finite matrix can overflow composed corners/scale");
+    }
+
     #[test]
     fn insert_reports_new_footprint_and_removal_reports_old() {
         let before = document(json!(["a"]));
@@ -1727,5 +2031,93 @@ mod tests {
         );
         assert!(region.full);
         assert_eq!(region.reason, Some("visible tile budget exceeded"));
+    }
+}
+
+
+#[cfg(test)]
+mod parent_map_reuse_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn source() -> Document {
+        serde_json::from_value(json!({
+            "schemaVersion": 2, "id": "map-reuse", "name": "map-reuse",
+            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["frame", "blur"]}],
+            "nodes": {
+                "frame": {"id": "frame", "kind": "frame", "width": 80, "height": 60,
+                    "children": ["leaf"], "effects": [{"kind": "blur", "radius": 4, "visible": true, "color": "#000000"}]},
+                "leaf": {"id": "leaf", "kind": "rectangle", "width": 16, "height": 20,
+                    "transform": [1, 0, 0, 1, 10, 10], "fills": [{"kind": "solid", "color": "#cc3366"}]},
+                "blur": {"id": "blur", "kind": "frame", "width": 48, "height": 48,
+                    "transform": [1, 0, 0, 1, 20, 0],
+                    "effects": [{"kind": "background-blur", "radius": 6, "visible": true, "color": "#000000"}]}
+            }
+        })).unwrap()
+    }
+
+    fn constructions() -> usize { PARENT_MAP_CONSTRUCTIONS.with(|count| count.get()) }
+    fn reset_constructions() { PARENT_MAP_CONSTRUCTIONS.with(|count| count.set(0)); }
+
+    #[test]
+    fn bounded_patch_builds_only_its_existing_parent_map_pair() {
+        let before = source();
+        before.validate().unwrap();
+        let mut after = before.clone();
+        after.nodes.get_mut("leaf").unwrap().transform.0[4] = 14.375;
+        let patch = crate::editing::DocumentPatch::between(&before, &after).unwrap();
+        reset_constructions();
+        let damage = patch_damage(&before, &after, &patch);
+        assert!(!damage.full, "this case must reach bounded background-read propagation");
+        assert_eq!(constructions(), 2, "parent_index has distinct semantics and is not counted");
+    }
+
+    #[test]
+    fn supplied_maps_match_owned_maps_for_background_closure_and_empty_damage() {
+        let before = source();
+        let mut after = before.clone();
+        after.nodes.get_mut("leaf").unwrap().transform.0[4] = 14.375;
+        let ops = [Op::SetTransform { id: "leaf".into(), matrix: after.nodes["leaf"].transform.0 }];
+        let before_parents = parent_map(&before);
+        let after_parents = parent_map(&after);
+        for rects in [vec![[10., 10., 20., 24.]], Vec::new()] {
+            let mut owned = full();
+            for rect in rects {
+                let bounds = [rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3]];
+                add_paint_rect(&mut owned, bounds);
+                union_box(owned.world_bounds.as_mut().unwrap(), bounds);
+            }
+            let mut supplied = owned.clone();
+            let owned_result = propagate_background_reads(&before, &after, &mut owned, None, &ops,
+                &mut Default::default(), None);
+            reset_constructions();
+            let supplied_result = propagate_background_reads(&before, &after, &mut supplied, None, &ops,
+                &mut Default::default(), Some([&before_parents, &after_parents]));
+            assert_eq!(supplied_result, owned_result);
+            assert_eq!(supplied, owned, "same arithmetic, activation order and output damage");
+            assert_eq!(constructions(), 0, "borrowed exact maps are not reconstructed");
+        }
+    }
+
+    #[test]
+    fn standalone_clipped_translation_keeps_its_owned_maps() {
+        let document = source();
+        let fonts = Fonts::new();
+        reset_constructions();
+        let damage = clipped_translation_damage(&document, vec![[0., 0., 30., 30.]],
+            vec!["frame".into()], &fonts);
+        assert!(!damage.full);
+        assert_eq!(constructions(), 2, "the standalone entry has no supplied maps");
+    }
+
+    #[test]
+    fn page_parent_sentinels_are_not_replaced_by_parent_index() {
+        let document = source();
+        let map = parent_map(&document);
+        let index = parent_index(&document);
+        assert_eq!(map.get("frame"), Some(&"p"));
+        assert_eq!(index.get("frame"), None);
+        assert_eq!(map.get("leaf"), Some(&"frame"));
+        assert_eq!(index.get("leaf"), Some(&"frame"));
     }
 }
