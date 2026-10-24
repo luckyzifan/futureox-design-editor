@@ -3,25 +3,44 @@ import { LayerRowsCache } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
 import { AssetsPanel } from './AssetsPanel'
-import { useMemo, useState, useSyncExternalStore, useRef, useEffect, useId } from 'react'
+import { memo, useMemo, useState, useSyncExternalStore, useRef, useEffect, useId } from 'react'
 import {
-  Plus,
-  ChevronDown,
-  ChevronRight,
-  Eye,
-  EyeOff,
-  Lock,
-  Unlock,
-  Frame,
-  Layers as LayersIcon,
-  Square,
-  Type,
-  PenTool,
-  Search,
-  Trash2,
-  Copy,
-  Diamond,
+  Plus as PlusGlyph,
+  ChevronDown as ChevronDownGlyph,
+  ChevronRight as ChevronRightGlyph,
+  Eye as EyeGlyph,
+  EyeOff as EyeOffGlyph,
+  Lock as LockGlyph,
+  Unlock as UnlockGlyph,
+  Frame as FrameGlyph,
+  Layers as LayersGlyph,
+  Square as SquareGlyph,
+  Type as TypeGlyph,
+  PenTool as PenToolGlyph,
+  Search as SearchGlyph,
+  Trash2 as Trash2Glyph,
+  Copy as CopyGlyph,
+  Diamond as DiamondGlyph,
 } from 'lucide-react'
+// Layer hover/property publications do not change most glyph props. Keep
+// Lucide path construction out of those measured React hot updates.
+const Plus = memo(PlusGlyph)
+const ChevronDown = memo(ChevronDownGlyph)
+const ChevronRight = memo(ChevronRightGlyph)
+const Eye = memo(EyeGlyph)
+const EyeOff = memo(EyeOffGlyph)
+const Lock = memo(LockGlyph)
+const Unlock = memo(UnlockGlyph)
+const Frame = memo(FrameGlyph)
+const LayersIcon = memo(LayersGlyph)
+const Square = memo(SquareGlyph)
+const Type = memo(TypeGlyph)
+const PenTool = memo(PenToolGlyph)
+const Search = memo(SearchGlyph)
+const Trash2 = memo(Trash2Glyph)
+const Copy = memo(CopyGlyph)
+const Diamond = memo(DiamondGlyph)
+
 import type { Editor } from './engine'
 import { container } from './model'
 import { commitPendingEdits } from './pending-edits'

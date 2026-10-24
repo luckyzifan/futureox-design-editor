@@ -11,12 +11,16 @@ export class CoverageCache {
   private eviction?: SetIterator<Entry>
   private frame = 0
   bytes = 0
+  rejectedOversize = 0
+  rejectedPinned = 0
+  rejectedBytes = 0
   constructor(
     private limit: number,
     private countLimit: number,
     private destroy: (t: Texture) => void,
   ) {}
   begin() {
+    this.rejectedOversize = this.rejectedPinned = this.rejectedBytes = 0
     this.frame++
     this.eviction = this.entries.values()
   }
@@ -35,7 +39,7 @@ export class CoverageCache {
   }
   put(key: string, bits: Uint32Array, texture: Texture): boolean {
     const bytes = bits.byteLength + texture.bytes
-    if (bytes > this.limit) return false
+    if (bytes > this.limit) { this.rejectedOversize++; this.rejectedBytes += bytes; return false }
     // The caller is using this physical texture in this frame, even if a new
     // alias cannot be admitted. Evicting an older alias must not destroy it.
     for (const entry of this.textures.get(texture) || []) entry.frame = this.frame
@@ -44,7 +48,9 @@ export class CoverageCache {
       if (!entry) break
       this.removeEntry(entry)
     }
-    if (this.bytes + bytes > this.limit || this.entries.size >= this.countLimit) return false
+    if (this.bytes + bytes > this.limit || this.entries.size >= this.countLimit) {
+      this.rejectedPinned++; this.rejectedBytes += bytes; return false
+    }
     // Copy only this mesh, not a view retaining the entire frame vertex buffer.
     const entry = { key, bits: bits.slice(), texture, bytes, frame: this.frame }
     const bucket = this.buckets.get(key) || new Set<Entry>()

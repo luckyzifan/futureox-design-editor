@@ -1,4 +1,5 @@
 import type { GpuNode, GpuScene, PathMesh } from './types'
+import { retainedSceneChanges, inheritSceneReceipt } from './scene-delta'
 
 const signatures = new WeakMap<GpuNode, string>()
 const encode = (value: unknown) => JSON.stringify(value, (_key, v) => Object.is(v, -0) ? '-0' : v)
@@ -36,8 +37,10 @@ export function reuseExactSceneSources(previous: GpuScene, next: GpuScene, trans
   if (policy(previous) !== policy(next)) return next
   const old = { curves: bits(previous.curves || []), vertices: bits(previous.vertices) }
   const fresh = { curves: bits(next.curves || []), vertices: bits(next.vertices) }
-  const nodes = { ...next.nodes }
-  for (const [id, n] of Object.entries(nodes)) {
+  const changed = retainedSceneChanges(previous,next)
+  const nodes = { ...(changed ? previous.nodes : next.nodes) }
+  if(changed)for(const id of changed){if(next.nodes[id])nodes[id]=next.nodes[id];else delete nodes[id]}
+  for (const [id, n] of changed ? [...changed].filter(id=>!!nodes[id]).map(id=>[id,nodes[id]] as const) : Object.entries(nodes)) {
     const before = previous.nodes[id]
     if (!before || n.previewDynamic || n.captureReplay || n.textureReplay || signature(before.previewSource || before) !== signature(n)) continue
     // Only the validated native transform entry may supply this closure. Rust
@@ -48,5 +51,7 @@ export function reuseExactSceneSources(previous: GpuScene, next: GpuScene, trans
       !n.strokes.every((s, i) => pathEqual(before.strokes[i].path, s.path, old, fresh)))) continue
     nodes[id] = { ...n, previewSource: before.previewSource || before }
   }
-  return { ...next, nodes }
+  const result = { ...next, nodes }
+  inheritSceneReceipt(next,result)
+  return result
 }

@@ -34,7 +34,7 @@ test('page uses shared main canvas, sends changed nodes and exports through the 
  const doc=blank('Page'),layer=node('rectangle',0,0,140,140);doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
  const original=JSON.stringify(parent.authoredDocument)
  const status={owner:{documentId:'source',sessionEpoch:1},revision:0,name:'source.sketch',format:'sketch',expandedBytes:831806447,maxExpandedBytes:4294967296,indexedObjects:124399,dirty:false,undoCount:0,redoCount:0}
- const sceneCommit=vi.fn(async(_request:{json:string;key:string})=>({status:'ok',...status,revision:1,dirty:true,undoCount:1})),exported=vi.fn(async()=>({status:'ok',...status,revision:1,exported:true,displayName:'complete.sketch'}))
+ const sceneCommit=vi.fn(async(_request:{json:string;key:string})=>({status:'ok',...status,revision:1,dirty:true,undoCount:1,key:'1:0'})),exported=vi.fn(async()=>({status:'ok',...status,revision:1,exported:true,displayName:'complete.sketch'}))
  const scene=vi.fn(async({key}:{key:string})=>({status:'ok',json:key==='2:0'?'{}':JSON.stringify(doc),warnings:[],nodes:1,bytes:2048}))
  const bridge={open:async()=>({status:'ok',...status}),children:async()=>({status:'ok',items:[{key:'1:0',id:doc.pages[0].id,name:'Full page',kind:'page',bytes:699402701,part:'page.json',hasChildren:true},{key:'2:0',id:'unadmitted',name:'Unadmitted page',kind:'page',bytes:100,part:'other.json',hasChildren:false}],total:2,hasMore:false}),scene,sceneCommit,export:exported} as unknown as LargeDocumentBridge
  await act(async()=>root.render(<LargeDocumentWorkspace bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
@@ -72,4 +72,120 @@ test('pending source navigation removes stale clickable rows until the matching 
  await act(async()=>reply({status:'ok',items:[{...first,key:'1:1',id:'second',name:'Second',hasChildren:false}],total:1,hasMore:false}))
  expect(document.querySelector('[data-source-key="1:1"]')).not.toBeNull()
  expect(document.querySelector('[data-source-key="1:0"]')).toBeNull()
+})
+
+test('loading keeps the old canvas interactive and a late source cannot overwrite a new edit',async()=>{
+ const doc=blank('Loaded'),layer=node('rectangle',0,0,100,100);doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
+ const next=blank('Slow source'),other=node('rectangle',0,0,20,20);next.nodes[other.id]=other;next.pages[0].children=[other.id]
+ const status={owner:{documentId:'source',sessionEpoch:1},revision:0,name:'source.sketch',format:'sketch',expandedBytes:100,maxExpandedBytes:4294967296,indexedObjects:2,dirty:false,undoCount:0,redoCount:0}
+ let release!:(value:unknown)=>void
+ const scene=vi.fn(async({key}:{key:string})=>key==='1:1'?new Promise(resolve=>{release=resolve}):{status:'ok',json:JSON.stringify(doc),warnings:[],nodes:1,bytes:100})
+ const row=(key:string,name:string)=>({key,id:key,name,kind:'page',bytes:100,part:'p',hasChildren:false})
+ const bridge={open:async()=>({status:'ok',...status}),children:async()=>({status:'ok',items:[row('1:0','Loaded'),row('1:1','Slow')],total:2,hasMore:false}),scene,cancel:async()=>({status:'ok'})}as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ await act(async()=>button('Loaded完整页面').click());await act(async()=>button('源文件 / 页面').click());await act(async()=>button('Slow完整页面').click())
+ expect(document.querySelector('.source-workspace-canvas')!.hasAttribute('inert')).toBe(false)
+ await act(async()=>binding.editor!.updateProperties([layer.id],n=>{n.width=120}))
+ await act(async()=>release({status:'ok',json:JSON.stringify(next),warnings:[],nodes:1,bytes:100}))
+ expect(binding.editor!.authoredDocument.nodes[layer.id].width).toBe(120)
+ expect(binding.editor!.authoredDocument.nodes[other.id]).toBeUndefined()
+ expect(document.querySelector('.source-workspace-status')!.textContent).toContain('当前画布已保留')
+ expect(scene.mock.calls.map(([r])=>r.key)).toEqual(['1:0','1:1','1:0'])
+})
+
+function sourceFixture(){
+ const doc=blank('Page'),layer=node('rectangle',0,0,140,140);doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
+ let live={owner:{documentId:'source',sessionEpoch:1},revision:1,name:'source.sketch',format:'sketch',expandedBytes:100,maxExpandedBytes:4294967296,indexedObjects:4,dirty:true,undoCount:1,redoCount:0}
+ const parentRow={key:'1:3',id:'parent',name:'Source parent',kind:'group',bytes:100,part:'page.json',hasChildren:true}
+ const pageRow={...parentRow,key:'1:4',id:doc.pages[0].id,name:'Full page',kind:'page',hasChildren:false}
+ const otherRow={...pageRow,key:'1:6',id:'other',name:'Other page'}
+ const children=vi.fn(async({key}:{key?:string})=>({status:'ok',items:key?[pageRow,otherRow]:[parentRow],total:key?2:1,hasMore:false}))
+ const scene=vi.fn(async(_value:{key:string;expectedRevision:number})=>({status:'ok',json:JSON.stringify(doc),warnings:[],nodes:1,bytes:2048}))
+ const sceneCommit=vi.fn(async(_value:{key:string;expectedRevision:number;json:string})=>({status:'ok',...live,revision:++live.revision,key:'1:9'}))
+ const close=vi.fn(async()=>({status:'ok'}))
+ const bridge={open:async()=>({status:'ok',...live}),children,scene,sceneCommit,close,
+  undo:async()=>({status:'ok',...live,revision:++live.revision,redoCount:++live.redoCount}),redo:async()=>({status:'ok',...live,revision:++live.revision,redoCount:--live.redoCount})} as unknown as LargeDocumentBridge
+ return {bridge,children,scene,sceneCommit,close,doc,layer,get live(){return live}}
+}
+async function loadFixture(f:ReturnType<typeof sourceFixture>,onExit=()=>{}){
+ await act(async()=>root.render(<LargeDocumentWorkspace bridge={f.bridge} parentEditor={parent} onExit={onExit} onWindowClose={async()=>{}}/>))
+ await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="展开 Source parent"]')!.click())
+ await act(async()=>button('Full page完整页面').click())
+ return binding.editor!
+}
+
+test('returning from structural JSON history never reloads the old ordinal under the new revision',async()=>{
+ const f=sourceFixture(),loaded=await loadFixture(f)
+ await act(async()=>button('JSON 属性').click())
+ await act(async()=>button('撤销已应用修改').click())
+ await act(async()=>button('关闭').click())
+ expect(f.scene.mock.calls).toHaveLength(1)
+ expect(document.querySelector('[aria-label="Shared canvas boundary"]')).toBeNull()
+ expect(f.children.mock.calls.at(-1)![0]).toMatchObject({key:undefined,expectedRevision:2,offset:0})
+ expect([...document.querySelectorAll('.source-workspace-navigation nav')].at(-1)!.textContent).toBe('全部文件')
+ expect(loaded.authoredDocument.nodes[f.layer.id].width).toBe(140)
+ expect(document.body.textContent).toContain('请重新选择页面或对象')
+})
+
+test('dirty edits made while JSON is open are retained and prevent stale canvas adoption',async()=>{
+ const f=sourceFixture(),loaded=await loadFixture(f)
+ await act(async()=>button('JSON 属性').click())
+ await act(async()=>button('撤销已应用修改').click())
+ await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=190}))
+ await act(async()=>button('关闭').click())
+ expect(f.scene.mock.calls).toHaveLength(1)
+ expect(loaded.authoredDocument.nodes[f.layer.id].width).toBe(190)
+ expect(loaded.canUndo).toBe(true)
+ expect(document.querySelector('[aria-label="Shared canvas boundary"]')).not.toBeNull()
+ expect(document.querySelector('[role=alert]')!.textContent).toContain('当前画布已保留')
+ expect(f.sceneCommit).not.toHaveBeenCalled()
+})
+
+test('source undo and redo invalidate active ordinals without reloading a different object',async()=>{
+ const f=sourceFixture();await loadFixture(f)
+ await act(async()=>button('撤销已保存修改').click())
+ expect(f.scene.mock.calls).toHaveLength(1)
+ expect(f.children.mock.calls.at(-1)![0]).toMatchObject({key:undefined,expectedRevision:2})
+ expect(document.querySelector('[aria-label="Shared canvas boundary"]')).toBeNull()
+ await act(async()=>button('重做已保存修改').click())
+ expect(f.scene.mock.calls).toHaveLength(1)
+ expect(f.children.mock.calls.at(-1)![0]).toMatchObject({key:undefined,expectedRevision:3})
+})
+
+test('a save while navigating fences the clicked row and retains the remapped root receipt for the next save and close',async()=>{
+ const f=sourceFixture(),onExit=vi.fn(),loaded=await loadFixture(f,onExit)
+ await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=180}))
+ await act(async()=>button('源文件 / 页面').click())
+ await act(async()=>button('Other page完整页面').click())
+ expect(f.sceneCommit.mock.calls[0][0]).toMatchObject({key:'1:4',expectedRevision:1})
+ expect(f.scene.mock.calls).toHaveLength(1)
+ expect(document.querySelector('[role=alert]')!.textContent).toContain('从刷新后的列表重新选择')
+ expect(loaded.authoredDocument.nodes[f.layer.id].width).toBe(180)
+ await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=190}))
+ await act(async()=>button('返回设计').click())
+ expect(f.sceneCommit.mock.calls[1][0]).toMatchObject({key:'1:9',expectedRevision:2})
+ expect(f.close).toHaveBeenCalledWith({owner:f.live.owner,expectedRevision:3})
+ expect(onExit).toHaveBeenCalledTimes(1)
+})
+
+test('failed save blocks navigation and close without dropping dirty Editor history',async()=>{
+ const f=sourceFixture(),onExit=vi.fn(),loaded=await loadFixture(f,onExit)
+ f.sceneCommit.mockRejectedValue(Error('Native source commit rejected'))
+ await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=180}))
+ await act(async()=>button('返回设计').click())
+ expect(f.close).not.toHaveBeenCalled();expect(onExit).not.toHaveBeenCalled()
+ expect(loaded.authoredDocument.nodes[f.layer.id].width).toBe(180)
+ expect(loaded.canUndo).toBe(true)
+ expect(document.querySelector('[role=alert]')!.textContent).toContain('Native source commit rejected')
+})
+
+test('a commit receipt without a fresh root key cannot rebind or close the dirty canvas',async()=>{
+ const f=sourceFixture(),onExit=vi.fn(),loaded=await loadFixture(f,onExit)
+ f.sceneCommit.mockResolvedValue({status:'ok',...f.live,revision:2} as never)
+ await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=180}))
+ await act(async()=>button('返回设计').click())
+ expect(f.sceneCommit).toHaveBeenCalledTimes(1)
+ expect(f.close).not.toHaveBeenCalled();expect(onExit).not.toHaveBeenCalled()
+ expect(loaded.authoredDocument.nodes[f.layer.id].width).toBe(180)
+ expect(document.querySelector('[role=alert]')!.textContent).toContain('保存回执缺少有效的源对象位置')
 })

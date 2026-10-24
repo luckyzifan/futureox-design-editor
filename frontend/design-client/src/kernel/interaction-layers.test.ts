@@ -1,7 +1,41 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { blank, node, effect } from '../model'
-import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, planInteractionLayers, pageBackdropPadding } from './interaction-layers'
+import { interactionOffsets, interactionTransformsOnly, interactionPatchedDocument, interactionPatchedOffsets, planInteractionLayers, pageBackdropPadding } from './interaction-layers'
+import { produceDocumentDraft } from '../document-patch'
 import {scene} from '../geometry'
+
+test('producer-witnessed poses avoid re-enumerating the node table and still reject unrelated edits', () => {
+  const doc = blank(), a = node('rectangle', 0, 0, 40, 40), b = node('rectangle', 80, 0, 40, 40)
+  doc.nodes = { [a.id]: a, [b.id]: b }; doc.pages[0].children = [a.id, b.id]
+  const plan = { document: doc, pageId: doc.pages[0].id, ids: [a.id], layers: [] }
+  const moved = produceDocumentDraft(doc, d => { d.nodes[a.id].transform[4] = 12 })
+  const entries = Object.entries, keys = Object.keys
+  const e = vi.spyOn(Object, 'entries').mockImplementation(((value: object) => {
+    if (value === moved.nodes || value === doc.nodes) throw Error('Unexpected whole-node enumeration')
+    return entries(value)
+  }) as typeof Object.entries)
+  const k = vi.spyOn(Object, 'keys').mockImplementation(value => {
+    if (value === moved.nodes || value === doc.nodes) throw Error('Unexpected whole-node enumeration')
+    return keys(value)
+  })
+  try {
+    expect(interactionOffsets(plan, moved)?.get(a.id)).toEqual({ x: 12, y: 0 })
+    expect(interactionTransformsOnly(plan, moved)).toBe(true)
+  } finally { e.mockRestore(); k.mockRestore() }
+  for (const changed of [
+    produceDocumentDraft(moved, d => { d.nodes[b.id].opacity = .5 }),
+    produceDocumentDraft(moved, d => { delete d.nodes[b.id] }),
+    produceDocumentDraft(moved, d => { d.nodes[a.id].fills = [...d.nodes[a.id].fills] }),
+  ]) {
+    expect(interactionOffsets(plan, changed)).toBeNull()
+    expect(interactionTransformsOnly(plan, changed)).toBe(false)
+  }
+  // A clone has no private witness. Its unrelated mutation must be found by
+  // the original full comparison rather than by selected-ID hints.
+  const unknown = { ...moved, nodes: { ...moved.nodes, [b.id]: { ...moved.nodes[b.id], opacity: .4 } } }
+  expect(interactionOffsets(plan, unknown)).toBeNull()
+  expect(interactionTransformsOnly(plan, unknown)).toBe(false)
+})
 
 test('overlapping, interleaved selected boards retain their paint order and internal backdrop/masks', () => {
   const doc = blank(), roots = Array.from({ length: 5 }, (_, i) => node('frame', i * 10, 0, 300, 300))

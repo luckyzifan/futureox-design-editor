@@ -7,6 +7,7 @@ import { BitmapRetirement } from './bitmap-retirement'
 import { PageResidencyCache } from './page-residency-cache'
 import { PresentationOwnership } from './presentation-ownership'
 import { NativeNavigationHandoff } from './native-navigation-handoff'
+import { navigationHasCoverage } from './navigation-coverage'
 import { viewportPreviewKey, type ViewportPreviewIdentity } from './viewport-preview-cache'
 import { estimatedTileResidencyBytes } from './page-memory-policy'
 import { isTileAdmissionBudgetError, planTileAdmission, retireRejectedTile, HandledTileDeliveryError,
@@ -22,7 +23,8 @@ const bindings = ['sameContent', 'recordRenderDiagnostic', 'view', 'dpr', 'rende
   'heldDisplay', 'bitmapRetirement', 'c', 'ready', 'failedTiles', 'presentationOwnership', 'setTiles',
   'planTileAdmission', 'retireRejectedTile', 'HandledTileDeliveryError', 'estimatedTileResidencyBytes',
   'current', 'desired', 'width', 'height', 'residentDisplay', 'replacementTileBudget', 'tileAdmissionDiagnostic', 'cacheAdmission',
-  'nativeNavigation', 'nativeNavigationHandoff', 'viewportPreviewKey', 'latestContext']
+  'nativeNavigation', 'nativeNavigationHandoff', 'viewportPreviewKey', 'latestContext',
+  'coverageFlight', 'coverageGeneration', 'navigationHasCoverage', 'nativePageBacking']
 const receiveFactory = new Function('context', `const {${bindings.join(',')}} = context;
   ${stripTypeScriptTypes(receiveSource.replaceAll('import.meta.env.DEV', 'false'))}; return receive`)
 function tile(key: string, gpuTile: number, side = 2) {
@@ -41,7 +43,7 @@ function harness() {
   const c = { releasePresented: vi.fn() }, setTiles = vi.fn()
   const context = { sameContent: () => true, recordRenderDiagnostic: vi.fn(), view: { x: 0, y: 0, zoom: 1 },
     dpr: 1, renderScale: 1, hdrCompositing: false, rasterTrace: { current: [] }, doc, contract: { revision: 1 }, serial: { current: 3 },
-    overviewKeys: { current: new Set() }, navigationTiming: { current: { firstDetailMs: 0 } }, setStats: vi.fn(),
+    overviewKeys: { current: new Set() }, nativePageBacking: { current: null }, navigationTiming: { current: { firstDetailMs: 0 } }, setStats: vi.fn(),
     compositeCacheFrame: { current: null }, displayed: null, displayBudget: 48, residencyBudget: 64,
     compositeCacheUse: () => new Set(), tileRef, protectedKeys: { current: new Set(['A', 'B']) },
     coverageRetention: { current: { has: () => false } }, pageResidency, heldDisplay: { current: null },
@@ -50,6 +52,7 @@ function harness() {
     current: () => true, desired: { current: ['A', 'B', 'C', 'D'] }, width: 100, height: 100, residentDisplay: true,
     replacementTileBudget, tileAdmissionDiagnostic,
     nativeNavigation: false, nativeNavigationHandoff: new NativeNavigationHandoff(), viewportPreviewKey,
+    coverageFlight: { current: null }, coverageGeneration: { current: 0 }, navigationHasCoverage,
     latestContext: { current: { view: { x: 0, y: 0, zoom: 1 } } },
     cacheAdmission: { current: { reserveBytes: 0, admissionBudget: 0, activeHighWater: 0, totalHighWater: 0 } } }
   return { a, b, cold, inactive, context, receive: receiveFactory(context) as (incoming: ReturnType<typeof tile>) => void }

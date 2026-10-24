@@ -1,5 +1,6 @@
 import { isSlotHost } from './component-slots'
 import { cloneValue } from './draft'
+import { documentPatch } from './document-patch'
 import {
   node,
   uid,
@@ -53,12 +54,30 @@ export const overrideFields = [
   'sizing',
   'constraints',
   'network',
+  'vectorGeometry',
   'points',
   'innerRadius',
   'clip',
   'mask',
 ] as const
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+const same = (a: unknown, b: unknown) => Object.is(a, b) || JSON.stringify(a) === JSON.stringify(b)
+export type PropertyEditScope = { before: DesignDocument; after: DesignDocument; ids: string[]; parents: ParentMap; definitions: Set<string> }
+/** Complete authored diff, before any draft cleanup. These edits cannot remove
+ * dependencies or change slot/instance topology. Do not derive this from the
+ * selection or a caller-provided list of supposedly changed nodes. */
+export function propertyEditScope(before: DesignDocument, after: DesignDocument): PropertyEditScope | undefined {
+  const patch = documentPatch(before, after)
+  if (Object.keys(patch.fields).some(key => !['name', 'schemaVersion'].includes(key))) return
+  const ids = Object.keys(patch.nodes)
+  const topology = ['id','kind','children','instance','instanceOrigin','component','componentSet','componentKey'] as const
+  if (ids.some(id => !before.nodes[id] || !after.nodes[id] || topology.some(key => before.nodes[id][key] !== after.nodes[id][key]))) return
+  const parents = allParents(before), definitions = new Set<string>()
+  for (const id of ids) {
+    let at: string | undefined = id
+    while (at) { if (before.nodes[at]?.component) definitions.add(at); at = parents.get(at) }
+  }
+  return { before, after, ids, parents, definitions }
+}
 export function instanceOwner(d: DesignDocument, id: string): string | undefined {
   const n = d.nodes[id]
   return n?.instanceOrigin?.owner || (n?.instance ? id : undefined)
@@ -148,8 +167,9 @@ function variableModeRenames(before: DesignDocument, after: DesignDocument) {
   if (!equivalentJson({ ...a, collections, variables, activeModes }, b)) return
   return maps
 }
-export function captureOverrides(before: DesignDocument, d: DesignDocument) {
-  for (const n of Object.values(d.nodes)) if (n.instance?.slotContents) {
+export function captureOverrides(before: DesignDocument, d: DesignDocument, scope?: PropertyEditScope) {
+  if (scope && scope.before !== before) throw Error('Stale component property scope')
+  for (const n of scope ? [] : Object.values(d.nodes)) if (n.instance?.slotContents) {
     for (const [slot, roots] of Object.entries(n.instance.slotContents)) {
       let remaining = roots.filter(id => !!d.nodes[id])
       const targetKey = d.nodes[n.instance.componentId]?.component?.slots?.[slot]?.targetKey
@@ -175,13 +195,13 @@ export function captureOverrides(before: DesignDocument, d: DesignDocument) {
     if (next && (library.version !== next.version || library.digest !== next.digest))
       library.componentIds.forEach(include)
   }
-  const beforeParents = allParents(before),
-    afterParents = allParents(d)
-  for (const old of Object.values(before.nodes)) {
+  const beforeParents = scope?.parents ?? allParents(before),
+    afterParents = scope?.parents ?? allParents(d)
+  for (const old of scope ? scope.ids.map(id => before.nodes[id]) : Object.values(before.nodes)) {
     if (replaced.has(old.id)) continue
     const owner = instanceOwner(before, old.id)
     if (!owner || !d.nodes[owner]?.instance) continue
-    const next = d.nodes[old.id],
+    const next = (scope?.after ?? d).nodes[old.id],
       key = old.instanceOrigin?.key || '$root'
     if (!next) {
       if (old.instanceOrigin) setOverride(d, owner, key, { visible: false })
@@ -230,7 +250,7 @@ export function captureOverrides(before: DesignDocument, d: DesignDocument) {
     }
   }
   // Editing a bound layer in a main component changes that property's default.
-  for (const root of Object.values(d.nodes).filter((n) => n.component)) {
+  for (const root of scope ? [...scope.definitions].map(id => d.nodes[id]) : Object.values(d.nodes).filter((n) => n.component)) {
     if (replaced.has(root.id)) continue
     const oldRoot = before.nodes[root.id]
     if (!oldRoot?.component) continue

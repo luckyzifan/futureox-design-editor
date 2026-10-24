@@ -9,8 +9,9 @@ import { compositeDrawPlan, compositeRasterQuad } from './composite-draw-plan'
 import { DISPLAY_TEXTURE_BUDGET } from './display-budget'
 import { CanvasOverlayRenderer, translateOverlay, transformOverlay, type CanvasOverlay } from './canvas-overlay'
 import { ResidentUniforms } from './resident-uniforms'
-import { physicalCoverage } from './physical-coverage'
+import { physicalCoverage, physicalPixelCoverage } from './physical-coverage'
 import { presentedFragmentQuality } from './presented-fragment-quality'
+import { PresenterAlphaTrace } from './presenter-alpha-trace'
 
 export type ResidentItem = Omit<CompositeItem, 'tile'> & {
   tile: Omit<CompositeItem['tile'], 'bytes' | 'bitmap'> & { gpuTile: number }
@@ -82,6 +83,8 @@ export class ResidentPresenter {
   private bytes = 0
   private disposed = false
   private overlay?: CanvasOverlayRenderer
+  private alphaTrace?: PresenterAlphaTrace
+  private readonly traceAlpha = import.meta.env.VITE_DESIGN_PRESENT_ALPHA_TRACE === '1'
   get payloadStats() { return this.payload.snapshot() }
   diagnosticFields() {
     const payload = this.payloadStats
@@ -338,6 +341,9 @@ export class ResidentPresenter {
       h = Math.max(1, Math.ceil(height * dpr))
     const detailedDiagnostics = gpuDiagnosticsDetail()
     const strictSharpDiagnostics = import.meta.env.VITE_DESIGN_SHARP_ZOOM === '1' && detailedDiagnostics
+    // Independent measurement switch: trace every submitted fragment without
+    // selecting another navigation/rendering policy. Off for timing runs.
+    const traceQuality = import.meta.env.VITE_DESIGN_MOTION_QUALITY_TRACE === '1' && detailedDiagnostics
     if (
       w > this.device.limits.maxTextureDimension2D ||
       h > this.device.limits.maxTextureDimension2D
@@ -377,8 +383,15 @@ export class ResidentPresenter {
         raster,
       })
     }
-    // Do not clear a previously displayed frame for an empty/incomplete handoff.
-    if (!rows.length && !frame.allowEmpty) return
+    // A few ready tiles are not authority to replace the entire backbuffer.
+    // Check the actual surviving physical draws before resizing, allocating,
+    // clearing or acknowledging this camera. Explicit empty interaction
+    // captures retain their existing separate clear/background contract.
+    if (!frame.allowEmpty && !physicalPixelCoverage(rows.map(row => ({ ...row.raster, blend: row.item.blend })), w, h)) {
+      this.report({ coverageDeferred: 1, coverageDeferredDraws: rows.length,
+        diagnosticSequence: frame.diagnosticSequence, missingTextureCount: missing.length })
+      return
+    }
     const linear = frame.linearBlend === true && rows.some((row) => row.item.blend)
     if (rows.length + (linear ? 1 : 0) > 4096) throw Error('Too many visible display tiles')
     // Reserve the entire replacement peak before creating either target. Keep
@@ -392,7 +405,7 @@ export class ResidentPresenter {
       if (replaceLinear) linearPayload = this.payload.reserve(w * h * 8)
       if (backPayload) {
         const texture = this.device.createTexture({ size: [w, h], format: this.format,
-          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC })
+          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | (this.traceAlpha ? GPUTextureUsage.TEXTURE_BINDING : 0) })
         nextBack = { texture, width: w, height: h, payload: backPayload }
       }
       if (linearPayload) {
@@ -490,16 +503,22 @@ export class ResidentPresenter {
       const overlay=frame.overlayAffines?transformOverlay(frame.overlay,new Map(Object.entries(frame.overlayAffines))):frame.overlayPose?translateOverlay(frame.overlay,new Map(Object.entries(frame.overlayPose))):frame.overlay
       this.overlay.draw(encoder, output, overlay, view, width, height, dpr)
     }
-    this.device.queue.submit([encoder.finish()])
+    if (this.traceAlpha) this.alphaTrace ??= new PresenterAlphaTrace(this.device, this.payload, this.report)
+    const alpha = this.alphaTrace?.encode(encoder, this.backbuffer!.texture, {
+      ...deviceDiagnosticFields(this), alphaFrame: this.frames + 1, alphaSequence: frame.diagnosticSequence, alphaWidth: w, alphaHeight: h,
+    })
+    try { this.device.queue.submit([encoder.finish()]) } catch (error) { alpha?.cancel(); throw error }
+    alpha?.submitted()
     const submittedEpoch = performance.timeOrigin + performance.now()
     this.drawn = frame
     this.frames++
     const coverageAt=performance.now()
     const terminalQuality = this.terminalQualityGate.claim(frame.terminalQuality, detailedDiagnostics)
-    const measureCoverage=strictSharpDiagnostics || !!terminalQuality || import.meta.env.DEV || (detailedDiagnostics && coverageAt-this.diagnosticCoverageAt>=250)
+    const measureCoverage=strictSharpDiagnostics || traceQuality || !!terminalQuality || import.meta.env.DEV || (detailedDiagnostics && coverageAt-this.diagnosticCoverageAt>=250)
     if(measureCoverage)this.diagnosticCoverageAt=coverageAt
     this.report({
       ...this.diagnosticFields(),
+      coverageDeferred: 0,
       diagnosticSequence: frame.diagnosticSequence, submittedEpoch,
       gridVisible: !!frame.overlay?.pixelGrid && view.zoom>=4, dpr,
       ...(terminalQuality ? { ...terminalQuality, qualityTerminal: true } : {}),
@@ -529,7 +548,7 @@ export class ResidentPresenter {
       },
       input: frame.input,
       missingTextureCount: missing.length,
-      ...(strictSharpDiagnostics ? presentedFragmentQuality(rows.map(row => ({ ...row.raster,
+      ...(strictSharpDiagnostics || traceQuality ? presentedFragmentQuality(rows.map(row => ({ ...row.raster,
         sourceWidth: row.entry.texture.width, sourceHeight: row.entry.texture.height, blend: row.item.blend })), w, h) :
         measureCoverage ? { ...presentationQuality(available as CompositeItem[], view, width, height, dpr),
           ...physicalCoverage(rows.map(row=>({...row.raster,
@@ -561,6 +580,7 @@ export class ResidentPresenter {
   dispose() {
     if (this.disposed) return
     this.disposed = true
+    this.alphaTrace?.close()
     this.payload.close('disposed')
     recordDeviceLifecycle(this, deviceLifecyclePhase.disposed, this.diagnosticFields())
     this.overlay?.dispose()

@@ -1,4 +1,5 @@
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
+import { PreviewLayout } from './kernel/preview-layout'
 import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
 import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
@@ -103,7 +104,7 @@ import {
   renewComponentResolution,
 } from './kernel/picking'
 import { proveLocalEdit } from './local-edit-proof'
-import { shareDocument, produceDocumentDraft, type EditResult } from './document-patch'
+import { shareDocument, documentPatch, produceDocumentDraft, type EditResult } from './document-patch'
 import { createEditingHistory } from './kernel/graph-history'
 import { ensurePreparedDocument, takePreparedDocument, preparedDocumentEncoding, forgetPreparedDocumentEncoding } from './prepared-document'
 function applyInferredFrame(doc: DesignDocument, id: string, inferred: {direction:string;gap:number|null;padding:[number,number,number,number];bannerChildren:string[];flowOrder:string[]}) {
@@ -588,11 +589,12 @@ export class Editor {
       const components = !local && Object.values(before.doc.nodes).some(
         n => n.component || n.instance || n.instanceOrigin || n.componentSet,
       )
+      const componentScope = components ? Components.propertyEditScope(before.doc, authored) : undefined
       let detached = false
       const d = local ? authored : produceDraft(authored, (draft) => {
         draft.schemaVersion = Math.max(2, draft.schemaVersion) as 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
         if (draft.schemaVersion < 15 && hasSchema15Features(authored)) draft.schemaVersion = 15
-        if(Object.values(authored.nodes).some(n=>n.vectorGeometry))draft.schemaVersion=16
+        if(draft.schemaVersion < 16 && Object.values(authored.nodes).some(n=>n.vectorGeometry))draft.schemaVersion=16
         draft.rasterProfile ??= before.doc.rasterProfile || 'analytic'
         // Before component/dependency cleanup, only root schema/profile fields
         // have changed. Inspect finalized authored nodes here to avoid creating
@@ -634,8 +636,8 @@ export class Editor {
           )
         ))
           draft.schemaVersion = Math.max(draft.schemaVersion, 5) as 5 | 6 | 7 | 8 | 9 | 10
-        detached = !!(components && Components.detachMissing(before.doc, draft as DesignDocument))
-        if (components) Components.captureOverrides(before.doc, draft as DesignDocument)
+        detached = !!(components && !componentScope && Components.detachMissing(before.doc, draft as DesignDocument))
+        if (components) Components.captureOverrides(before.doc, draft as DesignDocument, componentScope)
         if (draft.schemaVersion < 6 && hasLocalVariableModes(draft as DesignDocument)) draft.schemaVersion = Math.max(draft.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
         if (draft.schemaVersion < 7 && (Object.values(draft.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions) ||
           draft.animations?.some(c => c.tracks.some(t => t.keyframes.some(k => k.value.arc || k.value.cornerRadius))))) draft.schemaVersion = Math.max(7, draft.schemaVersion) as 7 | 8 | 9 | 10
@@ -875,10 +877,31 @@ export class Editor {
   preview(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
     return canvasActions(this).cpu.run(CpuStage.preview, () => this.previewCore(patches, move))
   }
+  private previewLayout?: PreviewLayout
   private previewCore(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
     if (this.propertyPreview && !this.propertyPreviewWrite) return false
     const previewStarted = performance.now()
     const base = this.transaction?.previewBase || this.transaction?.doc || this.state.doc
+    if (!move && this.transaction) {
+      if (this.previewLayout?.base !== base) this.previewLayout = new PreviewLayout(base)
+      try {
+        const resolved = measureCpuStage(CpuStage.previewLayout, () => this.previewLayout!.prepare(patches))
+        if (resolved) {
+          for (const id of Object.keys(documentPatch(base, resolved).nodes)) {
+            const n = resolved.nodes[id]
+            if (n && (n.pathOffset || n.vectorBrush)) kernelBounds(n)
+          }
+          const published = performance.now()
+          measureCpuStage(CpuStage.previewPublish, () => this.set({ doc: resolved }))
+          if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, true)
+          this.lastPreviewTiming = { prepareMs:0, layoutMs:published-previewStarted, publishMs:performance.now()-published }
+          return true
+        }
+      } catch (error) {
+        if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, false)
+        this.notify(error instanceof Error ? error.message : String(error)); return false
+      }
+    }
     const nodes = { ...base.nodes }
     for (const [id, patch] of Object.entries(patches)) nodes[id] = { ...nodes[id], ...patch }
     try {
@@ -890,11 +913,11 @@ export class Editor {
             Object.hasOwn(patch, 'children') || Object.hasOwn(patch, 'id')))
           validateStructure(candidate)
         Components.captureOverrides(base, candidate)
-        if (hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
-        if (Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
-        if (hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
-        if(hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16
-        if (hasStrokeMarkers(candidate) || hasLayerExports(candidate)) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
+        if (candidate.schemaVersion < 6 && hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
+        if (candidate.schemaVersion < 7 && Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
+        if (candidate.schemaVersion < 9 && hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
+        if(candidate.schemaVersion < 10 && hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16
+        if (candidate.schemaVersion < 8 && (hasStrokeMarkers(candidate) || hasLayerExports(candidate))) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
         const visible=move?this.movePreviewDocument(candidate,move.ids,move.point,move.force,move.preserveParent):candidate
         if (visible !== candidate) validateStructure(visible)
         return visible
@@ -919,6 +942,7 @@ export class Editor {
     }
   }
   commit() {
+    this.previewLayout = undefined
     return canvasActions(this).cpu.run(CpuStage.commit, () => this.commitCore())
   }
   private commitCore() {
@@ -957,6 +981,7 @@ export class Editor {
     }
   }
   cancel() {
+    this.previewLayout = undefined
     if (this.propertyPreview) { this.cancelProperty(this.propertyPreview.lease); return }
     if (this.transaction) {
       const h = this.transaction
@@ -1483,11 +1508,11 @@ export class Editor {
     try {
       const candidate = { ...base, nodes: { ...base.nodes, [p.id]: { ...p, children } } }
       Components.captureOverrides(base, candidate)
-      if (hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
-      if (Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
-      if (hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
-      if(hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16
-      if (hasStrokeMarkers(candidate) || hasLayerExports(candidate)) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
+      if (candidate.schemaVersion < 6 && hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
+      if (candidate.schemaVersion < 7 && Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
+      if (candidate.schemaVersion < 9 && hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
+      if(candidate.schemaVersion < 10 && hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16
+      if (candidate.schemaVersion < 8 && (hasStrokeMarkers(candidate) || hasLayerExports(candidate))) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
       this.set({ doc: kernelLayout(candidate) })
     } catch (error) {
       this.notify(String(error))

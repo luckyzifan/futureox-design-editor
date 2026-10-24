@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { blank } from './model'
 import { exportSketchInWorker, importFileInWorker } from './import-file-worker'
 import { readDesignFile } from './persistence'
+import { beginImportDiagnostic, ImportFailure, ImportStage } from './import-diagnostics'
 
 class ImportWorker {
   static instances: ImportWorker[] = []
@@ -135,4 +136,102 @@ test.each([
   const rejected = expect(result).rejects.toThrow()
   ImportWorker.instances[0].reply({ result: { document: blank(), ...report } })
   await rejected
+})
+
+
+test.each(['fig', 'sketch', 'pdf'] as const)('selected %s File is owned by its worker before reading', async format => {
+  installWorker()
+  const file = new File([new Uint8Array([1, 2, 3])], `local.${format}`)
+  const read = vi.spyOn(file, 'arrayBuffer')
+  const result = readDesignFile(file)
+  const worker = ImportWorker.instances[0]
+  expect(read).not.toHaveBeenCalled()
+  expect(worker.postMessage).toHaveBeenCalledWith({ file, name: 'local', format,
+    memoryBytes: documentCapacity().memoryBytes }, [])
+  worker.reply({ kind: 'import-stage', importStage: 231 })
+  worker.reply({ kind: 'import-stage', importStage: 238 })
+  expect(worker.terminate).not.toHaveBeenCalled()
+  worker.reply({ result: { document: blank('local'), warnings: [] } })
+  expect((await result).document.name).toBe('local')
+  expect(worker.terminate).toHaveBeenCalledOnce()
+})
+
+test.each(['cancel', 'timeout'] as const)('a selected File waiting to read is reclaimed on %s', async reason => {
+  installWorker(); vi.useFakeTimers()
+  const file = new File(['pending'], 'local.fig')
+  const read = vi.spyOn(file, 'arrayBuffer')
+  const controller = new AbortController()
+  const result = readDesignFile(file, controller.signal)
+  const rejected = expect(result).rejects.toThrow()
+  const worker = ImportWorker.instances[0]
+  worker.reply({ kind: 'import-stage', importStage: 231 })
+  if (reason === 'cancel') controller.abort()
+  else await vi.advanceTimersByTimeAsync(30_000)
+  await rejected
+  worker.reply({ result: { document: blank('late'), warnings: [] } })
+  expect(read).not.toHaveBeenCalled()
+  expect(worker.terminate).toHaveBeenCalledOnce()
+})
+
+test('worker file-read failure retains read-stage attribution and rejects without adoption', async () => {
+  installWorker()
+  const file = new File(['x'], 'local.fig')
+  const diagnostic = beginImportDiagnostic(file, 'open', { actionId: 1, actionOwner: 1 })
+  const result = readDesignFile(file, undefined, diagnostic).catch(error => error)
+  ImportWorker.instances[0].reply({ importStage: ImportStage.read, error: 'cannot read file' })
+  const error = await result
+  expect(error).toBeInstanceOf(Error)
+  expect(error.message).toBe('cannot read file')
+  expect(diagnostic.fail(error)).toBe(ImportFailure.read)
+  expect(ImportWorker.instances[0].terminate).toHaveBeenCalledOnce()
+})
+
+
+test.each(['onerror', 'onmessageerror'] as const)('generic %s during file reading stays an unknown worker failure', async callback => {
+  installWorker()
+  const file = new File(['x'], 'local.fig')
+  const diagnostic = beginImportDiagnostic(file, 'open', { actionId: 2, actionOwner: 1 })
+  const result = readDesignFile(file, undefined, diagnostic).catch(error => error)
+  const worker = ImportWorker.instances[0]
+  worker.reply({ kind: 'import-stage', importStage: ImportStage.read })
+  if (callback === 'onerror') worker.onerror?.({ message: 'worker crashed' })
+  else worker.onmessageerror?.()
+  const error = await result
+  expect(error).toBeInstanceOf(Error)
+  expect(diagnostic.fail(error)).toBe(ImportFailure.unknown)
+  expect(worker.terminate).toHaveBeenCalledOnce()
+})
+
+test('an explicit empty read-error message remains a read failure with bounded fallback text', async () => {
+  installWorker()
+  const file = new File(['x'], 'local.fig')
+  const diagnostic = beginImportDiagnostic(file, 'open', { actionId: 3, actionOwner: 1 })
+  const result = readDesignFile(file, undefined, diagnostic).catch(error => error)
+  const worker = ImportWorker.instances[0]
+  worker.reply({ kind: 'import-stage', importStage: ImportStage.read })
+  worker.reply({ importStage: ImportStage.read, error: '' })
+  const error = await result
+  expect(error).toBeInstanceOf(Error)
+  expect(error.message).toBe('文件导入失败')
+  expect(diagnostic.fail(error)).toBe(ImportFailure.read)
+  expect(worker.terminate).toHaveBeenCalledOnce()
+})
+
+test.each(['onerror', 'onmessageerror', 'read-error'] as const)('late %s cannot replace cancellation after a pending file read', async callback => {
+  installWorker()
+  const controller = new AbortController()
+  const file = new File(['x'], 'local.fig')
+  const diagnostic = beginImportDiagnostic(file, 'open', { actionId: 4, actionOwner: 1 })
+  diagnostic.bindRequest({ signal: controller.signal, isCurrent: () => true })
+  const result = readDesignFile(file, controller.signal, diagnostic).catch(error => error)
+  const worker = ImportWorker.instances[0]
+  worker.reply({ kind: 'import-stage', importStage: ImportStage.read })
+  controller.abort()
+  if (callback === 'onerror') worker.onerror?.({ message: 'late worker crash' })
+  else if (callback === 'onmessageerror') worker.onmessageerror?.()
+  else worker.reply({ importStage: ImportStage.read, error: '' })
+  const error = await result
+  expect(error).toMatchObject({ name: 'AbortError' })
+  expect(diagnostic.fail(error)).toBe(ImportFailure.cancelled)
+  expect(worker.terminate).toHaveBeenCalledOnce()
 })

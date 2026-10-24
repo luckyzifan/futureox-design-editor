@@ -4,7 +4,7 @@ import { figmaFixture } from '../figma-fixtures'
 import * as picking from '../kernel/picking'
 import * as geometry from '../geometry'
 import { blank, node } from '../model'
-import { prepareSelectionWrap, selectionCommandAdmission, prepareSelectionUnwrap, applySelectionUnwrap } from './selection-command'
+import { prepareSelectionArrangement, prepareSelectionWrap, selectionCommandAdmission, prepareSelectionUnwrap, applySelectionUnwrap } from './selection-command'
 import { unionBounds } from './affine'
 
 test('mutable simple batch vectors never reuse an old WeakMap node key or trigger whole-document layout', () => {
@@ -52,4 +52,45 @@ test('large bounds union uses bounded-arity operations and keeps negative extent
   const rectangles = Array.from({ length: 150000 }, (_, i) => ({ x: i, y: -i, width: 2, height: 2 }))
   expect(unionBounds(rectangles)).toEqual({ x: 0, y: -149999, width: 150001, height: 150001 })
   expect(unionBounds([{ x: 5, y: 7, width: -2, height: -3 }])).toEqual({ x: 3, y: 4, width: 2, height: 3 })
+})
+
+// The cubic's maximum y is 45 at t=1/2, independent of its stored size.
+// These assertions use that analytic extremum, not kernelBounds as their oracle.
+function preciseSelectionFixture() {
+  const doc = blank(), shape = node('vector', 10, 20, 200, 200), other = node('rectangle', 300, 200, 20, 30)
+  doc.schemaVersion = 16; shape.strokes = []
+  shape.transform = [2, 0, 0, 3, 10, 20]
+  shape.vectorGeometry = { fillRule: 'nonzero', fill: [
+    { move: [0, 0] }, { cubic: [0, 60, 60, 60, 60, 0] }, { line: [0, 0] }, 'close',
+  ] }
+  doc.nodes = { [shape.id]: shape, [other.id]: other }; doc.pages[0].children = [shape.id, other.id]
+  return { doc, shape, other }
+}
+test('precise render curves use true transformed extrema for wrap and alignment', () => {
+  const { doc, shape, other } = preciseSelectionFixture()
+  const wrapped = prepareSelectionWrap(doc, [shape.id], { fresh: false })
+  expect(wrapped.transform).toEqual([1, 0, 0, 1, 10, 20])
+  expect(wrapped.width).toBeCloseTo(120, 9); expect(wrapped.height).toBeCloseTo(135, 9)
+  const aligned = prepareSelectionArrangement(doc, [shape.id, other.id], 'y', 'end', { fresh: false })
+  // other ends at y=230; the cubic ends at y=155, so only it moves by 75.
+  expect(aligned.patches).toEqual([{ id: shape.id, transform: [2, 0, 0, 3, 10, 95] }])
+})
+test('mutable precise curves get new exact-bound keys after edits, without layout', () => {
+  const { doc, shape } = preciseSelectionFixture()
+  const bounds = vi.spyOn(picking, 'kernelBounds'), layout = vi.spyOn(picking, 'kernelLayout')
+  try {
+    const before = prepareSelectionWrap(doc, [shape.id], { fresh: false })
+    const cubic = shape.vectorGeometry!.fill[1] as { cubic: [number, number, number, number, number, number] }
+    cubic.cubic[1] = cubic.cubic[3] = 80
+    const after = prepareSelectionWrap(doc, [shape.id], { fresh: false })
+    expect(before.height).toBeCloseTo(135, 9); expect(after.height).toBeCloseTo(180, 9)
+    expect(bounds).toHaveBeenCalledTimes(2)
+    expect(bounds.mock.calls[0][0]).not.toBe(shape); expect(bounds.mock.calls[1][0]).not.toBe(shape)
+    expect(bounds.mock.calls[0][0]).not.toBe(bounds.mock.calls[1][0]); expect(layout).not.toHaveBeenCalled()
+  } finally { bounds.mockRestore(); layout.mockRestore() }
+})
+test('precise selection geometry fails closed when the kernel is unavailable', () => {
+  const { doc, shape } = preciseSelectionFixture(), bounds = vi.spyOn(picking, 'kernelBounds').mockReturnValue(null)
+  try { expect(() => prepareSelectionWrap(doc, [shape.id], { fresh: false })).toThrow('Exact selection geometry is unavailable') }
+  finally { bounds.mockRestore() }
 })

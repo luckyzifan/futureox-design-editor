@@ -1,4 +1,4 @@
-import { decode_fig_network_json, decode_fig_commands_json, network_geometry_json } from './generated/design-kernel/design_kernel'
+import { decode_fig_network_json, decode_fig_fill_commands_json, network_geometry_json } from './generated/design-kernel/design_kernel'
 import { assertImportInputBytes } from './import-input-policy'
 import { figArchive, inflateFigDeflate } from './import-fig-archive'
 export { figArchive } from './import-fig-archive'
@@ -576,7 +576,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       Object.assign(n,vectorBlob(getBlob(r.vectorData.vectorNetworkBlob),sx,sy,warnings))
     }
     if(r.type==='VECTOR'&&Array.isArray(r.fillGeometry)&&r.fillGeometry.length){
-      const paths=r.fillGeometry.map((entry:any)=>({rule:entry.windingRule==='ODD'||entry.windingRule==='EVENODD'?'evenodd':'nonzero',commands:JSON.parse(decode_fig_commands_json(getBlob(entry.commandsBlob))) as import('./model').CurveCommand[]}))
+      const paths=r.fillGeometry.map((entry:any)=>({rule:entry.windingRule==='ODD'||entry.windingRule==='EVENODD'?'evenodd':'nonzero',commands:JSON.parse(decode_fig_fill_commands_json(getBlob(entry.commandsBlob))) as import('./model').CurveCommand[]}))
       if(paths.some((p:any)=>p.rule!==paths[0].rule))throw Error('FIG 混合区域填充规则需要独立几何工作集')
       const source=n.vectorGeometry??(n.network?JSON.parse(network_geometry_json(JSON.stringify(n.network))) as NonNullable<DesignNode['vectorGeometry']>:undefined)
       if(!source&&n.strokes.some(s=>s.visible&&s.width>0))throw Error('FIG 仅提供填充轮廓，缺少可精确保留描边的路径')

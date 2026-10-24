@@ -118,8 +118,8 @@ fn shared_paint_style_colors_cannot_silently_turn_black() {
 }
 
 #[test]
-fn non_solid_node_and_shared_strokes_reject_instead_of_flattening() {
-    for kind in ["linear", "radial", "angular", "diamond", "image"] {
+fn unsupported_node_and_shared_strokes_reject_instead_of_flattening() {
+    for kind in ["diamond", "image"] {
         for shared in [false, true] {
             for visible in [false, true] {
                 for color in ["#123456", "color(rec2100-pq 0.5 0.5 0.5)"] {

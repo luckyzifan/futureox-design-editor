@@ -848,7 +848,12 @@ vec4 linearGradientStop(uint index){
  return mulRN4(vec4(color.yzw,1.),vec4(alpha));
 }
 vec4 linearGradient(vec2 p){
- vec4 grid=texelFetch(sourceD,ivec2(floor(p-u[0].xy)),0);
+ ivec2 address=ivec2(floor(p-u[0].xy));
+ ivec2 dimensions=ivec2(textureSize(sourceD,0));
+ // Only a certified compact field differs from the target extent.
+ if(dimensions.x==1&&u[0].z>1.){address.x=0;}
+ if(dimensions.y==1&&u[0].w>1.){address.y=0;}
+ vec4 grid=texelFetch(sourceD,address,0);
  if(grid.x<0.){return mulRN4(vec4(u[7].yzw,1.),vec4(u[60].y));}
  vec4 left=linearGradientStop(uint(grid.x));
  if(grid.x==grid.y){return left;}

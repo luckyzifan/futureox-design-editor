@@ -31,8 +31,19 @@ export function preparedTileCanFill(tile: RasterTile, frame: ResidentFrame | und
 }
 
 /** A prepared tile's exception belongs to the current visible gap, not to all
- * future cameras. Recheck at each existing renderer cancellation boundary. */
+ * future cameras. Only the worker's private coverage version can memoize that
+ * geometry. Request/content cancellation is still checked at every boundary;
+ * ordinary callers without a version keep checking mutable frames in full. */
 export function preparedTileContinuation(tile: RasterTile, current: () => boolean,
-  allowFallback: boolean, frame: () => ResidentFrame | undefined): () => boolean {
-  return () => current() || allowFallback && preparedTileCanFill(tile, frame())
+  allowFallback: boolean, frame: () => ResidentFrame | undefined, coverageVersion?: () => object): () => boolean {
+  let previous: object | undefined, eligible = false
+  return () => {
+    if (current()) return true
+    if (!allowFallback) return false
+    const version = coverageVersion?.()
+    if (version && version === previous) return eligible
+    eligible = preparedTileCanFill(tile, frame())
+    previous = version
+    return eligible
+  }
 }

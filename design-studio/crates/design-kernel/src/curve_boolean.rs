@@ -132,6 +132,42 @@ pub fn network(paths: Vec<SimpleBezierPath>) -> Network {
     }
     g
 }
+// Routing must use the same source-segment unit as `combine`, not serialized
+// commands: Move/Close are not edges, while arcs and smooth corners expand.
+// Avoid building a second full curve graph just to select the representation.
+fn source_segment_count(path: &Path) -> Result<usize, String> {
+    let mut count = 0;
+    let mut start = Point::default();
+    let mut pen = start;
+    for command in &path.commands {
+        match *command {
+            Command::Move(p) => { start = p; pen = p; }
+            Command::Line(p) | Command::Quad(_, p) | Command::Cubic(_, _, p) => {
+                count += 1;
+                pen = p;
+            }
+            Command::Arc { center, radius, start: angle, sweep } => {
+                // Use the existing decomposition and endpoint, including its
+                // degenerate zero-sweep segment and subdivision guard.
+                let pieces = crate::path::rational_arc(
+                    center, radius, angle, sweep, std::f64::consts::FRAC_PI_4,
+                )?;
+                count += pieces.len().max(1);
+                pen = pieces.last().map(|(_, piece)| piece.end).unwrap_or_else(||
+                    center + Point::new(radius.x * angle.cos(), radius.y * angle.sin()));
+            }
+            Command::SmoothCorner(corner) => {
+                for point in corner.legacy_points() { count += 1; pen = point; }
+            }
+            Command::Close => {
+                if (pen - start).length() > 1e-10 { count += 1; }
+                pen = start;
+            }
+        }
+    }
+    Ok(count)
+}
+
 pub fn combine(inputs: &[(Path, Transform, bool)], op: Operation) -> Result<Network, String> {
     if inputs.is_empty() || inputs.len() > 64 {
         return Err("Select 1–64 curve operands".into());
@@ -223,6 +259,8 @@ fn clip_paths(paths: &[Vec<SimpleBezierPath>], inputs: &[(Path,Transform,bool)],
             Operation::Subtract => filled[0] && !filled[1..].iter().any(|v| *v),
             Operation::Intersect => filled.iter().all(|v| *v),
             Operation::Exclude => filled.iter().filter(|v| **v).count() % 2 != 0,
+            Operation::CompoundNonzero => counts.iter().map(|v|i64::from(*v)).sum::<i64>()!=0,
+            Operation::CompoundEvenodd => counts.iter().map(|v|i64::from(*v)).sum::<i64>().abs()%2!=0,
         }
     });
     graph.heal_exterior_gaps();
@@ -285,13 +323,41 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                 .map(|c| {
                     let n = &doc.nodes[c];
                     Ok((
-                        n.paths()?.0,
+                        if op.compound_rule().is_some() && n.boolean_operation.is_none() {
+                            if let Some(network)=&n.network {
+                                // Native contour traversal carries winding direction.
+                                // Planar face reconstruction can reverse the inner loop.
+                                crate::vector_geometry::VectorGeometry::ordered_network(network,true)
+                                    .and_then(|g|g.paths()).map(|p|p.0).or_else(|_|n.paths().map(|p|p.0))?
+                            } else { n.paths()?.0 }
+                        } else { n.paths()?.0 },
                         n.transform,
                         n.fill_even_odd(),
                     ))
                 })
                 .collect::<Result<Vec<_>, String>>()?;
-            let segments:usize=inputs.iter().map(|(p,_,_)|p.commands.len()).sum();
+            if let Some(rule)=op.compound_rule() {
+                if doc.schema_version<16{return Err("Compound paths require schema 16".into());}
+                let key=crate::curve_boolean_cache::Cache::key(&inputs,op);
+                let geometry=if let Some(value)=memoize.then(||cache.get_geometry(&key)).flatten(){value}else{
+                    let mut path=Path::default();
+                    for (input,matrix,_) in &inputs {
+                        for (start,segments) in curves(input,*matrix)? {
+                            if path.commands.len().saturating_add(segments.len()).saturating_add(2)>crate::vector_geometry::MAX_COMMANDS{return Err("Compound path command budget exceeded".into());}
+                            path.commands.push(Command::Move(Point::new(start.0,start.1)));
+                            for (a,b,to) in segments {path.commands.push(Command::Cubic(Point::new(a.0,a.1),Point::new(b.0,b.1),Point::new(to.0,to.1)));}
+                            path.commands.push(Command::Close);
+                        }
+                    }
+                    let value=crate::vector_geometry::VectorGeometry::from_paths(&path,&path,rule)?;
+                    if memoize{cache.insert_geometry(key,&value);}value
+                };
+                let node=doc.nodes.get_mut(id).unwrap();node.network=None;node.vector_geometry=Some(geometry);
+                return Ok(());
+            }
+            let segments = inputs.iter().try_fold(0usize, |count, (path, _, _)| {
+                source_segment_count(path).map(|segments| count + segments)
+            }).map_err(|error| format!("Boolean node {id}: {error}"))?;
             if segments > 8192 {
                 if doc.schema_version < 16 { return Err("Dense Boolean render geometry requires schema 16".into()); }
                 let key=crate::curve_boolean_cache::Cache::key(&inputs,op);
@@ -372,6 +438,84 @@ mod memo_tests {
         assert!(combine(&[(input,Transform::default(),false)],Operation::Union).is_err(),"point-editing path keeps its original segment limit");
         let storm=vec![(Coord2(0.,0.),vec![(Coord2(0.,1.),Coord2(1.,0.),Coord2(1.,1.));9000])];
         assert!(admit_dense_paths(&[storm]).unwrap_err().contains("work budget"));
+    }
+
+    #[test]
+    fn source_segment_count_matches_curve_expansion_and_closure() {
+        use crate::path::SmoothCorner;
+        let origin = Point::default();
+        let explicit = Path { commands: vec![
+            Command::Move(origin), Command::Line(Point::new(10., 0.)),
+            Command::Line(origin), Command::Close,
+        ] };
+        let implicit = Path { commands: vec![
+            Command::Move(origin), Command::Line(Point::new(10., 0.)), Command::Close,
+        ] };
+        assert_eq!(source_segment_count(&explicit).unwrap(), 2);
+        assert_eq!(source_segment_count(&implicit).unwrap(), 2);
+        let mut multiple = explicit.clone(); multiple.commands.extend(implicit.commands.clone());
+        assert_eq!(source_segment_count(&multiple).unwrap(), 4);
+        let cubic = Path { commands: vec![Command::Move(origin),
+            Command::Quad(Point::new(2., 3.), Point::new(5., 0.)),
+            Command::Cubic(Point::new(6., 1.), Point::new(6., 2.), origin), Command::Close] };
+        let smooth = Path { commands: vec![Command::Move(origin),
+            Command::SmoothCorner(SmoothCorner { center: origin, radius: 5., power: 4., quadrant: 1 }), Command::Close] };
+        let arcs = [0., std::f64::consts::FRAC_PI_2, -std::f64::consts::TAU].map(|sweep| Path {
+            commands: vec![Command::Move(Point::new(5., 0.)), Command::Arc {
+                center: origin, radius: Point::new(5., 5.), start: 0., sweep,
+            }, Command::Close],
+        });
+        for path in [explicit, implicit, multiple, cubic, smooth].into_iter().chain(arcs) {
+            let actual: usize = curves(&path, Transform::default()).unwrap().iter().map(|(_, pieces)| pieces.len()).sum();
+            assert_eq!(source_segment_count(&path).unwrap(), actual);
+        }
+    }
+
+    fn legacy_ring_document(segments: usize) -> Document {
+        let vertices: Vec<_> = (0..segments).map(|i| {
+            let angle = std::f64::consts::TAU * i as f64 / segments as f64;
+            serde_json::json!({"id": i.to_string(), "x": 100. + 100. * angle.cos(), "y": 100. + 100. * angle.sin()})
+        }).collect();
+        let edges: Vec<_> = (0..segments).map(|i| serde_json::json!({
+            "id": i.to_string(), "from": i.to_string(), "to": ((i + 1) % segments).to_string(),
+        })).collect();
+        serde_json::from_value(serde_json::json!({
+            "schemaVersion": 15, "id": "legacy", "name": "legacy segment limit",
+            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["result"]}],
+            "nodes": {
+                "result": {"id": "result", "kind": "vector", "width": 200, "height": 200,
+                    "booleanOperation": "union", "children": ["source"]},
+                "source": {"id": "source", "kind": "vector", "width": 200, "height": 200,
+                    "network": {"vertices": vertices, "edges": edges, "fillRule": "nonzero"}},
+            },
+        })).unwrap()
+    }
+
+    #[test]
+    fn old_schema_accepts_8191_and_8192_source_segments_despite_move_and_close() {
+        for segments in [8191, 8192] {
+            let mut doc = legacy_ring_document(segments);
+            doc.validate().unwrap();
+            let source = doc.nodes["source"].clone();
+            let path = source.paths().unwrap().0;
+            assert!(path.commands.len() > 8192, "this must hit the former false dense route");
+            assert_eq!(source_segment_count(&path).unwrap(), segments);
+            resolve_cached(&mut doc, false).unwrap();
+            doc.validate().unwrap();
+            assert_eq!(doc.schema_version, 15);
+            assert_eq!(doc.nodes["source"], source);
+            assert!(doc.nodes["result"].vector_geometry.is_none());
+            assert!(!doc.nodes["result"].network.as_ref().unwrap().edges.is_empty());
+        }
+    }
+
+    #[test]
+    fn old_schema_still_rejects_8193_actual_source_segments_without_mutation() {
+        let mut doc = legacy_ring_document(8193);
+        doc.validate().unwrap();
+        let before = doc.clone();
+        assert!(resolve_cached(&mut doc, false).unwrap_err().contains("requires schema 16"));
+        assert_eq!(doc, before);
     }
 
 }

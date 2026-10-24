@@ -3,7 +3,7 @@ import { pinDocumentCapacity } from './document-capacity'
 import { importFig } from './import-fig'
 import { initializeKernelModule } from './kernel/module'
 import { uid, type DesignDocument } from './model'
-type FileJob = { bytes: ArrayBuffer; name: string; format: 'fig' | 'sketch' | 'pdf' }
+type FileJob = { name: string; format: 'fig' | 'sketch' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
   | { document: DesignDocument; format: 'sketch-export' }
 self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>) => {
   let importStage = 238 // initialize
@@ -16,8 +16,19 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       self.postMessage({ bytes }, { transfer: [bytes] })
       return
     }
-    assertImportInputBytes(event.data.bytes.byteLength)
-    const bytes = new Uint8Array(event.data.bytes)
+    let source: ArrayBuffer
+    if ('file' in event.data) {
+      // Recheck in this realm before allocating. File/Blob is not transferable;
+      // only the eventual ArrayBuffer exists as a JS-owned buffer in this worker.
+      assertImportInputBytes(event.data.file.size)
+      importStage = 231 // read
+      self.postMessage({ kind: 'import-stage', importStage })
+      source = await event.data.file.arrayBuffer()
+      importStage = 238 // initialize
+      self.postMessage({ kind: 'import-stage', importStage })
+    } else source = event.data.bytes
+    assertImportInputBytes(source.byteLength)
+    const bytes = new Uint8Array(source)
     if (event.data.format === 'sketch') {
       await initializeKernelModule()
       const { import_sketch_json } = await import('./generated/design-kernel/design_kernel')

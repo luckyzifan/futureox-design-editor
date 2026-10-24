@@ -215,25 +215,23 @@ export async function localSave(
 }
 /** Newest-first revision list of one local document, without snapshot payloads. */
 export async function listRevisions(documentId: string): Promise<LocalRevisionEntry[]> {
-  const db = await openLocalDatabase()
-  try {
-    const tx = db.transaction('revisions'),
-      done = completed(tx)
-    const records = (await request(
-      tx.objectStore('revisions').getAll(revisionRange(documentId)),
-    )) as LocalRevisionRecord[]
-    await done
-    return records
-      .sort((a, b) => b.revision - a.revision)
-      .map(({ documentId: id, revision, summary, createdAt }) => ({
-        documentId: id,
-        revision,
-        summary,
-        createdAt,
-      }))
-  } finally {
-    db.close()
-  }
+  return localTransaction(['revisions'], 'readonly', (tx) => new Promise<LocalRevisionEntry[]>((resolve, reject) => {
+    const entries: LocalRevisionEntry[] = []
+    // A value cursor still clones one stored snapshot per step. Retain only its
+    // metadata, never an array of all 50 binary snapshots as getAll() would.
+    // Compound-key ordering already gives newest-first history for this document.
+    const cursor = tx.objectStore('revisions').openCursor(revisionRange(documentId), 'prev')
+    cursor.onerror = () => reject(cursor.error)
+    cursor.onsuccess = () => {
+      try {
+        const row = cursor.result
+        if (!row) { resolve(entries); return }
+        const { documentId: id, revision, summary, createdAt } = row.value as LocalRevisionRecord
+        entries.push({ documentId: id, revision, summary, createdAt })
+        row.continue()
+      } catch (error) { reject(error) }
+    }
+  }))
 }
 /** Loads one revision snapshot through the same admission path as a local open. */
 export async function getRevision(

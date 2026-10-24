@@ -9,6 +9,7 @@ use crate::{
     stroke,
 };
 use serde::Serialize;
+mod suffix;
 /// One shader source for native wgpu and the browser WebGPU driver.
 pub const VECTOR_SHADER: &str = concat!(
     "const BYTE_SURFACE:bool=false;\n",
@@ -409,6 +410,10 @@ pub struct GpuNode {
     /// Includes demanded pixels outside this node's visible output bounds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub post_composite_box: Option<[f64; 4]>,
+    /// Parent pixels consumed after this node, without changing any source
+    /// geometry, material field, filter or backdrop-capture domain.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suffix_box: Option<[f64; 4]>,
     pub id: String,
     pub rect: Rect,
     pub matrix: Transform,
@@ -479,23 +484,11 @@ pub struct GpuScene {
 impl GpuScene {
     /// FGPK v1: 24-byte LE header, padded UTF-8 metadata, then exact f32
     /// vertex/curve words. No unsafe casts, numerical conversion or hashing.
-    pub fn into_packet(mut self) -> Result<Vec<u8>, String> {
-        let vertices = std::mem::take(&mut self.vertices);
-        let curves = std::mem::take(&mut self.curves);
-        let metadata = serde_json::to_vec(&self).map_err(|e| e.to_string())?;
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(b"FGPK");
-        for size in [1, metadata.len(), vertices.len(), curves.len(), 0] {
-            bytes.extend_from_slice(&u32::try_from(size).map_err(|_| "GPU packet too large")?.to_le_bytes());
-        }
-        bytes.extend_from_slice(&metadata);
-        bytes.resize((bytes.len() + 3) & !3, 0);
-        for value in vertices.iter().chain(&curves) {
-            bytes.extend_from_slice(&value.to_le_bytes());
-        }
-        Ok(bytes)
+    pub fn into_packet(self) -> Result<Vec<u8>, String> {
+        self.pack_images(false)
     }
 }
+mod packet;
 fn halo(n: &Node, m: Transform) -> i32 {
     (n.effects
         .iter()
@@ -1641,6 +1634,7 @@ impl Compiler<'_> {
                     .map(|r| [f64::from(r.x), f64::from(r.y), f64::from(r.w), f64::from(r.h)]),
                 children_input_box: self.stages.as_ref().and_then(|s| s.children_inputs.get(id)).copied().map(device_box),
                 post_composite_box: self.stages.as_ref().and_then(|s| s.post_composites.get(id)).copied().map(device_box),
+                suffix_box: None,
                 id: id.into(),
                 rect,
                 matrix,
@@ -1724,6 +1718,11 @@ impl Engine {
     /// Shared JSON request envelope; geometry travels separately in the browser
     /// packet so decimal formatting never sits on the interactive hot path.
     pub fn compile_gpu_request(&mut self, request: &str) -> Result<GpuScene, String> {
+        self.compile_gpu_request_roots(request, None)
+    }
+    /// The scene-delta owner may request complete changed root islands. Global
+    /// preparation, extent, dependency and budget checks remain identical.
+    pub(crate) fn compile_gpu_request_roots(&mut self, request: &str, roots: Option<&std::collections::BTreeSet<String>>) -> Result<GpuScene, String> {
         let mut value: serde_json::Value = serde_json::from_str(request).map_err(|e| e.to_string())?;
         let object = value.as_object_mut().ok_or("Render options must be an object")?;
         // Allocation changes remain opt-in until the independent GPU/whole-app
@@ -1759,10 +1758,17 @@ impl Engine {
         let capture_reads = capture_reads && !options.raster_profile.is_export() && options.pixel_preview.is_none();
         if let Some(capture) = capture {
             if options.pixel_preview.is_some() || options.raster_profile.is_export() { return Err("Native capture is a canvas operation".into()); }
-            return self.compile_gpu_region_impl(&options, capture, prepare.or(Some(capture)), true, painter_support, capture_reads);
+            return self.compile_gpu_region_impl(&options, capture, prepare.or(Some(capture)), true, painter_support, capture_reads, roots);
         }
         match region {
-            Some(region) => self.compile_gpu_region_impl(&options, region, prepare.or(Some(region)), false, painter_support, capture_reads),
+            Some(region) => self.compile_gpu_region_impl(&options, region, prepare.or(Some(region)), false, painter_support, capture_reads, roots),
+            None if roots.is_some() => {
+                if options.pixel_preview.is_some() || options.raster_profile.is_export() || options.animation.is_some() {
+                    return Err("Partial compile requires a static display scene".into());
+                }
+                self.prepare_frame(&options)?;
+                self.compile_gpu_scene(&options, None, None, false, false, roots)
+            },
             None => self.compile_gpu(&options),
         }
     }
@@ -1777,7 +1783,7 @@ impl Engine {
         }
         if options.raster_profile.is_export() {
             let source = crate::fidelity::source(options, 0, 0, options.width, options.height)?;
-            let mut scene = self.compile_gpu_scene(&source, None, None, false, false)?;
+            let mut scene = self.compile_gpu_scene(&source, None, None, false, false, None)?;
             scene.resolve = Some(crate::preview::Presentation {
                 width: options.width,
                 height: options.height,
@@ -1795,7 +1801,7 @@ impl Engine {
             }
             return Ok(scene);
         }
-        self.compile_gpu_scene(options, None, None, false, false)
+        self.compile_gpu_scene(options, None, None, false, false, None)
     }
     /// Compile a bounded crop in the original camera's device coordinate system.
     /// Only integer allocation/coverage limits change; authored transforms,
@@ -1809,9 +1815,9 @@ impl Engine {
         region: Rect,
         prepare: Option<Rect>,
     ) -> Result<GpuScene, String> {
-        self.compile_gpu_region_impl(options, region, prepare, false, false, false)
+        self.compile_gpu_region_impl(options, region, prepare, false, false, false, None)
     }
-    fn compile_gpu_region_impl(&mut self, options: &RenderOptions, region: Rect, prepare: Option<Rect>, capture: bool, painter_support: bool, capture_reads: bool) -> Result<GpuScene, String> {
+    fn compile_gpu_region_impl(&mut self, options: &RenderOptions, region: Rect, prepare: Option<Rect>, capture: bool, painter_support: bool, capture_reads: bool, roots: Option<&std::collections::BTreeSet<String>>) -> Result<GpuScene, String> {
         // The production gutter tile is TILE_SIZE + 2 pixels wide.
         if region.empty()
             || region.w > if capture {8192} else {crate::tile_stack::TILE_SIZE as u32 + 2}
@@ -1833,7 +1839,7 @@ impl Engine {
             let source = crate::fidelity::source(&cropped, 0, 0, region.w, region.h)?;
             let source_region = Rect::new(region.x * 2, region.y * 2, region.w * 2, region.h * 2);
             let source_prepare = prepare.map(|r| Rect::new(r.x * 2, r.y * 2, r.w * 2, r.h * 2));
-            let mut scene = self.compile_gpu_scene(&source, Some(source_region), source_prepare, painter_support, capture_reads)?;
+            let mut scene = self.compile_gpu_scene(&source, Some(source_region), source_prepare, painter_support, capture_reads, roots)?;
             scene.resolve = Some(crate::preview::Presentation {
                 width: region.w,
                 height: region.h,
@@ -1843,7 +1849,7 @@ impl Engine {
             });
             scene
         } else {
-            self.compile_gpu_scene(&cropped, Some(region), prepare, painter_support, capture_reads)?
+            self.compile_gpu_scene(&cropped, Some(region), prepare, painter_support, capture_reads, roots)?
         };
         scene.output = Some(region);
         // Version 8 adds a global output rectangle. Older consumers must reject
@@ -1864,6 +1870,7 @@ impl Engine {
         prepare_viewport: Option<Rect>,
         painter_support: bool,
         capture_reads: bool,
+        roots: Option<&std::collections::BTreeSet<String>>,
     ) -> Result<GpuScene, String> {
         self.resolve_layout()?;
         if options.width == 0
@@ -2218,12 +2225,17 @@ impl Engine {
             vertices: Vec::new(),
         };
         for root in &page.children {
+            if roots.is_some_and(|roots| !roots.contains(root)) { continue; }
             compiler.node(root, camera, regional_foreground.then_some(viewport))?;
         }
         if cache_key.is_some() {
             if let Some(cache) = self.camera_prepare.as_mut() { cache.programs = compiler.programs; }
         }
         let mut nodes = compiler.nodes;
+        if has_region && doc.color_management.is_some() && !options.interactive_effects
+            && options.raster_profile == crate::fidelity::RasterProfile::FigmaSubpixel && root_input_box.is_none() {
+            suffix::annotate(&mut nodes, &page.children, viewport, extent);
+        }
         if options.raster_profile != crate::fidelity::RasterProfile::Analytic {
             for n in nodes.values_mut() {
                 n.fill.analytic_rect = None;

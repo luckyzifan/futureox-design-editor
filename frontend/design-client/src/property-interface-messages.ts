@@ -60,6 +60,8 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "亮度": "Luminance",
   "可编辑布尔组合": "Editable Boolean combination",
   "布尔运算": "Boolean operation",
+  "复合路径（非零绕组）": "Compound path (nonzero winding)",
+  "复合路径（奇偶规则）": "Compound path (even-odd)",
   "释放原图形": "Release original shapes",
   "填充": "Fill",
   "添加填充": "Add fill",

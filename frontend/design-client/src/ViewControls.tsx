@@ -2,6 +2,7 @@ import { useInterfaceText } from './interface-preference'
 import type { Editor } from './engine'
 import { CANVAS_ZOOM_MIN, CANVAS_ZOOM_MAX, zoomAt, zoomStep } from './canvas-camera'
 import { NumberField } from './fields'
+import { PendingEditContext } from './pending-edit-context'
 import { useEffect, useRef } from 'react'
 export function ViewControls({
   editor,
@@ -45,7 +46,7 @@ export function ViewControls({
         <summary aria-label={text.zoomView}>{Number((s.view.zoom * 100).toFixed(1))}%</summary>
         <div className="view-menu-body">
           {compact && <div className="zoom-steps"><button type="button" title={text.zoomOut} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, -1))}>−</button><button type="button" title={text.zoomIn} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, 1))}>＋</button></div>}
-          <NumberField
+          <PendingEditContext.Provider value={null}><NumberField
             label={text.zoomRatio}
             // Preserve the existing numeric semantics independently of the translated label.
             unit="number"
@@ -53,7 +54,7 @@ export function ViewControls({
             min={CANVAS_ZOOM_MIN * 100}
             max={CANVAS_ZOOM_MAX * 100}
             onChange={(v) => zoom(v / 100)}
-          />
+          /></PendingEditContext.Provider>
           <div className="zoom-presets">
             {[25, 50, 100, 200, 400, 800].map((p) => (
               <button type="button" key={p} onClick={() => { zoom(p / 100); if (menu.current) menu.current.open = false }}>

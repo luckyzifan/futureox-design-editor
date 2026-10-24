@@ -51,3 +51,31 @@ test('a failed native close keeps the source panel available',async()=>{
   expect(onClose).not.toHaveBeenCalled()
   expect(document.body.textContent).toContain('Refresh the source revision')
 })
+
+test('source history invalidates ordinal breadcrumbs and stale selection before fetching the new revision',async()=>{
+  const old={key:'0:10',id:'parent',name:'Old parent',kind:'group',bytes:100,part:'page.json',hasChildren:true}
+  const child={...old,key:'0:11',id:'child',name:'Old child',hasChildren:false}
+  const children=vi.fn(async({key}:{key?:string})=>({status:'ok',items:key?[child]:[old],total:1,hasMore:false}))
+  const undo=vi.fn(async()=>({status:'ok',...status,revision:2,undoCount:0,redoCount:1}))
+  const bridge={open:async()=>({status:'ok',...status,revision:1,undoCount:1}),children,undo,read:async()=>({status:'ok',json:'{"name":"Old child"}',hash:'a'.repeat(64),omittedFields:[]})} as unknown as LargeDocumentBridge
+  await act(async()=>root.render(<LargeDocumentDialog bridge={bridge} parentEditor={parent} onClose={()=>{}}/>))
+  await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="展开 Old parent"]')!.click())
+  await act(async()=>button('Old childgroup').click())
+  await act(async()=>button('撤销已应用修改').click())
+  expect(children.mock.calls.at(-1)![0]).toMatchObject({expectedRevision:2,key:undefined,offset:0})
+  expect(document.querySelector('textarea')).toBeNull()
+  expect([...document.querySelectorAll('nav button')].map(b=>b.textContent)).toEqual(['全部文件'])
+})
+
+test('pending source navigation clears old clickable rows and ignores the superseded reply',async()=>{
+  const old={key:'0:10',id:'parent',name:'Old parent',kind:'group',bytes:100,part:'page.json',hasChildren:true}
+  let finish!:(value:unknown)=>void
+  const children=vi.fn(async({key}:{key?:string})=>key?new Promise(resolve=>{finish=resolve}):{status:'ok',items:[old],total:1,hasMore:false})
+  const bridge={open:async()=>({status:'ok',...status}),children} as unknown as LargeDocumentBridge
+  await act(async()=>root.render(<LargeDocumentDialog bridge={bridge} parentEditor={parent} onClose={()=>{}}/>))
+  await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="展开 Old parent"]')!.click())
+  expect([...document.querySelectorAll('.large-document-rows button')]).toHaveLength(0)
+  await act(async()=>button('全部文件').click())
+  await act(async()=>finish({status:'ok',items:[{...old,name:'Stale child',key:'0:11'}],total:1,hasMore:false}))
+  expect(document.querySelector('.large-document-rows')!.textContent).not.toContain('Stale child')
+})

@@ -8,7 +8,7 @@ export const tileCostLimits: Record<string,number> = {
   packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,
   costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,
   encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,
-  materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,
+  materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,materialFieldRejectedOversize:1e9,materialFieldRejectedPinned:1e9,materialFieldRejectedBytes:1e12,
   tileDrawCalls:1e9,tileCommandSubmissions:1e9,
 }
 const scanLimit=4096
@@ -24,7 +24,7 @@ export function createTileCostDiagnostics(enabled:boolean) {
     totals[key]=next
   }
   return {
-    observe(scene:GpuScene,result:{passPixels?:number;materialFieldBuildMs?:number;graphMs?:number;checkpointMs?:number;materialFieldBuilds?:number;materialFieldHits?:number;materialFieldUploadBytes?:number;drawCalls?:number;commandSubmissions?:number}) {
+    observe(scene:GpuScene,result:{passPixels?:number;materialFieldBuildMs?:number;graphMs?:number;checkpointMs?:number;materialFieldBuilds?:number;materialFieldHits?:number;materialFieldUploadBytes?:number;materialFieldRejectedOversize?:number;materialFieldRejectedPinned?:number;materialFieldRejectedBytes?:number;drawCalls?:number;commandSubmissions?:number}) {
       if(totals.tileCostSamples>=2048){totals.tileCostCapped=1;totals.tileCostUnavailable=63;totals.costSamplesOmitted=Math.min(1e9,totals.costSamplesOmitted+1);return}
       totals.tileCostSamples++
       const output=scene.output,source=scene.extent
@@ -37,6 +37,7 @@ export function createTileCostDiagnostics(enabled:boolean) {
       add('fieldBuildElapsedMs',result.materialFieldBuildMs,4)
       add('graphNonCheckpointElapsedMs',typeof result.graphMs==='number'&&typeof result.checkpointMs==='number'?result.graphMs-result.checkpointMs:undefined,4)
       for(const key of ['materialFieldBuilds','materialFieldHits','materialFieldUploadBytes'] as const)add(key,result[key],4)
+      for(const key of ['materialFieldRejectedOversize','materialFieldRejectedPinned','materialFieldRejectedBytes'] as const)if(result[key]!==undefined)add(key,result[key],4)
       // Count packet visits, not authored nodes or executed shader effects.
       let remaining=scanLimit,nodeVisits=0,truncated=false
       // Never materialize Object.values/keys merely for diagnostic counting.

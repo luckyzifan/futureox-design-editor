@@ -68,8 +68,8 @@ export interface LargeDocumentBridge {
   apply(request:LargeDocumentRequest&{key:string;json:string;expectedHash:string}):Promise<DesktopResult<LargeDocumentStatus>>
   project(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[]}>>
   scene(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[];nodes:number;bytes:number}>>
-  sceneCommit(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus>>
-  commitCanvas(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus>>
+  sceneCommit(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus&{key:string}>>
+  commitCanvas(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus&{key:string}>>
   undo(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus>>
   redo(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus>>
   export(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus&{exported:true;displayName:string}>>
@@ -109,7 +109,7 @@ export interface DesktopBridge {
   petConfigure?(mode: import('./desktop-pet').PetMode): Promise<unknown>
   petEvent?(event: import('./desktop-pet').PetEvent): Promise<unknown>
   readonly automation?: import('./automation/bridge').DesktopAutomationTransport
-  readonly documentCodec?: { readonly decoding?: 'json-parse-v1'; readonly encoding?: 'json-stringify-v1'; encode(document: unknown): Promise<string>; decode(json: string): Promise<unknown> }
+  readonly documentCodec?: { readonly decoding?: 'json-parse-v1'; readonly encoding?: 'json-stringify-v1'; encode(document: unknown): Promise<string>; decode(json: string): Promise<unknown>; encodeIncremental?(request: import('./resident-document-encoder').CodecDelta): Promise<import('./resident-document-encoder').CodecReceipt> }
   readonly preparation?: {
     open(): Promise<string>
     request(session: string, request: { lane: string; method: string; args: unknown[]; diagnostics?: { originChannelId: number; requestId: number; preparationId: number } }): Promise<import('./kernel/preparation-channel').PreparationReply>

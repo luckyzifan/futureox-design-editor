@@ -86,6 +86,26 @@ function fakeIndexedDb() {
                   .map(([, value]) => structuredClone(value))
                 request.onsuccess?.()
               }),
+            openCursor: (range?: any, direction = 'next') => {
+              const values = [...store.entries()]
+                .map(([stored, value]) => [decodeStoredKey(stored), value] as [unknown, unknown])
+                .filter(([key]) => inRange(key, range))
+                .sort(([a], [b]) => direction === 'prev' ? cmp(b, a) : cmp(a, b))
+              const request: any = {}
+              let index = 0
+              const advance = () => {
+                pending++
+                queueMicrotask(() => {
+                  const entry = values[index++]
+                  request.result = entry ? { value: structuredClone(entry[1]), continue: advance } : null
+                  request.onsuccess?.()
+                  pending--
+                  settle()
+                })
+              }
+              advance()
+              return request
+            },
             getAllKeys: (range?: any) =>
               tracked((request: any) => {
                 request.result = [...store.keys()]

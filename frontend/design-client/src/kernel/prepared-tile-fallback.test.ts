@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { preparedTileCanFill, preparedTileContinuation } from './prepared-tile-fallback'
 import type { ResidentFrame, ResidentItem } from './gpu/resident-presenter'
 import type { RasterTile } from './tile-cache'
@@ -47,4 +47,23 @@ test('a stale prepared tile continues only while the latest camera still has its
   expect(continuing()).toBe(true)
   current = false; latest = frame
   expect(preparedTileContinuation(tile, () => current, false, () => latest)()).toBe(false)
+})
+test('private coverage versions reuse one gap proof while cancellation and changed coverage are rechecked', () => {
+  let latest: ResidentFrame = { ...frame, items: [] }, version = {}, current = false
+  const read = vi.fn(() => latest), live = vi.fn(() => current)
+  const continuing = preparedTileContinuation(tile, live, true, read, () => version)
+  for (let i = 0; i < 100; i++) expect(continuing()).toBe(true)
+  expect(read).toHaveBeenCalledTimes(1); expect(live).toHaveBeenCalledTimes(100)
+  latest = { ...frame, items: [item()] }; version = {}
+  expect(continuing()).toBe(false); expect(read).toHaveBeenCalledTimes(2)
+  current = true; expect(continuing()).toBe(true)
+  current = false; expect(continuing()).toBe(false)
+  latest = { ...frame, interaction: true }; version = {}
+  expect(continuing()).toBe(false)
+})
+test('callers without a private version still observe mutations of the same frame object', () => {
+  const mutable = { ...frame, items: [] as ResidentItem[] }
+  const continuing = preparedTileContinuation(tile, () => false, true, () => mutable)
+  expect(continuing()).toBe(true)
+  mutable.items.push(item()); expect(continuing()).toBe(false)
 })

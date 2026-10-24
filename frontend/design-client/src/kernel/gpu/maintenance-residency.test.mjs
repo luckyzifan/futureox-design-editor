@@ -5,13 +5,13 @@ import {stripTypeScriptTypes} from 'node:module'
 import {MaintenanceResidency} from './maintenance-residency.ts'
 const M=1024*1024
 const src=readFileSync(process.env.RENDERER_SOURCE || new URL('./renderer.ts',import.meta.url),'utf8')
-const body=src.slice(src.indexOf('  private async reclaimScratch('),src.indexOf('  private independentSamples(')).replaceAll("import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX", "'0'")
+const body=src.slice(src.indexOf('  private async reclaimScratch('),src.indexOf('  private independentSamples(')).replaceAll("import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX", "'0'").replaceAll("import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY", "'0'")
 const Renderer=Function('gpuDiagnosticsEnabled','recordGpuDiagnostic','RECLAIM_BATCH_BYTES','RECLAIM_BATCH_RESOURCES','return '+stripTypeScriptTypes('class Harness {\n'+body+'\n}'))(()=>true,(event,data)=>records.push({event,...data}),Number(src.match(/const RECLAIM_BATCH_BYTES = (\d+) \* 1024 \* 1024/)[1])*M,Number(src.match(/const RECLAIM_BATCH_RESOURCES = (\d+)/)[1]))
 const records=[]
 function fixture(working=272586144,pool=9844192,transient=160118336) {
  const r=new Renderer(), p={bytes:pool},t={bytes:transient},calls={wait:0,destroy:0}
  Object.assign(r,{maintenanceResidency:new MaintenanceResidency(),workingBytes:working,bytes:working,frameBudget:1024*M,
- checkFrameCurrent(){},staticImageBlurs:{collect(){},discardPending(){},bytes:0,clear(){}},collectRetiredImageAssets(){},
+ checkFrameCurrent(){},admissionPins:new Set(),staticImageBlurs:{collect(){},discardPending(){},bytes:0,clear(){}},collectRetiredImageAssets(){},
  driver:{completedResourceEpoch:1,resourceEpoch:2,async checkpoint(){calls.wait++}},scene:{},retiredImageAssets:new Map(),constantTargets:new Map(),aliases:new Map(),free:new Map([['pool',[p]]]),coordinateMaps:new Set([t]),retiredUploads:[],hasEvictableImage(){return false},images:new Map(),lastUsed:new Map(),poolReleaseEpoch:new Map(),
  retiredImageAssetCohort(){return []},coverRetiredImageAssets(){},checkpointMs:0,retireDisplayMaterial(){},retireNestedPrefix(){},horizontalFilters:{clear(){}},evictImages(){},
  destroyFree(t){for(const [k,list]of this.free)this.free.set(k,list.filter(v=>v!==t));this.bytes-=t.bytes;this.workingBytes-=t.bytes;calls.destroy++},

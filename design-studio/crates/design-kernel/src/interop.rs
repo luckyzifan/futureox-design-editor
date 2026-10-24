@@ -747,7 +747,7 @@ impl<'a> Importer<'a> {
         out
     }
 
-    fn strokes(&self, style: &Value) -> Vec<Stroke> {
+    fn strokes(&self, style: &Value, size: [f64; 2]) -> Vec<Stroke> {
         // Dash/cap/join live on the style's borderOptions (one set shared by
         // every border, per the archived schema).
         let options = style.get("borderOptions").cloned().unwrap_or(Value::Null);
@@ -782,11 +782,9 @@ impl<'a> Importer<'a> {
             if !bool_at(part, "isEnabled") {
                 continue;
             }
-            let (base_opacity, blend) = blend_of(part);
-            let mut paint = part
-                .get("color")
-                .map(|c| solid_paint(c, base_opacity, &blend))
-                .unwrap_or_else(|| blank_paint("solid"));
+            // A border has the same paint carrier as a fill. Its `color`
+            // can be an unused black fallback while fillType selects a gradient.
+            let Some(mut paint) = self.paint_part(part, 1., "normal", size) else { continue; };
             paint.id = String::new();
             out.push(Stroke {
                 start_marker: Default::default(),
@@ -943,7 +941,16 @@ impl<'a> Importer<'a> {
             if !source_gradients.is_empty() {
                 node.bindings.insert("sketchSourceGradients".into(), json!(source_gradients).to_string());
             }
-            node.strokes = self.strokes(&style);
+            node.strokes = self.strokes(&style, size);
+            let border_gradients: BTreeMap<String, Value> = style.get("borders").and_then(Value::as_array)
+                .into_iter().flatten().filter_map(|part| self.paint_part(part, 1., "normal", size).map(|paint|(part,paint))).enumerate()
+                .filter_map(|(index,(part,paint))| part.get("gradient")
+                    .filter(|_| matches!(paint.kind.as_str(),"linear"|"radial"|"angular"))
+                    .map(|gradient|(index.to_string(),json!({"gradient":gradient,"paint":paint,"size":size}))))
+                .collect();
+            if !border_gradients.is_empty() {
+                node.bindings.insert("sketchSourceStrokeGradients".into(),json!(border_gradients).to_string());
+            }
             node.effects = self.effects(&style);
             if let Some(blur) = style.get("blur")
                 .filter(|value| bool_at(value, "isEnabled") || f64_at(value, "radius") > 0.)
@@ -1625,6 +1632,7 @@ impl<'a> Importer<'a> {
         if class == "shapeGroup" {
             node.bindings.insert("sketchSourceShapeGroup".into(), json!({
                 "parentOperation":layer.get("booleanOperation").and_then(Value::as_i64).unwrap_or(-1),
+                "windingRule":style.get("windingRule").or_else(||layer.get("windingRule")).and_then(Value::as_i64).unwrap_or(1),
                 "operations":layer.get("layers").and_then(Value::as_array).map(|children|
                     children.iter().map(|child| child.get("booleanOperation").and_then(Value::as_i64).unwrap_or(-1)).collect::<Vec<_>>()).unwrap_or_default(),
                 "children":node.children,
@@ -1990,7 +1998,7 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
             let mut strokes = Vec::new();
             let mut effects = Vec::new();
             if kind == "paint" && !style_object.is_null() {
-                strokes = importer.strokes(&style_object);
+                strokes = importer.strokes(&style_object, [1., 1.]);
                 effects = importer.effects(&style_object);
             }
             let value = match kind {
@@ -2495,8 +2503,13 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
                 value => boolean_from_code(*value),
             }).collect::<Option<Vec<_>>>()
                 .ok_or_else(|| Error::Unsupported(format!("Sketch shapeGroup `{}` has an unknown operand operation", node.id)))?;
-            let operation = operations.first().copied().unwrap_or(crate::boolean::Operation::Union);
-            if operations.iter().any(|other| *other != operation) {
+            let ordinary = operations.first().copied().unwrap_or(crate::boolean::Operation::Union);
+            let compound=codes.iter().all(|code|*code == -1);
+            let operation=if compound {
+                document.schema_version=document.schema_version.max(16);
+                if source["windingRule"].as_i64()==Some(0){crate::boolean::Operation::CompoundNonzero}else{crate::boolean::Operation::CompoundEvenodd}
+            }else{ordinary};
+            if !compound && operations.iter().any(|other| *other != ordinary) {
                 return Err(Error::Unsupported(format!("Sketch shapeGroup `{}` uses mixed operand operations; keep the original .sketch file", node.id)));
             }
             node.kind = "vector".into();
@@ -2846,12 +2859,14 @@ fn export_style_parts(
     strokes: &[crate::scene::Stroke],
     effects: &[Effect],
     lossy: &mut Vec<String>,
-    settings: ColorSettings,
+    images: &mut ExportedImages,
+    size: [f64;2],
 ) -> Result<(Vec<Value>, Vec<Value>, Vec<Value>, Value, Value)> {
-    // This compatibility path only represents solid borders. Do not flatten
-    // gradient/image strokes to their unused fallback color, even when hidden:
-    // that loses authored content and bypasses gradient-stop color admission.
-    if let Some(stroke) = strokes.iter().find(|stroke| stroke.paint.kind != "solid") {
+    let settings = images.color_settings;
+    // Native gradients share the fill encoding, including strict HDR/gamut
+    // admission. Unsupported border carriers still reject instead of falling
+    // back to an unrelated solid color, including when the stroke is hidden.
+    if let Some(stroke) = strokes.iter().find(|stroke| !matches!(stroke.paint.kind.as_str(), "solid"|"linear"|"radial"|"angular")) {
         return Err(Error::Unsupported(format!(
             "Sketch export cannot preserve {} stroke paints; use the native format instead",
             stroke.paint.kind
@@ -2860,8 +2875,16 @@ fn export_style_parts(
     let borders: Vec<Value> = strokes
         .iter()
         .map(|s| -> Result<Value> {
+            if s.paint.kind != "solid" {
+                let mut paint = s.paint.clone(); paint.visible = true;
+                let mut border = export_paint(&paint, images, size)?.ok_or_else(||Error::Unsupported("Sketch border paint".into()))?;
+                border["_class"]=json!("border");border["isEnabled"]=json!(s.visible&&s.paint.visible);
+                border["thickness"]=json!(s.width);
+                border["position"]=json!(match s.align.as_str(){"inside"=>1,"outside"=>2,_=>0});
+                return Ok(border);
+            }
             Ok(json!({
-                "_class": "border", "isEnabled": s.paint.visible, "thickness": s.width,
+                "_class": "border", "isEnabled": s.visible && s.paint.visible, "thickness": s.width,
                 "position": match s.align.as_str() { "inside" => 1, "outside" => 2, _ => 0 },
                 "fillType": 0,
                 "color": hex_to_rgba(&s.paint.color, s.paint.opacity.clamp(0., 1.), settings)?,
@@ -3033,6 +3056,7 @@ fn boolean_code(op: crate::boolean::Operation) -> i64 {
         crate::boolean::Operation::Subtract => 1,
         crate::boolean::Operation::Exclude => 2,
         crate::boolean::Operation::Intersect => 3,
+        crate::boolean::Operation::CompoundNonzero | crate::boolean::Operation::CompoundEvenodd => -1,
     }
 }
 
@@ -3477,7 +3501,11 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
         {
             layer.insert("frame".into(), frame.clone());
         }
-        if let Some(frame)=layer.get_mut("frame").and_then(Value::as_object_mut) {frame.insert("constrainProportions".into(),json!(n.constrain_proportions));}
+        if let Some(frame) = layer.get_mut("frame").and_then(Value::as_object_mut)
+            && (n.constrain_proportions || frame.contains_key("constrainProportions"))
+        {
+            frame.insert("constrainProportions".into(), json!(n.constrain_proportions));
+        }
         // P1-7: constraints → resizingConstraint bits (63 = Sketch's
         // measured default "free" value and must not re-import as a rule).
         if let Some(c) = &n.constraints {
@@ -3523,8 +3551,16 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                 Ok(Some(part))
             })
             .collect::<Result<Vec<_>>>()?.into_iter().flatten().collect();
-        let (borders, shadows, inner_shadows, mut blur, border_options) =
-            export_style_parts(&n.strokes, &n.effects, &mut lossy, images.color_settings)?;
+        let (mut borders, shadows, inner_shadows, mut blur, border_options) =
+            export_style_parts(&n.strokes, &n.effects, &mut lossy, images, [n.width,n.height])?;
+        if let Some(sources)=n.bindings.get("sketchSourceStrokeGradients").and_then(|raw|serde_json::from_str::<Value>(raw).ok()) {
+            for(index,stroke)in n.strokes.iter().enumerate(){
+                if let Some(source)=sources.get(index.to_string())
+                    && source.get("paint").and_then(|value|serde_json::from_value::<Paint>(value.clone()).ok()).as_ref()==Some(&stroke.paint)
+                    && (stroke.paint.kind=="linear" || source.get("size").and_then(|v|serde_json::from_value::<[f64;2]>(v.clone()).ok())==Some([n.width,n.height]))
+                {borders[index]["gradient"]=source["gradient"].clone();}
+            }
+        }
         if let Some(source) = n.bindings.get("sketchSourceBlur")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
             && source.get("effects").and_then(|value| serde_json::from_value::<Vec<Effect>>(value.clone()).ok())
@@ -4153,6 +4189,9 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
             .map(|c| export_layer(doc, c, images))
             .collect::<Result<Vec<_>>>()?;
         if class == "shapeGroup" && let Some(operation) = n.boolean_operation {
+            if let Some(rule)=operation.compound_rule(){
+                if let Some(style)=layer.get_mut("style"){style["windingRule"]=json!(if rule=="nonzero"{0}else{1});}
+            }
             let source = n.bindings.get("sketchSourceShapeGroup")
                 .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
             let unchanged = source.as_ref().is_some_and(|source| {
@@ -4355,6 +4394,77 @@ pub fn export_sketch_layer_fields(doc: &Document, id: &str) -> Result<Value> {
     export_layer_impl(doc, id, &mut images, false)
 }
 
+/// Existing-source edits for which the current native Sketch codec has no
+/// representation must fail before storage can acknowledge them. This is a
+/// source-audited missing-codec guard, not a general roundtrip/format capability
+/// oracle. Preserve ordinary paint/stroke/effect and new-subtree behavior until
+/// their kind-specific semantic and identity contracts are separately proven.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn export_sketch_layer_edit(before: &Document, after: &Document, id: &str) -> Result<(Value, Value)> {
+    let old = before.nodes.get(id).ok_or_else(|| Error::MissingPart("Existing source node".into()))?;
+    let next = after.nodes.get(id).ok_or_else(|| Error::MissingPart("Edited source node".into()))?;
+    let unsupported = if old.smoothing != next.smoothing
+        && matches!(next.kind.as_str(), "rectangle" | "rect" | "frame" | "section" | "slice") {
+        // Neither Importer::layer nor export_layer_impl has a smoothing codec.
+        Some("smoothing")
+    } else if old.clip != next.clip {
+        // hasClippingMask maps Node.mask, not the distinct Node.clip property.
+        Some("clip")
+    } else if old.arc != next.arc && next.kind == "ellipse" {
+        Some("arc")
+    } else if old.corner_radius != next.corner_radius
+        && matches!(next.kind.as_str(), "polygon" | "star") {
+        // Rectangle cornerRadius point fields encode Node.radii, not the
+        // polygon/star fillet property Node.corner_radius.
+        Some("cornerRadius")
+    } else if old.radii != next.radii && matches!(next.kind.as_str(), "frame" | "section" | "slice") {
+        // Only the rectangle class emits fixedRadius and four curve-point radii.
+        Some("radii")
+    } else if old.export_settings != next.export_settings {
+        // Import reads exportFormats; export currently always writes [].
+        Some("exportSettings")
+    } else { None };
+    if let Some(field) = unsupported {
+        // Fixed schema field names only: no arbitrary nested keys or source text.
+        return Err(Error::Unsupported(format!("Source field {field} is not supported by the Sketch save codec; keep the draft or save a native document")));
+    }
+    Ok((export_sketch_layer_fields(before, id)?, export_sketch_layer_fields(after, id)?))
+}
+
+/// Admit the six source-proven omissions for a newly authored source layer.
+/// The caller must first validate the document and check that this ID is new.
+/// This is not a whole-model roundtrip oracle: transient paint identities and
+/// unrelated dormant UI defaults remain on the existing compatibility path.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn validate_sketch_new_layer_for_source_save(node: &Node) -> Result<()> {
+    let unsupported = if node.smoothing != 0.
+        && matches!(node.kind.as_str(), "rectangle" | "rect" | "frame" | "section" | "slice") {
+        // Preserve authored smoothing even with zero radii or no visible pixels.
+        Some("smoothing")
+    } else if node.clip {
+        // The editing importer initializes clip=false, including artboards.
+        // UI frame clip=true is not a safe default-equivalent substitution.
+        Some("clip")
+    } else if node.arc.is_some() && node.kind == "ellipse" {
+        // Even an explicit full-circle arc is authored state, unlike None.
+        Some("arc")
+    } else if node.corner_radius != 0.
+        && matches!(node.kind.as_str(), "polygon" | "star") {
+        Some("cornerRadius")
+    } else if node.radii.iter().any(|radius| *radius != 0.)
+        && matches!(node.kind.as_str(), "frame" | "section" | "slice") {
+        // Rectangle radii have a native mapping and remain admissible.
+        Some("radii")
+    } else if !node.export_settings.is_empty() {
+        Some("exportSettings")
+    } else { None };
+    if let Some(field) = unsupported {
+        // Match the existing-node guard's fixed, actionable error contract.
+        return Err(Error::Unsupported(format!("Source field {field} is not supported by the Sketch save codec; keep the draft or save a native document")));
+    }
+    Ok(())
+}
+
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
 pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     let source=boolean_worksets::source_view(doc)?;
@@ -4457,7 +4567,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     // layer with these strokes/effects would.
                     let mut style_lossy = Vec::new();
                     let (borders, shadows, inner_shadows, blur, border_options) =
-                        export_style_parts(&shared.strokes, &shared.effects, &mut style_lossy, images.color_settings)?;
+                        export_style_parts(&shared.strokes, &shared.effects, &mut style_lossy, &mut images, [1.,1.])?;
                     json!({"_class":"sharedStyle", "do_objectID": sketch_shared_style_id(style_id), "name": shared.name,
                            "value": {"_class": "style", "do_objectID": sketch_id(style_id),
                                      "fills": paints, "borders": borders,
@@ -6405,3 +6515,7 @@ mod tests {
         assert!(note.contains("maintainScrollPosition"), "{note}");
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "interop/source_edit_tests.rs"]
+mod source_edit_tests;

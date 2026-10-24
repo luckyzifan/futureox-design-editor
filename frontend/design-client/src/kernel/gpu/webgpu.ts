@@ -507,6 +507,12 @@ export class WebGpuDriver implements Driver {
     { color: GPUTexture; depth: GPUTexture; high: Texture; low: Texture }
   >()
   private disposed = false
+  // Irreversible device ownership, unlike disposed during reusable park.
+  // This fence covers binary/scalar publication only, not all async GPU work.
+  private terminal = false
+  private assertPipelinePublicationOwner(device: GPUDevice) {
+    if (this.terminal || this.device !== device) throw new Error('WebGPU 设备已丢失')
+  }
   private errors: string[] = []
   constructor(
     readonly managed = false,
@@ -529,6 +535,7 @@ export class WebGpuDriver implements Driver {
     const driver = new WebGpuDriver(managed, hdr, linearLight, managed && certified && import.meta.env.VITE_DESIGN_CERTIFIED_FILTER !== '0', displayMath)
     try {
       await driver.initialize()
+      if (driver.terminal) throw new Error('WebGPU 设备已丢失')
       driver.poolKey = poolKey
       driver.prefixEnabled = managed && certified && import.meta.env.VITE_DESIGN_EXACT_PREFIX !== '0'
       return driver
@@ -553,11 +560,12 @@ export class WebGpuDriver implements Driver {
       parked.driver.destroyDeviceNow()
       return undefined
     }
-    if (parked.driver.lost || parked.key !== key) {
+    const terminated = parked.driver.terminal || parked.driver.lost
+    if (terminated || parked.key !== key) {
       const configBits=(value:string)=>{try{return (JSON.parse(value) as boolean[]).reduce((bits,v,i)=>bits|(v?1<<i:0),0)}catch{return -1}}
-      recordGpuDiagnostic('cache',{reasonCode:parked.driver.lost?2:1,oldConfig:configBits(parked.key),newConfig:configBits(key)})
+      recordGpuDiagnostic('cache',{reasonCode:terminated?2:1,oldConfig:configBits(parked.key),newConfig:configBits(key)})
       console.debug(`DESIGN_GPU_PARK ${JSON.stringify({
-        event: 'discarded', reason: parked.driver.lost ? 'device-lost' : 'config-mismatch',
+        event: 'discarded', reason: terminated ? 'device-lost' : 'config-mismatch',
       })}`)
       parked.driver.destroyDeviceNow()
       return undefined
@@ -565,6 +573,9 @@ export class WebGpuDriver implements Driver {
     try {
       recordDeviceLifecycle(parked.driver, deviceLifecyclePhase.reviveStart, parked.driver.lifecycleFields())
       await parked.driver.revive()
+      // Loss may be observed while the existing revive queue fence is pending.
+      // Never return a terminal pooled owner; this is not a global ready fence.
+      if (parked.driver.terminal) throw new Error('WebGPU 设备已丢失')
       recordDeviceLifecycle(parked.driver, deviceLifecyclePhase.reviveReady, parked.driver.lifecycleFields())
       console.debug(`DESIGN_GPU_PARK ${JSON.stringify({ event: 'revived', key })}`)
       return parked.driver
@@ -598,6 +609,7 @@ export class WebGpuDriver implements Driver {
     if (timing) this.timingQueries = this.device.createQuerySet({ type: 'timestamp', count: 4096 })
     this.description = adapter.info?.description || adapter.info?.architecture || 'WebGPU'
     this.device.lost.then((info) => {
+      this.terminal = true
       // Intentional teardown (dispose/reaper) has nothing further to report.
       const fields = { ...this.lifecycleFields(), deviceLostReason: deviceLostReason(info.reason) }
       if (info.reason === 'destroyed' && this.disposed) {
@@ -740,8 +752,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     })
     const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
       maskLayout = this.device.createPipelineLayout({ bindGroupLayouts: [this.maskLayout] })
-    // Compile independent programs together; publication waits for every
-    // job to settle so a failed initialization cannot outlive device cleanup.
+    // Compile independent programs together. Publication is fenced to the
+    // same live device; failure does not claim that other jobs have drained.
     const register = (key: string, build: () => Promise<void>) => this.pipelines.register(key, build)
     register('paint', async () => {
     this.paintPipeline = await this.device.createRenderPipelineAsync({
@@ -778,19 +790,32 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         fragment:{module:areaModule,entryPoint:'areaFragment',targets:[{format:'r32float'}]},primitive:{topology:'triangle-list'},
       })
     })
-    if (this.managed) register('binary', () => Promise.all([12, 20].map(async (mode) => {
-      const pipeline = await this.device.createRenderPipelineAsync({ layout,
+    if (this.managed) register('binary', () => {
+      const device = this.device
+      const jobs = [12, 20].map(async (mode) => {
+      this.assertPipelinePublicationOwner(device)
+      const pipeline = await device.createRenderPipelineAsync({ layout,
         vertex: { module, entryPoint: 'quad' },
         fragment: { module, entryPoint: 'fragment', constants: { COMPOSITOR_MODE: mode }, targets: [{ format: 'rgba8unorm' }] },
         primitive: { topology: 'triangle-list' },
       })
+      this.assertPipelinePublicationOwner(device)
       this.binaryPipelines.set(mode, pipeline)
-    })).then(() => {}))
-    if(this.managed)register('scalar', () => Promise.all([12,17,20].map(async mode=>{
-      this.scalarPipelines.set(mode,await this.device.createRenderPipelineAsync({layout,
+      })
+      return Promise.all(jobs).then(() => {})
+    })
+    if(this.managed)register('scalar', () => {
+      const device = this.device
+      const jobs = [12,17,20].map(async mode=>{
+      this.assertPipelinePublicationOwner(device)
+      const pipeline = await device.createRenderPipelineAsync({layout,
         vertex:{module,entryPoint:'quad'},fragment:{module,entryPoint:'fragment',constants:{COMPOSITOR_MODE:mode},targets:[{format:'r32float'}]},
-        primitive:{topology:'triangle-list'}}))
-    })).then(()=>{}))
+        primitive:{topology:'triangle-list'}})
+      this.assertPipelinePublicationOwner(device)
+      this.scalarPipelines.set(mode, pipeline)
+      })
+      return Promise.all(jobs).then(() => {})
+    })
     register('present', async () => {
     this.presentPipeline = await this.device.createRenderPipelineAsync({
       layout,
@@ -924,6 +949,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.clear(this.blank)
     this.submitEncoder()
     await this.waitForQueue('initialization')
+    if (this.terminal) throw new Error('WebGPU 设备已丢失')
     this.initialized = true
     this.submittedBoundaryReady = true
   }
@@ -2615,6 +2641,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   }
   async loseDeviceForTesting() {
     if (!import.meta.env.DEV) throw new Error('Development check only')
+    this.terminal = true
     this.device.destroy()
     await this.device.lost
     if (!this.lost) throw new Error('WebGPU device loss was not observed')
@@ -2625,7 +2652,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (this.disposed) return
     this.disposed = true
     this.closeOver()
-    if (this.initialized && !this.lost && this.poolKey !== undefined) {
+    if (this.initialized && !this.terminal && !this.lost && this.poolKey !== undefined) {
       // Park instead of destroying: non-device-lost teardown (budget-failure
       // recovery, preview tile splits) re-creates the GPU stack within
       // milliseconds and reuses this device and its compiled pipelines; only
@@ -2660,6 +2687,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   }
   /** Full synchronous teardown: reclaim every resource and destroy the device. */
   private destroyDeviceNow() {
+    this.terminal = true
     recordDeviceLifecycle(this, deviceLifecyclePhase.disposed, this.lifecycleFields())
     this.presenter?.dispose(); this.presenter = undefined
     this.parkedForReuse = false

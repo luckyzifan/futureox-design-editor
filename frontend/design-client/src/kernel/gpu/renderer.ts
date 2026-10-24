@@ -80,6 +80,7 @@ import {
   image_byte_sampling_field,
   image_byte_sampling_field_placed,
   gradient_sampling_grid,
+  gradient_sampling_axes,
   gradient_sampling_grid_region,
   rational_box_kernel_rgba,
   gaussian_box_radii,
@@ -1057,7 +1058,20 @@ export class GpuRenderer {
    * complete certified parent suffix. Shape bounds cannot replace this box.
    * Copies preserve raw color bits and identical sample aliases. */
   private async cropPainterTargets(targets: Surface[], box: readonly number[] | undefined): Promise<Surface[]> {
-    const output = this.painterBox(box)
+    return this.cropTargets(targets, this.painterBox(box))
+  }
+  private suffixRect(target: Surface, node: GpuNode): Rect | undefined {
+    if (import.meta.env.VITE_DESIGN_PARENT_SUFFIX !== '1' || !node.suffixBox || !this.optimized || !this.driver.managed ||
+        !this.scene.coherentSamples || this.scene.interactionRetained || this.interactionCapturing ||
+        this.painterStagesEnabled() || target.logicalBounds) return
+    const box = node.suffixBox, output = { x: box[0], y: box[1], w: box[2], h: box[3] }
+    // A different established in-place lane may already own a narrower domain.
+    // This optimization never expands it or manufactures missing prefix pixels.
+    if (!exactBlendLattice([output, target.rect]) || output.w <= 0 || output.h <= 0 ||
+        !containsRect(target.rect, output) || containsRect(output, target.rect)) return
+    return output
+  }
+  private async cropTargets(targets: Surface[], output: Rect | undefined): Promise<Surface[]> {
     if (!output || targets.every(target => Object.keys(output).every(key =>
       Object.is((target.logicalBounds || target.rect)[key as keyof Rect], output[key as keyof Rect])))) return targets
     if (!this.driver.copyColorRegion) throw Error('Native painter stages require exact color copies')
@@ -1165,8 +1179,8 @@ export class GpuRenderer {
   }
   // A non-isolated source already contains the backdrop. Interpolate the
   // complete group; source-over would count the backdrop alpha a second time.
-  private interpolate(src: Surface, dst: Surface, opacity = 1, mask?: Surface) {
-    return this.run(28, dst.rect, mask ? [src, dst, mask] : [src, dst], (u) => {
+  private interpolate(src: Surface, dst: Surface, opacity = 1, mask?: Surface, output = dst.rect) {
+    return this.run(28, output, mask ? [src, dst, mask] : [src, dst], (u) => {
       u.set([28, this.scene.integratedBlur ? 1 : 0, opacity, mask ? 1 : 0], 16)
     })
   }
@@ -1607,7 +1621,19 @@ export class GpuRenderer {
     return source instanceof Promise ? source.then(compose) : compose(source)
   }
   /** Consumes dst; retains src/mask. Source-over writes only the affected area. */
-  private merge(src: Surface, dst: Surface, mode = 'normal', opacity = 1, mask?: Surface) {
+  private merge(src: Surface, dst: Surface, mode = 'normal', opacity = 1, mask?: Surface, output?: Rect) {
+    if (output) {
+      this.checkFrameCurrent()
+      // The native suffix only narrows this pass's writes. Both source inputs
+      // retain their original bounds/addresses; no preliminary copy or new
+      // rounding boundary is introduced, including zero-weight neighbours.
+      const result = this.run(this.scene.integratedBlur && mode === 'normal' && opacity < 1 ? 29 : 3,
+        output, mask ? [src, dst, mask] : [src, dst], u => {
+          u.set([u[16], blends.indexOf(mode), opacity, mask ? 1 : 0], 16)
+        })
+      this.release(dst)
+      return result
+    }
     const exactNormalRegion = mode === 'normal' && exactBlendLattice([src.rect,dst.rect,...(mask?[mask.rect]:[])])
     if(this.optimized&&this.driver.managed&&
       (exactNormalRegion || (this.driver.displayMath||import.meta.env.VITE_DESIGN_EXACT_REGIONAL_BLEND==='1'&&
@@ -1879,7 +1905,13 @@ export class GpuRenderer {
     return surface
   }
   private currentImageResidency(scene: GpuScene) {
-    if (import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX !== '1' || this.driver.name !== 'webgpu' || !this.driver.waitForSubmittedWork) return
+    // Image ownership is independent of the filter implementation. A regional
+    // packet can omit an immutable document image and need it again on the next
+    // tile. Keep its existing upload only under the same private owner, policy,
+    // completion and working-budget rules used by the clamped-filter candidate.
+    if ((import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX !== '1' &&
+        import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY !== '1') ||
+        this.driver.name !== 'webgpu' || !this.driver.waitForSubmittedWork) return
     let owner: ImageResidencyOwner | undefined
     try { owner = imageLoaderResidencyOwner(this.managedImageLoader) }
     catch (error) {
@@ -2129,6 +2161,31 @@ export class GpuRenderer {
     grids.set(sample, surface)
     return surface
   }
+  private gradientAxisGrid(n:GpuNode,p:GpuPaint):Surface|undefined {
+    if(p.kind!=='linear'||import.meta.env.VITE_DESIGN_GRADIENT_AXES==='0'||!this.driver.uploadLinear)return
+    const source=n.previewSource||n,sample=this.sampleIndex??4
+    if(source.rect.w!==n.rect.w||source.rect.h!==n.rect.h)return
+    const parameters={kind:p.kind,color:'#000000',angle:p.angle,transform:p.transform,stops:p.stops.map(s=>({offset:s.offset,color:'#000000'}))}
+    const inputs=['gradient-axis-grid',source.rect,source.matrix,n.size,parameters,sample]
+    const cached=this.optimized&&import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS!=='0'
+      ?this.materialFields.get(JSON.stringify(inputs,(_key,value)=>Object.is(value,-0)?'-0':value),new Uint32Array(0)):undefined
+    if(cached){
+      this.fieldHits++;this.busy.add(cached);this.used.add(cached);this.touch(cached)
+      const surface={texture:cached,rect:rect(n.rect.x,n.rect.y,cached.width,cached.height)}
+      let grids=this.imageGrids.get(p);if(!grids){grids=new Map();this.imageGrids.set(p,grids)}grids.set(sample,surface)
+      return surface
+    }
+    const started=performance.now()
+    const packed=gradient_sampling_axes(JSON.stringify(source.rect),new Float64Array(source.matrix),new Float64Array(n.size),JSON.stringify(parameters),sample)
+    this.fieldBuildMs+=performance.now()-started
+    if(!packed.length)return
+    const w=packed[0],h=packed[1],values=packed.subarray(4)
+    if(!Number.isSafeInteger(w)||!Number.isSafeInteger(h)||w<1||h<1||values.length!==w*h*4)throw Error('Invalid compact gradient field')
+    const surface=this.materialField(inputs,rect(n.rect.x,n.rect.y,w,h),()=>values,
+      this.driver.uploadLinear,undefined,values.byteLength,import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS!=='0')
+    let grids=this.imageGrids.get(p);if(!grids){grids=new Map();this.imageGrids.set(p,grids)}grids.set(sample,surface)
+    return surface
+  }
   private gradientGrid(n: GpuNode, p: GpuPaint): Surface {
     const sample = this.sampleIndex ?? 4
     let grids = this.imageGrids.get(p)
@@ -2137,6 +2194,7 @@ export class GpuRenderer {
       this.touch(known.texture)
       return known
     }
+    const axis=this.gradientAxisGrid(n,p);if(axis)return axis
     if (!this.driver.uploadLinear) throw new Error('后端不支持精确渐变参数字段')
     const parameters = {
       kind: p.kind,
@@ -2196,7 +2254,7 @@ export class GpuRenderer {
   }
   private async paintWithCooperativeGradient(n:GpuNode,p:GpuPaint,mask:Surface):Promise<Surface> {
     const sample=this.sampleIndex??4,source=n.previewSource||n
-    if(this.imageGrids.get(p)?.has(sample))return this.paint(n,p,mask,undefined,true)
+    if(this.imageGrids.get(p)?.has(sample)||this.gradientAxisGrid(n,p))return this.paint(n,p,mask,undefined,true)
     const parameters={kind:p.kind,color:'#000000',angle:p.angle,transform:p.transform,stops:p.stops.map(s=>({offset:s.offset,color:'#000000'}))}
     const inputs=['gradient-grid',[n.rect.w,n.rect.h],source.rect,source.matrix,n.size,parameters,sample]
     const key=JSON.stringify(inputs,(_key,value)=>Object.is(value,-0)?'-0':value)
@@ -2718,7 +2776,8 @@ export class GpuRenderer {
     finally { this.bytes += (this.driver.scratchBytes || 0) - completedScratch }
     this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     this.collectRetiredImageAssets()
-    const preserveImmutableImages = import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1'
+    const preserveImmutableImages = import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' ||
+      import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY === '1'
     const pressure = (required > 0 || preserveImmutableImages) && this.workingBytes + required > this.frameBudget
     if (pressure) {
       this.retireDisplayMaterial()
@@ -3562,17 +3621,18 @@ export class GpuRenderer {
         // A just-consumed effect plane may be in this frame's ordered pool.
         // A synchronous allocation cannot destroy it from an older completed
         // epoch; obtain actual headroom before asking for another full target.
-        await this.reclaimForSurface(dst.rect)
+        const output = this.suffixRect(dst, n)
+        await this.reclaimForSurface(output || dst.rect)
         this.checkFrameCurrent()
         if (n.passthrough) {
           const old = targets[i]
-          targets[i] = this.interpolate(layers[i], old, n.opacity, clip?.[i])
+          targets[i] = this.interpolate(layers[i], old, n.opacity, clip?.[i], output || old.rect)
           this.release(old)
         } else if (coverage.value) {
           const old = targets[i],
             mask = clip?.[i],
             knockout = coverage.value[i]
-          targets[i] = this.run(25, old.rect, [layers[i], old, mask || knockout, knockout], (u) => {
+          targets[i] = this.run(25, output || old.rect, [layers[i], old, mask || knockout, knockout], (u) => {
             u.set([25, blends.indexOf(n.blend), n.opacity, mask ? 1 : 0], 16)
             u.set([knockout.rect.x, knockout.rect.y, knockout.rect.w, knockout.rect.h], 188)
           })
@@ -3582,14 +3642,14 @@ export class GpuRenderer {
             mask = clip?.[i]
           targets[i] = this.run(
             29,
-            old.rect,
+            output || old.rect,
             mask ? [layers[i], old, mask] : [layers[i], old],
             (u) => {
               u.set([29, 0, n.opacity, mask ? 1 : 0], 16)
             },
           )
           this.release(old)
-        } else targets[i] = this.merge(layers[i], targets[i], n.blend, n.opacity, clip?.[i])
+        } else targets[i] = this.merge(layers[i], targets[i], n.blend, n.opacity, clip?.[i], output)
         if (shareMerge) mergedSamples.push({ src, dst, mask, out: targets[i] })
         this.release(layers[i])
       }
@@ -3655,7 +3715,10 @@ export class GpuRenderer {
         this.release(aligned)
       }
       const old = targets[i], boundary = clip?.[i]
-      targets[i] = this.run(25, old.rect, [layer, old, boundary || mask, mask], (u) => {
+      const output = this.suffixRect(old, n) || old.rect
+      await this.reclaimForSurface(output)
+      this.checkFrameCurrent()
+      targets[i] = this.run(25, output, [layer, old, boundary || mask, mask], (u) => {
         u.set([25, blends.indexOf(n.blend), n.opacity, boundary ? 1 : 0], 16)
         u.set([mask.rect.x, mask.rect.y, mask.rect.w, mask.rect.h], 188)
       })
@@ -5901,6 +5964,9 @@ export class GpuRenderer {
         materialFieldBuilds: this.fieldBuilds,
         materialFieldBuildMs: this.fieldBuildMs,
         materialFieldUploadBytes: this.fieldUploadBytes,
+        materialFieldRejectedOversize: this.materialFields.rejectedOversize,
+        materialFieldRejectedPinned: this.materialFields.rejectedPinned,
+        materialFieldRejectedBytes: this.materialFields.rejectedBytes,
         materialFieldCacheBytes: this.materialFields.bytes,
         kernelBuilds: this.kernelBuilds,
         kernelResidentHits: this.kernelResidentHits,

@@ -11,6 +11,17 @@ pub enum Operation {
     Subtract,
     Intersect,
     Exclude,
+    /// Directed contours share one winding evaluation; this is not a union
+    /// of the independently filled operand regions (Sketch operation -1).
+    #[serde(rename = "compoundNonzero")]
+    CompoundNonzero,
+    #[serde(rename = "compoundEvenodd")]
+    CompoundEvenodd,
+}
+impl Operation {
+    pub fn compound_rule(self) -> Option<&'static str> {
+        match self { Self::CompoundNonzero=>Some("nonzero"),Self::CompoundEvenodd=>Some("evenodd"),_=>None }
+    }
 }
 #[derive(Clone)]
 struct Segment {
@@ -124,6 +135,8 @@ pub fn boolean_with_rules(
             Operation::Intersect => bs.iter().all(|b| *b),
             Operation::Subtract => bs[0] && !bs[1..].iter().any(|b| *b),
             Operation::Exclude => bs.iter().filter(|b| **b).count() % 2 != 0,
+            Operation::CompoundNonzero => inputs.iter().map(|cs|i64::from(winding(p,cs))).sum::<i64>()!=0,
+            Operation::CompoundEvenodd => inputs.iter().map(|cs|i64::from(winding(p,cs))).sum::<i64>().abs()%2!=0,
         }
     };
     type Key = (i64, i64);

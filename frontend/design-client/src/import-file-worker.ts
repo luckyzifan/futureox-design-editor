@@ -9,14 +9,19 @@ export type WorkerImportFormat = 'fig' | 'sketch' | 'pdf'
 
 /** One owned worker per import, reclaimed on completion, failure or cancellation. */
 export function importFileInWorker(
-  bytes: ArrayBuffer,
+  input: ArrayBuffer | File,
   name: string,
   format: WorkerImportFormat,
   signal?: AbortSignal,
   diagnostic?: ImportDiagnostic,
 ): Promise<ImportedDesign> {
-  assertImportInputBytes(bytes.byteLength)
-  return runFileWorker({ bytes, name, format }, [bytes], format.toUpperCase(), (message) => {
+  const isBuffer = 'byteLength' in input
+  assertImportInputBytes(isBuffer ? input.byteLength : input.size)
+  // A selected File is structured-cloned as a Blob, not eagerly read in the UI.
+  // The owned worker's termination also cancels adoption after a pending read.
+  // This does not promise zero-copy browser internals or streaming decoding.
+  const payload = isBuffer ? { bytes: input, name, format } : { file: input, name, format }
+  return runFileWorker(payload, isBuffer ? [input] : [], format.toUpperCase(), (message) => {
     const result = message.result as ImportedDesign
     diagnostic?.stage(ImportStage.validate)
     validateDocument(result.document)
@@ -72,14 +77,27 @@ function runFileWorker<T>(
     const abort = () => finish(signal?.reason || new DOMException('文件导入已取消', 'AbortError'))
     const timeout = setTimeout(() => finish(new Error(`${label} 处理超过 30 秒预算；请拆分文件`)), 30_000)
     signal?.addEventListener('abort', abort, { once: true })
-    worker.onerror = (event) => finish(new Error(event.message || '文件导入进程失败'))
-    worker.onmessageerror = () => finish(new Error('文件导入响应无法读取'))
+    const failWorker = (error: Error) => {
+      if (settled) return
+      // A pending File read does not prove that a generic worker/transport
+      // failure came from file I/O. Keep unknown worker failures unknown.
+      diagnostic?.stage(ImportStage.worker)
+      finish(error)
+    }
+    worker.onerror = (event) => failWorker(new Error(event.message || '文件导入进程失败'))
+    worker.onmessageerror = () => failWorker(new Error('文件导入响应无法读取'))
     worker.onmessage = (event) => {
       if (settled) return
       try {
-        if (event.data.error) {
-          if ([ImportStage.initialize, ImportStage.decode].includes(event.data.importStage)) diagnostic?.stage(event.data.importStage)
-          throw new Error(event.data.error)
+        if (event.data?.kind === 'import-stage') {
+          if (![ImportStage.read, ImportStage.initialize].includes(event.data.importStage))
+            throw new Error('文件导入阶段响应无效')
+          diagnostic?.stage(event.data.importStage)
+          return
+        }
+        if (typeof event.data?.error === 'string') {
+          if ([ImportStage.read, ImportStage.initialize, ImportStage.decode].includes(event.data.importStage)) diagnostic?.stage(event.data.importStage)
+          throw new Error(event.data.error || '文件导入失败')
         }
         finish(undefined, decode(event.data))
       } catch (error) { finish(error) }

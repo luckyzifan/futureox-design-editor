@@ -719,6 +719,8 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 })
               }
             >
+              <option value="compoundNonzero">{tr("复合路径（非零绕组）")}</option>
+              <option value="compoundEvenodd">{tr("复合路径（奇偶规则）")}</option>
               {['union', 'subtract', 'intersect', 'exclude'].map((op) => (
                 <option key={op}>{op}</option>
               ))}

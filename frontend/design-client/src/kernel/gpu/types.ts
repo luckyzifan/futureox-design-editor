@@ -110,6 +110,8 @@ export type GpuNode = {
   /** Entire parent suffix after this child, including old pixels outside its
    * shape. Never intersect this rectangle with the child's own geometry. */
   postCompositeBox?: [number, number, number, number]
+  /** Native complete parent suffix demand; source/paint rectangles stay unchanged. */
+  suffixBox?: [number, number, number, number]
   id: string
   rect: Rect
   matrix: Matrix
