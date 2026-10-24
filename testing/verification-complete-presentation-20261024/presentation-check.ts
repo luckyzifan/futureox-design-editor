@@ -15,7 +15,8 @@ const describe = (pixels: Uint8ClampedArray | Uint8Array, width: number, height:
 try {
   const adapter = await navigator.gpu.requestAdapter()
   if (!adapter) throw Error('No WebGPU adapter')
-  report.adapter = { ...adapter.info, fallback: adapter.info.isFallbackAdapter }
+  report.adapter = { vendor: adapter.info.vendor, architecture: adapter.info.architecture,
+    device: adapter.info.device, description: adapter.info.description, fallback: adapter.info.isFallbackAdapter }
   const device = await adapter.requestDevice(), format = navigator.gpu.getPreferredCanvasFormat()
   const canvas = new OffscreenCanvas(16, 16), events: any[] = []
   const presenter = new ResidentPresenter(device, canvas, format, row => events.push(row))
@@ -39,11 +40,33 @@ try {
   presenter.draw(frame([item(half, 8, 16)])); const partial = await read()
   presenter.draw(frame([item(full, 16, 16), item(half, 8, 16, 0, 2)])); const covered = await read()
   presenter.draw(frame([item(full, 16, 16)], 32)); const resizedPartial = await read()
+  let reattached: ReturnType<typeof describe> | undefined
+  if (expected !== 'baseline') {
+    presenter.release([full])
+    const next = new OffscreenCanvas(32, 16), submits = events.filter(e => e.presented).length
+    presenter.attachCanvas(next)
+    await device.queue.onSubmittedWorkDone()
+    const canvasRead = new OffscreenCanvas(next.width, next.height), ctx = canvasRead.getContext('2d')!
+    ctx.drawImage(next, 0, 0)
+    reattached = describe(ctx.getImageData(0, 0, next.width, next.height).data, next.width, next.height)
+    if (events.filter(e => e.presented).length !== submits || !same(reattached.pixels, covered.pixels))
+      throw Error('Reattached canvas lost the accepted pixels or acknowledged the pending camera')
+  }
   presenter.draw(frame([item(wide, 32, 16)], 32)); const resizedComplete = await read()
   // Complete authored transparency must still replace old opaque pixels.
   const transparent = capture(16, 16, [0, 0, 0, 0])
   presenter.draw(frame([item(transparent, 16, 16)])); const authoredTransparent = await read()
-  report.cases.push({ backend: 'webgpu', before, partial, covered, resizedPartial, resizedComplete, authoredTransparent,
+  if (import.meta.env.VITE_DESIGN_PRESENT_ALPHA_TRACE === '1') {
+    const end = performance.now() + 3000, count = events.filter(e => e.presented).length
+    while (events.filter(e => e.alphaSubmitted === 1).length < count && performance.now() < end)
+      await new Promise(resolve => setTimeout(resolve, 10))
+    const alpha = events.filter(e => e.alphaSubmitted === 1)
+    if (alpha.length !== count || alpha.some(e => e.alphaProbeCode !== 0)) throw Error('Missing or failed actual Alpha readback')
+    if (alpha.slice(0, -1).some(e => e.alphaZeroPixels !== 0 || e.alphaMinimum !== 255) || alpha.at(-1).alphaZeroPixels !== 256)
+      throw Error('Actual Alpha counters disagree with pixel readback')
+    report.alpha = alpha
+  }
+  report.cases.push({ backend: 'webgpu', before, partial, covered, resizedPartial, reattached, resizedComplete, authoredTransparent,
     deferred: events.filter(e => e.coverageDeferred).length, submits: events.filter(e => e.presented).length })
   presenter.dispose(); await device.queue.onSubmittedWorkDone(); device.destroy()
 

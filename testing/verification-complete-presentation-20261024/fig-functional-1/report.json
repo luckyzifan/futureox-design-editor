@@ -1,0 +1,191 @@
+{
+  "status": "passed",
+  "scope": "visible independent Electron; real native input, WebGPU, Editor/WASM, SQLite and external FD; only save-dialog path preset; no physical scanout/FPS claim",
+  "checks": [
+    {
+      "name": "quick-zoom",
+      "uiIntervalMaxMs": 16.799999999999272,
+      "uiStalls": 0
+    },
+    {
+      "name": "property-undo-redo",
+      "uiIntervalMaxMs": 166.5,
+      "uiStalls": 0
+    }
+  ],
+  "stages": [
+    {
+      "name": "import-original",
+      "ms": 8283.130958
+    },
+    {
+      "name": "read-imported-sqlite",
+      "ms": 12097.448708
+    },
+    {
+      "name": "quick-zoom",
+      "ms": 1773.8401669999985
+    },
+    {
+      "name": "property-undo-redo",
+      "ms": 4811.5871670000015
+    },
+    {
+      "name": "save-sqlite",
+      "ms": 16881.131458000003
+    },
+    {
+      "name": "save-external-fd",
+      "ms": 2442.037707999996
+    },
+    {
+      "name": "normal-close",
+      "ms": 271.2986249999958
+    },
+    {
+      "name": "reopen-external-fd",
+      "ms": 20296.402792
+    }
+  ],
+  "stage": "reopen-external-fd",
+  "fixture": "/Users/Apple/Downloads/01有料素材 (Copy).fig",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/complete-presentation-20261024-a622dus6/host-complete-quality-1",
+  "instances": [
+    {
+      "pid": 22311,
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/complete-presentation-20261024-a622dus6/fig-functional-1/forma-desktop-manual-d2756f85-af1e-44e4-a856-f09b9fe39454-L1v6IA",
+      "visible": true,
+      "versions": {
+        "node": "24.21.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.7",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.28-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.7.0",
+        "chrome": "152.0.7977.130"
+      },
+      "preferences": {
+        "allowRunningInsecureContent": false,
+        "contextIsolation": true,
+        "disableDialogs": false,
+        "disablePopups": false,
+        "enableBlinkFeatures": "",
+        "experimentalFeatures": false,
+        "javascript": true,
+        "nodeIntegration": false,
+        "nodeIntegrationInSubFrames": false,
+        "nodeIntegrationInWorker": false,
+        "safeDialogs": false,
+        "safeDialogsMessage": "",
+        "sandbox": true,
+        "webSecurity": true,
+        "webviewTag": false
+      }
+    },
+    {
+      "pid": 23514,
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/complete-presentation-20261024-a622dus6/fig-functional-1/forma-desktop-manual-5753ce17-1f53-48f3-a9d6-2f8925fbcb4d-55yGEE",
+      "visible": true,
+      "versions": {
+        "node": "24.21.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.7",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.28-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.7.0",
+        "chrome": "152.0.7977.130"
+      },
+      "preferences": {
+        "allowRunningInsecureContent": false,
+        "contextIsolation": true,
+        "disableDialogs": false,
+        "disablePopups": false,
+        "enableBlinkFeatures": "",
+        "experimentalFeatures": false,
+        "javascript": true,
+        "nodeIntegration": false,
+        "nodeIntegrationInSubFrames": false,
+        "nodeIntegrationInWorker": false,
+        "safeDialogs": false,
+        "safeDialogsMessage": "",
+        "sandbox": true,
+        "webSecurity": true,
+        "webviewTag": false
+      }
+    }
+  ],
+  "motionStart": 1792845769923,
+  "foreground": [
+    {
+      "at": 1792845769935,
+      "visible": "visible",
+      "focused": true
+    },
+    {
+      "at": 1792845771701,
+      "visible": "visible",
+      "focused": true
+    }
+  ],
+  "motionEnd": 1792845771697,
+  "propertyStart": 1792845771697,
+  "propertyEnd": 1792845776353,
+  "fd": {
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/complete-presentation-20261024-a622dus6/fig-functional-1/verified-fig.fd",
+    "bytes": 11786613,
+    "sha256": "0ee071f5ebc0ed8a33da80c3015009f07bcf6c68d05d2e63d787a6366a362092"
+  },
+  "importCopyIds": {
+    "saved": "507e489a-adf2-4a0a-a789-1cd3d98b9299",
+    "reopened": "79f1df19-e81f-4100-852d-a61d8f99e0a8"
+  },
+  "reopenExactExceptImportCopyId": true
+}

@@ -4,8 +4,8 @@ import { producerIdentityFields, sanitizeProducerIdentity } from './render-diagn
 // Strict scalar allowlist shared by worker, renderer and terminal. Never stringify a render payload.
 const tileCostLimits = {imageAxisFields:1e9,imageFieldBytes:1e12,displayImageSourcePasses:1e9,nestedPrefixHits:1e9,nestedPrefixBuilds:1e9,nestedPrefixBytes:67108864,staticImageBlurEligible:1e9,staticImageBlurHits:1e9,staticImageBlurPixels:1e12,staticImageBlurBytes:17825792,staticImageBlurEntries:1,wholeFilterAxes:1e9,opaqueTentPasses:1e9,imageXTableBuilds:1e6,imageXTablePixels:1e12,imageXTableBytes:41943040,tileCacheDecision:5,tileCostSamples:2048,costSamplesOmitted:1e9,tileCostUnavailable:63,tileCostCapped:1,outputPixelVisits:1e12,sourcePixelVisits:1e12,sourcePixelAreaMax:1e9,supportRectExpansionMax:1e7,packetNodeVisits:1e9,sampledPacketNodeVisits:1e9,effectBlurVisits:1e9,effectBackdropVisits:1e9,effectShadowVisits:1e9,effectOtherVisits:1e9,costScanOmittedNodes:1e9,costScanOmittedEffects:1e9,encodedPassPixels:1e15,fieldBuildElapsedMs:120000,graphNonCheckpointElapsedMs:120000,materialFieldBuilds:1e9,materialFieldHits:1e9,materialFieldUploadBytes:1e12,materialFieldRejectedOversize:1e9,materialFieldRejectedPinned:1e9,materialFieldRejectedBytes:1e12,tileDrawCalls:1e9,tileCommandSubmissions:1e9,horizontalFilterHits:1e9,horizontalFilterRows:1e12,horizontalFilterPixels:1e12}
 export const PREFIX = '[render-diag] '
-Object.assign(tileCostLimits, { scenePacketVersion:2, scenePacketBytes:1e12,
- scenePacketMetadataBytes:1e12, scenePacketImageBytes:1e12 })
+Object.assign(tileCostLimits, { scenePacketProtocol:2, scenePacketVersion:1, scenePacketBytes:1e12, frameResourceHits:1e12, frameResourceBytes:33554432,
+ scenePacketMetadataBytes:1e12, scenePacketResourceBytes:1e12 })
 Object.assign(tileCostLimits, { coverageDeferred:1, coverageDeferredDraws:4096 })
 Object.assign(tileCostLimits, { alphaFrame:1e12, alphaSequence:1e12, alphaWidth:1e7, alphaHeight:1e7,
  alphaMinimum:255, alphaNonOpaquePixels:1e9, alphaZeroPixels:1e9, alphaPixelCount:1e9, alphaProbeCode:4, alphaSubmitted:1 })

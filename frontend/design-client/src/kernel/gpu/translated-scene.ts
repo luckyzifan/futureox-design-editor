@@ -2,7 +2,7 @@ import type { DesignDocument, Matrix } from '../../model'
 import { equalValue } from '../../document-patch'
 import type { GpuPaint, GpuScene, PathMesh, Rect } from './types'
 
-import { sceneIndex, inheritTranslatedIndex } from './scene-index'
+import { sceneIndex, inheritTranslatedIndex, rebindSceneIndex } from './scene-index'
 
 function stableConstraints(scene: GpuScene, document: DesignDocument, id: string, parents: Map<string, string>) {
   const constraints = document.nodes[id]?.constraints
@@ -24,7 +24,7 @@ export function preparePreviewSelection(scene: GpuScene, ids: readonly string[])
   if (!changed.size) return scene
   const nodes = { ...scene.nodes }
   for (const id of changed) nodes[id] = { ...nodes[id], previewDynamic: true, previewSource: undefined }
-  return { ...scene, nodes }
+  const result={...scene,nodes};rebindSceneIndex(scene,result);return result
 }
 
 /** A stationary clipped frame keeps the same backdrop read/output support

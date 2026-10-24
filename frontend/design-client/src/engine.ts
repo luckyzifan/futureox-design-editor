@@ -1,4 +1,5 @@
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
+import type { CanvasSceneBorrow } from './canvas-scene-snapshots'
 import { PreviewLayout } from './kernel/preview-layout'
 import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
@@ -192,6 +193,12 @@ type History = { doc: DesignDocument; page: string; selection: string[]; label: 
 class GeometryCancelled extends Error {}
 export type EditorEditEvent = { documentId: string; session: number; revision: number; source: 'user' | 'automation'; kind: 'edit' | 'undo' | 'redo'; summary: string }
 export class Editor {
+  private publishedScene?: CanvasSceneBorrow
+  /** Borrow Canvas's two existing slots; no extra geometry/history cache. */
+  bindPublishedScene(borrow: CanvasSceneBorrow | undefined) {
+    this.publishedScene = borrow
+    return () => { if (this.publishedScene === borrow) this.publishedScene = undefined }
+  }
   // Published documents are immutable snapshots. Keep topology and clip/mask
   // transforms with that snapshot, never with a mutable edit draft or a point.
   private pickContexts = new WeakMap<DesignDocument, { nodes: DesignDocument['nodes']; pages: DesignDocument['pages']; version?: number; parents: Map<string, string>; matrices: Map<string, Matrix> }>()
@@ -1170,7 +1177,8 @@ export class Editor {
     })
   }
   entries() {
-    return scene(this.state.doc, this.state.page)
+    const entries = this.publishedScene?.entriesFor(this.state.doc, this.state.page, this.sessionGeneration)
+    return entries ? [...entries] : scene(this.state.doc, this.state.page)
   }
   selectionBounds() {
     const ids = new Set(this.topSelection())

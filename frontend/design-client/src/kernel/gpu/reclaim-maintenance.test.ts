@@ -31,6 +31,25 @@ test('a high working set without evictable images accumulates tiny maintenance p
   expect(f.renderer.free.get('128:64')).toEqual([f.pooled])
 })
 
+test('no-maintenance node completions do constant work independent of the reusable pool size', async () => {
+  const f = fixture()
+  const list = Array.from({ length: 8192 }, () => ({ width: 1, height: 1, bytes: 16, resource: {} } as Texture))
+  f.renderer.free.set('1:1', list)
+  const visits = vi.spyOn(f.renderer.admissionPins, 'has')
+  for (let i = 0; i < 80; i++) await f.renderer.reclaimScratch()
+  expect(visits.mock.calls.length).toBeLessThanOrEqual(80)
+  expect(f.renderer.free.get('1:1')).toBe(list)
+  expect(f.renderer.bytes).toBe(203 * MiB)
+  expect(f.driver.checkpoint).not.toHaveBeenCalled()
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+  const pending = f.renderer.reclaimScratch(64 * MiB)
+  expect(visits.mock.calls.length).toBeGreaterThanOrEqual(list.length)
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce()
+  f.fail(); await expect(pending).rejects.toThrow('lost fence')
+  expect(f.renderer.free.get('1:1')).toBe(list)
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+})
+
 test.each(['pending', 'active'] as const)('a %s table source does not trigger an empty maintenance fence', async owner => {
   for (const kind of ['image', 'atlas', 'empty-atlas']) {
     const f = fixture(), image = { width: 1024, height: 1024, bytes: 16 * MiB, resource: {} } as Texture

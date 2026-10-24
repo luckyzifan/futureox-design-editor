@@ -1,0 +1,21 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/complete-presentation-20261024-a622dus6/host-complete-quality-1",
+  "configuration": {
+    "VITE_DESIGN_NATIVE_VISIBLE_TILES": "0",
+    "VITE_DESIGN_PARENT_SUFFIX": "0",
+    "VITE_DESIGN_IMAGE_ASSET_RESIDENCY": "0",
+    "VITE_DESIGN_PACKET_IMAGE_TABLE": "0",
+    "VITE_DESIGN_EXACT_CLAMP_PREFIX": "0",
+    "VITE_DESIGN_MOTION_QUALITY_TRACE": "1",
+    "VITE_DESIGN_PRESENT_ALPHA_TRACE": "0"
+  },
+  "artifacts": {
+    "dist/build-manifest.json": "ba993fc0526eb160f0e13f4886d2d299e78a20a93a64bef1fcab792ebcc01a5c",
+    "dist/renderer/kernel/design_kernel_bg.wasm": "25c15e16ed77a8b3e21dabbb3deb236b2350d2bc8c33e25169ff7fe52c99221c",
+    "dist/bin/design-prepare": "b677446d5ec313ae221735fc8a0c06eb960a839da267c39d531f75cd50fe6dbc",
+    "dist/sidecar/futureox-design-desktop-backend": "4aec11d19e948d0c5ee790f12f823bb4a7aa7e1b3bd31d980f5a8e1be0aa57bb"
+  },
+  "runtime": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/render-core-20261024-s_4b1g9z",
+  "sourceHead": "c63818dadc27b2eeed9eca1708b7a995705a754f",
+  "scope": "Complete core-boundary implementation and removal of replaced paths; baseline has known motion sharpness failures; budgets and precision fixed."
+}

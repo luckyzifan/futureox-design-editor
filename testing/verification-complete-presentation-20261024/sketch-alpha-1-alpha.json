@@ -1,0 +1,10 @@
+{
+  "scope": "actual content texture per submitted logical frame; these fixtures have an opaque canvas background; no physical scanout or timing claim",
+  "status": "passed",
+  "submittedFrames": 248,
+  "measuredFrames": 248,
+  "deferredFrames": 0,
+  "minAlpha": 255,
+  "maximumZeroPixels": 0,
+  "failures": []
+}
