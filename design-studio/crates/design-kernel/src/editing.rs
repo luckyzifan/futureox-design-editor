@@ -20,6 +20,19 @@ pub struct DocumentPatch {
     #[serde(default)]
     pub fields: BTreeMap<String, serde_json::Value>,
 }
+/// A successful patch and the exact serialized size checked for that same
+/// document. Fields stay private; consuming the result transfers the document
+/// and its receipt together. It certifies no later mutation of the document.
+pub(crate) struct AppliedDocument {
+    document: Document,
+    serialized_bytes: usize,
+}
+impl AppliedDocument {
+    pub(crate) fn into_parts(self) -> (Document, usize) {
+        (self.document, self.serialized_bytes)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EditError {
@@ -41,7 +54,17 @@ fn error(code: &'static str, message: impl Into<String>) -> EditError {
 fn check_document_size(document: &Document) -> Result<(), EditError> {
     serialized_document_size(document).map(|_| ())
 }
+#[cfg(test)]
+std::thread_local! {
+    static DOCUMENT_SIZE_COUNT_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+#[cfg(test)]
+pub(crate) fn document_size_count_calls() -> usize {
+    DOCUMENT_SIZE_COUNT_CALLS.with(std::cell::Cell::get)
+}
 pub(crate) fn serialized_document_size(document: &Document) -> Result<usize, EditError> {
+    #[cfg(test)]
+    DOCUMENT_SIZE_COUNT_CALLS.with(|calls| calls.set(calls.get() + 1));
     count_json_bytes(document, crate::capacity::document_byte_limit()).map_err(|e| error("document_budget", e.to_string()))
 }
 /// Exact wire size without allocating a discarded JSON byte buffer.
@@ -150,6 +173,9 @@ impl DocumentPatch {
         Ok(Self { nodes, fields })
     }
     pub(crate) fn apply(&self, before: &Document) -> Result<Document, EditError> {
+        self.apply_with_size(before).map(|applied| applied.into_parts().0)
+    }
+    pub(crate) fn apply_with_size(&self, before: &Document) -> Result<AppliedDocument, EditError> {
         let mut result = before.clone();
         for (id, node) in &self.nodes {
             if let Some(node) = node {
@@ -206,13 +232,13 @@ impl DocumentPatch {
         result
             .validate()
             .map_err(|e| error("invalid_document", e))?;
-        check_document_size(&result)?;
+        let serialized_bytes = serialized_document_size(&result)?;
         if self.fields.contains_key("fonts") {
             crate::font::Fonts::new()
                 .with_resources(&result.fonts)
                 .map_err(|e| error("invalid_font", e))?;
         }
-        Ok(result)
+        Ok(AppliedDocument { document: result, serialized_bytes })
     }
     fn empty(&self) -> bool {
         self.nodes.is_empty() && self.fields.is_empty()
@@ -467,5 +493,164 @@ impl DocumentEditor {
             .ok_or_else(|| error("no_transaction", "Begin a transaction first"))?;
         let candidate = std::mem::replace(&mut self.document, base);
         self.publish(candidate)
+    }
+}
+
+
+#[cfg(test)]
+mod applied_document_size_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn source() -> Document {
+        serde_json::from_value(json!({
+            "schemaVersion": 2, "id": "size-receipt", "name": "size",
+            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["n"]}],
+            "nodes": {"n": {"id": "n", "kind": "rectangle", "width": 16, "height": 20}}
+        })).unwrap()
+    }
+
+    fn check(before: &Document, patch: &DocumentPatch) -> Document {
+        let original = serde_json::to_vec(before).unwrap();
+        let (document, bytes) = patch.apply_with_size(before).unwrap().into_parts();
+        assert_eq!(bytes, serde_json::to_vec(&document).unwrap().len());
+        assert!(bytes > 0, "an unchanged document is not a zero-byte receipt");
+        assert_eq!(patch.apply(before).unwrap(), document, "the existing wrapper stays identical");
+        assert_eq!(serde_json::to_vec(before).unwrap(), original, "application does not mutate the base");
+        document
+    }
+
+    #[test]
+    fn checked_receipt_covers_noop_escaping_schema_and_numeric_lengths() {
+        let before = source();
+        assert_eq!(check(&before, &DocumentPatch::default()), before);
+        let mut next = before.clone();
+        next.name = "引号\"\n反斜杠\\🦀".into();
+        next.schema_version = 16;
+        for x in [0.0, -0.0, -123456.875, 0.000000125, 9999999.25] {
+            next.nodes.get_mut("n").unwrap().transform.0[4] = x;
+            // Explicitly include the node: f64 PartialEq considers +0 and -0
+            // equal, so `between` alone is not evidence that -0 was applied.
+            let mut patch = DocumentPatch::between(&before, &next).unwrap();
+            patch.nodes.insert("n".into(), Some(next.nodes["n"].clone()));
+            let actual = check(&before, &patch);
+            assert_eq!(actual.nodes["n"].transform.0[4].to_bits(), x.to_bits());
+            assert_eq!(serde_json::to_vec(&actual).unwrap(), serde_json::to_vec(&next).unwrap());
+        }
+    }
+
+    #[test]
+    fn checked_receipt_matches_actual_document_after_removal() {
+        let before = source();
+        let mut next = before.clone();
+        next.nodes.remove("n");
+        next.pages[0].children.clear();
+        assert_eq!(check(&before, &DocumentPatch::between(&before, &next).unwrap()), next);
+    }
+
+    #[test]
+    fn checked_receipt_errors_match_wrapper_and_leave_base_unchanged() {
+        let before = source();
+        let original = serde_json::to_vec(&before).unwrap();
+        let mut invalid_node = before.nodes["n"].clone();
+        invalid_node.transform.0[4] = f64::NAN;
+        let patches = [
+            DocumentPatch { nodes: [("n".into(), Some(invalid_node))].into(), fields: BTreeMap::new() },
+            DocumentPatch { nodes: BTreeMap::new(), fields: [("schemaVersion".into(), json!(0))].into() },
+            DocumentPatch { nodes: BTreeMap::new(), fields: [("unknownReceiptField".into(), json!(1))].into() },
+            DocumentPatch { nodes: [("n".into(), None)].into(), fields: BTreeMap::new() },
+        ];
+        for patch in patches {
+            let checked = patch.apply_with_size(&before).err().expect("must not issue a receipt");
+            assert_eq!(checked, patch.apply(&before).unwrap_err());
+            assert_eq!(serde_json::to_vec(&before).unwrap(), original);
+        }
+    }
+
+    #[test]
+    fn exact_counter_preserves_inclusive_byte_budget_boundary() {
+        let document = source();
+        let bytes = serde_json::to_vec(&document).unwrap().len();
+        assert_eq!(count_json_bytes(&document, bytes).unwrap(), bytes);
+        assert!(count_json_bytes(&document, bytes - 1).is_err());
+    }
+
+    #[test]
+    fn wrapper_history_undo_redo_keeps_exact_document_accounting() {
+        let before = source();
+        let mut next = before.clone();
+        next.name = "renamed \"文档\"".into();
+        next.nodes.get_mut("n").unwrap().transform.0[4] = -1234.875;
+        let mut editor = DocumentEditor::new(before.clone()).unwrap();
+        editor.apply(0, DocumentPatch::between(&before, &next).unwrap()).unwrap();
+        assert_eq!(editor.document(), &next);
+        assert_eq!(editor.document_bytes, serde_json::to_vec(editor.document()).unwrap().len());
+        editor.undo().unwrap();
+        assert_eq!(editor.document(), &before);
+        assert_eq!(editor.document_bytes, serde_json::to_vec(editor.document()).unwrap().len());
+        editor.redo().unwrap();
+        assert_eq!(editor.document(), &next);
+        assert_eq!(editor.document_bytes, serde_json::to_vec(editor.document()).unwrap().len());
+    }
+}
+
+#[cfg(test)]
+mod receipt_failure_boundary_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn source() -> Document {
+        serde_json::from_value(json!({
+            "schemaVersion": 2, "id": "receipt-failures", "name": "before",
+            "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["n"]}],
+            "nodes": {"n": {"id": "n", "kind": "rectangle", "width": 16, "height": 20}}
+        })).unwrap()
+    }
+
+    #[test]
+    fn invalid_font_never_issues_a_receipt_and_keeps_error_order() {
+        let before = source();
+        let serialized = serde_json::to_vec(&before).unwrap();
+        let patch = DocumentPatch {
+            nodes: Default::default(),
+            fields: [("fonts".into(), json!({"bad": {"family": "Broken", "data": "!"}}))].into(),
+        };
+        let error = patch.apply_with_size(&before).err().unwrap();
+        assert_eq!(error.code, "invalid_font");
+        assert_eq!(error, patch.apply(&before).unwrap_err());
+        assert_eq!(serde_json::to_vec(&before).unwrap(), serialized);
+        let mut invalid = patch;
+        invalid.fields.insert("schemaVersion".into(), json!(0));
+        assert_eq!(invalid.apply_with_size(&before).err().unwrap().code, "invalid_document");
+    }
+
+    // This test changes the pinned process capacity. Run ALONE in a fresh
+    // process with the exact filter documented in TEST-PLAN.md, never in the
+    // ordinary parallel suite or alongside another ignored capacity test.
+    #[test]
+    #[ignore = "isolated process only: pins exact document capacity"]
+    fn full_apply_receipt_preserves_exact_budget_boundary() {
+        let before = source();
+        let mut at_limit = before.clone();
+        at_limit.name = "x".repeat(100);
+        let exact = serde_json::to_vec(&at_limit).unwrap().len();
+        crate::capacity::configure(exact as u64 * crate::capacity::REPRESENTATION_RESERVE).unwrap();
+        assert_eq!(crate::capacity::document_byte_limit(), exact);
+        let patch = DocumentPatch::between(&before, &at_limit).unwrap();
+        let (actual, bytes) = patch.apply_with_size(&before).unwrap().into_parts();
+        assert_eq!(bytes, exact);
+        assert_eq!(actual, at_limit);
+        let mut over = at_limit.clone();
+        over.name.push('x');
+        assert_eq!(serde_json::to_vec(&over).unwrap().len(), exact + 1);
+        let rejected = DocumentPatch::between(&before, &over).unwrap();
+        let error = rejected.apply_with_size(&before).err().unwrap();
+        assert_eq!(error.code, "document_budget");
+        assert_eq!(error, rejected.apply(&before).unwrap_err());
+        assert_eq!(before.name, "before");
+        let mut both = rejected;
+        both.fields.insert("fonts".into(), json!({"bad": {"family": "Broken", "data": "!"}}));
+        assert_eq!(both.apply_with_size(&before).err().unwrap().code, "document_budget",
+            "the original byte-budget-before-font failure ordering is retained");
     }
 }

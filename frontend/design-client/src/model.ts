@@ -258,7 +258,7 @@ export type DesignNode = {
   arc?: EllipseArc
   cornerRadius?: number
   constrainProportions?: boolean
-  booleanOperation?: 'union' | 'subtract' | 'intersect' | 'exclude'
+  booleanOperation?: 'union' | 'subtract' | 'intersect' | 'exclude' | 'compoundNonzero' | 'compoundEvenodd'
   bindings?: Record<string, string>
   styleRefs?: Record<string, string>
   /** Local collection selections, inherited by descendants. Instance roots keep authored placement only. */
@@ -620,6 +620,9 @@ export function hasPatternTiles(d: Pick<DesignDocument,'nodes'|'animations'|'des
     Object.values(d.designSystem?.styles || {}).some(s => s.kind === 'paint' && Array.isArray(s.value) && tiled(s.value))
 }
 export function validateVariableModes(d: DesignDocument) {
+  validateNodeVariableModes(d, Object.values(d.nodes))
+}
+function validateNodeVariableModes(d: DesignDocument, nodes: DesignNode[]) {
   if (d.schemaVersion < 6 && hasLocalVariableModes(d))
     throw new Error('局部变量模式需要设计文件版本 6')
   const validateModes = (modes: unknown) => {
@@ -638,9 +641,9 @@ export function validateVariableModes(d: DesignDocument) {
     )
       throw new Error('局部变量模式或集合无效')
   }
-  for (const n of Object.values(d.nodes)) {
+  for (const n of nodes) {
     if (n?.variableModes !== undefined) validateModes(n.variableModes)
-    for (const fields of Object.values(n?.instance?.overrides || {})) {
+    if (n?.instance?.overrides) for (const fields of Object.values(n.instance.overrides)) {
       if (!isObject(fields)) throw new Error('实例覆盖数据无效')
       if (Object.hasOwn(fields, 'variableModes')) {
         if (!d.designSystem) throw new Error('局部变量模式覆盖需要设计系统')
@@ -661,6 +664,9 @@ export function validateDocument(value: unknown): DesignDocument {
     throw new Error('无效的设计文件或不支持的格式版本')
   validateFdCompatibility(value.fdCompatibility)
   const d = value as unknown as DesignDocument
+  // Reuse one local enumeration while retaining every validation below.
+  // This is not a cached validity certificate for mutable document objects.
+  const entries = Object.entries(d.nodes), nodes = entries.map(([, node]) => node)
   let guideCount=0
   const validateGuides=(guides:unknown,frame=true)=>{
     if(guides===undefined)return
@@ -670,13 +676,13 @@ export function validateDocument(value: unknown): DesignDocument {
     guideCount+=guides.length;if(guideCount>20000)throw new Error('参考线数量超限')
   }
   for(const page of d.pages)validateGuides(page?.guides)
-  for(const n of Object.values(d.nodes))validateGuides(n?.guides,!!n&&['frame','section'].includes(n.kind))
+  for(const n of nodes)validateGuides(n?.guides,!!n&&['frame','section'].includes(n.kind))
   if (d.rasterProfile !== undefined && !['analytic', 'figma', 'figmaSoftware'].includes(d.rasterProfile))
     throw new Error('未知的文档渲染模式')
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!uuid.test(d.id) || !d.name.trim() || d.name.length > 200 || !wellFormed(d.name))
     throw new Error('文档标识或名称无效')
-  if (Object.values(d.nodes).some(n=>n.kind==='slice' && (d.schemaVersion<10 || n.fills.length || n.strokes.length || n.effects.length || n.children.length || n.network || n.mask))) throw new Error('切片需要版本10，且不能包含绘制内容')
+  if (nodes.some(n=>n.kind==='slice' && (d.schemaVersion<10 || n.fills.length || n.strokes.length || n.effects.length || n.children.length || n.network || n.mask))) throw new Error('切片需要版本10，且不能包含绘制内容')
   if(d.reviews!==undefined){
     if(!Array.isArray(d.reviews)||d.reviews.length>2000||(d.reviews.length&&d.schemaVersion<10))throw new Error('本地评论需要版本10')
     const ids=new Set<string>()
@@ -686,12 +692,11 @@ export function validateDocument(value: unknown): DesignDocument {
       for(const m of r.messages){if(!m||typeof m.id!=='string'||!m.id||m.id.length>128||ids.has(m.id)||typeof m.author!=='string'||!m.author||m.author.length>200||typeof m.text!=='string'||!m.text.trim()||m.text.length>10000||!Number.isSafeInteger(m.createdAt)||m.createdAt<0)throw new Error('本地评论消息无效');ids.add(m.id)}
     }
   }
-  for(const n of Object.values(d.nodes))if(n.network?.filledFaces!==undefined && (d.schemaVersion<10||!Array.isArray(n.network.filledFaces)||n.network.filledFaces.length>10000||n.network.filledFaces.some(f=>!Array.isArray(f)||f.length>10000||f.some(id=>!n.network!.edges.some(e=>e.id===id)))))throw new Error('矢量区域填充数据无效')
-  for(const n of Object.values(d.nodes))if(n.pathOffset!==undefined&&(!Number.isFinite(n.pathOffset)||Math.abs(n.pathOffset)>10000||(n.pathOffset!==0&&(d.schemaVersion<10||['text','frame','section','group','slice'].includes(n.kind)))))throw new Error('路径偏移数据无效')
-  if(hasLocalTools(d)&&d.schemaVersion<10)throw new Error('本地扩展工具需要设计文件版本10')
-  for (const n of Object.values(d.nodes)) if (n.vectorBrush !== undefined) validateVectorBrush(n)
-  const entries = Object.entries(d.nodes)
-  validateVariableModes(d)
+  for(const n of nodes)if(n.network?.filledFaces!==undefined && (d.schemaVersion<10||!Array.isArray(n.network.filledFaces)||n.network.filledFaces.length>10000||n.network.filledFaces.some(f=>!Array.isArray(f)||f.length>10000||f.some(id=>!n.network!.edges.some(e=>e.id===id)))))throw new Error('矢量区域填充数据无效')
+  for(const n of nodes)if(n.pathOffset!==undefined&&(!Number.isFinite(n.pathOffset)||Math.abs(n.pathOffset)>10000||(n.pathOffset!==0&&(d.schemaVersion<10||['text','frame','section','group','slice'].includes(n.kind)))))throw new Error('路径偏移数据无效')
+  if(d.schemaVersion<10&&hasLocalTools(d))throw new Error('本地扩展工具需要设计文件版本10')
+  for (const n of nodes) if (n.vectorBrush !== undefined) validateVectorBrush(n)
+  validateNodeVariableModes(d, nodes)
   if (d.schemaVersion < 9 && hasGradientBlur(d)) throw new Error('渐变模糊需要设计文件版本 9')
   if (d.schemaVersion < 13 && hasImageAdjusts(d)) throw new Error('图片调整需要设计文件版本 13')
   if (d.schemaVersion < 14 && hasPatternTiles(d)) throw new Error('图案平铺需要设计文件版本 14')
@@ -1063,10 +1068,15 @@ export function validateDocument(value: unknown): DesignDocument {
     if(n.vectorGeometry!==undefined) {
       const geometry=n.vectorGeometry
       if(d.schemaVersion<16||n.kind!=='vector'||n.network||n.vectorBrush||!isObject(geometry)||Object.keys(geometry).some(key=>!['fillRule','fill','stroke'].includes(key))||!['evenodd','nonzero'].includes(geometry.fillRule)||!Array.isArray(geometry.fill)||(geometry.stroke!==undefined&&!Array.isArray(geometry.stroke))||geometry.fill.length+(geometry.stroke?.length??0)>131072)throw Error('矢量路径需要版本 16，且必须只有一个权威几何表示')
-      for(const curves of [geometry.fill,geometry.stroke??geometry.fill])for(const curve of curves){
+      // Missing stroke reuses this exact fill array. Validate each carrier once,
+      // and avoid allocating an entries array and opcode map per curve. Dense
+      // imported geometry still visits every coordinate on every admission.
+      for(const curves of geometry.stroke===undefined||geometry.stroke===geometry.fill?[geometry.fill]:[geometry.fill,geometry.stroke])for(const curve of curves){
         if(curve==='close')continue
-        if(!isObject(curve)||Object.keys(curve).length!==1)throw Error('矢量曲线命令无效')
-        const [op,values]=Object.entries(curve)[0],length=({move:2,line:2,quad:4,cubic:6} as Record<string,number>)[op]
+        if(!isObject(curve))throw Error('矢量曲线命令无效')
+        const keys=Object.keys(curve)
+        if(keys.length!==1)throw Error('矢量曲线命令无效')
+        const op=keys[0],values=(curve as Record<string,unknown>)[op],length=op==='move'||op==='line'?2:op==='quad'?4:op==='cubic'?6:0
         if(!length||!Array.isArray(values)||values.length!==length||!values.every(v=>finite(v)))throw Error('矢量曲线坐标无效')
       }
     }

@@ -247,3 +247,141 @@ test('aggregate resource rejection occurs before JSON serialization allocation',
   assert.equal(serialized,false);assert.equal(client.pendingBytes,0);assert.equal(client.pending.size,0)
  }finally{await client.stop()}
 })
+
+test('scene preparation and commit share long-job deadlines before and after scheduling receipts', async () => {
+  for (const method of ['large.scene', 'large.sceneCommit']) {
+    const fixture = fake({ respond: false })
+    const client = new Sidecar('/trusted/backend', '/trusted/recovery', { ...fixture, timeoutMs: 20 })
+    const pending = client.request(method).catch(error => error)
+    const id = [...client.pending.keys()][0]
+    try {
+      assert.equal(client.executionTimeout(method), 600_000)
+      assert.equal(client.executionTimeout('large.sceneRead'), 20)
+      await new Promise(resolve => setTimeout(resolve, 50))
+      assert.equal(client.stopped, false, `${method}: submission must not use the ordinary timeout`)
+      fixture.process.stdout.write(JSON.stringify({ desktopScheduling: { id, phase: 'queued' } }) + '\n')
+      fixture.process.stdout.write(JSON.stringify({ desktopScheduling: { id, phase: 'running' } }) + '\n')
+      await new Promise(resolve => setTimeout(resolve, 50))
+      assert.equal(client.stopped, false, `${method}: running must retain the long-job timeout`)
+      fixture.process.stdout.write(JSON.stringify({ id, result: { completed: true } }) + '\n')
+      assert.equal((await pending).completed, true)
+      assert.deepEqual(fixture.process.signals, [])
+    } finally {
+      client.fail(Object.assign(new Error('Test end'), { code: 'BACKEND_UNAVAILABLE' }))
+      await pending
+      await client.stop()
+    }
+  }
+})
+
+test('scene cancellation uses the reserved control slot without admitting a ninth data job or replaying writes', async () => {
+  const fixture = fake({ respond: false })
+  const sent = []
+  let input = '', requestWrites = []
+  // Control the write-completion boundary explicitly. A backend response ACK
+  // may precede stdin callbacks, so it does not itself release a reservation.
+  fixture.process.stdin.write = (frame, callback) => {
+    requestWrites.push({ callback, completed: false })
+    input += frame.toString()
+    let end
+    while ((end = input.indexOf('\n')) >= 0) {
+      const request = JSON.parse(input.slice(0, end)); input = input.slice(end + 1)
+      sent.push({ ...request, writes: requestWrites, pending: client.pending.get(request.id) })
+      requestWrites = []
+      if (request.method === 'cancel') queueMicrotask(() => fixture.process.stdout.write(JSON.stringify({ id: request.id, result: { running: true, cancelled: false } }) + '\n'))
+    }
+    return true
+  }
+  const completeWrite = write => {
+    assert.equal(write.completed, false, 'each stdin completion is delivered exactly once')
+    const callback = write.callback
+    write.callback = undefined
+    write.completed = true
+    callback()
+  }
+  const client = new Sidecar('/trusted/backend', '/trusted/recovery', fixture)
+  const scene = client.request('large.scene').catch(error => error)
+  const commit = client.request('large.sceneCommit').catch(error => error)
+  const ordinary = Array.from({ length: 6 }, () => client.request('health').catch(error => error))
+  let testFailure
+  try {
+    assert.equal(client.admittedCount, 8)
+    assert.equal(sent.length, 8)
+    for (const request of sent) for (const write of request.writes) completeWrite(write)
+    const dataBytes = client.pendingBytes
+    assert.equal(client.admittedCount, 8, 'completed data writes still await their responses')
+    const jobs = [...client.pending].filter(([, value]) => ['large.scene', 'large.sceneCommit'].includes(value.method)).map(([id]) => id)
+    await assert.rejects(client.request('health'), { code: 'BUSY' })
+    assert.deepEqual(await client.cancelLargeDocument(), { requested: 2, running: true, cancelled: false })
+    const controls = sent.filter(request => request.method === 'cancel')
+    assert.deepEqual(controls.map(request => request.params.requestId), jobs)
+    assert.equal(client.pending.size, 8, 'both cancellation responses have been consumed')
+    for (const control of controls) {
+      assert.equal(control.pending.completed, true)
+      assert.equal(control.pending.allQueued, true)
+      assert.equal(control.pending.written, false)
+      assert.equal(control.pending.outstandingWrites, control.writes.length)
+      assert.ok(control.writes.length > 0)
+    }
+    assert.equal(client.admittedCount, 8 + controls.length, 'ACKed controls remain reserved until all writes complete')
+    assert.equal(client.pendingBytes, dataBytes + controls.reduce((bytes, control) => bytes + control.pending.bytes, 0))
+    await assert.rejects(client.request('health'), { code: 'BUSY' })
+    for (const control of controls) {
+      const countBefore = client.admittedCount, bytesBefore = client.pendingBytes
+      for (let i = 0; i < control.writes.length; i++) {
+        completeWrite(control.writes[i])
+        const finalWrite = i === control.writes.length - 1
+        assert.equal(client.admittedCount, countBefore - (finalWrite ? 1 : 0))
+        assert.equal(client.pendingBytes, bytesBefore - (finalWrite ? control.pending.bytes : 0))
+      }
+      assert.equal(control.pending.written, true)
+      assert.equal(control.pending.released, true)
+      assert.equal(control.pending.outstandingWrites, 0)
+    }
+    assert.equal(client.admittedCount, 8)
+    assert.equal(client.pendingBytes, dataBytes)
+    await assert.rejects(client.request('health'), { code: 'BUSY' })
+    client.fail(Object.assign(new Error('Reply lost'), { code: 'BACKEND_UNAVAILABLE' }))
+    assert.equal((await scene).outcomeUnknown, false)
+    assert.equal((await commit).outcomeUnknown, true)
+    assert.equal(sent.filter(request => request.method === 'large.sceneCommit').length, 1)
+    assert.equal(client.pendingBytes, 0)
+  } catch (error) {
+    testFailure = error
+  } finally {
+    let cleanupFailure
+    const retainCleanupFailure = error => { cleanupFailure ??= error }
+    try { client.fail(Object.assign(new Error('Test end'), { code: 'BACKEND_UNAVAILABLE' })) }
+    catch (error) { retainCleanupFailure(error) }
+    const heldWrites = [...new Set([...sent.flatMap(request => request.writes), ...requestWrites])]
+    for (const write of heldWrites) {
+      if (!write.completed) {
+        try { completeWrite(write) } catch (error) { retainCleanupFailure(error) }
+      }
+    }
+    try {
+      assert.equal(client.stopped, true)
+      assert.equal(client.pendingBytes, 0, 'late completions cannot underflow the cleared byte ledger')
+      assert.equal(client.admittedCount, 0, 'late completions cannot underflow the cleared count ledger')
+      assert.ok(heldWrites.every(write => write.completed && write.callback === undefined))
+    } catch (error) { retainCleanupFailure(error) }
+    finally {
+      sent.length = 0
+      requestWrites = []
+      input = ''
+      heldWrites.length = 0
+    }
+    try { await Promise.all([scene, commit, ...ordinary]) }
+    catch (error) { retainCleanupFailure(error) }
+    finally {
+      try { await client.stop() } catch (error) { retainCleanupFailure(error) }
+    }
+    // Preserve the original assertion if cleanup also found a problem.
+    if (cleanupFailure) console.error('SIDECAR_TEST_CLEANUP_FAILED', cleanupFailure)
+    if (testFailure) {
+      if (cleanupFailure && testFailure instanceof Error && !testFailure.cause) testFailure.cause = cleanupFailure
+      throw testFailure
+    }
+    if (cleanupFailure) throw cleanupFailure
+  }
+})

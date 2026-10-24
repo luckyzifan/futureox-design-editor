@@ -1,4 +1,5 @@
 import { assertDocumentJson } from './document-capacity'
+import { ResidentDocumentEncoder } from './resident-document-encoder'
 import { beginEditorAction } from './editor-action-route'
 import { CanvasAction, ActionSource, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
 import { desktopPet } from './desktop-pet'
@@ -213,8 +214,14 @@ export class DesktopSession {
   // Candidate dirtiness is O(1) even during drag previews. At lifecycle/recovery boundaries,
   // lazy byte equality recognizes undo-to-saved without serializing in the render hot path.
   get dirty() { return hasPendingEdits(this.editor) || this.baselineGeneration !== this.generation }
+  private residentEncoder?: ResidentDocumentEncoder
   private encode(document: DesignDocument) {
-    return documentStageAsync(DocumentStage.encode, () => this.bridge.documentCodec?.encode(document) ?? Promise.resolve(JSON.stringify(document)))
+    const codec = this.bridge.documentCodec
+    if (codec?.encoding === 'json-stringify-v1' && codec.encodeIncremental) {
+      this.residentEncoder ??= new ResidentDocumentEncoder(request => codec.encodeIncremental!(request))
+      return documentStageAsync(DocumentStage.encode, () => this.residentEncoder!.encode(document))
+    }
+    return documentStageAsync(DocumentStage.encode, () => codec?.encode(document) ?? Promise.resolve(JSON.stringify(document)))
   }
   private advanceGeneration() {
     this.generation++
@@ -551,6 +558,8 @@ export class DesktopSession {
   private observe() {
     const authored = this.editor.authoredDocument ?? this.editor.state.doc
     if (this.suppressObservation || (authored === this.currentDocument && this.editor.state.version === this.currentVersion)) return
+    // A versioned in-place replacement has no immutable delta baseline.
+    if (authored === this.currentDocument) this.residentEncoder = undefined
     this.currentDocument = authored
     this.currentVersion = this.editor.state.version
     this.advanceGeneration()
@@ -721,6 +730,13 @@ export class DesktopSession {
     if (unchangedAdoption && encoding) {
       this.serializedJson = documentStage(DocumentStage.snapshotReuse, () => encoding.json, encoding.json.length)
       this.serializedGeneration = this.generation
+      const codec = this.bridge.documentCodec
+      if (codec?.encoding === 'json-stringify-v1' && codec.encodeIncremental) {
+        // Keep the certified base for the first edit's incremental save. A new
+        // owner also isolates outstanding encodes from the preceding document.
+        this.residentEncoder = new ResidentDocumentEncoder(request => codec.encodeIncremental!(request),
+          { document: this.currentDocument, json: encoding.json })
+      }
     }
     this.pristineBlankGeneration = !persisted && unchangedAdoption && this.isDefaultBlank(this.currentDocument)
       ? this.generation : null

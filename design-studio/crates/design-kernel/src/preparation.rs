@@ -138,7 +138,7 @@ impl Preparation {
                 value = json!(engine.apply_interaction_transforms(&transforms)?);
             }
             "compile_gpu_packet" | "compile_gpu_scene_update" => {
-                bytes = if method == "compile_gpu_packet" { engine.compile_gpu_request(string(0)?)?.into_packet()? }
+                bytes = if method == "compile_gpu_packet" { engine.compile_gpu_request(string(0)?)?.into_packet_for_request(string(0)?)? }
                     else { lane.delta.compile(engine,string(0)?,args.get(1).and_then(Value::as_bool).ok_or("Expected reset flag")?)? };
                 encoding = Some("u8");
             }

@@ -120,6 +120,9 @@ function noteRetiredDevice(renderer: GpuRenderer | undefined) {
 }
 let displayCanvas: OffscreenCanvas | undefined
 let displayFrame: import('./gpu/resident-presenter').ResidentFrame | undefined
+// Private version for coverage-relevant frame replacement. Overlay-only
+// updates do not change the gap proof used by an already prepared tile.
+let displayCoverageVersion = {}
 let displayFramePending = false
 let displayOrderSequence = 0
 const displayOrder = new DisplayCommandOrder()
@@ -136,7 +139,7 @@ let navigationTextureSet: number[] = [], navigationTextureSequence = 0
 const reportDisplay = (presentation: Record<string, unknown>) => {
   if(terminalDiagnostics.enabled && presentation.gridVisible !== undefined)gridMeasurements.record({gridKind:5,gridVisible:Number(presentation.gridVisible),gridSpacingClass:Number(presentation.gridVisible)?2:1,gridRedrawReason:0,dpr:Number(presentation.dpr)})
   const presented = presentation.presented as {view?:{x:number;y:number;zoom:number};width?:number;height?:number;dpr?:number} | undefined
-  terminalDiagnostics.record(presentation.error ? 'error' : 'camera-submit',{...(presentation.error ? { ...renderFailureFields(presentation.error), failureStage:10 } : {}),...presentation,...presented?.view,width:presented?.width,height:presented?.height,dpr:presented?.dpr,sequence:displayOrderSequence,reasonCode:presentation.error?4:0})
+  terminalDiagnostics.record(presentation.error ? 'error' : presentation.alphaFrame ? 'frame-alpha' : presentation.coverageDeferred ? 'skip' : 'camera-submit',{...(presentation.error ? { ...renderFailureFields(presentation.error), failureStage:10 } : {}),...presentation,...presented?.view,width:presented?.width,height:presented?.height,dpr:presented?.dpr,sequence:displayOrderSequence,reasonCode:presentation.error?4:0})
   // Preserve the one forced terminal sample before another burst fills the bounded journal.
   if (presentation.qualityTerminal === true) terminalDiagnostics.flush()
   if (navigationJournal.recording) {
@@ -160,7 +163,19 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   if (terminalDiagnostics.enabled) {
     const original=work, started=performance.now(), requestId=diagnosticRequestId
     terminalDiagnostics.record('compile-start',{requestId})
-    work=()=>original().finally(()=>terminalDiagnostics.record('compile',{requestId,durationMs:performance.now()-started}))
+    work=async()=>{
+      let packet: Record<string, number> | undefined
+      try {
+        const result = await original()
+        if (result instanceof Uint8Array && result.byteLength >= 24) {
+          const header = new DataView(result.buffer, result.byteOffset, result.byteLength)
+          if (header.getUint32(0, true) === 0x4b504746 && [1, 2].includes(header.getUint32(4, true)))
+            packet = { scenePacketVersion: header.getUint32(4, true), scenePacketBytes: result.byteLength,
+              scenePacketMetadataBytes: header.getUint32(8, true), scenePacketImageBytes: header.getUint32(20, true) }
+        }
+        return result
+      } finally { terminalDiagnostics.record('compile',{requestId,durationMs:performance.now()-started,...packet}) }
+    }
   }
   if (!navigationJournal.recording) return work()
   const generation = navigationCaptureGeneration, sequence = ++navigationCompileSequence
@@ -411,6 +426,7 @@ function schedulePose(){
             const view=displayFrame.view
             displayFrame={...displayFrame,interaction:true,input:pose.input,items:displayFrame.items.map(item=>item.tile.gpuTile===session.slot
               ?{...item,clip:{left:bounds.x*view.zoom+view.x,top:bounds.y*view.zoom+view.y,width:bounds.width*view.zoom,height:bounds.height*view.zoom}}:item)}
+            displayCoverageVersion = {}
             displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
             gpu.driver.presentFrame?.(displayFrame)
           }
@@ -496,6 +512,7 @@ self.onmessage = (e) => {
     }
     displayOrderSequence=request.sequence
     displayFrame=request.frame
+    displayCoverageVersion = {}
     if(displayFrame&&poseSession?.input&&poseSession.bounds)
       displayFrame=withResidentPose(displayFrame,{slot:poseSession.slot,input:poseSession.input,bounds:poseSession.bounds})
     if(displayFrame)displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
@@ -658,6 +675,7 @@ self.onmessage = (e) => {
         tilePrepareViewport: requestedPrepareViewport, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
+      renderOptions.gpuPacketImages = import.meta.env.VITE_DESIGN_PACKET_IMAGE_TABLE === '1'
       renderOptions.gpuPainterSupport = usesPainterSupport(import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX,
         { backend, renderIntent, livePreview, tileViewport, png: request.png, exportFormat,
           exportRegion: renderOptions.exportRegion, pixelPreview: renderOptions.pixelPreview,
@@ -1171,7 +1189,7 @@ self.onmessage = (e) => {
                   ahead.start(nextIndex, () => compileTile(next))
                   overlappedPreparations++
                 }
-                const tileCurrent = preparedTileContinuation(tile, current, cameraFallback, () => displayFrame)
+                const tileCurrent = preparedTileContinuation(tile, current, cameraFallback, () => displayFrame, () => displayCoverageVersion)
                 result = await renderTiledPreview(kernel, tileOptions, backend, color,
                   settingsJson, TILE_SIDE + 2, crop, preparedScene,
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,

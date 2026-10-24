@@ -2,6 +2,7 @@ import type { CanvasCamera } from '../../canvas-camera'
 import { presentationQuality } from './presentation-quality'
 import { compositeDrawPlan, compositeRasterQuad } from './composite-draw-plan'
 import type { RasterTile } from '../tile-cache'
+import { physicalPixelCoverage } from './physical-coverage'
 
 export type CompositeTile = RasterTile & { serial: number; bytes: Uint8Array; bitmap?: ImageBitmap; gpuTile?: number }
 export type TilePlacement = { left: number; top: number; width: number; height: number }
@@ -98,29 +99,32 @@ export class TileCompositor {
     }
   }
 
-  draw(items: readonly CompositeItem[], view: CanvasCamera, width: number, height: number, dpr: number) {
+  draw(items: readonly CompositeItem[], view: CanvasCamera, width: number, height: number, dpr: number, allowEmpty = false) {
     const gl = this.gl
     if (this.disposed || gl.isContextLost()) throw new Error('画布合成设备已丢失')
     const w = Math.max(1, Math.ceil(width * dpr)), h = Math.max(1, Math.ceil(height * dpr))
     if (w > gl.getParameter(gl.MAX_TEXTURE_SIZE) || h > gl.getParameter(gl.MAX_TEXTURE_SIZE))
       throw new Error('画布合成尺寸超限')
-    // A camera move must never resize/clear the backing store accidentally.
+    const available = items.filter(item => this.textures.has(item.tile.serial))
+    const rows = compositeDrawPlan(available, view, width, height).flatMap(planned => {
+      const entry = this.textures.get(planned.item.tile.serial)
+      if (!planned.item.active || !entry) return []
+      const raster = compositeRasterQuad(planned.placement, planned.clip, width, height, dpr)
+      return raster ? [{ item: planned.item, entry, raster }] : []
+    })
+    if (!allowEmpty && !physicalPixelCoverage(rows.map(row => ({ ...row.raster, blend: row.item.blend })), w, h)) {
+      this.canvas.dataset.coverageDeferred = 'true'
+      return false
+    }
+    this.canvas.dataset.coverageDeferred = 'false'
+    // Admission precedes any backing-store change, including resize clears.
     if (this.canvas.width !== w) this.canvas.width = w
     if (this.canvas.height !== h) this.canvas.height = h
     gl.viewport(0, 0, w, h); gl.useProgram(this.program); gl.bindVertexArray(this.vao)
     gl.uniform2f(this.viewport, width, height)
     gl.disable(gl.SCISSOR_TEST);gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT)
-    const available = items.filter(item => this.textures.has(item.tile.serial))
-    for (const planned of compositeDrawPlan(available,view,width,height)) {
-      const { tile, active, placement, blend = false } = planned.item
-      if (!active) continue
-      const entry = this.textures.get(tile.serial)
-      if (!entry) continue
-      const scale = view.zoom / tile.zoom
-      const p = placement || { left: (tile.x - (tile.phaseX || 0)) * scale + view.x,
-        top: (tile.y - (tile.phaseY || 0)) * scale + view.y, width: tile.width * scale, height: tile.height * scale }
-      const raster = compositeRasterQuad(p, planned.clip, width, height, dpr)
-      if (!raster) continue
+    for (const { item, entry, raster } of rows) {
+      const { blend = false } = item
       gl.bindTexture(gl.TEXTURE_2D, entry.texture)
       gl.enable(gl.SCISSOR_TEST);gl.scissor(raster.x,h-raster.y-raster.height,raster.width,raster.height)
       if (blend) { gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA) }
@@ -142,6 +146,7 @@ export class TileCompositor {
       this.canvas.dataset.nativePhaseCoverage = String(quality.nativePhaseCoverage)
       this.canvas.dataset.maxUpscale = quality.maxUpscale.toFixed(3)
     }
+    return true
   }
 
   dispose() {

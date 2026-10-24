@@ -6,6 +6,7 @@ import { scene, unionBounds, multiply, inverse } from '../geometry'
 import type { CanvasCamera } from '../canvas-camera'
 import type { RefObject } from 'react'
 import type { CanvasSceneBorrow } from '../canvas-scene-snapshots'
+import { documentTransitionNodeIds } from '../document-patch'
 
 export type InteractionLayer = { document: DesignDocument; bounds: Bounds; moving?: string }
 export type InteractionPlan = { document: DesignDocument; pageId: string; ids: string[]; layers: InteractionLayer[]; viewport?: Bounds }
@@ -111,16 +112,19 @@ export function interactionOffsets(plan: InteractionPlan, current: DesignDocumen
   // The plan captures this exact snapshot. A camera/ACK layout pass may build
   // a new plan without changing authored content; enumerating every node to
   // discover zero movement blocks the same thread that accepts the next input.
-  // Do not cache arbitrary document objects here: a different snapshot still
-  // needs the complete content/ancestry validation below.
+  // Only a complete authored producer witness may narrow the checks below.
+  // Unknown snapshots and mutable drafts retain the full node comparison.
   if (current === source) return new Map(plan.ids.filter(id => Object.hasOwn(source.nodes, id))
     .map(id => [id, { x: 0, y: 0 }]))
-  if (Object.keys(current).some(key => key !== 'nodes' && current[key as keyof DesignDocument] !== source[key as keyof DesignDocument]) ||
-      Object.keys(current.nodes).length !== Object.keys(source.nodes).length) return null
-  const moved = new Set(plan.ids), offsets = new Map<string, { x: number; y: number }>()
-  for (const [id, node] of Object.entries(current.nodes)) {
+  if (Object.keys(current).length !== Object.keys(source).length ||
+      Object.keys(current).some(key => key !== 'nodes' && current[key as keyof DesignDocument] !== source[key as keyof DesignDocument])) return null
+  const changed = documentTransitionNodeIds(source, current)
+  if (!changed && Object.keys(current.nodes).length !== Object.keys(source.nodes).length) return null
+  const moved = new Set(plan.ids), offsets = new Map<string, { x: number; y: number }>(
+    changed ? plan.ids.filter(id => Object.hasOwn(source.nodes, id)).map(id => [id, { x: 0, y: 0 }]) : [])
+  for (const [id, node] of changed ? [...changed].map(id => [id, current.nodes[id]] as const) : Object.entries(current.nodes)) {
     const old = source.nodes[id]
-    if (!old) return null
+    if (!old || !node) return null
     if (node !== old && (!moved.has(id) || Object.keys(node).length !== Object.keys(old).length ||
       Object.keys(node).some(key => key !== 'transform' && node[key as keyof typeof node] !== old[key as keyof typeof old]) ||
       node.transform.slice(0, 4).some((v, i) => v !== old.transform[i]))) return null
@@ -141,12 +145,14 @@ export function interactionPatchedDocument(document: DesignDocument, patches: Re
 export function interactionTransformsOnly(plan: InteractionPlan, current: DesignDocument): boolean {
   const source = plan.document
   if (current === source) return true
-  if (Object.keys(current).some(key => key !== 'nodes' && current[key as keyof DesignDocument] !== source[key as keyof DesignDocument]) ||
-      Object.keys(current.nodes).length !== Object.keys(source.nodes).length) return false
+  if (Object.keys(current).length !== Object.keys(source).length ||
+      Object.keys(current).some(key => key !== 'nodes' && current[key as keyof DesignDocument] !== source[key as keyof DesignDocument])) return false
+  const changed = documentTransitionNodeIds(source, current)
+  if (!changed && Object.keys(current.nodes).length !== Object.keys(source.nodes).length) return false
   const moved = new Set(plan.ids)
-  for (const [id, node] of Object.entries(current.nodes)) {
+  for (const [id, node] of changed ? [...changed].map(id => [id, current.nodes[id]] as const) : Object.entries(current.nodes)) {
     const old = source.nodes[id]
-    if (!old) return false
+    if (!old || !node) return false
     if (node !== old && (!moved.has(id) || Object.keys(node).length !== Object.keys(old).length ||
         Object.keys(node).some(key => key !== 'transform' && node[key as keyof typeof node] !== old[key as keyof typeof old]))) return false
   }

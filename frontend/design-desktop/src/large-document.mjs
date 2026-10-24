@@ -2,7 +2,6 @@ import { randomUUID, createHash } from 'node:crypto'
 import path from 'node:path'
 import { DOCUMENT_BYTE_LIMIT } from './document-capacity.mjs'
 
-const MAX_BYTES = 4 * 1024 ** 3
 const object = value => value && typeof value === 'object' && !Array.isArray(value)
 const integer = value => Number.isSafeInteger(value) && value >= 0
 function fields(value, allowed) {
@@ -11,8 +10,9 @@ function fields(value, allowed) {
 }
 export function admitLargeStatus(value, expected) {
   if (!object(value) || !object(value.owner) || typeof value.owner.documentId !== 'string' || !/^[a-z0-9-]{1,128}$/i.test(value.owner.documentId) ||
-      !integer(value.owner.sessionEpoch) || !value.owner.sessionEpoch || !integer(value.revision) || !integer(value.expandedBytes) || value.expandedBytes > MAX_BYTES ||
-      value.maxExpandedBytes !== MAX_BYTES || !integer(value.indexedObjects) || typeof value.name !== 'string' || value.name.length > 4096 ||
+      !integer(value.owner.sessionEpoch) || !value.owner.sessionEpoch || !integer(value.revision) || !integer(value.expandedBytes) ||
+      !integer(value.maxExpandedBytes) || value.maxExpandedBytes === 0 || value.expandedBytes > value.maxExpandedBytes ||
+      !integer(value.indexedObjects) || typeof value.name !== 'string' || value.name.length > 4096 ||
       !['json','sketch'].includes(value.format) || typeof value.dirty !== 'boolean' || !integer(value.undoCount) || !integer(value.redoCount) ||
       expected && (value.owner.documentId !== expected.documentId || value.owner.sessionEpoch !== expected.sessionEpoch)) throw Error('Invalid large document response')
   return value
@@ -52,7 +52,7 @@ export class LargeDocumentHost {
     if(!['json','sketch'].includes(format))throw Error('Choose a JSON or Sketch source')
     if (this.#epoch >= Number.MAX_SAFE_INTEGER) throw Error('Large document session epoch exhausted')
     const owner = { documentId:randomUUID(), sessionEpoch:++this.#epoch }
-    this.#active={window,status:{owner,revision:0,name:path.basename(selected.filePaths[0]),format,expandedBytes:0,maxExpandedBytes:MAX_BYTES,indexedObjects:0,dirty:false,undoCount:0,redoCount:0}}
+    this.#active={window,status:{owner,revision:0,name:path.basename(selected.filePaths[0]),format,expandedBytes:0,maxExpandedBytes:0,indexedObjects:0,dirty:false,undoCount:0,redoCount:0}}
     let result
     try{result=admitLargeStatus(await this.request('large.open', {path:selected.filePaths[0],...owner}), owner)}
     catch(error){if(error?.outcomeUnknown!==true)this.#active=undefined;throw error}
@@ -71,14 +71,14 @@ export class LargeDocumentHost {
   }
   #key(key) { if (typeof key!=='string'||!/^\d{1,5}:\d{1,7}$/.test(key)) throw Error('Invalid large document object key') }
   async children(value) {
-    this.#check(value,['owner','expectedRevision','key','offset','limit','query'])
+    const active=this.#check(value,['owner','expectedRevision','key','offset','limit','query'])
     if(value.key!==undefined)this.#key(value.key)
     if(!integer(value.offset??0)||!integer(value.limit??100)||(value.limit??100)>200)throw Error('Invalid JSON listing range')
     if(value.query!==undefined&&(typeof value.query!=='string'||value.query.length>256))throw Error('Invalid JSON search')
     const result=await this.request('large.children',value)
     this.#check(value,['owner','expectedRevision','key','offset','limit','query'])
     if(!object(result)||!Array.isArray(result.items)||result.items.length>200||!integer(result.total))throw Error('Invalid JSON listing response')
-    for(const row of result.items){this.#key(row.key);if(typeof row.name!=='string'||row.name.length>640||typeof row.kind!=='string'||!integer(row.bytes)||row.bytes>MAX_BYTES)throw Error('Invalid JSON listing row')}
+    for(const row of result.items){this.#key(row.key);if(typeof row.name!=='string'||row.name.length>640||typeof row.kind!=='string'||!integer(row.bytes)||row.bytes>active.status.maxExpandedBytes)throw Error('Invalid JSON listing row')}
     return {status:'ok',...result}
   }
   async apply(value) { return this.#exclusive(async()=>{

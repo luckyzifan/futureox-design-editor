@@ -220,6 +220,8 @@ export function tilesCoverBounds(
   bounds: { x: number; y: number; width: number; height: number },
   minZoom = 0,
 ) {
+  const right = bounds.x + bounds.width,
+    bottom = bounds.y + bounds.height
   const boxes = tiles
     .filter((t) => t.zoom >= minZoom)
     .map((t) => ({
@@ -228,8 +230,12 @@ export function tilesCoverBounds(
       right: (t.x + t.width - (t.gutter??1) - (t.phaseX || 0)) / t.zoom,
       bottom: (t.y + t.height - (t.gutter??1) - (t.phaseY || 0)) / t.zoom,
     }))
-  const right = bounds.x + bounds.width,
-    bottom = bounds.y + bounds.height
+    // Outside-X boxes add only existing target endpoints to the old sweep.
+    // Keep touching edges so midpoint rounding and the 1e-7 Y rule are unchanged.
+    .filter(b => !(b.right < bounds.x || b.x > right))
+  // Filtering one sorted list preserves the original per-slab stable Y order.
+  // Unknown/nonfinite inputs retain the old comparator path.
+  const ordered = boxes.every(b => Number.isFinite(b.y)) ? [...boxes].sort((a, b) => a.y - b.y) : undefined
   const xs = [
     ...new Set([
       bounds.x,
@@ -241,11 +247,13 @@ export function tilesCoverBounds(
     .sort((a, b) => a - b)
   for (let i = 0; i + 1 < xs.length; i++) {
     const x = (xs[i] + xs[i + 1]) / 2
-    const spans = boxes.filter((b) => b.x <= x && b.right >= x).sort((a, b) => a.y - b.y)
+    const spans = ordered || boxes.filter((b) => b.x <= x && b.right >= x).sort((a, b) => a.y - b.y)
     let y = bounds.y
     for (const b of spans) {
+      if (ordered && !(b.x <= x && b.right >= x)) continue
       if (b.y > y + 1e-7) break
       y = Math.max(y, b.bottom)
+      if (y >= bottom - 1e-7) break
     }
     if (y < bottom - 1e-7) return false
   }

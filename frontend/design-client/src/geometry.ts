@@ -275,7 +275,7 @@ export type SceneEntry = {
   ancestors: string[]
   locked: boolean
 }
-export function scene(d: DesignDocument, pageId: string): SceneEntry[] {
+export function scene(d: DesignDocument, pageId: string, roots?: ReadonlySet<string>): SceneEntry[] {
   const result: SceneEntry[] = []
   const page = d.pages.find((p) => p.id === pageId)
   if (!page) return result
@@ -321,7 +321,7 @@ export function scene(d: DesignDocument, pageId: string): SceneEntry[] {
       if (childBounds.length) entry.bounds = unionBounds(childBounds)
     }
   }
-  page.children.forEach((id) => visit(id, page.id, identity(), [], false))
+  page.children.forEach((id) => { if (!roots || roots.has(id)) visit(id, page.id, identity(), [], false) })
   return result
 }
 /** Read-only topology shared within an immutable snapshot or one operation.
@@ -390,7 +390,27 @@ export class SpatialIndex {
   private cells = new Map<string, SceneEntry[]>()
   private large: SceneEntry[] = []
   private ranks = new Map<string, number>()
-  constructor(public entries: SceneEntry[]) {
+  constructor(public entries: SceneEntry[], previous?: SpatialIndex) {
+    if (previous) {
+      this.cells = new Map(previous.cells)
+      this.large = previous.large.slice()
+      const next = new Map(entries.map((entry,i) => { this.ranks.set(entry.id,i); return [entry.id,entry] }))
+      const touched = new Set<string>()
+      const update = (entry:SceneEntry, add:boolean) => {
+        const range = boundedCellRange(entry.hitBounds || entry.bounds,256)
+        if (!range) { if (add) this.large.push(entry); else this.large = this.large.filter(e => e !== entry); return }
+        for(let x=0;x<range.width;x++)for(let y=0;y<range.height;y++) {
+          const key = `${range.x+x},${range.y+y}`
+          if (!touched.has(key)) { this.cells.set(key,(this.cells.get(key)||[]).slice()); touched.add(key) }
+          const cell = this.cells.get(key)!
+          if(add)cell.push(entry);else {const index=cell.indexOf(entry);if(index>=0)cell.splice(index,1)}
+        }
+      }
+      for(const entry of previous.entries)if(next.get(entry.id)!==entry)update(entry,false)
+      for(const entry of entries)if(previous.entries[previous.ranks.get(entry.id)??-1]!==entry)update(entry,true)
+      for(const key of touched)if(!this.cells.get(key)!.length)this.cells.delete(key)
+      return
+    }
     entries.forEach((e, i) => {
       this.ranks.set(e.id, i)
       const range = boundedCellRange(e.hitBounds || e.bounds, 256)

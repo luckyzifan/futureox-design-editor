@@ -85,7 +85,7 @@ fn emit(
     });
     Ok(())
 }
-fn region_path(network: &Network, edges: &[usize]) -> Result<Path, String> {
+fn region_path(network: &Network, edges: &[usize]) -> Result<(Path, bool), String> {
     if edges.is_empty() {
         return Err("Empty FIG region loop".into());
     }
@@ -110,9 +110,24 @@ fn region_path(network: &Network, edges: &[usize]) -> Result<Path, String> {
             emit(&mut path, edge, rev, &network.vertices, i == 0)?;
             at = if rev { &edge.from } else { &edge.to };
         }
-        if valid && at == start {
+        let same_position = || {
+            let a = start[1..].parse::<usize>().unwrap();
+            let b = at[1..].parse::<usize>().unwrap();
+            network.vertices[a].point() == network.vertices[b].point()
+        };
+        if valid && (at == start || same_position()) {
             path.commands.push(Command::Close);
-            return Ok(path);
+            // A native region can close at distinct, exactly coincident
+            // vertices. Keep its fill explicit instead of merging editable
+            // endpoints and accidentally changing the open stroke's caps.
+            return Ok((path, at != start));
+        }
+        if valid {
+            // Native stroke-only vectors (for example a two-edge check mark)
+            // also carry region records. An open walk has no filled face; keep
+            // every source edge in the network/stroke without inventing a
+            // closing segment or snapping its distinct endpoints together.
+            return Ok((Path::default(), false));
         }
     }
     Err("FIG region loop is not connected and closed".into())
@@ -173,6 +188,7 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
     let mut faces = Vec::new();
     let mut rule = None;
     let mut region_edges = 0usize;
+    let mut explicit_fill = false;
     for _ in 0..nr {
         let style = reader.word()?;
         region_styles.push(style >> 1);
@@ -204,8 +220,9 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
                 }
                 indices.push(i);
             }
-            fill.commands
-                .extend(region_path(&network, &indices)?.commands);
+            let (path, coincident_closure) = region_path(&network, &indices)?;
+            explicit_fill |= coincident_closure;
+            fill.commands.extend(path.commands);
             faces.push(indices.iter().map(|i| format!("e{i}")).collect());
         }
     }
@@ -216,7 +233,7 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
         network.fill_rule = rule.into();
         network.filled_faces = Some(faces);
     }
-    if nv <= 10000 && ne <= 20000 {
+    if nv <= 10000 && ne <= 20000 && !explicit_fill {
         return Ok(Decoded {
             network: Some(network),
             vector_geometry: None,
@@ -233,7 +250,7 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
             degree[i] = degree[i].saturating_add(1);
         }
     }
-    if degree.iter().any(|d| *d > 2) {
+    if (nv > 10000 || ne > 20000) && degree.iter().any(|d| *d > 2) {
         return Err("Large branched FIG topology requires a smaller editing workset".into());
     }
     let faces = network.filled_faces.take();
@@ -287,5 +304,26 @@ pub fn decode_commands(bytes: &[u8]) -> Result<Path, String> {
         };
         path.commands.push(command);
     }
+    Ok(path)
+}
+
+/// A FIG fillGeometry carrier is an area, unlike the editable stroke network.
+/// Its command stream may leave subpaths implicitly closed. Make those closes
+/// explicit for the shared render-geometry contract without touching any point
+/// or changing the separately decoded stroke's caps/joins.
+pub fn decode_fill_commands(bytes: &[u8]) -> Result<Path, String> {
+    let source = decode_commands(bytes)?;
+    let mut path = Path::default();
+    let mut open = false;
+    for command in source.commands {
+        if matches!(command, Command::Move(_)) && open {
+            path.commands.push(Command::Close);
+        }
+        match command { Command::Move(_) => open = true, Command::Close => open = false, _ => {} }
+        path.commands.push(command);
+        if path.commands.len() > MAX_COMMANDS { return Err("FIG fill commands exceed count allowance".into()); }
+    }
+    if open { path.commands.push(Command::Close); }
+    if path.commands.len() > MAX_COMMANDS { return Err("FIG fill commands exceed count allowance".into()); }
     Ok(path)
 }

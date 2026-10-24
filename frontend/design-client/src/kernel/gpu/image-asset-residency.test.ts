@@ -15,7 +15,8 @@ function scene(uris: string[]): GpuScene {
       fills: [{ kind: 'image', image, visible: true }], strokes: [], effects: [], matrix: [1, 0, 0, 1, 0, 0] }])) } as unknown as GpuScene
 }
 function fixture() {
-  vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
+  vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '0')
+  vi.stubEnv('VITE_DESIGN_IMAGE_ASSET_RESIDENCY', '1')
   let pixels = .125, ownerCurrent = true, requestCurrent = true
   const decode = () => new Float32Array(16).fill(pixels)
   const kernel = { image_info: vi.fn(() => '[2,2]'), image_info_at_level: vi.fn(() => '[1,1]'),
@@ -58,6 +59,16 @@ test('same private owner retains exact GPU assets for region A -> B -> A without
     scopeRetiredTextures: 0, legacyPrunes: 0, pressureEvictions: 0 })
 })
 
+test('the existing filter candidate retains its image ownership policy', async () => {
+  const f = fixture()
+  vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
+  vi.stubEnv('VITE_DESIGN_IMAGE_ASSET_RESIDENCY', '0')
+  await f.region([A]); const a = f.renderer.imageFor(A)
+  await f.region([B]); f.renderer.imageFor(B)
+  await f.region([A]); expect(f.renderer.imageFor(A)).toBe(a)
+  expect(f.driver.uploadLinear).toHaveBeenCalledTimes(2)
+})
+
 test.each(['unknown', 'no-owner', 'default-off'] as const)('%s loader retains the old region pruning policy', async mode => {
   const f = fixture()
   if (mode === 'unknown') {
@@ -66,7 +77,7 @@ test.each(['unknown', 'no-owner', 'default-off'] as const)('%s loader retains th
     f.renderer.managedImageLoader = custom
   }
   if (mode === 'no-owner') f.context = { ...f.context, ownerCurrent: undefined }
-  if (mode === 'default-off') vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '0')
+  if (mode === 'default-off') vi.stubEnv('VITE_DESIGN_IMAGE_ASSET_RESIDENCY', '0')
   await f.region([A]); const a = f.renderer.imageFor(A)
   await f.region([B]); f.renderer.imageFor(B)
   expect(f.renderer.images.has(A)).toBe(false); expect(f.driver.destroy).toHaveBeenCalledWith(a.texture)

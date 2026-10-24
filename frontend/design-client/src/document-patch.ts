@@ -105,6 +105,11 @@ function witnessedIds(before: DesignDocument, after: DesignDocument): Set<string
     cursor = previous
   }
 }
+/** Read only the existing complete producer witness. No caller-supplied IDs
+ * can establish this proof; unknown snapshots must retain their full scan. */
+export function documentTransitionNodeIds(before: DesignDocument, after: DesignDocument): ReadonlySet<string> | undefined {
+  return witnessedIds(before, after)
+}
 /** The producer itself computes the complete changed-node witness. Whole
  * root/node-map replacement falls back to the ordinary full diff. The witness
  * is process-local acceleration only; documentPatch remains serializable. */

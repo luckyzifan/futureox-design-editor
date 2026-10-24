@@ -5,6 +5,7 @@ import { originNode } from './component-fixtures'
 import { insertInstance, overrideFields, stampKeys } from './components'
 import { admitDocumentSync } from './document-admission'
 import { Editor } from './engine'
+import { editableNetwork } from './editable-network'
 import { kernelLayout } from './kernel/picking'
 import { blank, node, paint, type DesignDocument } from './model'
 
@@ -162,4 +163,53 @@ test('booleanOperation descendant overrides survive history, regeneration and re
   e.update([ids.boolean], { booleanOperation: 'exclude' })
   check(e, 'exclude', 'exclude', false)
   expectCanonical(e.state.doc)
+})
+
+test('precise vector descendant overrides and network conversion survive regeneration, history and reset', () => {
+    const doc = blank('Precise component overrides'), main = node('frame', 0, 0, 100, 80)
+    const shape = node('vector', 0, 0, 100, 80)
+    doc.schemaVersion = 16; main.component = { variants: {}, properties: {} }
+    shape.strokes = []; shape.fills = [paint('#818cf8')]
+    shape.vectorGeometry = { fillRule: 'nonzero', fill: [
+      { move: [0, 0] }, { cubic: [25.123456789012345, 0, 75, 0, 100, 0] },
+      { line: [100, 80] }, { line: [0, 80] }, { line: [0, 0] }, 'close',
+    ] }
+    main.children = [shape.id]
+    doc.nodes = { [main.id]: main, [shape.id]: shape }; doc.pages[0].children = [main.id]; stampKeys(doc, main.id)
+    const a = insertInstance(doc, main.id, doc.pages[0].id, { x: 200, y: 0 })
+    const b = insertInstance(doc, main.id, doc.pages[0].id, { x: 400, y: 0 })
+    const e = new Editor(doc), key = shape.id
+    const layer = (editor: Editor, owner: string) => originNode(editor.state.doc, owner, key)
+    let reopened: Editor | undefined
+    try {
+      const id = layer(e, a).id, original = structuredClone(shape.vectorGeometry), changed = structuredClone(original)
+      ;(changed.fill[1] as { cubic: number[] }).cubic[1] = 12.125
+      e.update([id], { vectorGeometry: changed })
+      expect(layer(e, a).vectorGeometry, e.state.message).toEqual(changed)
+      expect(e.state.doc.nodes[a].instance!.overrides[key]?.vectorGeometry).toEqual(changed)
+      expect(layer(e, b).vectorGeometry).toEqual(original); expect(e.state.doc.nodes[shape.id].vectorGeometry).toEqual(original)
+      e.undo(); expect(layer(e, a).vectorGeometry).toEqual(original)
+      e.redo(); expect(layer(e, a).vectorGeometry).toEqual(changed)
+      e.update([shape.id], { name: 'Regenerated precise default' })
+      expect(layer(e, a).vectorGeometry).toEqual(changed); expect(layer(e, b).vectorGeometry).toEqual(original)
+      e.begin('Edit precise instance point')
+      const network = editableNetwork(layer(e, a)); network.vertices[0].x += 5
+      expect(e.preview({ [id]: { network, vectorGeometry: undefined } })).toBe(true)
+      e.commit()
+      expect(layer(e, a).network, e.state.message).toEqual(network); expect(layer(e, a).vectorGeometry).toBeUndefined()
+      expect(e.state.doc.nodes[a].instance!.overrides[key]?.vectorGeometry).toBeNull()
+      expect(e.state.doc.nodes[a].instance!.overrides[key]?.network).toEqual(network)
+      e.undo(); expect(layer(e, a).vectorGeometry).toEqual(changed); expect(layer(e, a).network).toBeUndefined()
+      e.redo(); expect(layer(e, a).network).toEqual(network); expect(layer(e, a).vectorGeometry).toBeUndefined()
+      e.update([shape.id], { name: 'Regenerated after point edit' })
+      expect(layer(e, a).network).toEqual(network); expect(layer(e, a).vectorGeometry).toBeUndefined()
+      expect(layer(e, b).vectorGeometry).toEqual(original); expect(layer(e, b).network).toBeUndefined()
+      reopened = new Editor(JSON.parse(JSON.stringify(e.state.doc)))
+      expect(layer(reopened, a).network).toEqual(network); expect(layer(reopened, a).vectorGeometry).toBeUndefined()
+      expectCanonical(reopened.state.doc)
+      e.resetInstance(id)
+      expect(layer(e, a).vectorGeometry).toEqual(original); expect(layer(e, a).network).toBeUndefined()
+      e.undo(); expect(layer(e, a).network).toEqual(network); expect(layer(e, a).vectorGeometry).toBeUndefined()
+      e.redo(); expect(layer(e, a).vectorGeometry).toEqual(original); expectCanonical(e.state.doc)
+    } finally { reopened?.dispose(); e.dispose() }
 })

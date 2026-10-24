@@ -67,7 +67,7 @@ const fields = {
   layoutGrid: describe(obj({ axis: en('column', 'row', 'uniform'), count: integer(1, 64), gutter: num(0), margin: num(0), color, visible: bool, opacity: unit }), 'Frames only; omitted fields use native defaults.'),
   guides: describe(array(obj({ id, axis: en('x', 'y'), position: num() }, ['id', 'axis', 'position']), 1000), 'Frame/section only for nonempty lists; IDs unique per owner; document total <=20000.'),
   arc: describe(obj({ startAngle: num(), sweepAngle: num(-2 * Math.PI, 2 * Math.PI), innerRadius: unit }, ['startAngle', 'sweepAngle', 'innerRadius']), 'Ellipse without an explicit network; angles in radians.'),
-  cornerRadius: describe(num(0), 'Nonzero only on polygon/star without an explicit network.'), constrainProportions: bool, booleanOperation: en('union', 'subtract', 'intersect', 'exclude'),
+  cornerRadius: describe(num(0), 'Nonzero only on polygon/star without an explicit network.'), constrainProportions: bool, booleanOperation: en('union', 'subtract', 'intersect', 'exclude', 'compoundNonzero', 'compoundEvenodd'),
   exportSettings: describe(array(obj({ id, format: en('png', 'svg', 'jpeg', 'webp', 'pdf', 'pdf-vector'), scale: num(0.001, 128), suffix: describe(str(80), 'No control characters or \\ / : * ? " < > |.') }, ['id', 'format', 'scale', 'suffix']), 16), 'IDs must be unique.'),
   textPath: describe(obj({ network, offset: num(), normal: num(), reverse: bool }, ['network']), 'Text nodes only; one continuous nonempty path, at most 10000 edges.'),
   pathOffset: describe(num(-10000, 10000), 'Nonzero unsupported on text/frame/section/group/slice.'),

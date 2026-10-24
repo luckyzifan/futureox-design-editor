@@ -243,3 +243,31 @@ test('authored locked property access never grants read-only callers write permi
     expect(e.state.doc).toBe(before); expect(e.canUndo).toBe(false)
   } finally { api.dispose(); e.dispose() }
 })
+
+test('normalized empty binding maps do not disable ordinary layout controls',()=>{
+ const f=fixture()
+ for(const n of Object.values(f.doc.nodes)){n.bindings={};n.styleRefs={};n.variableModes={}}
+ const after=parity(f.doc,[f.frame.id],'horizontal')
+ expect(after.nodes[f.frame.id].layout?.mode).toBe('horizontal')
+ const removed=parity(after,[f.frame.id],'none')
+ expect(removed.nodes[f.frame.id].layout).toBeUndefined()
+})
+
+test('existing master frame layout is a property edit, updates instances and remains undoable',()=>{
+ const f=fixture();f.doc.schemaVersion=4;f.frame.component={variants:{},properties:{}}
+ const instance=node('frame',600,0,400,250);instance.instance={componentId:f.frame.id,overrides:{},propertyValues:{}}
+ f.doc.nodes[instance.id]=instance;f.doc.pages[0].children.push(instance.id)
+ const after=parity(f.doc,[f.frame.id],'vertical')
+ expect(after.nodes[f.frame.id].layout?.mode).toBe('vertical')
+ expect(after.nodes[instance.id].layout?.mode).toBe('vertical')
+ const removed=parity(after,[f.frame.id],'none')
+ expect(removed.nodes[f.frame.id].layout).toBeUndefined()
+ const editor=new Editor(after)
+ try{
+  const before=editor.state.doc
+  expect(()=>editor.autoLayout('horizontal',[instance.id])).toThrow('instance')
+  expect(editor.state.doc).toBe(before)
+  expect(()=>editor.autoLayout('horizontal',[f.frame.id,instance.id])).toThrow()
+  expect(editor.state.doc).toBe(before)
+ }finally{editor.dispose()}
+})

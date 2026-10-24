@@ -990,6 +990,23 @@ impl GradientCoordinates {
 }
 /// Color-independent gradient stop selection and interpolation weights. Stop
 /// colors remain shader constants and are shaded on the GPU.
+/// Exact one-axis storage for linear gradients whose existing fixed-point
+/// coordinate map has a zero coefficient. Empty means use the dense field.
+/// Header is [width,height,0,0], followed by unchanged RGBA32F parameters.
+pub fn gradient_sampling_axes(rect:Rect,matrix:Transform,size:[f64;2],paint:&Paint,sample:Option<usize>)->Result<Vec<f32>,String>{
+    if u64::from(rect.w)*u64::from(rect.h)>4_194_304{return Err("Parameter field exceeds 64 MiB".into());}
+    if paint.kind!="linear"||rect.w==0||rect.h==0{return Ok(Vec::new());}
+    let coordinates=GradientCoordinates::new(paint,size,matrix,rect)?;
+    let Some(fixed)=coordinates.fixed_gradient.as_ref() else{return Ok(Vec::new())};
+    let no_x=fixed.words[0].iter().all(|word|*word==0);
+    let no_y=fixed.words[1].iter().all(|word|*word==0);
+    if !no_x&&!no_y{return Ok(Vec::new());}
+    let region=Rect::new(rect.x,rect.y,if no_x{1}else{rect.w},if no_y{1}else{rect.h});
+    let mut result=vec![region.w as f32,region.h as f32,0.,0.];
+    result.extend(gradient_sampling_grid_region(rect,region,matrix,size,paint,sample)?);
+    Ok(result)
+}
+
 pub fn gradient_sampling_grid(
     rect: Rect,
     matrix: Transform,

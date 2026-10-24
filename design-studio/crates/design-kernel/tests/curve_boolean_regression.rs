@@ -25,7 +25,7 @@ fn coincident_ray_order_is_total_and_matches_independent_winding_for_all_operati
             let p=Point::new((x as f64+0.371)*root.width/96.,(y as f64+0.619)*root.height/96.);
             if !operands.iter().all(|(c,_)|away_from_boundary(p,c)){continue}
             let states:Vec<_>=operands.iter().map(|(c,e)|filled(p,c,*e)).collect();
-            let expected=match op{Operation::Union=>states.iter().any(|x|*x),Operation::Intersect=>states.iter().all(|x|*x),Operation::Subtract=>states[0]&&!states[1..].iter().any(|x|*x),Operation::Exclude=>states.iter().filter(|x|**x).count()%2!=0};
+            let expected=match op{Operation::Union=>states.iter().any(|x|*x),Operation::Intersect=>states.iter().all(|x|*x),Operation::Subtract=>states[0]&&!states[1..].iter().any(|x|*x),Operation::Exclude=>states.iter().filter(|x|**x).count()%2!=0,_=>unreachable!("This oracle exercises the four CSG operations")};
             assert_eq!(filled(p,&output,node.fill_even_odd()),expected,"operation {op:?}, sample {x},{y}");compared+=1;
         }}
         assert!(compared>9000,"boundary exclusion must stay narrow");

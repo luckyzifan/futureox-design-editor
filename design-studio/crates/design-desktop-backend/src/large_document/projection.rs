@@ -5,6 +5,7 @@ use super::*;
 use futureox_design_kernel::{interop, scene::Document};
 use std::collections::HashMap;
 
+#[cfg_attr(test, derive(Clone, Debug, PartialEq))]
 pub(super) struct Projection {
     key: String,
     revision: u64,
@@ -813,6 +814,7 @@ pub(super) fn commit_canvas(
     cancel: &AtomicBool,
 ) -> Result<Value> {
     let (p, n) = location(s, request.key.as_deref())?;
+    let root_id = s.parts[p].index.entries[n].id.clone();
     let projection = s
         .projection
         .as_ref()
@@ -826,9 +828,20 @@ pub(super) fn commit_canvas(
     futureox_design_kernel::validate_document_json(text).map_err(issue)?;
     let document: Document = serde_json::from_str(text).map_err(issue)?;
     if s.format == "sketch" {
+        // Check every new ID, including descendants, before the existing-node
+        // encoder, any source serialization, index construction or mutation.
+        for (id, node) in &document.nodes {
+            if !projection.document.nodes.contains_key(id) {
+                interop::validate_sketch_new_layer_for_source_save(node).map_err(issue)?;
+            }
+        }
         for (id, old) in &projection.document.nodes {
-            if let Some(next) = document.nodes.get(id) {
-                preserve_point_order(old, next)?;
+            if let Some(node) = document.nodes.get(id) {
+                preserve_point_order(old, node)?;
+                if old != node {
+                    interop::export_sketch_layer_edit(&projection.document, &document, id)
+                        .map_err(issue)?;
+                }
             }
         }
     }
@@ -975,14 +988,30 @@ pub(super) fn commit_canvas(
         }
         rebuild_index(s, p, &next.changes[p], cancel)?
     };
+    // JSON node-map edits can shift a selected subtree's catalog ordinal too.
+    // Rebind before commit, and refuse missing/ambiguous identities atomically.
+    let roots = index.entries.iter().enumerate()
+        .filter(|(_, entry)| !root_id.is_empty() && if s.format == "sketch" {
+            entry.id.eq_ignore_ascii_case(&root_id)
+        } else {
+            // Shared JSON node IDs are case-sensitive, matching json_projection
+            // and Document validation. Distinct node / Node IDs are not ambiguous.
+            entry.id == root_id
+        })
+        .map(|(n, _)| n).collect::<Vec<_>>();
+    if roots.len() != 1 {
+        return Err(issue("Source canvas identity is ambiguous; reload the source before saving"));
+    }
+    let next_key = format!("{p}:{}", roots[0]);
     let mut undo = s.undo.clone();
     undo.push(s.state.clone());
     if undo.len() > HISTORY_LIMIT {
         undo.remove(0);
     }
-    let value = commit(s, next, undo, Vec::new(), Some((p, index)), cancel)?;
+    let mut value = commit(s, next, undo, Vec::new(), Some((p, index)), cancel)?;
+    value["key"] = json!(next_key);
     s.projection = Some(Projection {
-        key: request.key.unwrap(),
+        key: next_key,
         revision: s.revision,
         document,
     });

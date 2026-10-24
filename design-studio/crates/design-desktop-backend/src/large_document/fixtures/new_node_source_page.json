@@ -1,0 +1,17 @@
+{
+  "_class": "page",
+  "do_objectID": "10000000-0000-4000-8000-000000000010",
+  "name": "new-node static fixture",
+  "layers": [{
+    "_class": "group",
+    "do_objectID": "10000000-0000-4000-8000-000000000002",
+    "name": "selected root",
+    "frame": {"x": 0, "y": 0, "width": 400, "height": 300},
+    "layers": [{
+      "_class": "slice",
+      "do_objectID": "10000000-0000-4000-8000-000000000001",
+      "name": "schema-10 seed",
+      "frame": {"x": 250, "y": 200, "width": 20, "height": 20}
+    }]
+  }]
+}

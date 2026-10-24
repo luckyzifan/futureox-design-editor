@@ -8,6 +8,8 @@ import { prepareDocument, preparedDocumentEncoding, takePreparedDocument, forkPr
 import type { DesktopBridge } from './desktop'
 import { VectorEngine } from './generated/design-kernel/design_kernel'
 import * as picking from './kernel/picking'
+// @ts-expect-error Actual desktop worker codec shared with the production bridge.
+import { ResidentDocumentCodec } from '../../design-desktop/src/resident-document-codec.mjs'
 const sessions: DesktopSession[] = []
 const ok = { status: 'ok' } as const
 const flush = async () => { for (let i = 0; i < 40; i++) await Promise.resolve() }
@@ -41,6 +43,23 @@ test('known native codec reuses exact derived-validation bytes for the loaded ba
   f.editor.change('edit', d => { d.name = 'Changed' }); await f.recover()
   expect(f.encode).toHaveBeenCalledTimes(1); expect(f.submitted).toHaveLength(1); expect(f.submitted[0]).not.toBe(baseline)
   expect(JSON.parse(f.submitted[0]).name).toBe('Changed'); expect(f.session.dirty).toBe(false)
+})
+test('incremental codec seeds only the adopted bytes and invalidates versioned in-place roots', async () => {
+  const f = await fixture(), codec = new ResidentDocumentCodec(2 ** 20)
+  const incremental = vi.fn(async request => codec.encode(request))
+  ;(f.bridge as { documentCodec: DesktopBridge['documentCodec'] }).documentCodec = {
+    ...f.bridge.documentCodec!, encodeIncremental: incremental,
+  }
+  expect(await f.session.openWorkspace(f.target.id)).toBe(true)
+  const original = JSON.stringify(f.editor.state.doc)
+  f.editor.change('edit', d => { d.name = 'First edit' }); await f.recover()
+  expect(incremental.mock.calls[0][0].installJson).toBe(original)
+  expect(f.submitted.at(-1)).toBe(JSON.stringify(f.editor.state.doc))
+  f.editor.state.doc.name = 'Versioned same root'; f.editor.set({ version: f.editor.state.version + 1 })
+  await f.recover()
+  expect(incremental.mock.calls.at(-1)![0].installJson).toBeUndefined()
+  expect(f.submitted.at(-1)).toBe(JSON.stringify(f.editor.state.doc))
+  expect(JSON.parse(f.submitted.at(-1)!).name).toBe('Versioned same root')
 })
 test('unknown reordered custom codec must encode both its own baseline and current format', async () => {
   const custom = (input: unknown) => JSON.stringify(Object.fromEntries(Object.entries(input as Record<string, unknown>).reverse()))

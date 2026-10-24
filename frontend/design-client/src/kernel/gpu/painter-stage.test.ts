@@ -36,6 +36,36 @@ test('complete painter suffix preserves bits and aliases without intersecting ch
   f.renderer.release(...out)
   expect(f.renderer.busy.size).toBe(0)
 })
+test('native suffix merge writes a smaller target while keeping original input addresses and shared owners', () => {
+  const f = rendererFixture(); vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '0')
+  vi.stubEnv('VITE_DESIGN_PARENT_SUFFIX', '1')
+  const output = f.renderer.suffixRect(f.input, { suffixBox: [0, 0, 8, 6] })
+  const source = f.renderer.acquire({ x: -12, y: -3, w: 40, h: 32 })
+  const out = f.renderer.merge(source, f.input, 'normal', 1, undefined, output) as Surface
+  expect(out.rect).toEqual({ x: 0, y: 0, w: 8, h: 6 })
+  expect(f.driver.copyColorRegion).not.toHaveBeenCalled()
+  const u = f.driver.pass.mock.calls.at(-1)![1]
+  expect([...u.slice(4, 12)]).toEqual([-12, -3, 40, 32, -20, -10, 96, 80])
+  expect(f.renderer.aliases.get(f.input.texture)).toBe(3)
+  expect(f.renderer.busy.has(source.texture)).toBe(true)
+  f.renderer.release(out, source, ...f.targets.slice(1)); expect(f.renderer.busy.size).toBe(0)
+})
+test('native suffix cannot grow an already narrowed target or alter retained interaction captures', () => {
+  const f = rendererFixture(); vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '0')
+  vi.stubEnv('VITE_DESIGN_PARENT_SUFFIX', '1')
+  expect(f.renderer.suffixRect(f.input, { suffixBox: [-21, 0, 8, 6] })).toBeUndefined()
+  f.renderer.scene.interactionRetained = true
+  expect(f.renderer.suffixRect(f.input, { suffixBox: [0, 0, 8, 6] })).toBeUndefined()
+  expect(f.driver.copyColorRegion).not.toHaveBeenCalled()
+  expect(f.renderer.aliases.get(f.input.texture)).toBe(4)
+})
+test('native suffix cancellation keeps every old prefix owner until normal frame retirement', () => {
+  const f = rendererFixture(); vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '0')
+  f.renderer.frameCurrent = () => false
+  expect(() => f.renderer.merge(f.input, f.targets[1], 'normal', 1, undefined, { x: 0, y: 0, w: 8, h: 6 })).toThrow('PREVIEW_CANCELLED')
+  expect(f.driver.copyColorRegion).not.toHaveBeenCalled()
+  expect(f.renderer.aliases.get(f.input.texture)).toBe(4)
+})
 test('same physical texture at different logical phases receives independent exact crops',async()=>{
   const f=rendererFixture();f.targets[2].rect={...f.input.rect,x:-19};f.targets[3].rect={...f.input.rect,x:-19}
   const out=await f.renderer.cropPainterTargets(f.targets,[0,0,8,6]) as Surface[]
@@ -155,7 +185,7 @@ test('a consumed current-frame horizontal plane obtains real completion before a
   const driver={name:'webgpu',managed:true,resourceEpoch:7,completedResourceEpoch:6,scratchBytes:0,create,
     checkpoint:vi.fn(async()=>{await new Promise<void>(resolve=>{complete=resolve});completed=true}),
     destroy:vi.fn(()=>{expect(completed).toBe(true)})}
-  const renderer=new GpuRenderer(driver as unknown as Driver) as any
+  const renderer=new GpuRenderer(driver as unknown as Driver, true, true, undefined, false, false, 256) as any
   renderer.scene={};renderer.bytes=241675840
   const horizontal=create(2428,3658)
   renderer.free.set('2428:3658',[horizontal]);renderer.used.add(horizontal);renderer.poolReleaseEpoch.set(horizontal,7)
@@ -176,7 +206,7 @@ test('a partial solid leaf obtains real headroom for its full paint target inste
   const driver={name:'webgpu',managed:true,exactSolidPaintOver:true,resourceEpoch:7,completedResourceEpoch:6,scratchBytes:0,create,
     checkpoint:vi.fn(async()=>{await new Promise<void>(resolve=>{complete=resolve});completed=true}),
     destroy:vi.fn(()=>expect(completed).toBe(true)),pass:vi.fn()}
-  const renderer=new GpuRenderer(driver as unknown as Driver) as any
+  const renderer=new GpuRenderer(driver as unknown as Driver, true, true, undefined, false, false, 256) as any
   renderer.scene={};renderer.bytes=191288256
   const free=create(2428,2428);renderer.free.set('2428:2428',[free]);renderer.used.add(free);renderer.poolReleaseEpoch.set(free,7)
   const dst={texture:create(1,1),rect:{x:-1182,y:-222,w:2402,h:2428}} as Surface

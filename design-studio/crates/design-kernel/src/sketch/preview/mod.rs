@@ -499,6 +499,7 @@ fn visit(
             shadow_output_box: None,
             children_input_box: None,
             post_composite_box: None,
+            suffix_box: None,
             id,
             rect,
             matrix,

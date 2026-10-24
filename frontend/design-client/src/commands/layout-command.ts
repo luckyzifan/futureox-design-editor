@@ -29,8 +29,14 @@ function layoutAffectedAdmission(doc: DesignDocument, ids: readonly string[], in
     if (++count > 10000) reject('request_budget', 'Layout affected subtree exceeds 10000 nodes')
     const n = doc.nodes[id]
     if (!propertyIntent) assertUnlocked(doc, id, index.parents)
-    if (n.component || n.componentSet || n.instance || n.instanceOrigin) reject('instance_structure', 'Layout commands do not modify components or instances')
-    if (n.bindings || n.variableModes || n.styleRefs || n.board || n.connector || n.textPath) reject('unsupported_layout_topology', 'Bound or dependent layout geometry is not supported by this command')
+    // Editing an existing master frame's layout preserves its identity/tree.
+    // Rust materializes dependent instances after this normal property edit.
+    // Wrapping/retyping masters and changing instance internals remain separate
+    // structural intents and must not be admitted by this exception.
+    const masterProperty = propertyIntent && index.ids.includes(id) && n.kind === 'frame' && !!n.component
+    if (n.component && !masterProperty || n.componentSet || n.instance || n.instanceOrigin)
+      reject('instance_structure', 'Layout commands cannot restructure components or edit instance internals')
+    if (Object.keys(n.bindings || {}).length || Object.keys(n.variableModes || {}).length || Object.keys(n.styleRefs || {}).length || n.board || n.connector || n.textPath) reject('unsupported_layout_topology', 'Bound or dependent layout geometry is not supported by this command')
     if (!n.transform.every(Number.isFinite) || Math.abs(n.transform[0] * n.transform[3] - n.transform[1] * n.transform[2]) < 1e-12 || !Number.isFinite(n.width) || !Number.isFinite(n.height)) reject('unsupported_transform', 'Layout geometry must have a finite invertible basis')
     for (const child of n.children) visit(child)
   }
@@ -46,7 +52,7 @@ export function layoutCommandAdmission(doc: DesignDocument, ids: readonly string
     for (let at = index.parents.get(id); at && doc.nodes[at]; at = index.parents.get(at)) {
       const p = doc.nodes[at]
       if (active(p)) reject('unsupported_layout_topology', 'Layout changes inside an active layout ancestor require a dedicated responsive command')
-      if (p.component || p.componentSet || p.bindings || p.variableModes || p.styleRefs) reject('unsupported_layout_topology', 'Derived ancestor layout is not supported')
+      if (p.component || p.componentSet || Object.keys(p.bindings || {}).length || Object.keys(p.variableModes || {}).length || Object.keys(p.styleRefs || {}).length) reject('unsupported_layout_topology', 'Derived ancestor layout is not supported')
       if (!p.transform.every(Number.isFinite) || Math.abs(p.transform[0] * p.transform[3] - p.transform[1] * p.transform[2]) < 1e-12) reject('unsupported_transform', 'Ancestor basis must be finite and invertible')
     }
   }

@@ -117,7 +117,7 @@ export function assertFreshSelection(doc: DesignDocument, index: SelectionIndex,
   if (state.fresh) return
   const visited = new Set<string>()
   const derived = (n: DesignNode) => !!(n.booleanOperation || n.instance || n.instanceOrigin || n.component || n.componentSet ||
-    n.kind === 'text' || n.textPath || n.connector || n.board || activeLayout(n) || n.bindings || n.styleRefs || n.variableModes ||
+    n.kind === 'text' || n.textPath || n.connector || n.board || activeLayout(n) || Object.keys(n.bindings || {}).length || Object.keys(n.styleRefs || {}).length || Object.keys(n.variableModes || {}).length ||
     n.constraints || (n.sizing && (n.sizing.width !== 'fixed' || n.sizing.height !== 'fixed')))
   const assertFresh = (id: string) => {
     if (visited.has(id)) return
@@ -145,7 +145,7 @@ function geometry(doc: DesignDocument, index: SelectionIndex, state: SelectionGe
     const n = doc.nodes[id], m = multiply(basis, matrix(id))
     let result: Bounds
     if (n.kind === 'group' && n.children.length) result = unionBounds(n.children.map(measure))
-    else if (n.network || n.textPath || n.pathOffset || n.vectorBrush || n.booleanOperation) {
+    else if (n.network || n.vectorGeometry || n.textPath || n.pathOffset || n.vectorBrush || n.booleanOperation) {
       // Never use a mutable draft node as the WeakMap key in kernelBounds.
       // The private shallow record is stable for this synchronous measurement.
       const stable = { ...n }
