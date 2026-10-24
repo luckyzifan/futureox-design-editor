@@ -39,7 +39,7 @@ test('shared compiled source classification preserves the old predicate for know
 })
 test('unsupported subtree capabilities reject source, stationary and moving backdrop reuse', () => {
   const { scene, root, child } = fixture()
-  scene.nodes[child.id].effects = [{ ...effect('blur'), kind: 'future-effect' as never }]
+  scene.nodes = { ...scene.nodes, [child.id]: { ...scene.nodes[child.id], effects: [{ ...effect('blur'), kind: 'future-effect' as never }] } }
   const index = sceneIndex(scene)
   expect([...index.unknownEffectSubtrees].sort()).toEqual([root.id, child.id].sort())
   expect(classifyCompiledSourceReuse(scene.nodes[root.id], index.unknownEffectSubtrees.has(root.id)).reason).toBe('unknown-effect')
@@ -51,7 +51,7 @@ test('unsupported subtree capabilities reject source, stationary and moving back
 })
 test('translated immutable scene inherits capability facts without hiding dynamic containers', () => {
   const { document, scene, root, child } = fixture()
-  scene.nodes[child.id].effects = [{ ...effect('blur'), kind: 'future-effect' as never }]
+  scene.nodes = { ...scene.nodes, [child.id]: { ...scene.nodes[child.id], effects: [{ ...effect('blur'), kind: 'future-effect' as never }] } }
   const index = sceneIndex(scene)
   const moved = { ...scene, nodes: { ...scene.nodes } }
   inheritTranslatedIndex(scene, moved.nodes)

@@ -49,7 +49,6 @@ mod derived_invalidation;
 mod text_case;
 pub mod glass_capture;
 pub mod gpu;
-mod scene_delta;
 pub mod gradient_blur;
 pub mod graph_api;
 pub mod handles;
@@ -1365,7 +1364,6 @@ mod wasm {
         /// meta JSON carries offsets into this buffer, and `take_tiled_bytes`
         /// transfers it once per frame.
         staged_tiled_bytes: Vec<u8>,
-        scene_delta: crate::scene_delta::SceneDelta,
         component_updates: crate::component_updates::State,
     }
     #[wasm_bindgen]
@@ -1497,7 +1495,7 @@ mod wasm {
             Self {
                 inner: Engine::new(),
                 staged_tiled_bytes: Vec::new(),
-                scene_delta: Default::default(), component_updates:Default::default(),
+                component_updates:Default::default(),
             }
         }
         /// Sketch-parity tiled frame update (`updateWithInstruction:`): the
@@ -1608,7 +1606,6 @@ mod wasm {
             self.component_updates.clear();Ok(())
         }
         pub fn load_document(&mut self, json: &str) -> Result<(), JsValue> {
-            self.scene_delta.clear();
             self.inner
                 .load_document(json)
                 .map_err(|e| JsValue::from_str(&e))
@@ -1833,19 +1830,26 @@ mod wasm {
             serde_json::to_string(&scene).map_err(|e| JsValue::from_str(&e.to_string()))
         }
         pub fn gpu_compile_cache_stats(&self) -> String { self.inner.gpu_compile_cache_stats().to_string() }
-        pub fn compile_gpu_scene_update(&mut self, options: &str, reset: bool) -> Result<Vec<u8>, JsValue> {
-            self.scene_delta.compile(&mut self.inner, options, reset).map_err(|e| JsValue::from_str(&e))
-        }
-        pub fn clear_gpu_scene_session(&mut self) { self.scene_delta.clear(); }
         pub fn fork_static_render_engine(&self) -> Option<VectorEngine> {
             self.inner.snapshot_static_worker().map(|inner| VectorEngine {
-                inner, staged_tiled_bytes: Vec::new(), scene_delta: Default::default(), component_updates:Default::default(),
+                inner, staged_tiled_bytes: Vec::new(), component_updates:Default::default(),
             })
         }
+        pub fn bind_frame_scene_scope(&mut self, scope: &str) -> Result<(), JsValue> {
+            self.inner.bind_frame_scene_scope(scope).map_err(|e|JsValue::from_str(&e))
+        }
         pub fn compile_gpu_packet(&mut self, options: &str) -> Result<Vec<u8>, JsValue> {
-            self.inner.compile_gpu_request(options).and_then(|scene| scene.into_packet_for_request(options))
+            self.inner.compile_gpu_packet_request(options)
                 .map_err(|e| JsValue::from_str(&e))
         }
+    }
+    #[wasm_bindgen]
+    pub fn compiled_scene_source_key(json: &str) -> Result<Vec<u8>, JsValue> {
+        gpu::scene_plan::source_key_json(json).map_err(|e|JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn compiled_scene_plan_json(json: &str) -> Result<String, JsValue> {
+        gpu::scene_plan::from_json(json).map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
     pub fn geometry_json(json: &str) -> Result<String, JsValue> {

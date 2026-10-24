@@ -1,18 +1,8 @@
 import type { GpuNode, GpuScene, PathMesh } from './types'
-import { retainedSceneChanges, inheritSceneReceipt } from './scene-delta'
+import { rebindSceneIndex } from './scene-index'
+import { sameCompiledSource, sameSourceSemantics } from './source-identity'
 
-const signatures = new WeakMap<GpuNode, string>()
 const encode = (value: unknown) => JSON.stringify(value, (_key, v) => Object.is(v, -0) ? '-0' : v)
-function signature(n: GpuNode) {
-  let value = signatures.get(n)
-  if (value) return value
-  const path = (p: PathMesh) => ({ ...p, first: 0,
-    area: p.area ? { ...p.area, first: 0 } : undefined,
-    analytic: p.analytic ? { ...p.analytic, first: 0 } : undefined })
-  const { previewSource: _source, previewDynamic: _dynamic, ...fields } = n
-  value = encode({ ...fields, fill: path(n.fill), strokes: n.strokes.map(s => ({ ...s, path: path(s.path) })) })
-  signatures.set(n, value); return value
-}
 const bits = (input: number[] | Float32Array) => {
   const array = input instanceof Float32Array ? input : new Float32Array(input)
   return new Uint32Array(array.buffer, array.byteOffset, array.length)
@@ -37,21 +27,26 @@ export function reuseExactSceneSources(previous: GpuScene, next: GpuScene, trans
   if (policy(previous) !== policy(next)) return next
   const old = { curves: bits(previous.curves || []), vertices: bits(previous.vertices) }
   const fresh = { curves: bits(next.curves || []), vertices: bits(next.vertices) }
-  const changed = retainedSceneChanges(previous,next)
-  const nodes = { ...(changed ? previous.nodes : next.nodes) }
-  if(changed)for(const id of changed){if(next.nodes[id])nodes[id]=next.nodes[id];else delete nodes[id]}
-  for (const [id, n] of changed ? [...changed].filter(id=>!!nodes[id]).map(id=>[id,nodes[id]] as const) : Object.entries(nodes)) {
+  let nodes=next.nodes
+  for (const [id,n] of Object.entries(next.nodes)) {
     const before = previous.nodes[id]
-    if (!before || n.previewDynamic || n.captureReplay || n.textureReplay || signature(before.previewSource || before) !== signature(n)) continue
+    // The frame context already shared this exact immutable compiled node.
+    if (!before || n.previewDynamic || n.captureReplay || n.textureReplay) continue
+    const source=before.previewSource||before,certified=sameCompiledSource(source,n)
+    if(certified===false)continue
+    if(certified===undefined&&!sameSourceSemantics(source,n))continue
     // Only the validated native transform entry may supply this closure. Rust
     // retained all other prepared paths/programs at this identical camera and
     // guard. A generic recompile still compares the complete program bits.
-    const provenUnchanged = translatedNodes && !translatedNodes.has(id)
+    const provenUnchanged = certified===true || translatedNodes && !translatedNodes.has(id)
     if (!provenUnchanged && (!pathEqual(before.fill, n.fill, old, fresh) ||
       !n.strokes.every((s, i) => pathEqual(before.strokes[i].path, s.path, old, fresh)))) continue
+    if(n===source)continue
+    if(nodes===next.nodes)nodes={...next.nodes}
     nodes[id] = { ...n, previewSource: before.previewSource || before }
   }
+  if(nodes===next.nodes)return next
   const result = { ...next, nodes }
-  inheritSceneReceipt(next,result)
+  rebindSceneIndex(next,result)
   return result
 }

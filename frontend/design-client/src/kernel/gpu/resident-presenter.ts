@@ -105,6 +105,19 @@ export class ResidentPresenter {
       colorSpace: 'srgb',
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
     })
+    // Reattachment may happen while latest is still incomplete. The accepted
+    // backing survives independently of its tile handles, so restore it without
+    // acknowledging the pending camera or trying to resurrect retired tiles.
+    if (this.backbuffer && this.drawn && !this.disposed) {
+      this.payload.assertOpen()
+      const { width, height, texture } = this.backbuffer, frame = this.drawn
+      this.canvas.width = width
+      this.canvas.height = height
+      const encoder = this.device.createCommandEncoder(), output = this.context.getCurrentTexture()
+      encoder.copyTextureToTexture({ texture }, { texture: output }, [width, height])
+      this.drawOverlay(encoder, output, frame)
+      this.device.queue.submit([encoder.finish()])
+    }
     this.repaint()
     recordDeviceLifecycle(this, deviceLifecyclePhase.attached, this.diagnosticFields())
   }
@@ -498,12 +511,8 @@ export class ResidentPresenter {
     }
     const output = this.context.getCurrentTexture()
     encoder.copyTextureToTexture({ texture: this.backbuffer!.texture }, { texture: output }, [w, h])
-    if (frame.overlay) {
-      this.overlay ??= new CanvasOverlayRenderer(this.device, this.format)
-      const overlay=frame.overlayAffines?transformOverlay(frame.overlay,new Map(Object.entries(frame.overlayAffines))):frame.overlayPose?translateOverlay(frame.overlay,new Map(Object.entries(frame.overlayPose))):frame.overlay
-      this.overlay.draw(encoder, output, overlay, view, width, height, dpr)
-    }
-    if (this.traceAlpha) this.alphaTrace ??= new PresenterAlphaTrace(this.device, this.payload, this.report)
+    this.drawOverlay(encoder, output, frame)
+    if (this.traceAlpha) this.alphaTrace ??= new PresenterAlphaTrace(this.device, this.payload, fields => this.report(fields))
     const alpha = this.alphaTrace?.encode(encoder, this.backbuffer!.texture, {
       ...deviceDiagnosticFields(this), alphaFrame: this.frames + 1, alphaSequence: frame.diagnosticSequence, alphaWidth: w, alphaHeight: h,
     })
@@ -566,6 +575,13 @@ export class ResidentPresenter {
   }
   repaint() {
     if (this.latest) this.draw(this.latest)
+  }
+  private drawOverlay(encoder: GPUCommandEncoder, output: GPUTexture, frame: ResidentFrame) {
+    if (!frame.overlay) return
+    this.overlay ??= new CanvasOverlayRenderer(this.device, this.format)
+    const overlay = frame.overlayAffines ? transformOverlay(frame.overlay, new Map(Object.entries(frame.overlayAffines))) :
+      frame.overlayPose ? translateOverlay(frame.overlay, new Map(Object.entries(frame.overlayPose))) : frame.overlay
+    this.overlay.draw(encoder, output, overlay, frame.view, frame.width, frame.height, frame.dpr)
   }
   get residentBytes() {
     return (

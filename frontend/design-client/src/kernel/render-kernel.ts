@@ -6,8 +6,8 @@ import { blank } from '../model'
 import type { PaintDamage } from './paint-damage'
 import { renderCpuFrame } from './cpu-frame'
 import { PreparationChannel, type PreparationMethod } from './preparation-channel'
-import { CompiledPacketCache } from './compiled-packet-cache'
-import { SceneDeltaDecoder } from './gpu/scene-delta'
+import { FrameResources } from './gpu/frame-resources'
+import { decodeScenePacket, copyScenePacket } from './gpu/scene-packet'
 import { PreparedPacket, waitForPacket } from './prepared-packet'
 
 /** The GPU worker keeps only the image decoder on its synchronous boundary.
@@ -15,16 +15,13 @@ import { PreparedPacket, waitForPacket } from './prepared-packet'
  * keep their existing local engine; the same async facade serves both paths. */
 export class RenderKernel {
   compileStats?:Record<string,unknown>
-  private sceneUpdates = new SceneDeltaDecoder()
-  sceneUpdateBytes = 0
   documentForks = 0
   private settings = 'null'
-  private packets = new CompiledPacketCache()
+  private resources = new FrameResources()
   private revision = 0
   private pendingMutations = 0
   private pendingPackets = new Map<string, { revision: number; bytes: Promise<Uint8Array>; shared: boolean }>()
   packetCoalesced = 0
-  private packetKeys = new WeakMap<Uint8Array,{key:string;revision:number}>()
   get preparationStateReceipt() { return this.preparation?.currentReceipt(this.lane) }
   supportsDocumentDerivation() {
     if (import.meta.env.VITE_DESIGN_DOCUMENT_DERIVATION === '0') return Promise.resolve(false)
@@ -37,8 +34,7 @@ export class RenderKernel {
   async derive_document_v1(baseReceipt: PreparationStateReceiptV1) {
     if (this.lane !== 'interaction' || !this.preparation || !await this.supportsDocumentDerivation()) throw Error('DERIVATION_UNSUPPORTED')
     const expectedTarget = this.preparationStateReceipt ?? null
-    this.sceneUpdates.clear()
-    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.packets.clear()
+    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.clear()
     try {
       await this.call('derive_document_v1', [{ operationId: this.preparation.nextDerivationOperation(), baseReceipt,
         target: 'interaction', expectedTarget, delta: [] }])
@@ -46,9 +42,11 @@ export class RenderKernel {
     } finally { this.pendingMutations-- }
   }
   get canPrepareConcurrently() { return !!this.preparation }
-  get packetCacheHits() { return this.packets.hits }
-  get packetCacheBytes() { return this.packets.bytes }
-  constructor(private assets: VectorEngine, private lane: string, private preparation?: PreparationChannel) {}
+  get frameResourceHits() { return this.resources.hits }
+  get frameResourceBytes() { return this.resources.bytes }
+  constructor(private assets: VectorEngine, private lane: string, private preparation?: PreparationChannel) {
+    if(!preparation)assets.bind_frame_scene_scope(crypto.randomUUID())
+  }
   async initialize(mips: boolean, font?: Uint8Array) {
     this.assets.set_image_mips(mips)
     if (this.preparation) await this.call('initialize', [mips])
@@ -77,34 +75,28 @@ export class RenderKernel {
     } catch (error) {
       const stage = method === 'load_document' || method === 'initialize' ? 2 : method === 'derive_document_v1' ? 3 :
         method === 'apply_document_patch_with_damage' || method === 'apply_interaction_transforms' ? 4 :
-        method === 'compile_gpu_packet' || method === 'compile_gpu_scene_update' ? 5 :
+        method === 'compile_gpu_packet' ? 5 :
         ['render_linear','render_png','render_color_png','render_region_png','render_cpu_frame'].includes(method) ? 7 : 0
       throw markRenderFailure(error, { failureStage: stage })
     }
   }
   async load_document(value: string) {
-    this.sceneUpdates.clear()
-    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.packets.clear()
+    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.clear()
     try { await this.call<void>('load_document', [value]) }
     finally { this.pendingMutations-- }
   }
   async apply_document_patch_with_damage(value: string, expectedBaseReceipt?: PreparationStateReceiptV1) {
     if (expectedBaseReceipt && !await this.supportsAcknowledgedPatches()) throw Error('PATCH_GUARD_UNSUPPORTED')
-    this.revision++; this.pendingMutations++; this.pendingPackets.clear()
+    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.invalidate()
     try {
       const result = await this.call<string>('apply_document_patch_with_damage', expectedBaseReceipt ? [value, { expectedBaseReceipt }] : [value])
-      const patch = JSON.parse(value), damage = JSON.parse(result) as PaintDamage
-      if (this.lane !== 'canvas' || Object.keys(patch.fields || {}).length) this.packets.clear()
-      else this.packets.applyDamage(damage, Object.keys(patch.nodes || {}))
       return result
-    } catch (error) { this.packets.clear(); throw error }
+    } catch (error) { this.resources.invalidate(); throw error }
     finally { this.pendingMutations-- }
   }
   async compile_gpu_packet(options: string, signal?: AbortSignal) {
     if (signal?.aborted) throw Error('PREVIEW_CANCELLED')
-    const enabled = !!this.preparation && import.meta.env.VITE_DESIGN_PACKET_CACHE !== '0'
-    const hit = enabled && !this.pendingMutations ? this.packets.get(options) : undefined
-    if (hit) { this.packetKeys.set(hit,{key:options,revision:this.revision}); return hit }
+    const enabled = !!this.preparation
     const revision = this.revision
     const pending = enabled && !this.pendingMutations ? this.pendingPackets.get(options) : undefined
     if (pending?.revision === revision) {
@@ -112,25 +104,17 @@ export class RenderKernel {
       pending.shared = true
       // The first consumer may transfer or mutate its packet immediately.
       // Each waiter needs independent ownership, including before cache admission.
-      const bytes = (await waitForPacket(pending.bytes, signal)).slice()
-      if (revision === this.revision && !this.pendingMutations)
-        this.packetKeys.set(bytes, { key: options, revision })
-      return bytes
+      return copyScenePacket(await waitForPacket(pending.bytes, signal))
     }
-    const entry = { revision, bytes: this.call<Uint8Array>('compile_gpu_packet', [options], signal), shared: false }
+    const entry = { revision, bytes: this.compileFrame(options, revision, signal), shared: false }
     // A cancellable physical compile cannot be the shared owner of an exact
     // request (or another preview owner). Only noncancellable jobs are shared.
     if (enabled && !this.pendingMutations && !signal) this.pendingPackets.set(options, entry)
     // Only shared requests need an extra private copy. Never let an old
     // completion remove a newer revision's request under the same key.
     let bytes: Uint8Array
-    try { const result = await entry.bytes; bytes = entry.shared ? result.slice() : result }
+    try { const result = await entry.bytes; bytes = entry.shared ? copyScenePacket(result) : result }
     finally { if (this.pendingPackets.get(options) === entry) this.pendingPackets.delete(options) }
-    if (enabled && !this.pendingMutations && revision === this.revision) {
-      const request = JSON.parse(options)
-      this.packetKeys.set(bytes,{key:options,revision})
-      this.packets.put(options, bytes, this.lane === 'canvas' && !!request.gpuViewport && !request.animation && !request.pixelPreview)
-    }
     return bytes
   }
   /** A packet may wait outside GPU ownership only with this version receipt.
@@ -145,19 +129,18 @@ export class RenderKernel {
   }
   async apply_interaction_transforms(value: string) {
     if (this.lane !== 'interaction') throw Error('Transform-only updates require the interaction lane')
-    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.packets.clear()
+    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.invalidate()
     try { return await this.call<boolean>('apply_interaction_transforms', [value]) }
     finally { this.pendingMutations-- }
   }
-  async compile_gpu_scene_update(options: string, reset: boolean) {
-    if (this.lane !== 'interaction') throw Error('Scene updates require the interaction lane')
-    const bytes = await this.call<Uint8Array>('compile_gpu_scene_update', [options, reset])
-    this.sceneUpdateBytes = bytes.byteLength
-    return this.sceneUpdates.decode(bytes)
-  }
-  observePacket(bytes:Uint8Array,scene:GpuScene) {
-    const identity=this.packetKeys.get(bytes)
-    if(identity&&identity.revision===this.revision&&!this.pendingMutations)this.packets.certify(identity.key,scene)
+  private async compileFrame(options:string, revision:number, signal?:AbortSignal) {
+    const lease=this.resources.capture()
+    try {
+      const request=JSON.stringify({...JSON.parse(options),frameResources:lease.acknowledgement})
+      const bytes=await this.call<Uint8Array>('compile_gpu_packet',[request],signal)
+      decodeScenePacket(bytes,revision===this.revision&&!this.pendingMutations?this.resources:undefined,lease)
+      return bytes
+    } finally {lease.release()}
   }
   render_linear(options: string) { return this.call<Float32Array>('render_linear', [options]) }
   render_png(options: string) { return this.call<Uint8Array>('render_png', [options]) }

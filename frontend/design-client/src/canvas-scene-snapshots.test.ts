@@ -81,6 +81,25 @@ test('same current/displayed/refine snapshot shares one scene and one lazy index
   expect(work.scenes).toBe(1)
 })
 
+test('Editor commands borrow Canvas geometry without retaining a third slot or reading a stale edit', () => {
+  const {doc,a}=fixture(), e=makeEditor(doc), store=new CanvasSceneSnapshots()
+  store.begin(e,e.sessionGeneration,e.state.page,true)
+  const first=store.currentScene(e.state.doc,e.state.page)
+  const release=e.bindPublishedScene(store.borrowCurrentScene(e.state.doc,e.state.page,e.sessionGeneration))
+  const builds=work.scenes
+  for(let i=0;i<30;i++) {
+    e.set({view:{x:i,y:-i,zoom:1}})
+    expect(e.entries()).toEqual(first.entries)
+    e.entries().reverse() // Public command callers still own their array.
+  }
+  expect(work.scenes).toBe(builds)
+  e.update([a.id],{width:41.125})
+  exact(e.entries(),actual.scene(e.state.doc,e.state.page))
+  expect(work.scenes).toBeGreaterThan(builds)
+  release()
+  const before=work.scenes;e.entries();expect(work.scenes).toBe(before+1)
+})
+
 test('50 live previews retain only current/displayed scenes; standalone refine retains no entries or index', () => {
   const {doc,a} = fixture(), e = makeEditor(doc), store = new CanvasSceneSnapshots(), before = frozen(e.state.doc)
   store.begin(e,0,e.state.page,true); const shown = store.currentScene(before,e.state.page); void shown.index
