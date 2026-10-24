@@ -8,7 +8,7 @@ import { PreparationSnapshots } from './preparation-snapshot'
 import { PreparationStates } from './preparation-state'
 
 const allowed = new Set<PreparationMethod>(['preparation_capabilities_v1', 'derive_document_v1', 'warm_resources', 'initialize', 'load_document', 'apply_document_patch_with_damage', 'apply_interaction_transforms',
-  'compile_gpu_scene_update', 'clear_gpu_scene_session', 'compile_gpu_packet', 'render_linear', 'render_png', 'render_color_png', 'render_region_png',
+  'compile_gpu_packet', 'render_linear', 'render_png', 'render_color_png', 'render_region_png',
   'render_cpu_frame', 'stats', 'gpu_memory_breakdown'])
 let initialized: Promise<Uint8Array> | undefined
 const engines = new Map<string, VectorEngine>()
@@ -58,6 +58,7 @@ self.onmessage = event => {
           const previous = engines.get(lane)
           engines.set(lane, candidate); snapshots.invalidate(lane)
           const stateReceipt = states.mint('interaction', request.baseReceipt)
+          candidate.bind_frame_scene_scope(JSON.stringify(stateReceipt))
           previous?.free()
           port.postMessage({ id, settings, stateReceipt, documentFork: true }); return
         }
@@ -96,10 +97,11 @@ self.onmessage = event => {
         const settings = method === 'initialize' || method === 'load_document' || method === 'apply_document_patch_with_damage'
           ? kernel.color_settings() : undefined
         const transfer = value instanceof Uint8Array || value instanceof Float32Array ? [value.buffer] : []
-        const compileStats=import.meta.env.DEV&&(method==='compile_gpu_packet'||method==='compile_gpu_scene_update')
+        const compileStats=import.meta.env.DEV&&method==='compile_gpu_packet'
           ?JSON.parse(kernel.gpu_compile_cache_stats()):undefined
         const stateReceipt = mutation ? (method === 'load_document' || previousReceipt
           ? states.mint(lane, previousReceipt, method === 'load_document') : null) : undefined
+        if(stateReceipt)kernel.bind_frame_scene_scope(JSON.stringify(stateReceipt))
         port.postMessage({ id, value, settings, documentFork, compileStats, ...(mutation ? { stateReceipt } : {}) }, transfer)
       } catch (error) { port.postMessage({ id, error: error instanceof Error ? error.message : String(error) }) }
     })

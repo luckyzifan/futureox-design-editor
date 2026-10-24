@@ -38,7 +38,7 @@ import {
   type RenderPolicy,
 } from './render-policy'
 import type { GpuRenderer } from './gpu/renderer'
-import { decodeScenePacket } from './gpu/scene-packet'
+import { decodeScenePacket, scenePacketWitness } from './gpu/scene-packet'
 import type { ColorSettings } from '../color'
 import type { BackendPreference, GpuScene } from './gpu/types'
 import type { KernelOptions } from './client'
@@ -169,9 +169,9 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
         const result = await original()
         if (result instanceof Uint8Array && result.byteLength >= 24) {
           const header = new DataView(result.buffer, result.byteOffset, result.byteLength)
-          if (header.getUint32(0, true) === 0x4b504746 && [1, 2].includes(header.getUint32(4, true)))
-            packet = { scenePacketVersion: header.getUint32(4, true), scenePacketBytes: result.byteLength,
-              scenePacketMetadataBytes: header.getUint32(8, true), scenePacketImageBytes: header.getUint32(20, true) }
+          if (header.getUint32(0, true) === 0x43534746 && header.getUint32(4, true)===1)
+            packet = { scenePacketProtocol: 2, scenePacketVersion: header.getUint32(4, true), scenePacketBytes: result.byteLength,
+              scenePacketMetadataBytes: header.getUint32(8, true), scenePacketResourceBytes: header.getUint32(20, true) }
         }
         return result
       } finally { terminalDiagnostics.record('compile',{requestId,durationMs:performance.now()-started,...packet}) }
@@ -184,9 +184,6 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
 }
 function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal) {
   return journalCompile(async () => (await kernel.prepare_gpu_packet(options, signal)).consume())
-}
-function compileSceneUpdate(kernel: RenderKernel, options: string, reset: boolean) {
-  return journalCompile(() => kernel.compile_gpu_scene_update(options, reset))
 }
 let reportedResidentAttachment = ''
 function prepareDisplay(capture = true) {
@@ -323,7 +320,7 @@ const queue = new RenderWorkQueue()
 type ResidentPose={slot:number;transforms:Record<string,Matrix>;input:{sequence:number;at:number}}
 type PoseSession={slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
-  patch?:TranslationPatchSession;native?:boolean;affine?:boolean;delta?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
+  patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
 function displayedOverlayAffines(frame:import('./gpu/resident-presenter').ResidentFrame) {
   const session = poseSession
@@ -390,9 +387,9 @@ function schedulePose(){
           const kernel=await engine()
           if(!await kernel.apply_interaction_transforms(JSON.stringify(pose.transforms))){rebasePose(pose);break}
           const compileStarted=performance.now()
-          let compiled:GpuScene
-          if(session.delta){compiled=await compileSceneUpdate(kernel, session.options,false);sceneUpdateBytes=kernel.sceneUpdateBytes}
-          else{const packet=await compilePacket(kernel, session.options);sceneUpdateBytes=packet.byteLength;compiled=decodeScenePacket(packet)}
+          const packet=await compilePacket(kernel,session.options)
+          sceneUpdateBytes=packet.byteLength
+          const compiled=decodeScenePacket(packet)
           poseCompileMs=performance.now()-compileStarted
           compileStats=kernel.compileStats
           next={...preparePreviewSelection(compiled,session.scene.interactionSelection||[]),
@@ -675,7 +672,6 @@ self.onmessage = (e) => {
         tilePrepareViewport: requestedPrepareViewport, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
-      renderOptions.gpuPacketImages = import.meta.env.VITE_DESIGN_PACKET_IMAGE_TABLE === '1'
       renderOptions.gpuPainterSupport = usesPainterSupport(import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX,
         { backend, renderIntent, livePreview, tileViewport, png: request.png, exportFormat,
           exportRegion: renderOptions.exportRegion, pixelPreview: renderOptions.pixelPreview,
@@ -919,11 +915,6 @@ self.onmessage = (e) => {
       if (tileViewport && channel === 'canvas' && fillGeneration !== tileFillGeneration)
         throw Error('PREVIEW_CANCELLED')
       if (laneState.deferredInteractionDocument && translated?.options !== options && laneState.compiledScene?.options !== options) await synchronizeDeferred()
-      // Whole-board translation changes almost every visible program. Its
-      // measured full packet is cheaper than diffing/reassembling that stream.
-      // Keep deltas for local edits; neither route changes the exact compiler.
-      const incrementalScene = interactionNative && import.meta.env.VITE_DESIGN_SCENE_DELTA!=='0' &&
-        !(interactionSelection || []).some((id: string) => laneState.interactionDocument?.pages.some(page => page.children.includes(id)))
       const hydrateImages = sceneImageHydration(kernel, () => !(livePreview || tileViewport) || previewCurrent())
       const settingsJson = kernel.color_settings()
       const color: ColorSettings | undefined = JSON.parse(settingsJson) || undefined
@@ -1066,7 +1057,7 @@ self.onmessage = (e) => {
               tileDisplayTentRadiusPasses = 0, tileDisplayTentRadiusPixels = 0
             const cameraDependent = tileComputationDependsOnCamera(renderOptions, !!color)
             const requestPreference: BackendPreference | undefined = preference
-            const batchStarted = performance.now(), packetHitsBefore = kernel.packetCacheHits
+            const batchStarted = performance.now(), resourceHitsBefore = kernel.frameResourceHits
             // Private identity covers only this synchronized lane/document/
             // resource/camera/prepare batch. Never taken from the request or
             // serialized native packet, and never shared with another job.
@@ -1153,10 +1144,9 @@ self.onmessage = (e) => {
                   cameraFallback = !retainCoverage && !cameraDependent && preparedTileCanFill(tile, displayFrame)
                   if (!cameraFallback) throw Error('PREVIEW_CANCELLED')
                 }
-                witness = rawScene
+                witness = scenePacketWitness(rawScene)
                 result = disableExactCache ? undefined : tileCache.get(cacheKey, witness)
                 preparedScene = result ? undefined : decodeScenePacket(rawScene)
-                if (preparedScene) kernel.observePacket(rawScene,preparedScene)
               } catch (error) {
                 // A whole tile may exceed the working-surface budget. Let the
                 // regional renderer subdivide it; a compiler admission error
@@ -1347,8 +1337,8 @@ self.onmessage = (e) => {
               pipelineWallMs: performance.now() - batchStarted,
               preparationWaitMs, overlappedPreparations,
               filterColumnPlans, filterColumnReorders,
-              compiledPacketHits: kernel.packetCacheHits - packetHitsBefore,
-              compiledPacketBytes: kernel.packetCacheBytes,
+              frameResourceHits: kernel.frameResourceHits - resourceHitsBefore,
+              frameResourceBytes: kernel.frameResourceBytes,
               renderMs: milliseconds,
               compileMs: tileCompileMs,
               graphMs: tileGraphMs,
@@ -1406,10 +1396,6 @@ self.onmessage = (e) => {
           }
           // CPU-only runs never even load the graphics drivers.
           const { createGpu, straightAlpha } = await import('./gpu/factory')
-          if (channel==='interaction' && retainInteraction && incrementalScene) {
-            const t=performance.now(); await synchronizeDeferred()
-            scene=await compileSceneUpdate(kernel, options,true); compileMs=performance.now()-t
-          }
           if (!scene) {
             if (
               cacheScene &&
@@ -1550,7 +1536,7 @@ self.onmessage = (e) => {
             // path; warming their former bilinear approximation is unnecessary.
             const origins=capturePoseOrigins(scene!,interactionSelection||[])
             if(origins)poseSession={slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,
-              scene:scene!,native:interactionNative===true,affine:interactionAffine===true,delta:!!incrementalScene,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
+              scene:scene!,native:interactionNative===true,affine:interactionAffine===true,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
               patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,laneState.interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
           }
           const bitmap = request.png ? undefined : result.bitmap

@@ -51,3 +51,19 @@ test('explicit empty interaction clears remain permitted instead of retaining de
   expect(f.queue.epoch).toBe(epoch + 1)
   expect(f.reports.at(-1)).toMatchObject({ compositorDraws: 0, presented: { interaction: true } })
 })
+
+test('canvas reattachment copies the accepted backing even after its source tiles retire', () => {
+  const f = descriptorPresenter(() => {}), full = f.presenter.capture(16, 16), half = f.presenter.capture(8, 16)
+  const accepted = { ...frame([item(full.id, 16)]), presentationId: 'accepted' }
+  f.presenter.draw(accepted)
+  f.presenter.draw({ ...frame([item(half.id, 8)], 32), presentationId: 'pending' })
+  f.presenter.release([full.id])
+  const context = { configure: vi.fn(), unconfigure: vi.fn(), getCurrentTexture: () => ({}) }
+  const canvas = { width: 32, height: 16, getContext: () => context } as unknown as OffscreenCanvas
+  const epoch = f.queue.epoch, reports = f.reports.filter(row => row.presented).length
+  f.presenter.attachCanvas(canvas)
+  expect(f.queue.epoch).toBe(epoch + 1)
+  expect(canvas.width).toBe(16)
+  expect((f.presenter as any).drawn).toBe(accepted)
+  expect(f.reports.filter(row => row.presented)).toHaveLength(reports)
+})

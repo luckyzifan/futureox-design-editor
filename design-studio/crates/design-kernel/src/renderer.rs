@@ -209,6 +209,7 @@ pub struct Engine {
     // is known. Only identical topology/configuration can retain its clean nodes.
     pending_camera: Option<(SharedDocument, crate::gpu::CameraPrepare, bool)>,
     pub(crate) camera_residency: crate::gpu::CameraResidency,
+    pub(crate) frame_scene: crate::gpu::FrameSceneContext,
     render_index: Option<Arc<crate::render_index::RenderIndex>>,
     /// Sketch-parity tiled renderer state (tile residency, instructions,
     /// caches, telemetry). Lazily created so export-only engines pay nothing.
@@ -252,6 +253,7 @@ impl Engine {
             camera_prepare: None,
             pending_camera: None,
             camera_residency: crate::gpu::CameraResidency::default(),
+            frame_scene: crate::gpu::FrameSceneContext::default(),
             render_index: None,
             tiled: None,
         }
@@ -1771,6 +1773,7 @@ impl Engine {
             camera_prepare: None,
             pending_camera: None,
             camera_residency: crate::gpu::CameraResidency::default(),
+            frame_scene: crate::gpu::FrameSceneContext::default(),
             render_index: self.render_index.clone(),
             tiled: None,
         }
@@ -1821,14 +1824,7 @@ impl Engine {
         if equal.offset != bytes.len() { return None; }
         self.snapshot_static_worker()
     }
-    pub(crate) fn static_scene_revision(&self) -> Option<(u64, bool, bool)> {
-        let source = self.source_doc.as_ref()?;
-        (!self.layout_dirty && source.animations.is_empty() && self.animation_sample.is_none())
-            .then(|| (self.geo_revision, self.fonts.glyph_origin_quantization(), self.image_mips()))
-    }
-    pub(crate) fn render_parent(&self, id: &str) -> Option<&str> {
-        self.render_index.as_ref()?.parents.get(id).map(String::as_str)
-    }
+
 }
 
 impl crate::tiled_renderer::TileRasterizer for Engine {

@@ -172,8 +172,6 @@ export type GpuMemorySnapshot = {
 export type KernelOptions = {
   /** Overwritten by the worker's strict host experiment policy. */
   gpuPainterSupport?: boolean
-  /** Self-contained FGPK image-byte section; no image cache ownership granted. */
-  gpuPacketImages?: boolean
   /** Separately gated captured-source optimization; never document state. */
   gpuPainterCaptureReads?: boolean
   /** A separate document/geometry lane on the same display GPU worker. */
@@ -276,8 +274,8 @@ export type KernelResult = {
   pipelineWallMs?: number
   preparationWaitMs?: number
   overlappedPreparations?: number
-  compiledPacketHits?: number
-  compiledPacketBytes?: number
+  frameResourceHits?: number
+  frameResourceBytes?: number
   retainedPrefixHits?: number
   retainedGroupHits?: number
   retainedGroupBytes?: number

@@ -646,6 +646,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const entries = currentScene.entries
   const interactionScene = useMemo(() => snapshots.borrowCurrentScene(state.doc, state.page, editor.sessionGeneration),
     [snapshots, currentScene, state.doc, state.page, editor, editor.sessionGeneration, geometryReady])
+  useLayoutEffect(() => editor.bindPublishedScene(interactionScene), [editor, interactionScene])
   const gpuInteraction = useMemo<InteractionProps>(() => ({ document: state.doc, selection: state.selection,
     active: editor.interactionActive, gestureKind: drag.current?.kind, epoch: editor.sessionGeneration, control: gpuMove, onReady: interactionReady,
     onPreviewFailed: failure => {

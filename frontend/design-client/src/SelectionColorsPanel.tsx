@@ -1,11 +1,13 @@
 import { usePropertyText } from './property-interface-messages'
+import { useMemo } from 'react'
 import type { Editor } from './engine'
 import { ColorInput } from './ColorInput'
 import { selectionColors, replaceSelectionColor } from './selection-colors'
 
 export function SelectionColorsPanel({ editor }: { editor: Editor }) {
   const { locale, tr } = usePropertyText()
-  const groups = selectionColors(editor.state.doc, editor.state.selection)
+  const { doc, selection } = editor.state
+  const groups = useMemo(() => selectionColors(doc, selection), [doc, selection])
   if (!groups.length) return null
   return <section aria-label={tr("选区颜色")}><h3>{tr("选区颜色")}<small>{groups.length}</small></h3>
     {groups.map((group, index) => {

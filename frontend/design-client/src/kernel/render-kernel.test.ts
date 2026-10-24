@@ -1,3 +1,4 @@
+import { emptyFrame } from './gpu/frame-wire.test-helper'
 import { expect, test } from 'vitest'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
 import { blank } from '../model'
@@ -45,7 +46,7 @@ test('remote managed documents synchronize a valid image-decoder color space and
   } finally { channel.close(); ports.port2.close(); remote.free(); assets.free() }
 })
 
-test('packet reuse is byte-exact, privately owned and invalidated by document changes',async()=>{
+test('stateless frame replies are byte-exact, privately owned and observe document changes',async()=>{
   const remote=new VectorEngine(),assets=new VectorEngine(),ports=new MessageChannel()
   const channel=new PreparationChannel(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
   let compilations=0
@@ -62,13 +63,13 @@ test('packet reuse is byte-exact, privately owned and invalidated by document ch
     const document=blank();await kernel.load_document(JSON.stringify(document))
     const options=JSON.stringify({pageId:document.pages[0].id,width:32,height:32,view:{x:.25,y:.5,zoom:1},transparent:false,grid:false})
     const first=await kernel.compile_gpu_packet(options),reference=first.slice();first[0]=0
-    expect(await kernel.compile_gpu_packet(options)).toEqual(reference);expect(compilations).toBe(1)
+    expect(await kernel.compile_gpu_packet(options)).toEqual(reference);expect(compilations).toBe(2)
     document.pages[0].background='#123456';await kernel.load_document(JSON.stringify(document))
-    expect(await kernel.compile_gpu_packet(options)).not.toEqual(reference);expect(compilations).toBe(2)
+    expect(await kernel.compile_gpu_packet(options)).not.toEqual(reference);expect(compilations).toBe(3)
   }finally{channel.close();ports.port2.close();remote.free();assets.free()}
 })
 
-test('pending patches bypass old cache hits and late compiles cannot repopulate a newer revision',async()=>{
+test('pending patches revoke resource acknowledgements and late compiles cannot repopulate a newer revision',async()=>{
   const remote=new VectorEngine(),assets=new VectorEngine(),ports=new MessageChannel()
   const channel=unorderedPreparation(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
   let hold=false,release:(()=>void)|undefined,notice:(()=>void)|undefined,compiles=0
@@ -91,10 +92,10 @@ test('pending patches bypass old cache hits and late compiles cannot repopulate 
     const patch=kernel.apply_document_patch_with_damage(JSON.stringify({fields:{name:'renamed'},nodes:{}}))
     await patch;release!();await old
     await kernel.compile_gpu_packet(options);expect(compiles).toBe(2)
-    await kernel.compile_gpu_packet(options);expect(compiles).toBe(2)
+    await kernel.compile_gpu_packet(options);expect(compiles).toBe(3)
     // Failure revokes any proof too, even when the worker rejects atomically.
     await expect(kernel.apply_document_patch_with_damage('{broken')).rejects.toThrow()
-    await kernel.compile_gpu_packet(options);expect(compiles).toBe(3)
+    await kernel.compile_gpu_packet(options);expect(compiles).toBe(4)
   }finally{channel.close();ports.port2.close();remote.free();assets.free()}
 })
 
@@ -106,7 +107,7 @@ test('concurrent identical compiles share work, never transferable ownership, an
     const { id, method } = event.data
     if (method !== 'compile_gpu_packet') { ports.port2.postMessage({ id }); return }
     compilations++
-    const value = new Uint8Array([17, 33, 55])
+    const value = emptyFrame(17)
     ports.port2.postMessage(fail ? { id, error: 'compile rejected' } : { id, value }, fail ? [] : [value.buffer])
   }
   try {
@@ -118,7 +119,7 @@ test('concurrent identical compiles share work, never transferable ownership, an
     expect(compilations).toBe(1); expect(kernel.packetCoalesced).toBe(2)
     expect(first).toEqual(second); expect(second).toEqual(third)
     expect(first.buffer).not.toBe(second.buffer); expect(second.buffer).not.toBe(third.buffer)
-    second[0] = 0; expect(third[0]).toBe(17)
+    second[0] = 0; expect(third[0]).toBe(70)
     await kernel.load_document('{}'); fail = true
     const rejected = await Promise.allSettled([kernel.compile_gpu_packet('{}'), kernel.compile_gpu_packet('{}')])
     expect(rejected.every(result => result.status === 'rejected')).toBe(true); expect(compilations).toBe(2)
@@ -134,7 +135,7 @@ test('completion from an old revision cannot remove or share the newer in-flight
   ports.port2.onmessage = event => {
     const { id, method } = event.data
     if (method !== 'compile_gpu_packet') { ports.port2.postMessage({ id }); return }
-    const value = new Uint8Array([++compilations])
+    const value = emptyFrame(++compilations)
     requests.push(() => ports.port2.postMessage({ id, value }, [value.buffer])); notice?.()
   }
   const arrived = () => new Promise<void>(resolve => notice = resolve)
@@ -142,11 +143,12 @@ test('completion from an old revision cannot remove or share the newer in-flight
     let event = arrived(); const old = kernel.compile_gpu_packet('{}'); await event
     await kernel.load_document('{}')
     event = arrived(); const current = kernel.compile_gpu_packet('{}'); await event
-    requests[0](); expect(await old).toEqual(new Uint8Array([1]))
+    requests[0](); expect(await old).toEqual(emptyFrame(1))
     const join = kernel.compile_gpu_packet('{}')
-    requests[1](); expect(await current).toEqual(new Uint8Array([2])); expect(await join).toEqual(new Uint8Array([2]))
+    requests[1](); expect(await current).toEqual(emptyFrame(2)); expect(await join).toEqual(emptyFrame(2))
     expect(compilations).toBe(2)
-    expect(await kernel.compile_gpu_packet('{}')).toEqual(new Uint8Array([2]))
+    event=arrived();const next=kernel.compile_gpu_packet('{}');await event
+    requests[2]();expect(await next).toEqual(emptyFrame(3))
   } finally { channel.close(); ports.port2.close(); assets.free() }
 })
 
@@ -163,9 +165,9 @@ test('cancelling one packet waiter neither cancels exact output nor waits for a 
     const preview = kernel.compile_gpu_packet('{}', controller.signal)
     const cancelled = expect(preview).rejects.toThrow('PREVIEW_CANCELLED')
     controller.abort()
-    ports.port2.postMessage({ id: requests[0].id, value: new Uint8Array([7]) })
+    ports.port2.postMessage({ id: requests[0].id, value: emptyFrame(7) })
     await cancelled
-    expect(await exact).toEqual(new Uint8Array([7]))
+    expect(await exact).toEqual(emptyFrame(7))
   } finally { channel.close(); ports.port2.close(); assets.free() }
 })
 
@@ -183,12 +185,12 @@ test('a cancellable first consumer never owns an exact output sharing its option
     // Attach immediately so this regression cannot hide as unhandled rejection.
     const outcome = exact.then(value => ({ value }), error => ({ error }))
     await waitFor(1); controller.abort(); await cancelled
-    ports.port2.postMessage({ id: requests[0].id, value: new Uint8Array([1]) })
+    ports.port2.postMessage({ id: requests[0].id, value: emptyFrame(1) })
     // An exact consumer must get its own physical dispatch, not cancelled bytes.
     await new Promise(resolve => setTimeout(resolve, 10))
     expect(requests).toHaveLength(2)
-    ports.port2.postMessage({ id: requests[1].id, value: new Uint8Array([9]) })
-    expect(await outcome).toEqual({ value: new Uint8Array([9]) })
+    ports.port2.postMessage({ id: requests[1].id, value: emptyFrame(9) })
+    expect(await outcome).toEqual({ value: emptyFrame(9) })
   } finally { channel.close(); ports.port2.close(); assets.free() }
 })
 
@@ -199,7 +201,7 @@ test('production receipt rejects an old packet after a delayed compile crosses a
   const started = new Promise<void>(resolve => { notice = resolve })
   ports.port2.onmessage = event => {
     const { id, method } = event.data
-    if (method === 'compile_gpu_packet') { release = () => ports.port2.postMessage({ id, value: new Uint8Array([3]) }); notice() }
+    if (method === 'compile_gpu_packet') { release = () => ports.port2.postMessage({ id, value: emptyFrame(3) }); notice() }
     else ports.port2.postMessage({ id })
   }
   try {
@@ -212,7 +214,7 @@ test('production receipt rejects an old packet after a delayed compile crosses a
 test('production receipt is bound to one lane, mutation epoch and pre-encoder cancellation', async () => {
   const assets = new VectorEngine(), ports = new MessageChannel()
   const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'interaction', channel)
-  ports.port2.onmessage = event => ports.port2.postMessage({ id: event.data.id, value: event.data.method === 'compile_gpu_packet' ? new Uint8Array([8]) : undefined })
+  ports.port2.onmessage = event => ports.port2.postMessage({ id: event.data.id, value: event.data.method === 'compile_gpu_packet' ? emptyFrame(8) : undefined })
   try {
     await kernel.load_document('{}')
     const first = await kernel.prepare_gpu_packet('{}')
@@ -222,18 +224,18 @@ test('production receipt is bound to one lane, mutation epoch and pre-encoder ca
     const signal = new AbortController(), cancelled = await kernel.prepare_gpu_packet('{}', signal.signal)
     signal.abort(); expect(() => cancelled.consume()).toThrow('PREVIEW_CANCELLED')
     const exact = await kernel.prepare_gpu_packet('{}')
-    expect(exact.consume()).toEqual(new Uint8Array([8]))
+    expect(exact.consume()).toEqual(emptyFrame(8))
     expect(() => exact.consume()).toThrow('PREPARED_PACKET_CONSUMED')
   } finally { channel.close(); ports.port2.close(); assets.free() }
 })
 
-test('pending mutation cannot produce a receipt; aborted ready cache hits never return bytes', async () => {
+test('pending mutation cannot produce a receipt; aborted requests never return bytes', async () => {
   const assets = new VectorEngine(), ports = new MessageChannel()
   const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
   let release!: () => void, notice!: () => void, held = false
   ports.port2.onmessage = event => {
     const { id, method } = event.data
-    const send = () => ports.port2.postMessage({ id, value: method === 'compile_gpu_packet' ? new Uint8Array([6]) : undefined })
+    const send = () => ports.port2.postMessage({ id, value: method === 'compile_gpu_packet' ? emptyFrame(6) : undefined })
     if (held && method === 'load_document') { release = send; notice() } else send()
   }
   try {
@@ -245,6 +247,6 @@ test('pending mutation cannot produce a receipt; aborted ready cache hits never 
     const mutation = kernel.load_document('{}'); await started
     await expect(kernel.prepare_gpu_packet('{}')).rejects.toThrow('DOCUMENT_PREPARATION_PENDING')
     release(); await mutation
-    expect((await kernel.prepare_gpu_packet('{}')).consume()).toEqual(new Uint8Array([6]))
+    expect((await kernel.prepare_gpu_packet('{}')).consume()).toEqual(emptyFrame(6))
   } finally { channel.close(); ports.port2.close(); assets.free() }
 })

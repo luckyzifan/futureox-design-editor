@@ -1,11 +1,11 @@
 import type { PreparationStateReceiptV1 } from './preparation-state'
 export type PreparationMethod = 'preparation_capabilities_v1' | 'derive_document_v1' | 'warm_resources' | 'initialize' | 'load_document' | 'apply_document_patch_with_damage' | 'apply_interaction_transforms' |
-  'compile_gpu_scene_update' | 'clear_gpu_scene_session' | 'compile_gpu_packet' | 'render_linear' | 'render_png' | 'render_color_png' | 'render_region_png' |
+  'compile_gpu_packet' | 'render_linear' | 'render_png' | 'render_color_png' | 'render_region_png' |
   'render_cpu_frame' | 'stats' | 'gpu_memory_breakdown'
 export type PreparationProgress = { backendCode: 1 | 2; boundaryCode: number; boundaryDurationMs?: number; bridgeBoundaryAt?: number }
 export type PreparationReply = { progress?: PreparationProgress; bridgeBoundaryAt?: number; id: number; value?: unknown; settings?: string; error?: string; fatal?: string; documentFork?: boolean; compileStats?:Record<string,unknown>; stateReceipt?: PreparationStateReceiptV1 | null }
 
-const methods: PreparationMethod[] = ['warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms','compile_gpu_scene_update','clear_gpu_scene_session','compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown','preparation_capabilities_v1','derive_document_v1']
+const methods: PreparationMethod[] = ['warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms','compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown','preparation_capabilities_v1','derive_document_v1']
 type Diagnostics = { enabled: () => boolean; owner: () => number; record: (event: string, fields: Record<string, number | boolean>) => void }
 type Job = { owner?: number; queuedAt?: number; startedAt?: number; id: number; lane: string; method: PreparationMethod; args: unknown[];
   resolve: (reply: PreparationReply) => void; reject: (error: Error) => void; cleanup?: () => void; cancelled?: boolean; backendCode?: number; boundaryCode?: number; diagnosticTimer?: ReturnType<typeof setTimeout> }

@@ -1,10 +1,10 @@
 //! Native preparation sessions. The desktop host owns transport and lifetime;
 //! document/layout/geometry and image export use the same Engine as WASM.
-use crate::{Engine, scene_delta::SceneDelta};
+use crate::Engine;
 use serde_json::{Value, json};
 
 #[derive(Default)]
-struct Lane { engine: Engine, delta: SceneDelta, source: Option<String>, reusable: bool, receipt: Option<StateReceipt> }
+struct Lane { engine: Engine, source: Option<String>, reusable: bool, receipt: Option<StateReceipt> }
 pub struct Preparation {
     lanes: [Lane; 2],
     owner: String,
@@ -45,6 +45,7 @@ impl Preparation {
                 else { previous.as_ref().map(|r| r.document_incarnation.clone()).unwrap_or_else(|| serial.clone()) },
             lane: if index == 0 { "canvas" } else { "interaction" }.into(),
             synchronized_revision: serial.clone(), resource_epoch: serial.clone(), nonce: serial };
+        self.lanes[index].engine.bind_frame_scene_scope(&serde_json::to_string(&receipt).expect("owned receipt" )).expect("owned scope");
         self.lanes[index].receipt = Some(receipt.clone()); receipt
     }
     fn derive(&mut self, index: usize, args: &[Value]) -> Result<Reply, String> {
@@ -121,7 +122,7 @@ impl Preparation {
             "warm_resources" => (),
             "initialize" => engine.set_image_mips(args.first().and_then(Value::as_bool).ok_or("Expected mip flag")?),
             "load_document" => {
-                lane.source = None; lane.reusable = false; lane.delta.clear();
+                lane.source = None; lane.reusable = false;
                 if !fork { engine.load_document(string(0)?)?; }
                 lane.source = Some(string(0)?.to_owned()); lane.reusable = true;
             }
@@ -137,12 +138,10 @@ impl Preparation {
                 let transforms = serde_json::from_str(string(0)?).map_err(|e|format!("Invalid transforms: {e}"))?;
                 value = json!(engine.apply_interaction_transforms(&transforms)?);
             }
-            "compile_gpu_packet" | "compile_gpu_scene_update" => {
-                bytes = if method == "compile_gpu_packet" { engine.compile_gpu_request(string(0)?)?.into_packet_for_request(string(0)?)? }
-                    else { lane.delta.compile(engine,string(0)?,args.get(1).and_then(Value::as_bool).ok_or("Expected reset flag")?)? };
+            "compile_gpu_packet" => {
+                bytes = engine.compile_gpu_packet_request(string(0)?)?;
                 encoding = Some("u8");
             }
-            "clear_gpu_scene_session" => lane.delta.clear(),
             "render_region_png" => {
                 let request = serde_json::from_str(string(0)?).map_err(|e|e.to_string())?;
                 bytes = engine.render_region_png(&request)?; encoding = Some("u8");

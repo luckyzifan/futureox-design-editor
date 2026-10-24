@@ -2798,8 +2798,6 @@ export class GpuRenderer {
       this.constantTargets.delete(key)
       this.release(surface)
     }
-    const pooled: Texture[] = []
-    for (const list of this.free.values()) pooled.push(...list.filter(texture => !this.admissionPins.has(texture)))
     const coordinates = [...this.coordinateMaps].filter(texture => !this.filterImageFields?.pinned.has(texture) && !this.admissionPins.has(texture))
     // Dead uploads leave first, then the oldest pool generations and the
     // oldest cached coordinates. One bounded batch per checkpoint cycle keeps
@@ -2814,6 +2812,12 @@ export class GpuRenderer {
     // real completion fences; this return grants no completion proof.
     if (this.workingBytes <= this.frameBudget && !pressure && !imagesUnderPressure &&
         !this.retiredUploads.length && !coordinates.length && !retiredImageAssetBytes) return
+    // Most node completions need no maintenance. Enumerate reusable pool
+    // storage only when a retirement/admission decision actually consumes it.
+    // The pool remains fully charged and queue-ordered on the early return.
+    const pooled: Texture[] = []
+    for (const list of this.free.values()) for (const texture of list)
+      if (!this.admissionPins.has(texture)) pooled.push(texture)
     if (!this.retiredUploads.length && !pooled.length && !coordinates.length && !imagesUnderPressure && !staticCachePressure && !imageTablePressure && !retiredImageAssetBytes)
       return
     // A large managed source image or ancestor surface can keep the ledger

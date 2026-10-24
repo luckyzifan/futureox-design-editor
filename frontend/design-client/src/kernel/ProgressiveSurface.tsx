@@ -445,7 +445,7 @@ export function ProgressiveSurfaceImpl(
     hits: 0,
     coarseHits: 0,
     ms: 0, compileMs: 0, graphMs: 0, finishMs: 0, checkpointMs: 0,
-    pipelineWallMs: 0, preparationWaitMs: 0, overlappedPreparations: 0, compiledPacketHits: 0, compiledPacketBytes: 0,
+    pipelineWallMs: 0, preparationWaitMs: 0, overlappedPreparations: 0, frameResourceHits: 0, frameResourceBytes: 0,
     cacheBytes: 0,
     managed: false,
     complete: false,
@@ -1267,8 +1267,8 @@ export function ProgressiveSurfaceImpl(
             ms: result.milliseconds,
             compileMs: result.compileMs, graphMs: result.graphMs || 0,
             pipelineWallMs: result.pipelineWallMs || 0, preparationWaitMs: result.preparationWaitMs || 0,
-            overlappedPreparations: s.overlappedPreparations + (result.overlappedPreparations || 0), compiledPacketHits: s.compiledPacketHits + (result.compiledPacketHits || 0),
-            compiledPacketBytes: result.compiledPacketBytes || 0,
+            overlappedPreparations: s.overlappedPreparations + (result.overlappedPreparations || 0), frameResourceHits: s.frameResourceHits + (result.frameResourceHits || 0),
+            frameResourceBytes: result.frameResourceBytes || 0,
             finishMs: result.finishMs || 0, checkpointMs: result.checkpointMs || 0,
             cacheBytes: result.tileCacheBytes || 0,
           }))
@@ -2328,8 +2328,8 @@ export function ProgressiveSurfaceImpl(
         data-pipeline-wall-ms={stats.pipelineWallMs.toFixed(2)}
         data-preparation-wait-ms={stats.preparationWaitMs.toFixed(2)}
         data-overlapped-preparations={stats.overlappedPreparations}
-        data-compiled-packet-hits={stats.compiledPacketHits}
-        data-compiled-packet-bytes={stats.compiledPacketBytes}
+        data-frame-resource-hits={stats.frameResourceHits}
+        data-frame-resource-bytes={stats.frameResourceBytes}
         data-graph-ms={stats.graphMs.toFixed(2)}
         data-finish-ms={stats.finishMs.toFixed(2)}
         data-checkpoint-ms={stats.checkpointMs.toFixed(2)}
