@@ -43,7 +43,8 @@ test('unsupported subtree capabilities reject source, stationary and moving back
   const index = sceneIndex(scene)
   expect([...index.unknownEffectSubtrees].sort()).toEqual([root.id, child.id].sort())
   expect(classifyCompiledSourceReuse(scene.nodes[root.id], index.unknownEffectSubtrees.has(root.id)).reason).toBe('unknown-effect')
-  scene.interactionRetained = true; scene.interactionSelection = [child.id]; scene.nodes[root.id].clip = true
+  scene.interactionRetained = true; scene.interactionSelection = [child.id]
+  scene.nodes = { ...scene.nodes, [root.id]: { ...scene.nodes[root.id], clip: true } }
   expect(staticBackdropKey(scene, scene.nodes[root.id])).toBeUndefined()
   scene.nativeInteraction = true; scene.interactionLease = {}; scene.interactionSelection = [root.id]
   expect(movingBackdropKey(scene, scene.nodes[root.id])).toBeUndefined()

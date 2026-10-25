@@ -6,6 +6,7 @@ import { blank } from '../model'
 import type { PaintDamage } from './paint-damage'
 import { renderCpuFrame } from './cpu-frame'
 import { PreparationChannel, type PreparationMethod } from './preparation-channel'
+import { bindContentOwner } from './gpu/page-background'
 import { FrameResources } from './gpu/frame-resources'
 import { decodeScenePacket, copyScenePacket } from './gpu/scene-packet'
 import { PreparedPacket, waitForPacket } from './prepared-packet'
@@ -18,6 +19,7 @@ export class RenderKernel {
   documentForks = 0
   private settings = 'null'
   private resources = new FrameResources()
+  private contentOwner:object = {}
   private revision = 0
   private pendingMutations = 0
   private pendingPackets = new Map<string, { revision: number; bytes: Promise<Uint8Array>; shared: boolean }>()
@@ -34,7 +36,7 @@ export class RenderKernel {
   async derive_document_v1(baseReceipt: PreparationStateReceiptV1) {
     if (this.lane !== 'interaction' || !this.preparation || !await this.supportsDocumentDerivation()) throw Error('DERIVATION_UNSUPPORTED')
     const expectedTarget = this.preparationStateReceipt ?? null
-    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.clear()
+    this.contentOwner={}; this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.clear()
     try {
       await this.call('derive_document_v1', [{ operationId: this.preparation.nextDerivationOperation(), baseReceipt,
         target: 'interaction', expectedTarget, delta: [] }])
@@ -81,13 +83,13 @@ export class RenderKernel {
     }
   }
   async load_document(value: string) {
-    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.clear()
+    this.contentOwner={}; this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.clear()
     try { await this.call<void>('load_document', [value]) }
     finally { this.pendingMutations-- }
   }
   async apply_document_patch_with_damage(value: string, expectedBaseReceipt?: PreparationStateReceiptV1) {
     if (expectedBaseReceipt && !await this.supportsAcknowledgedPatches()) throw Error('PATCH_GUARD_UNSUPPORTED')
-    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.invalidate()
+    this.contentOwner={}; this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.invalidate()
     try {
       const result = await this.call<string>('apply_document_patch_with_damage', expectedBaseReceipt ? [value, { expectedBaseReceipt }] : [value])
       return result
@@ -129,16 +131,17 @@ export class RenderKernel {
   }
   async apply_interaction_transforms(value: string) {
     if (this.lane !== 'interaction') throw Error('Transform-only updates require the interaction lane')
-    this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.invalidate()
+    this.contentOwner={}; this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.invalidate()
     try { return await this.call<boolean>('apply_interaction_transforms', [value]) }
     finally { this.pendingMutations-- }
   }
   private async compileFrame(options:string, revision:number, signal?:AbortSignal) {
-    const lease=this.resources.capture()
+    const lease=this.resources.capture(),owner=this.contentOwner
     try {
       const request=JSON.stringify({...JSON.parse(options),frameResources:lease.acknowledgement})
       const bytes=await this.call<Uint8Array>('compile_gpu_packet',[request],signal)
-      decodeScenePacket(bytes,revision===this.revision&&!this.pendingMutations?this.resources:undefined,lease)
+      const scene=decodeScenePacket(bytes,revision===this.revision&&!this.pendingMutations?this.resources:undefined,lease)
+      bindContentOwner(scene,owner)
       return bytes
     } finally {lease.release()}
   }

@@ -2404,7 +2404,8 @@ export function ProgressiveSurfaceImpl(
           terminalQuality={complete ? { qualitySequence: terminalQualityState.current.sequence,
             qualityRevision: contract.revision, pageToken: diagnosticPage.current.token } : undefined}
           overlay={props.overlay}
-          sourceDocument={doc} translationItems={visible.filter(tile=>syncedDoc.current===doc&&tile.revision===contract.revision&&ready.current.has(tile.key))
+          sourceDocument={doc} contentRevision={contract.revision} translationItems={visible.filter(tile=>syncedDoc.current===doc&&tile.revision===contract.revision&&ready.current.has(tile.key)&&
+            (!fullPlanReady||!plan||plan.ids.has(tile.key)))
             .map(tile=>({tile,active:true,layer:0}))} allowPageTranslation={!props.grid&&!props.checkerboard&&!props.pixelPreview}
           interaction={navigationZoom.active ? undefined : props.interaction} pageId={pageId} rasterProfile={rasterProfile} backend={backend}
           settledDocument={fullPlanReady ? doc : undefined}

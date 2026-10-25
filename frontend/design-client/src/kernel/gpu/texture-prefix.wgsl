@@ -72,7 +72,12 @@ fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_i
   if(maximum==255u){reason=2u;}
   let span=select(maximum-minimum,0u,maximum==0u);
   if(span>40u){reason=3u;}
-  if(rational){
+  if(PREFIX_CERTIFIED_TENT&&u(49u).z==2.){
+   if(!prefixCertifiedCoefficients(radius)){reason=4u;}
+   // Every term and both enclosure endpoints fit signed-128. This is an
+   // absolute intermediate bound, so cancellation never grants admission.
+   if(24u+span+u32(u(49u).w)>123u){reason=5u;}
+  }else if(rational){
    if(rfLoad(0u)>4u||prefix_high(prefixDenominator())>95){reason=4u;}
    // The immutable upload's CPU certificate supplies this exact bit length.
    // Keep all finite/span/kernel guards, and retain the old gate on a miss.
@@ -196,6 +201,7 @@ fn prefixSolve(@builtin(global_invocation_id) id:vec3<u32>){
  if(localLine>=count||id.x>=outputLength){return;}let resultIndex=localLine*outputLength+id.x;
  prefixResults[resultIndex]=vec2<u32>(0u);let lineInfo=prefixMetadata.lines[localLine];if(lineInfo.z==0u){return;}
  let base=localLine*(length+1u);let left=u32(max(0,i32(x)-i32(radius)+1));let right=min(length,x+radius);
+ if(PREFIX_CERTIFIED_TENT&&u(49u).z==2.){prefixResults[resultIndex]=prefixCertified(base,x,length,radius,lineInfo.x,lineInfo.y);return;}
  if(u(49u).z>0.5){prefixResults[resultIndex]=prefixRational(base,x,length,radius,i32(lineInfo.x)-150);return;}
  let before=prefixPairAt(base,left);let center=prefixPairAt(base,x+1u);let after=prefixPairAt(base,right);
  let a=prefix_mul_i32(prefix_sub(center.sum,before.sum),i32(radius)-i32(x));
@@ -227,6 +233,7 @@ fn prefixSolveRgb(@builtin(global_invocation_id) id:vec3<u32>){
  if(localLine>=count||id.x>=outputLength){return;}let resultIndex=localLine*outputLength+id.x;
  prefixStoreRgbResult(resultIndex,vec2<u32>(0u));let lineInfo=prefixMetadata.lines[localLine];if(lineInfo.z==0u){return;}
  let base=localLine*(length+1u);let left=u32(max(0,i32(x)-i32(radius)+1));let right=min(length,x+radius);
+ if(PREFIX_CERTIFIED_TENT&&u(49u).z==2.){prefixStoreRgbResult(resultIndex,prefixCertified(base,x,length,radius,lineInfo.x,lineInfo.y));return;}
  if(u(49u).z>0.5){prefixStoreRgbResult(resultIndex,prefixRational(base,x,length,radius,i32(lineInfo.x)-150));return;}
  let before=prefixPairAt(base,left);let center=prefixPairAt(base,x+1u);let after=prefixPairAt(base,right);
  let a=prefix_mul_i32(prefix_sub(center.sum,before.sum),i32(radius)-i32(x));

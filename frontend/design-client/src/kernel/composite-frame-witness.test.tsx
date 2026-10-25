@@ -70,7 +70,7 @@ function harness() {
     stagedCallbacks.push(queued)
     useLayoutEffect(() => { order.push({ phase: 'parent', priorX: witness.current?.view.x ?? null }); witness.commit(owner) })
     return <ResidentCompositeSurface client={client as any} items={items} view={owner.view} width={100} height={100} dpr={2}
-      pageId={owner.pageId} rasterProfile="analytic" backend="webgpu" sourceDocument={doc} translationItems={items}
+      pageId={owner.pageId} rasterProfile="analytic" backend="webgpu" sourceDocument={doc} contentRevision={owner.revision} translationItems={items}
       allowPageTranslation interaction={interaction} settledDocument={doc} onReady={() => {}} onGone={() => {}}
       onFailure={message => { throw Error(message) }} presentation={null} onCompositeItems={queued}/>
   }

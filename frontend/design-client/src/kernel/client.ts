@@ -20,6 +20,7 @@ import {residentFrameMessage} from './gpu/resident-frame'
 import { recordRenderProfile } from './render-profile'
 import { connectNativePreparation } from './native-preparation'
 import { currentPreparedDocumentJson } from '../prepared-document'
+import { interactionDocumentSource } from './interaction-document-source'
 
 // The immutable preload bridge is installed before this module evaluates.
 // Neither localStorage nor a render request can relax this launch policy.
@@ -170,6 +171,9 @@ export type GpuMemorySnapshot = {
   deviceLost: boolean
 }
 export type KernelOptions = {
+  gpuPageBackground?: boolean;
+  /** Native render-only root visibility; authored document/receipts stay intact. */
+  gpuRoots?: string[];
   /** Overwritten by the worker's strict host experiment policy. */
   gpuPainterSupport?: boolean
   /** Separately gated captured-source optimization; never document state. */
@@ -827,6 +831,7 @@ export class KernelClient {
         let serialized: string | undefined
         let patch: string | undefined
         let deriveFrom: PreparationStateReceiptV1 | undefined
+        let derivedTransforms:Record<string,import('../model').Matrix>|undefined
         let patchBaseReceipt: PreparationStateReceiptV1 | undefined
         let acknowledge: ((receipt?: PreparationStateReceiptV1 | null) => void) | undefined
         const interaction = options.interactionChannel === true
@@ -838,6 +843,10 @@ export class KernelClient {
           const beforeReceipt = !interaction && snapshot ? this.authoredPreparation.receiptFor(snapshot) : undefined
           if (!interaction) this.authoredPreparation.invalidate()
           deriveFrom = interaction ? this.authoredPreparation.receiptFor(document) : undefined
+          if(interaction&&!deriveFrom){
+            const source=interactionDocumentSource(document)
+            if(source){deriveFrom=this.authoredPreparation.receiptFor(source.document);if(deriveFrom)derivedTransforms=source.transforms}
+          }
           if (deriveFrom) { /* Empty derivation carries no authored JSON or patch. */ }
           else if (snapshot?.id === document.id) {
             const transition = beforeReceipt ? prepareAuthoredPatchTransition(snapshot, document) : { patch: documentPatch(snapshot, document), canAcknowledge: false }
@@ -893,6 +902,7 @@ export class KernelClient {
           {
             document: serialized,
             deriveFrom,
+            derivedTransforms,
             patchBaseReceipt,
             documentPatch: patch,
             baseDocumentRevision,

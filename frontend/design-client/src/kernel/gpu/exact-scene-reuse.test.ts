@@ -4,6 +4,22 @@ import { blank, node, paint } from '../../model'
 import { decodeScenePacket } from './scene-packet'
 import { reuseExactSceneSources } from './exact-scene-reuse'
 import { preparePreviewSelection } from './translated-scene'
+import { FrameResources } from './frame-resources'
+
+test('a bound native node identity cannot certify replacement program storage',()=>{
+  const doc=blank(),shape=node('rectangle',8,8,24,24);shape.fills=[paint('#4477aa')]
+  doc.nodes[shape.id]=shape;doc.pages[0].children=[shape.id]
+  const kernel=new VectorEngine(),store=new FrameResources()
+  try{
+    kernel.load_document(JSON.stringify(doc));kernel.bind_frame_scene_scope('exact-program-owner')
+    const compile=()=>{const lease=store.capture();try{return decodeScenePacket(kernel.compile_gpu_packet(JSON.stringify({
+      pageId:doc.pages[0].id,width:64,height:64,view:{x:0,y:0,zoom:1},frameResources:lease.acknowledgement})),store,lease)}finally{lease.release()}}
+    const old=compile(),next=compile(),bad={...next,curves:new Float32Array(next.curves!)}
+    new Uint32Array(bad.curves.buffer)[bad.nodes[shape.id].fill.area!.first*4]^=1
+    expect(reuseExactSceneSources(old,bad).nodes[shape.id].previewSource).toBeUndefined()
+    expect(old.curves).not.toEqual(bad.curves)
+  }finally{kernel.free()}
+})
 
 test('exact recompilation retains unchanged source pixels but rejects changed geometry, camera and bit patterns', () => {
   const doc=blank(), a=node('rectangle',10.125,12.25,40,30), b=node('rectangle',70,10,24,24)

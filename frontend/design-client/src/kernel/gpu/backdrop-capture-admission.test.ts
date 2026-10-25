@@ -103,3 +103,89 @@ test('color-surface admission charges the actual managed or byte format and skip
   await f.renderer.reclaimForSurface({ x: 0, y: 0, w: 9, h: 7 })
   expect(f.renderer.reclaimScratch).not.toHaveBeenCalled()
 })
+
+function ordinaryCompositionFixture(){
+ const f=pressureFixture(),n={...f.n,id:'ordinary',opacity:.5,blend:'normal',passthrough:true,
+  clip:false,mask:false,children:[],fills:[],strokes:[],effects:[]}as unknown as GpuNode
+ f.renderer.scene.nodes={ordinary:n};f.renderer.scene.roots=['ordinary'];f.renderer.scene.interactionRetained=false
+ f.renderer.nodeSource=vi.fn(async()=>f.targets[1])
+ const run=f.renderer.run.mockImplementation((mode:number,...args:any[])=>{
+  if(mode!==28)throw Error('Unexpected ordinary composition path')
+  return (GpuRenderer.prototype as any).run.call(f.renderer,mode,...args)
+ })
+ return {...f,compose:()=>f.renderer.drawNode(n.id,f.targets[0]),encoded:run}
+}
+test('ordinary canvas composition admits its new destination after child work and waits before destroying pending pool bytes',async()=>{
+ const f=ordinaryCompositionFixture(),pending=f.compose()
+ for(let i=0;i<10&&!f.driver.checkpoint.mock.calls.length;i++)await Promise.resolve()
+ expect(f.driver.checkpoint).toHaveBeenCalledOnce();expect(f.encoded).not.toHaveBeenCalled()
+ expect(f.driver.destroy).not.toHaveBeenCalled()
+ f.complete();const output=await pending
+ expect(f.encoded).toHaveBeenCalledTimes(1);expect(f.encoded.mock.calls[0][0]).toBe(28)
+ expect(f.driver.destroy.mock.calls.map(call=>call[0])).toEqual([f.free])
+ expect(f.renderer.images.has('fixture')).toBe(true)
+ expect(f.renderer.bytes).toBeLessThanOrEqual(f.renderer.frameBudget)
+ expect(output.rect).toEqual(f.targets[0].rect)
+})
+test.each(['cancel','failed-completion'] as const)('ordinary %s preserves both live sources and encodes no stale interpolation',async mode=>{
+ const f=ordinaryCompositionFixture(),pending=f.compose()
+ for(let i=0;i<10&&!f.driver.checkpoint.mock.calls.length;i++)await Promise.resolve()
+ if(mode==='cancel'){f.cancel();f.complete()}else f.fail()
+ await expect(pending).rejects.toThrow(mode==='cancel'?'PREVIEW_CANCELLED':'uncertain fence')
+ expect(f.encoded).not.toHaveBeenCalled();expect(f.driver.pass).not.toHaveBeenCalled()
+ expect(f.targets.every(s=>f.renderer.busy.has(s.texture))).toBe(true)
+})
+
+test('completed groups retire only their consumed masks, keeping ancestor clips, output aliases and shared owners live',()=>{
+ const f=pressureFixture(),node={id:'group',children:['child']}as GpuNode
+ const masks=Array.from({length:4},()=>f.driver.create(64,64))
+ for(const texture of masks){f.renderer.busy.add(texture);f.renderer.used.add(texture);f.renderer.bytes+=texture.bytes;f.renderer.maskOwners.set(texture,new Set(['group']))}
+ f.renderer.maskOwners.set(masks[3],new Set(['group','ancestor']))
+ const asSurface=(texture:Texture)=>({texture,rect:{x:0,y:0,w:64,h:64}})
+ const outputs=[asSurface(masks[2])],clips=[asSurface(masks[1])]
+ f.renderer.retireLeafMasks(node,undefined,clips,outputs)
+ expect(masks.every(t=>f.renderer.busy.has(t))).toBe(true)
+ f.renderer.retireLeafMasks(node,undefined,clips,outputs,true)
+ expect(f.renderer.busy.has(masks[0])).toBe(false)
+ expect(f.renderer.free.get('64:64')).toContain(masks[0])
+ expect(f.renderer.used.has(masks[0])).toBe(true)
+ expect(masks.slice(1).every(t=>f.renderer.busy.has(t))).toBe(true)
+ expect(f.driver.destroy).not.toHaveBeenCalled()
+})
+
+function expansionPressureFixture(){
+ const f=pressureFixture();f.renderer.frameBudget=32*MiB
+ let background:Surface|undefined
+ f.renderer.blurBackdropRegion=vi.fn(async(source:Surface)=>{
+  background=source
+  const texture=f.driver.create(128,1024)
+  f.renderer.free.set('128:1024',[texture]);f.renderer.used.add(texture);f.renderer.poolReleaseEpoch.set(texture,3);f.renderer.bytes+=texture.bytes
+  return source
+ })
+ f.renderer.run.mockImplementation((mode:number,...args:any[])=>{
+  const out=(GpuRenderer.prototype as any).run.call(f.renderer,mode,...args)
+  if(mode===27){f.renderer.release(out);throw Error('expanded')}
+  return out
+ })
+ return {...f,get background(){return background}}
+}
+test('background expansion accounts for pool pressure created by filtering after the capture was admitted',async()=>{
+ const f=expansionPressureFixture(),pending=f.run()
+ for(let i=0;i<20&&!f.driver.checkpoint.mock.calls.length;i++)await Promise.resolve()
+ expect(f.renderer.run.mock.calls.map((call:any[])=>call[0])).toEqual([26])
+ expect(f.driver.checkpoint).toHaveBeenCalledOnce();expect(f.driver.destroy).not.toHaveBeenCalled()
+ expect(f.renderer.busy.has(f.background!.texture)).toBe(true)
+ f.complete();await expect(pending).rejects.toThrow('expanded')
+ expect(f.renderer.run.mock.calls.map((call:any[])=>call[0])).toEqual([26,27])
+ expect(f.driver.pass.mock.calls.at(-1)![2]).toEqual([f.background!.texture])
+ expect(f.targets.every(s=>f.renderer.busy.has(s.texture))).toBe(true)
+ expect(f.renderer.bytes).toBeLessThanOrEqual(f.renderer.frameBudget)
+})
+test.each(['cancel','failed-completion'] as const)('background expansion %s never encodes or releases its live blurred input',async mode=>{
+ const f=expansionPressureFixture(),pending=f.run()
+ for(let i=0;i<20&&!f.driver.checkpoint.mock.calls.length;i++)await Promise.resolve()
+ if(mode==='cancel'){f.cancel();f.complete()}else f.fail()
+ await expect(pending).rejects.toThrow(mode==='cancel'?'PREVIEW_CANCELLED':'uncertain fence')
+ expect(f.renderer.run.mock.calls.map((call:any[])=>call[0])).toEqual([26])
+ expect(f.renderer.busy.has(f.background!.texture)).toBe(true)
+})

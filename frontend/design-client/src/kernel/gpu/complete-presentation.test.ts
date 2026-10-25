@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { descriptorPresenter } from '../descriptor-presenter.test-helper'
 import type { ResidentFrame } from './resident-presenter'
+import type { PageBackgroundProof } from './page-background'
 afterEach(() => vi.unstubAllGlobals())
 const item = (id: number, width: number, x = 0, layer = 0) => ({ active: true, layer, gutter: 0,
   tile: { key: String(id), gpuTile: id, serial: id, x, y: 0, width, height: 16, zoom: 1 } })
@@ -67,3 +68,31 @@ test('canvas reattachment copies the accepted backing even after its source tile
   expect((f.presenter as any).drawn).toBe(accepted)
   expect(f.reports.filter(row => row.presented)).toHaveLength(reports)
 })
+
+test('same-density integer pan fills only certified uniform page gaps without allocating another tile',()=>{
+  const f=descriptorPresenter(()=>{}),proof:PageBackgroundProof={owner:{},view:{x:0,y:0,zoom:1},bounds:[[4,4,12,12]],pixel:[.5/16,.5/16]}
+  const tile=f.presenter.capture(16,16,proof),original=frame([item(tile.id,16)])
+  f.presenter.draw(original);const bytes=f.presenter.residentBytes,epoch=f.queue.epoch
+  const moved={...original,allowBackground:true,view:{x:4,y:0,zoom:1}}
+  f.presenter.draw(moved)
+  expect(f.queue.epoch).toBe(epoch+2) // uniform upload and one render submission
+  expect((f.presenter as any).drawn).toBe(moved)
+  expect(f.reports.at(-1)?.backgroundCoverage).toBe(1)
+  expect(f.presenter.residentBytes).toBe(bytes)
+})
+
+test.each(['unseen-paint','zoom','disabled','mixed-owner'])(
+  'page extension declines %s and retains the complete previous frame',reason=>{
+    const f=descriptorPresenter(()=>{}),proof:PageBackgroundProof={owner:{},view:{x:0,y:0,zoom:1},bounds:reason==='unseen-paint'?[[-3,4,3,12]]:[[4,4,12,12]],pixel:[.5/16,.5/16]}
+    const tile=f.presenter.capture(16,16,proof),original=frame([item(tile.id,16)])
+    f.presenter.draw(original);const epoch=f.queue.epoch
+    const moved={...original,allowBackground:reason!=='disabled',view:{x:4,y:0,zoom:reason==='zoom'?1.01:1}}
+    if(reason==='mixed-owner'){
+      const other=f.presenter.capture(8,16,{...proof,owner:{}})
+      moved.items=[...moved.items,item(other.id,8,8,2)]
+    }
+    f.presenter.draw(moved)
+    expect(f.queue.epoch).toBe(epoch)
+    expect((f.presenter as any).drawn).toBe(original)
+    expect(f.reports.at(-1)?.coverageDeferred).toBe(1)
+  })

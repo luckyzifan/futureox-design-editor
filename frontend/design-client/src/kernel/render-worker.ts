@@ -672,6 +672,7 @@ self.onmessage = (e) => {
         tilePrepareViewport: requestedPrepareViewport, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
+      renderOptions.gpuPageBackground = channel === 'canvas' && !request.png && !request.readback
       renderOptions.gpuPainterSupport = usesPainterSupport(import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX,
         { backend, renderIntent, livePreview, tileViewport, png: request.png, exportFormat,
           exportRegion: renderOptions.exportRegion, pixelPreview: renderOptions.pixelPreview,
@@ -757,6 +758,7 @@ self.onmessage = (e) => {
       let paintDamage: PaintDamage | undefined
       let derived = false
       let derivedSource: { document: DesignDocument; json?: string } | undefined
+      let derivedImageOwner:ReturnType<typeof createDecodedImageOwner>|undefined
       let acknowledgedSource = false
       if (request.deriveFrom !== undefined) {
         const deriveAt = performance.now()
@@ -767,13 +769,30 @@ self.onmessage = (e) => {
           if (!proof || source.deferredInteractionDocument || source.synchronizedInteractionDocument !== proof.document ||
             !samePreparationReceipt(request.deriveFrom, proof.receipt) ||
             !samePreparationReceipt(request.deriveFrom, sourceKernel?.preparationStateReceipt)) throw Error('DERIVATION_STALE_SOURCE')
+          let pose:Record<string,import('../model').Matrix>|undefined
+          if(request.derivedTransforms!==undefined){
+            const rows=Object.entries(request.derivedTransforms)
+            if(!request.derivedTransforms||Array.isArray(request.derivedTransforms)||rows.length===0||rows.length>16||
+              rows.some(([id,m])=>!Object.hasOwn(proof.document.nodes,id)||!Array.isArray(m)||m.length!==6||!m.every(Number.isFinite)))
+              throw Error('DERIVATION_INVALID_POSE')
+            pose=request.derivedTransforms
+          }
           await kernel.derive_document_v1(request.deriveFrom)
           // Reuse the acknowledged authored object directly. A postpatch source
           // deliberately has no freshly serialized full JSON envelope.
           derivedSource = { document: proof.document, json: source.authoredSnapshot?.document === proof.document ? source.authoredSnapshot.json : undefined }
+          if(pose){
+            const patch:DocumentPatch={fields:{},nodes:Object.fromEntries(Object.entries(pose).map(([id,transform])=>[id,{...proof.document.nodes[id],transform}]))}
+            const next=applyDocumentPatch(proof.document,patch)
+            if(!await kernel.apply_interaction_transforms(JSON.stringify(pose)))
+              await kernel.apply_document_patch_with_damage(JSON.stringify(patch))
+            derivedSource={document:next}
+          }
           derived = true
+          derivedImageOwner=source.decodedImageOwner
           loadStage(5, deriveAt, { derivationAdmitted: true, fullPayloadBytes: 0 })
         } catch (error) {
+          derivedSource=undefined;derivedImageOwner=undefined;derived=false
           failureAttempts?.observe(error,3)
           loadStage(6, deriveAt, { derivationAdmitted: false, derivationFallback: true, derivationReasonCode: /STALE_SOURCE|STALE_BASE/.test(String(error)) ? 1 : /STALE_TARGET/.test(String(error)) ? 2 : /UNSUPPORTED/.test(String(error)) ? 3 : 4 })
           request.document = await failureAttempt(11, () => capturedDocumentFallback(request.id))
@@ -815,6 +834,7 @@ self.onmessage = (e) => {
             canvasSource.interactionDocument === laneState.interactionDocument &&
             canvasSource.synchronizedInteractionDocument === laneState.interactionDocument)
           laneState.decodedImageOwner = canvasSource.decodedImageOwner
+        else if(derivedImageOwner)laneState.decodedImageOwner=derivedImageOwner
         // Publish only after successful kernel synchronization. A failed load
         // or any later patch must never leave a reusable source certificate.
         const sourceJson = derivedSource?.json ?? request.document

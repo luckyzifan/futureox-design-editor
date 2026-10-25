@@ -8,7 +8,7 @@ import type { RefObject } from 'react'
 import type { CanvasSceneBorrow } from '../canvas-scene-snapshots'
 import { documentTransitionNodeIds } from '../document-patch'
 
-export type InteractionLayer = { document: DesignDocument; bounds: Bounds; moving?: string }
+export type InteractionLayer = { document: DesignDocument; roots: string[]; bounds: Bounds; moving?: string }
 export type InteractionPlan = { document: DesignDocument; pageId: string; ids: string[]; layers: InteractionLayer[]; viewport?: Bounds }
 export type InteractionPoseFeedback = { x: number; y: number; matrix?: Matrix }
 export type GpuMoveControl = {
@@ -89,12 +89,10 @@ export function planInteractionLayers(document: DesignDocument, pageId: string, 
       if (right <= x || bottom <= y) return
       bounds = { x, y, width: right - x, height: bottom - y }
     }
-    // Keep every authored node reachable for kernel validation and component
-    // dependencies. Hide other roots instead of orphaning their subtrees by
-    // deleting page edges (which fails on real multi-board documents).
-    layers.push({ moving, bounds, document: { ...document, nodes: { ...document.nodes,
-      ...Object.fromEntries(page.children.filter(id => !included.has(id)).map(id => [id, { ...document.nodes[id], visible: false }])),
-    } } })
+    // Rust applies this render-only scope through its existing COW snapshot.
+    // Keep the original object identity so the interaction lane can borrow its
+    // acknowledged source, without cloning/serializing the complete node table.
+    layers.push({ moving, bounds, document, roots: [...children] })
   }
   let stationary: string[] = []
   for (const id of roots) {
@@ -133,10 +131,7 @@ export function interactionOffsets(plan: InteractionPlan, current: DesignDocumen
   return offsets
 }
 
-export function interactionPatchedDocument(document: DesignDocument, patches: Record<string, { transform?: Matrix }>) {
-  return { ...document, nodes: { ...document.nodes,
-    ...Object.fromEntries(Object.entries(patches).map(([id, patch]) => [id, { ...document.nodes[id], ...patch }])) } }
-}
+export { interactionPatchedDocument } from './interaction-document-source'
 
 /** An affine edit (rotation/scale) has no translation offsets to reuse, but
  * when only selected transforms differ from the plan snapshot the last

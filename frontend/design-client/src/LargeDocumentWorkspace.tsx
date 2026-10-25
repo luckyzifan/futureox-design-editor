@@ -1,31 +1,31 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react'
 import { flushSync } from 'react-dom'
 import { Editor } from './engine'
-import { blank, type DesignDocument, type DesignNode } from './model'
-import { Canvas } from './Canvas'
-import { Layers } from './Layers'
-import { Inspector } from './Inspector'
-import { PendingEditContext } from './pending-edit-context'
+import { blank, type DesignDocument } from './model'
 import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged } from './pending-edits'
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
 import { documentPreparationRuntime } from './document-preparation-identity'
 import { dispatchEditorCommand, resolveDesktopEditorCommand } from './editor-commands'
 import { desktopBridge, type LargeDocumentBridge, type LargeDocumentRow, type LargeDocumentStatus, type DesktopResult } from './desktop'
-import { LargeDocumentDialog } from './LargeDocumentDialog'
 import { apply, bounds, boxPoints, unionBounds } from './geometry'
 import { sourceNodeEdit,type SourceNodeEdit } from './source-scene-patch'
 
 const admitted=<T,>(result:DesktopResult<T>):T=>{if(result.status!=='ok')throw Error(result.status==='cancelled'?'操作已取消':result.message);return result as T}
 const sameSource=(a:LargeDocumentStatus|null,b:LargeDocumentStatus|null)=>!!a&&!!b&&a.owner.documentId===b.owner.documentId&&a.owner.sessionEpoch===b.owner.sessionEpoch&&a.revision===b.revision
-/** Source-backed storage adapter around the shared Editor/Canvas/Inspector.
- * A loaded page is never passed to the ordinary whole-document FD autosaver. */
-export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,onWindowClose}:{bridge:LargeDocumentBridge;initialFile?:File;parentEditor:Editor;onExit:()=>void;onWindowClose:(requestId:string)=>Promise<void>}) {
+export type SourceWorkspace = {
+  editor:Editor; ready:boolean; busy:boolean; locked:boolean; dirty:boolean; name:string; notice:string; error:string
+  canvas:RefObject<HTMLDivElement|null>; navigation:ReactNode; showLayers:boolean; warnings:string[]
+  dismissWarnings():void; cancel():void; save():Promise<void>; exportFile():Promise<void>; leave():Promise<void>; openFile(file:File):Promise<void>
+}
+/** Source storage owns the full archive and commits only its admitted workset.
+ * UI is the ordinary App workbench; no separate Canvas/Inspector implementation. */
+export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,onWindowClose,renderWorkbench}:{bridge:LargeDocumentBridge;initialFile?:File;parentEditor:Editor;onExit:(file?:File)=>void;onWindowClose:(requestId:string)=>Promise<void>;renderWorkbench:(source:SourceWorkspace)=>ReactNode}) {
   const [editor]=useState(()=>new Editor(blank()))
   const state=useSyncExternalStore(editor.subscribe,editor.panelSnapshot)
   const [status,setStatus]=useState<LargeDocumentStatus|null>(null),statusRef=useRef<LargeDocumentStatus|null>(null)
   const [rows,setRows]=useState<LargeDocumentRow[]>([]),[parents,setParents]=useState<LargeDocumentRow[]>([]),[offset,setOffset]=useState(0),[total,setTotal]=useState(0)
   const [query,setQuery]=useState(''),[filter,setFilter]=useState(''),[active,setActive]=useState<LargeDocumentRow|null>(null)
-  const [busy,setBusy]=useState(false),busyRef=useRef(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[jsonOpen,setJsonOpen]=useState(false)
+  const [busy,setBusy]=useState(false),busyRef=useRef(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
   const [viewTab,setViewTab]=useState<'source'|'layers'>('source')
   const [editorLocked,setEditorLocked]=useState(false),[warnings,setWarnings]=useState<string[]>([])
   const queuedLoad=useRef<LargeDocumentRow|null>(null),drainingLoads=useRef(false),preparingSource=useRef(false)
@@ -135,64 +135,76 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
       throw error
     }finally{preparingSource.current=false;abort.current=null}
   }
+  const openInitialCanvas=async()=>{
+    const top=admitted(await bridge.children({...request(),limit:100})).items
+    let row=top.find(row=>row.kind==='page')||top.find(row=>!['document','rect','style'].includes(row.kind))
+    // An archive page can contain hundreds of independent boards. Enter its
+    // first board immediately; cold siblings remain in the complete source.
+    if(row?.kind==='page'&&row.hasChildren){
+      const page=row,children=admitted(await bridge.children({...request(),key:page.key,limit:100})).items
+      const board=children.find(row=>['artboard','symbolMaster','frame','group'].includes(row.kind))
+      if(board){setParents([page]);row=board}
+    }
+    if(row)await load(row)
+    else setNotice('此文件没有可显示的页面或画板。')
+  }
   useEffect(()=>{
     alive.current=true
     if(!started.current){started.current=true;void run(async()=>{
       const result=await (initialFile?bridge.openFile(initialFile):bridge.open());if(result.status==='cancelled'){onExit();return}
       const next=admitted(result);if(!alive.current)return;updateStatus(next)
-      setNotice('源文件已建立索引。选择完整页面或画板进入主画布；未加载内容仍保存在源文件中。')
-    })}
+      await openInitialCanvas()
+    },true)}
     return()=>{alive.current=false;queueMicrotask(()=>{if(!alive.current){queuedLoad.current=null;abort.current?.abort();editor.dispose()}})}
   },[])
   useEffect(()=>{
-    if(!status)return
+    // The host admits one source operation at a time. Auto-entry, save and
+    // history own that lane; sidebar refresh starts after their receipt.
+    if(!status||busy)return
     let current=true
     const listedSource=status
     setRows([])
     void bridge.children({...request(),key:filter?undefined:parents.at(-1)?.key,offset,limit:100,...(filter?{query:filter}:{})}).then(result=>{if(current&&alive.current&&sameSource(listedSource,statusRef.current)){const value=admitted(result);setRows(value.items);setTotal(value.total)}}).catch(error=>{if(current&&alive.current)setError(String(error))})
     return()=>{current=false}
-  },[status,parents,offset,filter])
+  },[status,parents,offset,filter,busy])
   useEffect(()=>{const release=registerPendingEdit(parentEditor,{dirty:()=>true,commit:()=>false});pendingEditsChanged(parentEditor);return release},[parentEditor])
   const leave=()=>run(async()=>{await save();if(statusRef.current)admitted(await bridge.close(request()));onExit()},true)
   const exportFile=()=>run(async()=>{await save();const result=await bridge.export(request());if(result.status==='cancelled')return;const next=admitted(result);updateStatus(next);setNotice(`完整文件已导出：${next.displayName}`)})
   useEffect(()=>{
     const desktop=desktopBridge()
     const off=desktop?.onCommand(command=>{
-      if(busyRef.current||jsonOpen)return
+      if(busyRef.current)return
       if(command==='save')void run(save)
       else if(command==='saveAs')void exportFile()
       else{const action=resolveDesktopEditorCommand(command);if(action)void dispatchEditorCommand(editor,action)}
     })
-    const key=(event:KeyboardEvent)=>{if(event.defaultPrevented||event.isComposing||event.repeat||jsonOpen||!(event.metaKey||event.ctrlKey)||event.key.toLowerCase()!=='s')return;event.preventDefault();if(event.shiftKey)void exportFile();else void run(save)}
+    const key=(event:KeyboardEvent)=>{if(event.defaultPrevented||event.isComposing||event.repeat||!(event.metaKey||event.ctrlKey)||event.key.toLowerCase()!=='s')return;event.preventDefault();if(event.shiftKey)void exportFile();else void run(save)}
     window.addEventListener('keydown',key)
     const close=desktop?.onCloseRequested(({requestId})=>{void run(async()=>{await save();if(statusRef.current)admitted(await bridge.close(request()));flushSync(onExit);await onWindowClose(requestId)},true).then(()=>{if(alive.current)void desktop.respondToClose({requestId,allow:false})})})
     return()=>{off?.();close?.();window.removeEventListener('keydown',key)}
-  },[editor,bridge,jsonOpen,onExit,onWindowClose])
+  },[editor,bridge,onExit,onWindowClose])
   const history=(kind:'undo'|'redo')=>run(async()=>{
     await save();requireCleanCanvas()
     const next=admitted(await bridge[kind](request()))
     requireCleanCanvas();updateStatus(next);invalidateCanvas()
   },true)
-  const openJson=()=>run(async()=>{await save();setJsonOpen(true)},true)
-  return <PendingEditContext.Provider value={editor}><div className="source-workspace">
-    <header className="source-workspace-header"><button type="button" disabled={busy} onClick={()=>void leave()}>返回设计</button><strong>{status?.name||'正在打开大型源文件'}</strong><span>{status?`${(status.expandedBytes/1024**2).toFixed(1)} MiB · ${status.indexedObjects.toLocaleString()} 个源对象`:''}</span><button disabled={busy||!active} onClick={()=>void run(save)}>保存修改</button><button disabled={busy||!status} onClick={()=>void exportFile()}>导出完整文件…</button><button disabled={busy||!status} onClick={()=>void openJson()}>JSON 属性</button></header>
-    <div className="source-workspace-status">{error?<p role="alert" title={error}>{error.includes('DOCUMENT_RESOURCE_LIMIT')?'当前页面超过可编辑内存额度，请展开页面并选择画板。已有画布和修改已保留。':error}</p>:<p role="status" title={notice}>{notice}</p>}{warnings.length>0&&<details className="source-compatibility-notes"><summary>兼容性提示（{warnings.length}）</summary><div>{warnings.map((warning,index)=><p key={index}>{warning}</p>)}</div></details>}{busy&&<button onClick={()=>{abort.current?.abort();void bridge.cancel().catch(error=>setError(String(error)))}}>停止当前操作</button>}</div>
-    <main className="source-workspace-main">
-      <aside className="source-workspace-navigation"><nav><button aria-pressed={viewTab==='source'} onClick={()=>setViewTab('source')}>源文件 / 页面</button><button disabled={!active} aria-pressed={viewTab==='layers'} onClick={()=>setViewTab('layers')}>当前画布图层</button></nav>
-        {viewTab==='layers'?<Layers editor={editor}/>:<><form onSubmit={event=>{event.preventDefault();setFilter(query);setOffset(0)}}><input aria-label="搜索源对象" placeholder="搜索页面或画板" value={query} maxLength={256} onChange={event=>setQuery(event.target.value)}/><button>搜索</button></form><nav><button disabled={busy} onClick={()=>{setParents([]);setOffset(0);setFilter('');setQuery('')}}>全部文件</button>{parents.map((row,index)=><button key={row.key} disabled={busy} onClick={()=>{setParents(parents.slice(0,index+1));setOffset(0)}}>{row.name}</button>)}</nav>
-          <div className="source-workspace-rows">{rows.map(row=><div key={row.key} data-source-key={row.key}><button disabled={['document','rect','style','exportOptions','rulerData','MSImmutableFreeformGroupLayout'].includes(row.kind)} onClick={()=>requestLoad(row)} title={`${row.kind} · ${(row.bytes/1024**2).toFixed(1)} MiB`}>{row.name||row.kind}<small>{row.kind==='page'?'完整页面':row.kind}</small></button>{row.hasChildren&&<button aria-label={`展开 ${row.name}`} disabled={busy} onClick={()=>{setParents([...parents,row]);setFilter('');setOffset(0)}}>›</button>}</div>)}</div><footer><button disabled={busy||offset===0} onClick={()=>setOffset(Math.max(0,offset-100))}>上一页</button><span>{total}</span><button disabled={busy||offset+100>=total} onClick={()=>setOffset(offset+100)}>下一页</button></footer></>}
-      </aside>
-      <div className="source-workspace-canvas" ref={canvas} inert={editorLocked||jsonOpen||undefined}>
-        {active?<Canvas editor={editor} compactChrome/>:<div className="source-workspace-empty">选择左侧页面，在这里显示完整页面；也可以展开页面，按需载入画板。</div>}
-        {active&&<div className="source-workspace-tools"><span>{active.name}</span><button onClick={()=>editor.set({tool:'select'})}>选择</button><button onClick={()=>editor.set({tool:'hand'})}>平移</button><button onClick={fit}>显示全部</button><button disabled={!editor.canUndo} onClick={()=>editor.undo()}>撤销画布修改</button><button disabled={!editor.canRedo} onClick={()=>editor.redo()}>重做</button></div>}
-      </div>
-      <aside className="source-workspace-inspector" inert={editorLocked||jsonOpen||undefined}>{active?<Inspector editor={editor}/>:<p>源文件保存在磁盘，页面按需进入共享画布。</p>}<p role="status">{state.message}</p><button disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}>撤销已保存修改</button><button disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}>重做已保存修改</button></aside>
-    </main>
-    {jsonOpen&&<LargeDocumentDialog bridge={bridge} parentEditor={editor} keepSession onClose={()=>{setJsonOpen(false);void run(async()=>{
-      const next=admitted(await bridge.open());requireCleanCanvas()
-      const changed=!sameSource(statusRef.current,next);updateStatus(next)
-      if(changed)invalidateCanvas()
-      else if(activeRef.current)await load(activeRef.current)
-    })}}/>}
-  </div></PendingEditContext.Provider>
+  const openFile=(file:File)=>run(async()=>{
+    await save()
+    if(statusRef.current)admitted(await bridge.close(request()))
+    if(!/\.(json|sketch)$/i.test(file.name)){flushSync(()=>onExit(file));return}
+    const next=admitted(await bridge.openFile(file));if(!alive.current)return
+    baseline.current=null;activeRef.current=null;setActive(null);updateStatus(next)
+    await openInitialCanvas()
+  },true)
+  const navigation=<div className="source-board-navigation" data-listing={viewTab==='source'}>
+    <nav><button aria-pressed={viewTab==='source'} onClick={()=>setViewTab('source')}>页面 / 画板</button><button disabled={!active} aria-pressed={viewTab==='layers'} onClick={()=>setViewTab('layers')}>图层</button></nav>
+    {viewTab==='source'&&<><form onSubmit={event=>{event.preventDefault();setFilter(query);setOffset(0)}}><input aria-label="搜索源对象" placeholder="搜索页面或画板" value={query} maxLength={256} onChange={event=>setQuery(event.target.value)}/><button>搜索</button></form><nav><button disabled={busy} onClick={()=>{setParents([]);setOffset(0);setFilter('');setQuery('')}}>全部页面</button>{parents.map((row,index)=><button key={row.key} disabled={busy} onClick={()=>{setParents(parents.slice(0,index+1));setOffset(0)}}>{row.name}</button>)}</nav>
+      <div className="source-workspace-rows">{rows.map(row=><div key={row.key} data-source-key={row.key}><button disabled={['document','rect','style','exportOptions','rulerData','MSImmutableFreeformGroupLayout'].includes(row.kind)} onClick={()=>requestLoad(row)} title={`${row.kind} · ${(row.bytes/1024**2).toFixed(1)} MiB`}>{row.name||row.kind}<small>{row.kind==='page'?'完整页面':row.kind}</small></button>{row.hasChildren&&<button aria-label={`展开 ${row.name}`} disabled={busy} onClick={()=>{setParents([...parents,row]);setFilter('');setOffset(0)}}>›</button>}</div>)}</div><footer><button disabled={busy||offset===0} onClick={()=>setOffset(Math.max(0,offset-100))}>上一页</button><span>{total}</span><button disabled={busy||offset+100>=total} onClick={()=>setOffset(offset+100)}>下一页</button></footer>
+      <button disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}>撤销已保存修改</button><button disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}>重做已保存修改</button>
+    </>}
+  </div>
+  return renderWorkbench({editor,ready:!!active,busy,locked:editorLocked,dirty:!!active&&editor.authoredDocument!==baseline.current,
+    name:status?.name||initialFile?.name||'正在打开文件',notice,error,canvas,navigation,showLayers:viewTab==='layers',warnings,
+    dismissWarnings:()=>setWarnings([]),cancel:()=>{abort.current?.abort();void bridge.cancel().catch(error=>setError(String(error)))},
+    save:()=>run(save),exportFile,leave,openFile})
 }

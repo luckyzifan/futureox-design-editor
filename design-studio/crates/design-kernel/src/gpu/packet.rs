@@ -2,14 +2,22 @@
 //! Old FGPK JSON/image-table variants are replaced by one FGSC protocol.
 use super::{frame_wire, GpuScene, Paint};
 use serde::Serialize;
-use std::{collections::{BTreeMap, HashMap, HashSet},sync::Arc};
+use std::{collections::{BTreeMap, HashMap, HashSet,hash_map::RandomState},hash::{BuildHasher,Hash,Hasher},sync::Arc};
 const LIMIT:usize=32*1024*1024;
-type Key=(u8,Arc<[u8]>);
+/// Hash once at the immutable producer boundary. Map growth, LRU removal and
+/// insertion then hash only this small descriptor. Equality still compares
+/// every byte, including in the event of a digest collision.
+#[derive(Clone,PartialEq,Eq)]
+struct Key { kind:u8, digest:u64, data:Arc<[u8]> }
+impl Hash for Key {
+    fn hash<H:Hasher>(&self,state:&mut H){self.kind.hash(state);self.digest.hash(state);}
+}
 struct Entry { id:u32, age:u64, bytes:usize }
 #[derive(Default)]
 pub(crate) struct FrameSceneContext {
     scope:String, binding:String, entries:HashMap<Key,Entry>, ages:BTreeMap<u64,Key>, bytes:usize,
     next:u32, clock:u64, frame:u32, frame_key:Option<String>,
+    resource_hasher:RandomState,
 }
 impl FrameSceneContext {
     pub(crate) fn bytes(&self)->usize{self.bytes}
@@ -24,7 +32,13 @@ impl FrameSceneContext {
         if self.scope.is_empty()||self.binding!=binding{*self=Self{scope:scope.into(),binding,..Self::default()}}
     }
     fn intern(&mut self,kind:u8,data:Vec<u8>)->Result<(u32,Arc<[u8]>),String>{
-        let data:Arc<[u8]>=data.into();let key=(kind,data.clone());
+        // Unbound or oversized values cannot be cache hits or insertions.
+        // They retain the original uncached path without scanning their bytes
+        // solely to construct an index which will not be used.
+        let digest=if !self.scope.is_empty()&&data.len()<=LIMIT-256{
+            self.resource_hasher.hash_one((kind,data.as_slice()))
+        }else{0};
+        let data:Arc<[u8]>=data.into();let key=Key{kind,digest,data:data.clone()};
         self.clock=self.clock.checked_add(1).ok_or("Frame resource clock exhausted")?;
         if let Some(entry)=self.entries.get_mut(&key){
             self.ages.remove(&entry.age);entry.age=self.clock;self.ages.insert(entry.age,key);
@@ -167,8 +181,8 @@ impl crate::Engine {
         if let Some(index)=path.area.as_ref().map(|a|a.first as usize*4).or_else(||path.analytic.as_ref().map(|a|a.first as usize*4)) {
             changed.curves[index]=f32::from_bits(changed.curves[index].to_bits()^1);
         }else{let index=path.first as usize*2;changed.vertices[index]=f32::from_bits(changed.vertices[index].to_bits()^1);}
-        context.encode(first,None,0).unwrap();assert_eq!(context.entries.keys().filter(|(k,_)|*k==2).count(),1);
-        context.encode(changed,None,0).unwrap();assert_eq!(context.entries.keys().filter(|(k,_)|*k==2).count(),2);
+        context.encode(first,None,0).unwrap();assert_eq!(context.entries.keys().filter(|k|k.kind==2).count(),1);
+        context.encode(changed,None,0).unwrap();assert_eq!(context.entries.keys().filter(|k|k.kind==2).count(),2);
     }
     #[test] fn revisions_keep_the_producer_and_new_engines_never_reuse_its_scope(){
         let receipt=|nonce:&str|json!({"sessionGeneration":"session","canvasOwner":"canvas","documentIncarnation":"document","lane":"canvas","nonce":nonce}).to_string();
@@ -182,5 +196,29 @@ impl crate::Engine {
         let (id,_)=context.intern(1,vec![0;LIMIT+1]).unwrap();assert!(id>0);assert_eq!(context.bytes,0);
         for i in 0..40 {context.intern(1,vec![i;1024*1024]).unwrap();assert!(context.bytes<=LIMIT);}
         assert!(context.entries.len()<40);
+    }
+}
+
+#[cfg(test)]mod cached_digest_tests{
+    use super::*;
+    #[derive(Default)]struct CountHasher(usize);
+    impl Hasher for CountHasher{fn finish(&self)->u64{0}fn write(&mut self,bytes:&[u8]){self.0+=bytes.len();}}
+    #[test]fn rehashing_is_fixed_size_and_colliding_digests_cannot_authorize_different_resource_bytes(){
+        let key=|kind,data:Vec<u8>|Key{kind,digest:7,data:data.into()};
+        let small=key(5,vec![0]);let large=key(5,vec![0;1024*1024]);
+        let mut a=CountHasher::default();let mut b=CountHasher::default();small.hash(&mut a);large.hash(&mut b);
+        assert_eq!(a.0,9);assert_eq!(b.0,9);
+        let mut entries=HashMap::new();entries.insert(small,1);entries.insert(large.clone(),2);
+        entries.insert(key(5,vec![1;1024*1024]),3);entries.insert(key(6,vec![0;1024*1024]),4);
+        assert_eq!(entries.len(),4);assert_eq!(entries.get(&key(5,vec![0;1024*1024])),Some(&2));
+        assert_eq!(entries.get(&large),Some(&2));
+    }
+    #[test]fn hits_and_eviction_keep_exact_resource_identity_under_the_existing_limit(){
+        let mut frame=FrameSceneContext::default();frame.bind("cache-proof");
+        let original=frame.intern(5,vec![0;1024*1024]).unwrap().0;
+        assert_eq!(frame.intern(5,vec![0;1024*1024]).unwrap().0,original);
+        assert_ne!(frame.intern(6,vec![0;1024*1024]).unwrap().0,original);
+        for i in 1..40{frame.intern(5,vec![i;1024*1024]).unwrap();assert!(frame.bytes<=LIMIT);}
+        assert_ne!(frame.intern(5,vec![0;1024*1024]).unwrap().0,original);
     }
 }

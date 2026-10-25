@@ -14,7 +14,11 @@ export function decodeFrameValue(bytes: Uint8Array): any {
     if(tag===7){const result=[];while(true){need(1);if(bytes[at]===0){at++;return result}result.push(value())}}
     if(tag===8){const result:Record<string,unknown>={};while(true){need(1);if(bytes[at]===0){at++;return result}
       const key=value();if(typeof key!=='string'||Object.hasOwn(result,key))throw Error('Invalid frame map key')
-      Object.defineProperty(result,key,{value:value(),enumerable:true,writable:true,configurable:true})}}
+      const decoded=value()
+      // Ordinary metadata fields need no descriptor allocation. Preserve an
+      // own __proto__ data property without invoking Object.prototype's setter.
+      if(key==='__proto__')Object.defineProperty(result,key,{value:decoded,enumerable:true,writable:true,configurable:true})
+      else result[key]=decoded}}
     throw Error('Unknown frame metadata tag')
   }
   const result=value();if(at!==bytes.length)throw Error('Trailing frame metadata');return result

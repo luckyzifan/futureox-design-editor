@@ -15,7 +15,7 @@ import { recordLocalError } from './local-diagnostics'
 import { keyboardNudgeActive, keyboardNudgeOwnsKey } from './keyboard-nudge-gesture'
 import { BatchRenameDialog } from './BatchRenameDialog'
 import { NativeSketchDialog } from './NativeSketchDialog'
-import { LargeDocumentWorkspace } from './LargeDocumentWorkspace'
+import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWorkspace'
 import { nativeSketchCapabilities } from './native-sketch-capabilities'
 import { alignmentAvailability, alignSelection } from './alignment-availability'
 import { SettingsDialog } from './SettingsDialog'
@@ -163,7 +163,7 @@ const utilityToolItems: { id: Tool; label: string; icon: typeof Square }[] = [
   { id: 'crop', label: '裁切', icon: Crop },
   { id: 'comments', label: '评论', icon: MessageSquare },
 ]
-export default function App() {
+export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWorkspace}={}) {
   const { locale } = useInterfacePreferences()
   const toolbarText = canvasText[locale]
   const shortcutProfile = useShortcutProfile()
@@ -171,7 +171,7 @@ export default function App() {
   const tools = useMemo(() => toolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)
-  const [showHome, setShowHome] = useState(true)
+  const [showHome, setShowHome] = useState(!source)
   const [startupError, setStartupError] = useState('')
   const homeSettingsFocus = useRef<HTMLElement | null>(null)
   const [showTools, setShowTools] = useState(false)
@@ -220,7 +220,7 @@ export default function App() {
   const showInspector = adaptivePanels.rightOpen
   const setShowInspector = adaptivePanels.setRightOpen
   const [desktop] = useState(desktopBridge)
-  const [editor] = useState(() => new Editor(blank()))
+  const [editor] = useState(() => source?.editor || new Editor(blank()))
   useEffect(() => {
     if (!desktop?.setInterfaceLocale) return
     let disposed = false, previous: string | undefined
@@ -286,6 +286,7 @@ export default function App() {
   const [fileImports] = useState(() => new ImportOwner())
   const importMode = useRef<'open' | 'append'>('open')
   async function importDesignFile(f: File, mode: 'open' | 'append' = 'open') {
+    if(source){if(mode==='open')await source.openFile(f);else editor.notify('当前源画板尚不支持追加保存；已有内容已保留。');return}
     if(mode==='open'&&desktopBridge()?.largeDocument&&/\.(json|sketch)$/i.test(f.name)&&f.size>64*1024**2){
       if(!ready||switching||desktopStatus.busy||!commitPendingEdits(editor)||editor.interactionActive){editor.notify('请结束当前操作后打开文件');return}
       setLargeDocument({file:f});return
@@ -356,13 +357,14 @@ export default function App() {
       fileImports.dispose()
     }
   }, [fileImports])
-  const [desktopStatus, setDesktopStatus] = useState<DesktopStatus>({
+  const [desktopState, setDesktopStatus] = useState<DesktopStatus>({
     dirty: true, busy: false, transitioning: false, operation: 'idle', conflict: false,
   })
+  const desktopStatus=source?{...desktopState,busy:source.busy,transitioning:source.locked}:desktopState
   const [desktopPrompt, setDesktopPrompt] = useState<{
     reason: LeaveReason; resolve: (decision: LeaveDecision) => void
   } | null>(null)
-  const [desktopSession] = useState(() => desktop ? new DesktopSession(
+  const [desktopSession] = useState(() => desktop && !source ? new DesktopSession(
     desktop, editor,
     (reason) => new Promise<LeaveDecision>((resolve) => setDesktopPrompt({ reason, resolve })),
     setDesktopStatus,
@@ -471,12 +473,12 @@ export default function App() {
     // A property preview may begin while the bitmap/encoding promise is pending.
     // Do not label its pixels as a durable authored revision or startup preview.
     const authored = () => !editor.propertyPreviewActive && editor.authoredDocument === document && editor.state.version === version
-    if (!authored()) return
+    if (source || !authored()) return
     if (saver.durableRevision(document.id, version) === undefined) await saver.save(document, version)
     const revision = saver.durableRevision(document.id, version)
     if (revision !== undefined && authored()) await writeStartupPreview({ ...pixels, documentId: document.id, revision })
   }, [saver, editor])
-  const localWindows=useLocalWindows(editor,desktopSession,ready)
+  const localWindows=useLocalWindows(editor,desktopSession,ready&&!source&&!largeDocument)
   useEffect(() => {
     const input = file.current
     const onCancel = () => fileImports.invalidate()
@@ -490,6 +492,7 @@ export default function App() {
   }), [editor])
   useEffect(() => {
     let active = true
+    if(source){void initializePicking().then(()=>{if(active)setReady(true)}).catch(error=>{if(active)setStartupError(String(error))});return()=>{active=false}}
     if (desktopSession) {
       void initializePicking().then(async () => {
         if (!active) return
@@ -535,7 +538,7 @@ export default function App() {
     }
   }, [editor, desktopSession, saver])
   useEffect(() => {
-    if (!ready || desktopSession) return
+    if (!ready || desktopSession || source) return
     const snapshot = editor.authoredDocument
     saver.observe(snapshot, s.version)
     if (!saver.dirty) return
@@ -550,7 +553,7 @@ export default function App() {
     return () => clearTimeout(timer)
   }, [s.version, ready, desktopSession])
   useEffect(() => {
-    if (desktopSession) return
+    if (desktopSession || source) return
     const unload = (e: BeforeUnloadEvent) => {
       if (saver.dirty || hasPendingEdits(editor)) {
         e.preventDefault()
@@ -566,6 +569,7 @@ export default function App() {
     preserveCurrent = true,
     request?: ImportRequest,
   ) {
+    if(source){editor.notify('当前源文件仍在编辑，请先保存并返回文档列表。');return false}
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.lifecycle, 314)
     trace.result(ActionOutcome.cancelled, ActionReason.unobserved)
     try {
@@ -649,6 +653,7 @@ export default function App() {
     finally { trace.finish() }
   }
   async function openLocalFiles() {
+    if(source){await source.leave();return}
     fileImports.invalidate()
     try {
       setLocalFiles(await localList())
@@ -659,7 +664,7 @@ export default function App() {
     }
   }
   useEffect(() => {
-    if (!ready || !desktop?.automation) return
+    if (!ready || !desktop?.automation || source || largeDocument) return
     const preferences = createAutomationSettingsAdapter(editor)
     const host = createWorkspaceAutomationRenderer(editor, {
       inspect: () => ({ storageRevision: desktopSession?.status.revision ?? null,
@@ -673,7 +678,7 @@ export default function App() {
     })
     const detach = attachDesktopAutomation(editor, desktop.automation, { host })
     return () => { detach(); preferences.dispose() }
-  }, [ready, desktop, editor, desktopSession])
+  }, [ready, desktop, editor, desktopSession, largeDocument])
   useEffect(() => {
     if (ready && desktop?.rendererReady) void desktop.rendererReady().then(result => {
       if (result.status === 'error' || result.status === 'conflict') editor.notify(result.message)
@@ -687,7 +692,7 @@ export default function App() {
   }, [ready, switching, desktopStatus.transitioning, editor, showHome])
   useEffect(() => {
     const command = (name: DesktopCommand) => {
-      if (largeDocument) return
+      if (largeDocument || source) return
       if (name === 'settings') { openSettings(); return }
       if (showHome) {
         if (!admitHomeDocumentCommand(name, { ready, switching, busy: desktopStatus.busy,
@@ -721,7 +726,7 @@ export default function App() {
       }
     }
     const shortcut = (e: KeyboardEvent) => {
-      if (largeDocument) return
+      if (largeDocument || source) return
       const settingsMod = shortcutPlatform() === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
       if (settingsMod && e.key === ',' && !e.shiftKey && !e.altKey && !e.repeat && !e.isComposing && e.keyCode !== 229 && !e.defaultPrevented) {
         e.preventDefault(); openSettings(); return
@@ -743,7 +748,7 @@ export default function App() {
     window.addEventListener('keydown', shortcut)
     const offCommand = desktop?.onCommand(command)
     const offClose = desktop?.onCloseRequested(({ requestId }) => {
-      if (largeDocument) return
+      if (largeDocument || source) return
       fileImports.invalidate()
       // Release the settings portal's focus/inert ownership before a dirty
       // document confirmation is rendered in the application root.
@@ -770,6 +775,7 @@ export default function App() {
   function enterHome() {
     if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return
     setMenu(false); setShowMove(false); setShowRegions(false); setShowShapes(false); setShowDrawing(false); setShowUtility(false)
+    if(source){void source.leave();return}
     setShowHome(true)
   }
   async function openHomeFile(): Promise<boolean | 'pending'> {
@@ -829,7 +835,8 @@ export default function App() {
     return !item || !!item.disabled
   }
   if (largeDocument && desktop?.largeDocument) return <LargeDocumentWorkspace bridge={desktop.largeDocument} parentEditor={editor} initialFile={largeDocument.file}
-    onExit={()=>setLargeDocument(null)} onWindowClose={async requestId=>{
+    renderWorkbench={workspace=><App sourceWorkspace={workspace}/>}
+    onExit={file=>{setLargeDocument(null);if(file)queueMicrotask(()=>void importDesignFile(file))}} onWindowClose={async requestId=>{
       const approved=!!desktopSession&&await desktopSession.requestClose()
       const allow=approved&&!!desktopSession?.closeReady
       const response=await desktop.respondToClose({allow,requestId})
@@ -847,8 +854,9 @@ export default function App() {
       style={adaptivePanels.style}
       className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'chrome-hide-inspector'} ${uiMinimized ? 'chrome-minimized' : ''}`}
       data-history-backend={editor.historyBackend} data-history-operation={editor.historyOperationMode} data-history-frame-bytes={editor.historyFrameBytes}
-      data-desktop-ready={desktopSession ? String(ready) : undefined}
+      data-desktop-ready={desktop ? String(ready) : undefined}
       data-editor-ready={String(ready)}
+      data-source-document={source?"true":undefined}
       data-color-picking={s.tool==='eyedropper'}
       aria-busy={switching || desktopStatus.busy}
       onKeyUp={e=>{if(showHome)e.stopPropagation()}}
@@ -907,7 +915,8 @@ export default function App() {
     >
       {!showHome && (!ready || switching || (desktopStatus.transitioning && !desktopPrompt)) && (
         <div className="document-transition" role="status">
-          {desktopSession ? '正在处理本机设计文件…' : '正在保存并打开设计…'}
+          {source?source.notice||'正在打开画板…':desktopSession ? '正在处理本机设计文件…' : '正在保存并打开设计…'}
+          {source?.busy&&<button type="button" data-desktop-dialog onClick={source.cancel}>停止当前操作</button>}
         </div>
       )}
       {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} busy={switching || desktopStatus.busy}
@@ -932,7 +941,8 @@ export default function App() {
           <b>/</b>
           <input
             aria-label="文档名称"
-            value={s.doc.name}
+            value={source?.name||s.doc.name}
+            readOnly={!!source}
             onCompositionStart={() => { titleComposing.current = true; pendingEditsChanged(editor) }}
             onCompositionEnd={() => { titleComposing.current = false; pendingEditsChanged(editor) }}
             onChange={(e) =>
@@ -970,7 +980,7 @@ export default function App() {
           <button
             type="button"
             aria-pressed={showHistory}
-            disabled={!ready}
+            disabled={!ready||!!source}
             title="查看当前设计的本地历史版本"
             onClick={() => setShowHistory(true)}
           >
@@ -995,12 +1005,12 @@ export default function App() {
             role="status"
           >
             {desktopSession && desktopStatus.dirty ? <span aria-hidden="true">●</span> : <Check size={13} />}
-            {desktopSession ? (!ready ? '载入中' : desktopStatus.operation === 'save' ? '保存中…'
+            {source?(source.error?'保存或加载失败':source.busy?'处理中…':source.dirty?'待保存':'已保存到源文件缓存'):desktopSession ? (!ready ? '载入中' : desktopStatus.operation === 'save' ? '保存中…'
               : desktopStatus.conflict ? (desktopSession.supportsWorkspace ? '本机库存在新版本' : '文件已被外部修改') : desktopStatus.error ? '操作失败，修改已保留'
               : desktopStatus.dirty ? (desktopStatus.recoveryWarning ? '未保存，恢复副本有警告' : desktopSession.supportsWorkspace ? '待保存到本机' : '未保存到文件') : desktopStatus.warning ? '已写入，有持久化警告' : desktopSession.supportsWorkspace ? '已保存到本机' : '已保存到文件') : saved}
           </span>
           {desktopSession&&ready&&<LocalWindowControl editor={editor} session={desktopSession} live={localWindows}/>}
-          {desktopSession ? <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => void desktopSession.save()}>
+          {source?<button type="button" disabled={!ready||source.busy||!source.ready} onClick={()=>void source.save()}><Save size={16}/>保存</button>:desktopSession ? <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => void desktopSession.save()}>
             <Save size={16} />保存
           </button> : <button type="button" disabled={!ready} onClick={() => void openLocalFiles()}>
             <FolderOpen size={16} />本机文件
@@ -1093,7 +1103,8 @@ export default function App() {
             </div>
             <button
               onClick={() => {
-                if (desktopSession) { setMenu(false); void desktopSession.save(true) }
+                if(source){setMenu(false);void source.exportFile()}
+                else if (desktopSession) { setMenu(false); void desktopSession.save(true) }
                 else void switchDocument(
                   { ...structuredClone(s.doc), id: uid(), name: copyName(s.doc.name, ' 副本') },
                   undefined, false,
@@ -1101,7 +1112,7 @@ export default function App() {
               }}
             >
               <Plus size={15} />
-              {desktopSession ? '另存为设计文件…' : '保存为本机副本'}
+              {source?'导出完整文件…':desktopSession ? '另存为设计文件…' : '保存为本机副本'}
             </button>
             <button
               onClick={() => {
@@ -1114,7 +1125,7 @@ export default function App() {
               <FolderOpen size={15} />
               导入 Sketch / FIG / SVG / PDF
             </button>
-            {desktop?.largeDocument&&<button type="button" disabled={!ready||switching||desktopStatus.busy||editor.interactionActive} onClick={()=>{if(!commitPendingEdits(editor))return;setMenu(false);setLargeDocument({})}}>打开大型 JSON / Sketch（4 GiB）…</button>}
+            {!source&&desktop?.largeDocument&&<button type="button" disabled={!ready||switching||desktopStatus.busy||editor.interactionActive} onClick={()=>{if(!commitPendingEdits(editor))return;setMenu(false);setLargeDocument({})}}>打开大型 JSON / Sketch…</button>}
             {(['inspect', 'edit'] as const).map(mode => <button type="button" key={mode}
               disabled={!ready || switching || desktopStatus.busy || s.busy || editor.interactionActive || !sketchCapabilities[mode]}
               title={sketchCapabilities[mode] ? (mode === 'inspect' ? '原生只读预览，不转换为当前画布，也不修改源文件' : '独立原生会话，仅支持已声明的编辑范围；另存为全新文件') : '当前宿主未提供此原生 Sketch 能力；可使用兼容格式导入'}
@@ -1129,13 +1140,14 @@ export default function App() {
             }}><Plus size={15} />追加到当前画布…</button>
             <button
               onClick={() => {
-                if (desktopSession) void desktopSession.save()
+                if(source)void source.save()
+                else if (desktopSession) void desktopSession.save()
                 else if (editor.settleOwnedPropertyPreview('save') && !editor.interactionActive && commitPendingEdits(editor)) exportDocument(editor.authoredDocument)
                 setMenu(false)
               }}
             >
               <Download size={15} />
-              {desktopSession?.supportsWorkspace ? '保存到本机文档库' : '保存设计文件'} <kbd>{formatShortcutCombo('Mod+S', shortcutContext.platform)}</kbd>
+              {source?'保存修改':desktopSession?.supportsWorkspace ? '保存到本机文档库' : '保存设计文件'} <kbd>{formatShortcutCombo('Mod+S', shortcutContext.platform)}</kbd>
             </button>
             <hr />
             <button
@@ -1194,7 +1206,7 @@ export default function App() {
       {showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}
       {showFramePresets && <FramePresetPanel editor={editor} onClose={() => setShowFramePresets(false)} />}
-      {showHistory && (
+      {showHistory && !source && (
         <DocumentHistoryDialog
           key={s.doc.id}
           session={desktopSession}
@@ -1224,11 +1236,12 @@ export default function App() {
         }}
           onFiles={() => { if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else if (desktopSession) setShowCatalog(true); else void openLocalFiles() }}
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
-        <div ref={leftPanel} className="adaptive-layers-shell"><Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} /><PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
-        <div className="canvas-workspace">
+        <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} />}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
+        <div className="canvas-workspace" ref={source?.canvas}>
+          {source&&<div className="source-canvas-status">{source.error?<p role="alert">{source.error}</p>:<p role="status">{source.notice}</p>}{source.warnings.length>0&&<ImportNotice warnings={source.warnings} onClose={source.dismissWarnings}/>}</div>}
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
-          <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready}
-            startupPreview={startupPreview} onCapturePreview={desktopSession ? undefined : capturePreview}
+          <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready||!!source&&!source.ready}
+            startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}
             zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} /></HomeCanvasGate>
           <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || (editor.interactionActive && !editor.propertyPreviewActive)}>
             <div className="tool-group">

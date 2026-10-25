@@ -44,8 +44,8 @@ test('overlapping, interleaved selected boards retain their paint order and inte
   roots[1].children = [glass.id]; doc.nodes[glass.id] = glass
   doc.pages[0].children = roots.map(n => n.id)
   const plan = planInteractionLayers(doc, doc.pages[0].id, [roots[1].id, roots[3].id])!
-  expect(plan.layers.map(layer => layer.document.pages[0].children.filter(id => layer.document.nodes[id].visible))).toEqual(roots.map(root => [root.id]))
-  for (const layer of plan.layers) expect(layer.document.pages[0].children).toEqual(doc.pages[0].children)
+  expect(plan.layers.map(layer => layer.roots)).toEqual(roots.map(root => [root.id]))
+  for (const layer of plan.layers) expect(layer.document).toBe(doc)
   expect(plan.layers[1].document.nodes[glass.id]).toBe(glass)
   const moved = interactionPatchedDocument(doc, { [roots[1].id]: { transform: [1, 0, 0, 1, 40, 20] } })
   expect(interactionOffsets(plan, moved)?.get(roots[1].id)).toEqual({ x: 30, y: 20 })

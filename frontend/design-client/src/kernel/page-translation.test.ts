@@ -130,6 +130,19 @@ test('partial selections and screen-anchored backgrounds cannot reuse a translat
 })
 
 
+test('first fractional input keeps the original native document identity when no page pixels have moved',()=>{
+  const doc=blank(),root=node('frame',0,0,10,10)
+  doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
+  const props:InteractionProps={document:doc,selection:[root.id],active:true,epoch:1,control:{current:null},onReady(){}}
+  const fallback=vi.fn(()=>({x:.1,y:0})),movement=new PageTranslation(vi.fn(),fallback)
+  const tile={key:'native',serial:1,gpuTile:1,bytes:new Uint8Array(),x:0,y:0,width:512,height:512,zoom:32}
+  movement.prepare(props,doc.pages[0].id,doc,[{tile,active:true,layer:0}],doc,true)
+  movement.control.apply(doc,{[root.id]:{transform:[1,0,0,1,.1,0]}})
+  expect(fallback).toHaveBeenCalledWith(doc,expect.anything(),doc)
+  expect((fallback.mock.calls[0] as unknown[])[2]).toBe(doc)
+  expect(movement.handingOff).toBe(true)
+})
+
 test('fractional page pixels hand over before changing the accepted pose and cannot rebind stale pixels', () => {
   const doc = blank(), root = node('frame', 0, 0, 10, 10)
   doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
